@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import Reveal from '@/components/Reveal';
 import Marquee from '@/components/Marquee';
+import GalleryGrid from '@/components/GalleryGrid';
 import Icon from '@/components/Icon';
 import {
   hero,
@@ -304,6 +305,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* ────────────── The grounds ────────────── */}
+      <GalleryGrid />
 
       {/* ────────────── Testimonials ────────────── */}
       <section className="mx-auto max-w-8xl px-6 py-28 sm:px-10 sm:py-36">

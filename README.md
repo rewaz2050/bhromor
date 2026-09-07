@@ -14,7 +14,7 @@ Every page is statically prerendered — there is no database and no backend.
 
 | | |
 |---|---|
-| Pages | 5 templates, 16 prerendered routes |
+| Pages | 5 templates, 18 prerendered routes |
 | Build | `next build` passes, 0 TypeScript errors |
 | Audit | `npm audit` → 0 vulnerabilities |
 | Assets | `npm run check:assets` passes |
@@ -51,7 +51,7 @@ npm start
 
 | Route | What it is |
 |---|---|
-| `/` | Hero, philosophy, six experiences, retreats, spring bath, testimonials, journal |
+| `/` | Hero, philosophy, six experiences, retreats, spring bath, grounds gallery, testimonials, journal |
 | `/about` | The house — story, values, ten-year timeline |
 | `/retreats` | All four stays with pricing and inclusions |
 | `/retreats/[slug]` | Individual retreat, with a sticky booking panel |
@@ -148,9 +148,6 @@ but never used.
 
 ## Known gaps
 
-- **One journal image is a stand-in.** `Building with what the valley gave us`
-  reuses `pavilion.jpg` because the image-generation budget was exhausted before
-  a bespoke shot could be made. It is marked `TODO` in `lib/content.ts`.
 - **The enquiry form has no backend.** [`EnquiryForm`](components/EnquiryForm.tsx)
   validates, then hands off to the visitor's own mail client with everything
   pre-filled. Point `handleSubmit` at a form endpoint to make it real.
@@ -174,6 +171,7 @@ components/
   SiteHeader.tsx       sticky nav, transparent over hero, mobile overlay
   SiteFooter.tsx
   Reveal.tsx           IntersectionObserver scroll reveal
+  GalleryGrid.tsx      12-column photo grid of the grounds
   Marquee.tsx          CSS-only ticker
   Icon.tsx             inline SVG icon set
   EnquiryForm.tsx      client-side enquiry form

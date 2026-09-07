@@ -321,15 +321,49 @@ export const posts: Post[] = [
     author: 'Nafisa Rahman',
     minutes: 7,
     category: 'The house',
-    // TODO: bespoke image of the salvaged teak + brick build is still pending
-    // (the 10-images-per-turn generation cap was hit). Temporarily reusing the
-    // pavilion, which is the building this entry is about.
-    image: '/images/pavilion.jpg',
+    image: '/images/journal-build.jpg',
     body: [
       'PROSANTI was built slowly and mostly by hand, using timber from demolished houses in Sunamganj and brick fired eleven kilometres away. Nothing here was shipped from Dhaka that could reasonably be made in Sylhet.',
       'The roof pitch took us three attempts. The first was too shallow and the monsoon walked straight through it. The second over-corrected and the rooms felt like the inside of a boat. The third is the one you see, and it was suggested by a carpenter from Kamalpur who had never drawn a plan in his life.',
       'We left the old estate bungalow standing and put the kitchen in it, because it was already the warmest room on the property and we could not improve on that.',
       'The result is a house that looks as though it has been here longer than it has, which was the whole intention.',
+    ],
+  },
+  {
+    slug: 'the-falls-above-the-estate',
+    title: 'The falls above the estate',
+    excerpt:
+      'A ninety-minute climb, a pool the colour of weak tea, and the only place on the property where you cannot hear the road. Worth it in monsoon. Marginal in March.',
+    date: '2026-06-18',
+    dateLabel: '18 June 2026',
+    author: 'Jahangir Chowdhury',
+    minutes: 5,
+    category: 'The garden',
+    image: '/images/journal-falls.jpg',
+    body: [
+      'There is a fall about two kilometres above the upper terrace, on land that belongs to the estate but that nobody has ever had a reason to walk to. We found it in 2018 looking for the source of the spring, and we have been taking guests up ever since.',
+      'The climb is ninety minutes at a comfortable pace and steeper than it looks for the last twenty. It is not a hike that requires fitness, but it is not a stroll either, and in the monsoon the last stretch is genuinely slippery. We only go when the ground has had a dry day.',
+      'At the top there is a pool about four metres across, fed by water that has come down through leaf litter, which is why it is the colour of weak tea rather than the blue you might expect. It is cold. People who swim in it say very little for several minutes afterwards, which we take as a good sign.',
+      'The reason we go is not the swimming. It is that above the ridge the road disappears entirely — no engine, no horns, no distant generator. It is the only place on the property where the silence is total rather than comparative, and for a lot of guests that turns out to be the thing they remember.',
+      'We schedule it on Monsoon Days when the weather allows, and on request for other stays. Bring shoes you do not mind ruining.',
+    ],
+  },
+  {
+    slug: 'what-happens-in-the-sorting-shed',
+    title: 'What happens in the sorting shed',
+    excerpt:
+      'The 1954 shed at the bottom of the estate still grades every leaf by hand. It is where the garden walk ends, and it is more interesting than the tasting.',
+    date: '2026-04-09',
+    dateLabel: '9 April 2026',
+    author: 'Ruma Begum',
+    minutes: 6,
+    category: 'The garden',
+    image: '/images/journal-shed.jpg',
+    body: [
+      'Most tea estates we know have mechanised their sorting. Kamalpur has not, mainly because the shed is too old and too narrow to take the machines, and nobody has decided whether that is a problem.',
+      'So the grading is still done by hand, on long wooden tables with mesh sieves of descending grade. Leaf goes in at one end and comes out at the other as whole leaf, broken, fannings and dust — four prices, four destinations, and a difference you can taste clearly if you brew them side by side.',
+      'We end every garden walk in the shed rather than in a shop, because watching someone grade tea for ten minutes tells you more about the drink than any tasting note does. Guests stop talking after about three minutes. It is very quiet work and it is oddly absorbing.',
+      'The tea we pour at PROSANTI is whole leaf only, bought from the estate at an agreed premium. The dust does not get thrown away; it goes to the staff canteen, where it is brewed strong and sweet with milk and cardamom, which is the correct way to drink it.',
     ],
   },
 ];
@@ -399,6 +433,48 @@ export const marqueeWords = [
   'one valley',
   'rain on tin',
   'unhurried',
+];
+
+/* ─────────────────────────────────────────────────────────
+   The grounds — photo grid
+   ───────────────────────────────────────────────────────── */
+
+/**
+ * `grid` holds literal Tailwind placement classes. They are intentionally
+ * inline strings so Tailwind's scanner (which includes lib/**) can see them.
+ * The five tiles fill a 12-column grid as: 7+5 / 7+5 / 4+8.
+ */
+export const gallery = [
+  {
+    src: '/images/gallery-mist.jpg',
+    alt: 'Morning mist rolling over the ridge, seen from the veranda',
+    caption: 'The ridge at six, most mornings of the year.',
+    grid: 'lg:col-span-7 lg:row-span-2',
+  },
+  {
+    src: '/images/gallery-trail.jpg',
+    alt: 'A worn footpath winding between rows of tea bushes',
+    caption: 'The path down to the sorting shed.',
+    grid: 'lg:col-span-5',
+  },
+  {
+    src: '/images/gallery-dining.jpg',
+    alt: 'The long communal table set for dinner by candlelight',
+    caption: 'One table, one seating, whatever the kitchen made.',
+    grid: 'lg:col-span-5',
+  },
+  {
+    src: '/images/gallery-room.jpg',
+    alt: 'A garden room with shutters open onto the tea terraces',
+    caption: 'No screen, no clock, one window.',
+    grid: 'lg:col-span-4',
+  },
+  {
+    src: '/images/gallery-night.jpg',
+    alt: 'The Milky Way above the dark silhouette of the hills',
+    caption: 'The nearest streetlight is four kilometres away.',
+    grid: 'lg:col-span-8',
+  },
 ];
 
 export const faq = practical;
