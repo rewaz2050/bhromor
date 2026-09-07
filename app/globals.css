@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --grain-opacity: 0.035;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
+  body {
+    @apply bg-ivory text-ink antialiased;
+    font-feature-settings: 'kern', 'liga', 'calt';
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    @apply bg-moss-700 text-ivory-pale;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer components {
+  /* Editorial eyebrow label used above section headings */
+  .eyebrow {
+    @apply inline-flex items-center gap-3 text-[0.6875rem] font-sans font-medium uppercase tracking-widest2 text-moss-600;
+  }
+
+  .eyebrow::before {
+    content: '';
+    @apply block h-px w-8 bg-moss-400;
+  }
+
+  .display-xl {
+    @apply font-display text-[clamp(2.75rem,8.5vw,7.5rem)] font-light leading-[0.92] tracking-[-0.03em];
+  }
+
+  .display-lg {
+    @apply font-display text-[clamp(2rem,4.6vw,3.75rem)] font-light leading-[1.05] tracking-[-0.02em];
+  }
+
+  .display-md {
+    @apply font-display text-[clamp(1.5rem,2.6vw,2.25rem)] font-light leading-[1.15] tracking-[-0.015em];
+  }
+
+  .lede {
+    @apply font-sans text-[clamp(1.0625rem,1.6vw,1.25rem)] font-light leading-[1.7] text-ink-soft;
+  }
+
+  .body-copy {
+    @apply font-sans text-[1rem] font-light leading-[1.85] text-ink-soft;
+  }
+
+  /* Primary action — solid evergreen. Add `group` in markup to use group-hover on children. */
+  .btn-primary {
+    @apply relative inline-flex items-center gap-3 overflow-hidden rounded-full bg-moss-800 px-8 py-4 font-sans text-[0.8125rem] font-medium uppercase tracking-[0.18em] text-ivory-pale transition-colors duration-500 ease-calm hover:bg-moss-900;
+  }
+
+  .btn-ghost {
+    @apply relative inline-flex items-center gap-3 rounded-full border border-moss-800/25 px-8 py-4 font-sans text-[0.8125rem] font-medium uppercase tracking-[0.18em] text-ink transition-colors duration-500 ease-calm hover:border-moss-800 hover:bg-moss-800 hover:text-ivory-pale;
+  }
+
+  .rule {
+    @apply h-px w-full bg-ink/10;
+  }
+
+  /* Subtle paper grain overlay */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .link-underline {
+    @apply relative inline-block;
+  }
+
+  .link-underline::after {
+    content: '';
+    @apply absolute -bottom-0.5 left-0 block h-px w-full origin-right scale-x-0 bg-current transition-transform duration-500 ease-calm;
+  }
+
+  .link-underline:hover::after {
+    @apply origin-left scale-x-100;
+  }
+}
+
+@layer utilities {
+  /* Scroll-reveal primitive driven by <Reveal /> */
+  .reveal-init {
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .reveal-in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+  }
+
+  .writing-vertical {
+    writing-mode: vertical-rl;
+  }
+}
