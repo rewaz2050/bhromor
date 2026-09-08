@@ -10,8 +10,6 @@ import { IconArrowRight, IconClose, IconMenu } from "@/components/ui/icons";
 const PRIMARY = [
   { label: "Shop", href: "/shop" },
   { label: "Collections", href: "/#collections" },
-  { label: "Our Story", href: "/#story" },
-  { label: "Journal", href: "/#journal" },
 ];
 
 const SECONDARY = [

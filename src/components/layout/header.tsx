@@ -13,8 +13,6 @@ import ProductSearch from "./product-search";
 const NAV = [
   { label: "Shop", href: "/shop" },
   { label: "Collections", href: "/#collections" },
-  { label: "Our Story", href: "/#story" },
-  { label: "Journal", href: "/#journal" },
 ];
 
 /**

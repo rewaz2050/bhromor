@@ -44,9 +44,9 @@ describe("MobileNav", () => {
       "href",
       "/shop",
     );
-    expect(screen.getByRole("link", { name: "Our Story" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Collections" })).toHaveAttribute(
       "href",
-      "/#story",
+      "/#collections",
     );
     expect(screen.getByRole("link", { name: "Track Order" })).toBeInTheDocument();
   });

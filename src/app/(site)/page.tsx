@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import BrandJournal from "@/components/shop/brand-journal";
 import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -17,9 +16,9 @@ import type { HomeSettings } from "@/lib/home-cms";
 
 /**
  * The storefront deliberately follows one short editorial journey:
- * Hero → Collections → Best sellers → Philosophy → Service → Journal.
- * Campaign, budget and duplicate product rails belong on the shop page rather
- * than making the homepage feel like an endless catalogue.
+ * Hero → Collections → Best sellers → Service strip.
+ * Visual Journal and Our Story have been removed per request — keeping the
+ * homepage tight and commerce-focused.
  */
 export default function Home() {
   const { settings } = useCms();
@@ -30,9 +29,7 @@ export default function Home() {
       {sections.hero && <Hero cms={settings} />}
       {sections.collections && <CollectionsSection />}
       {sections.featured && <BestSellersSection />}
-      {sections.brandStory && <BrandStorySection />}
       {sections.trust && <TrustStrip />}
-      {sections.brandJournal && <BrandJournal />}
     </>
   );
 }
@@ -231,52 +228,6 @@ function BestSellersSection() {
             </Reveal>
           ))}
         </div>
-      </div>
-    </section>
-  );
-}
-
-function BrandStorySection() {
-  return (
-    <section id="story" className="scroll-mt-28 overflow-hidden bg-ivory-100">
-      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[0.92fr_1.08fr] lg:gap-20 lg:px-8 lg:py-24">
-        <Reveal className="relative mx-auto w-full max-w-lg" delay={60}>
-          <div className="relative aspect-[4/3] overflow-hidden bg-ivory-200 sm:aspect-[4/5]">
-            <Image
-              src="/images/editorial/prosanti-craft.jpg"
-              alt="A Bangladeshi artisan hand-finishing embroidery on forest-green cloth"
-              fill
-              sizes="(min-width: 1024px) 500px, 92vw"
-              className="object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.02]"
-            />
-          </div>
-          <div className="absolute -bottom-5 right-4 border border-gold-300/70 bg-ivory-50 px-5 py-4 shadow-sm sm:-right-6 sm:bottom-8">
-            <p className="font-display text-lg italic text-forest-900">Made with care.</p>
-            <p className="mt-1 text-[0.56rem] font-semibold uppercase tracking-[0.23em] text-gold-700">
-              Bangladesh · 2026
-            </p>
-          </div>
-        </Reveal>
-
-        <Reveal className="max-w-xl lg:pl-4" delay={140}>
-          <Eyebrow>The PROSANTI philosophy</Eyebrow>
-          <h2 className="mt-5 font-display text-[clamp(2.65rem,5vw,5rem)] font-normal leading-[1.03] tracking-[-0.04em] text-forest-900">
-            Rooted in Bangladesh.
-            <span className="mt-1 block italic text-gold-700">Designed for today.</span>
-          </h2>
-          <p lang="bn" className="font-bengali mt-6 text-lg font-medium leading-8 text-forest-800">
-            বাংলাদেশের শিকড়ে, আজকের জীবনের জন্য।
-          </p>
-          <p className="mt-6 max-w-lg text-sm leading-8 text-ink-soft sm:text-base">
-            We begin with the textures, rituals and ease of home, then refine them
-            for contemporary life. The result is a smaller, more considered
-            wardrobe — honest in its materials and quietly distinct in its detail.
-          </p>
-          <Link href="/about" className="editorial-text-link mt-8">
-            Read our story
-            <IconArrowRight className="h-4 w-4" />
-          </Link>
-        </Reveal>
       </div>
     </section>
   );

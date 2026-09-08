@@ -62,15 +62,13 @@ describe("Homepage editorial journey", () => {
     expect(screen.queryByRole("heading", { name: /customer reviews/i })).toBeNull();
   });
 
-  it("follows hero → collections → best sellers → story → trust → journal", () => {
+  it("follows hero → collections → best sellers → trust", () => {
     const { container } = renderHome();
     const selectors = [
       ".cinematic-hero",
       "#collections",
       "#best-sellers",
-      "#story",
       '[aria-label="PROSANTI service promises"]',
-      "#journal",
     ];
     const positions = selectors.map((selector) => {
       const node = container.querySelector(selector);
@@ -110,19 +108,16 @@ describe("Homepage editorial journey", () => {
     expect(screen.getByRole("heading", { name: "Best sellers." })).toBeVisible();
   });
 
-  it("links the philosophy, service promises and visual journal to real pages", () => {
+  it("links service promises to real pages", () => {
     renderHome();
 
-    expect(screen.getByRole("link", { name: "Read our story" })).toHaveAttribute(
-      "href",
-      "/about",
-    );
     expect(screen.getByRole("link", { name: "Easy Returns" })).toHaveAttribute(
       "href",
       "/returns",
     );
-    expect(
-      screen.getByRole("heading", { name: "Stories in cloth and light." }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Cash on Delivery" })).toHaveAttribute(
+      "href",
+      "/faq",
+    );
   });
 });
