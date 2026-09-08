@@ -15,6 +15,7 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
 | Phase 8 preview — Wishlist · Reviews · Coupons · Homepage CMS · Inventory | ✅ UI complete (browser demo) |
 | Phase 3/6 preview — Media library (§49) · Notifications inbox (§35) | ✅ UI complete (browser demo) |
+| Phase 6 preview — Reports · Settings · Payments (COD-only policy) | ✅ UI complete (browser demo) |
 | Supabase schema (products, variants, media, orders, RLS, §34 machine) | ✅ `supabase/schema.sql` ready |
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
 | Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
@@ -47,7 +48,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (67 tests).
+All gates are currently green (74 tests).
 
 ## Pages
 
@@ -64,6 +65,9 @@ Public: Home (CMS-aware) · Shop · Product details (reviews section + write-a-r
 - Reviews: moderation queue — approve/hide/flag/feature/delete; storefront reviews wait for approval, verified badge only with matching order (§30)
 - Coupons: fixed/percent, min order, category scope, validity & usage limits; checkout applies codes live; usage is recorded when an order is placed (§56)
 - Inventory: per-product stock editor with configurable low-stock threshold that drives the dashboard alert (§57–58)
+- Reports: period presets (7/30/all days) over the live order store — booked vs collected COD revenue, daily revenue chart, top products, zone and coupon breakdowns
+- Settings: low-stock threshold (§58), platform constants (§68–70), per-domain demo-data resets (orders/catalog/zones/reviews/coupons/notifications/CMS/media)
+- Payments: launch is **Cash on Delivery only** (§20–21, §26) with a live COD book; bKash/Nagad/cards listed as next-phase methods — no fake gateway wiring
 
 Demo data (orders, catalog, zones, reviews, coupons, notifications, media) persists in `localStorage` under `prosanti.*` keys and can be reset from each toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47). Public storefront reads still come from `src/lib/catalog.ts` until the data layer lands; zones are the exception — checkout already consumes the shared zone store.
 
@@ -94,7 +98,10 @@ src/
 │   │   ├── coupons/          # §56 discount-code manager
 │   │   ├── inventory/        # §57–58 stock + threshold
 │   │   ├── media/            # §49 library (URLs, sections, copy)
-│   │   └── notifications/    # §35 inbox + bell + live attention
+│   │   ├── notifications/    # §35 inbox + bell + live attention
+│   │   ├── reports/          # sales reports over the order store
+│   │   ├── settings/         # ops settings + demo-data resets
+│   │   └── payments/         # COD-only policy + method roadmap
 ├── supabase/schema.sql       # §41–46: tables, RLS, order state machine
 │   ├── icon.png · favicon.ico
 │   └── globals.css           # design tokens (forest/ivory/gold)

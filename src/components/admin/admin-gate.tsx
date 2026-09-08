@@ -17,6 +17,8 @@ import { useNotifications } from "@/lib/use-notifications";
 import {
   IconBell,
   IconBox,
+  IconCard,
+  IconChart,
   IconExternal,
   IconFlag,
   IconGrid,
@@ -24,6 +26,7 @@ import {
   IconLeaf,
   IconLogout,
   IconMapPin,
+  IconSettings,
   IconTag,
   IconUser,
 } from "@/components/ui/icons";
@@ -36,6 +39,7 @@ import {
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
   { href: "/admin/orders", label: "Orders", icon: IconBox, match: (p: string) => p.startsWith("/admin/orders") },
+  { href: "/admin/reports", label: "Reports", icon: IconChart, match: (p: string) => p === "/admin/reports" },
   { href: "/admin/products", label: "Products", icon: IconTag, match: (p: string) => p.startsWith("/admin/products") },
   { href: "/admin/categories", label: "Categories", icon: IconGrid, match: (p: string) => p === "/admin/categories" },
   { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
@@ -46,11 +50,14 @@ const NAV = [
   { href: "/admin/inventory", label: "Inventory", icon: IconBox, match: (p: string) => p === "/admin/inventory" },
   { href: "/admin/media", label: "Media", icon: IconImage, match: (p: string) => p === "/admin/media" },
   { href: "/admin/notifications", label: "Notifications", icon: IconBell, match: (p: string) => p.startsWith("/admin/notifications") },
+  { href: "/admin/payments", label: "Payments", icon: IconCard, match: (p: string) => p === "/admin/payments" },
+  { href: "/admin/settings", label: "Settings", icon: IconSettings, match: (p: string) => p === "/admin/settings" },
 ];
 
 const TITLES: [RegExp, string][] = [
   [/^\/admin\/orders\/.+/, "Order details"],
   [/^\/admin\/orders$/, "Orders"],
+  [/^\/admin\/reports$/, "Reports"],
   [/^\/admin\/products\/(new|[^/]+)$/, "Product editor"],
   [/^\/admin\/products$/, "Products"],
   [/^\/admin\/categories$/, "Categories"],
@@ -62,6 +69,8 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/inventory$/, "Inventory"],
   [/^\/admin\/media$/, "Media"],
   [/^\/admin\/notifications$/, "Notifications"],
+  [/^\/admin\/payments$/, "Payments"],
+  [/^\/admin\/settings$/, "Settings"],
   [/^\/admin$/, "Dashboard"],
 ];
 
@@ -144,10 +153,10 @@ export default function AdminGate({
 
           <div className="pt-2">
             <p className="px-3.5 pb-1 text-[0.6rem] uppercase tracking-[0.28em] text-ivory-100/40">
-              Later phases
+              Backend (next)
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Settings · Reports · Payments · Notifications channels
+              Supabase wiring · Cloudinary · SMS/WhatsApp · online gateways
             </p>
           </div>
         </nav>

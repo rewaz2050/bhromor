@@ -225,3 +225,36 @@ export const IconImage = (p: IconProps) => (
     <path d="m4.5 17.5 5-4.5 3 2.5 3.5-3.5 3 3" />
   </Svg>
 );
+
+export const IconChart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+    <path d="M8 17v-6" />
+    <path d="M13 17V6" />
+    <path d="M18 17v-3" />
+  </Svg>
+);
+
+export const IconSettings = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);
+
+export const IconCard = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M2.5 10.5h19" />
+    <path d="M6.5 15h4" />
+  </Svg>
+);
+
+export const IconBanknote = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="6.5" width="20" height="11" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 12h.01" />
+    <path d="M18 12h.01" />
+  </Svg>
+);
