@@ -31,6 +31,14 @@ export const metadata: Metadata = {
     title: "PROSANTI — Premium Commerce & Rapid Delivery",
     description:
       "Discover considered products, order easily, and track delivery to your door.",
+    images: [
+      {
+        url: "/brand/logo-lockup.png",
+        width: 1024,
+        height: 883,
+        alt: "PROSANTI — প্রশান্তি",
+      },
+    ],
   },
 };
 

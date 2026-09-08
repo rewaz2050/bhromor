@@ -45,7 +45,7 @@ export default function MobileNav() {
                 className="flex items-center gap-2.5"
                 onClick={() => setOpen(false)}
               >
-                <LogoMark className="h-8 w-8" />
+                <LogoMark className="h-8 w-auto" />
                 <span className="font-display text-lg font-semibold tracking-[0.12em] text-forest-900">
                   PROSANTI
                 </span>

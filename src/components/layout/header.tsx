@@ -34,7 +34,7 @@ export default function Header() {
             className="group flex items-center gap-3"
             aria-label="PROSANTI home"
           >
-            <LogoMark className="h-10 w-10 transition-transform duration-300 group-hover:scale-105" />
+            <LogoMark className="h-10 w-auto transition-transform duration-300 group-hover:scale-105" />
             <span className="flex flex-col leading-none">
               <span className="font-display text-xl font-semibold tracking-[0.14em] text-forest-900">
                 PROSANTI
