@@ -196,3 +196,10 @@ export const IconUser = (p: IconProps) => (
     <path d="M4.5 20.5c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5" />
   </Svg>
 );
+
+export const IconFlag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 21V4.5" />
+    <path d="M5 5c2.2-1.2 4.4-1.2 6.6 0 2.2 1.2 4.4 1.2 6.6 0v8c-2.2 1.2-4.4 1.2-6.6 0-2.2-1.2-4.4-1.2-6.6 0" />
+  </Svg>
+);

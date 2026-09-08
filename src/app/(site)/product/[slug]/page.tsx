@@ -10,6 +10,7 @@ import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import ProductCard from "@/components/product/product-card";
+import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import { Eyebrow } from "@/components/ui/primitives";
 
@@ -166,6 +167,9 @@ export default async function ProductPage({ params }: PageProps) {
           </div>
         </aside>
       </div>
+
+      {/* Reviews (§30) */}
+      <ReviewsSection product={product} />
 
       {/* Related */}
       {related.length > 0 && (

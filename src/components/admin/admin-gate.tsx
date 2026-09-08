@@ -15,6 +15,7 @@ import LogoMark from "@/components/logo-mark";
 import {
   IconBox,
   IconExternal,
+  IconFlag,
   IconGrid,
   IconLeaf,
   IconLogout,
@@ -37,6 +38,7 @@ const NAV = [
   { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
   { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
   { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
+  { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
 ];
 
 const TITLES: [RegExp, string][] = [
@@ -48,6 +50,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/zones$/, "Delivery zones"],
   [/^\/admin\/homepage$/, "Homepage"],
   [/^\/admin\/customers$/, "Customers"],
+  [/^\/admin\/reviews$/, "Reviews"],
   [/^\/admin$/, "Dashboard"],
 ];
 
