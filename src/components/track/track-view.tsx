@@ -380,6 +380,12 @@ export default function TrackView() {
                     <dt>Delivery</dt>
                     <dd>{formatBdt(order.deliveryCharge)}</dd>
                   </div>
+                  {order.coupon && (
+                    <div className="flex justify-between text-emerald-700">
+                      <dt>Coupon · {order.coupon.code}</dt>
+                      <dd>−{formatBdt(order.coupon.discount)}</dd>
+                    </div>
+                  )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
                     <dt>Total (COD)</dt>
                     <dd>{formatBdt(order.total)}</dd>

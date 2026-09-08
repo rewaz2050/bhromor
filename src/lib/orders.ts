@@ -125,6 +125,8 @@ export interface Order {
   timeline: OrderTimelineEntry[];
   /** For delivered orders: minutes from placement to doorstep (§88 KPI). */
   deliveredMinutes?: number;
+  /** Applied promo code + discount snapshot, when the customer used one (§56). */
+  coupon?: { code: string; discount: number };
 }
 
 export interface PlacedOrderInput {
@@ -138,6 +140,7 @@ export interface PlacedOrderInput {
     note?: string;
   };
   zone: { id: string; name: string; etaLabel: string; charge: Bdt };
+  coupon?: { code: string; discount: number };
   items: {
     product: { id: string; slug: string; sku: string; name: string; price: Bdt };
     image: string;
@@ -163,6 +166,7 @@ export const makePlacedOrder = (input: PlacedOrderInput): Order => {
     image: it.image,
   }));
   const subtotal = items.reduce((sum, it) => sum + it.unitPrice * it.qty, 0);
+  const discount = Math.min(input.coupon?.discount ?? 0, subtotal);
   return {
     id: input.id,
     createdAt: input.createdAt,
@@ -173,7 +177,8 @@ export const makePlacedOrder = (input: PlacedOrderInput): Order => {
     items,
     subtotal,
     deliveryCharge: input.zone.charge,
-    total: subtotal + input.zone.charge,
+    coupon: input.coupon ? { ...input.coupon, discount } : undefined,
+    total: subtotal - discount + input.zone.charge,
     payment: "cod",
     status: "pending",
     timeline: [{ status: "pending", at: input.createdAt }],

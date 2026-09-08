@@ -238,3 +238,52 @@ describe("makePlacedOrder (§70, §75)", () => {
     expect(placed.payment).toBe("cod");
   });
 });
+
+describe("makePlacedOrder with coupon (§56)", () => {
+  it("records the coupon snapshot and discounts the total", () => {
+    const p1 = MOCK_ORDERS[0].items[0];
+    const placed = makePlacedOrder({
+      id: "PS-20260908-8888",
+      createdAt: 1_700_000_000_000,
+      customer: {
+        name: "Rifat Khan",
+        phone: "01812345678",
+        area: "Rampur",
+        address: "Flat 3B",
+      },
+      zone: { id: "z2", name: "Zone B — Inner Ring", etaLabel: "45–55 min", charge: bdt(70) },
+      coupon: { code: "WELCOME100", discount: bdt(100) },
+      items: [
+        {
+          product: { id: p1.productId, slug: p1.slug, sku: p1.sku, name: p1.name, price: p1.unitPrice },
+          image: p1.image,
+          variant: p1.variant,
+          qty: 1,
+        },
+      ],
+    });
+    expect(placed.coupon).toEqual({ code: "WELCOME100", discount: bdt(100) });
+    expect(placed.total).toBe(placed.subtotal + bdt(70) - bdt(100));
+  });
+
+  it("never discounts below zero", () => {
+    const p1 = MOCK_ORDERS[0].items[0];
+    const placed = makePlacedOrder({
+      id: "PS-20260908-9999",
+      createdAt: 1_700_000_000_000,
+      customer: { name: "A", phone: "01912345678", area: "Kandirpar" },
+      zone: { id: "z1", name: "Zone A", etaLabel: "40–50 min", charge: bdt(50) },
+      coupon: { code: "BIG", discount: 10_000_000 },
+      items: [
+        {
+          product: { id: p1.productId, slug: p1.slug, sku: p1.sku, name: p1.name, price: p1.unitPrice },
+          image: p1.image,
+          variant: p1.variant,
+          qty: 1,
+        },
+      ],
+    });
+    expect(placed.total).toBe(bdt(50)); // subtotal fully discounted + delivery
+    expect(placed.coupon!.discount).toBe(placed.subtotal);
+  });
+});

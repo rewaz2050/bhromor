@@ -39,6 +39,7 @@ const NAV = [
   { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
   { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
   { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
+  { href: "/admin/coupons", label: "Coupons", icon: IconTag, match: (p: string) => p === "/admin/coupons" },
 ];
 
 const TITLES: [RegExp, string][] = [
@@ -51,6 +52,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/homepage$/, "Homepage"],
   [/^\/admin\/customers$/, "Customers"],
   [/^\/admin\/reviews$/, "Reviews"],
+  [/^\/admin\/coupons$/, "Coupons"],
   [/^\/admin$/, "Dashboard"],
 ];
 
@@ -135,7 +137,7 @@ export default function AdminGate({
               Later phases
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Coupons · Reviews · Media · Notifications · Inventory (§56–58)
+              Media · Notifications · Inventory (§57–58)
             </p>
           </div>
         </nav>

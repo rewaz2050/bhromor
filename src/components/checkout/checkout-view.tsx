@@ -5,6 +5,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
 import { useZones } from "@/lib/use-zones";
+import { useCoupons } from "@/lib/use-coupons";
+import {
+  discountAmount,
+  eligibleSubtotal,
+  findCoupon,
+  isCouponRedeemable,
+  type Coupon,
+} from "@/lib/coupons";
 import { ORDER_PREFIX } from "@/lib/catalog";
 import { makePlacedOrder } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
@@ -24,6 +32,7 @@ interface FormState {
   area: string;
   address: string;
   note: string;
+  couponCode: string;
   zoneId: string;
   payment: "cod";
   submitting: boolean;
@@ -35,6 +44,7 @@ const initialForm: FormState = {
   area: "",
   address: "",
   note: "",
+  couponCode: "",
   zoneId: "",
   payment: "cod",
   submitting: false,
@@ -53,6 +63,10 @@ export default function CheckoutView() {
     addressSummary: string;
   } | null>(null);
 
+  const { coupons: allCoupons, recordUse } = useCoupons();
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
     ? form.zoneId
     : (zoneList[0]?.id ?? "");
@@ -60,9 +74,25 @@ export default function CheckoutView() {
 
   const summary = useMemo(() => {
     const charge = zone?.charge ?? 0;
-    const total = subtotal + charge;
-    return { charge, total, itemCount: detail.reduce((n, l) => n + l.qty, 0) };
-  }, [zone, subtotal, detail]);
+    const discount = appliedCoupon
+      ? discountAmount(
+          appliedCoupon,
+          eligibleSubtotal(
+            appliedCoupon,
+            detail.map((l) => ({
+              productCategory: l.product.category,
+              subtotal: l.lineTotal,
+            })),
+          ),
+        )
+      : 0;
+    return {
+      charge,
+      discount,
+      total: subtotal + charge - discount,
+      itemCount: detail.reduce((n, l) => n + l.qty, 0),
+    };
+  }, [zone, subtotal, detail, appliedCoupon]);
 
   const empty = detail.length === 0;
 
@@ -159,6 +189,25 @@ export default function CheckoutView() {
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const applyCoupon = () => {
+    const code = form.couponCode.trim().toUpperCase();
+    if (!code) return;
+    const coupon = findCoupon(allCoupons, code);
+    if (!coupon) {
+      setAppliedCoupon(null);
+      setCouponMsg({ ok: false, text: "Unknown code — double-check the spelling." });
+      return;
+    }
+    const check = isCouponRedeemable(coupon, subtotal);
+    if (!check.ok) {
+      setAppliedCoupon(null);
+      setCouponMsg({ ok: false, text: check.reason ?? "This code cannot be used." });
+      return;
+    }
+    setAppliedCoupon(coupon);
+    setCouponMsg({ ok: true, text: `${coupon.code} applied — discount shown below.` });
+  };
+
   const placeOrder = () => {
     if (form.submitting) return; // idempotent — no double submission (§79)
     update("submitting", true);
@@ -188,8 +237,12 @@ export default function CheckoutView() {
             variant: l.variantLabel,
             qty: l.qty,
           })),
+          coupon: appliedCoupon
+            ? { code: appliedCoupon.code, discount: summary.discount }
+            : undefined,
         }),
       );
+      if (appliedCoupon) recordUse(appliedCoupon.code);
       setPlaced({
         orderId,
         eta: zone.etaLabel,
@@ -436,11 +489,74 @@ export default function CheckoutView() {
               </li>
             ))}
           </ul>
-          <dl className="mt-6 space-y-2.5 border-t border-line pt-5 text-sm">
+          {/* Coupon (§56) */}
+          <div className="mt-6 border-t border-line pt-5">
+            <label className="mb-1.5 block text-xs font-medium text-ink">
+              Have a coupon code?
+            </label>
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
+                <span className="font-mono font-bold text-forest-800">
+                  {appliedCoupon.code}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedCoupon(null);
+                    setCouponMsg(null);
+                    update("couponCode", "");
+                  }}
+                  className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={form.couponCode}
+                  onChange={(e) => update("couponCode", e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())}
+                  placeholder="e.g. WELCOME100"
+                  aria-label="Coupon code"
+                  className="h-11 w-full min-w-0 rounded-xl bg-ivory-50 px-3.5 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                />
+                <button
+                  type="button"
+                  onClick={applyCoupon}
+                  className="shrink-0 rounded-xl bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+            {couponMsg && (
+              <p
+                role="status"
+                className={`mt-2 text-xs leading-5 ${
+                  couponMsg.ok ? "text-emerald-700" : "text-rose-700"
+                }`}
+              >
+                {couponMsg.text}
+              </p>
+            )}
+          </div>
+
+          <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">Subtotal</dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
+            {summary.discount > 0 && appliedCoupon && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">
+                  Coupon · {appliedCoupon.code}
+                </dt>
+                <dd className="font-medium text-emerald-700">
+                  −{formatBdt(summary.discount)}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-ink-soft">
                 Delivery · {zone.etaLabel}
