@@ -15,7 +15,7 @@ describe("homepage CMS (§31)", () => {
       sections: { brandStory: false },
     });
     expect(merged.announcement.text).toBe("Eid delivery — all day Saturday");
-    expect(merged.announcement.enabled).toBe(true); // default survives
+    expect(merged.announcement.enabled).toBe(false); // quiet default survives
     expect(merged.hero.title1).toBe("Made for");
     expect(merged.hero.title2).toBe(HOME_DEFAULTS.hero.title2);
     expect(merged.sections.brandStory).toBe(false);

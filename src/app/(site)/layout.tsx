@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { CartProvider } from "@/components/cart/cart-provider";
 import BagDrawer from "@/components/cart/bag-drawer";
-import BottomNav from "@/components/layout/bottom-nav";
 import CustomerProvider from "@/components/account/customer-provider";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
@@ -9,11 +8,11 @@ import Footer from "@/components/layout/footer";
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
   title: {
-    default: "PROSANTI — Premium Commerce & Rapid Delivery",
+    default: "PROSANTI — Rooted in Bangladesh. Designed for Today.",
     template: "%s · PROSANTI",
   },
   description:
-    "PROSANTI (প্রশান্তি) — premium commerce with rapid local delivery. Discover considered products, order easily, and track your order until it reaches your door. Cash on delivery available.",
+    "PROSANTI (প্রশান্তি) — thoughtfully made essentials for everyday Bangladesh. Explore modern clothing and heritage textiles with fast local delivery.",
   keywords: [
     "PROSANTI",
     "প্রশান্তি",
@@ -26,15 +25,15 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "PROSANTI",
     locale: "en_US",
-    title: "PROSANTI — Premium Commerce & Rapid Delivery",
+    title: "PROSANTI — Rooted in Bangladesh. Designed for Today.",
     description:
-      "Discover considered products, order easily, and track delivery to your door.",
+      "Thoughtfully made essentials for everyday Bangladesh.",
     images: [
       {
-        url: "/brand/logo-lockup.png",
-        width: 1024,
-        height: 883,
-        alt: "PROSANTI — প্রশান্তি",
+        url: "/images/editorial/hero-prosanti.jpg",
+        width: 1376,
+        height: 768,
+        alt: "PROSANTI forest-green panjabi campaign",
       },
     ],
   },
@@ -59,8 +58,6 @@ export default function SiteLayout({
           {children}
         </main>
         <Footer />
-        <div className="h-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden" />
-        <BottomNav />
         <BagDrawer />
       </CustomerProvider>
     </CartProvider>

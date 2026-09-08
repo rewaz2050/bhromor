@@ -7,7 +7,7 @@ import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
-import { Price, Rating } from "@/components/ui/primitives";
+import { Price } from "@/components/ui/primitives";
 import {
   IconCheck,
   IconMapPin,
@@ -76,11 +76,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
         )}
       </h1>
 
-      <div className="mt-3">
-        <Rating value={product.rating} reviewCount={product.reviewCount} />
-      </div>
-
-      <div className="mt-5">
+      <div className="mt-6">
         <Price
           value={product.price}
           compareAt={product.compareAtPrice}

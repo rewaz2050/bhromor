@@ -1,9 +1,9 @@
 /**
  * Homepage CMS skeleton (§31) — demo, browser-local.
  *
- * Holds the announcement bar copy, hero copy and section visibility.
- * Until a CMS backend exists, saved settings overlay the design defaults;
- * resetting clears the overlay back to the shipped homepage.
+ * Holds the announcement bar copy, hero copy and visibility for the deliberately
+ * short editorial homepage. Saved settings overlay the shipped defaults;
+ * resetting clears the browser overlay.
  */
 
 export const HOME_CMS_KEY = "prosanti.admin.homepage.v1";
@@ -16,65 +16,51 @@ export interface HomeSettings {
     title2: string;
     subtitle: string;
     primaryLabel: string;
-    secondaryLabel: string;
   };
   sections: Record<SectionKey, boolean>;
 }
 
+/**
+ * Product campaigns, budget edits and new-arrival rails live on /shop. Keeping
+ * them out of this list prevents the landing page from becoming repetitive.
+ */
 export const SECTION_KEYS = [
   "hero",
-  "trust",
-  "featured",
   "collections",
-  "newArrivals",
+  "featured",
   "brandStory",
-  "deliveryPromise",
-  "shopByMood",
-  "budgetEdit",
-  "customerStories",
+  "trust",
   "brandJournal",
 ] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
-  hero: "Hero",
-  trust: "Trust strip",
-  featured: "Featured products",
+  hero: "Cinematic hero",
   collections: "Collections",
-  newArrivals: "New arrivals",
-  brandStory: "Brand story",
-  deliveryPromise: "Delivery promise",
-  shopByMood: "Shop by Mood",
-  budgetEdit: "Under ৳500",
-  customerStories: "Customer stories (demo preview)",
+  featured: "Best sellers",
+  brandStory: "Brand philosophy",
+  trust: "Service promise strip",
   brandJournal: "Visual journal",
 };
 
 export const HOME_DEFAULTS: HomeSettings = {
   announcement: {
-    enabled: true,
-    text: "Rapid local delivery · 45–50 min inside the service area · Cash on Delivery available",
+    enabled: false,
+    text: "Cash on Delivery · Fast Delivery · Easy Returns · Order Tracking",
   },
   hero: {
-    eyebrow: "The new Bangladeshi everyday",
-    title1: "Rooted in Tradition.",
-    title2: "Made for Today.",
-    subtitle:
-      "প্রশান্তি — a considered edit of premium essentials, delivered fast and transparently to your door.",
-    primaryLabel: "Shop Men",
-    secondaryLabel: "Shop Women",
+    eyebrow: "PROSANTI",
+    title1: "Rooted in tradition.",
+    title2: "Made for today.",
+    subtitle: "Thoughtfully made essentials for everyday Bangladesh.",
+    primaryLabel: "Explore collection",
   },
   sections: {
     hero: true,
-    trust: true,
-    featured: true,
     collections: true,
-    newArrivals: true,
+    featured: true,
     brandStory: true,
-    deliveryPromise: true,
-    shopByMood: true,
-    budgetEdit: true,
-    customerStories: true,
+    trust: true,
     brandJournal: true,
   },
 };
@@ -85,7 +71,17 @@ export const resolveSettings = (partial?: unknown): HomeSettings => {
   const p = partial as Partial<HomeSettings>;
   const ann = { ...HOME_DEFAULTS.announcement, ...(p.announcement ?? {}) };
   const hero = { ...HOME_DEFAULTS.hero, ...(p.hero ?? {}) };
-  const sections = { ...HOME_DEFAULTS.sections, ...(p.sections ?? {}) };
+  const savedSections =
+    p.sections && typeof p.sections === "object" ? p.sections : {};
+  const sections = SECTION_KEYS.reduce(
+    (next, key) => {
+      const saved = (savedSections as Record<string, unknown>)[key];
+      next[key] =
+        typeof saved === "boolean" ? saved : HOME_DEFAULTS.sections[key];
+      return next;
+    },
+    {} as Record<SectionKey, boolean>,
+  );
   return { announcement: ann, hero, sections };
 };
 
@@ -100,7 +96,7 @@ let loaded = false;
 const listeners = new Set<Listener>();
 
 const notify = () => {
-  for (const l of listeners) l();
+  for (const listener of listeners) listener();
 };
 
 const ensureLoaded = (): HomeSettings => {
@@ -111,7 +107,7 @@ const ensureLoaded = (): HomeSettings => {
       const raw = window.localStorage.getItem(HOME_CMS_KEY);
       if (raw) cache = resolveSettings(JSON.parse(raw));
     } catch {
-      // corrupted storage → defaults
+      // Corrupted storage falls back to the shipped edit.
     }
   }
   cache ??= HOME_DEFAULTS;
@@ -124,7 +120,7 @@ const persist = (next: HomeSettings) => {
     try {
       window.localStorage.setItem(HOME_CMS_KEY, JSON.stringify(next));
     } catch {
-      // storage unavailable — demo continues in memory
+      // Storage unavailable — the editor continues in memory.
     }
   }
   notify();

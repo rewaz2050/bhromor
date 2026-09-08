@@ -1,7 +1,7 @@
 import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
-import Newsletter from "./newsletter";
-import { IconPhone, IconMapPin } from "@/components/ui/icons";
+import Newsletter, { newsletterSignupUrl } from "./newsletter";
+import { IconArrowRight, IconMapPin } from "@/components/ui/icons";
 
 const SHOP_LINKS = [
   { label: "All Products", href: "/shop" },
@@ -21,35 +21,39 @@ const HELP_LINKS = [
 ];
 
 const COMPANY_LINKS = [
-  { label: "About PROSANTI", href: "/about" },
+  { label: "Our Story", href: "/about" },
+  { label: "Visual Journal", href: "/#journal" },
   { label: "Privacy Policy", href: "/privacy" },
   { label: "Terms & Conditions", href: "/terms" },
 ];
 
 export default function Footer() {
+  const signupUrl = newsletterSignupUrl(process.env.NEWSLETTER_SIGNUP_URL);
+
   return (
     <footer className="bg-forest-950 text-ivory-100">
-      <div className="border-b border-white/15">
-        <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-16 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-20">
-          <div>
-            <p className="text-[0.6rem] font-medium uppercase tracking-[0.25em] text-gold-300">
-              Join the PROSANTI list
-            </p>
-            <h2 className="mt-4 font-display text-4xl font-normal sm:text-5xl">
-              Good things.{" "}
-              <span className="italic text-gold-200">Worth waiting for.</span>
-            </h2>
-            <p className="mt-4 max-w-md text-sm leading-7 text-ivory-100/65">
-              Early access to new collections, exclusive offers and seasonal
-              edits. Considered inspiration, delivered to your inbox.
-            </p>
+      {signupUrl && (
+        <div className="border-b border-white/15">
+          <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-12 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-14">
+            <div>
+              <p className="text-[0.6rem] font-medium uppercase tracking-[0.25em] text-gold-300">
+                Join the PROSANTI list
+              </p>
+              <h2 className="mt-4 font-display text-3xl font-normal sm:text-4xl">
+                Stay close to{" "}
+                <span className="italic text-gold-200">PROSANTI.</span>
+              </h2>
+              <p className="mt-3 max-w-md text-sm leading-7 text-ivory-100/65">
+                New collections and considered stories, delivered occasionally.
+              </p>
+            </div>
+            <Newsletter signupUrl={signupUrl} />
           </div>
-          <Newsletter signupUrl={process.env.NEWSLETTER_SIGNUP_URL} />
         </div>
-      </div>
+      )}
 
       {/* Main columns */}
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 lg:grid-cols-5 lg:px-8">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-12 sm:px-6 lg:grid-cols-5 lg:px-8">
         <div className="col-span-2">
           <div className="flex items-center gap-3">
             {/* Cream tile keeps the dark emblem visible on the dark footer */}
@@ -66,17 +70,17 @@ export default function Footer() {
             </span>
           </div>
           <p className="mt-5 max-w-sm text-sm leading-6 text-ivory-100/70">
-            Rooted in tradition. Considered for today. A curated collection of
-            everyday essentials, with a little more care in every detail.
+            Rooted in Bangladesh. Designed for today. Thoughtfully made
+            essentials, with care in every detail.
           </p>
           <div className="mt-6 space-y-2 text-sm text-ivory-100/70">
-            <a
-              href="tel:+8801700000000"
+            <Link
+              href="/contact"
               className="flex items-center gap-2.5 transition-colors hover:text-gold-300"
             >
-              <IconPhone className="h-4 w-4 text-gold-400" />
-              01700-000000 (Sat–Thu, 9am–9pm)
-            </a>
+              Customer care &amp; enquiries
+              <IconArrowRight className="h-4 w-4 text-gold-400" />
+            </Link>
             <p className="flex items-start gap-2.5">
               <IconMapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold-400" />
               Launching inside a selected service area in Bangladesh — zones
@@ -88,13 +92,6 @@ export default function Footer() {
         <FooterCol title="Shop" links={SHOP_LINKS} />
         <FooterCol title="Help" links={HELP_LINKS} />
         <FooterCol title="Company" links={COMPANY_LINKS} />
-      </div>
-
-      <div
-        aria-hidden="true"
-        className="mx-auto max-w-7xl overflow-hidden px-4 text-center font-display text-[clamp(3.5rem,14vw,12rem)] leading-[1.1] tracking-[0.08em] text-ivory-100/40"
-      >
-        PROSANTI
       </div>
 
       <div className="border-t border-white/10 px-4 py-6 sm:px-6 lg:px-8">

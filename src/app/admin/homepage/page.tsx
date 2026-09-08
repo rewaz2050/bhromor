@@ -123,32 +123,24 @@ export default function AdminHomepagePage() {
             />
           </label>
           <label className="block sm:col-span-2">
-            <span className={label}>Subtitle (after the প্রশান্তি wordmark)</span>
+            <span className={label}>Subtitle</span>
             <textarea
               className={`${field} min-h-20 resize-y`}
               value={draft.hero.subtitle}
               onChange={(e) => setHero({ subtitle: e.target.value })}
             />
           </label>
-          <label className="block">
-            <span className={label}>Primary CTA label</span>
+          <label className="block sm:col-span-2">
+            <span className={label}>CTA label</span>
             <input
               className={field}
               value={draft.hero.primaryLabel}
               onChange={(e) => setHero({ primaryLabel: e.target.value })}
             />
           </label>
-          <label className="block">
-            <span className={label}>Secondary CTA label</span>
-            <input
-              className={field}
-              value={draft.hero.secondaryLabel}
-              onChange={(e) => setHero({ secondaryLabel: e.target.value })}
-            />
-          </label>
-          <p className={hint}>
-            CTA destinations stay fixed (Shop / Our Story) in this skeleton —
-            section reordering and image selection arrive with the full CMS.
+          <p className={`${hint} sm:col-span-2`}>
+            The single premium CTA leads to the full collection. Campaign rails
+            and secondary actions stay on the shop page to keep the hero quiet.
           </p>
         </div>
       </section>

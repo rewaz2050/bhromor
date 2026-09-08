@@ -49,6 +49,16 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Keep Bengali as its own typographic voice instead of inheriting display
+   letter-spacing or synthetic English metrics in bilingual lockups. */
+[lang="bn"],
+.font-bengali {
+  font-family: var(--font-bengali);
+  letter-spacing: 0;
+  line-height: 1.55;
 }
 
 ::selection {
@@ -293,10 +303,6 @@ body {
   max-width: 26rem;
   line-height: 1.9;
 }
-.hero-spotlight {
-  border-radius: 3px;
-  box-shadow: var(--shadow-elevated);
-}
 .product-card-media {
   border-radius: 4px;
   isolation: isolate;
@@ -452,7 +458,7 @@ body {
   .hero-copy h1 {
     animation: storefront-reveal 420ms var(--ease-refined) 60ms both;
   }
-  .hero-spotlight {
+  .hero-copy .editorial-button {
     animation: storefront-reveal 420ms var(--ease-refined) 120ms both;
   }
 }
@@ -462,5 +468,72 @@ body {
   .product-card:hover .product-image-primary,
   .product-card:hover .product-quick-add {
     transform: none;
+  }
+}
+
+/* Premium storefront refresh ------------------------------------------------
+   Full-bleed campaign imagery and quiet product cards. These are intentionally
+   scoped classes so the admin surface keeps its compact utility styling. */
+.cinematic-hero {
+  min-height: clamp(38rem, calc(100svh - 6rem), 53rem);
+}
+.hero-cinematic-image {
+  object-position: center center;
+}
+.product-card-media {
+  border-radius: 2px;
+}
+.product-card-actions {
+  transition:
+    opacity var(--motion-standard) var(--ease-refined),
+    transform var(--motion-standard) var(--ease-refined);
+}
+.product-view-details {
+  border-radius: 2px;
+  transition:
+    background-color var(--motion-standard),
+    color var(--motion-standard);
+}
+.product-card-details {
+  min-height: 7.25rem;
+  border-bottom-color: color-mix(in srgb, var(--color-line), transparent 12%);
+}
+
+@media (max-width: 639px) {
+  .cinematic-hero {
+    min-height: min(43rem, calc(100svh - 4.5rem));
+  }
+  .hero-cinematic-image {
+    object-position: 64% center;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .product-card-actions {
+    opacity: 0;
+    transform: translateY(0.45rem);
+  }
+  .product-heart {
+    opacity: 0;
+    transform: translateY(-0.3rem);
+    transition:
+      opacity var(--motion-standard),
+      transform var(--motion-standard) var(--ease-refined),
+      background-color var(--motion-standard),
+      color var(--motion-standard);
+  }
+  .product-card:hover .product-card-actions,
+  .product-card:focus-within .product-card-actions,
+  .product-card:hover .product-heart,
+  .product-card:focus-within .product-heart {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card-actions,
+  .product-heart {
+    transform: none !important;
   }
 }

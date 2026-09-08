@@ -52,9 +52,11 @@ Unit/component suite: 149 tests. Browser suite: 14 Chromium checks (see `docs/br
 
 ## Premium storefront refresh
 
-The public storefront now uses a forest-green editorial hero, large collection photography, quieter product cards, an arch-framed brand story, and a coordinated shop masthead and footer. The mobile layout preserves 44px shopping controls and has been browser-checked at 320, 390, 768, 1024, and 1440px widths. Bengali typography has an explicit font fallback.
+The public homepage now follows one shorter editorial journey: **cinematic hero → collections → best sellers → brand philosophy → service strip → visual journal**. Duplicate new-arrival, mood, budget and delivery rails were removed from the landing page; those discovery paths remain available in the shop. The hero and journal use dedicated lifestyle imagery, while product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
 
-Existing CMS hero copy and section toggles, search, filters, cart, wishlist, and service links remain connected. No new production dependencies or image downloads are required.
+The palette is warm ivory, deep charcoal/forest and restrained bronze-gold. English display type (Playfair), interface type (Inter) and Bengali copy (Noto Serif Bengali) have explicit roles. Seed/demo ratings and reviews are not rendered on public home or product pages; the moderation prototype remains available in admin until genuine customer proof is connected.
+
+Existing CMS hero copy and the six launch-safe section toggles, search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
 
 ## Product discovery update
 
@@ -66,7 +68,7 @@ Existing CMS hero copy and section toggles, search, filters, cart, wishlist, and
 
 ## Pages
 
-Public: Home (CMS-aware) · Shop · Product details (reviews section + write-a-review) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Wishlist · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
+Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Wishlist · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
 
 **Admin demo** (`/admin`, demo mode — UI only, session lives in the browser):
 
