@@ -87,14 +87,46 @@ export default function TrackView() {
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
+  const [checking, setChecking] = useState(false);
+  const [lookupFailed, setLookupFailed] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const id = orderId.trim().toUpperCase();
-    const order = orders.find(
+    // Local first: instant in demo mode and for this device's orders.
+    const local = orders.find(
       (o) => o.id.toUpperCase() === id && samePhone(o.customer.phone, phone),
     );
-    setResult(order ? { found: true, order } : { found: false });
+    if (local) {
+      setLookupFailed(false);
+      setResult({ found: true, order: local });
+      return;
+    }
+    // Otherwise ask the backend — cross-device orders live there.
+    // Demo mode answers { demoMode: true }; anything unreachable shows an
+    // honest “lookup failed” instead of a wrong “not found”.
+    setChecking(true);
+    setLookupFailed(false);
+    try {
+      const res = await fetch(
+        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone.trim())}`,
+      );
+      const data = (await res.json().catch(() => null)) as {
+        demoMode?: boolean;
+        order?: Order;
+      } | null;
+      if (res.ok && data?.order) {
+        setResult({ found: true, order: data.order });
+      } else if (res.status === 404 || data?.demoMode) {
+        setResult({ found: false });
+      } else {
+        setLookupFailed(true);
+      }
+    } catch {
+      setLookupFailed(true);
+    } finally {
+      setChecking(false);
+    }
   };
 
   const tryDemo = () => {
@@ -160,10 +192,17 @@ export default function TrackView() {
         </label>
         <button
           type="submit"
-          className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+          disabled={checking}
+          className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
         >
-          <IconSearch className="h-4 w-4" /> Track order
+          <IconSearch className="h-4 w-4" />
+          {checking ? "Checking…" : "Track order"}
         </button>
+        {lookupFailed && (
+          <p role="alert" className="mt-3 text-center text-xs leading-5 text-rose-700">
+            Could not reach the shop — check your connection and try again.
+          </p>
+        )}
         <button
           type="button"
           onClick={tryDemo}

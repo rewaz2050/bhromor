@@ -27,6 +27,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   // Hydration-safe: read stored preference after mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setMounted(true);
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY) as Language | null;

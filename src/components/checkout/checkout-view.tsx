@@ -1,7 +1,7 @@
 "use client";
 
 import CheckoutAssurance from "./checkout-assurance";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
@@ -15,7 +15,7 @@ import {
   type Coupon,
 } from "@/lib/coupons";
 import { ORDER_PREFIX } from "@/lib/catalog";
-import { makePlacedOrder } from "@/lib/orders";
+import { makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
@@ -80,15 +80,7 @@ export default function CheckoutView() {
     text: string;
   } | null>(null);
   const submittingRef = useRef(false);
-  const placeTimer = useRef<number | null>(null);
-
-  // Never call setState after the page has gone away.
-  useEffect(
-    () => () => {
-      if (placeTimer.current !== null) window.clearTimeout(placeTimer.current);
-    },
-    [],
-  );
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
     ? form.zoneId
@@ -292,18 +284,32 @@ export default function CheckoutView() {
     });
   };
 
-  const placeOrder = () => {
+  /**
+   * Place the order through the backend when it is live, else keep the
+   * browser-local demo flow. Live failures NEVER fall back to a local
+   * order — a customer must not see “confirmed” for an order the shop
+   * will never receive.
+   */
+  const placeOrder = async () => {
     // Ref guard: two submits inside one tick both passed the state check,
     // which could place the same order twice.
     if (submittingRef.current) return; // idempotent — no double submission (§79)
     submittingRef.current = true;
     update("submitting", true);
-    const stamp = new Date();
-    const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
-    const seq = String(Math.floor(1000 + Math.random() * 9000));
-    const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
-    // Simulated network/backend latency before showing confirmation.
-    placeTimer.current = window.setTimeout(() => {
+    setOrderError(null);
+
+    const fail = (message: string) => {
+      submittingRef.current = false;
+      update("submitting", false);
+      setOrderError(message);
+    };
+
+    /** Demo-mode placement: local store only, exactly as before. */
+    const placeLocally = () => {
+      const stamp = new Date();
+      const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
+      const seq = String(Math.floor(1000 + Math.random() * 9000));
+      const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
       // Store the order in the demo backend (order-store) so the admin
       // Orders queue and the public Track page can follow it live (§92).
       addOrderToStore(
@@ -343,7 +349,73 @@ export default function CheckoutView() {
         addressSummary: `${form.address || form.area}, ${zone.name}`,
       });
       clear();
-    }, 900);
+    };
+
+    let res: Response;
+    try {
+      res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          area: form.area,
+          address: form.address,
+          note: form.note,
+          zoneId: zone.id,
+          couponCode: activeCoupon?.code,
+          items: detail.map((l) => ({
+            productId: l.product.id,
+            variantLabel: l.variantLabel,
+            qty: l.qty,
+          })),
+        }),
+      });
+    } catch {
+      fail(
+        "Could not reach the shop — check your connection and try again. Your cart is untouched.",
+      );
+      return;
+    }
+
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error page — fall through to the generic failure below.
+    }
+    const data = (body ?? {}) as {
+      demoMode?: boolean;
+      order?: Order;
+      error?: string;
+      errors?: { message: string }[];
+    };
+
+    if (res.ok && data.demoMode) {
+      placeLocally();
+      return;
+    }
+    if (res.ok && data.order) {
+      // Live order: mirror it into the local store so this device's admin
+      // queue and Track page keep working until the admin migrates (§92).
+      addOrderToStore(data.order);
+      if (activeCoupon) recordUse(activeCoupon.code);
+      setPlaced({
+        orderId: data.order.id,
+        eta: data.order.etaLabel,
+        charge: data.order.deliveryCharge,
+        total: data.order.total,
+        addressSummary: `${form.address || form.area}, ${data.order.zoneName}`,
+      });
+      clear();
+      return;
+    }
+    const serverMessage =
+      data.errors?.map((e) => e.message).join(" ") || data.error;
+    fail(
+      serverMessage ||
+        "Could not place the order — please try again. Your cart is untouched.",
+    );
   };
 
   // Plain area names — the old `"Kandirpar · Zone A"` strings were stored
@@ -538,6 +610,14 @@ export default function CheckoutView() {
         </section>
 
         <CheckoutAssurance />
+        {orderError && (
+          <p
+            role="alert"
+            className="mt-8 rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
+          >
+            {orderError}
+          </p>
+        )}
         <button
           type="submit"
           disabled={form.submitting}

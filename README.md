@@ -20,7 +20,8 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
 | Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
 | Phase 5 — Order tracking (UI) | ✅ UI complete (demo timeline) |
-| Backend (Supabase, Cloudinary, real orders/auth) | ⏳ Needs service keys |
+| Backend phase 1 (API routes + Supabase order pipeline, demo fallback) | ✅ Live when keys set — see `docs/backend.md` |
+| Backend phase 2 (staff auth, admin on live data, atomic checkout) | ⏳ Next |
 
 The current catalog runs on typed mock data in `src/lib/catalog.ts`; the admin order domain lives in `src/lib/orders.ts`. Shapes follow the blueprint’s generic commerce model (§16, §34, §44, §75), so swapping in Supabase rows later does not require UI rewrites.
 
@@ -48,7 +49,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 149 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 169 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
