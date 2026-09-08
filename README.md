@@ -13,6 +13,7 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 2 — Catalog (UI: shop, product pages, filters, search) | ✅ UI complete (mock data) |
 | Phase 3/5 — Admin foundation (login, dashboard, orders + status machine) | ✅ UI complete (demo data) |
 | Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
+| Phase 8 preview — Wishlist (§29) · Customers view · Homepage CMS (§31) | ✅ UI complete (browser demo) |
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
 | Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
 | Phase 5 — Order tracking (UI) | ✅ UI complete (demo timeline) |
@@ -44,11 +45,11 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (42 tests).
+All gates are currently green (47 tests).
 
 ## Pages
 
-Public: Home · Shop (filter/sort/search) · Product details (gallery, variants, buy/add) · Cart · Checkout (zones → charge/ETA, COD) · Track order (timeline demo) · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
+Public: Home (CMS-aware) · Shop · Product details · Cart · Checkout (shared zone store) · Track order (real order-store lookup by ID + phone) · Wishlist · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
 
 **Admin demo** (`/admin`, demo mode — UI only, session lives in the browser):
 
@@ -81,7 +82,9 @@ src/
 │   │   ├── orders/           # list + [id] detail w/ status machine (§33–34)
 │   │   ├── products/         # list, new, [id] editor (§71–74)
 │   │   ├── categories/       # data-driven CRUD (§5)
-│   │   └── zones/            # delivery-zone manager (§20–21)
+│   │   ├── zones/            # delivery-zone manager (§20–21)
+│   │   ├── homepage/         # §31 CMS: announcement, hero, sections
+│   │   └── customers/        # derived from the order store
 │   ├── icon.png · favicon.ico
 │   └── globals.css           # design tokens (forest/ivory/gold)
 ├── components/
@@ -103,5 +106,5 @@ src/
 
 ## Next phases (in order)
 
-1. **Homepage CMS skeleton (§31)** + customers/inventory/coupons screens as admin demo UI.
+1. **Reviews & coupons screens (§30, §56)** + inventory detail as admin demo UI.
 2. Backend wiring per blueprint §41–50: Supabase schema (products, variants, media, orders, delivery zones, status history), RLS + auth (admin vs customer), Cloudinary upload for product media, and moving `src/lib/catalog.ts` + `src/lib/orders.ts` behind a data-access layer. `.env` keys are only needed then.

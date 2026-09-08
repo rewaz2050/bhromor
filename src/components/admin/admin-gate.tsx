@@ -20,6 +20,7 @@ import {
   IconLogout,
   IconMapPin,
   IconTag,
+  IconUser,
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
@@ -35,6 +36,7 @@ const NAV = [
   { href: "/admin/categories", label: "Categories", icon: IconGrid, match: (p: string) => p === "/admin/categories" },
   { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
   { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
+  { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
 ];
 
 const TITLES: [RegExp, string][] = [
@@ -45,6 +47,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/categories$/, "Categories"],
   [/^\/admin\/zones$/, "Delivery zones"],
   [/^\/admin\/homepage$/, "Homepage"],
+  [/^\/admin\/customers$/, "Customers"],
   [/^\/admin$/, "Dashboard"],
 ];
 
@@ -129,7 +132,7 @@ export default function AdminGate({
               Later phases
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Customers · Coupons · Reviews · Media · Homepage CMS (§31, §56, §58)
+              Coupons · Reviews · Media · Notifications · Inventory (§56–58)
             </p>
           </div>
         </nav>
