@@ -9,8 +9,10 @@ import { IconArrowRight, IconClose, IconSearch } from "@/components/ui/icons";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { matchesProduct, shopSearchHref } from "@/lib/product-search";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function ProductSearch() {
+  const { t, lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -28,7 +30,7 @@ export default function ProductSearch() {
     <>
       <button
         type="button"
-        aria-label="Search products"
+        aria-label={t("header.searchProducts")}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
@@ -42,7 +44,7 @@ export default function ProductSearch() {
       <Drawer
         open={open}
         onClose={close}
-        label="Search the collection"
+        label={t("header.searchProducts")}
         side="right"
         initialFocusRef={inputRef}
         panelClassName="!w-full !max-w-none lg:px-[max(2rem,calc((100vw-900px)/2))]"
@@ -51,10 +53,10 @@ export default function ProductSearch() {
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-ink-soft">
-                Find your everyday favourite
+                {t("header.searchSubtitle")}
               </p>
               <h2 className="mt-2 font-display text-2xl text-forest-900">
-                What are you looking for?
+                {t("header.searchTitle")}
               </h2>
             </div>
             <button
@@ -85,7 +87,7 @@ export default function ProductSearch() {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Panjabi, shirts, gamcha…"
+                placeholder={t("header.searchPlaceholder")}
                 autoComplete="off"
                 className="h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none focus-visible:outline-none"
               />
@@ -106,7 +108,7 @@ export default function ProductSearch() {
           {!searching && (
             <div className="mb-8">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-ink-soft">
-                Explore collections
+                {t("header.exploreCollections")}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((category) => (
@@ -116,7 +118,7 @@ export default function ProductSearch() {
                     onClick={close}
                     className="rounded-full px-4 py-3 text-sm text-forest-800 ring-1 ring-line hover:bg-forest-100"
                   >
-                    {category.name}
+                    {lang === "bn" ? category.nameBn : category.name}
                   </Link>
                 ))}
               </div>
@@ -125,7 +127,7 @@ export default function ProductSearch() {
           {!searching && (
             <div className="mb-8">
               <h3 className="mb-3 text-xs uppercase tracking-widest text-ink-soft">
-                Find your essentials
+                {t("header.findEssentials")}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {["Panjabi", "Shirt", "Lungi", "Gamcha", "Three-Piece"].map(
@@ -149,23 +151,22 @@ export default function ProductSearch() {
           >
             {searching
               ? `${matches.length} ${matches.length === 1 ? "match" : "matches"} for “${query.trim()}”`
-              : "A few favourites to get you started"}
+              : t("header.fewFavourites")}
           </p>
           {searching && matches.length === 0 ? (
             <div className="rounded-2xl bg-ivory-100 px-5 py-8 text-center">
               <h3 className="font-display text-xl text-forest-900">
-                No matches just yet
+                {t("header.noMatches")}
               </h3>
               <p className="mt-2 text-sm leading-6 text-ink-soft">
-                Try a product name like panjabi or gamcha, or explore the full
-                collection.
+                {t("header.noMatchesText")}
               </p>
               <Link
                 href="/shop"
                 onClick={close}
                 className="mt-5 inline-flex min-h-11 items-center font-medium text-forest-800 underline underline-offset-4"
               >
-                Browse all products
+                {t("header.browseAll")}
               </Link>
             </div>
           ) : (
@@ -220,7 +221,7 @@ export default function ProductSearch() {
             >
               {searching
                 ? `View ${matches.length === 1 ? "1 result" : `all ${matches.length} results`}`
-                : "Shop the full collection"}
+                : t("header.shopFullCollection")}
               <IconArrowRight className="h-4 w-4" />
             </Link>
           </div>

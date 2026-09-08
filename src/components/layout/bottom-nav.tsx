@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 import { useCart } from "@/components/cart/cart-provider";
 import { IconBag, IconHeart, IconBox } from "@/components/ui/icons";
 import MobileNav from "./mobile-nav";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function BottomNav() {
+  const { t } = useLanguage();
   const path = usePathname();
   const { openBag, itemCount } = useCart();
   return (
@@ -17,7 +19,7 @@ export default function BottomNav() {
       {[
         {
           href: "/",
-          label: "Home",
+          label: t("bottomNav.home"),
           icon: (
             <svg
               aria-hidden="true"
@@ -33,10 +35,10 @@ export default function BottomNav() {
             </svg>
           ),
         },
-        { href: "/shop", label: "Shop", icon: <IconBox className="h-5 w-5" /> },
+        { href: "/shop", label: t("bottomNav.shop"), icon: <IconBox className="h-5 w-5" /> },
         {
           href: "/wishlist",
-          label: "Wishlist",
+          label: t("bottomNav.wishlist"),
           icon: <IconHeart className="h-5 w-5" />,
         },
       ].map((item) => (
@@ -57,7 +59,7 @@ export default function BottomNav() {
         className="flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] text-ink-soft"
       >
         <IconBag className="h-5 w-5" />
-        Bag{itemCount > 0 ? ` (${itemCount})` : ""}
+        {t("bottomNav.bag")}{itemCount > 0 ? ` (${itemCount})` : ""}
       </button>
       <MobileNav bottom />
     </nav>

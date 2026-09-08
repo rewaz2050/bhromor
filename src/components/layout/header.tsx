@@ -9,17 +9,19 @@ import NavLinks from "./nav-links";
 import WishlistButton from "./wishlist-button";
 import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
-
-const NAV = [
-  { label: "Shop", href: "/shop" },
-  { label: "Collections", href: "/#collections" },
-];
+import LanguageSwitcher from "./language-switcher";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 /**
  * Premium sticky header — glass morphism, condensed on scroll,
  * scroll progress indicator, and buttery rAF-throttled updates.
  */
 export default function Header() {
+  const { t } = useLanguage();
+  const NAV = [
+    { label: t("nav.shop"), href: "/shop" },
+    { label: t("nav.collections"), href: "/#collections" },
+  ];
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
   const ticking = useRef(false);
@@ -121,6 +123,9 @@ export default function Header() {
 
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
             <span className="hidden h-6 w-px bg-line/70 sm:block" aria-hidden="true" />
+            <div className="hidden sm:flex">
+              <LanguageSwitcher variant="header" />
+            </div>
             <ProductSearch />
             <WishlistButton />
             <CartButton />

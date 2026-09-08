@@ -6,13 +6,11 @@ import { usePathname } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
 import { IconArrowRight, IconClose, IconMenu } from "@/components/ui/icons";
+import LanguageSwitcher from "./language-switcher";
+import { useLanguage } from "@/components/i18n/language-provider";
 
-const PRIMARY = [
-  { label: "Shop", href: "/shop" },
-  { label: "Collections", href: "/#collections" },
-];
-
-const SECONDARY = [
+// keep original for reference fallback
+const SECONDARY_FALLBACK = [
   { label: "Wishlist", href: "/wishlist" },
   { label: "Your Account", href: "/account" },
   { label: "Track Order", href: "/track" },
@@ -22,6 +20,20 @@ const SECONDARY = [
 ];
 
 export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
+  const { t, lang } = useLanguage();
+  const PRIMARY = [
+    { label: t("nav.shop"), href: "/shop" },
+    { label: t("nav.collections"), href: "/#collections" },
+  ];
+  // Secondary labels also translated where possible
+  const SECONDARY_TRANSLATED = [
+    { label: t("header.wishlist"), href: "/wishlist" },
+    { label: t("footer.yourAccount"), href: "/account" },
+    { label: t("footer.trackOrder"), href: "/track" },
+    { label: t("footer.deliveryInfo"), href: "/delivery" },
+    { label: t("footer.contact"), href: "/contact" },
+    { label: t("footer.faq"), href: "/faq" },
+  ];
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const lastPath = useRef(pathname);
@@ -111,12 +123,16 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
               ))}
             </nav>
 
+            <div className="mt-5 px-1">
+              <LanguageSwitcher variant="drawer" />
+            </div>
+
             <div className="mt-6">
               <p className="px-3 pb-3 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
                 Explore
               </p>
               <nav aria-label="Secondary mobile" className="flex flex-col">
-                {SECONDARY.map((item, i) => (
+                {SECONDARY_TRANSLATED.map((item, i) => (
                   <Link
                     key={item.href}
                     href={item.href}
