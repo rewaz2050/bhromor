@@ -7,7 +7,6 @@ import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import ProductCard from "@/components/product/product-card";
-import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import { Eyebrow } from "@/components/ui/primitives";
 
@@ -174,9 +173,7 @@ export default async function ProductPage({ params }: PageProps) {
         </aside>
       </div>
 
-      {/* Reviews (§30) */}
-      <ReviewsSection product={product} />
-
+      {/* Public reviews remain hidden until genuine customer proof is connected. */}
       {complements.length > 0 && (
         <section
           aria-labelledby="complete-look-heading"

@@ -5,17 +5,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
-import { IconClose, IconMenu, IconPhone } from "@/components/ui/icons";
+import { IconArrowRight, IconClose, IconMenu } from "@/components/ui/icons";
 
 const LINKS = [
-  { label: "Your Account", href: "/account" },
-  { label: "Shop All", href: "/shop" },
-  { label: "New Arrivals", href: "/shop?filter=new" },
+  { label: "Shop", href: "/shop" },
   { label: "Collections", href: "/#collections" },
+  { label: "Our Story", href: "/#story" },
+  { label: "Journal", href: "/#journal" },
+  { label: "Wishlist", href: "/wishlist" },
+  { label: "Your Account", href: "/account" },
   { label: "Track Order", href: "/track" },
-  { label: "Delivery Information", href: "/delivery" },
-  { label: "Returns & Exchange", href: "/returns" },
-  { label: "About PROSANTI", href: "/about" },
+  { label: "Delivery & Returns", href: "/delivery" },
   { label: "Contact", href: "/contact" },
   { label: "FAQ", href: "/faq" },
 ];
@@ -102,12 +102,13 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
             <p className="mt-1 text-xs leading-5 text-ink-soft">
               Premium commerce &amp; rapid local delivery.
             </p>
-            <a
-              href="tel:+8801700000000"
-              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-forest-700"
+            <Link
+              href="/contact"
+              onClick={() => setOpen(false)}
+              className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-forest-700"
             >
-              <IconPhone className="h-4 w-4" /> 01700-000000
-            </a>
+              Customer care <IconArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       </Drawer>

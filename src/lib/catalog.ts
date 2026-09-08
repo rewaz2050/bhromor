@@ -145,6 +145,10 @@ export const PRODUCTS: Product[] = [
         src: "/images/products/panjabi-detail.jpg",
         alt: "Close-up of tonal embroidery at the panjabi collar",
       },
+      {
+        src: "/images/editorial/hero-prosanti.jpg",
+        alt: "Heritage Green Panjabi styled in a sunlit Bangladeshi interior",
+      },
     ],
   },
   {
@@ -254,6 +258,10 @@ export const PRODUCTS: Product[] = [
         alt: "Emerald three-piece on display form, ivory backdrop",
       },
       {
+        src: "/images/editorial/journal-women.jpg",
+        alt: "Emerald three-piece styled beside a sunlit heritage-home window",
+      },
+      {
         src: "/images/products/three-piece-detail.jpg",
         alt: "Dupatta fabric detail with gold zari border",
       },
@@ -325,6 +333,10 @@ export const PRODUCTS: Product[] = [
       {
         src: "/images/products/lungi.jpg",
         alt: "Neatly folded deep teal lungi on ivory backdrop",
+      },
+      {
+        src: "/images/editorial/journal-heritage.jpg",
+        alt: "Deep teal checked lungi styled on a shaded heritage veranda",
       },
     ],
   },

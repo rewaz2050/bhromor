@@ -42,15 +42,11 @@ for (const width of [320, 390, 768, 1024, 1440]) {
       await settled(page);
       await noOverflow(page);
       await expect(page.locator("h1")).toBeVisible();
-      if (route === "/" && width < 640) {
-        const position = await page
-          .locator(".hero-spotlight")
-          .evaluate((el) => {
-            const card = el.getBoundingClientRect();
-            const photo = el.parentElement!.getBoundingClientRect();
-            return { offset: card.top - photo.top, height: photo.height };
-          });
-        expect(position.offset).toBeGreaterThan(position.height * 0.45);
+      if (route === "/") {
+        await expect(page.locator(".cinematic-hero")).toBeVisible();
+        await expect(
+          page.getByRole("link", { name: "Explore collection" }),
+        ).toBeVisible();
       }
       await page.screenshot({
         path: info.outputPath(`${route.replaceAll("/", "_") || "home"}.png`),
@@ -201,10 +197,10 @@ test("reduced motion disables entrance and feedback animations", async ({
   ).toBe("none");
   await page.keyboard.press("Escape");
   await page
-    .getByRole("heading", { name: "Featured products" })
+    .getByRole("heading", { name: "Best sellers." })
     .scrollIntoViewIfNeeded();
   await expect(
-    page.getByRole("heading", { name: "Featured products" }),
+    page.getByRole("heading", { name: "Best sellers." }),
   ).toBeVisible();
 });
 

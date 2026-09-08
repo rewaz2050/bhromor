@@ -26,6 +26,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Editorial product cards", () => {
+  it("keeps the visible hierarchy quiet until shopping actions are needed", () => {
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.getByRole("heading", { name: product.name })).toBeVisible();
+    expect(screen.getByText("Heritage Green")).toBeVisible();
+    expect(screen.getByText("Panjabi")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: `View details for ${product.name}` }),
+    ).toHaveAttribute("href", `/product/${product.slug}`);
+    expect(screen.queryByText(/^New$/)).toBeNull();
+    expect(screen.queryByText(`(${product.reviewCount})`)).toBeNull();
+  });
+
   it("adds to the real cart and announces success", () => {
     render(
       <CartProvider>

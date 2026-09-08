@@ -1,7 +1,7 @@
 # Storefront phase two
 
 ## Implemented
-- CMS-controlled Shop by Mood and Under ৳500 homepage sections.
+- Shop by Mood and Under ৳500 remain available as URL-driven catalogue filters, but their duplicate homepage rails were retired in the shorter launch edit.
 - Shared editorial mood rules; shop supports `?mood=everyday|festive|classic` and `?price=under500`, combined with category, colour, size, search and stock filters. Incoming URL changes reset stale local filters. Chips and Clear all work on the new filters.
 - Contextual Complete the Look and bag recommendations. Only published/active, in-stock complements are eligible, never the current product or an item already in the bag. No unrelated fallback under the styling heading. Generic discovery remains separately labelled.
 - Accessible Size Guide drawer on the PDP and an inline fit disclosure in Quick Add (no stacked modal traps). Displays catalog fit/dimensions and measurement instructions, explicitly noting unavailable verified charts.
@@ -13,17 +13,17 @@
 - **Account sync:** remains dependent on customer authentication and a persistent backend.
 
 ## Manual check
-1. Home → each style card → matching style chip and product grid.
-2. Home → budget edit → only prices strictly below ৳500; Clear all restores catalogue.
+1. Shop → a mood URL → matching style chip and product grid.
+2. Shop → `?price=under500` → only prices strictly below ৳500; Clear all restores catalogue.
 3. Shop → price/mood filters → another header collection link clears stale filters.
 4. Lungi PDP → Complete the Look → Gamcha; add Lungi and inspect Pair it with in bag. Add both and neither is recommended again.
 5. PDP → Size Guide → Escape closes and restores focus; Quick Add guidance expands without opening a second modal.
-6. At mobile widths, verify bottom navigation, filter sheet, fit guide and bag remain scrollable.
+6. At mobile widths, verify the compact header menu, filter sheet, fit guide and bag remain scrollable.
 
 ## Phase three — polish
 - Added Next.js route loading boundaries for the storefront, shop and product detail with accessible skeletons. No artificial delay is introduced: fast/cached routes may not visibly show the fallback.
 - Added policy-linked checkout assurance cards. Policy links open separately to preserve checkout fields. Online-payment security is not claimed while the store is COD-only.
-- Added a six-tile catalogue visual journal and a moderated customer-stories preview. Both have independent homepage CMS toggles. Reviews are explicitly labelled demo content, including on PDPs; aggregates use approved review entries, not hard-coded ratings/counts.
+- Replaced the repeated catalogue-tile journal with dedicated lifestyle/editorial imagery. Seed reviews and ratings are launch-gated from the public homepage and PDP; review moderation remains available in admin until genuine customer proof is connected.
 - Replaced the newsletter's false local success state with a hosted opt-in handoff. Set server environment variable `NEWSLETTER_SIGNUP_URL` to the HTTPS signup page owned by your email provider. That provider must handle email capture, consent, confirmation and unsubscribe. When absent or invalid, signup is explicitly unavailable and no email is collected.
 - Added 180–220ms hero/dialog/cart/wishlist feedback under `prefers-reduced-motion: no-preference`; no blocking page transitions.
 - Wishlist empty-state copy now matches the brand voice.

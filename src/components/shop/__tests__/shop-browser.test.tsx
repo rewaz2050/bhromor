@@ -32,11 +32,12 @@ const renderShop = (
   );
 
 const gridNames = () =>
-  screen
-    .getAllByRole("article")
-    .map(
-      (card) => within(card).getAllByRole("link")[1]?.textContent?.trim() ?? "",
+  screen.getAllByRole("article").map((card) => {
+    const product = PRODUCTS.find((item) =>
+      within(card).queryByRole("link", { name: item.name }),
     );
+    return product?.name ?? "";
+  });
 
 describe("ShopBrowser", () => {
   beforeEach(() => cleanup());

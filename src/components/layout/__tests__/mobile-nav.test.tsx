@@ -40,9 +40,13 @@ describe("MobileNav", () => {
     expect(container.contains(dialog)).toBe(false);
     expect(dialog.parentElement).toBe(document.body);
 
-    expect(screen.getByRole("link", { name: "Shop All" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Shop" })).toHaveAttribute(
       "href",
       "/shop",
+    );
+    expect(screen.getByRole("link", { name: "Our Story" })).toHaveAttribute(
+      "href",
+      "/#story",
     );
     expect(screen.getByRole("link", { name: "Track Order" })).toBeInTheDocument();
   });
