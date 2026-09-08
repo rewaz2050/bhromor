@@ -28,26 +28,31 @@ const COMPANY_LINKS = [
 export default function Footer() {
   return (
     <footer className="bg-forest-950 text-ivory-100">
-      {/* Newsletter band */}
-      <div className="border-b border-white/10 px-4 py-12 text-center sm:px-6">
-        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.38em] text-gold-300">
-          Stay close
-        </p>
-        <h2 className="font-display mt-3 text-2xl font-medium sm:text-3xl">
-          New collections, first.
-        </h2>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-ivory-100/70">
-          A short note when something beautiful arrives — nothing noisy, ever.
-        </p>
-        <Newsletter />
+      <div className="border-b border-white/15">
+        <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-16 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-20">
+          <div>
+            <p className="text-[0.6rem] font-medium uppercase tracking-[0.25em] text-gold-300">
+              A note from PROSANTI
+            </p>
+            <h2 className="mt-4 font-display text-4xl font-normal sm:text-5xl">
+              Good things.{" "}
+              <span className="italic text-gold-200">Worth waiting for.</span>
+            </h2>
+            <p className="mt-4 max-w-md text-sm leading-7 text-ivory-100/65">
+              Be the first to discover new collections and considered
+              favourites. A little inspiration, never the noise.
+            </p>
+          </div>
+          <Newsletter />
+        </div>
       </div>
 
       {/* Main columns */}
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-5 lg:px-8">
-        <div className="lg:col-span-2">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 lg:grid-cols-5 lg:px-8">
+        <div className="col-span-2">
           <div className="flex items-center gap-3">
             {/* Cream tile keeps the dark emblem visible on the dark footer */}
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ivory-100">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ivory-100">
               <LogoMark className="h-[2.15rem] w-auto" />
             </span>
             <span className="flex flex-col leading-none">
@@ -60,9 +65,8 @@ export default function Footer() {
             </span>
           </div>
           <p className="mt-5 max-w-sm text-sm leading-6 text-ivory-100/70">
-            Premium commerce and rapid local delivery. Discover considered
-            products, order in a minute, and know where your order is until it
-            reaches your door.
+            Rooted in tradition. Considered for today. A curated collection of
+            everyday essentials, with a little more care in every detail.
           </p>
           <div className="mt-6 space-y-2 text-sm text-ivory-100/70">
             <a
@@ -85,10 +89,17 @@ export default function Footer() {
         <FooterCol title="Company" links={COMPANY_LINKS} />
       </div>
 
+      <div
+        aria-hidden="true"
+        className="mx-auto max-w-7xl overflow-hidden px-4 text-center font-display text-[clamp(3.5rem,14vw,12rem)] leading-[1.1] tracking-[0.08em] text-ivory-100/10"
+      >
+        PROSANTI
+      </div>
+
       <div className="border-t border-white/10 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-xs text-ivory-100/50 sm:flex-row">
           <p>© 2026 PROSANTI · prosanti.store — All rights reserved.</p>
-          <p className="flex items-center gap-4">
+          <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
               Cash on Delivery

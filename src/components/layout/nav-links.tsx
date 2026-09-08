@@ -23,7 +23,10 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
   };
 
   return (
-    <nav aria-label="Primary" className="ml-8 hidden items-center gap-7 lg:flex">
+    <nav
+      aria-label="Primary"
+      className="ml-auto hidden items-center gap-6 lg:flex"
+    >
       {items.map((item) => {
         const active = isActive(item.href);
         return (
@@ -31,7 +34,7 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`text-sm font-medium transition-colors ${
+            className={`whitespace-nowrap text-[0.65rem] font-medium uppercase tracking-[0.13em] transition-colors ${
               active
                 ? "text-forest-900 underline decoration-gold-400 decoration-2 underline-offset-8"
                 : "text-ink-soft hover:text-forest-800"

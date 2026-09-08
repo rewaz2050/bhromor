@@ -2,7 +2,7 @@
 
 @theme {
   /* Fonts — self-hosted via Fontsource (no runtime fetch) */
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+  --font-sans: "Inter Variable", "Noto Serif Bengali", ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, sans-serif;
   --font-display: "Playfair Display Variable", Georgia, ui-serif, serif;
   --font-bengali: "Noto Serif Bengali", "Inter Variable", ui-serif, serif;
@@ -123,4 +123,46 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Editorial storefront accents, deliberately scoped away from admin forms. */
+.editorial-button {
+  display: inline-flex;
+  min-height: 3.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: background-color 200ms, color 200ms;
+}
+
+.editorial-text-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 1px solid var(--color-gold-400);
+  color: var(--color-forest-800);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+  transition: color 200ms;
+}
+
+.editorial-text-link:hover {
+  color: var(--color-gold-700);
+}
+
+.editorial-hero::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23fff' filter='url(%23n)' opacity='.5' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
+  pointer-events: none;
 }

@@ -48,7 +48,21 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (74 tests).
+All gates are currently green (115 tests).
+
+## Premium storefront refresh
+
+The public storefront now uses a forest-green editorial hero, large collection photography, quieter product cards, an arch-framed brand story, and a coordinated shop masthead and footer. The mobile layout preserves 44px shopping controls and has been browser-checked at 320, 390, 768, 1024, and 1440px widths. Bengali typography has an explicit font fallback.
+
+Existing CMS hero copy and section toggles, search, filters, cart, wishlist, and service links remain connected. No new production dependencies or image downloads are required.
+
+## Product discovery update
+
+- Header search opens a keyboard-accessible panel with live product previews, collection shortcuts, and an empty-state recovery link.
+- Search matches English/Bengali names, SKU, subcategory, and category. Submitting opens `/shop?q=…`; incoming search links also work on reload.
+- Shop selections appear as individually removable chips, with a clear-all action and a live result count.
+- Mobile headers keep all navigation actions within narrow screens; size/colour controls use larger touch targets and the filter drawer keeps its result action visible while scrolling.
+- Search and filters use the existing mock storefront catalog; no backend or authentication changes.
 
 ## Pages
 

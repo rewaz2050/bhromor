@@ -15,7 +15,7 @@ export default function Newsletter() {
         setDone(true);
         setEmail(""); // the field used to keep the address after subscribing
       }}
-      className="mx-auto mt-6 flex max-w-md flex-wrap items-center gap-3"
+      className="flex w-full flex-wrap items-center gap-3"
     >
       <label htmlFor="newsletter-email" className="sr-only">
         Email address
@@ -30,11 +30,11 @@ export default function Newsletter() {
           if (done) setDone(false);
         }}
         placeholder="Your email address"
-        className="h-12 min-w-0 flex-1 basis-52 rounded-full border-0 bg-white/10 px-6 text-sm text-white placeholder:text-white/50 ring-1 ring-white/25 focus:ring-2 focus:ring-gold-400"
+        className="h-14 min-w-0 flex-1 basis-48 border-0 border-b border-white/35 bg-transparent px-1 text-base text-white placeholder:text-white/50 focus:border-gold-300 focus-visible:outline-gold-300"
       />
       <button
         type="submit"
-        className="h-12 shrink-0 rounded-full bg-gold-500 px-7 text-sm font-semibold text-white transition-colors hover:bg-gold-600"
+        className="h-14 shrink-0 border border-gold-300 bg-gold-200 px-7 text-xs font-medium uppercase tracking-widest text-forest-950 transition-colors hover:bg-gold-300"
       >
         Subscribe
       </button>

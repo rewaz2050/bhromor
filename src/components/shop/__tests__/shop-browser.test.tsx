@@ -1,5 +1,11 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  within,
+} from "@testing-library/react";
 import ShopBrowser from "@/components/shop/shop-browser";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
@@ -10,7 +16,9 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
-const renderShop = (props?: Partial<React.ComponentProps<typeof ShopBrowser>>) =>
+const renderShop = (
+  props?: Partial<React.ComponentProps<typeof ShopBrowser>>,
+) =>
   render(
     <CartProvider>
       <ShopBrowser
@@ -26,7 +34,9 @@ const renderShop = (props?: Partial<React.ComponentProps<typeof ShopBrowser>>) =
 const gridNames = () =>
   screen
     .getAllByRole("article")
-    .map((card) => within(card).getAllByRole("link")[1]?.textContent?.trim() ?? "");
+    .map(
+      (card) => within(card).getAllByRole("link")[1]?.textContent?.trim() ?? "",
+    );
 
 describe("ShopBrowser", () => {
   beforeEach(() => cleanup());
@@ -35,9 +45,7 @@ describe("ShopBrowser", () => {
     renderShop();
     fireEvent.click(screen.getAllByLabelText(/৳1,000 – ৳1,500/)[0]);
 
-    const shown = PRODUCTS.filter((p) =>
-      gridNames().includes(p.name),
-    );
+    const shown = PRODUCTS.filter((p) => gridNames().includes(p.name));
     expect(shown.length).toBeGreaterThan(0);
     for (const p of shown) {
       expect(p.price).toBeGreaterThanOrEqual(bdt(1000));
@@ -77,7 +85,7 @@ describe("ShopBrowser", () => {
       </CartProvider>,
     );
 
-    expect(screen.getByText(/new arrivals/i)).toBeInTheDocument();
+    expect(screen.getByText(/products · new arrivals/i)).toBeInTheDocument();
     for (const name of gridNames()) {
       expect(PRODUCTS.find((p) => p.name === name)?.isNew).toBe(true);
     }
@@ -87,7 +95,9 @@ describe("ShopBrowser", () => {
     renderShop();
     const catalogColors = new Set(PRODUCTS.flatMap((p) => p.colors));
     for (const color of catalogColors) {
-      expect(screen.getAllByRole("button", { name: color }).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("button", { name: color }).length,
+      ).toBeGreaterThan(0);
     }
     // A colour no product carries must not be offered.
     expect(catalogColors.has("Fluorescent Pink")).toBe(false);
@@ -105,5 +115,75 @@ describe("ShopBrowser", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /clear filters/i }));
     expect(screen.queryByText(/no products found/i)).toBeNull();
+  });
+  it("applies an incoming search query and lets the shopper remove just that chip", () => {
+    renderShop({ initialCategory: "men", initialQuery: "panjabi" });
+    expect(screen.getByRole("searchbox")).toHaveValue("panjabi");
+    expect(gridNames().length).toBeGreaterThan(0);
+    for (const name of gridNames())
+      expect(name.toLowerCase()).toContain("panjabi");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Search: panjabi filter" }),
+    );
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: "Remove Men filter" }),
+    ).toBeInTheDocument();
+  });
+
+  it("removes individual size and stock filters without discarding the others", () => {
+    renderShop();
+    fireEvent.click(screen.getByRole("button", { name: "M" }));
+    fireEvent.click(screen.getByLabelText("In stock only"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Size: M filter" }),
+    );
+    expect(screen.getByRole("button", { name: "M" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByLabelText("In stock only")).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(
+      screen.queryByRole("group", { name: "Active filters" }),
+    ).not.toBeInTheDocument();
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("clears stale local filters on a new incoming search", () => {
+    const { rerender } = renderShop();
+    fireEvent.click(screen.getByRole("button", { name: "M" }));
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          initialCategory="all"
+          initialNew={false}
+          initialQuery="gamcha"
+        />
+      </CartProvider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Remove Size: M filter" }),
+    ).not.toBeInTheDocument();
+    expect(gridNames().length).toBeGreaterThan(0);
+    for (const name of gridNames())
+      expect(name.toLowerCase()).toContain("gamcha");
+  });
+
+  it("updates the mobile results action as filters change", () => {
+    renderShop();
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const dialog = screen.getByRole("dialog", { name: "Product filters" });
+    fireEvent.click(within(dialog).getByLabelText(/Men/));
+    const count = PRODUCTS.filter(
+      (product) => product.category === "men",
+    ).length;
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: `Show ${count} products` }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(gridNames()).toHaveLength(count);
   });
 });

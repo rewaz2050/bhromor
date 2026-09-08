@@ -14,7 +14,7 @@
  * focus restoration.
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 const FOCUSABLE =
@@ -22,6 +22,8 @@ const FOCUSABLE =
 
 export interface DrawerProps {
   open: boolean;
+  /** Optional input to focus instead of the first interactive element. */
+  initialFocusRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
   /** Accessible name for the dialog. */
   label: string;
@@ -46,6 +48,7 @@ const SIDE_CLASS: Record<NonNullable<DrawerProps["side"]>, string> = {
 export default function Drawer({
   open,
   onClose,
+  initialFocusRef,
   label,
   side = "left",
   panelClassName = "",
@@ -53,36 +56,38 @@ export default function Drawer({
   className = "",
   children,
 }: DrawerProps) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
 
-  const handleKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      const items = Array.from(
-        panel.querySelectorAll<HTMLElement>(FOCUSABLE),
-      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey && (active === first || !panel.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    },
-    [onClose],
-  );
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onCloseRef.current();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const items = Array.from(
+      panel.querySelectorAll<HTMLElement>(FOCUSABLE),
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (event.shiftKey && (active === first || !panel.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -103,7 +108,9 @@ export default function Drawer({
       const panel = panelRef.current;
       if (!panel) return;
       const target =
-        panel.querySelector<HTMLElement>(FOCUSABLE) ?? panel;
+        initialFocusRef?.current ??
+        panel.querySelector<HTMLElement>(FOCUSABLE) ??
+        panel;
       target.focus({ preventScroll: true });
     }, 0);
 
@@ -114,7 +121,7 @@ export default function Drawer({
       body.style.paddingRight = previousPadding;
       restoreFocusTo.current?.focus?.({ preventScroll: true });
     };
-  }, [open, handleKeyDown]);
+  }, [open, handleKeyDown, initialFocusRef]);
 
   if (!open || typeof document === "undefined") return null;
 
