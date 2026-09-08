@@ -52,7 +52,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open menu"
+        aria-label={t("header.openMenu")}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={bottom ? "bottom-mobile-menu" : "mobile-menu"}
@@ -63,7 +63,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
         }
       >
         <IconMenu className="h-5 w-5" />
-        {bottom && <span className="text-[10px] font-medium tracking-wide">Menu</span>}
+        {bottom && <span className="text-[10px] font-medium tracking-wide">{t("header.menu")}</span>}
       </button>
 
       <Drawer
@@ -92,7 +92,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close menu"
+              aria-label={t("header.closeMenu")}
               className="header-icon-btn flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-50 hover:text-forest-900"
             >
               <IconClose className="h-5 w-5" />
@@ -101,7 +101,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
 
           <div className="flex-1 overflow-y-auto px-3 py-4">
             <p className="px-3 pb-3 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-              Discover
+              {t("mobileDrawer.discover")}
             </p>
             <nav aria-label="Primary mobile" className="flex flex-col gap-1">
               {PRIMARY.map((item, i) => (
@@ -129,7 +129,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
 
             <div className="mt-6">
               <p className="px-3 pb-3 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-                Explore
+                {t("mobileDrawer.explore")}
               </p>
               <nav aria-label="Secondary mobile" className="flex flex-col">
                 {SECONDARY_TRANSLATED.map((item, i) => (
@@ -156,18 +156,18 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
               প্রশান্তি
             </p>
             <p className="mt-2 text-xs leading-5 text-ink-soft">
-              Rooted in Bangladesh. Designed for today.<br />
-              Premium essentials, calm delivery.
+              {t("mobileDrawer.rooted")}<br />
+              {t("mobileDrawer.premium")}
             </p>
             <Link
               href="/contact"
               onClick={() => setOpen(false)}
               className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-forest-900 px-5 text-sm font-medium text-ivory-50 transition-colors hover:bg-forest-800"
             >
-              Customer care <IconArrowRight className="h-4 w-4" />
+              {t("mobileDrawer.customerCare")} <IconArrowRight className="h-4 w-4" />
             </Link>
             <p className="mt-4 text-[0.62rem] font-medium uppercase tracking-[0.18em] text-ink-soft/70">
-              EST. 2026 · Dhaka, Bangladesh
+              {t("mobileDrawer.est")}
             </p>
           </div>
         </div>

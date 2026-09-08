@@ -93,6 +93,14 @@ export const translations = {
       wishlist: "Wishlist",
       bag: "Bag",
     },
+    mobileDrawer: {
+      discover: "Discover",
+      explore: "Explore",
+      rooted: "Rooted in Bangladesh. Designed for today.",
+      premium: "Premium essentials, calm delivery.",
+      customerCare: "Customer care",
+      est: "EST. 2026 · Dhaka, Bangladesh",
+    },
     language: {
       english: "English",
       bengali: "বাংলা",
@@ -192,6 +200,14 @@ export const translations = {
       wishlist: "পছন্দ",
       bag: "ব্যাগ",
     },
+    mobileDrawer: {
+      discover: "আবিষ্কার করুন",
+      explore: "আরও দেখুন",
+      rooted: "বাংলাদেশের শেকড়ে, আজকের জন্য ডিজাইন।",
+      premium: "প্রিমিয়াম অপরিহার্য, নির্ভরযোগ্য ডেলিভারি।",
+      customerCare: "কাস্টমার কেয়ার",
+      est: "প্রতিষ্ঠা ২০২৬ · ঢাকা, বাংলাদেশ",
+    },
     language: {
       english: "English",
       bengali: "বাংলা",
@@ -210,4 +226,5 @@ export type TranslationKey =
   | `trust.${keyof typeof translations.en.trust}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
+  | `mobileDrawer.${keyof typeof translations.en.mobileDrawer}`
   | `language.${keyof typeof translations.en.language}`;
