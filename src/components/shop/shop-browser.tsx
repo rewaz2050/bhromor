@@ -18,38 +18,27 @@ import {
   IconSearch,
   IconChevron,
 } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 type CategoryFilter = "all" | CategoryId;
 type SortKey = "featured" | "newest" | "price-asc" | "price-desc";
 
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "featured", label: "Featured" },
-  { key: "newest", label: "Newest" },
-  { key: "price-asc", label: "Price: Low → High" },
-  { key: "price-desc", label: "Price: High → Low" },
-];
-
-/**
- * Price bands carry BOTH bounds. They used to carry only `max`, so
- * “৳1,000 – ৳1,500” also matched a ৳390 gamcha — every band behaved like
- * “under X”.
- */
-const PRICE_BANDS: {
+/** Static price band bounds — labels come from translations so BN shows pure Bangla. */
+const PRICE_BAND_DEFS: {
   key: string;
-  label: string;
   min?: number;
   max?: number;
 }[] = [
-  { key: "any", label: "Any price" },
-  { key: "under500", label: "Under ৳500", max: 500 },
-  { key: "under1000", label: "Under ৳1,000", max: 1000 },
-  { key: "1000-1500", label: "৳1,000 – ৳1,500", min: 1000, max: 1500 },
-  { key: "1500-2500", label: "৳1,500 – ৳2,500", min: 1500, max: 2500 },
-  { key: "above2500", label: "Above ৳2,500", min: 2500 },
+  { key: "any" },
+  { key: "under500", max: 500 },
+  { key: "under1000", max: 1000 },
+  { key: "1000-1500", min: 1000, max: 1500 },
+  { key: "1500-2500", min: 1500, max: 2500 },
+  { key: "above2500", min: 2500 },
 ];
 
 const inBand = (price: number, key: string): boolean => {
-  const band = PRICE_BANDS.find((b) => b.key === key);
+  const band = PRICE_BAND_DEFS.find((b) => b.key === key);
   if (!band || band.key === "any") return true;
   if (band.min !== undefined && price < bdt(band.min)) return false;
   if (band.max !== undefined && price >= bdt(band.max)) return false;
@@ -96,6 +85,7 @@ export default function ShopBrowser({
   initialMood?: MoodId | "";
   initialPrice?: "any" | "under500";
 }) {
+  const { t } = useLanguage();
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
   const [q, setQ] = useState(initialQuery);
@@ -106,6 +96,26 @@ export default function ShopBrowser({
   const [priceBand, setPriceBand] = useState<string>(initialPrice);
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const SORTS: { key: SortKey; label: string }[] = [
+    { key: "featured", label: t("shopBrowser.featured") },
+    { key: "newest", label: t("shopBrowser.newest") },
+    { key: "price-asc", label: t("shopBrowser.priceLowHigh") },
+    { key: "price-desc", label: t("shopBrowser.priceHighLow") },
+  ];
+
+  const PRICE_BANDS: { key: string; label: string; min?: number; max?: number }[] =
+    PRICE_BAND_DEFS.map((b) => {
+      const labelMap: Record<string, string> = {
+        any: t("shopBrowser.anyPrice"),
+        under500: t("shopBrowser.under500"),
+        under1000: t("shopBrowser.under1000"),
+        "1000-1500": t("shopBrowser.price1000to1500"),
+        "1500-2500": t("shopBrowser.price1500to2500"),
+        above2500: t("shopBrowser.above2500"),
+      };
+      return { ...b, label: labelMap[b.key] ?? b.key };
+    });
 
   /**
    * Keep the filters in step with the URL. Without this, going from
@@ -174,7 +184,6 @@ export default function ShopBrowser({
     const sorted = [...list];
     switch (sort) {
       case "newest":
-        // “Newest” means new arrivals first, not “the list backwards”.
         sorted.sort(
           (a, b) => Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
         );
@@ -233,7 +242,7 @@ export default function ShopBrowser({
    *  the two copies do not fight over the same browser radio group. */
   const renderFilters = (scope: string) => (
     <div className="space-y-8">
-      <Fieldset title="Style edit">
+      <Fieldset title={t("shopBrowser.styleEdit")}>
         <div className="flex flex-wrap gap-2">
           {MOODS.map((edit) => (
             <button
@@ -249,13 +258,13 @@ export default function ShopBrowser({
         </div>
       </Fieldset>
       {/* Categories */}
-      <Fieldset title="Categories">
+      <Fieldset title={t("shopBrowser.categories")}>
         <div className="space-y-1">
           {(["all", ...categories.map((c) => c.id)] as CategoryFilter[]).map(
             (id) => {
               const label =
                 id === "all"
-                  ? "All products"
+                  ? t("shopBrowser.allProducts")
                   : (categories.find((c) => c.id === id)?.name ?? id);
               const count =
                 id === "all"
@@ -293,7 +302,7 @@ export default function ShopBrowser({
       </Fieldset>
 
       {/* Price */}
-      <Fieldset title="Price">
+      <Fieldset title={t("shopBrowser.price")}>
         <div className="space-y-1">
           {PRICE_BANDS.map((band) => (
             <label
@@ -315,7 +324,7 @@ export default function ShopBrowser({
 
       {/* Size */}
       {allSizes.length > 0 && (
-        <Fieldset title="Size">
+        <Fieldset title={t("shopBrowser.size")}>
           <div className="flex flex-wrap gap-2">
             {allSizes.map((size) => (
               <button
@@ -338,7 +347,7 @@ export default function ShopBrowser({
 
       {/* Color */}
       {allColors.length > 0 && (
-        <Fieldset title="Colour">
+        <Fieldset title={t("shopBrowser.colour")}>
           <div className="flex flex-wrap gap-2">
             {allColors.map((color) => {
               const active = colors.includes(color);
@@ -370,7 +379,7 @@ export default function ShopBrowser({
           onChange={(e) => setOnlyInStock(e.target.checked)}
           className="h-4 w-4 accent-forest-700"
         />
-        In stock only
+        {t("shopBrowser.inStockOnly")}
       </label>
     </div>
   );
@@ -380,7 +389,7 @@ export default function ShopBrowser({
       ? [
           {
             key: "mood",
-            label: `Style: ${MOODS.find((m) => m.id === mood)?.name}`,
+            label: `${t("shopBrowser.style")}: ${MOODS.find((m) => m.id === mood)?.name}`,
             remove: () => setMood(""),
           },
         ]
@@ -395,7 +404,7 @@ export default function ShopBrowser({
         ]
       : []),
     ...(onlyNew
-      ? [{ key: "new", label: "New arrivals", remove: () => setOnlyNew(false) }]
+      ? [{ key: "new", label: t("shopBrowser.newArrivals"), remove: () => setOnlyNew(false) }]
       : []),
     ...(priceBand !== "any"
       ? [
@@ -408,13 +417,13 @@ export default function ShopBrowser({
       : []),
     ...sizes.map((size) => ({
       key: `size-${size}`,
-      label: `Size: ${size}`,
+      label: `${t("shopBrowser.size")}: ${size}`,
       remove: () =>
         setSizes((current) => current.filter((value) => value !== size)),
     })),
     ...colors.map((color) => ({
       key: `color-${color}`,
-      label: `Colour: ${color}`,
+      label: `${t("shopBrowser.colour")}: ${color}`,
       remove: () =>
         setColors((current) => current.filter((value) => value !== color)),
     })),
@@ -422,13 +431,13 @@ export default function ShopBrowser({
       ? [
           {
             key: "stock",
-            label: "In stock only",
+            label: t("shopBrowser.inStockOnly"),
             remove: () => setOnlyInStock(false),
           },
         ]
       : []),
     ...(q.trim()
-      ? [{ key: "query", label: `Search: ${q.trim()}`, remove: () => setQ("") }]
+      ? [{ key: "query", label: `${t("shopBrowser.search")}: ${q.trim()}`, remove: () => setQ("") }]
       : []),
   ];
   const activeFilterCount = activeFilters.length;
@@ -443,8 +452,8 @@ export default function ShopBrowser({
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search products, SKU, categories…"
-            aria-label="Search products"
+            placeholder={t("shopBrowser.searchPlaceholder")}
+            aria-label={t("shopBrowser.searchAria")}
             className="h-12 w-full rounded-sm bg-paper pl-11 pr-4 text-base sm:text-sm text-ink shadow-sm ring-1 ring-line transition-shadow placeholder:text-ink-soft/60 focus:ring-2 focus:ring-forest-500"
           />
         </div>
@@ -457,7 +466,7 @@ export default function ShopBrowser({
             aria-expanded={drawerOpen}
             className="inline-flex h-12 shrink-0 items-center gap-2 rounded-sm bg-paper px-4 sm:px-5 text-sm font-medium ring-1 ring-line lg:hidden"
           >
-            Filters
+            {t("shopBrowser.filters")}
             {activeFilterCount > 0 && (
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-700 px-1.5 text-[0.65rem] font-bold text-white">
                 {activeFilterCount}
@@ -465,7 +474,7 @@ export default function ShopBrowser({
             )}
           </button>
           <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-ink-soft sm:flex-none">
-            <span className="hidden sm:inline">Sort</span>
+            <span className="hidden sm:inline">{t("shopBrowser.sort")}</span>
             <span className="relative min-w-0 flex-1 sm:flex-none">
               <select
                 value={sort}
@@ -490,11 +499,11 @@ export default function ShopBrowser({
         role="status"
         aria-live="polite"
       >
-        {visible.length} {visible.length === 1 ? "product" : "products"}
+        {visible.length} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
         {category !== "all" &&
-          ` in ${categories.find((c) => c.id === category)?.name ?? ""}`}
-        {onlyNew && " · new arrivals"}
-        {q.trim() && ` matching “${q.trim()}”`}
+          ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
+        {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
+        {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
       </p>
 
       {hasActiveFilters && (
@@ -520,7 +529,7 @@ export default function ShopBrowser({
             onClick={resetAll}
             className="min-h-11 px-3 text-xs font-semibold text-forest-700 underline underline-offset-4 hover:text-forest-900"
           >
-            Clear all filters
+            {t("shopBrowser.clearAll")}
           </button>
         </div>
       )}
@@ -544,18 +553,17 @@ export default function ShopBrowser({
                 <IconBox className="h-6 w-6" />
               </span>
               <h2 className="font-display mt-5 text-2xl font-medium text-ink">
-                No products found
+                {t("shopBrowser.noProductsFound")}
               </h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-                Try another search, or clear the filters to browse the full
-                collection.
+                {t("shopBrowser.tryAnother")}
               </p>
               <button
                 type="button"
                 onClick={resetAll}
                 className="mt-6 rounded-full bg-forest-800 px-6 py-3 text-sm font-medium text-ivory-50 transition-colors hover:bg-forest-700"
               >
-                Clear filters
+                {t("shopBrowser.clearFilters")}
               </button>
             </div>
           )}
@@ -572,7 +580,7 @@ export default function ShopBrowser({
       >
         <div className="mb-6 flex items-center justify-between">
           <h2 className="font-display text-xl font-semibold text-ink">
-            Filters
+            {t("shopBrowser.filters")}
           </h2>
           <button
             type="button"
@@ -593,15 +601,15 @@ export default function ShopBrowser({
             }}
             className="h-12 flex-1 rounded-full bg-paper text-sm font-medium ring-1 ring-line"
           >
-            Reset
+            {t("shopBrowser.reset")}
           </button>
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
             className="h-12 flex-1 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            Show {visible.length}{" "}
-            {visible.length === 1 ? "product" : "products"}
+            {t("shopBrowser.show")} {visible.length}{" "}
+            {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
           </button>
         </div>
       </Drawer>

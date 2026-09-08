@@ -9,6 +9,7 @@ import { useWishlist } from "@/lib/use-wishlist";
 import { Price } from "@/components/ui/primitives";
 import { IconArrowRight, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -30,6 +31,7 @@ export function editorialProductName(product: Product): string {
 }
 
 export default function ProductCard({ product }: { product: Product }) {
+  const { t } = useLanguage();
   const { has, toggle, ready, busy } = useWishlist();
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useTransientValue("");
@@ -64,7 +66,7 @@ export default function ProductCard({ product }: { product: Product }) {
           )}
           {!product.inStock && (
             <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
-              Sold out
+              {t("product.soldOut")}
             </span>
           )}
         </Link>
@@ -76,13 +78,13 @@ export default function ProductCard({ product }: { product: Product }) {
             setNotice(
               saved
                 ? wished
-                  ? "Removed from wishlist"
-                  : "Added to wishlist"
-                : "Could not sync wishlist. Please retry from your account.",
+                  ? t("product.removedFromWishlist")
+                  : t("product.addedToWishlist")
+                : t("product.wishlistError"),
             );
           }}
           disabled={!ready || busy}
-          aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
+          aria-label={wished ? t("product.removeFromWishlist") : t("product.addToWishlist")}
           aria-pressed={wished}
           className="product-heart absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-forest-900 transition-colors hover:bg-paper hover:text-gold-700"
         >
@@ -101,14 +103,14 @@ export default function ProductCard({ product }: { product: Product }) {
               aria-label={`Quick add ${product.name} to cart`}
               className="product-quick-add flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
             >
-              <IconPlus className="h-3.5 w-3.5" /> Quick add
+              <IconPlus className="h-3.5 w-3.5" /> {t("product.quickAdd")}
             </button>
             <Link
               href={`/product/${product.slug}`}
               className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 backdrop-blur-sm hover:bg-gold-200 sm:flex"
-              aria-label={`View details for ${product.name}`}
+              aria-label={`${t("product.viewDetails")} ${product.name}`}
             >
-              Details <IconArrowRight className="h-3.5 w-3.5" />
+              {t("product.details")} <IconArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         )}
