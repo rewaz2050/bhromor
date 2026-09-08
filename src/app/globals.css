@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fonts (self-hosted via Fontsource — no runtime fetch to Google Fonts) */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --font-display: "Playfair Display Variable", "Georgia", ui-serif, serif;
+
+  /* Palette: warm ivory / ink / terracotta */
+  --color-background: #faf7f2;
+  --color-foreground: #201a17;
+  --color-paper: #ffffff;
+  --color-sand: #f1eae0;
+  --color-clay: #a8572f;
+  --color-clay-dark: #8a4320;
+  --color-ink-soft: #6b625a;
+  --color-line: #e6ddd1;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-clay);
+  color: #fff;
+}
