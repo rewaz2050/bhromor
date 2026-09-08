@@ -1,7 +1,12 @@
 import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import Newsletter, { newsletterSignupUrl } from "./newsletter";
-import { IconArrowRight, IconMapPin } from "@/components/ui/icons";
+import {
+  IconArrowRight,
+  IconMapPin,
+  IconShield,
+  IconTruck,
+} from "@/components/ui/icons";
 
 const SHOP_LINKS = [
   { label: "All Products", href: "/shop" },
@@ -52,6 +57,43 @@ export default function Footer() {
         </div>
       )}
 
+      {/* Assurance strip — what shopping with PROSANTI feels like */}
+      <div className="border-b border-white/10">
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 sm:grid-cols-3 sm:px-6 lg:px-8">
+          {[
+            {
+              icon: <IconShield className="h-5 w-5 text-gold-300" />,
+              title: "Cash on delivery",
+              text: "Pay when the parcel reaches your door.",
+            },
+            {
+              icon: <IconTruck className="h-5 w-5 text-gold-300" />,
+              title: "Instant delivery",
+              text: "Arrives in 45–50 min inside the service area.",
+            },
+            {
+              icon: <IconMapPin className="h-5 w-5 text-gold-300" />,
+              title: "7-day easy exchange",
+              text: "Unworn pieces exchanged without fuss.",
+            },
+          ].map((item) => (
+            <div key={item.title} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                {item.icon}
+              </span>
+              <span>
+                <span className="block text-sm font-medium text-ivory-100">
+                  {item.title}
+                </span>
+                <span className="mt-0.5 block text-xs leading-5 text-ivory-100/60">
+                  {item.text}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Main columns */}
       <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-12 sm:px-6 lg:grid-cols-5 lg:px-8">
         <div className="col-span-2">
@@ -94,7 +136,7 @@ export default function Footer() {
         <FooterCol title="Company" links={COMPANY_LINKS} />
       </div>
 
-      <div className="border-t border-white/10 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="border-t border-white/10 px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-6">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-xs text-ivory-100/50 sm:flex-row">
           <p>© 2026 PROSANTI · prosanti.store — All rights reserved.</p>
           <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
@@ -104,7 +146,7 @@ export default function Footer() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
-              45–50 min rapid delivery
+              Instant delivery · 45–50 min
             </span>
           </p>
         </div>

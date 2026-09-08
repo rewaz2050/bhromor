@@ -63,7 +63,7 @@ export default function ProductCard({ product }: { product: Product }) {
             />
           )}
           {!product.inStock && (
-            <span className="absolute inset-0 flex items-center justify-center bg-ivory-50/70 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-forest-950 backdrop-blur-[1px]">
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
               Sold out
             </span>
           )}
@@ -131,20 +131,34 @@ export default function ProductCard({ product }: { product: Product }) {
       )}
 
       <div className="product-card-details mt-4 flex flex-1 flex-col">
-        <p className="text-[0.61rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-          {product.subCategory}
+        <p className="flex items-center gap-2 text-[0.61rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          <span>{product.subCategory}</span>
+          {product.colors[0] && (
+            <>
+              <span aria-hidden="true" className="text-line">
+                /
+              </span>
+              <span className="font-medium normal-case tracking-[0.06em] text-ink-soft/80">
+                {product.colors[0]}
+              </span>
+            </>
+          )}
         </p>
-        <h3 className="mt-1.5 font-display text-xl font-normal leading-tight tracking-[-0.015em]">
+        <h3 className="product-card-title mt-1.5 font-display text-xl font-normal leading-tight tracking-[-0.015em]">
           <Link
             href={`/product/${product.slug}`}
             aria-label={product.name}
-            className="text-forest-950 transition-colors hover:text-forest-700"
+            className="text-forest-950 hover:text-forest-700"
           >
             {styleName}
           </Link>
         </h3>
-        <div className="mt-2.5">
-          <Price value={product.price} size="sm" />
+        <div className="mt-auto pt-2.5">
+          <Price
+            value={product.price}
+            compareAt={product.compareAtPrice}
+            size="sm"
+          />
         </div>
       </div>
     </article>

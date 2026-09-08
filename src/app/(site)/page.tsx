@@ -275,7 +275,7 @@ function BrandStorySection() {
 
 const TRUST_ITEMS = [
   { label: "Cash on Delivery", href: "/faq" },
-  { label: "Fast Delivery", href: "/delivery" },
+  { label: "Instant Delivery · 45–50 min", href: "/delivery" },
   { label: "Easy Returns", href: "/returns" },
   { label: "Order Tracking", href: "/track" },
 ] as const;

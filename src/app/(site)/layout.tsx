@@ -4,6 +4,7 @@ import BagDrawer from "@/components/cart/bag-drawer";
 import CustomerProvider from "@/components/account/customer-provider";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
+import BottomNav from "@/components/layout/bottom-nav";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -12,12 +13,13 @@ export const metadata: Metadata = {
     template: "%s · PROSANTI",
   },
   description:
-    "PROSANTI (প্রশান্তি) — thoughtfully made essentials for everyday Bangladesh. Explore modern clothing and heritage textiles with fast local delivery.",
+    "PROSANTI (প্রশান্তি) — thoughtfully made essentials for everyday Bangladesh. Explore modern clothing and heritage textiles with instant 45–50 minute delivery.",
   keywords: [
     "PROSANTI",
     "প্রশান্তি",
     "premium clothing Bangladesh",
-    "rapid delivery",
+    "instant delivery",
+    "45–50 minute delivery",
     "panjabi",
     "three-piece",
   ],
@@ -58,6 +60,8 @@ export default function SiteLayout({
           {children}
         </main>
         <Footer />
+        {/* Thumb-reach navigation on phones (§67) */}
+        <BottomNav />
         <BagDrawer />
       </CustomerProvider>
     </CartProvider>

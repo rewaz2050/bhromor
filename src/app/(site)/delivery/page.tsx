@@ -31,10 +31,11 @@ export default function DeliveryPage() {
         </span>
         <div>
           <h2 className="font-display text-2xl font-medium">
-            The 45–50 minute target
+            Instant delivery — the 45–50 minute target
           </h2>
           <p className="mt-2 text-sm leading-7 text-ivory-100/70">
-            Preparation (~10 min) + courier assignment (~5 min) + travel time.
+            Instant delivery means: preparation (~10 min) + courier assignment
+            (~5 min) + travel time.
             This is our operational service target inside the service area — an
             estimate that can vary with distance, traffic and current capacity,
             and is always recalculated honestly.
@@ -81,7 +82,8 @@ export default function DeliveryPage() {
             area — pay only when the order arrives.
           </li>
           <li>
-            <strong>Free delivery</strong> on orders over ৳2,000.
+            <strong>Free delivery</strong> on orders over ৳2,000 — every order
+            still arrives inside the instant-delivery window.
           </li>
           <li>
             Every order can be followed on the{" "}

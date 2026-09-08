@@ -19,7 +19,9 @@ import { makePlacedOrder } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
+  DELIVERY_ETA,
   FREE_DELIVERY_THRESHOLD,
+  INSTANT_DELIVERY_TITLE,
   deliveryChargeFor,
   orderTotal,
 } from "@/lib/delivery";
@@ -469,7 +471,7 @@ export default function CheckoutView() {
             <div className="text-sm leading-6">
               <p className="font-semibold">{zone.name}</p>
               <p className="mt-1 text-ivory-100/70">
-                Estimated arrival{" "}
+                {INSTANT_DELIVERY_TITLE} — estimated arrival{" "}
                 <strong className="text-gold-300">{zone.etaLabel}</strong> from
                 confirmation · Delivery charge{" "}
                 <strong>
@@ -564,6 +566,10 @@ export default function CheckoutView() {
           <h2 className="font-display text-xl font-medium text-forest-900">
             Your order
           </h2>
+          <p className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-forest-800">
+            <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
+            {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
+          </p>
           <ul className="mt-5 space-y-4">
             {detail.map((line) => (
               <li
@@ -685,8 +691,8 @@ export default function CheckoutView() {
             </div>
             {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
-                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more unlocks
-                free delivery.
+                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more also
+                unlocks free delivery.
               </p>
             )}
             <div className="flex justify-between pt-2 text-base">
