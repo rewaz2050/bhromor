@@ -1,0 +1,208 @@
+/**
+ * Media library (§49) — demo, browser-local.
+ *
+ * Scans every media reference actually used by the system (products,
+ * categories, homepage hero, brand) and overlays admin-added entries.
+ * Real uploads move to Cloudinary with the signed-upload flow (§13, §48);
+ * this screen already mirrors the organisation the blueprint wants
+ * (PROSANTI/products/… categories/ homepage/ brand/).
+ */
+
+import type { Category, Product } from "./catalog";
+
+export const MEDIA_STORAGE_KEY = "prosanti.admin.media.v1";
+
+export type MediaKind =
+  | "product"
+  | "category"
+  | "homepage"
+  | "brand"
+  | "custom";
+
+export interface MediaItem {
+  id: string;
+  url: string;
+  alt: string;
+  label: string; // human source, e.g. “Heritage Green Panjabi · image 1”
+  kind: MediaKind;
+}
+
+export const KIND_LABEL: Record<MediaKind, string> = {
+  product: "Products",
+  category: "Categories",
+  homepage: "Homepage",
+  brand: "Brand",
+  custom: "Added",
+};
+
+export const isHttp = (url: string): boolean => /^https?:\/\//i.test(url);
+
+export const isImgUrl = (url: string): boolean =>
+  /\.(jpe?g|png|webp|gif|svg|avif)(\?.*)?$/i.test(url) ||
+  /^https?:\/\/[^\s]+\.[^\s]+$/i.test(url);
+
+/** Derive the full set of in-use media items from the live catalog. */
+export const scanMedia = (
+  products: Product[],
+  categories: Category[],
+): MediaItem[] => {
+  const items: MediaItem[] = [];
+  const seen = new Set<string>();
+  const push = (url: string, alt: string, label: string, kind: MediaKind) => {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    items.push({
+      id: `src:${url}`,
+      url,
+      alt,
+      label,
+      kind,
+    });
+  };
+  for (const p of products) {
+    p.media.forEach((m, i) =>
+      push(
+        m.src,
+        m.alt,
+        `${p.name} · image ${i + 1}${i === 0 ? " (card/hero)" : ""}`,
+        "product",
+      ),
+    );
+  }
+  for (const c of categories) {
+    push(c.image, c.name, `${c.name} category`, "category");
+  }
+  push(
+    "/images/hero.jpg",
+    "PROSANTI hero — premium panjabi, editorial studio light",
+    "Homepage hero",
+    "homepage",
+  );
+  push(
+    "/brand/logo-emblem.png",
+    "PROSANTI emblem (transparent)",
+    "Brand — emblem",
+    "brand",
+  );
+  push(
+    "/brand/logo-lockup.png",
+    "PROSANTI full lockup on cream",
+    "Brand — lockup / social share",
+    "brand",
+  );
+  return items;
+};
+
+export const mergeCustom = (
+  base: MediaItem[],
+  custom: MediaItem[],
+): MediaItem[] => {
+  const byUrl = new Map(base.map((m) => [m.url, m]));
+  for (const c of custom) {
+    if (!byUrl.has(c.url)) byUrl.set(c.url, c);
+  }
+  return [...byUrl.values()];
+};
+
+/* ------------------------------------------------------------------ */
+/* External store                                                      */
+/* ------------------------------------------------------------------ */
+
+type Listener = () => void;
+
+let baseCache: MediaItem[] | null = null;
+let customCache: MediaItem[] | null = null;
+let loaded = false;
+const listeners = new Set<Listener>();
+
+const notify = () => {
+  for (const l of listeners) l();
+};
+
+export const addCustom = (
+  custom: MediaItem[],
+  item: Omit<MediaItem, "id" | "kind">,
+): MediaItem[] => {
+  if (!item.url || custom.some((c) => c.url === item.url)) return custom;
+  return [...custom, { ...item, kind: "custom", id: `custom:${Date.now()}` }];
+};
+
+export const removeCustom = (custom: MediaItem[], id: string): MediaItem[] =>
+  custom.filter((c) => c.id !== id);
+
+/* ------------------------------------------------------------------ */
+
+const ensureLoaded = (
+  products: Product[],
+  categories: Category[],
+): { base: MediaItem[]; custom: MediaItem[] } => {
+  baseCache ??= scanMedia(products, categories);
+  if (customCache && loaded) return { base: baseCache, custom: customCache };
+  loaded = true;
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(MEDIA_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as MediaItem[];
+        if (Array.isArray(parsed)) customCache = parsed;
+      }
+    } catch {
+      // corrupted storage → no custom entries
+    }
+  }
+  customCache ??= [];
+  return { base: baseCache, custom: customCache };
+};
+
+const persist = (custom: MediaItem[]) => {
+  customCache = custom;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(custom));
+    } catch {
+      // storage unavailable — demo continues in memory
+    }
+  }
+  notify();
+};
+
+export const subscribeMedia = (listener: Listener): (() => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+export const getMediaServer = (): MediaItem[] =>
+  scanMedia([], []); // placeholder — page passes live catalog below
+
+export const getMedia = (
+  products: Product[],
+  categories: Category[],
+): MediaItem[] => {
+  const { base, custom } = ensureLoaded(products, categories);
+  return mergeCustom(base, custom);
+};
+
+export const getCustomMedia = (): MediaItem[] =>
+  ensureLoaded([], []).custom;
+
+export const addMediaInStore = (
+  products: Product[],
+  categories: Category[],
+  item: { url: string; alt: string; label: string },
+) => {
+  const { custom } = ensureLoaded(products, categories);
+  persist(addCustom(custom, item));
+};
+
+export const removeMediaInStore = (id: string) => {
+  const { custom } = ensureLoaded([], []);
+  persist(removeCustom(custom, id));
+};
+
+export const resetMediaStore = () => {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(MEDIA_STORAGE_KEY);
+  }
+  customCache = [];
+  persist([]);
+};

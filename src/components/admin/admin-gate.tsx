@@ -11,12 +11,16 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
 import LogoMark from "@/components/logo-mark";
+import { useNotifications } from "@/lib/use-notifications";
 import {
+  IconBell,
   IconBox,
   IconExternal,
   IconFlag,
   IconGrid,
+  IconImage,
   IconLeaf,
   IconLogout,
   IconMapPin,
@@ -28,7 +32,6 @@ import {
   signOutAdmin,
   subscribeAdminAuth,
 } from "@/lib/admin-auth";
-import { useSyncExternalStore } from "react";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
@@ -41,6 +44,8 @@ const NAV = [
   { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
   { href: "/admin/coupons", label: "Coupons", icon: IconTag, match: (p: string) => p === "/admin/coupons" },
   { href: "/admin/inventory", label: "Inventory", icon: IconBox, match: (p: string) => p === "/admin/inventory" },
+  { href: "/admin/media", label: "Media", icon: IconImage, match: (p: string) => p === "/admin/media" },
+  { href: "/admin/notifications", label: "Notifications", icon: IconBell, match: (p: string) => p.startsWith("/admin/notifications") },
 ];
 
 const TITLES: [RegExp, string][] = [
@@ -55,6 +60,8 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/reviews$/, "Reviews"],
   [/^\/admin\/coupons$/, "Coupons"],
   [/^\/admin\/inventory$/, "Inventory"],
+  [/^\/admin\/media$/, "Media"],
+  [/^\/admin\/notifications$/, "Notifications"],
   [/^\/admin$/, "Dashboard"],
 ];
 
@@ -75,6 +82,7 @@ export default function AdminGate({
   );
 
   const onLogin = pathname.startsWith("/admin/login");
+  const { unread } = useNotifications();
 
   useEffect(() => {
     if (!authed && !onLogin) router.replace("/admin/login");
@@ -139,7 +147,7 @@ export default function AdminGate({
               Later phases
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Media · Notifications · Settings
+              Settings · Reports · Payments · Notifications channels
             </p>
           </div>
         </nav>
@@ -183,6 +191,18 @@ export default function AdminGate({
               year: "numeric",
             })}
           </p>
+          <Link
+            href="/admin/notifications"
+            aria-label={`Notifications, ${unread} unread`}
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+          >
+            <IconBell className="h-5 w-5" />
+            {unread > 0 && (
+              <span className="absolute right-0 top-0 flex h-[1.05rem] min-w-[1.05rem] items-center justify-center rounded-full bg-gold-500 px-1 text-[0.62rem] font-bold text-white">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </Link>
         </header>
         <main className="mx-auto w-full max-w-6xl px-6 py-8 lg:px-10">
           {children}

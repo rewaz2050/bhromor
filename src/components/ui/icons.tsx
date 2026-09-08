@@ -203,3 +203,25 @@ export const IconFlag = (p: IconProps) => (
     <path d="M5 5c2.2-1.2 4.4-1.2 6.6 0 2.2 1.2 4.4 1.2 6.6 0v8c-2.2 1.2-4.4 1.2-6.6 0-2.2-1.2-4.4-1.2-6.6 0" />
   </Svg>
 );
+
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Svg>
+);
+
+export const IconBell = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+    <path d="M10 21h4" />
+  </Svg>
+);
+
+export const IconImage = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <circle cx="9" cy="10" r="1.8" />
+    <path d="m4.5 17.5 5-4.5 3 2.5 3.5-3.5 3 3" />
+  </Svg>
+);
