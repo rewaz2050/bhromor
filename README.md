@@ -14,6 +14,8 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 3/5 — Admin foundation (login, dashboard, orders + status machine) | ✅ UI complete (demo data) |
 | Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
 | Phase 8 preview — Wishlist · Reviews · Coupons · Homepage CMS · Inventory | ✅ UI complete (browser demo) |
+| Phase 3/6 preview — Media library (§49) · Notifications inbox (§35) | ✅ UI complete (browser demo) |
+| Supabase schema (products, variants, media, orders, RLS, §34 machine) | ✅ `supabase/schema.sql` ready |
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
 | Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
 | Phase 5 — Order tracking (UI) | ✅ UI complete (demo timeline) |
@@ -45,7 +47,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (61 tests).
+All gates are currently green (67 tests).
 
 ## Pages
 
@@ -63,7 +65,7 @@ Public: Home (CMS-aware) · Shop · Product details (reviews section + write-a-r
 - Coupons: fixed/percent, min order, category scope, validity & usage limits; checkout applies codes live; usage is recorded when an order is placed (§56)
 - Inventory: per-product stock editor with configurable low-stock threshold that drives the dashboard alert (§57–58)
 
-Demo data (orders, catalog, zones) persists in `localStorage` under `prosanti.admin.*` keys and can be reset from each toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47). Public storefront reads still come from `src/lib/catalog.ts` until the data layer lands; zones are the exception — checkout already consumes the shared zone store.
+Demo data (orders, catalog, zones, reviews, coupons, notifications, media) persists in `localStorage` under `prosanti.*` keys and can be reset from each toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47). Public storefront reads still come from `src/lib/catalog.ts` until the data layer lands; zones are the exception — checkout already consumes the shared zone store.
 
 Design language: deep forest green + warm ivory + muted gold, Playfair display serif + Inter + Noto Serif Bengali, arch-shaped brand imagery (signature motif), mobile-first.
 
@@ -90,7 +92,10 @@ src/
 │   │   ├── customers/        # derived from the order store
 │   │   ├── reviews/          # §30 moderation queue
 │   │   ├── coupons/          # §56 discount-code manager
-│   │   └── inventory/        # §57–58 stock + threshold
+│   │   ├── inventory/        # §57–58 stock + threshold
+│   │   ├── media/            # §49 library (URLs, sections, copy)
+│   │   └── notifications/    # §35 inbox + bell + live attention
+├── supabase/schema.sql       # §41–46: tables, RLS, order state machine
 │   ├── icon.png · favicon.ico
 │   └── globals.css           # design tokens (forest/ivory/gold)
 ├── components/
@@ -112,5 +117,5 @@ src/
 
 ## Next phases (in order)
 
-1. **Media library + Notifications screens** as admin demo UI.
-2. Backend wiring per blueprint §41–50: Supabase schema (products, variants, media, orders, delivery zones, status history), RLS + auth (admin vs customer), Cloudinary upload for product media, and moving `src/lib/catalog.ts` + `src/lib/orders.ts` behind a data-access layer. `.env` keys are only needed then.
+1. **Backend wiring** — apply `supabase/schema.sql`, then move `src/lib/*` demo stores behind data-access adapters backed by Supabase (catalog, orders, coupons, reviews, notifications, media refs); Cloudinary signed uploads (§48); `.env` keys are only needed then.
+2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) and customer accounts (§27) once auth is live.
