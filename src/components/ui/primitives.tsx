@@ -84,8 +84,8 @@ export function Price({
       <span className="font-semibold tracking-tight text-ink">
         {formatBdt(value)}
       </span>
-      {compareAt ? (
-        <span className="text-sm font-normal text-ink-soft line-through">
+      {compareAt && compareAt > value ? (
+        <span className="text-[0.82em] font-normal text-ink-soft/75 line-through decoration-1">
           {formatBdt(compareAt)}
         </span>
       ) : null}

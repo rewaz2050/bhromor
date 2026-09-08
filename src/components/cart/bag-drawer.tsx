@@ -8,7 +8,10 @@ import Drawer from "@/components/ui/drawer";
 import { useCart } from "./cart-provider";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
-import { amountToFreeDelivery } from "@/lib/delivery";
+import {
+  amountToFreeDelivery,
+  FREE_DELIVERY_THRESHOLD,
+} from "@/lib/delivery";
 import { IconBag, IconClose } from "@/components/ui/icons";
 
 export default function BagDrawer() {
@@ -40,14 +43,16 @@ export default function BagDrawer() {
       side="right"
       panelClassName="!w-full !max-w-md"
     >
-      <div className="flex items-center justify-between border-b border-line p-6">
+      <div className="flex items-center justify-between border-b border-line px-6 py-5">
         <h2 className="font-display text-3xl text-forest-900">
-          Your Bag <span className="font-sans text-sm">({itemCount})</span>
+          Your Bag{" "}
+          <span className="font-sans text-sm text-ink-soft">({itemCount})</span>
         </h2>
         <button
+          type="button"
           onClick={closeBag}
           aria-label="Close bag"
-          className="flex h-11 w-11 items-center justify-center"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
         >
           <IconClose />
         </button>
@@ -69,14 +74,46 @@ export default function BagDrawer() {
         </div>
       ) : (
         <>
-          <p
-            className="bg-forest-100 px-6 py-4 text-sm text-forest-900"
-            role="status"
-          >
-            {remaining
-              ? `${formatBdt(remaining)} away from free delivery.`
-              : "You’ve unlocked free delivery."}
-          </p>
+          <div className="border-b border-line bg-forest-50 px-6 py-4">
+            <p className="text-sm text-forest-900" role="status">
+              {remaining ? (
+                <>
+                  <strong className="font-semibold">
+                    {formatBdt(remaining)}
+                  </strong>{" "}
+                  away from free delivery.
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold">
+                    Free delivery unlocked.
+                  </strong>{" "}
+                  Enjoy it.
+                </>
+              )}
+            </p>
+            <div
+              className="free-delivery-track mt-3"
+              role="progressbar"
+              aria-label="Progress towards free delivery"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.min(
+                100,
+                Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100),
+              )}
+            >
+              <div
+                className="free-delivery-fill"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100),
+                  )}%`,
+                }}
+              />
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto px-6">
             {detail.map(({ product, variantLabel, qty, lineTotal }) => (
               <article
@@ -109,9 +146,10 @@ export default function BagDrawer() {
                     {formatBdt(lineTotal)}
                   </p>
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center border border-line">
+                    <div className="qty-stepper">
                       <button
-                        className="h-11 w-10 disabled:opacity-30"
+                        type="button"
+                        className="text-base leading-none"
                         aria-label={`Decrease ${product.name} quantity`}
                         disabled={qty <= 1}
                         onClick={() =>
@@ -120,9 +158,10 @@ export default function BagDrawer() {
                       >
                         −
                       </button>
-                      <span className="text-sm">{qty}</span>
+                      <span>{qty}</span>
                       <button
-                        className="h-11 w-10 disabled:opacity-30"
+                        type="button"
+                        className="text-base leading-none"
                         aria-label={`Increase ${product.name} quantity`}
                         disabled={qty >= MAX_LINE_QTY}
                         onClick={() =>
@@ -133,7 +172,8 @@ export default function BagDrawer() {
                       </button>
                     </div>
                     <button
-                      className="min-h-11 text-xs underline"
+                      type="button"
+                      className="min-h-11 px-1 text-xs text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-forest-800"
                       aria-label={`Remove ${product.name}`}
                       onClick={() => removeItem(product.id, variantLabel)}
                     >
@@ -180,12 +220,14 @@ export default function BagDrawer() {
               </div>
             </section>
           )}
-          <div className="border-t border-line bg-ivory-50 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-            <div className="flex justify-between text-lg">
-              <span>Subtotal</span>
-              <strong>{formatBdt(subtotal)}</strong>
+          <div className="border-t border-line bg-ivory-100/70 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-ink-soft">Subtotal</span>
+              <strong className="font-display text-2xl text-forest-900">
+                {formatBdt(subtotal)}
+              </strong>
             </div>
-            <p className="mb-5 mt-2 text-xs text-ink-soft">
+            <p className="mb-5 mt-1.5 text-xs text-ink-soft">
               {remaining
                 ? "Area-based delivery charge shown at checkout."
                 : "Delivery is free within available service areas."}
@@ -200,7 +242,7 @@ export default function BagDrawer() {
             <Link
               href="/cart"
               onClick={closeBag}
-              className="mt-3 flex min-h-11 items-center justify-center border border-line text-xs uppercase tracking-widest"
+              className="mt-3 flex min-h-11 items-center justify-center border border-line text-xs uppercase tracking-widest text-ink-soft transition-colors hover:border-forest-400 hover:text-forest-800"
             >
               View bag
             </Link>

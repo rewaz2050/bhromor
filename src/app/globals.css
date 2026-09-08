@@ -537,3 +537,209 @@ body {
     transform: none !important;
   }
 }
+
+/* Premium feel + ease of use ------------------------------------------------
+   Quiet motion, clearer hierarchy and larger touch targets. Everything here
+   is scoped so the admin surface is untouched, and every transition is
+   neutralised by the reduced-motion block above. */
+
+/* Sticky header condenses once the page moves, so browsing stays calm and
+   the content keeps the width. */
+.storefront-header {
+  transition:
+    box-shadow var(--motion-standard) linear,
+    background-color var(--motion-standard) linear;
+}
+.storefront-header[data-scrolled="true"] {
+  box-shadow: 0 12px 32px -22px rgb(20 41 31 / 45%);
+}
+.announcement-shell {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--motion-standard) var(--ease-refined),
+    opacity var(--motion-fast) linear;
+}
+.announcement-shell > * {
+  min-height: 0;
+  overflow: hidden;
+}
+.storefront-header[data-scrolled="true"] .announcement-shell {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.storefront-header .header-bar {
+  transition:
+    height var(--motion-standard) var(--ease-refined),
+    background-color var(--motion-standard) linear,
+    backdrop-filter var(--motion-standard) linear;
+}
+.storefront-header .brand-lockup img,
+.storefront-header .brand-lockup span {
+  transition: font-size var(--motion-standard) var(--ease-refined);
+}
+
+/* Cards: a whisper of lift instead of a hard border. */
+.product-card-media {
+  box-shadow: 0 1px 0 rgb(20 41 31 / 4%);
+}
+.product-card-badge {
+  border-radius: 2px;
+  backdrop-filter: blur(6px);
+  letter-spacing: 0.16em;
+}
+.product-card-title a {
+  background-image: linear-gradient(
+    var(--color-forest-700),
+    var(--color-forest-700)
+  );
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition:
+    color var(--motion-fast) linear,
+    background-size var(--motion-standard) var(--ease-refined);
+}
+@media (hover: hover) and (pointer: fine) {
+  .product-card-title a:hover {
+    background-size: 100% 1px;
+  }
+}
+
+/* Free-delivery progress — makes the reward visible instead of implied. */
+.free-delivery-track {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-forest-100);
+}
+.free-delivery-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--color-gold-300),
+    var(--color-gold-600)
+  );
+  transition: width var(--motion-editorial) var(--ease-refined);
+}
+
+/* Quantity steppers: bigger targets, brand-shaped, obvious disabled state. */
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 2px;
+  background: var(--color-paper);
+}
+.qty-stepper button {
+  display: flex;
+  height: 2.75rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-soft);
+  transition:
+    background-color var(--motion-fast) linear,
+    color var(--motion-fast) linear;
+}
+.qty-stepper button:not(:disabled):hover {
+  background: var(--color-forest-100);
+  color: var(--color-forest-900);
+}
+.qty-stepper button:disabled {
+  opacity: 0.35;
+}
+.qty-stepper span {
+  min-width: 2ch;
+  text-align: center;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.qty-stepper--tall {
+  height: 3.5rem;
+}
+.qty-stepper--tall button {
+  height: calc(3.5rem - 2px);
+  width: 3rem;
+}
+
+/* Product information accordion (native <details>, works without JS). */
+.info-accordion {
+  border-top: 1px solid var(--color-line);
+}
+.info-accordion > details {
+  border-bottom: 1px solid var(--color-line);
+}
+.info-accordion > details > summary {
+  display: flex;
+  min-height: 3.5rem;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.9rem;
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  color: var(--color-forest-900);
+  transition: color var(--motion-fast) linear;
+}
+.info-accordion > details > summary::-webkit-details-marker {
+  display: none;
+}
+.info-accordion > details > summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-right: 1.5px solid var(--color-forest-600);
+  border-bottom: 1.5px solid var(--color-forest-600);
+  transform: rotate(45deg);
+  transition: transform var(--motion-standard) var(--ease-refined);
+}
+.info-accordion > details[open] > summary::after {
+  transform: rotate(-135deg);
+}
+.info-accordion > details > summary:hover {
+  color: var(--color-gold-700);
+}
+.info-accordion .info-body {
+  padding-bottom: 1.5rem;
+}
+
+/* Mobile buy bar — the add-to-bag control follows the shopper down the page. */
+.sticky-buy-bar {
+  position: fixed;
+  inset-inline: 0;
+  z-index: 35;
+  bottom: calc(4rem + env(safe-area-inset-bottom));
+  transform: translateY(120%);
+  opacity: 0;
+  transition:
+    transform var(--motion-standard) var(--ease-refined),
+    opacity var(--motion-fast) linear;
+}
+.sticky-buy-bar[data-visible="true"] {
+  transform: translateY(0);
+  opacity: 1;
+}
+@media (min-width: 1024px) {
+  .sticky-buy-bar {
+    display: none;
+  }
+}
+
+/* Service/assurance rows read as one quiet system. */
+.assurance-pill {
+  border-radius: 3px;
+  transition:
+    transform var(--motion-standard) var(--ease-refined),
+    box-shadow var(--motion-standard) var(--ease-refined);
+}
+@media (hover: hover) and (pointer: fine) {
+  .assurance-pill:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-soft);
+  }
+}

@@ -29,6 +29,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
   );
   const [qty, setQty] = useState(1);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [stickyVisible, setStickyVisible] = useState(false);
+  const ctaRef = useRef<HTMLDivElement | null>(null);
 
   /** Join only the parts that exist — colourless products used to produce
    *  a label like " · L" with a dangling separator. */
@@ -44,6 +46,22 @@ export default function PurchasePanel({ product }: { product: Product }) {
     [],
   );
 
+  /**
+   * On phones the add-to-bag controls scroll out of view quickly. A compact
+   * bar appears once they do, so the next step is always one tap away
+   * (desktop keeps the main panel in view, so the bar is hidden there).
+   */
+  useEffect(() => {
+    const node = ctaRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setStickyVisible(!entry.isIntersecting),
+      { rootMargin: "0px 0px -96px 0px", threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   const addedFeedback = () => {
     setFeedback(`Added to cart — ${formatBdt(product.price * qty)}`);
     if (feedbackTimer.current !== null)
@@ -51,13 +69,25 @@ export default function PurchasePanel({ product }: { product: Product }) {
     feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2600);
   };
 
+  /** One definition for the gate and the label so the inline CTA, the
+   *  sticky bar and the disabled state can never disagree. */
+  const ctaDisabled = !product.inStock || (product.sizes.length > 0 && !size);
+  const ctaLabel =
+    !product.inStock
+      ? "Sold out"
+      : product.sizes.length > 0 && !size
+        ? "Select a size"
+        : "Add to Bag";
+
   const handleAdd = () => {
+    if (ctaDisabled) return;
     addItem(product.id, variantLabel, qty);
     addedFeedback();
     openBag();
   };
 
   const handleBuyNow = () => {
+    if (ctaDisabled) return;
     addItem(product.id, variantLabel, qty);
     router.push("/checkout");
   };
@@ -171,18 +201,20 @@ export default function PurchasePanel({ product }: { product: Product }) {
       </div>
 
       {/* Quantity + CTAs */}
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex h-14 items-center justify-between rounded-sm bg-paper px-2 ring-1 ring-line sm:w-36">
+      <div
+        ref={ctaRef}
+        className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
+      >
+        <div className="qty-stepper qty-stepper--tall h-14 justify-between px-1 sm:w-36">
           <button
             type="button"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
             disabled={qty <= 1}
             aria-label="Decrease quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-sm text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconMinus className="h-4 w-4" />
           </button>
-          <span className="text-sm font-semibold text-ink" aria-live="polite">
+          <span className="font-semibold text-ink" aria-live="polite">
             {qty}
           </span>
           <button
@@ -190,7 +222,6 @@ export default function PurchasePanel({ product }: { product: Product }) {
             onClick={() => setQty((n) => Math.min(MAX_LINE_QTY, n + 1))}
             disabled={qty >= MAX_LINE_QTY}
             aria-label="Increase quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-sm text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconPlus className="h-4 w-4" />
           </button>
@@ -199,16 +230,16 @@ export default function PurchasePanel({ product }: { product: Product }) {
         <button
           type="button"
           onClick={handleAdd}
-          className="h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
-          disabled={!product.inStock || (product.sizes.length > 0 && !size)}
+          className="h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
+          disabled={ctaDisabled}
         >
-          {product.sizes.length > 0 && !size ? "Select a size" : "Add to Bag"}
+          {ctaLabel}
         </button>
         <button
           type="button"
           onClick={handleBuyNow}
-          className="h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-colors hover:bg-gold-400 disabled:opacity-40"
-          disabled={!product.inStock || (product.sizes.length > 0 && !size)}
+          className="h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-all hover:-translate-y-px hover:bg-gold-400 disabled:translate-y-0 disabled:opacity-40"
+          disabled={ctaDisabled}
         >
           Buy Now
         </button>
@@ -242,6 +273,35 @@ export default function PurchasePanel({ product }: { product: Product }) {
           text="Pay when it reaches your door"
         />
       </div>
+
+      {/* Compact buy bar for phones — appears once the main CTA scrolls away */}
+      <div
+        className="sticky-buy-bar border-t border-line bg-paper/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-paper/90"
+        data-visible={stickyVisible}
+        inert={!stickyVisible}
+      >
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+              {product.subCategory}
+            </p>
+            <p className="truncate font-display text-base leading-tight text-forest-900">
+              {product.name}
+            </p>
+          </div>
+          <p className="shrink-0 text-sm font-semibold text-ink">
+            {formatBdt(product.price)}
+          </p>
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="h-12 shrink-0 rounded-sm bg-forest-800 px-5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
+            disabled={ctaDisabled}
+          >
+            {ctaLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -256,7 +316,7 @@ function TrustPill({
   text: string;
 }) {
   return (
-    <div className="rounded-md bg-ivory-100 p-4 ring-1 ring-line">
+    <div className="assurance-pill rounded-md bg-paper p-4 ring-1 ring-line">
       <Icon className="h-5 w-5 text-forest-700" />
       <p className="mt-2.5 text-sm font-semibold text-ink">{title}</p>
       <p className="mt-1 text-xs leading-5 text-ink-soft">{text}</p>

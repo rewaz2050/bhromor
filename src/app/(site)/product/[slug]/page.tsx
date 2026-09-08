@@ -102,34 +102,58 @@ export default async function ProductPage({ params }: PageProps) {
         <PurchasePanel product={product} />
       </div>
 
-      {/* Tabs */}
-      <div className="mt-16 grid gap-8 lg:grid-cols-3">
-        <div className="rounded-md bg-paper p-8 ring-1 ring-line lg:col-span-2">
-          <h2 className="font-display text-2xl font-medium text-forest-900">
-            Product details
-          </h2>
-          <div className="mt-4 space-y-4">
-            {product.description.map((para) => (
-              <p key={para.slice(0, 32)} className="leading-8 text-ink-soft">
-                {para}
-              </p>
-            ))}
-          </div>
-          <dl className="mt-8 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-            {product.details.map((d) => (
-              <div
-                key={d.label}
-                className="flex justify-between gap-4 border-b border-line pb-3 text-sm"
-              >
-                <dt className="font-medium text-ink">{d.label}</dt>
-                <dd className="text-right text-ink-soft">{d.value}</dd>
-              </div>
-            ))}
-          </dl>
+      {/* Product information — accordion so the page stays short on mobile */}
+      <div className="mt-14 grid gap-8 lg:grid-cols-3 lg:gap-12">
+        <div className="info-accordion lg:col-span-2">
+          <details open>
+            <summary>Product details</summary>
+            <div className="info-body space-y-4">
+              {product.description.map((para) => (
+                <p key={para.slice(0, 32)} className="leading-8 text-ink-soft">
+                  {para}
+                </p>
+              ))}
+            </div>
+          </details>
+          <details>
+            <summary>Fabric &amp; care</summary>
+            <div className="info-body">
+              <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                {product.details.map((d) => (
+                  <div
+                    key={d.label}
+                    className="flex justify-between gap-4 border-b border-line pb-3 text-sm"
+                  >
+                    <dt className="font-medium text-ink">{d.label}</dt>
+                    <dd className="text-right text-ink-soft">{d.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </details>
+          <details>
+            <summary>Delivery &amp; returns</summary>
+            <div className="info-body">
+              <ul className="space-y-3 text-sm leading-7 text-ink-soft">
+                <li>· 7-day easy return &amp; exchange on unworn items</li>
+                <li>· Quality checked before every dispatch</li>
+                <li>· Cash on delivery across all service areas</li>
+                <li>
+                  · Questions?{" "}
+                  <Link
+                    href="/contact"
+                    className="font-medium text-forest-700 underline underline-offset-4"
+                  >
+                    Contact support
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </details>
         </div>
 
         <aside className="space-y-6">
-          <div className="rounded-md bg-forest-900 p-8 text-ivory-100">
+          <div className="assurance-pill rounded-md bg-forest-900 p-8 text-ivory-100">
             <IconLeaf className="h-6 w-6 text-gold-300" />
             <h2 className="font-display mt-4 text-xl font-medium">
               Delivery estimate
@@ -151,24 +175,6 @@ export default async function ProductPage({ params }: PageProps) {
               </span>{" "}
               get free delivery.
             </p>
-          </div>
-          <div className="rounded-md bg-paper p-8 ring-1 ring-line">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-ink">
-              Care &amp; returns
-            </h2>
-            <ul className="mt-4 space-y-3 text-sm leading-6 text-ink-soft">
-              <li>· 7-day easy return &amp; exchange on unworn items</li>
-              <li>· Quality checked before dispatch</li>
-              <li>
-                · Questions?{" "}
-                <Link
-                  href="/contact"
-                  className="font-medium text-forest-700 underline underline-offset-4"
-                >
-                  Contact support
-                </Link>
-              </li>
-            </ul>
           </div>
         </aside>
       </div>
