@@ -17,8 +17,10 @@ import {
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function PurchasePanel({ product }: { product: Product }) {
+  const { t } = useLanguage();
   const { addItem, openBag } = useCart();
   const router = useRouter();
 
@@ -64,7 +66,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   }, []);
 
   const addedFeedback = () => {
-    setFeedback(`Added to cart — ${formatBdt(product.price * qty)}`);
+    setFeedback(`${t("purchase.addedToCart")} ${formatBdt(product.price * qty)}`);
     if (feedbackTimer.current !== null)
       window.clearTimeout(feedbackTimer.current);
     feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2600);
@@ -75,10 +77,10 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const ctaDisabled = !product.inStock || (product.sizes.length > 0 && !size);
   const ctaLabel =
     !product.inStock
-      ? "Sold out"
+      ? t("purchase.soldOut")
       : product.sizes.length > 0 && !size
-        ? "Select a size"
-        : "Add to Bag";
+        ? t("purchase.selectASize")
+        : t("purchase.addToBag");
 
   const handleAdd = () => {
     if (ctaDisabled) return;
@@ -115,12 +117,11 @@ export default function PurchasePanel({ product }: { product: Product }) {
         />
         {product.compareAtPrice && product.compareAtPrice > product.price && (
           <p className="mt-2 text-sm font-medium text-forest-700">
-            Save {formatBdt(product.compareAtPrice - product.price)}
+            {t("purchase.save")} {formatBdt(product.compareAtPrice - product.price)}
           </p>
         )}
         <p className="mt-1 text-xs text-ink-soft">
-          Price is inclusive of VAT. Delivery charge calculated at checkout by
-          area.
+          {t("purchase.priceInclusive")}
         </p>
       </div>
 
@@ -133,17 +134,15 @@ export default function PurchasePanel({ product }: { product: Product }) {
         {product.inStock ? (
           <>
             <span className="h-2 w-2 rounded-sm bg-forest-500" />
-            <span className="text-forest-800">In stock</span>
+            <span className="text-forest-800">{t("purchase.inStock")}</span>
             {product.lowStock && (
-              <span className="text-ink-soft">
-                — only a few left in this size
-              </span>
+              <span className="text-ink-soft">{t("purchase.lowStock")}</span>
             )}
           </>
         ) : (
           <>
             <span className="h-2 w-2 rounded-sm bg-gold-500" />
-            <span className="text-gold-700">Sold out — check back soon</span>
+            <span className="text-gold-700">{t("purchase.soldOutCheckBack")}</span>
           </>
         )}
       </div>
@@ -152,7 +151,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
       {product.colors.length > 0 && (
         <div className="mt-7">
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-            Colour
+            {t("purchase.colour")}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {product.colors.map((c) => (
@@ -178,7 +177,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
       <div className="mt-6">
         <div className="flex items-center justify-between gap-4">
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-            Size
+            {t("purchase.size")}
           </p>
           <SizeGuide product={product} />
         </div>
@@ -211,7 +210,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
             type="button"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
             disabled={qty <= 1}
-            aria-label="Decrease quantity"
+            aria-label={t("product.decreaseQuantity")}
           >
             <IconMinus className="h-4 w-4" />
           </button>
@@ -222,7 +221,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
             type="button"
             onClick={() => setQty((n) => Math.min(MAX_LINE_QTY, n + 1))}
             disabled={qty >= MAX_LINE_QTY}
-            aria-label="Increase quantity"
+            aria-label={t("product.increaseQuantity")}
           >
             <IconPlus className="h-4 w-4" />
           </button>
@@ -242,7 +241,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           className="h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-all hover:-translate-y-px hover:bg-gold-400 disabled:translate-y-0 disabled:opacity-40"
           disabled={ctaDisabled}
         >
-          Buy Now
+          {t("purchase.buyNow")}
         </button>
       </div>
 
@@ -265,13 +264,13 @@ export default function PurchasePanel({ product }: { product: Product }) {
         />
         <TrustPill
           icon={IconMapPin}
-          title="Zone-based charge"
-          text="৳50 – ৳130, shown before you pay"
+          title={t("purchase.zoneBasedCharge")}
+          text={t("purchase.zoneChargeText")}
         />
         <TrustPill
           icon={IconShield}
-          title="COD available"
-          text="Pay when it reaches your door"
+          title={t("purchase.codAvailable")}
+          text={t("purchase.codText")}
         />
       </div>
 

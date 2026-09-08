@@ -33,6 +33,7 @@ import {
   IconMapPin,
   IconTruck,
 } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 interface FormState {
   name: string;
@@ -59,6 +60,7 @@ const initialForm: FormState = {
 };
 
 export default function CheckoutView() {
+  const { t } = useLanguage();
   const { detail, subtotal, clear } = useCart();
   /** Delivery zones come from the shared store — admin edits show here (§20). */
   const { activeZones: zoneList } = useZones();
@@ -162,10 +164,10 @@ export default function CheckoutView() {
           <IconCheck className="h-9 w-9" />
         </span>
         <p className="font-bengali mt-8 text-sm text-ink-soft">
-          অর্ডার নিশ্চিত হয়েছে — ধন্যবাদ
+          {t("checkout.orderConfirmedBn")}
         </p>
         <h1 className="font-display mt-2 text-3xl font-medium text-forest-900 sm:text-4xl">
-          Order confirmed
+          {t("checkout.orderConfirmed")}
         </h1>
         <p className="mt-4 text-ink-soft">
           Order <strong className="text-ink">{placed.orderId}</strong> — thank
@@ -183,7 +185,7 @@ export default function CheckoutView() {
             <span className="text-ink-soft">{placed.addressSummary}</span>
           </p>
           <p className="flex items-center justify-between border-t border-line pt-3 font-medium text-ink">
-            Total payable (Cash on Delivery)
+            {t("checkout.totalCod")} — {t("checkout.cashOnDelivery")}
             <span>{formatBdt(placed.total)}</span>
           </p>
         </div>
@@ -192,13 +194,13 @@ export default function CheckoutView() {
             href="/track"
             className="inline-flex h-12 items-center gap-2 rounded-full bg-forest-800 px-7 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            Track this order <IconArrowRight className="h-4 w-4" />
+            {t("checkout.trackThisOrder")} <IconArrowRight className="h-4 w-4" />
           </Link>
           <Link
             href="/shop"
             className="inline-flex h-12 items-center rounded-full bg-paper px-7 text-sm font-medium ring-1 ring-line"
           >
-            Continue shopping
+            {t("checkout.continueShopping")}
           </Link>
         </div>
         <p className="mt-8 text-xs text-ink-soft">
@@ -217,16 +219,14 @@ export default function CheckoutView() {
           <IconBag className="h-7 w-7" />
         </span>
         <h2 className="font-display mt-6 text-2xl font-medium text-forest-900">
-          Nothing to check out yet
+          {t("checkout.nothingToCheckout")}
         </h2>
-        <p className="mt-2 text-sm text-ink-soft">
-          Add a product to your cart first, then come back here.
-        </p>
+        <p className="mt-2 text-sm text-ink-soft">{t("checkout.addProductFirst")}</p>
         <Link
           href="/shop"
           className="mt-7 inline-flex h-12 items-center gap-2 rounded-full bg-forest-800 px-7 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
         >
-          Explore products <IconArrowRight className="h-4 w-4" />
+          {t("checkout.exploreProducts")} <IconArrowRight className="h-4 w-4" />
         </Link>
       </div>
     );
@@ -362,12 +362,12 @@ export default function CheckoutView() {
         {/* Contact */}
         <section>
           <h2 className="font-display text-xl font-medium text-forest-900">
-            1 · Delivery details
+            {t("checkout.deliveryDetails")}
           </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Full name
+                {t("checkout.fullName")}
               </span>
               <input
                 required
@@ -379,7 +379,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Phone number
+                {t("checkout.phoneNumber")}
               </span>
               <input
                 required
@@ -398,7 +398,7 @@ export default function CheckoutView() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Delivery area
+                {t("checkout.deliveryArea")}
               </span>
               <select
                 required
@@ -415,7 +415,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Area / neighbourhood
+                {t("checkout.areaNeighbourhood")}
               </span>
               <input
                 required
@@ -435,7 +435,7 @@ export default function CheckoutView() {
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              Full address
+              {t("checkout.fullAddress")}
             </span>
             <textarea
               required
@@ -449,8 +449,8 @@ export default function CheckoutView() {
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              Order note{" "}
-              <span className="font-normal text-ink-soft">(optional)</span>
+              {t("checkout.orderNote")}{" "}
+              <span className="font-normal text-ink-soft">{t("checkout.optional")}</span>
             </span>
             <input
               value={form.note}
@@ -464,7 +464,7 @@ export default function CheckoutView() {
         {/* Delivery estimate */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
-            2 · Delivery estimate
+            {t("checkout.deliveryEstimate")}
           </h2>
           <div className="mt-5 flex items-start gap-4 rounded-2xl bg-forest-900 p-5 text-ivory-100">
             <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
@@ -485,7 +485,7 @@ export default function CheckoutView() {
         {/* Payment */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
-            3 · Payment method
+            {t("checkout.paymentMethod")}
           </h2>
           <div className="mt-5 space-y-3">
             <label
@@ -505,15 +505,14 @@ export default function CheckoutView() {
               />
               <span className="flex-1">
                 <span className="block text-sm font-semibold text-ink">
-                  Cash on Delivery
+                  {t("checkout.cashOnDelivery")}
                 </span>
                 <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                  Pay in cash when your order arrives. Available inside the
-                  service area.
+                  {t("checkout.cashOnDeliveryText")}
                 </span>
               </span>
               <span className="rounded-full bg-ivory-100 px-3 py-1 text-xs font-semibold text-forest-800 ring-1 ring-line">
-                Primary
+                {t("checkout.primary")}
               </span>
             </label>
             <div className="flex items-center gap-4 rounded-2xl border border-dashed border-line bg-ivory-100/60 p-5">
@@ -525,13 +524,13 @@ export default function CheckoutView() {
               />
               <span className="flex-1">
                 <span className="block text-sm font-medium text-ink">
-                  bKash / Nagad / Cards{" "}
+                  {t("checkout.onlinePayment")}{" "}
                   <span className="ml-1 rounded-full bg-gold-200 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-gold-700">
-                    Soon
+                    {t("checkout.soon")}
                   </span>
                 </span>
                 <span className="mt-0.5 block text-xs text-ink-soft">
-                  Online payments arrive with the payment-gateway phase.
+                  {t("checkout.onlinePaymentText")}
                 </span>
               </span>
             </div>
@@ -544,7 +543,7 @@ export default function CheckoutView() {
           disabled={form.submitting}
           className="mt-10 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60 sm:w-auto sm:px-10"
         >
-          {form.submitting ? "Placing your order…" : "Place Order"}
+          {form.submitting ? t("checkout.placingOrder") : t("checkout.placeOrder")}
           {!form.submitting && <IconArrowRight className="h-4 w-4" />}
         </button>
         <p className="mt-4 text-xs leading-5 text-ink-soft">
@@ -564,7 +563,7 @@ export default function CheckoutView() {
       <aside>
         <div className="sticky top-28 rounded-3xl bg-paper p-7 ring-1 ring-line">
           <h2 className="font-display text-xl font-medium text-forest-900">
-            Your order
+            {t("checkout.yourOrder")}
           </h2>
           <p className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-forest-800">
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
@@ -602,7 +601,7 @@ export default function CheckoutView() {
           {/* Coupon (§56) */}
           <div className="mt-6 border-t border-line pt-5">
             <label className="mb-1.5 block text-xs font-medium text-ink">
-              Have a coupon code?
+              {t("checkout.haveCoupon")}
             </label>
             {activeCoupon ? (
               <div className="flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
@@ -618,7 +617,7 @@ export default function CheckoutView() {
                   }}
                   className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
                 >
-                  Remove
+                  {t("checkout.remove")}
                 </button>
               </div>
             ) : (
@@ -640,7 +639,7 @@ export default function CheckoutView() {
                   onClick={applyCoupon}
                   className="shrink-0 rounded-xl bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
                 >
-                  Apply
+                  {t("checkout.apply")}
                 </button>
               </div>
             )}
@@ -663,19 +662,19 @@ export default function CheckoutView() {
 
           <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
             <div className="flex justify-between">
-              <dt className="text-ink-soft">Subtotal</dt>
+              <dt className="text-ink-soft">{t("checkout.subtotal")}</dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
             {summary.discount > 0 && activeCoupon && (
               <div className="flex justify-between">
-                <dt className="text-ink-soft">Coupon · {activeCoupon.code}</dt>
+                <dt className="text-ink-soft">{t("checkout.coupon")} · {activeCoupon.code}</dt>
                 <dd className="font-medium text-emerald-700">
                   −{formatBdt(summary.discount)}
                 </dd>
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-ink-soft">Delivery · {zone.etaLabel}</dt>
+              <dt className="text-ink-soft">{t("checkout.delivery")} · {zone.etaLabel}</dt>
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
@@ -696,14 +695,13 @@ export default function CheckoutView() {
               </p>
             )}
             <div className="flex justify-between pt-2 text-base">
-              <dt className="font-semibold text-ink">Total (COD)</dt>
+              <dt className="font-semibold text-ink">{t("checkout.totalCod")}</dt>
               <dd className="font-bold text-ink">{formatBdt(summary.total)}</dd>
             </div>
           </dl>
           <p className="mt-5 flex items-start gap-2 rounded-xl bg-ivory-100 px-3.5 py-3 text-xs leading-5 text-ink-soft">
             <IconBox className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-            You will be able to follow this order on the Track page — no account
-            needed, just the order ID and phone number.
+            {t("checkout.followOrderHint")}
           </p>
         </div>
       </aside>

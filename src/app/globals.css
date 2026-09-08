@@ -42,6 +42,44 @@
 
 html {
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  scroll-padding-top: 6rem;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Lenis smooth scrolling — when active, disable native smooth to avoid double-ease */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Refined scrollbars — thin, quiet, matches the brand */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-line) 85%, var(--color-forest-300)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-line) 88%, var(--color-forest-200));
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-forest-200);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 body {
@@ -50,6 +88,7 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
 }
 
 /* Keep Bengali as its own typographic voice instead of inheriting display
@@ -189,12 +228,28 @@ body {
 @keyframes storefront-reveal {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(14px) scale(0.99);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes header-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 @media (prefers-reduced-motion: no-preference) {
   .bag-count-feedback,
@@ -202,7 +257,7 @@ body {
     animation: storefront-feedback 200ms ease-out;
   }
   .editorial-hero h1 {
-    animation: storefront-reveal 220ms ease-out both;
+    animation: storefront-reveal 520ms var(--ease-refined) both;
   }
 }
 
@@ -210,17 +265,22 @@ body {
 :root {
   --motion-fast: 160ms;
   --motion-standard: 240ms;
-  --motion-editorial: 420ms;
+  --motion-emphasis: 360ms;
+  --motion-editorial: 520ms;
   --ease-refined: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --shadow-soft: 0 4px 20px -8px rgb(20 41 31 / 12%);
   --shadow-elevated: 0 16px 48px -20px rgb(20 41 31 / 24%);
+  --shadow-header: 0 8px 32px -12px rgb(20 41 31 / 10%), 0 1px 0 rgb(20 41 31 / 6%);
+  --shadow-header-scrolled: 0 12px 40px -14px rgb(20 41 31 / 18%), 0 1px 0 rgb(20 41 31 / 8%);
 }
 .storefront-main h1,
 .storefront-main h2 {
   text-wrap: balance;
 }
 .storefront-main section {
-  scroll-margin-top: 9rem;
+  scroll-margin-top: 6rem;
 }
 .storefront-main button:not(:disabled),
 .drawer-panel button:not(:disabled) {
@@ -277,25 +337,59 @@ body {
   transform: scaleX(1);
 }
 .storefront-header {
-  box-shadow: 0 1px 0 rgb(20 41 31 / 4%);
+  box-shadow: var(--shadow-header);
+  /* Entrance animation – runs once, feels premium without being flashy */
+  animation: header-enter 640ms var(--ease-refined) both;
+  will-change: transform;
+  transform: translateZ(0);
 }
 .nav-editorial-link {
   position: relative;
-  padding-block: 1rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  /* Remove old bottom padding, use pill + underline hybrid */
 }
 .nav-editorial-link::after {
   content: "";
   position: absolute;
-  bottom: 7px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--color-gold-500);
+  bottom: 2px;
+  left: 0.9rem;
+  right: 0.9rem;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--color-gold-400), var(--color-gold-600));
+  border-radius: 999px;
   transform: scaleX(0);
-  transform-origin: left;
+  transform-origin: center;
   transition: transform var(--motion-standard) var(--ease-refined);
 }
-.nav-editorial-link[aria-current="page"]::after,
+.nav-editorial-link::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-forest-50);
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity var(--motion-fast) linear,
+    transform var(--motion-standard) var(--ease-refined);
+  z-index: -1;
+}
+.nav-editorial-link:hover::before {
+  opacity: 1;
+  transform: scale(1);
+}
+.nav-editorial-link[aria-current="page"]::before {
+  opacity: 1;
+  transform: scale(1);
+  background: var(--color-forest-900);
+}
+.nav-editorial-link[aria-current="page"] {
+  color: var(--color-ivory-50) !important;
+}
+.nav-editorial-link[aria-current="page"]::after {
+  transform: scaleX(0);
+}
 .nav-editorial-link:focus-visible::after {
   transform: scaleX(1);
 }
@@ -313,6 +407,7 @@ body {
 }
 .product-image-primary {
   transition: transform var(--motion-editorial) var(--ease-refined);
+  will-change: transform;
 }
 .product-image-secondary {
   transition: opacity var(--motion-editorial) var(--ease-refined);
@@ -349,6 +444,7 @@ body {
 }
 .storefront-bottom-nav {
   box-shadow: 0 -4px 24px rgb(20 41 31 / 5%);
+  backdrop-filter: blur(16px) saturate(1.2);
 }
 .storefront-bottom-nav > a {
   position: relative;
@@ -386,6 +482,9 @@ body {
   .editorial-text-link:hover::after,
   .nav-editorial-link:hover::after {
     transform: scaleX(1);
+  }
+  .nav-editorial-link[aria-current="page"]:hover::after {
+    transform: scaleX(0);
   }
   .product-card:hover .product-image-primary {
     transform: scale(1.025);
@@ -437,10 +536,10 @@ body {
 }
 @media (prefers-reduced-motion: no-preference) {
   .drawer-scrim {
-    animation: scrim-in 200ms ease-out;
+    animation: scrim-in 260ms var(--ease-refined);
   }
   .drawer-panel {
-    animation-duration: 260ms;
+    animation-duration: 360ms;
     animation-timing-function: var(--ease-refined);
   }
   .drawer-panel[data-drawer-side="right"] {
@@ -453,13 +552,16 @@ body {
     animation-name: drawer-bottom;
   }
   .hero-copy > p:first-child {
-    animation: storefront-reveal 300ms var(--ease-refined) both;
+    animation: storefront-reveal 520ms var(--ease-refined) both;
   }
   .hero-copy h1 {
-    animation: storefront-reveal 420ms var(--ease-refined) 60ms both;
+    animation: storefront-reveal 640ms var(--ease-refined) 80ms both;
+  }
+  .hero-copy > p:nth-of-type(2) {
+    animation: storefront-reveal 560ms var(--ease-refined) 160ms both;
   }
   .hero-copy .editorial-button {
-    animation: storefront-reveal 420ms var(--ease-refined) 120ms both;
+    animation: storefront-reveal 520ms var(--ease-refined) 240ms both;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -479,6 +581,8 @@ body {
 }
 .hero-cinematic-image {
   object-position: center center;
+  will-change: transform;
+  transform: translateZ(0);
 }
 .product-card-media {
   border-radius: 2px;
@@ -547,18 +651,27 @@ body {
    the content keeps the width. */
 .storefront-header {
   transition:
-    box-shadow var(--motion-standard) linear,
-    background-color var(--motion-standard) linear;
+    box-shadow var(--motion-standard) var(--ease-refined),
+    background-color var(--motion-standard) linear,
+    border-color var(--motion-standard) linear;
+  border-bottom: 1px solid transparent;
+  will-change: box-shadow, background-color;
 }
 .storefront-header[data-scrolled="true"] {
-  box-shadow: 0 12px 32px -22px rgb(20 41 31 / 45%);
+  box-shadow: var(--shadow-header-scrolled);
+  border-bottom-color: color-mix(in srgb, var(--color-line) 70%, transparent);
+}
+.storefront-header[data-scrolled="false"] {
+  box-shadow: var(--shadow-header);
 }
 .announcement-shell {
   display: grid;
   grid-template-rows: 1fr;
   transition:
-    grid-template-rows var(--motion-standard) var(--ease-refined),
-    opacity var(--motion-fast) linear;
+    grid-template-rows 420ms var(--ease-refined),
+    opacity 320ms var(--ease-refined),
+    transform 420ms var(--ease-refined);
+  will-change: grid-template-rows, opacity;
 }
 .announcement-shell > * {
   min-height: 0;
@@ -567,16 +680,97 @@ body {
 .storefront-header[data-scrolled="true"] .announcement-shell {
   grid-template-rows: 0fr;
   opacity: 0;
+  transform: translateY(-4px);
 }
 .storefront-header .header-bar {
   transition:
-    height var(--motion-standard) var(--ease-refined),
-    background-color var(--motion-standard) linear,
-    backdrop-filter var(--motion-standard) linear;
+    height 420ms var(--ease-refined),
+    background-color 360ms var(--ease-refined),
+    backdrop-filter 360ms linear,
+    box-shadow 360ms linear;
+  will-change: height, background-color;
+  position: relative;
 }
-.storefront-header .brand-lockup img,
-.storefront-header .brand-lockup span {
-  transition: font-size var(--motion-standard) var(--ease-refined);
+.storefront-header .header-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(255 253 247 / 0) 0%, rgb(255 253 247 / 0) 100%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 360ms linear;
+}
+.storefront-header[data-scrolled="true"] .header-bar::after {
+  opacity: 1;
+}
+.storefront-header .brand-lockup {
+  transition: transform var(--motion-standard) var(--ease-refined);
+}
+.storefront-header .brand-lockup:hover {
+  transform: translateY(-0.5px);
+}
+.storefront-header .brand-lockup img {
+  transition:
+    height var(--motion-standard) var(--ease-refined),
+    transform var(--motion-standard) var(--ease-refined),
+    filter var(--motion-standard) linear;
+  will-change: height, transform;
+}
+.storefront-header .brand-lockup:hover img {
+  transform: scale(1.03) rotate(-0.5deg);
+}
+
+/* Header scroll progress — thin gold line that grows with scroll */
+.header-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--color-gold-300), var(--color-gold-600));
+  transform-origin: left;
+  transform: scaleX(var(--scroll-progress, 0));
+  opacity: 0;
+  transition: opacity 240ms linear;
+}
+.storefront-header[data-scrolled="true"] .header-progress {
+  opacity: 1;
+}
+
+/* Header icon buttons — lift on hover, press feedback */
+.header-icon-btn {
+  position: relative;
+  isolation: isolate;
+  transition:
+    background-color var(--motion-fast) linear,
+    color var(--motion-fast) linear,
+    transform var(--motion-fast) var(--ease-refined),
+    box-shadow var(--motion-standard) var(--ease-refined);
+}
+.header-icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-forest-50);
+  opacity: 0;
+  transform: scale(0.88);
+  transition:
+    opacity var(--motion-fast) linear,
+    transform var(--motion-standard) var(--ease-refined);
+  z-index: -1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .header-icon-btn:hover {
+    transform: translateY(-1px);
+  }
+  .header-icon-btn:hover::before {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .header-icon-btn:active {
+    transform: translateY(0) scale(0.97);
+  }
 }
 
 /* Cards: a whisper of lift instead of a hard border. */
@@ -742,4 +936,30 @@ body {
     transform: translateY(-2px);
     box-shadow: var(--shadow-soft);
   }
+}
+
+/* Smooth reveal utility — used by JS Reveal component */
+.reveal-pending {
+  opacity: 0;
+  transform: translateY(18px) scale(0.985);
+  filter: blur(3px);
+  will-change: transform, opacity, filter;
+}
+.reveal-ready {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition:
+    opacity 640ms var(--ease-refined),
+    transform 640ms var(--ease-refined),
+    filter 640ms var(--ease-refined);
+}
+
+/* Subtle page-wide fade-in on load */
+@keyframes page-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.storefront-main {
+  animation: page-fade 480ms var(--ease-refined) both;
 }

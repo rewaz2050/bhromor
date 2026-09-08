@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CartProvider } from "@/components/cart/cart-provider";
 import BagDrawer from "@/components/cart/bag-drawer";
 import CustomerProvider from "@/components/account/customer-provider";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -47,23 +48,25 @@ export default function SiteLayout({
   children: React.ReactNode;
 }) {
   return (
-    <CartProvider>
-      <CustomerProvider>
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-forest-800 focus:px-5 focus:py-2.5 focus:text-sm focus:text-ivory-50"
-        >
-          Skip to content
-        </a>
-        <Header />
-        <main id="main" className="storefront-main flex-1">
-          {children}
-        </main>
-        <Footer />
-        {/* Thumb-reach navigation on phones (§67) */}
-        <BottomNav />
-        <BagDrawer />
-      </CustomerProvider>
-    </CartProvider>
+    <LanguageProvider>
+      <CartProvider>
+        <CustomerProvider>
+          <a
+            href="#main"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-forest-800 focus:px-5 focus:py-2.5 focus:text-sm focus:text-ivory-50"
+          >
+            Skip to content
+          </a>
+          <Header />
+          <main id="main" className="storefront-main flex-1">
+            {children}
+          </main>
+          <Footer />
+          {/* Thumb-reach navigation on phones (§67) */}
+          <BottomNav />
+          <BagDrawer />
+        </CustomerProvider>
+      </CartProvider>
+    </LanguageProvider>
   );
 }

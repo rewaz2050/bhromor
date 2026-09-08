@@ -25,8 +25,10 @@ import {
   IconTrash,
   IconTruck,
 } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function CartView() {
+  const { t } = useLanguage();
   const { detail, updateQty, removeItem, subtotal } = useCart();
   /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
   const { activeZones } = useZones();
@@ -40,15 +42,12 @@ export default function CartView() {
           <IconBag className="h-9 w-9" />
         </span>
         <h1 className="font-display mt-8 text-3xl font-medium text-forest-900">
-          Your cart is empty
+          {t("cart.yourCartIsEmpty")}
         </h1>
-        <p className="mt-3 max-w-sm text-ink-soft">
-          Discover something you may love — our catalog is small, curated and
-          delivered fast.
-        </p>
+        <p className="mt-3 max-w-sm text-ink-soft">{t("cart.discoverHint")}</p>
         <div className="mt-8">
           <ButtonLink href="/shop" size="lg">
-            Explore products <IconArrowRight className="h-4 w-4" />
+            {t("cart.exploreProducts")} <IconArrowRight className="h-4 w-4" />
           </ButtonLink>
         </div>
       </div>
@@ -95,7 +94,7 @@ export default function CartView() {
                         {product.name}
                       </Link>
                       <p className="mt-1 text-xs text-ink-soft">
-                        Variant: {line.variantLabel} · SKU {product.sku}
+                        {t("cart.variant")} {line.variantLabel} · {t("cart.sku")} {product.sku}
                       </p>
                     </div>
                     <p className="shrink-0 text-sm font-semibold text-ink">
@@ -110,7 +109,7 @@ export default function CartView() {
                         onClick={() =>
                           updateQty(product.id, line.variantLabel, line.qty - 1)
                         }
-                        aria-label={`Decrease quantity of ${product.name}`}
+                        aria-label={`${t("product.decreaseQuantity")} ${product.name}`}
                         className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100"
                       >
                         <IconMinus className="h-3.5 w-3.5" />
@@ -127,7 +126,7 @@ export default function CartView() {
                           updateQty(product.id, line.variantLabel, line.qty + 1)
                         }
                         disabled={line.qty >= MAX_LINE_QTY}
-                        aria-label={`Increase quantity of ${product.name}`}
+                        aria-label={`${t("product.increaseQuantity")} ${product.name}`}
                         title={
                           line.qty >= MAX_LINE_QTY
                             ? `Maximum ${MAX_LINE_QTY} per item`
@@ -143,11 +142,11 @@ export default function CartView() {
                       onClick={() =>
                         removeItem(product.id, line.variantLabel)
                       }
-                      aria-label={`Remove ${product.name} from cart`}
+                      aria-label={`${t("cart.remove")} ${product.name} from cart`}
                       className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-ink-soft transition-colors hover:bg-red-50 hover:text-red-700"
                     >
                       <IconTrash className="h-4 w-4" />
-                      <span className="hidden sm:inline">Remove</span>
+                      <span className="hidden sm:inline">{t("cart.remove")}</span>
                     </button>
                   </div>
                 </div>
@@ -158,7 +157,7 @@ export default function CartView() {
 
         <div className="mt-6">
           <ButtonLink href="/shop" variant="ghost" size="sm" className="-ml-3">
-            ← Continue shopping
+            ← {t("cart.continueShopping")}
           </ButtonLink>
         </div>
       </div>
@@ -167,7 +166,7 @@ export default function CartView() {
       <aside>
         <div className="sticky top-28 rounded-3xl bg-paper p-8 ring-1 ring-line">
           <h2 className="font-display text-2xl font-medium text-forest-900">
-            Order summary
+            {t("cart.orderSummary")}
           </h2>
           <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-forest-800">
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
@@ -176,17 +175,17 @@ export default function CartView() {
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">
-                Subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})
+                {t("cart.subtotal")} ({itemCount} {itemCount === 1 ? t("cart.item") : t("cart.items")})
               </dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-ink-soft">
-                Delivery{!freeDelivery && " (from)"}
+                {freeDelivery ? t("cart.delivery") : t("cart.deliveryFrom")}
               </dt>
               <dd className="font-medium text-ink">
                 {deliveryFee === 0 ? (
-                  <span className="text-forest-700">Free</span>
+                  <span className="text-forest-700">{t("cart.free")}</span>
                 ) : (
                   formatBdt(deliveryFee)
                 )}
@@ -194,17 +193,16 @@ export default function CartView() {
             </div>
             {freeDelivery ? (
               <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
-                Free delivery unlocked on this order.
+                {t("cart.freeDeliveryUnlocked")}
               </p>
             ) : (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
-                Add {formatBdt(missingForFree)} more for free delivery. The
-                exact charge depends on the area you pick at checkout.
+                {t("cart.addMoreForFree")} {formatBdt(missingForFree)} {t("cart.moreForFreeDeliverySuffix")}
               </p>
             )}
             <div className="flex justify-between border-t border-line pt-4 text-base">
               <dt className="font-semibold text-ink">
-                {freeDelivery ? "Total" : "Estimated total"}
+                {freeDelivery ? t("cart.total") : t("cart.estimatedTotal")}
               </dt>
               <dd className="font-bold text-ink">{formatBdt(total)}</dd>
             </div>
@@ -215,7 +213,7 @@ export default function CartView() {
             size="lg"
             className="mt-7 w-full"
           >
-            Proceed to Checkout <IconArrowRight className="h-4 w-4" />
+            {t("cart.proceedToCheckout")} <IconArrowRight className="h-4 w-4" />
           </ButtonLink>
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery

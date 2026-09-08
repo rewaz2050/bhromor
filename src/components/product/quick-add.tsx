@@ -9,6 +9,7 @@ import { useCart } from "@/components/cart/cart-provider";
 import Drawer from "@/components/ui/drawer";
 import { Price } from "@/components/ui/primitives";
 import { IconClose } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function QuickAdd({
   product,
@@ -17,6 +18,7 @@ export default function QuickAdd({
   product: Product;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const [size, setSize] = useState(
     product.sizes.length === 1 ? product.sizes[0] : "",
   );
@@ -35,7 +37,7 @@ export default function QuickAdd({
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-widest text-gold-600">
-            A little everyday comfort
+            {t("product.quickAddIntro")}
           </p>
           <h2 className="mt-3 font-display text-3xl text-forest-900">
             {product.name}
@@ -44,7 +46,7 @@ export default function QuickAdd({
         <button
           onClick={onClose}
           className="flex h-11 w-11 shrink-0 items-center justify-center"
-          aria-label="Close product options"
+          aria-label={t("header.closeMenu")}
         >
           <IconClose />
         </button>
@@ -55,7 +57,7 @@ export default function QuickAdd({
       {product.sizes.length > 0 && (
         <fieldset className="mt-7">
           <legend className="mb-3 text-xs uppercase tracking-widest">
-            Select size
+            {t("shopBrowser.size")}
           </legend>
           <div className="flex flex-wrap gap-2">
             {product.sizes.map((s) => (
@@ -75,7 +77,7 @@ export default function QuickAdd({
       {product.colors.length > 0 && (
         <fieldset className="mt-5">
           <legend className="mb-3 text-xs uppercase tracking-widest">
-            Colour
+            {t("shopBrowser.colour")}
           </legend>
           <div className="flex flex-wrap gap-2">
             {product.colors.map((c) => (
@@ -95,7 +97,7 @@ export default function QuickAdd({
         <span className="text-xs uppercase tracking-widest">Quantity</span>
         <div className="flex items-center border border-line">
           <button
-            aria-label="Decrease quantity"
+            aria-label={t("product.decreaseQuantity")}
             disabled={qty <= 1}
             onClick={() => setQty(qty - 1)}
             className="h-11 w-11 disabled:opacity-30"
@@ -104,7 +106,7 @@ export default function QuickAdd({
           </button>
           <span aria-live="polite">{qty}</span>
           <button
-            aria-label="Increase quantity"
+            aria-label={t("product.increaseQuantity")}
             disabled={qty >= MAX_LINE_QTY}
             onClick={() => setQty(qty + 1)}
             className="h-11 w-11 disabled:opacity-30"
@@ -127,10 +129,10 @@ export default function QuickAdd({
         className="editorial-button mt-6 w-full justify-center bg-forest-800 text-white disabled:opacity-40"
       >
         {!product.inStock
-          ? "Sold out"
+          ? t("product.soldOut")
           : ready
-            ? "Add to Bag →"
-            : "Select a size to continue"}
+            ? t("product.addToBag")
+            : t("product.selectSize")}
       </button>
       <Link
         href={`/product/${product.slug}`}
