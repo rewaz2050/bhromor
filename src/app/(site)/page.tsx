@@ -200,11 +200,14 @@ function CollectionsSection() {
                 </div>
 
                 <div className="mt-5 border-b border-line pb-5">
-                  <p lang="bn" className="font-bengali text-sm font-medium leading-6 text-gold-700">
-                    {lang === "bn" ? category.nameBn : category.nameBn}
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-gold-700">
+                    {lang === "bn" ? category.nameBn : category.name}
                   </p>
                   <div className="mt-1 flex items-end justify-between gap-4">
-                    <h3 className="font-display text-3xl font-normal tracking-[-0.025em] text-forest-900">
+                    <h3
+                      lang={lang === "bn" ? "bn" : undefined}
+                      className={`font-display text-3xl font-normal tracking-[-0.025em] text-forest-900 ${lang === "bn" ? "font-bengali text-2xl" : ""}`}
+                    >
                       {lang === "bn" ? category.nameBn : category.name}
                     </h3>
                     <span className="pb-1 text-[0.6rem] uppercase tracking-[0.16em] text-ink-soft">

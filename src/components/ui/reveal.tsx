@@ -30,6 +30,11 @@ export default function Reveal({
       return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (preference.matches) return;
+    // Prepare initial hidden state for premium reveal — avoids flash before observer fires
+    element.style.opacity = "0";
+    element.style.transform = "translateY(18px) scale(0.985)";
+    element.style.filter = "blur(4px)";
+    element.style.willChange = "transform, opacity, filter";
     let animation: Animation | undefined;
     const observer = new IntersectionObserver(
       (entries) => {
@@ -49,14 +54,29 @@ export default function Reveal({
               fill: "both",
             },
           );
-          // Hint for compositor
-          element.style.willChange = "transform, opacity, filter";
           animation.onfinish = () => {
+            element.style.opacity = "";
+            element.style.transform = "";
+            element.style.filter = "";
             element.style.willChange = "auto";
           };
+          // Fallback for browsers where onfinish may not fire (e.g., test mocks)
+          setTimeout(() => {
+            if (element.style.opacity === "0") {
+              element.style.opacity = "1";
+              element.style.transform = "translateY(0) scale(1)";
+              element.style.filter = "blur(0px)";
+            }
+          }, 640 + delay + 50);
+        } else {
+          // Reduced motion was enabled after initial hide — restore visibility
+          element.style.opacity = "";
+          element.style.transform = "";
+          element.style.filter = "";
+          element.style.willChange = "auto";
         }
       },
-      { threshold },
+      { threshold, rootMargin: "0px 0px -8% 0px" },
     );
     const reduce = () => {
       if (preference.matches) {
