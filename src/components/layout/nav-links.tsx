@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 export interface NavItem {
   label: string;
@@ -15,10 +15,19 @@ export interface NavItem {
  */
 export default function NavLinks({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
+  const params = useSearchParams();
 
   const isActive = (href: string) => {
     const [path] = href.split(/[?#]/);
     if (!path || path === "/") return false;
+    const query = href.split("?")[1];
+    if (
+      query &&
+      !Array.from(new URLSearchParams(query)).every(
+        ([key, value]) => params.get(key) === value,
+      )
+    )
+      return false;
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
@@ -34,10 +43,8 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`whitespace-nowrap text-[0.65rem] font-medium uppercase tracking-[0.13em] transition-colors ${
-              active
-                ? "text-forest-900 underline decoration-gold-400 decoration-2 underline-offset-8"
-                : "text-ink-soft hover:text-forest-800"
+            className={`nav-editorial-link whitespace-nowrap text-[0.65rem] font-medium uppercase tracking-[0.13em] transition-colors ${
+              active ? "text-forest-900" : "text-ink-soft hover:text-forest-800"
             }`}
           >
             {item.label}

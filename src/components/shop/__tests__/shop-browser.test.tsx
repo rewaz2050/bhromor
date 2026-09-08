@@ -186,4 +186,49 @@ describe("ShopBrowser", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(gridNames()).toHaveLength(count);
   });
+  it("opens a mood edit and clears its filter chip", () => {
+    renderShop({ initialMood: "festive" });
+    const expected = PRODUCTS.filter((p) =>
+      ["Panjabi", "Three-Piece", "Dresses"].includes(p.subCategory),
+    ).map((p) => p.name);
+    expect(gridNames().sort()).toEqual(expected.sort());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Style: Festive filter" }),
+    );
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("applies incoming budget and mood links instead of retaining stale filters", () => {
+    const { rerender } = renderShop({ initialMood: "festive" });
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          initialCategory="all"
+          initialNew={false}
+          initialPrice="under500"
+        />
+      </CartProvider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Remove Style: Festive filter" }),
+    ).not.toBeInTheDocument();
+    expect(gridNames().sort()).toEqual(
+      PRODUCTS.filter((p) => p.price < bdt(500))
+        .map((p) => p.name)
+        .sort(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("combines mood and price filters and recovers from an empty result", () => {
+    renderShop({ initialMood: "festive", initialPrice: "under500" });
+    expect(
+      screen.getByRole("heading", { name: "No products found" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
 });

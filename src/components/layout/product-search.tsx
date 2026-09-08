@@ -45,7 +45,7 @@ export default function ProductSearch() {
         label="Search the collection"
         side="right"
         initialFocusRef={inputRef}
-        panelClassName="!w-full !max-w-lg"
+        panelClassName="!w-full !max-w-none lg:px-[max(2rem,calc((100vw-900px)/2))]"
       >
         <div className="sticky top-0 z-10 border-b border-line bg-ivory-50 px-5 pb-5 pt-6 sm:px-8">
           <div className="mb-5 flex items-center justify-between gap-3">
@@ -54,7 +54,7 @@ export default function ProductSearch() {
                 Find your everyday favourite
               </p>
               <h2 className="mt-2 font-display text-2xl text-forest-900">
-                Search the collection
+                What are you looking for?
               </h2>
             </div>
             <button
@@ -119,6 +119,26 @@ export default function ProductSearch() {
                     {category.name}
                   </Link>
                 ))}
+              </div>
+            </div>
+          )}
+          {!searching && (
+            <div className="mb-8">
+              <h3 className="mb-3 text-xs uppercase tracking-widest text-ink-soft">
+                Find your essentials
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {["Panjabi", "Shirt", "Lungi", "Gamcha", "Three-Piece"].map(
+                  (term) => (
+                    <button
+                      key={term}
+                      onClick={() => setQuery(term)}
+                      className="min-h-11 border border-line px-4 text-sm hover:bg-forest-100"
+                    >
+                      {term}
+                    </button>
+                  ),
+                )}
               </div>
             </div>
           )}

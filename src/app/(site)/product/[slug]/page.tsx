@@ -1,11 +1,8 @@
+import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  PRODUCTS,
-  getProductBySlug,
-  productsByCategory,
-} from "@/lib/catalog";
+import { PRODUCTS, getProductBySlug, productsByCategory } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
@@ -45,9 +42,15 @@ export default async function ProductPage({ params }: PageProps) {
   const product = getProductBySlug(slug);
   if (!product) notFound();
 
+  const complements = completeTheLook(product, PRODUCTS);
   const related = productsByCategory(product.category)
     .filter((p) => p.id !== product.id)
-    .concat(PRODUCTS.filter((p) => p.category !== product.category && p.featured))
+    .concat(
+      PRODUCTS.filter((p) => p.category !== product.category && p.featured),
+    )
+    .filter(
+      (p) => isDiscoverable(p) && !complements.some((item) => item.id === p.id),
+    )
     .slice(0, 4);
 
   const jsonLd = {
@@ -70,7 +73,10 @@ export default async function ProductPage({ params }: PageProps) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       {/* Breadcrumb */}
-      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-ink-soft">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex items-center gap-1.5 text-sm text-ink-soft"
+      >
         <Link href="/" className="transition-colors hover:text-forest-700">
           Home
         </Link>
@@ -99,7 +105,7 @@ export default async function ProductPage({ params }: PageProps) {
 
       {/* Tabs */}
       <div className="mt-16 grid gap-8 lg:grid-cols-3">
-        <div className="rounded-3xl bg-paper p-8 ring-1 ring-line lg:col-span-2">
+        <div className="rounded-md bg-paper p-8 ring-1 ring-line lg:col-span-2">
           <h2 className="font-display text-2xl font-medium text-forest-900">
             Product details
           </h2>
@@ -124,7 +130,7 @@ export default async function ProductPage({ params }: PageProps) {
         </div>
 
         <aside className="space-y-6">
-          <div className="rounded-3xl bg-forest-900 p-8 text-ivory-100">
+          <div className="rounded-md bg-forest-900 p-8 text-ivory-100">
             <IconLeaf className="h-6 w-6 text-gold-300" />
             <h2 className="font-display mt-4 text-xl font-medium">
               Delivery estimate
@@ -147,7 +153,7 @@ export default async function ProductPage({ params }: PageProps) {
               get free delivery.
             </p>
           </div>
-          <div className="rounded-3xl bg-paper p-8 ring-1 ring-line">
+          <div className="rounded-md bg-paper p-8 ring-1 ring-line">
             <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-ink">
               Care &amp; returns
             </h2>
@@ -171,6 +177,29 @@ export default async function ProductPage({ params }: PageProps) {
       {/* Reviews (§30) */}
       <ReviewsSection product={product} />
 
+      {complements.length > 0 && (
+        <section
+          aria-labelledby="complete-look-heading"
+          className="mt-20 border-y border-line bg-ivory-100/60 p-6 sm:p-10"
+        >
+          <Eyebrow>Better together</Eyebrow>
+          <h2
+            id="complete-look-heading"
+            className="mt-3 font-display text-3xl text-forest-900 sm:text-4xl"
+          >
+            Complete the look
+          </h2>
+          <p className="mt-3 max-w-lg text-sm leading-7 text-ink-soft">
+            A thoughtful pairing for your {product.subCategory.toLowerCase()}.
+            Choose each piece in the size and colour that feels right.
+          </p>
+          <div className="mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
+            {complements.map((item) => (
+              <ProductCard key={item.id} product={item} />
+            ))}
+          </div>
+        </section>
+      )}
       {/* Related */}
       {related.length > 0 && (
         <section className="mt-20">

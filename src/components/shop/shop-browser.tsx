@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Category, CategoryId, Product } from "@/lib/catalog";
+import {
+  MOODS,
+  matchesMood,
+  isDiscoverable,
+  type MoodId,
+} from "@/lib/merchandising";
 import { matchesProduct } from "@/lib/product-search";
 import { bdt } from "@/lib/format";
 import ProductCard from "@/components/product/product-card";
@@ -35,6 +41,7 @@ const PRICE_BANDS: {
   max?: number;
 }[] = [
   { key: "any", label: "Any price" },
+  { key: "under500", label: "Under ৳500", max: 500 },
   { key: "under1000", label: "Under ৳1,000", max: 1000 },
   { key: "1000-1500", label: "৳1,000 – ৳1,500", min: 1000, max: 1500 },
   { key: "1500-2500", label: "৳1,500 – ৳2,500", min: 1500, max: 2500 },
@@ -78,12 +85,16 @@ export default function ShopBrowser({
   initialCategory,
   initialNew,
   initialQuery = "",
+  initialMood = "",
+  initialPrice = "any",
 }: {
   products: Product[];
   categories: Category[];
   initialCategory: CategoryFilter;
   initialNew: boolean;
   initialQuery?: string;
+  initialMood?: MoodId | "";
+  initialPrice?: "any" | "under500";
 }) {
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
@@ -91,7 +102,8 @@ export default function ShopBrowser({
   const [sort, setSort] = useState<SortKey>("featured");
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
-  const [priceBand, setPriceBand] = useState<string>("any");
+  const [mood, setMood] = useState<MoodId | "">(initialMood);
+  const [priceBand, setPriceBand] = useState<string>(initialPrice);
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -100,25 +112,40 @@ export default function ShopBrowser({
    * `/shop?category=men` to `/shop?filter=new` (header/footer links) left the
    * old filters on screen — the page looked frozen.
    */
-  const lastUrlState = useRef({ initialCategory, initialNew, initialQuery });
+  const lastUrlState = useRef({
+    initialCategory,
+    initialNew,
+    initialQuery,
+    initialMood,
+    initialPrice,
+  });
   useEffect(() => {
     const prev = lastUrlState.current;
     if (
       prev.initialCategory !== initialCategory ||
       prev.initialNew !== initialNew ||
+      prev.initialMood !== initialMood ||
+      prev.initialPrice !== initialPrice ||
       prev.initialQuery !== initialQuery
     ) {
-      lastUrlState.current = { initialCategory, initialNew, initialQuery };
+      lastUrlState.current = {
+        initialCategory,
+        initialNew,
+        initialQuery,
+        initialMood,
+        initialPrice,
+      };
       setCategory(initialCategory);
       setOnlyNew(initialNew);
       setQ(initialQuery);
       setSizes([]);
       setColors([]);
-      setPriceBand("any");
+      setPriceBand(initialPrice);
+      setMood(initialMood);
       setOnlyInStock(false);
       setSort("featured");
     }
-  }, [initialCategory, initialNew, initialQuery]);
+  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice]);
 
   const allSizes = useMemo(() => collectSizes(products), [products]);
   const allColors = useMemo(() => collectColors(products), [products]);
@@ -127,7 +154,10 @@ export default function ShopBrowser({
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const visible = useMemo(() => {
-    let list = products.map((p, index) => ({ p, index }));
+    let list = products
+      .filter(isDiscoverable)
+      .map((p, index) => ({ p, index }));
+    if (mood) list = list.filter(({ p }) => matchesMood(p, mood));
     if (category !== "all")
       list = list.filter(({ p }) => p.category === category);
     if (onlyNew) list = list.filter(({ p }) => p.isNew);
@@ -170,11 +200,13 @@ export default function ShopBrowser({
     sizes,
     colors,
     priceBand,
+    mood,
     q,
     sort,
   ]);
 
   const hasActiveFilters =
+    mood !== "" ||
     category !== "all" ||
     onlyNew ||
     onlyInStock ||
@@ -184,6 +216,7 @@ export default function ShopBrowser({
     q.trim() !== "";
 
   const resetAll = () => {
+    setMood("");
     setCategory("all");
     setOnlyNew(false);
     setSizes([]);
@@ -200,6 +233,21 @@ export default function ShopBrowser({
    *  the two copies do not fight over the same browser radio group. */
   const renderFilters = (scope: string) => (
     <div className="space-y-8">
+      <Fieldset title="Style edit">
+        <div className="flex flex-wrap gap-2">
+          {MOODS.map((edit) => (
+            <button
+              type="button"
+              key={edit.id}
+              aria-pressed={mood === edit.id}
+              onClick={() => setMood(mood === edit.id ? "" : edit.id)}
+              className={`min-h-11 border px-3 text-xs ${mood === edit.id ? "border-forest-800 bg-forest-800 text-white" : "border-line text-ink-soft"}`}
+            >
+              {edit.name}
+            </button>
+          ))}
+        </div>
+      </Fieldset>
       {/* Categories */}
       <Fieldset title="Categories">
         <div className="space-y-1">
@@ -328,6 +376,15 @@ export default function ShopBrowser({
   );
 
   const activeFilters = [
+    ...(mood
+      ? [
+          {
+            key: "mood",
+            label: `Style: ${MOODS.find((m) => m.id === mood)?.name}`,
+            remove: () => setMood(""),
+          },
+        ]
+      : []),
     ...(category !== "all"
       ? [
           {
@@ -402,7 +459,7 @@ export default function ShopBrowser({
           >
             Filters
             {activeFilterCount > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-500 px-1.5 text-[0.65rem] font-bold text-white">
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-700 px-1.5 text-[0.65rem] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}

@@ -1,5 +1,6 @@
 "use client";
 
+import SizeGuide from "./size-guide";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
@@ -17,12 +18,15 @@ import {
 } from "@/components/ui/icons";
 
 export default function PurchasePanel({ product }: { product: Product }) {
-  const { addItem } = useCart();
+  const { addItem, openBag } = useCart();
   const router = useRouter();
 
-  const hasSizes = product.sizes.length > 1 || !/free|one size/i.test(product.sizes[0] ?? "");
+  const hasSizes =
+    product.sizes.length > 1 || !/free|one size/i.test(product.sizes[0] ?? "");
   const [color, setColor] = useState(product.colors[0] ?? "");
-  const [size, setSize] = useState(product.sizes[0] ?? "");
+  const [size, setSize] = useState(
+    product.sizes.length === 1 ? product.sizes[0] : "",
+  );
   const [qty, setQty] = useState(1);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -50,6 +54,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const handleAdd = () => {
     addItem(product.id, variantLabel, qty);
     addedFeedback();
+    openBag();
   };
 
   const handleBuyNow = () => {
@@ -58,7 +63,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   };
 
   return (
-    <div>
+    <div className="purchase-panel">
       <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-ink-soft">
         {product.category} · {product.subCategory}
       </p>
@@ -76,7 +81,16 @@ export default function PurchasePanel({ product }: { product: Product }) {
       </div>
 
       <div className="mt-5">
-        <Price value={product.price} compareAt={product.compareAtPrice} size="lg" />
+        <Price
+          value={product.price}
+          compareAt={product.compareAtPrice}
+          size="lg"
+        />
+        {product.compareAtPrice && product.compareAtPrice > product.price && (
+          <p className="mt-2 text-sm font-medium text-forest-700">
+            Save {formatBdt(product.compareAtPrice - product.price)}
+          </p>
+        )}
         <p className="mt-1 text-xs text-ink-soft">
           Price is inclusive of VAT. Delivery charge calculated at checkout by
           area.
@@ -91,7 +105,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
       <div className="mt-5 flex items-center gap-2 text-sm">
         {product.inStock ? (
           <>
-            <span className="h-2 w-2 rounded-full bg-forest-500" />
+            <span className="h-2 w-2 rounded-sm bg-forest-500" />
             <span className="text-forest-800">In stock</span>
             {product.lowStock && (
               <span className="text-ink-soft">
@@ -101,7 +115,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           </>
         ) : (
           <>
-            <span className="h-2 w-2 rounded-full bg-gold-500" />
+            <span className="h-2 w-2 rounded-sm bg-gold-500" />
             <span className="text-gold-700">Sold out — check back soon</span>
           </>
         )}
@@ -120,7 +134,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
                 type="button"
                 onClick={() => setColor(c)}
                 aria-pressed={color === c}
-                className={`rounded-full px-4 py-2 text-sm transition-colors ${
+                className={`rounded-sm px-4 py-2 text-sm transition-colors ${
                   color === c
                     ? "bg-forest-800 font-medium text-ivory-50"
                     : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
@@ -135,9 +149,12 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
       {/* Size */}
       <div className="mt-6">
-        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-          Size
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+            Size
+          </p>
+          <SizeGuide product={product} />
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {product.sizes.map((s) => (
             <button
@@ -145,7 +162,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
               type="button"
               onClick={() => setSize(s)}
               aria-pressed={size === s}
-              className={`h-11 min-w-11 rounded-full px-4 text-sm transition-colors ${
+              className={`h-11 min-w-11 rounded-sm px-4 text-sm transition-colors ${
                 size === s
                   ? "bg-forest-800 font-semibold text-ivory-50"
                   : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
@@ -159,13 +176,13 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
       {/* Quantity + CTAs */}
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex h-14 items-center justify-between rounded-full bg-paper px-2 ring-1 ring-line sm:w-36">
+        <div className="flex h-14 items-center justify-between rounded-sm bg-paper px-2 ring-1 ring-line sm:w-36">
           <button
             type="button"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
             disabled={qty <= 1}
             aria-label="Decrease quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-sm text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconMinus className="h-4 w-4" />
           </button>
@@ -177,7 +194,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
             onClick={() => setQty((n) => Math.min(MAX_LINE_QTY, n + 1))}
             disabled={qty >= MAX_LINE_QTY}
             aria-label="Increase quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-sm text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconPlus className="h-4 w-4" />
           </button>
@@ -186,16 +203,16 @@ export default function PurchasePanel({ product }: { product: Product }) {
         <button
           type="button"
           onClick={handleAdd}
-          className="h-14 flex-1 rounded-full bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
-          disabled={!product.inStock}
+          className="h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
+          disabled={!product.inStock || (product.sizes.length > 0 && !size)}
         >
-          Add to Cart
+          {product.sizes.length > 0 && !size ? "Select a size" : "Add to Bag"}
         </button>
         <button
           type="button"
           onClick={handleBuyNow}
-          className="h-14 flex-1 rounded-full bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-colors hover:bg-gold-400 disabled:opacity-40"
-          disabled={!product.inStock}
+          className="h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-colors hover:bg-gold-400 disabled:opacity-40"
+          disabled={!product.inStock || (product.sizes.length > 0 && !size)}
         >
           Buy Now
         </button>
@@ -205,7 +222,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
         <p
           role="status"
           aria-live="polite"
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-sm font-medium text-forest-900"
+          className="mt-4 inline-flex items-center gap-2 rounded-sm bg-forest-100 px-4 py-2 text-sm font-medium text-forest-900"
         >
           <IconCheck className="h-4 w-4" /> {feedback}
         </p>
@@ -243,7 +260,7 @@ function TrustPill({
   text: string;
 }) {
   return (
-    <div className="rounded-2xl bg-ivory-100 p-4 ring-1 ring-line">
+    <div className="rounded-md bg-ivory-100 p-4 ring-1 ring-line">
       <Icon className="h-5 w-5 text-forest-700" />
       <p className="mt-2.5 text-sm font-semibold text-ink">{title}</p>
       <p className="mt-1 text-xs leading-5 text-ink-soft">{text}</p>

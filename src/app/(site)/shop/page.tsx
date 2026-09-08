@@ -1,3 +1,4 @@
+import { resolveMood } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -18,6 +19,8 @@ export default async function ShopPage({
     category?: string | string[];
     filter?: string | string[];
     q?: string | string[];
+    mood?: string | string[];
+    price?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -92,6 +95,8 @@ export default async function ShopPage({
           initialCategory={category}
           initialNew={onlyNew}
           initialQuery={query}
+          initialMood={resolveMood(params.mood)}
+          initialPrice={params.price === "under500" ? "under500" : "any"}
         />
       </div>
     </>

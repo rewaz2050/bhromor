@@ -1,6 +1,12 @@
 "use client";
 
+import { ShopByMood, BudgetEdit } from "@/components/shop/editorial-sections";
+import CustomerStories from "@/components/reviews/customer-stories";
+import BrandJournal from "@/components/shop/brand-journal";
+import Reveal from "@/components/ui/reveal";
 import Link from "next/link";
+import { formatBdt } from "@/lib/format";
+import DeliveryChecker from "@/components/shop/delivery-checker";
 import Image from "next/image";
 import {
   CATEGORIES,
@@ -26,11 +32,16 @@ export default function Home() {
   return (
     <>
       {s.hero && <Hero cms={settings} />}
+      {s.deliveryPromise && <DeliveryChecker />}
       {s.trust && <TrustStrip />}
       {s.collections && <CollectionsSection />}
       {s.featured && <FeaturedSection />}
+      {s.shopByMood && <ShopByMood />}
       {s.brandStory && <BrandStorySection />}
       {s.newArrivals && <NewArrivalsSection />}
+      {s.budgetEdit && <BudgetEdit />}
+      {s.customerStories && <CustomerStories />}
+      {s.brandJournal && <BrandJournal />}
       {s.deliveryPromise && <DeliveryPromiseSection />}
     </>
   );
@@ -38,13 +49,14 @@ export default function Home() {
 
 function Hero({ cms }: { cms: HomeSettings }) {
   const { hero } = cms;
+  const spotlight = FEATURED_PRODUCTS.find((product) => product.inStock);
   return (
     <section
       aria-labelledby="hero-heading"
       className="editorial-hero relative isolate overflow-hidden bg-forest-900 text-ivory-50"
     >
       <div className="mx-auto grid max-w-[1600px] lg:min-h-[650px] lg:grid-cols-[1fr_1.05fr]">
-        <div className="relative z-10 flex flex-col justify-center px-6 pb-12 pt-14 sm:px-12 sm:py-16 lg:px-16 xl:px-24">
+        <div className="hero-copy relative z-10 order-2 lg:order-1 flex flex-col justify-center px-6 pb-12 pt-14 sm:px-12 sm:py-16 lg:px-16 xl:px-24">
           <p className="flex items-center gap-3 text-[0.62rem] font-medium uppercase tracking-[0.26em] text-gold-200">
             <span
               aria-hidden="true"
@@ -54,7 +66,7 @@ function Hero({ cms }: { cms: HomeSettings }) {
           </p>
           <h1
             id="hero-heading"
-            className="mt-7 font-display text-[clamp(3.3rem,6.1vw,6rem)] font-normal leading-[1.06] tracking-[-0.045em]"
+            className="mt-7 font-display text-[clamp(2.7rem,4.8vw,4.8rem)] font-normal leading-[1.06] tracking-[-0.045em]"
           >
             {hero.title1}
             <br />
@@ -67,14 +79,14 @@ function Hero({ cms }: { cms: HomeSettings }) {
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-x-8 gap-y-5">
             <Link
-              href="/shop"
+              href="/shop?category=men"
               className="editorial-button bg-ivory-100 text-forest-950 hover:bg-gold-200"
             >
               {hero.primaryLabel}
               <IconArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/about"
+              href="/shop?category=women"
               className="inline-flex min-h-11 items-center border-b border-ivory-100/40 text-xs font-medium tracking-wide transition-colors hover:text-gold-200"
             >
               {hero.secondaryLabel}
@@ -92,7 +104,7 @@ function Hero({ cms }: { cms: HomeSettings }) {
             </p>
           </div>
         </div>
-        <div className="relative min-h-[440px] bg-ivory-200 sm:min-h-[540px] lg:min-h-full">
+        <div className="relative order-1 lg:order-2 min-h-[360px] bg-ivory-200 sm:min-h-[540px] lg:min-h-full">
           <Image
             src="/images/hero-editorial.webp"
             alt="Forest-green panjabi with gold embroidery, styled in a sunlit studio"
@@ -109,7 +121,24 @@ function Hero({ cms }: { cms: HomeSettings }) {
             aria-hidden="true"
             className="pointer-events-none absolute inset-5 border border-white/30 sm:inset-7"
           />
-          <div className="absolute inset-x-10 bottom-10 flex items-end justify-between gap-4 text-white sm:inset-x-12 sm:bottom-12">
+          {spotlight && (
+            <Link
+              href={`/product/${spotlight.slug}`}
+              className="hero-spotlight absolute inset-x-6 bottom-6 max-w-none sm:bottom-auto sm:left-auto sm:right-12 sm:top-12 sm:max-w-[240px] border border-white/40 bg-ivory-50/95 p-5 text-forest-900 shadow-sm backdrop-blur-sm"
+            >
+              <p className="text-[0.6rem] uppercase tracking-[0.2em] text-gold-600">
+                The considered essential
+              </p>
+              <p className="mt-2 font-display text-xl">{spotlight.name}</p>
+              <div className="mt-4 flex items-center justify-between gap-6 text-xs">
+                <span>{formatBdt(spotlight.price)}</span>
+                <span className="border-b border-forest-800 pb-1">
+                  Shop now →
+                </span>
+              </div>
+            </Link>
+          )}
+          <div className="absolute inset-x-10 bottom-10 hidden items-end sm:flex justify-between gap-4 text-white sm:inset-x-12 sm:bottom-12">
             <div>
               <p className="text-[0.6rem] uppercase tracking-[0.26em] text-ivory-100/85">
                 The signature edit
@@ -197,7 +226,7 @@ function SectionHeading({
   linkLabel?: string;
 }) {
   return (
-    <div className="mb-9 flex flex-wrap items-end justify-between gap-5 sm:mb-12">
+    <Reveal className="mb-9 flex flex-wrap items-end justify-between gap-5 sm:mb-12">
       <div className="max-w-xl">
         <Eyebrow>{eyebrow}</Eyebrow>
         <h2 className="mt-4 font-display text-4xl font-normal leading-tight tracking-[-0.025em] text-forest-900 sm:text-5xl">
@@ -213,7 +242,7 @@ function SectionHeading({
           <IconArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
         </Link>
       )}
-    </div>
+    </Reveal>
   );
 }
 

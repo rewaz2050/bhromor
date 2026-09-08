@@ -18,6 +18,8 @@ type Listener = () => void;
 let cache: string[] | null = null;
 let loaded = false;
 const listeners = new Set<Listener>();
+const EMPTY: string[] = [];
+export const getWishlistServer = () => EMPTY;
 
 const notify = () => {
   for (const l of listeners) l();
@@ -32,7 +34,11 @@ const ensureLoaded = (): string[] => {
       if (raw) {
         const parsed = JSON.parse(raw) as string[];
         if (Array.isArray(parsed)) {
-          cache = parsed;
+          cache = [
+            ...new Set(
+              parsed.filter((id): id is string => typeof id === "string"),
+            ),
+          ];
           return cache;
         }
       }

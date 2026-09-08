@@ -29,6 +29,10 @@ export const SECTION_KEYS = [
   "newArrivals",
   "brandStory",
   "deliveryPromise",
+  "shopByMood",
+  "budgetEdit",
+  "customerStories",
+  "brandJournal",
 ] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
@@ -40,6 +44,10 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   newArrivals: "New arrivals",
   brandStory: "Brand story",
   deliveryPromise: "Delivery promise",
+  shopByMood: "Shop by Mood",
+  budgetEdit: "Under ৳500",
+  customerStories: "Customer stories (demo preview)",
+  brandJournal: "Visual journal",
 };
 
 export const HOME_DEFAULTS: HomeSettings = {
@@ -48,13 +56,13 @@ export const HOME_DEFAULTS: HomeSettings = {
     text: "Rapid local delivery · 45–50 min inside the service area · Cash on Delivery available",
   },
   hero: {
-    eyebrow: "The art of everyday dressing",
-    title1: "Made for",
-    title2: "everyday life.",
+    eyebrow: "The new Bangladeshi everyday",
+    title1: "Rooted in Tradition.",
+    title2: "Made for Today.",
     subtitle:
       "প্রশান্তি — a considered edit of premium essentials, delivered fast and transparently to your door.",
-    primaryLabel: "Explore Collection",
-    secondaryLabel: "Our Story",
+    primaryLabel: "Shop Men",
+    secondaryLabel: "Shop Women",
   },
   sections: {
     hero: true,
@@ -64,6 +72,10 @@ export const HOME_DEFAULTS: HomeSettings = {
     newArrivals: true,
     brandStory: true,
     deliveryPromise: true,
+    shopByMood: true,
+    budgetEdit: true,
+    customerStories: true,
+    brandJournal: true,
   },
 };
 

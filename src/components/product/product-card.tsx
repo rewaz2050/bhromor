@@ -2,42 +2,25 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Product } from "@/lib/catalog";
-import { defaultVariant } from "@/lib/cart";
-import { useCart } from "@/components/cart/cart-provider";
+import { useTransientValue } from "@/lib/use-transient-value";
+import QuickAdd from "./quick-add";
 import { useWishlist } from "@/lib/use-wishlist";
-import { Price } from "@/components/ui/primitives";
-import { IconCheck, IconHeart, IconPlus } from "@/components/ui/icons";
+import { Price, Rating } from "@/components/ui/primitives";
+import { IconHeart, IconPlus } from "@/components/ui/icons";
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { addItem } = useCart();
-  const { has, toggle } = useWishlist();
-  const [added, setAdded] = useState(false);
+  const { has, toggle, ready, busy } = useWishlist();
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [notice, setNotice] = useTransientValue("");
   const wished = has(product.id);
-
-  // Timer cleared on unmount — filtering the grid used to fire setState on
-  // cards React had already thrown away.
-  const addedTimer = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (addedTimer.current !== null) window.clearTimeout(addedTimer.current);
-    },
-    [],
-  );
-
-  const quickAdd = () => {
-    addItem(product.id, defaultVariant(product), 1);
-    setAdded(true);
-    if (addedTimer.current !== null) window.clearTimeout(addedTimer.current);
-    addedTimer.current = window.setTimeout(() => setAdded(false), 1600);
-  };
 
   const secondImage = product.media[1];
 
   return (
-    <article className="group relative flex min-w-0 flex-col">
-      <div className="relative overflow-hidden bg-ivory-100">
+    <article className="product-card group relative flex min-w-0 flex-col">
+      <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
           href={`/product/${product.slug}`}
           className="relative block aspect-[3/4]"
@@ -48,7 +31,7 @@ export default function ProductCard({ product }: { product: Product }) {
             alt={product.media[0]?.alt ?? product.name}
             fill
             sizes="(min-width: 1280px) 300px, (min-width: 1024px) 30vw, 50vw"
-            className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
+            className="product-image-primary object-cover"
           />
           {secondImage && (
             <Image
@@ -57,7 +40,7 @@ export default function ProductCard({ product }: { product: Product }) {
               aria-hidden="true"
               fill
               sizes="(min-width: 1280px) 300px, (min-width: 1024px) 30vw, 50vw"
-              className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+              className="product-image-secondary absolute inset-0 h-full w-full object-cover opacity-0"
             />
           )}
           {!product.inStock && (
@@ -83,14 +66,24 @@ export default function ProductCard({ product }: { product: Product }) {
         {/* Wishlist (§29) — shared store, so the heart follows the customer */}
         <button
           type="button"
-          onClick={() => toggle(product.id)}
+          onClick={async () => {
+            const saved = await toggle(product.id);
+            setNotice(
+              saved
+                ? wished
+                  ? "Removed from wishlist"
+                  : "Added to wishlist"
+                : "Could not sync wishlist. Please retry from your account.",
+            );
+          }}
+          disabled={!ready || busy}
           aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
           aria-pressed={wished}
-          className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-full text-forest-900 transition-colors hover:bg-paper/80 hover:text-gold-600 sm:right-2 sm:top-2"
+          className="product-heart absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-full text-forest-900 transition-colors hover:bg-paper/80 hover:text-gold-600 sm:right-2 sm:top-2"
         >
           <IconHeart
             className={`h-[1.05rem] w-[1.05rem] transition-colors ${
-              wished ? "fill-gold-500 text-gold-500" : ""
+              wished ? "wishlist-feedback fill-gold-500 text-gold-500" : ""
             }`}
           />
         </button>
@@ -99,33 +92,32 @@ export default function ProductCard({ product }: { product: Product }) {
         {product.inStock && (
           <button
             type="button"
-            onClick={quickAdd}
+            onClick={() => setQuickOpen(true)}
             aria-label={`Quick add ${product.name} to cart`}
-            className={`absolute inset-x-2 bottom-2 flex min-h-11 items-center justify-center gap-2 px-2 py-2 text-[0.65rem] font-medium uppercase tracking-[0.12em] transition-colors duration-200 sm:inset-x-3 sm:bottom-3 ${
-              added
-                ? "bg-forest-800 text-ivory-50"
-                : "bg-paper/95 text-forest-900 backdrop-blur-sm hover:bg-forest-800 hover:text-ivory-50"
-            }`}
+            className="product-quick-add absolute inset-x-2 bottom-2 flex min-h-11 items-center justify-center gap-2 bg-paper/95 px-2 py-2 text-[0.65rem] font-medium uppercase tracking-[0.12em] text-forest-900 backdrop-blur-sm transition-colors hover:bg-forest-800 hover:text-white sm:inset-x-3 sm:bottom-3"
           >
-            {added ? (
-              <>
-                <IconCheck className="h-4 w-4" /> Added
-              </>
-            ) : (
-              <>
-                <IconPlus className="h-3.5 w-3.5" /> Add to bag
-              </>
-            )}
+            <IconPlus className="h-3.5 w-3.5" /> Add to bag
           </button>
         )}
 
         {/* The label swap alone is silent for screen readers. */}
-        <p role="status" aria-live="polite" className="sr-only">
-          {added ? `${product.name} added to cart` : ""}
+        <p
+          role="status"
+          aria-live="polite"
+          className={
+            notice
+              ? "absolute inset-x-2 top-14 bg-forest-800 px-3 py-2 text-center text-xs text-white"
+              : "sr-only"
+          }
+        >
+          {notice}
         </p>
       </div>
 
-      <div className="mt-4 flex flex-1 flex-col gap-1.5">
+      {quickOpen && (
+        <QuickAdd product={product} onClose={() => setQuickOpen(false)} />
+      )}
+      <div className="product-card-details mt-4 flex flex-1 flex-col gap-1.5">
         <p className="text-[0.6rem] font-medium uppercase tracking-[0.18em] text-ink-soft">
           {product.subCategory}
         </p>
@@ -135,6 +127,9 @@ export default function ProductCard({ product }: { product: Product }) {
         >
           {product.name}
         </Link>
+        {product.reviewCount > 0 && (
+          <Rating value={product.rating} reviewCount={product.reviewCount} />
+        )}
         <div className="mt-auto pt-1">
           <Price
             value={product.price}

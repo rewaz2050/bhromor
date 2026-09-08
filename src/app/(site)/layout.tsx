@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { CartProvider } from "@/components/cart/cart-provider";
+import BagDrawer from "@/components/cart/bag-drawer";
+import BottomNav from "@/components/layout/bottom-nav";
+import CustomerProvider from "@/components/account/customer-provider";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 
@@ -44,17 +47,22 @@ export default function SiteLayout({
 }) {
   return (
     <CartProvider>
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-forest-800 focus:px-5 focus:py-2.5 focus:text-sm focus:text-ivory-50"
-      >
-        Skip to content
-      </a>
-      <Header />
-      <main id="main" className="flex-1">
-        {children}
-      </main>
-      <Footer />
+      <CustomerProvider>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-forest-800 focus:px-5 focus:py-2.5 focus:text-sm focus:text-ivory-50"
+        >
+          Skip to content
+        </a>
+        <Header />
+        <main id="main" className="storefront-main flex-1">
+          {children}
+        </main>
+        <Footer />
+        <div className="h-[calc(4rem+env(safe-area-inset-bottom))] lg:hidden" />
+        <BottomNav />
+        <BagDrawer />
+      </CustomerProvider>
     </CartProvider>
   );
 }
