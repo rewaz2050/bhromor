@@ -9,11 +9,13 @@ import {
   deliveryStats,
   flowIndex,
   isTerminal,
+  makePlacedOrder,
   maskPhone,
   nextActions,
   transitionAllowed,
   type Order,
 } from "../orders";
+import { bdt } from "../format";
 
 const baseOrder = (): Order => {
   const seed = MOCK_ORDERS[0];
@@ -194,5 +196,45 @@ describe("aggregates & delivery performance (§32, §88)", () => {
       under50Pct: 0,
     });
     expect(TRANSITIONS.pending).toContain("confirmed");
+  });
+});
+
+describe("makePlacedOrder (§70, §75)", () => {
+  it("shapes a checkout into an order with recomputed paisa totals", () => {
+    const p1 = MOCK_ORDERS[0].items[0];
+    const placed = makePlacedOrder({
+      id: "PS-20260908-7777",
+      createdAt: 1_700_000_000_000,
+      customer: {
+        name: "Rahat Ahmed",
+        phone: "01712345678",
+        area: "Kandirpar",
+        address: "House 1, Road 2",
+        note: "Call before delivery",
+      },
+      zone: { id: "z1", name: "Zone A — City Centre", etaLabel: "40–50 min", charge: bdt(50) },
+      items: [
+        {
+          product: { id: p1.productId, slug: p1.slug, sku: p1.sku, name: p1.name, price: p1.unitPrice },
+          image: p1.image,
+          variant: p1.variant,
+          qty: 2,
+        },
+      ],
+    });
+    expect(placed.id).toMatch(/^PS-\d{8}-\d{4}$/);
+    expect(placed.status).toBe("pending");
+    expect(placed.subtotal).toBe(p1.unitPrice * 2);
+    expect(placed.total).toBe(placed.subtotal + bdt(50));
+    expect(placed.timeline).toEqual([
+      { status: "pending", at: 1_700_000_000_000 },
+    ]);
+    expect(placed.items[0]).toMatchObject({
+      name: p1.name,
+      sku: p1.sku,
+      qty: 2,
+      unitPrice: p1.unitPrice,
+    });
+    expect(placed.payment).toBe("cod");
   });
 });

@@ -6,6 +6,8 @@ import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
 import { useZones } from "@/lib/use-zones";
 import { ORDER_PREFIX } from "@/lib/catalog";
+import { makePlacedOrder } from "@/lib/orders";
+import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
   IconArrowRight,
@@ -166,6 +168,28 @@ export default function CheckoutView() {
     const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
     // Simulated network/backend latency before showing confirmation.
     window.setTimeout(() => {
+      // Store the order in the demo backend (order-store) so the admin
+      // Orders queue and the public Track page can follow it live (§92).
+      addOrderToStore(
+        makePlacedOrder({
+          id: orderId,
+          createdAt: stamp.getTime(),
+          customer: {
+            name: form.name,
+            phone: form.phone,
+            area: form.area,
+            address: form.address,
+            note: form.note,
+          },
+          zone: { id: zone.id, name: zone.name, etaLabel: zone.etaLabel, charge: zone.charge },
+          items: detail.map((l) => ({
+            product: l.product,
+            image: l.product.media[0]?.src ?? "",
+            variant: l.variantLabel,
+            qty: l.qty,
+          })),
+        }),
+      );
       setPlaced({
         orderId,
         eta: zone.etaLabel,

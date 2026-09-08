@@ -127,6 +127,59 @@ export interface Order {
   deliveredMinutes?: number;
 }
 
+export interface PlacedOrderInput {
+  id: string;
+  createdAt: number;
+  customer: {
+    name: string;
+    phone: string;
+    area: string;
+    address?: string;
+    note?: string;
+  };
+  zone: { id: string; name: string; etaLabel: string; charge: Bdt };
+  items: {
+    product: { id: string; slug: string; sku: string; name: string; price: Bdt };
+    image: string;
+    variant: string;
+    qty: number;
+  }[];
+}
+
+/**
+ * Turn a completed checkout into an Order record — one public entry point,
+ * so every placed order is shaped exactly like the seeded ones (§70, §75).
+ * Totals are recomputed in paisa, never trusted from the client beyond qty.
+ */
+export const makePlacedOrder = (input: PlacedOrderInput): Order => {
+  const items: OrderItem[] = input.items.map((it) => ({
+    productId: it.product.id,
+    slug: it.product.slug,
+    name: it.product.name,
+    sku: it.product.sku,
+    variant: it.variant,
+    qty: it.qty,
+    unitPrice: it.product.price,
+    image: it.image,
+  }));
+  const subtotal = items.reduce((sum, it) => sum + it.unitPrice * it.qty, 0);
+  return {
+    id: input.id,
+    createdAt: input.createdAt,
+    customer: input.customer,
+    zoneId: input.zone.id,
+    zoneName: input.zone.name,
+    etaLabel: input.zone.etaLabel,
+    items,
+    subtotal,
+    deliveryCharge: input.zone.charge,
+    total: subtotal + input.zone.charge,
+    payment: "cod",
+    status: "pending",
+    timeline: [{ status: "pending", at: input.createdAt }],
+  };
+};
+
 export const maskPhone = (phone: string): string => {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 8) return phone;

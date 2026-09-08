@@ -81,6 +81,12 @@ export const advanceOrderInStore = (
   if (next !== current) persist(next);
 };
 
+/** Append a freshly placed checkout order (newest first). */
+export const addOrderToStore = (order: Order) => {
+  const current = ensureLoaded();
+  persist([order, ...current]);
+};
+
 export const resetOrderStore = () => {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(ORDERS_STORAGE_KEY);
