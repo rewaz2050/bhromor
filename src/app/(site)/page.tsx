@@ -45,14 +45,17 @@ function Hero({ cms }: { cms: HomeSettings }) {
       aria-labelledby="hero-heading"
       className="cinematic-hero relative isolate flex overflow-hidden bg-forest-950 text-ivory-50"
     >
-      <Image
-        src="/images/editorial/hero-prosanti.jpg"
-        alt="A man wearing PROSANTI's forest-green panjabi in a sunlit Bangladeshi heritage interior"
-        fill
-        preload
-        sizes="100vw"
-        className="hero-cinematic-image object-cover"
-      />
+      <div className="absolute inset-0 overflow-hidden">
+        <Image
+          src="/images/editorial/hero-prosanti.jpg"
+          alt="A man wearing PROSANTI's forest-green panjabi in a sunlit Bangladeshi heritage interior"
+          fill
+          preload
+          sizes="100vw"
+          className="hero-cinematic-image object-cover will-change-transform"
+          style={{ transform: "translateZ(0)" }}
+        />
+      </div>
       <div
         aria-hidden="true"
         className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,22,17,0.97)_0%,rgba(7,25,19,0.84)_28%,rgba(8,24,18,0.30)_58%,rgba(8,20,15,0.08)_100%)] max-sm:bg-[linear-gradient(0deg,rgba(5,18,13,0.94)_0%,rgba(5,18,13,0.55)_48%,rgba(5,18,13,0.10)_78%)]"
@@ -157,43 +160,48 @@ function CollectionsSection() {
         />
 
         <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:px-0 sm:pb-0 lg:gap-7">
-          {visibleCategories.map(({ category, count }) => (
-            <Link
+          {visibleCategories.map(({ category, count }, index) => (
+            <Reveal
               key={category.id}
-              href={`/shop?category=${category.id}`}
-              className="collection-card group w-[78vw] min-w-[245px] shrink-0 snap-start sm:w-auto sm:min-w-0"
+              delay={index * 90}
+              className="collection-card w-[78vw] min-w-[245px] shrink-0 snap-start sm:w-auto sm:min-w-0"
             >
-              <div className="relative aspect-[4/5] overflow-hidden bg-ivory-200">
-                <Image
-                  src={category.image}
-                  alt={`${category.name} collection`}
-                  fill
-                  sizes="(min-width: 1280px) 390px, (min-width: 640px) 33vw, 100vw"
-                  className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.025]"
-                />
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 bg-gradient-to-t from-forest-950/20 via-transparent to-transparent"
-                />
-                <span className="absolute bottom-4 right-4 flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/92 text-forest-900 backdrop-blur-sm transition-colors group-hover:bg-forest-900 group-hover:text-ivory-50">
-                  <IconArrowRight className="h-4 w-4" />
-                </span>
-              </div>
-
-              <div className="mt-5 border-b border-line pb-5">
-                <p lang="bn" className="font-bengali text-sm font-medium leading-6 text-gold-700">
-                  {category.nameBn}
-                </p>
-                <div className="mt-1 flex items-end justify-between gap-4">
-                  <h3 className="font-display text-3xl font-normal tracking-[-0.025em] text-forest-900">
-                    {category.name}
-                  </h3>
-                  <span className="pb-1 text-[0.6rem] uppercase tracking-[0.16em] text-ink-soft">
-                    {String(count).padStart(2, "0")} pieces
+              <Link
+                href={`/shop?category=${category.id}`}
+                className="group block"
+              >
+                <div className="relative aspect-[4/5] overflow-hidden bg-ivory-200">
+                  <Image
+                    src={category.image}
+                    alt={`${category.name} collection`}
+                    fill
+                    sizes="(min-width: 1280px) 390px, (min-width: 640px) 33vw, 100vw"
+                    className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.025]"
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-gradient-to-t from-forest-950/20 via-transparent to-transparent"
+                  />
+                  <span className="absolute bottom-4 right-4 flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/92 text-forest-900 backdrop-blur-sm transition-all duration-300 group-hover:bg-forest-900 group-hover:text-ivory-50 group-hover:scale-105">
+                    <IconArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                   </span>
                 </div>
-              </div>
-            </Link>
+
+                <div className="mt-5 border-b border-line pb-5">
+                  <p lang="bn" className="font-bengali text-sm font-medium leading-6 text-gold-700">
+                    {category.nameBn}
+                  </p>
+                  <div className="mt-1 flex items-end justify-between gap-4">
+                    <h3 className="font-display text-3xl font-normal tracking-[-0.025em] text-forest-900">
+                      {category.name}
+                    </h3>
+                    <span className="pb-1 text-[0.6rem] uppercase tracking-[0.16em] text-ink-soft">
+                      {String(count).padStart(2, "0")} pieces
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            </Reveal>
           ))}
         </div>
       </div>
@@ -213,13 +221,14 @@ function BestSellersSection() {
           linkLabel="Shop the collection"
         />
         <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7">
-          {FEATURED_PRODUCTS.slice(0, 4).map((product) => (
-            <div
+          {FEATURED_PRODUCTS.slice(0, 4).map((product, index) => (
+            <Reveal
               key={product.id}
+              delay={index * 80}
               className="w-[72vw] min-w-[230px] shrink-0 snap-start sm:w-auto sm:min-w-0"
             >
               <ProductCard product={product} />
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>
@@ -231,14 +240,14 @@ function BrandStorySection() {
   return (
     <section id="story" className="scroll-mt-28 overflow-hidden bg-ivory-100">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[0.92fr_1.08fr] lg:gap-20 lg:px-8 lg:py-24">
-        <Reveal className="relative mx-auto w-full max-w-lg">
+        <Reveal className="relative mx-auto w-full max-w-lg" delay={60}>
           <div className="relative aspect-[4/3] overflow-hidden bg-ivory-200 sm:aspect-[4/5]">
             <Image
               src="/images/editorial/prosanti-craft.jpg"
               alt="A Bangladeshi artisan hand-finishing embroidery on forest-green cloth"
               fill
               sizes="(min-width: 1024px) 500px, 92vw"
-              className="object-cover"
+              className="object-cover transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.02]"
             />
           </div>
           <div className="absolute -bottom-5 right-4 border border-gold-300/70 bg-ivory-50 px-5 py-4 shadow-sm sm:-right-6 sm:bottom-8">
@@ -249,7 +258,7 @@ function BrandStorySection() {
           </div>
         </Reveal>
 
-        <Reveal className="max-w-xl lg:pl-4">
+        <Reveal className="max-w-xl lg:pl-4" delay={140}>
           <Eyebrow>The PROSANTI philosophy</Eyebrow>
           <h2 className="mt-5 font-display text-[clamp(2.65rem,5vw,5rem)] font-normal leading-[1.03] tracking-[-0.04em] text-forest-900">
             Rooted in Bangladesh.

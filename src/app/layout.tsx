@@ -5,6 +5,7 @@ import "@fontsource/noto-serif-bengali/400.css";
 import "@fontsource/noto-serif-bengali/500.css";
 import "@fontsource/noto-serif-bengali/600.css";
 import "./globals.css";
+import SmoothScroll from "@/components/ui/smooth-scroll";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://prosanti.store"),
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">
+        <SmoothScroll />
         {children}
       </body>
     </html>

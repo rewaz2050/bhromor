@@ -35,7 +35,7 @@ export default function ProductSearch() {
           setQuery("");
           setOpen(true);
         }}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+        className="header-icon-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft hover:text-forest-900"
       >
         <IconSearch className="h-[1.15rem] w-[1.15rem]" />
       </button>

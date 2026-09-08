@@ -10,14 +10,11 @@ export default function WishlistButton() {
     <Link
       href="/wishlist"
       aria-label={`Open wishlist, ${count} saved item${count === 1 ? "" : "s"}`}
-      className="relative flex h-11 items-center justify-center gap-2 rounded-full px-2 text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 sm:px-2.5 xl:px-3"
+      className="header-icon-btn relative flex h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:text-forest-900"
     >
-      <IconHeart className="h-[1.15rem] w-[1.15rem]" />
-      <span className="hidden text-[0.63rem] font-semibold uppercase tracking-[0.11em] xl:inline">
-        Wishlist
-      </span>
+      <IconHeart className="h-[1.18rem] w-[1.18rem]" />
       {count > 0 && (
-        <span className="absolute right-0 top-0 flex h-[1.05rem] min-w-[1.05rem] items-center justify-center rounded-full bg-forest-700 px-1 text-[0.62rem] font-bold text-ivory-50">
+        <span className="absolute -right-0.5 -top-0.5 flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-forest-900 px-1 text-[0.64rem] font-bold leading-none text-ivory-50 shadow-sm ring-2 ring-ivory-50">
           {count > 99 ? "99+" : count}
         </span>
       )}
