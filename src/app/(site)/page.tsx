@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -16,46 +18,50 @@ import {
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
+import { useCms } from "@/lib/use-cms";
+import type { HomeSettings } from "@/lib/home-cms";
 
 export default function Home() {
+  const { settings } = useCms();
+  const s = settings.sections;
   return (
     <>
-      <Hero />
-      <TrustStrip />
-      <FeaturedSection />
-      <CollectionsSection />
-      <NewArrivalsSection />
-      <BrandStorySection />
-      <DeliveryPromiseSection />
+      {s.hero && <Hero cms={settings} />}
+      {s.trust && <TrustStrip />}
+      {s.featured && <FeaturedSection />}
+      {s.collections && <CollectionsSection />}
+      {s.newArrivals && <NewArrivalsSection />}
+      {s.brandStory && <BrandStorySection />}
+      {s.deliveryPromise && <DeliveryPromiseSection />}
     </>
   );
 }
 
 /* ------------------------------- Hero ---------------------------------- */
 
-function Hero() {
+function Hero({ cms }: { cms: HomeSettings }) {
+  const hero = cms.hero;
   return (
     <section className="relative overflow-hidden">
       <div className="pointer-events-none absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-forest-100/70 blur-3xl" />
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:pb-24 lg:pt-20">
         <div className="relative z-10">
-          <Eyebrow>Rapid local delivery · 45–50 min</Eyebrow>
+          <Eyebrow>{hero.eyebrow}</Eyebrow>
           <h1 className="font-display mt-6 text-5xl font-medium leading-[1.06] tracking-tight text-forest-900 sm:text-6xl lg:text-[4.6rem]">
-            Made for
+            {hero.title1}
             <br />
-            everyday life.
+            {hero.title2}
           </h1>
           <p className="mt-6 max-w-md text-lg leading-8 text-ink-soft">
-            <span className="font-bengali text-forest-800">প্রশান্তি</span> —
-            a considered edit of premium essentials, delivered fast and
-            transparently to your door.
+            <span className="font-bengali text-forest-800">প্রশান্তি</span> —{" "}
+            {hero.subtitle.replace(/^প্রশান্তি —\s*/, "")}
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <ButtonLink href="/shop" size="lg" variant="dark">
-              Explore Collection <IconArrowRight className="h-4 w-4" />
+              {hero.primaryLabel} <IconArrowRight className="h-4 w-4" />
             </ButtonLink>
             <ButtonLink href="/about" size="lg" variant="light">
-              Our Story
+              {hero.secondaryLabel}
             </ButtonLink>
           </div>
           <ul className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-ink-soft">

@@ -2,6 +2,8 @@ import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import CartButton from "./cart-button";
 import MobileNav from "./mobile-nav";
+import WishlistButton from "./wishlist-button";
+import AnnouncementBar from "./announcement-bar";
 import { IconSearch } from "@/components/ui/icons";
 
 const NAV = [
@@ -15,14 +17,8 @@ const NAV = [
 export default function Header() {
   return (
     <header className="sticky top-0 z-40">
-      {/* Announcement bar */}
-      <div className="bg-forest-950 px-4 py-2 text-center text-[0.72rem] font-medium tracking-wide text-ivory-100">
-        <p className="mx-auto max-w-4xl">
-          Rapid local delivery ·{" "}
-          <span className="text-gold-300">45–50 min</span> inside the service
-          area &nbsp;·&nbsp; Cash on Delivery available
-        </p>
-      </div>
+      {/* Announcement bar — CMS-editable (§31) */}
+      <AnnouncementBar />
 
       <div className="border-b border-line bg-ivory-50/90 backdrop-blur supports-[backdrop-filter]:bg-ivory-50/75">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
@@ -69,6 +65,7 @@ export default function Header() {
             >
               <IconSearch className="h-[1.15rem] w-[1.15rem]" />
             </Link>
+            <WishlistButton />
             <CartButton />
           </div>
         </div>

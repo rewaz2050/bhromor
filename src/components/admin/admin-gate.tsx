@@ -16,6 +16,7 @@ import {
   IconBox,
   IconExternal,
   IconGrid,
+  IconLeaf,
   IconLogout,
   IconMapPin,
   IconTag,
@@ -33,6 +34,7 @@ const NAV = [
   { href: "/admin/products", label: "Products", icon: IconTag, match: (p: string) => p.startsWith("/admin/products") },
   { href: "/admin/categories", label: "Categories", icon: IconGrid, match: (p: string) => p === "/admin/categories" },
   { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
+  { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
 ];
 
 const TITLES: [RegExp, string][] = [
@@ -42,6 +44,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/products$/, "Products"],
   [/^\/admin\/categories$/, "Categories"],
   [/^\/admin\/zones$/, "Delivery zones"],
+  [/^\/admin\/homepage$/, "Homepage"],
   [/^\/admin$/, "Dashboard"],
 ];
 
