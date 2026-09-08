@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Category, CategoryId, Product } from "@/lib/catalog";
+import { matchesProduct } from "@/lib/product-search";
 import { bdt } from "@/lib/format";
 import ProductCard from "@/components/product/product-card";
 import Drawer from "@/components/ui/drawer";
@@ -27,14 +28,18 @@ const SORTS: { key: SortKey; label: string }[] = [
  * “৳1,000 – ৳1,500” also matched a ৳390 gamcha — every band behaved like
  * “under X”.
  */
-const PRICE_BANDS: { key: string; label: string; min?: number; max?: number }[] =
-  [
-    { key: "any", label: "Any price" },
-    { key: "under1000", label: "Under ৳1,000", max: 1000 },
-    { key: "1000-1500", label: "৳1,000 – ৳1,500", min: 1000, max: 1500 },
-    { key: "1500-2500", label: "৳1,500 – ৳2,500", min: 1500, max: 2500 },
-    { key: "above2500", label: "Above ৳2,500", min: 2500 },
-  ];
+const PRICE_BANDS: {
+  key: string;
+  label: string;
+  min?: number;
+  max?: number;
+}[] = [
+  { key: "any", label: "Any price" },
+  { key: "under1000", label: "Under ৳1,000", max: 1000 },
+  { key: "1000-1500", label: "৳1,000 – ৳1,500", min: 1000, max: 1500 },
+  { key: "1500-2500", label: "৳1,500 – ৳2,500", min: 1500, max: 2500 },
+  { key: "above2500", label: "Above ৳2,500", min: 2500 },
+];
 
 const inBand = (price: number, key: string): boolean => {
   const band = PRICE_BANDS.find((b) => b.key === key);
@@ -72,15 +77,17 @@ export default function ShopBrowser({
   categories,
   initialCategory,
   initialNew,
+  initialQuery = "",
 }: {
   products: Product[];
   categories: Category[];
   initialCategory: CategoryFilter;
   initialNew: boolean;
+  initialQuery?: string;
 }) {
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>("featured");
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
@@ -93,27 +100,36 @@ export default function ShopBrowser({
    * `/shop?category=men` to `/shop?filter=new` (header/footer links) left the
    * old filters on screen — the page looked frozen.
    */
-  const lastUrlState = useRef({ initialCategory, initialNew });
+  const lastUrlState = useRef({ initialCategory, initialNew, initialQuery });
   useEffect(() => {
     const prev = lastUrlState.current;
-    if (prev.initialCategory !== initialCategory || prev.initialNew !== initialNew) {
-      lastUrlState.current = { initialCategory, initialNew };
+    if (
+      prev.initialCategory !== initialCategory ||
+      prev.initialNew !== initialNew ||
+      prev.initialQuery !== initialQuery
+    ) {
+      lastUrlState.current = { initialCategory, initialNew, initialQuery };
       setCategory(initialCategory);
       setOnlyNew(initialNew);
+      setQ(initialQuery);
+      setSizes([]);
+      setColors([]);
+      setPriceBand("any");
+      setOnlyInStock(false);
+      setSort("featured");
     }
-  }, [initialCategory, initialNew]);
+  }, [initialCategory, initialNew, initialQuery]);
 
   const allSizes = useMemo(() => collectSizes(products), [products]);
   const allColors = useMemo(() => collectColors(products), [products]);
 
   const toggle = (list: string[], value: string) =>
-    list.includes(value)
-      ? list.filter((v) => v !== value)
-      : [...list, value];
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const visible = useMemo(() => {
     let list = products.map((p, index) => ({ p, index }));
-    if (category !== "all") list = list.filter(({ p }) => p.category === category);
+    if (category !== "all")
+      list = list.filter(({ p }) => p.category === category);
     if (onlyNew) list = list.filter(({ p }) => p.isNew);
     if (onlyInStock) list = list.filter(({ p }) => p.inStock);
     if (sizes.length)
@@ -123,25 +139,14 @@ export default function ShopBrowser({
     if (priceBand !== "any")
       list = list.filter(({ p }) => inBand(p.price, priceBand));
 
-    const query = q.trim().toLowerCase();
-    if (query) {
-      list = list.filter(
-        ({ p }) =>
-          p.name.toLowerCase().includes(query) ||
-          p.subCategory.toLowerCase().includes(query) ||
-          p.sku.toLowerCase().includes(query) ||
-          p.category.toLowerCase().includes(query) ||
-          (p.nameBn ?? "").includes(query.trim()),
-      );
-    }
+    list = list.filter(({ p }) => matchesProduct(p, q));
 
     const sorted = [...list];
     switch (sort) {
       case "newest":
         // “Newest” means new arrivals first, not “the list backwards”.
         sorted.sort(
-          (a, b) =>
-            Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
+          (a, b) => Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
         );
         break;
       case "price-asc":
@@ -157,7 +162,17 @@ export default function ShopBrowser({
         );
     }
     return sorted.map(({ p }) => p);
-  }, [products, category, onlyNew, onlyInStock, sizes, colors, priceBand, q, sort]);
+  }, [
+    products,
+    category,
+    onlyNew,
+    onlyInStock,
+    sizes,
+    colors,
+    priceBand,
+    q,
+    sort,
+  ]);
 
   const hasActiveFilters =
     category !== "all" ||
@@ -190,7 +205,10 @@ export default function ShopBrowser({
         <div className="space-y-1">
           {(["all", ...categories.map((c) => c.id)] as CategoryFilter[]).map(
             (id) => {
-              const label = id === "all" ? "All products" : (categories.find((c) => c.id === id)?.name ?? id);
+              const label =
+                id === "all"
+                  ? "All products"
+                  : (categories.find((c) => c.id === id)?.name ?? id);
               const count =
                 id === "all"
                   ? products.length
@@ -209,7 +227,11 @@ export default function ShopBrowser({
                       className="h-4 w-4 accent-forest-700"
                     />
                     <span
-                      className={category === id ? "font-medium text-ink" : "text-ink-soft"}
+                      className={
+                        category === id
+                          ? "font-medium text-ink"
+                          : "text-ink-soft"
+                      }
                     >
                       {label}
                     </span>
@@ -253,7 +275,7 @@ export default function ShopBrowser({
                 type="button"
                 onClick={() => setSizes((s) => toggle(s, size))}
                 aria-pressed={sizes.includes(size)}
-                className={`h-9 min-w-9 rounded-full px-2.5 text-sm font-medium transition-colors ${
+                className={`h-11 min-w-11 rounded-full px-2.5 text-sm font-medium transition-colors ${
                   sizes.includes(size)
                     ? "bg-forest-800 text-ivory-50"
                     : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
@@ -278,7 +300,7 @@ export default function ShopBrowser({
                   type="button"
                   onClick={() => setColors((c) => toggle(c, color))}
                   aria-pressed={active}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                  className={`min-h-11 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
                     active
                       ? "bg-forest-800 text-ivory-50"
                       : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
@@ -302,31 +324,62 @@ export default function ShopBrowser({
         />
         In stock only
       </label>
-
-      {hasActiveFilters && (
-        <button
-          type="button"
-          onClick={resetAll}
-          className="text-sm font-medium text-gold-600 underline underline-offset-4 hover:text-gold-700"
-        >
-          Clear all filters
-        </button>
-      )}
     </div>
   );
 
-  const activeFilterCount =
-    sizes.length +
-    colors.length +
-    (priceBand !== "any" ? 1 : 0) +
-    (onlyInStock ? 1 : 0) +
-    (category !== "all" ? 1 : 0) +
-    (onlyNew ? 1 : 0);
+  const activeFilters = [
+    ...(category !== "all"
+      ? [
+          {
+            key: "category",
+            label: categories.find((c) => c.id === category)?.name ?? category,
+            remove: () => setCategory("all"),
+          },
+        ]
+      : []),
+    ...(onlyNew
+      ? [{ key: "new", label: "New arrivals", remove: () => setOnlyNew(false) }]
+      : []),
+    ...(priceBand !== "any"
+      ? [
+          {
+            key: "price",
+            label: PRICE_BANDS.find((band) => band.key === priceBand)!.label,
+            remove: () => setPriceBand("any"),
+          },
+        ]
+      : []),
+    ...sizes.map((size) => ({
+      key: `size-${size}`,
+      label: `Size: ${size}`,
+      remove: () =>
+        setSizes((current) => current.filter((value) => value !== size)),
+    })),
+    ...colors.map((color) => ({
+      key: `color-${color}`,
+      label: `Colour: ${color}`,
+      remove: () =>
+        setColors((current) => current.filter((value) => value !== color)),
+    })),
+    ...(onlyInStock
+      ? [
+          {
+            key: "stock",
+            label: "In stock only",
+            remove: () => setOnlyInStock(false),
+          },
+        ]
+      : []),
+    ...(q.trim()
+      ? [{ key: "query", label: `Search: ${q.trim()}`, remove: () => setQ("") }]
+      : []),
+  ];
+  const activeFilterCount = activeFilters.length;
 
   return (
     <div>
       {/* Toolbar */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 border-b border-line pb-6 md:flex-row md:items-center md:justify-between">
         <div className="relative w-full md:max-w-sm">
           <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
           <input
@@ -335,7 +388,7 @@ export default function ShopBrowser({
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search products, SKU, categories…"
             aria-label="Search products"
-            className="h-12 w-full rounded-full bg-paper pl-11 pr-4 text-sm text-ink shadow-sm ring-1 ring-line transition-shadow placeholder:text-ink-soft/60 focus:ring-2 focus:ring-forest-500"
+            className="h-12 w-full rounded-sm bg-paper pl-11 pr-4 text-base sm:text-sm text-ink shadow-sm ring-1 ring-line transition-shadow placeholder:text-ink-soft/60 focus:ring-2 focus:ring-forest-500"
           />
         </div>
 
@@ -345,7 +398,7 @@ export default function ShopBrowser({
             onClick={() => setDrawerOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={drawerOpen}
-            className="inline-flex h-12 items-center gap-2 rounded-full bg-paper px-5 text-sm font-medium ring-1 ring-line lg:hidden"
+            className="inline-flex h-12 shrink-0 items-center gap-2 rounded-sm bg-paper px-4 sm:px-5 text-sm font-medium ring-1 ring-line lg:hidden"
           >
             Filters
             {activeFilterCount > 0 && (
@@ -354,14 +407,14 @@ export default function ShopBrowser({
               </span>
             )}
           </button>
-          <label className="flex items-center gap-2 text-sm text-ink-soft">
+          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-ink-soft sm:flex-none">
             <span className="hidden sm:inline">Sort</span>
-            <span className="relative">
+            <span className="relative min-w-0 flex-1 sm:flex-none">
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
                 aria-label="Sort products"
-                className="h-12 appearance-none rounded-full bg-paper pl-5 pr-10 text-sm font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
+                className="h-12 w-full min-w-0 appearance-none rounded-sm bg-paper pl-4 pr-9 text-sm sm:pl-5 sm:pr-10 font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
                 {SORTS.map((s) => (
                   <option key={s.key} value={s.key}>
@@ -375,20 +428,53 @@ export default function ShopBrowser({
         </div>
       </div>
 
-      <p className="mt-5 text-sm text-ink-soft" role="status" aria-live="polite">
+      <p
+        className="mt-5 break-words text-sm text-ink-soft"
+        role="status"
+        aria-live="polite"
+      >
         {visible.length} {visible.length === 1 ? "product" : "products"}
         {category !== "all" &&
           ` in ${categories.find((c) => c.id === category)?.name ?? ""}`}
         {onlyNew && " · new arrivals"}
+        {q.trim() && ` matching “${q.trim()}”`}
       </p>
 
+      {hasActiveFilters && (
+        <div
+          aria-label="Active filters"
+          role="group"
+          className="mt-4 flex flex-wrap items-center gap-2"
+        >
+          {activeFilters.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={filter.remove}
+              aria-label={`Remove ${filter.label} filter`}
+              className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-xs font-medium text-forest-900 transition-colors hover:bg-forest-200"
+            >
+              <span className="truncate">{filter.label}</span>
+              <IconClose className="h-3.5 w-3.5 shrink-0" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={resetAll}
+            className="min-h-11 px-3 text-xs font-semibold text-forest-700 underline underline-offset-4 hover:text-forest-900"
+          >
+            Clear all filters
+          </button>
+        </div>
+      )}
+
       {/* Desktop layout */}
-      <div className="mt-6 grid gap-10 lg:grid-cols-[240px_1fr]">
+      <div className="mt-6 grid gap-10 lg:grid-cols-[210px_1fr]">
         <aside className="hidden lg:block">
-          <div className="sticky top-28">{renderFilters("sidebar")}</div>
+          <div className="sticky top-40">{renderFilters("sidebar")}</div>
         </aside>
 
-        <div>
+        <div className="min-w-0">
           {visible.length > 0 ? (
             <div className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3">
               {visible.map((product) => (
@@ -441,7 +527,7 @@ export default function ShopBrowser({
           </button>
         </div>
         {renderFilters("drawer")}
-        <div className="mt-8 flex gap-3 pb-4">
+        <div className="sticky -bottom-6 -mx-6 mt-8 flex gap-3 border-t border-line bg-ivory-50 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
           <button
             type="button"
             onClick={() => {
@@ -457,7 +543,8 @@ export default function ShopBrowser({
             onClick={() => setDrawerOpen(false)}
             className="h-12 flex-1 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            Show {visible.length}
+            Show {visible.length}{" "}
+            {visible.length === 1 ? "product" : "products"}
           </button>
         </div>
       </Drawer>

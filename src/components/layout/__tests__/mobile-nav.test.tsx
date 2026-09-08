@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import MobileNav from "@/components/layout/mobile-nav";
 
 /**
@@ -93,7 +93,7 @@ describe("MobileNav", () => {
     try {
       render(<MobileNav />);
       fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
-      vi.runAllTimers();
+      act(() => vi.runAllTimers());
       const dialog = screen.getByRole("dialog");
       expect(dialog.contains(document.activeElement)).toBe(true);
     } finally {

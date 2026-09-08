@@ -48,7 +48,7 @@ export const HOME_DEFAULTS: HomeSettings = {
     text: "Rapid local delivery · 45–50 min inside the service area · Cash on Delivery available",
   },
   hero: {
-    eyebrow: "Rapid local delivery · 45–50 min",
+    eyebrow: "The art of everyday dressing",
     title1: "Made for",
     title2: "everyday life.",
     subtitle:

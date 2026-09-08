@@ -11,7 +11,7 @@ export default function AnnouncementBar() {
   const { enabled, text } = settings.announcement;
   if (!enabled) return null;
   return (
-    <div className="bg-forest-950 px-4 py-2 text-center text-[0.72rem] font-medium tracking-wide text-ivory-100">
+    <div className="border-b border-gold-300/20 bg-forest-950 px-4 py-2.5 text-center text-[0.6rem] font-medium tracking-[0.1em] text-ivory-100">
       <p className="mx-auto max-w-4xl">{text}</p>
     </div>
   );

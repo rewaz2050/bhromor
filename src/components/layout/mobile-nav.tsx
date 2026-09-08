@@ -41,7 +41,7 @@ export default function MobileNav() {
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls="mobile-menu"
-        className="flex h-11 w-11 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
       >
         <IconMenu className="h-6 w-6" />
       </button>

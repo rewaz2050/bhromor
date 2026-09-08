@@ -12,3 +12,6 @@ next-env.d.ts
 .env*.local
 .env.development
 .env.production
+
+# Local browser checks and scratch artifacts
+.cache/
