@@ -59,6 +59,10 @@ export default function AdminGate({
     if (authed && onLogin) router.replace("/admin");
   }, [authed, onLogin, router]);
 
+  // The login page is public: it renders children regardless of auth and
+  // redirects to the dashboard once a session exists.
+  if (onLogin) return <>{children}</>;
+
   if (!authed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-forest-950">
@@ -69,8 +73,6 @@ export default function AdminGate({
       </div>
     );
   }
-
-  if (onLogin) return <>{children}</>;
 
   return (
     <div className="min-h-screen bg-ivory-100/60 lg:flex">
