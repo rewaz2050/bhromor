@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_LINE_QTY,
   addLine,
   defaultVariant,
   removeLine,
@@ -55,5 +56,25 @@ describe("cart helpers", () => {
   it("derives a sensible default variant", () => {
     expect(panjabi && defaultVariant(panjabi)).toBe("Forest Green · M");
     expect(gamcha && defaultVariant(gamcha)).toBe("Red & Cream");
+  });
+});
+
+describe("quantity limits & corrupt storage", () => {
+  it("caps a line at MAX_LINE_QTY however it is reached", () => {
+    let lines = addLine([], "p1", "Forest Green · L", 8);
+    lines = addLine(lines, "p1", "Forest Green · L", 8);
+    expect(lines[0].qty).toBe(MAX_LINE_QTY);
+    expect(setQty(lines, "p1", "Forest Green · L", 99)[0].qty).toBe(MAX_LINE_QTY);
+  });
+
+  it("ignores malformed lines from localStorage instead of crashing", () => {
+    const junk = [
+      { productId: "p1", variantLabel: "Forest Green · L", qty: 2 },
+      { productId: "p1", variantLabel: "Forest Green · L", qty: Number.NaN },
+      null,
+    ] as never as Parameters<typeof summarize>[0];
+    const summary = summarize(junk);
+    expect(summary.itemCount).toBe(2);
+    expect(Number.isFinite(summary.subtotal)).toBe(true);
   });
 });

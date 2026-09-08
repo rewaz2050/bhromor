@@ -207,10 +207,23 @@ function FeaturedSection() {
 }
 
 function CollectionsSection() {
+  // The copy promises "only categories that hold products appear here" — it
+  // used to list every category, including archived and empty ones.
+  const visibleCategories = CATEGORIES.filter((c) => c.active !== false)
+    .map((category) => ({
+      category,
+      count: productsByCategory(category.id).length,
+    }))
+    .filter(({ count }) => count > 0);
+
+  if (visibleCategories.length === 0) return null;
+
+  // scroll-mt keeps the sticky header from covering the heading when
+  // arriving via the "/#collections" link.
   return (
     <section
       id="collections"
-      className="border-y border-line bg-ivory-100/70"
+      className="scroll-mt-28 border-y border-line bg-ivory-100/70"
     >
       <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-24">
         <SectionHeading
@@ -219,9 +232,7 @@ function CollectionsSection() {
           sub="Men · Women · Traditional — only categories that hold products appear here."
         />
         <div className="grid gap-6 sm:grid-cols-3">
-          {CATEGORIES.map((category) => {
-            const count = productsByCategory(category.id).length;
-            return (
+          {visibleCategories.map(({ category, count }) => (
               <Link
                 key={category.id}
                 href={`/shop?category=${category.id}`}
@@ -253,8 +264,7 @@ function CollectionsSection() {
                   </div>
                 </div>
               </Link>
-            );
-          })}
+          ))}
         </div>
       </div>
     </section>
@@ -287,7 +297,7 @@ function NewArrivalsSection() {
 
 function BrandStorySection() {
   return (
-    <section id="story" className="border-y border-line bg-paper">
+    <section id="story" className="scroll-mt-28 border-y border-line bg-paper">
       <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:gap-20 lg:px-8 lg:py-28">
         <div className="relative order-2 mx-auto w-full max-w-md lg:order-1 lg:max-w-none">
           <div className="arch relative aspect-[4/5] overflow-hidden bg-ivory-200 ring-1 ring-line">

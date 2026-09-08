@@ -8,6 +8,7 @@ import {
   type HomeSettings,
   type SectionKey,
 } from "@/lib/home-cms";
+import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconReset } from "@/components/ui/icons";
 
@@ -17,7 +18,7 @@ export default function AdminHomepagePage() {
   const [draft, setDraft] = useState<HomeSettings>(() =>
     JSON.parse(JSON.stringify(settings)) as HomeSettings,
   );
-  const [savedFlash, setSavedFlash] = useState(false);
+  const [savedFlash, setSavedFlash] = useTransientValue(false, 1800);
 
   const setAnnouncement = (patch: Partial<HomeSettings["announcement"]>) =>
     setDraft((d) => ({ ...d, announcement: { ...d.announcement, ...patch } }));
@@ -29,7 +30,6 @@ export default function AdminHomepagePage() {
   const persist = () => {
     save(draft);
     setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 1800);
   };
 
   const blockCls = "rounded-2xl bg-paper p-6 ring-1 ring-line";

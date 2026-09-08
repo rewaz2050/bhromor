@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useReviews } from "@/lib/use-reviews";
 import {
   averageOf,
@@ -43,6 +43,14 @@ export default function ReviewsSection({ product }: { product: Product }) {
   const count = visibleCount(reviews, product.id);
   const avg = averageOf(visible);
 
+  const sentTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
+    },
+    [],
+  );
+
   const addReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (rating < 1) return setError("Pick a star rating first.");
@@ -65,7 +73,8 @@ export default function ReviewsSection({ product }: { product: Product }) {
     setBody("");
     setSent(true);
     setError(null);
-    window.setTimeout(() => setSent(false), 5000);
+    if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
+    sentTimer.current = window.setTimeout(() => setSent(false), 5000);
   };
 
   return (
@@ -184,7 +193,10 @@ export default function ReviewsSection({ product }: { product: Product }) {
               <span className="mb-1.5 block text-sm font-medium text-ink">Your review *</span>
               <textarea
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  if (error) setError(null);
+                }}
                 rows={4}
                 placeholder="What did you like? How was the fit?"
                 className="w-full resize-y rounded-xl border-0 bg-ivory-50 px-3.5 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-forest-600"

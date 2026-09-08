@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
@@ -17,6 +17,11 @@ import { ORDER_PREFIX } from "@/lib/catalog";
 import { makePlacedOrder } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
+import {
+  FREE_DELIVERY_THRESHOLD,
+  deliveryChargeFor,
+  orderTotal,
+} from "@/lib/delivery";
 import {
   IconArrowRight,
   IconBag,
@@ -66,19 +71,63 @@ export default function CheckoutView() {
   const { coupons: allCoupons, recordUse } = useCoupons();
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const submittingRef = useRef(false);
+  const placeTimer = useRef<number | null>(null);
+
+  // Never call setState after the page has gone away.
+  useEffect(
+    () => () => {
+      if (placeTimer.current !== null) window.clearTimeout(placeTimer.current);
+    },
+    [],
+  );
 
   const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
     ? form.zoneId
     : (zoneList[0]?.id ?? "");
   const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
+  /**
+   * A coupon is re-validated on every render against the *current* cart, so
+   * emptying or shrinking the cart can never leave a stale discount attached
+   * to the order (it used to survive until checkout).
+   */
+  const couponCheck = useMemo(() => {
+    if (!appliedCoupon) return { coupon: null as Coupon | null, problem: null as string | null };
+    const redeemable = isCouponRedeemable(appliedCoupon, subtotal);
+    if (!redeemable.ok) {
+      return {
+        coupon: null,
+        problem: redeemable.reason ?? "That code is no longer valid for this order.",
+      };
+    }
+    const eligible = eligibleSubtotal(
+      appliedCoupon,
+      detail.map((l) => ({
+        productCategory: l.product.category,
+        subtotal: l.lineTotal,
+      })),
+    );
+    if (eligible <= 0) {
+      return {
+        coupon: null,
+        problem: "That code no longer applies to the items in your cart.",
+      };
+    }
+    return { coupon: appliedCoupon, problem: null, eligible };
+  }, [appliedCoupon, subtotal, detail]);
+
+  const activeCoupon = couponCheck.coupon;
+
   const summary = useMemo(() => {
-    const charge = zone?.charge ?? 0;
-    const discount = appliedCoupon
+    // Free delivery now applies here too — the cart promised it and
+    // checkout silently charged anyway.
+    const charge = deliveryChargeFor(zone?.charge ?? 0, subtotal);
+    const discount = activeCoupon
       ? discountAmount(
-          appliedCoupon,
+          activeCoupon,
           eligibleSubtotal(
-            appliedCoupon,
+            activeCoupon,
             detail.map((l) => ({
               productCategory: l.product.category,
               subtotal: l.lineTotal,
@@ -88,11 +137,13 @@ export default function CheckoutView() {
       : 0;
     return {
       charge,
+      fullCharge: zone?.charge ?? 0,
+      freeDelivery: (zone?.charge ?? 0) > 0 && charge === 0,
       discount,
-      total: subtotal + charge - discount,
+      total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
     };
-  }, [zone, subtotal, detail, appliedCoupon]);
+  }, [zone, subtotal, detail, activeCoupon]);
 
   const empty = detail.length === 0;
 
@@ -204,19 +255,41 @@ export default function CheckoutView() {
       setCouponMsg({ ok: false, text: check.reason ?? "This code cannot be used." });
       return;
     }
+    // Category-restricted codes must actually match something in the cart.
+    const eligible = eligibleSubtotal(
+      coupon,
+      detail.map((l) => ({
+        productCategory: l.product.category,
+        subtotal: l.lineTotal,
+      })),
+    );
+    if (eligible <= 0) {
+      setAppliedCoupon(null);
+      setCouponMsg({
+        ok: false,
+        text: "This code does not apply to the items in your cart.",
+      });
+      return;
+    }
     setAppliedCoupon(coupon);
-    setCouponMsg({ ok: true, text: `${coupon.code} applied — discount shown below.` });
+    setCouponMsg({
+      ok: true,
+      text: `${coupon.code} applied — ${formatBdt(discountAmount(coupon, eligible))} off.`,
+    });
   };
 
   const placeOrder = () => {
-    if (form.submitting) return; // idempotent — no double submission (§79)
+    // Ref guard: two submits inside one tick both passed the state check,
+    // which could place the same order twice.
+    if (submittingRef.current) return; // idempotent — no double submission (§79)
+    submittingRef.current = true;
     update("submitting", true);
     const stamp = new Date();
     const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
     const seq = String(Math.floor(1000 + Math.random() * 9000));
     const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
     // Simulated network/backend latency before showing confirmation.
-    window.setTimeout(() => {
+    placeTimer.current = window.setTimeout(() => {
       // Store the order in the demo backend (order-store) so the admin
       // Orders queue and the public Track page can follow it live (§92).
       addOrderToStore(
@@ -230,19 +303,24 @@ export default function CheckoutView() {
             address: form.address,
             note: form.note,
           },
-          zone: { id: zone.id, name: zone.name, etaLabel: zone.etaLabel, charge: zone.charge },
+          zone: {
+            id: zone.id,
+            name: zone.name,
+            etaLabel: zone.etaLabel,
+            charge: summary.charge,
+          },
           items: detail.map((l) => ({
             product: l.product,
             image: l.product.media[0]?.src ?? "",
             variant: l.variantLabel,
             qty: l.qty,
           })),
-          coupon: appliedCoupon
-            ? { code: appliedCoupon.code, discount: summary.discount }
+          coupon: activeCoupon
+            ? { code: activeCoupon.code, discount: summary.discount }
             : undefined,
         }),
       );
-      if (appliedCoupon) recordUse(appliedCoupon.code);
+      if (activeCoupon) recordUse(activeCoupon.code);
       setPlaced({
         orderId,
         eta: zone.etaLabel,
@@ -254,7 +332,9 @@ export default function CheckoutView() {
     }, 900);
   };
 
-  const areaOptions = zone.areas.map((a) => `${a} · ${zone.name}`);
+  // Plain area names — the old `"Kandirpar · Zone A"` strings were stored
+  // verbatim as the customer's area on the order.
+  const areaOptions = zone.areas;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_400px]">
@@ -291,8 +371,8 @@ export default function CheckoutView() {
                 required
                 type="tel"
                 inputMode="tel"
-                pattern="01[0-9]{9}"
-                title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX"
+                pattern="(\+?88)?01[0-9]{9}"
+                title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
                 value={form.phone}
                 onChange={(e) => update("phone", e.target.value)}
                 placeholder="017XXXXXXXX"
@@ -379,7 +459,9 @@ export default function CheckoutView() {
                 Estimated arrival{" "}
                 <strong className="text-gold-300">{zone.etaLabel}</strong> from
                 confirmation · Delivery charge{" "}
-                <strong>{formatBdt(zone.charge)}</strong>
+                <strong>
+                  {summary.freeDelivery ? "Free" : formatBdt(summary.charge)}
+                </strong>
               </p>
             </div>
           </div>
@@ -494,10 +576,10 @@ export default function CheckoutView() {
             <label className="mb-1.5 block text-xs font-medium text-ink">
               Have a coupon code?
             </label>
-            {appliedCoupon ? (
+            {activeCoupon ? (
               <div className="flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
                 <span className="font-mono font-bold text-forest-800">
-                  {appliedCoupon.code}
+                  {activeCoupon.code}
                 </span>
                 <button
                   type="button"
@@ -530,7 +612,15 @@ export default function CheckoutView() {
                 </button>
               </div>
             )}
-            {couponMsg && (
+            {couponCheck.problem && (
+              <p
+                role="status"
+                className="mt-2 text-xs leading-5 text-rose-700"
+              >
+                {couponCheck.problem}
+              </p>
+            )}
+            {couponMsg && !couponCheck.problem && (
               <p
                 role="status"
                 className={`mt-2 text-xs leading-5 ${
@@ -547,10 +637,10 @@ export default function CheckoutView() {
               <dt className="text-ink-soft">Subtotal</dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
-            {summary.discount > 0 && appliedCoupon && (
+            {summary.discount > 0 && activeCoupon && (
               <div className="flex justify-between">
                 <dt className="text-ink-soft">
-                  Coupon · {appliedCoupon.code}
+                  Coupon · {activeCoupon.code}
                 </dt>
                 <dd className="font-medium text-emerald-700">
                   −{formatBdt(summary.discount)}
@@ -562,9 +652,24 @@ export default function CheckoutView() {
                 Delivery · {zone.etaLabel}
               </dt>
               <dd className="font-medium text-ink">
-                {formatBdt(summary.charge)}
+                {summary.freeDelivery ? (
+                  <span className="text-forest-700">
+                    Free{" "}
+                    <span className="text-ink-soft/70 line-through">
+                      {formatBdt(summary.fullCharge)}
+                    </span>
+                  </span>
+                ) : (
+                  formatBdt(summary.charge)
+                )}
               </dd>
             </div>
+            {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && (
+              <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
+                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more unlocks
+                free delivery.
+              </p>
+            )}
             <div className="flex justify-between pt-2 text-base">
               <dt className="font-semibold text-ink">Total (COD)</dt>
               <dd className="font-bold text-ink">{formatBdt(summary.total)}</dd>

@@ -6,7 +6,10 @@ import type { Product } from "@/lib/catalog";
 
 export default function ProductGallery({ product }: { product: Product }) {
   const [active, setActive] = useState(0);
-  const current = product.media[active];
+  // Clamp: navigating between products (or an admin removing an image) could
+  // leave the index pointing past the end, blanking the gallery.
+  const index = Math.min(Math.max(active, 0), Math.max(product.media.length - 1, 0));
+  const current = product.media[index];
 
   return (
     <div>
@@ -34,15 +37,15 @@ export default function ProductGallery({ product }: { product: Product }) {
 
       {product.media.length > 1 && (
         <div className="mt-4 flex gap-3">
-          {product.media.map((media, index) => (
+          {product.media.map((media, i) => (
             <button
-              key={media.src}
+              key={`${media.src}-${i}`}
               type="button"
-              onClick={() => setActive(index)}
-              aria-label={`View image ${index + 1}: ${media.alt}`}
-              aria-pressed={active === index}
+              onClick={() => setActive(i)}
+              aria-label={`View image ${i + 1}: ${media.alt}`}
+              aria-pressed={index === i}
               className={`relative aspect-square w-20 overflow-hidden rounded-xl ring-2 transition-all ${
-                active === index
+                index === i
                   ? "ring-forest-700"
                   : "ring-transparent opacity-70 hover:opacity-100"
               }`}

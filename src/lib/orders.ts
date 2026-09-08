@@ -185,6 +185,20 @@ export const makePlacedOrder = (input: PlacedOrderInput): Order => {
   };
 };
 
+/**
+ * Compare phone numbers the way a human would: ignore spaces, dashes and a
+ * +88 country code. Tracking failed for anyone who typed "+8801..." even
+ * though it is the same number.
+ */
+export const normalizePhone = (phone: string): string => {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
+  return digits;
+};
+
+export const samePhone = (a: string, b: string): boolean =>
+  normalizePhone(a) !== "" && normalizePhone(a) === normalizePhone(b);
+
 export const maskPhone = (phone: string): string => {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 8) return phone;

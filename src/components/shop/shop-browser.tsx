@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Category, CategoryId, Product } from "@/lib/catalog";
 import { bdt } from "@/lib/format";
 import ProductCard from "@/components/product/product-card";
+import Drawer from "@/components/ui/drawer";
 import {
   IconBox,
   IconClose,
@@ -21,24 +22,50 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "price-desc", label: "Price: High → Low" },
 ];
 
-const PRICE_BANDS = [
-  { key: "any", label: "Any price" },
-  { key: "under1000", label: "Under ৳1,000", max: 1000 },
-  { key: "1000-1500", label: "৳1,000 – ৳1,500", max: 1500 },
-  { key: "1500-2500", label: "৳1,500 – ৳2,500", max: 2500 },
-  { key: "above2500", label: "Above ৳2,500" },
-];
+/**
+ * Price bands carry BOTH bounds. They used to carry only `max`, so
+ * “৳1,000 – ৳1,500” also matched a ৳390 gamcha — every band behaved like
+ * “under X”.
+ */
+const PRICE_BANDS: { key: string; label: string; min?: number; max?: number }[] =
+  [
+    { key: "any", label: "Any price" },
+    { key: "under1000", label: "Under ৳1,000", max: 1000 },
+    { key: "1000-1500", label: "৳1,000 – ৳1,500", min: 1000, max: 1500 },
+    { key: "1500-2500", label: "৳1,500 – ৳2,500", min: 1500, max: 2500 },
+    { key: "above2500", label: "Above ৳2,500", min: 2500 },
+  ];
 
-const ALL_SIZES = ["S", "M", "L", "XL", "XXL"];
-const ALL_COLORS = [
-  "Forest Green",
-  "Ivory",
-  "Slate",
-  "Emerald",
-  "Cream",
-  "Deep Teal Check",
-  "Red & Cream",
-];
+const inBand = (price: number, key: string): boolean => {
+  const band = PRICE_BANDS.find((b) => b.key === key);
+  if (!band || band.key === "any") return true;
+  if (band.min !== undefined && price < bdt(band.min)) return false;
+  if (band.max !== undefined && price >= bdt(band.max)) return false;
+  return true;
+};
+
+/** Sizes/colours are derived from the catalog, so a filter never offers an
+ *  option nothing matches (and never misses a colour a new product adds). */
+const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+
+const collectSizes = (products: Product[]): string[] => {
+  const set = new Set<string>();
+  for (const p of products) for (const s of p.sizes) set.add(s);
+  return [...set].sort((a, b) => {
+    const ia = SIZE_ORDER.indexOf(a);
+    const ib = SIZE_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+};
+
+const collectColors = (products: Product[]): string[] => {
+  const set = new Set<string>();
+  for (const p of products) for (const c of p.colors) set.add(c);
+  return [...set].sort((a, b) => a.localeCompare(b));
+};
 
 export default function ShopBrowser({
   products,
@@ -61,52 +88,75 @@ export default function ShopBrowser({
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
+  /**
+   * Keep the filters in step with the URL. Without this, going from
+   * `/shop?category=men` to `/shop?filter=new` (header/footer links) left the
+   * old filters on screen — the page looked frozen.
+   */
+  const lastUrlState = useRef({ initialCategory, initialNew });
+  useEffect(() => {
+    const prev = lastUrlState.current;
+    if (prev.initialCategory !== initialCategory || prev.initialNew !== initialNew) {
+      lastUrlState.current = { initialCategory, initialNew };
+      setCategory(initialCategory);
+      setOnlyNew(initialNew);
+    }
+  }, [initialCategory, initialNew]);
+
+  const allSizes = useMemo(() => collectSizes(products), [products]);
+  const allColors = useMemo(() => collectColors(products), [products]);
+
   const toggle = (list: string[], value: string) =>
     list.includes(value)
       ? list.filter((v) => v !== value)
       : [...list, value];
 
   const visible = useMemo(() => {
-    let list = [...products];
-    if (category !== "all") list = list.filter((p) => p.category === category);
-    if (onlyNew) list = list.filter((p) => p.isNew);
-    if (onlyInStock) list = list.filter((p) => p.inStock);
+    let list = products.map((p, index) => ({ p, index }));
+    if (category !== "all") list = list.filter(({ p }) => p.category === category);
+    if (onlyNew) list = list.filter(({ p }) => p.isNew);
+    if (onlyInStock) list = list.filter(({ p }) => p.inStock);
     if (sizes.length)
-      list = list.filter((p) => p.sizes.some((s) => sizes.includes(s)));
+      list = list.filter(({ p }) => p.sizes.some((s) => sizes.includes(s)));
     if (colors.length)
-      list = list.filter((p) => p.colors.some((c) => colors.includes(c)));
-    if (priceBand !== "any") {
-      const band = PRICE_BANDS.find((b) => b.key === priceBand);
-      if (band?.max) {
-        list = list.filter((p) => p.price < bdt(band.max));
-      } else if (priceBand === "above2500") {
-        list = list.filter((p) => p.price >= bdt(2500));
-      }
-    }
+      list = list.filter(({ p }) => p.colors.some((c) => colors.includes(c)));
+    if (priceBand !== "any")
+      list = list.filter(({ p }) => inBand(p.price, priceBand));
+
     const query = q.trim().toLowerCase();
     if (query) {
       list = list.filter(
-        (p) =>
+        ({ p }) =>
           p.name.toLowerCase().includes(query) ||
           p.subCategory.toLowerCase().includes(query) ||
           p.sku.toLowerCase().includes(query) ||
-          (p.nameBn ?? "").toLowerCase().includes(query),
+          p.category.toLowerCase().includes(query) ||
+          (p.nameBn ?? "").includes(query.trim()),
       );
     }
+
+    const sorted = [...list];
     switch (sort) {
       case "newest":
-        list = [...list].reverse();
+        // “Newest” means new arrivals first, not “the list backwards”.
+        sorted.sort(
+          (a, b) =>
+            Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
+        );
         break;
       case "price-asc":
-        list = [...list].sort((a, b) => a.price - b.price);
+        sorted.sort((a, b) => a.p.price - b.p.price || a.index - b.index);
         break;
       case "price-desc":
-        list = [...list].sort((a, b) => b.price - a.price);
+        sorted.sort((a, b) => b.p.price - a.p.price || a.index - b.index);
         break;
       default:
-        list = [...list].sort((a, b) => Number(b.featured) - Number(a.featured));
+        sorted.sort(
+          (a, b) =>
+            Number(b.p.featured) - Number(a.p.featured) || a.index - b.index,
+        );
     }
-    return list;
+    return sorted.map(({ p }) => p);
   }, [products, category, onlyNew, onlyInStock, sizes, colors, priceBand, q, sort]);
 
   const hasActiveFilters =
@@ -115,7 +165,8 @@ export default function ShopBrowser({
     onlyInStock ||
     sizes.length > 0 ||
     colors.length > 0 ||
-    priceBand !== "any";
+    priceBand !== "any" ||
+    q.trim() !== "";
 
   const resetAll = () => {
     setCategory("all");
@@ -130,7 +181,9 @@ export default function ShopBrowser({
   const categoryCount = (id: CategoryId) =>
     products.filter((p) => p.category === id).length;
 
-  const filterPanel = (
+  /** Rendered twice (sidebar + drawer); `scope` keeps radio groups apart so
+   *  the two copies do not fight over the same browser radio group. */
+  const renderFilters = (scope: string) => (
     <div className="space-y-8">
       {/* Categories */}
       <Fieldset title="Categories">
@@ -150,7 +203,7 @@ export default function ShopBrowser({
                   <span className="flex items-center gap-2.5">
                     <input
                       type="radio"
-                      name="category"
+                      name={`${scope}-category`}
                       checked={category === id}
                       onChange={() => setCategory(id)}
                       className="h-4 w-4 accent-forest-700"
@@ -179,7 +232,7 @@ export default function ShopBrowser({
             >
               <input
                 type="radio"
-                name="price"
+                name={`${scope}-price`}
                 checked={priceBand === band.key}
                 onChange={() => setPriceBand(band.key)}
                 className="h-4 w-4 accent-forest-700"
@@ -191,49 +244,53 @@ export default function ShopBrowser({
       </Fieldset>
 
       {/* Size */}
-      <Fieldset title="Size">
-        <div className="flex flex-wrap gap-2">
-          {ALL_SIZES.map((size) => (
-            <button
-              key={size}
-              type="button"
-              onClick={() => setSizes((s) => toggle(s, size))}
-              aria-pressed={sizes.includes(size)}
-              className={`h-9 min-w-9 rounded-full px-2.5 text-sm font-medium transition-colors ${
-                sizes.includes(size)
-                  ? "bg-forest-800 text-ivory-50"
-                  : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
-              }`}
-            >
-              {size}
-            </button>
-          ))}
-        </div>
-      </Fieldset>
-
-      {/* Color */}
-      <Fieldset title="Colour">
-        <div className="flex flex-wrap gap-2">
-          {ALL_COLORS.map((color) => {
-            const active = colors.includes(color);
-            return (
+      {allSizes.length > 0 && (
+        <Fieldset title="Size">
+          <div className="flex flex-wrap gap-2">
+            {allSizes.map((size) => (
               <button
-                key={color}
+                key={size}
                 type="button"
-                onClick={() => setColors((c) => toggle(c, color))}
-                aria-pressed={active}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                  active
+                onClick={() => setSizes((s) => toggle(s, size))}
+                aria-pressed={sizes.includes(size)}
+                className={`h-9 min-w-9 rounded-full px-2.5 text-sm font-medium transition-colors ${
+                  sizes.includes(size)
                     ? "bg-forest-800 text-ivory-50"
                     : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
                 }`}
               >
-                {color}
+                {size}
               </button>
-            );
-          })}
-        </div>
-      </Fieldset>
+            ))}
+          </div>
+        </Fieldset>
+      )}
+
+      {/* Color */}
+      {allColors.length > 0 && (
+        <Fieldset title="Colour">
+          <div className="flex flex-wrap gap-2">
+            {allColors.map((color) => {
+              const active = colors.includes(color);
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setColors((c) => toggle(c, color))}
+                  aria-pressed={active}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    active
+                      ? "bg-forest-800 text-ivory-50"
+                      : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
+                  }`}
+                >
+                  {color}
+                </button>
+              );
+            })}
+          </div>
+        </Fieldset>
+      )}
 
       {/* Availability */}
       <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
@@ -258,6 +315,14 @@ export default function ShopBrowser({
     </div>
   );
 
+  const activeFilterCount =
+    sizes.length +
+    colors.length +
+    (priceBand !== "any" ? 1 : 0) +
+    (onlyInStock ? 1 : 0) +
+    (category !== "all" ? 1 : 0) +
+    (onlyNew ? 1 : 0);
+
   return (
     <div>
       {/* Toolbar */}
@@ -278,11 +343,15 @@ export default function ShopBrowser({
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
             className="inline-flex h-12 items-center gap-2 rounded-full bg-paper px-5 text-sm font-medium ring-1 ring-line lg:hidden"
           >
             Filters
-            {(sizes.length > 0 || colors.length > 0 || priceBand !== "any") && (
-              <span className="h-2 w-2 rounded-full bg-gold-500" />
+            {activeFilterCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-500 px-1.5 text-[0.65rem] font-bold text-white">
+                {activeFilterCount}
+              </span>
             )}
           </button>
           <label className="flex items-center gap-2 text-sm text-ink-soft">
@@ -306,7 +375,7 @@ export default function ShopBrowser({
         </div>
       </div>
 
-      <p className="mt-5 text-sm text-ink-soft">
+      <p className="mt-5 text-sm text-ink-soft" role="status" aria-live="polite">
         {visible.length} {visible.length === 1 ? "product" : "products"}
         {category !== "all" &&
           ` in ${categories.find((c) => c.id === category)?.name ?? ""}`}
@@ -316,7 +385,7 @@ export default function ShopBrowser({
       {/* Desktop layout */}
       <div className="mt-6 grid gap-10 lg:grid-cols-[240px_1fr]">
         <aside className="hidden lg:block">
-          <div className="sticky top-28">{filterPanel}</div>
+          <div className="sticky top-28">{renderFilters("sidebar")}</div>
         </aside>
 
         <div>
@@ -350,56 +419,48 @@ export default function ShopBrowser({
         </div>
       </div>
 
-      {/* Mobile filter drawer */}
-      {drawerOpen && (
-        <div
-          className="fixed inset-0 z-50 lg:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Product filters"
-        >
+      {/* Mobile filter drawer — portalled, Escape-closable, scroll-locked */}
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        label="Product filters"
+        side="bottom"
+        className="lg:hidden"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold text-ink">
+            Filters
+          </h2>
           <button
-            aria-label="Close filters"
+            type="button"
             onClick={() => setDrawerOpen(false)}
-            className="absolute inset-0 bg-forest-950/40 backdrop-blur-sm"
-          />
-          <div className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-ivory-50 p-6 shadow-2xl">
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="font-display text-xl font-semibold text-ink">
-                Filters
-              </h2>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                aria-label="Close filters"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100"
-              >
-                <IconClose />
-              </button>
-            </div>
-            {filterPanel}
-            <div className="mt-8 flex gap-3 pb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  resetAll();
-                  setDrawerOpen(false);
-                }}
-                className="h-12 flex-1 rounded-full bg-paper text-sm font-medium ring-1 ring-line"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                className="h-12 flex-1 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
-              >
-                Show {visible.length}
-              </button>
-            </div>
-          </div>
+            aria-label="Close filters"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100"
+          >
+            <IconClose />
+          </button>
         </div>
-      )}
+        {renderFilters("drawer")}
+        <div className="mt-8 flex gap-3 pb-4">
+          <button
+            type="button"
+            onClick={() => {
+              resetAll();
+              setDrawerOpen(false);
+            }}
+            className="h-12 flex-1 rounded-full bg-paper text-sm font-medium ring-1 ring-line"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(false)}
+            className="h-12 flex-1 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+          >
+            Show {visible.length}
+          </button>
+        </div>
+      </Drawer>
     </div>
   );
 }

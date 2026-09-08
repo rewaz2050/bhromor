@@ -8,11 +8,12 @@
  * admin_users exist. `/admin/login` is exempt from the gate.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import LogoMark from "@/components/logo-mark";
+import Drawer from "@/components/ui/drawer";
 import { useNotifications } from "@/lib/use-notifications";
 import {
   IconBell,
@@ -26,6 +27,7 @@ import {
   IconLeaf,
   IconLogout,
   IconMapPin,
+  IconMenu,
   IconSettings,
   IconTag,
   IconUser,
@@ -92,6 +94,16 @@ export default function AdminGate({
 
   const onLogin = pathname.startsWith("/admin/login");
   const { unread } = useNotifications();
+  /** Phones had no way to reach the admin nav: the sidebar simply stacked its
+   *  15 links above every page. It is a drawer below `lg` now. */
+  const [navOpen, setNavOpen] = useState(false);
+  const lastPath = useRef(pathname);
+  useEffect(() => {
+    if (lastPath.current !== pathname) {
+      lastPath.current = pathname;
+      setNavOpen(false);
+    }
+  }, [pathname]);
 
   useEffect(() => {
     if (!authed && !onLogin) router.replace("/admin/login");
@@ -113,10 +125,8 @@ export default function AdminGate({
     );
   }
 
-  return (
-    <div className="min-h-screen bg-ivory-100/60 lg:flex">
-      {/* Sidebar */}
-      <aside className="flex flex-col bg-forest-950 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0">
+  const sidebar = (
+    <>
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ivory-100">
             <LogoMark className="h-6 w-auto" />
@@ -182,13 +192,42 @@ export default function AdminGate({
             Sign out
           </button>
         </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen bg-ivory-100/60 lg:flex">
+      {/* Sidebar — permanent from lg, drawer below it */}
+      <aside className="hidden flex-col bg-forest-950 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:shrink-0">
+        {sidebar}
       </aside>
+
+      <Drawer
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        label="Admin menu"
+        side="left"
+        panelBg="bg-forest-950"
+        className="lg:hidden"
+      >
+        {sidebar}
+      </Drawer>
 
       {/* Main column */}
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-ivory-50/90 px-6 py-4 backdrop-blur lg:px-10">
-          <div>
-            <h1 className="font-display text-xl font-medium text-forest-900">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-ivory-50/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-10">
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setNavOpen(true)}
+              aria-label="Open admin menu"
+              aria-expanded={navOpen}
+              aria-haspopup="dialog"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
+            >
+              <IconMenu className="h-5 w-5" />
+            </button>
+            <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
               {titleFor(pathname)}
             </h1>
           </div>

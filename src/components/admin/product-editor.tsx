@@ -126,9 +126,31 @@ export default function ProductEditor({
   const validate = (): string | null => {
     if (!draft.name.trim()) return "Product name is required.";
     const taka = Number(draft.priceTaka);
-    if (!Number.isFinite(taka) || taka < 0) return "Enter a valid price.";
+    if (!draft.priceTaka.trim() || !Number.isFinite(taka) || taka <= 0)
+      return "Enter a valid price.";
+    // A non-numeric "compare at" used to be saved as NaN and rendered as ৳NaN.
+    if (draft.compareTaka.trim()) {
+      const compare = Number(draft.compareTaka);
+      if (!Number.isFinite(compare) || compare <= 0)
+        return "Compare-at price must be a number.";
+      if (compare <= taka)
+        return "Compare-at price should be higher than the selling price.";
+    }
+    if (draft.stock.trim() && !Number.isFinite(Number(draft.stock)))
+      return "Stock must be a number.";
     if (!draft.category) return "Pick a category.";
     if (draft.media.length === 0) return "Add at least one product image URL.";
+    // Duplicate slugs silently broke /product/[slug] (two rows, one URL).
+    const slug = slugify(draft.slug || draft.name);
+    const clash = products.find((p) => p.slug === slug && p.id !== product?.id);
+    if (clash) return `The URL slug “${slug}” is already used by ${clash.name}.`;
+    const sku = draft.sku.trim().toUpperCase();
+    if (sku) {
+      const skuClash = products.find(
+        (p) => p.sku.toUpperCase() === sku && p.id !== product?.id,
+      );
+      if (skuClash) return `SKU “${sku}” already belongs to ${skuClash.name}.`;
+    }
     const ytId = extractYoutubeId(draft.youtube);
     if (draft.youtube.trim() && !ytId) return "That doesn't look like a YouTube URL or video id.";
     return null;
@@ -145,7 +167,10 @@ export default function ProductEditor({
     const now: Product = {
       id: existing?.id ?? nextProductId(products),
       slug: slugify(draft.slug || draft.name),
-      sku: draft.sku.trim(),
+      // Empty SKUs showed as "SKU " in the cart — derive a sensible one.
+      sku:
+        draft.sku.trim().toUpperCase() ||
+        `PS-${slugify(draft.slug || draft.name).slice(0, 12).toUpperCase()}`,
       name: draft.name.trim(),
       nameBn: draft.nameBn.trim() || undefined,
       category: draft.category as Product["category"],

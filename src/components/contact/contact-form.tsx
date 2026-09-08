@@ -59,7 +59,7 @@ export default function ContactForm() {
           <input
             required
             type="tel"
-            pattern="01[0-9]{9}"
+            pattern="(\+?88)?01[0-9]{9}"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="017XXXXXXXX"

@@ -11,7 +11,9 @@ export default function Newsletter() {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (email.trim()) setDone(true);
+        if (!email.trim()) return;
+        setDone(true);
+        setEmail(""); // the field used to keep the address after subscribing
       }}
       className="mx-auto mt-6 flex max-w-md flex-wrap items-center gap-3"
     >
@@ -23,7 +25,10 @@ export default function Newsletter() {
         type="email"
         required
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          if (done) setDone(false);
+        }}
         placeholder="Your email address"
         className="h-12 min-w-0 flex-1 basis-52 rounded-full border-0 bg-white/10 px-6 text-sm text-white placeholder:text-white/50 ring-1 ring-white/25 focus:ring-2 focus:ring-gold-400"
       />
@@ -34,7 +39,11 @@ export default function Newsletter() {
         Subscribe
       </button>
       {done && (
-        <p className="mt-2 flex w-full items-center justify-center gap-2 text-sm text-gold-200">
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-2 flex w-full items-center justify-center gap-2 text-sm text-gold-200"
+        >
           <IconCheck className="h-4 w-4" /> Thank you — we will keep you posted
           about new collections and offers.
         </p>

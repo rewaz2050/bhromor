@@ -15,12 +15,11 @@ export default async function ShopPage({
   searchParams: Promise<{ category?: string; filter?: string }>;
 }) {
   const params = await searchParams;
-  const category =
-    params.category === "men" ||
-    params.category === "women" ||
-    params.category === "traditional"
-      ? params.category
-      : ("all" as const);
+  // Categories are data-driven (§5) — validating against three hard-coded ids
+  // meant any category added later silently fell back to "all".
+  const category = CATEGORIES.some((c) => c.id === params.category)
+    ? (params.category as string)
+    : ("all" as const);
   const onlyNew = params.filter === "new";
 
   return (

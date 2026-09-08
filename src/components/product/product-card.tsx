@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { defaultVariant } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
@@ -16,10 +16,21 @@ export default function ProductCard({ product }: { product: Product }) {
   const [added, setAdded] = useState(false);
   const wished = has(product.id);
 
+  // Timer cleared on unmount — filtering the grid used to fire setState on
+  // cards React had already thrown away.
+  const addedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (addedTimer.current !== null) window.clearTimeout(addedTimer.current);
+    },
+    [],
+  );
+
   const quickAdd = () => {
     addItem(product.id, defaultVariant(product), 1);
     setAdded(true);
-    window.setTimeout(() => setAdded(false), 1600);
+    if (addedTimer.current !== null) window.clearTimeout(addedTimer.current);
+    addedTimer.current = window.setTimeout(() => setAdded(false), 1600);
   };
 
   const secondImage = product.media[1];
@@ -33,8 +44,8 @@ export default function ProductCard({ product }: { product: Product }) {
           aria-label={product.name}
         >
           <Image
-            src={product.media[0].src}
-            alt={product.media[0].alt}
+            src={product.media[0]?.src ?? "/images/hero.jpg"}
+            alt={product.media[0]?.alt ?? product.name}
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
             className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
@@ -42,7 +53,8 @@ export default function ProductCard({ product }: { product: Product }) {
           {secondImage && (
             <Image
               src={secondImage.src}
-              alt={secondImage.alt}
+              alt=""
+              aria-hidden="true"
               fill
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
               className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
@@ -100,6 +112,11 @@ export default function ProductCard({ product }: { product: Product }) {
             )}
           </button>
         )}
+
+        {/* The label swap alone is silent for screen readers. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {added ? `${product.name} added to cart` : ""}
+        </p>
       </div>
 
       <div className="mt-4 flex flex-col gap-1 px-0.5">

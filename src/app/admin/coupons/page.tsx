@@ -20,6 +20,19 @@ import {
 const fmtDate = (ms: number | undefined): string =>
   ms ? new Date(ms).toISOString().slice(0, 10) : "";
 
+/**
+ * Parse an optional numeric field. `Number("abc")` is NaN, and a NaN coupon
+ * value used to sail into the store and render "৳NaN" at checkout.
+ */
+const parseOptionalNumber = (
+  raw: string,
+): { ok: true; value?: number } | { ok: false } => {
+  if (!raw.trim()) return { ok: true };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return { ok: false };
+  return { ok: true, value: n };
+};
+
 /** §56 promotions — discount codes admin (demo store). */
 export default function AdminCouponsPage() {
   const { coupons, save, remove, reset } = useCoupons();
@@ -55,8 +68,15 @@ export default function AdminCouponsPage() {
       return setFormError("Percent discount cannot exceed 100.");
     if (type === "fixed" && val > 100_000)
       return setFormError("Keep the fixed amount realistic (taka).");
+    const min = parseOptionalNumber(minTaka);
+    if (!min.ok) return setFormError("Minimum order must be a positive amount.");
+    const limit = parseOptionalNumber(usageLimit);
+    if (!limit.ok || (limit.value !== undefined && limit.value < 1))
+      return setFormError("Usage limit must be a whole number of uses.");
     const now = Date.now();
     const until = validUntil ? new Date(`${validUntil}T23:59:59`).getTime() : undefined;
+    if (until !== undefined && !Number.isFinite(until))
+      return setFormError("That end date is not valid.");
     if (until && until <= now)
       return setFormError("End date must be in the future.");
     save({
@@ -64,10 +84,11 @@ export default function AdminCouponsPage() {
       code: c,
       type,
       value: type === "fixed" ? bdt(val) : val,
-      minOrder: minTaka.trim() ? bdt(Number(minTaka)) : 0,
+      minOrder: min.value !== undefined ? bdt(min.value) : 0,
       categoryId: categoryId || undefined,
       validUntil: until,
-      usageLimit: usageLimit.trim() ? Math.floor(Number(usageLimit)) : undefined,
+      usageLimit:
+        limit.value !== undefined ? Math.floor(limit.value) : undefined,
       used: 0,
       active: true,
     });
@@ -91,15 +112,29 @@ export default function AdminCouponsPage() {
 
   const commitEdit = (c: Coupon) => {
     const val = Number(editValue);
-    if (!Number.isFinite(val) || val <= 0 || (c.type === "percent" && val > 100)) return;
+    // Silent no-op before: the row just refused to save with no explanation.
+    if (!Number.isFinite(val) || val <= 0 || (c.type === "percent" && val > 100))
+      return setFormError(
+        c.type === "percent"
+          ? "Percent discount must be between 1 and 100."
+          : "Discount must be a positive amount.",
+      );
+    const min = parseOptionalNumber(editMin);
+    const limit = parseOptionalNumber(editLimit);
+    if (!min.ok) return setFormError("Minimum order must be a positive amount.");
+    if (!limit.ok) return setFormError("Usage limit must be a whole number.");
     const until = editUntil ? new Date(`${editUntil}T23:59:59`).getTime() : undefined;
+    if (until !== undefined && !Number.isFinite(until))
+      return setFormError("That end date is not valid.");
     save({
       ...c,
       value: c.type === "fixed" ? bdt(val) : val,
-      minOrder: editMin.trim() ? bdt(Number(editMin)) : 0,
-      usageLimit: editLimit.trim() ? Math.floor(Number(editLimit)) : undefined,
+      minOrder: min.value !== undefined ? bdt(min.value) : 0,
+      usageLimit:
+        limit.value !== undefined ? Math.floor(limit.value) : undefined,
       validUntil: until,
     });
+    setFormError(null);
     setEditing(null);
   };
 
@@ -134,6 +169,17 @@ export default function AdminCouponsPage() {
           </button>
         </div>
       </div>
+
+      {/* Errors raised while editing a row are shown here — they used to be
+          rendered only inside the (usually closed) "new coupon" panel. */}
+      {formError && !open && (
+        <p
+          role="alert"
+          className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200"
+        >
+          {formError}
+        </p>
+      )}
 
       {open && (
         <div className="rounded-2xl bg-paper p-6 ring-1 ring-line">

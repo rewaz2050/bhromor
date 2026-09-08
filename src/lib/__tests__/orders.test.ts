@@ -11,6 +11,8 @@ import {
   isTerminal,
   makePlacedOrder,
   maskPhone,
+  normalizePhone,
+  samePhone,
   nextActions,
   transitionAllowed,
   type Order,
@@ -285,5 +287,15 @@ describe("makePlacedOrder with coupon (§56)", () => {
     });
     expect(placed.total).toBe(bdt(50)); // subtotal fully discounted + delivery
     expect(placed.coupon!.discount).toBe(placed.subtotal);
+  });
+});
+
+describe("phone matching (order tracking)", () => {
+  it("ignores formatting and the +88 country code", () => {
+    expect(normalizePhone("+8801712345678")).toBe("01712345678");
+    expect(normalizePhone("017-1234 5678")).toBe("01712345678");
+    expect(samePhone("+8801712345678", "01712345678")).toBe(true);
+    expect(samePhone("01712345678", "01712345679")).toBe(false);
+    expect(samePhone("", "01712345678")).toBe(false);
   });
 });

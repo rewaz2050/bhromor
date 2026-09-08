@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useZones } from "@/lib/use-zones";
 import { bdt } from "@/lib/format";
 import { nextZoneId } from "@/lib/zone-store";
@@ -35,6 +35,13 @@ function ZoneRow({
   const [active, setActive] = useState(zone.active !== false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const savedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    },
+    [],
+  );
 
   const save = () => {
     const taka = Number(chargeTaka);
@@ -60,7 +67,8 @@ function ZoneRow({
     });
     setError(null);
     setSaved(true);
-    window.setTimeout(() => setSaved(false), 1600);
+    if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    savedTimer.current = window.setTimeout(() => setSaved(false), 1600);
   };
 
   return (
@@ -198,17 +206,24 @@ export default function AdminZonesPage() {
   };
 
   const del = (z: DeliveryZone) => {
+    // The last zone can never be removed — say so instead of asking a
+    // question whose "OK" then failed with a second alert.
+    if (zones.length <= 1) {
+      window.alert(
+        "Keep at least one delivery zone — checkout needs a default.",
+      );
+      return;
+    }
     if (
       !window.confirm(
-        zones.length <= 1
-          ? "Keep at least one zone — checkout needs a default."
-          : `Delete “${z.name}”? Customers will no longer see it at checkout.`,
+        `Delete “${z.name}”? Customers will no longer see it at checkout.`,
       )
     ) {
       return;
     }
-    const ok = removeZone(z.id);
-    if (!ok) window.alert("Keep at least one delivery zone.");
+    if (!removeZone(z.id)) {
+      window.alert("Keep at least one delivery zone.");
+    }
   };
 
   return (
@@ -269,7 +284,9 @@ export default function AdminZonesPage() {
 
       {zones.map((z, i) => (
         <ZoneRow
-          key={z.id}
+          /* Keyed on the stored values so "Reset demo zones" (or any external
+             change) refreshes the row inputs instead of leaving stale text. */
+          key={`${z.id}:${z.name}:${z.charge}:${z.etaLabel}:${z.areas.join(",")}:${z.active !== false}`}
           zone={z}
           first={i === 0}
           last={i === zones.length - 1}

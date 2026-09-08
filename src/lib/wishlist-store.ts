@@ -56,9 +56,29 @@ const persist = (next: string[]) => {
   notify();
 };
 
+/**
+ * Cross-tab / cross-surface sync: the wishlist lives in localStorage, so a
+ * change made in another tab (or in the admin preview tab) must reach this
+ * one. Without this the heart icons silently disagreed between tabs.
+ */
+let storageBound = false;
+const bindStorage = () => {
+  if (storageBound || typeof window === "undefined") return;
+  storageBound = true;
+  window.addEventListener("storage", (event) => {
+    if (event.key !== null && event.key !== WISHLIST_STORAGE_KEY) return;
+    cache = null;
+    loaded = false;
+    notify();
+  });
+};
+
 export const subscribeWishlist = (listener: Listener): (() => void) => {
+  bindStorage();
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 };
 
 export const getWishlist = (): string[] => ensureLoaded();

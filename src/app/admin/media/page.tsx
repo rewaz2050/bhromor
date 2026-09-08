@@ -8,6 +8,7 @@ import {
   isImgUrl,
   type MediaKind,
 } from "@/lib/media-store";
+import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint } from "@/components/admin/form-ui";
 import { IconCheck, IconCopy, IconPlus, IconSearch, IconTrash } from "@/components/ui/icons";
 
@@ -22,7 +23,7 @@ export default function AdminMediaPage() {
   const [url, setUrl] = useState("");
   const [alt, setAlt] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [copied, setCopied] = useTransientValue<string | null>(null, 1400);
 
   const visible = useMemo(
     () =>
@@ -44,7 +45,6 @@ export default function AdminMediaPage() {
         urlToCopy.startsWith("/") ? `https://prosanti.store${urlToCopy}` : urlToCopy,
       );
       setCopied(id);
-      window.setTimeout(() => setCopied(null), 1400);
     } catch {
       window.prompt("Copy this URL:", urlToCopy);
     }

@@ -72,13 +72,21 @@ export const advanceOrderInStore = (
   id: string,
   to: OrderStatus,
   note?: string,
-) => {
+): boolean => {
   const current = ensureLoaded();
+  let changed = false;
   const next = current.map((o) => {
     if (o.id !== id) return o;
-    return advanceOrder(o, to, Date.now(), note) ?? o;
+    const advanced = advanceOrder(o, to, Date.now(), note);
+    if (!advanced) return o;
+    changed = true;
+    return advanced;
   });
-  if (next !== current) persist(next);
+  // `.map()` always returns a new array, so the old `next !== current` check
+  // was always true: illegal transitions still wrote to storage and woke
+  // every subscriber.
+  if (changed) persist(next);
+  return changed;
 };
 
 /** Append a freshly placed checkout order (newest first). */

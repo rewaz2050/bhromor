@@ -64,6 +64,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lines]);
 
+  // Keep tabs in step: two open tabs used to overwrite each other's cart,
+  // and the badge in one tab never noticed a checkout in the other.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== CART_STORAGE_KEY) return;
+      setLines(readStorage());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const addItem = useCallback(
     (productId: string, variantLabel: string, qty = 1) =>
       setLines((prev) => addLine(prev, productId, variantLabel, qty)),
