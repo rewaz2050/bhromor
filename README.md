@@ -48,7 +48,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (115 tests).
+Unit/component suite: 149 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -140,3 +140,21 @@ src/
 
 1. **Backend wiring** — apply `supabase/schema.sql`, then move `src/lib/*` demo stores behind data-access adapters backed by Supabase (catalog, orders, coupons, reviews, notifications, media refs); Cloudinary signed uploads (§48); `.env` keys are only needed then.
 2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) and customer accounts (§27) once auth is live.
+
+
+## Customer accounts & remote wishlists
+
+The storefront now includes `/account` with Supabase email OTP authentication and an RLS-protected, per-customer wishlist. Guest shopping still works without Supabase configuration. Guest import is explicit and additive; account data is not copied into guest localStorage.
+
+See **[customer account setup and verification](docs/customer-accounts.md)** for the standalone SQL migration, OTP email template, environment configuration and required live two-account isolation checks. Automated tests use mocked service responses; live email/RLS verification requires a configured Supabase project. This does not convert demo checkout/admin data into a production order backend.
+
+
+## Browser regression checks
+
+```bash
+npm ci
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+
+Playwright starts a dev storefront at port 3100, or uses `E2E_BASE_URL` when supplied. Screenshots, traces and the HTML report go under ignored `.cache/`. The suite checks five responsive widths, keyboard/modal behaviour, reduced motion, wishlist/filter persistence, accessibility and the shopping flow up to checkout (without submitting an order). See [QA results and limitations](docs/browser-qa.md).

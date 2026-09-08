@@ -1,5 +1,6 @@
 "use client";
 
+import CheckoutAssurance from "./checkout-assurance";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -70,7 +71,10 @@ export default function CheckoutView() {
 
   const { coupons: allCoupons, recordUse } = useCoupons();
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
-  const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [couponMsg, setCouponMsg] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
   const submittingRef = useRef(false);
   const placeTimer = useRef<number | null>(null);
 
@@ -93,12 +97,14 @@ export default function CheckoutView() {
    * to the order (it used to survive until checkout).
    */
   const couponCheck = useMemo(() => {
-    if (!appliedCoupon) return { coupon: null as Coupon | null, problem: null as string | null };
+    if (!appliedCoupon)
+      return { coupon: null as Coupon | null, problem: null as string | null };
     const redeemable = isCouponRedeemable(appliedCoupon, subtotal);
     if (!redeemable.ok) {
       return {
         coupon: null,
-        problem: redeemable.reason ?? "That code is no longer valid for this order.",
+        problem:
+          redeemable.reason ?? "That code is no longer valid for this order.",
       };
     }
     const eligible = eligibleSubtotal(
@@ -193,7 +199,7 @@ export default function CheckoutView() {
             Continue shopping
           </Link>
         </div>
-        <p className="mt-8 text-xs text-ink-soft/70">
+        <p className="mt-8 text-xs text-ink-soft">
           A confirmation will also arrive by SMS once messaging is enabled.
           Tracking with this order ID and your phone number works on the Track
           page.
@@ -246,13 +252,19 @@ export default function CheckoutView() {
     const coupon = findCoupon(allCoupons, code);
     if (!coupon) {
       setAppliedCoupon(null);
-      setCouponMsg({ ok: false, text: "Unknown code — double-check the spelling." });
+      setCouponMsg({
+        ok: false,
+        text: "Unknown code — double-check the spelling.",
+      });
       return;
     }
     const check = isCouponRedeemable(coupon, subtotal);
     if (!check.ok) {
       setAppliedCoupon(null);
-      setCouponMsg({ ok: false, text: check.reason ?? "This code cannot be used." });
+      setCouponMsg({
+        ok: false,
+        text: check.reason ?? "This code cannot be used.",
+      });
       return;
     }
     // Category-restricted codes must actually match something in the cart.
@@ -435,7 +447,8 @@ export default function CheckoutView() {
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              Order note <span className="font-normal text-ink-soft">(optional)</span>
+              Order note{" "}
+              <span className="font-normal text-ink-soft">(optional)</span>
             </span>
             <input
               value={form.note}
@@ -501,8 +514,13 @@ export default function CheckoutView() {
                 Primary
               </span>
             </label>
-            <div className="flex items-center gap-4 rounded-2xl border border-dashed border-line bg-ivory-100/60 p-5 opacity-70">
-              <input type="radio" disabled className="h-4 w-4 accent-forest-700" />
+            <div className="flex items-center gap-4 rounded-2xl border border-dashed border-line bg-ivory-100/60 p-5">
+              <input
+                type="radio"
+                aria-label="Online payment — coming soon"
+                disabled
+                className="h-4 w-4 accent-forest-700"
+              />
               <span className="flex-1">
                 <span className="block text-sm font-medium text-ink">
                   bKash / Nagad / Cards{" "}
@@ -518,6 +536,7 @@ export default function CheckoutView() {
           </div>
         </section>
 
+        <CheckoutAssurance />
         <button
           type="submit"
           disabled={form.submitting}
@@ -526,7 +545,7 @@ export default function CheckoutView() {
           {form.submitting ? "Placing your order…" : "Place Order"}
           {!form.submitting && <IconArrowRight className="h-4 w-4" />}
         </button>
-        <p className="mt-4 text-xs leading-5 text-ink-soft/80">
+        <p className="mt-4 text-xs leading-5 text-ink-soft">
           By placing the order you agree to our{" "}
           <Link href="/terms" className="underline underline-offset-2">
             Terms
@@ -547,7 +566,10 @@ export default function CheckoutView() {
           </h2>
           <ul className="mt-5 space-y-4">
             {detail.map((line) => (
-              <li key={line.product.id + line.variantLabel} className="flex gap-4">
+              <li
+                key={line.product.id + line.variantLabel}
+                className="flex gap-4"
+              >
                 <span className="relative block aspect-[4/5] w-14 shrink-0 overflow-hidden rounded-lg bg-ivory-100 ring-1 ring-line">
                   <Image
                     src={line.product.media[0].src}
@@ -597,8 +619,12 @@ export default function CheckoutView() {
               <div className="flex gap-2">
                 <input
                   value={form.couponCode}
-                  onChange={(e) => update("couponCode", e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())}
+                  onChange={(e) =>
+                    update("couponCode", e.target.value.toUpperCase())
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), applyCoupon())
+                  }
                   placeholder="e.g. WELCOME100"
                   aria-label="Coupon code"
                   className="h-11 w-full min-w-0 rounded-xl bg-ivory-50 px-3.5 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
@@ -613,10 +639,7 @@ export default function CheckoutView() {
               </div>
             )}
             {couponCheck.problem && (
-              <p
-                role="status"
-                className="mt-2 text-xs leading-5 text-rose-700"
-              >
+              <p role="status" className="mt-2 text-xs leading-5 text-rose-700">
                 {couponCheck.problem}
               </p>
             )}
@@ -639,23 +662,19 @@ export default function CheckoutView() {
             </div>
             {summary.discount > 0 && activeCoupon && (
               <div className="flex justify-between">
-                <dt className="text-ink-soft">
-                  Coupon · {activeCoupon.code}
-                </dt>
+                <dt className="text-ink-soft">Coupon · {activeCoupon.code}</dt>
                 <dd className="font-medium text-emerald-700">
                   −{formatBdt(summary.discount)}
                 </dd>
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-ink-soft">
-                Delivery · {zone.etaLabel}
-              </dt>
+              <dt className="text-ink-soft">Delivery · {zone.etaLabel}</dt>
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
                     Free{" "}
-                    <span className="text-ink-soft/70 line-through">
+                    <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
                   </span>
@@ -677,8 +696,8 @@ export default function CheckoutView() {
           </dl>
           <p className="mt-5 flex items-start gap-2 rounded-xl bg-ivory-100 px-3.5 py-3 text-xs leading-5 text-ink-soft">
             <IconBox className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-            You will be able to follow this order on the Track page — no
-            account needed, just the order ID and phone number.
+            You will be able to follow this order on the Track page — no account
+            needed, just the order ID and phone number.
           </p>
         </div>
       </aside>

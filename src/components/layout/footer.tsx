@@ -12,6 +12,7 @@ const SHOP_LINKS = [
 ];
 
 const HELP_LINKS = [
+  { label: "Your Account", href: "/account" },
   { label: "Track Order", href: "/track" },
   { label: "Delivery Information", href: "/delivery" },
   { label: "Returns & Exchange", href: "/returns" },
@@ -32,18 +33,18 @@ export default function Footer() {
         <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-16 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-20">
           <div>
             <p className="text-[0.6rem] font-medium uppercase tracking-[0.25em] text-gold-300">
-              A note from PROSANTI
+              Join the PROSANTI list
             </p>
             <h2 className="mt-4 font-display text-4xl font-normal sm:text-5xl">
               Good things.{" "}
               <span className="italic text-gold-200">Worth waiting for.</span>
             </h2>
             <p className="mt-4 max-w-md text-sm leading-7 text-ivory-100/65">
-              Be the first to discover new collections and considered
-              favourites. A little inspiration, never the noise.
+              Early access to new collections, exclusive offers and seasonal
+              edits. Considered inspiration, delivered to your inbox.
             </p>
           </div>
-          <Newsletter />
+          <Newsletter signupUrl={process.env.NEWSLETTER_SIGNUP_URL} />
         </div>
       </div>
 
@@ -91,7 +92,7 @@ export default function Footer() {
 
       <div
         aria-hidden="true"
-        className="mx-auto max-w-7xl overflow-hidden px-4 text-center font-display text-[clamp(3.5rem,14vw,12rem)] leading-[1.1] tracking-[0.08em] text-ivory-100/10"
+        className="mx-auto max-w-7xl overflow-hidden px-4 text-center font-display text-[clamp(3.5rem,14vw,12rem)] leading-[1.1] tracking-[0.08em] text-ivory-100/40"
       >
         PROSANTI
       </div>

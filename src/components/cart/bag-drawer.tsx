@@ -1,0 +1,215 @@
+"use client";
+
+import { PRODUCTS } from "@/lib/catalog";
+import { completeTheLook } from "@/lib/merchandising";
+import Image from "next/image";
+import Link from "next/link";
+import Drawer from "@/components/ui/drawer";
+import { useCart } from "./cart-provider";
+import { MAX_LINE_QTY } from "@/lib/cart";
+import { formatBdt } from "@/lib/format";
+import { amountToFreeDelivery } from "@/lib/delivery";
+import { IconBag, IconClose } from "@/components/ui/icons";
+
+export default function BagDrawer() {
+  const {
+    bagOpen,
+    closeBag,
+    detail,
+    itemCount,
+    subtotal,
+    updateQty,
+    removeItem,
+  } = useCart();
+  const recommendations = Array.from(
+    new Map(
+      detail
+        .flatMap((line) => completeTheLook(line.product, PRODUCTS))
+        .filter(
+          (product) => !detail.some((line) => line.productId === product.id),
+        )
+        .map((product) => [product.id, product]),
+    ).values(),
+  ).slice(0, 2);
+  const remaining = amountToFreeDelivery(subtotal);
+  return (
+    <Drawer
+      open={bagOpen}
+      onClose={closeBag}
+      label="Your Bag"
+      side="right"
+      panelClassName="!w-full !max-w-md"
+    >
+      <div className="flex items-center justify-between border-b border-line p-6">
+        <h2 className="font-display text-3xl text-forest-900">
+          Your Bag <span className="font-sans text-sm">({itemCount})</span>
+        </h2>
+        <button
+          onClick={closeBag}
+          aria-label="Close bag"
+          className="flex h-11 w-11 items-center justify-center"
+        >
+          <IconClose />
+        </button>
+      </div>
+      {detail.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
+          <IconBag className="h-10 w-10 text-gold-600" />
+          <h3 className="font-display text-3xl">Your bag is empty.</h3>
+          <p className="text-sm text-ink-soft">
+            Find a little everyday comfort in our collection.
+          </p>
+          <Link
+            href="/shop"
+            onClick={closeBag}
+            className="editorial-button bg-forest-800 text-white"
+          >
+            Start shopping
+          </Link>
+        </div>
+      ) : (
+        <>
+          <p
+            className="bg-forest-100 px-6 py-4 text-sm text-forest-900"
+            role="status"
+          >
+            {remaining
+              ? `${formatBdt(remaining)} away from free delivery.`
+              : "You’ve unlocked free delivery."}
+          </p>
+          <div className="flex-1 overflow-y-auto px-6">
+            {detail.map(({ product, variantLabel, qty, lineTotal }) => (
+              <article
+                key={`${product.id}-${variantLabel}`}
+                className="flex gap-4 border-b border-line py-6"
+              >
+                <Link
+                  href={`/product/${product.slug}`}
+                  onClick={closeBag}
+                  className="relative h-32 w-24 shrink-0 bg-ivory-100"
+                >
+                  <Image
+                    src={product.media[0]?.src ?? "/images/hero.jpg"}
+                    alt={product.name}
+                    fill
+                    sizes="96px"
+                    className="object-cover"
+                  />
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <Link
+                    href={`/product/${product.slug}`}
+                    onClick={closeBag}
+                    className="font-display text-lg"
+                  >
+                    {product.name}
+                  </Link>
+                  <p className="mt-1 text-xs text-ink-soft">{variantLabel}</p>
+                  <p className="mt-2 text-sm font-medium">
+                    {formatBdt(lineTotal)}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center border border-line">
+                      <button
+                        className="h-11 w-10 disabled:opacity-30"
+                        aria-label={`Decrease ${product.name} quantity`}
+                        disabled={qty <= 1}
+                        onClick={() =>
+                          updateQty(product.id, variantLabel, qty - 1)
+                        }
+                      >
+                        −
+                      </button>
+                      <span className="text-sm">{qty}</span>
+                      <button
+                        className="h-11 w-10 disabled:opacity-30"
+                        aria-label={`Increase ${product.name} quantity`}
+                        disabled={qty >= MAX_LINE_QTY}
+                        onClick={() =>
+                          updateQty(product.id, variantLabel, qty + 1)
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button
+                      className="min-h-11 text-xs underline"
+                      aria-label={`Remove ${product.name}`}
+                      onClick={() => removeItem(product.id, variantLabel)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          {recommendations.length > 0 && (
+            <section
+              aria-label="Pair it with"
+              className="border-t border-line px-6 py-5"
+            >
+              <h3 className="mb-4 font-display text-xl text-forest-900">
+                Pair it with
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                {recommendations.map((product) => (
+                  <Link
+                    key={product.id}
+                    href={`/product/${product.slug}`}
+                    onClick={closeBag}
+                    className="group"
+                  >
+                    <div className="relative aspect-square overflow-hidden bg-ivory-100">
+                      <Image
+                        src={product.media[0]?.src ?? "/images/hero.jpg"}
+                        alt={product.name}
+                        fill
+                        sizes="180px"
+                        className="object-cover transition-transform group-hover:scale-[1.03]"
+                      />
+                    </div>
+                    <p className="mt-2 font-display text-base">
+                      {product.name}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      {formatBdt(product.price)} · View details →
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+          <div className="border-t border-line bg-ivory-50 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="flex justify-between text-lg">
+              <span>Subtotal</span>
+              <strong>{formatBdt(subtotal)}</strong>
+            </div>
+            <p className="mb-5 mt-2 text-xs text-ink-soft">
+              {remaining
+                ? "Area-based delivery charge shown at checkout."
+                : "Delivery is free within available service areas."}
+            </p>
+            <Link
+              href="/checkout"
+              onClick={closeBag}
+              className="editorial-button w-full justify-center bg-forest-800 text-white"
+            >
+              Checkout →
+            </Link>
+            <Link
+              href="/cart"
+              onClick={closeBag}
+              className="mt-3 flex min-h-11 items-center justify-center border border-line text-xs uppercase tracking-widest"
+            >
+              View bag
+            </Link>
+            <p className="mt-4 text-center text-xs text-ink-soft">
+              Cash on delivery · Quality checked
+            </p>
+          </div>
+        </>
+      )}
+    </Drawer>
+  );
+}

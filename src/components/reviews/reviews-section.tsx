@@ -12,11 +12,25 @@ import type { Product } from "@/lib/catalog";
 import { IconCheck, IconStar } from "@/components/ui/icons";
 
 const dayLabel = (ms: number): string =>
-  new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  new Date(ms).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
-function Stars({ value, className = "h-4 w-4" }: { value: number; className?: string }) {
+function Stars({
+  value,
+  className = "h-4 w-4",
+}: {
+  value: number;
+  className?: string;
+}) {
   return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`${value} out of 5 stars`}>
+    <span
+      className="inline-flex items-center gap-0.5"
+      role="img"
+      aria-label={`${value} out of 5 stars`}
+    >
       {[1, 2, 3, 4, 5].map((i) => (
         <IconStar
           key={i}
@@ -78,12 +92,18 @@ export default function ReviewsSection({ product }: { product: Product }) {
   };
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8" aria-labelledby="reviews-heading">
+    <section
+      className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8"
+      aria-labelledby="reviews-heading"
+    >
       <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
         {/* List */}
         <div>
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-            <h2 id="reviews-heading" className="font-display text-3xl font-medium tracking-tight text-forest-900">
+            <h2
+              id="reviews-heading"
+              className="font-display text-3xl font-medium tracking-tight text-forest-900"
+            >
               Customer reviews
             </h2>
             {count > 0 && (
@@ -94,34 +114,49 @@ export default function ReviewsSection({ product }: { product: Product }) {
             )}
           </div>
 
+          <p className="mt-4 border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
+            Demo review preview: includes sample reviews and browser-local
+            submissions. Purchase flags are demo data, not verified customer
+            proof.
+          </p>
           {visible.length === 0 ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-14 text-center">
-              <p className="font-display text-xl text-forest-900">No written reviews yet</p>
+              <p className="font-display text-xl text-forest-900">
+                No written reviews yet
+              </p>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-                Be the first to share what you think — approved reviews appear here.
+                Be the first to share what you think — approved reviews appear
+                here.
               </p>
             </div>
           ) : (
             <ul className="mt-6 space-y-5">
               {visible.map((r) => (
-                <li key={r.id} className={`rounded-3xl p-6 ring-1 ${r.featured ? "bg-gold-100/50 ring-gold-300" : "bg-paper ring-line"}`}>
+                <li
+                  key={r.id}
+                  className={`rounded-3xl p-6 ring-1 ${r.featured ? "bg-gold-100/50 ring-gold-300" : "bg-paper ring-line"}`}
+                >
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span className="flex h-10 w-10 items-center justify-center rounded-full bg-forest-800 text-sm font-semibold text-ivory-50">
                       {r.author.charAt(0).toUpperCase()}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-ink">{r.author}</p>
-                      <p className="text-xs text-ink-soft">{dayLabel(r.date)}</p>
+                      <p className="text-sm font-semibold text-ink">
+                        {r.author}
+                      </p>
+                      <p className="text-xs text-ink-soft">
+                        {dayLabel(r.date)}
+                      </p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
                       {r.featured && (
-                        <span className="rounded-full bg-gold-500 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-white">
+                        <span className="rounded-full bg-gold-700 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-white">
                           Featured
                         </span>
                       )}
                       {r.verified && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-emerald-800">
-                          <IconCheck className="h-3 w-3" /> Verified purchase
+                          <IconCheck className="h-3 w-3" /> Demo purchase flag
                         </span>
                       )}
                     </div>
@@ -129,10 +164,14 @@ export default function ReviewsSection({ product }: { product: Product }) {
                   <div className="mt-3 flex items-center gap-2">
                     <Stars value={r.rating} />
                     {r.title && (
-                      <p className="text-sm font-semibold text-ink">{r.title}</p>
+                      <p className="text-sm font-semibold text-ink">
+                        {r.title}
+                      </p>
                     )}
                   </div>
-                  <p className="mt-2 text-sm leading-7 text-ink-soft">{r.body}</p>
+                  <p className="mt-2 text-sm leading-7 text-ink-soft">
+                    {r.body}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -141,17 +180,27 @@ export default function ReviewsSection({ product }: { product: Product }) {
 
         {/* Form */}
         <aside>
-          <form onSubmit={addReview} className="sticky top-28 rounded-3xl bg-paper p-7 ring-1 ring-line">
+          <form
+            onSubmit={addReview}
+            className="sticky top-28 rounded-3xl bg-paper p-7 ring-1 ring-line"
+          >
             <h3 className="font-display text-xl font-medium text-forest-900">
               Write a review
             </h3>
             <p className="mt-1.5 text-xs leading-5 text-ink-soft">
-              Bought this from PROSANTI? Tell others about the fit, fabric and feel.
+              Bought this from PROSANTI? Tell others about the fit, fabric and
+              feel.
             </p>
 
             <div className="mt-5">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Your rating *</span>
-              <div className="flex gap-1" role="radiogroup" aria-label="Star rating">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                Your rating *
+              </span>
+              <div
+                className="flex gap-1"
+                role="radiogroup"
+                aria-label="Star rating"
+              >
                 {[1, 2, 3, 4, 5].map((i) => (
                   <button
                     key={i}
@@ -165,14 +214,18 @@ export default function ReviewsSection({ product }: { product: Product }) {
                     }}
                     className="rounded-lg p-1 transition-transform hover:scale-110"
                   >
-                    <IconStar className={`h-6 w-6 ${i <= rating ? "text-gold-500" : "text-ivory-200"}`} />
+                    <IconStar
+                      className={`h-6 w-6 ${i <= rating ? "text-gold-500" : "text-ivory-200"}`}
+                    />
                   </button>
                 ))}
               </div>
             </div>
 
             <label className="mt-4 block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Name</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                Name
+              </span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -181,7 +234,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
               />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Title (optional)</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                Title (optional)
+              </span>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -190,7 +245,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
               />
             </label>
             <label className="mt-3 block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">Your review *</span>
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                Your review *
+              </span>
               <textarea
                 value={body}
                 onChange={(e) => {
@@ -204,13 +261,20 @@ export default function ReviewsSection({ product }: { product: Product }) {
             </label>
 
             {error && (
-              <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+              <p
+                role="alert"
+                className="mt-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200"
+              >
                 {error}
               </p>
             )}
             {sent && (
-              <p role="status" className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
-                Thanks! Your review is awaiting moderation and will appear once approved.
+              <p
+                role="status"
+                className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200"
+              >
+                Thanks! Your review is awaiting moderation and will appear once
+                approved.
               </p>
             )}
 

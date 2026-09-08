@@ -12,8 +12,7 @@ export const btn = {
   light: "bg-paper text-forest-900 ring-1 ring-line hover:ring-forest-400",
   ghost: "text-forest-800 hover:bg-forest-100",
   gold: "bg-gold-500 text-forest-950 hover:bg-gold-400",
-  glass:
-    "bg-white/10 text-ivory-50 ring-1 ring-white/25 hover:bg-white/20",
+  glass: "bg-white/10 text-ivory-50 ring-1 ring-white/25 hover:bg-white/20",
   sm: "px-4 py-2 text-sm",
   md: "px-6 py-3 text-sm",
   lg: "px-8 py-4 text-base",
@@ -58,7 +57,8 @@ export function Badge({
     featured: "bg-ivory-50/95 text-forest-800 ring-1 ring-gold-300",
   };
   const label =
-    children ?? (kind === "new" ? "NEW" : kind === "sale" ? "SALE" : "FEATURED");
+    children ??
+    (kind === "new" ? "NEW" : kind === "sale" ? "SALE" : "FEATURED");
   return (
     <span
       className={`inline-flex items-center rounded-full px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] ${styles[kind]}`}
@@ -85,7 +85,7 @@ export function Price({
         {formatBdt(value)}
       </span>
       {compareAt ? (
-        <span className="text-sm font-normal text-ink-soft line-through opacity-70">
+        <span className="text-sm font-normal text-ink-soft line-through">
           {formatBdt(compareAt)}
         </span>
       ) : null}
@@ -108,9 +108,7 @@ export function Rating({
     >
       <IconStar className="h-3.5 w-3.5 text-gold-500" />
       <span className="font-medium text-ink">{value.toFixed(1)}</span>
-      {reviewCount !== undefined && (
-        <span>({reviewCount})</span>
-      )}
+      {reviewCount !== undefined && <span>({reviewCount})</span>}
     </span>
   );
 }

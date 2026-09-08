@@ -21,7 +21,7 @@ describe("Homepage", () => {
     expect(
       screen.getByRole("heading", {
         level: 1,
-        name: /made for everyday life/i,
+        name: /rooted in tradition.*made for today/i,
       }),
     ).toBeInTheDocument();
   });
@@ -33,9 +33,10 @@ describe("Homepage", () => {
       </CartProvider>,
     );
 
-    expect(
-      screen.getByRole("link", { name: /explore collection/i }),
-    ).toHaveAttribute("href", "/shop");
+    expect(screen.getByRole("link", { name: /^shop men$/i })).toHaveAttribute(
+      "href",
+      "/shop?category=men",
+    );
   });
 
   it("shows a featured section with product cards", () => {
@@ -99,5 +100,61 @@ describe("Homepage", () => {
     expect(
       screen.getByRole("link", { name: "Track your order" }),
     ).toHaveAttribute("href", "/track");
+  });
+  it("links mood and budget edits to working shop filters and respects CMS toggles", () => {
+    render(
+      <CartProvider>
+        <Home />
+      </CartProvider>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Explore Festive" }),
+    ).toHaveAttribute("href", "/shop?mood=festive");
+    expect(
+      screen.getByRole("link", { name: "Shop the budget edit" }),
+    ).toHaveAttribute("href", "/shop?price=under500");
+    act(() =>
+      saveCms({
+        ...HOME_DEFAULTS,
+        sections: {
+          ...HOME_DEFAULTS.sections,
+          shopByMood: false,
+          budgetEdit: false,
+        },
+      }),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Dress for your kind of day." }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Under ৳500" }),
+    ).not.toBeInTheDocument();
+  });
+  it("shows the journal and labelled review preview, with independent CMS toggles", () => {
+    render(
+      <CartProvider>
+        <Home />
+      </CartProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "The details make the everyday." }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not verified customer proof/)).toBeInTheDocument();
+    act(() =>
+      saveCms({
+        ...HOME_DEFAULTS,
+        sections: {
+          ...HOME_DEFAULTS.sections,
+          customerStories: false,
+          brandJournal: false,
+        },
+      }),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Comfort, in their words." }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "The details make the everyday." }),
+    ).not.toBeInTheDocument();
   });
 });

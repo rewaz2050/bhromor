@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import CartButton from "./cart-button";
@@ -8,16 +9,15 @@ import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
 
 const NAV = [
-  { label: "Shop", href: "/shop" },
-  { label: "Collections", href: "/#collections" },
+  { label: "Men", href: "/shop?category=men" },
+  { label: "Women", href: "/shop?category=women" },
+  { label: "Traditional", href: "/shop?category=traditional" },
   { label: "New Arrivals", href: "/shop?filter=new" },
-  { label: "Track Order", href: "/track" },
-  { label: "About", href: "/about" },
 ];
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-40">
+    <header className="storefront-header sticky top-0 z-40">
       {/* Announcement bar — CMS-editable (§31) */}
       <AnnouncementBar />
 
@@ -43,10 +43,29 @@ export default function Header() {
           </Link>
 
           {/* Desktop nav */}
-          <NavLinks items={NAV} />
+          <Suspense>
+            <NavLinks items={NAV} />
+          </Suspense>
 
           <div className="ml-auto flex shrink-0 items-center sm:gap-1.5">
             <ProductSearch />
+            <Link
+              href="/account"
+              aria-label="Your account"
+              className="hidden h-11 w-11 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 sm:flex"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                className="h-5 w-5"
+              >
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+              </svg>
+            </Link>
             <WishlistButton />
             <CartButton />
           </div>

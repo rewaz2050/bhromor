@@ -1,53 +1,64 @@
-"use client";
+import Link from "next/link";
 
-import { useState } from "react";
-import { IconCheck } from "@/components/ui/icons";
+/** A hosted opt-in form owns consent/unsubscribe; never pretend a local click subscribes. */
+export function newsletterSignupUrl(value: string | undefined): string | null {
+  try {
+    const url = new URL(value ?? "");
+    return url.protocol === "https:" && !url.username && !url.password
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
 
-export default function Newsletter() {
-  const [email, setEmail] = useState("");
-  const [done, setDone] = useState(false);
-
+export default function Newsletter({ signupUrl }: { signupUrl?: string }) {
+  const url = newsletterSignupUrl(signupUrl);
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!email.trim()) return;
-        setDone(true);
-        setEmail(""); // the field used to keep the address after subscribing
-      }}
-      className="flex w-full flex-wrap items-center gap-3"
-    >
-      <label htmlFor="newsletter-email" className="sr-only">
-        Email address
-      </label>
-      <input
-        id="newsletter-email"
-        type="email"
-        required
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-          if (done) setDone(false);
-        }}
-        placeholder="Your email address"
-        className="h-14 min-w-0 flex-1 basis-48 border-0 border-b border-white/35 bg-transparent px-1 text-base text-white placeholder:text-white/50 focus:border-gold-300 focus-visible:outline-gold-300"
-      />
-      <button
-        type="submit"
-        className="h-14 shrink-0 border border-gold-300 bg-gold-200 px-7 text-xs font-medium uppercase tracking-widest text-forest-950 transition-colors hover:bg-gold-300"
-      >
-        Subscribe
-      </button>
-      {done && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="mt-2 flex w-full items-center justify-center gap-2 text-sm text-gold-200"
-        >
-          <IconCheck className="h-4 w-4" /> Thank you — we will keep you posted
-          about new collections and offers.
-        </p>
+    <div className="w-full border border-white/20 p-6 sm:p-8">
+      <p className="font-display text-2xl text-ivory-100">
+        A little inspiration in your inbox.
+      </p>
+      <p className="mt-3 text-sm leading-7 text-ivory-100/70">
+        New collections, exclusive offers and seasonal edits. Join through our
+        email signup page when it opens.
+      </p>
+      {url ? (
+        <>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="editorial-button mt-6 w-full bg-gold-200 text-forest-950 hover:bg-gold-300"
+          >
+            Join the list ↗
+          </a>
+          <p className="mt-3 text-xs leading-6 text-ivory-100/60">
+            Opens our email signup page in a new tab. Enter your email and
+            confirm your preferences there.
+          </p>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            disabled
+            className="editorial-button mt-6 w-full cursor-not-allowed border border-white/25 text-ivory-100/60"
+          >
+            Signup opening soon
+          </button>
+          <p className="mt-3 text-xs leading-6 text-ivory-100/60">
+            Email signup isn’t connected yet. We’re not collecting email
+            addresses here.
+          </p>
+          <Link
+            href="/shop?filter=new"
+            className="mt-4 inline-flex min-h-11 items-center text-xs text-gold-200 underline underline-offset-4"
+          >
+            Explore new arrivals meanwhile →
+          </Link>
+        </>
       )}
-    </form>
+    </div>
   );
 }

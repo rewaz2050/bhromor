@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  'summary,a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export interface DrawerProps {
   open: boolean;
@@ -61,6 +61,7 @@ export default function Drawer({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreFocusTo = useRef<HTMLElement | null>(null);
 
@@ -76,14 +77,21 @@ export default function Drawer({
     const items = Array.from(
       panel.querySelectorAll<HTMLElement>(FOCUSABLE),
     ).filter((el) => el.offsetParent !== null || el === document.activeElement);
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
     const first = items[0];
     const last = items[items.length - 1];
     const active = document.activeElement as HTMLElement | null;
     if (event.shiftKey && (active === first || !panel.contains(active))) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && active === last) {
+    } else if (
+      !event.shiftKey &&
+      (active === last || !panel.contains(active))
+    ) {
       event.preventDefault();
       first.focus();
     }
@@ -101,6 +109,17 @@ export default function Drawer({
     body.style.overflow = "hidden";
     if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
 
+    // A modal must isolate background controls for pointer, keyboard and AT users.
+    const background = Array.from(body.children).filter(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement &&
+        element !== rootRef.current &&
+        !["SCRIPT", "STYLE", "LINK"].includes(element.tagName),
+    );
+    const previousInert = background.map((element) => element.inert);
+    background.forEach((element) => {
+      element.inert = true;
+    });
     document.addEventListener("keydown", handleKeyDown, true);
 
     // Move focus into the panel so keyboard/screen-reader users land inside.
@@ -119,6 +138,9 @@ export default function Drawer({
       document.removeEventListener("keydown", handleKeyDown, true);
       body.style.overflow = previousOverflow;
       body.style.paddingRight = previousPadding;
+      background.forEach((element, index) => {
+        element.inert = previousInert[index];
+      });
       restoreFocusTo.current?.focus?.({ preventScroll: true });
     };
   }, [open, handleKeyDown, initialFocusRef]);
@@ -127,6 +149,7 @@ export default function Drawer({
 
   return createPortal(
     <div
+      ref={rootRef}
       className={`fixed inset-0 z-[100] ${className}`}
       role="dialog"
       aria-modal="true"
@@ -137,12 +160,13 @@ export default function Drawer({
       <div
         aria-hidden="true"
         onClick={onClose}
-        className="absolute inset-0 h-full w-full bg-forest-950/40 backdrop-blur-sm"
+        className="drawer-scrim absolute inset-0 h-full w-full bg-forest-950/40 backdrop-blur-sm"
       />
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`${SIDE_CLASS[side]} ${panelBg} ${panelClassName}`}
+        data-drawer-side={side}
+        className={`drawer-panel ${SIDE_CLASS[side]} ${panelBg} ${panelClassName}`}
       >
         {children}
       </div>

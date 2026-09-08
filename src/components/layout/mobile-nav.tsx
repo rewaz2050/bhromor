@@ -8,6 +8,7 @@ import Drawer from "@/components/ui/drawer";
 import { IconClose, IconMenu, IconPhone } from "@/components/ui/icons";
 
 const LINKS = [
+  { label: "Your Account", href: "/account" },
   { label: "Shop All", href: "/shop" },
   { label: "New Arrivals", href: "/shop?filter=new" },
   { label: "Collections", href: "/#collections" },
@@ -19,7 +20,7 @@ const LINKS = [
   { label: "FAQ", href: "/faq" },
 ];
 
-export default function MobileNav() {
+export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const lastPath = useRef(pathname);
@@ -40,10 +41,15 @@ export default function MobileNav() {
         aria-label="Open menu"
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-controls="mobile-menu"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
+        aria-controls={bottom ? "bottom-mobile-menu" : "mobile-menu"}
+        className={
+          bottom
+            ? "flex min-h-14 flex-col items-center justify-center gap-1 text-ink-soft lg:hidden"
+            : "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
+        }
       >
-        <IconMenu className="h-6 w-6" />
+        <IconMenu className="h-5 w-5" />
+        {bottom && <span className="text-[10px]">Menu</span>}
       </button>
 
       <Drawer
@@ -53,7 +59,10 @@ export default function MobileNav() {
         side="left"
         className="lg:hidden"
       >
-        <div id="mobile-menu" className="flex min-h-full flex-col">
+        <div
+          id={bottom ? "bottom-mobile-menu" : "mobile-menu"}
+          className="flex min-h-full flex-col"
+        >
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <Link
               href="/"

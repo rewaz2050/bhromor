@@ -20,6 +20,9 @@ import {
 } from "@/lib/cart";
 
 interface CartContextValue {
+  bagOpen: boolean;
+  openBag: () => void;
+  closeBag: () => void;
   lines: CartLine[];
   detail: CartSummary["lines"];
   itemCount: number;
@@ -44,6 +47,9 @@ const readStorage = (): CartLine[] => {
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([]);
+  const [bagOpen, setBagOpen] = useState(false);
+  const openBag = useCallback(() => setBagOpen(true), []);
+  const closeBag = useCallback(() => setBagOpen(false), []);
   const hydrated = useRef(false);
 
   // Hydration-safe: initialise from localStorage after first paint.
@@ -99,6 +105,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(
     () => ({
+      bagOpen,
+      openBag,
+      closeBag,
       lines,
       detail: summary.lines,
       itemCount: summary.itemCount,
@@ -108,7 +117,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeItem,
       clear,
     }),
-    [lines, summary, addItem, updateQty, removeItem, clear],
+    [
+      bagOpen,
+      openBag,
+      closeBag,
+      lines,
+      summary,
+      addItem,
+      updateQty,
+      removeItem,
+      clear,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
