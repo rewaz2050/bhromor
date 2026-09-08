@@ -12,9 +12,10 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 1 — Foundation (design system, routing, header/footer) | ✅ Complete |
 | Phase 2 — Catalog (UI: shop, product pages, filters, search) | ✅ UI complete (mock data) |
 | Phase 3/5 — Admin foundation (login, dashboard, orders + status machine) | ✅ UI complete (demo data) |
+| Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
+| Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
 | Phase 5 — Order tracking (UI) | ✅ UI complete (demo timeline) |
-| Phase 3 rest — Admin products/categories/upload wizard | ⏳ Next UI phase (mock data) |
 | Backend (Supabase, Cloudinary, real orders/auth) | ⏳ Needs service keys |
 
 The current catalog runs on typed mock data in `src/lib/catalog.ts`; the admin order domain lives in `src/lib/orders.ts`. Shapes follow the blueprint’s generic commerce model (§16, §34, §44, §75), so swapping in Supabase rows later does not require UI rewrites.
@@ -43,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-All gates are currently green (30 tests).
+All gates are currently green (42 tests).
 
 ## Pages
 
@@ -54,8 +55,11 @@ Public: Home · Shop (filter/sort/search) · Product details (gallery, variants,
 - Login: `admin@prosanti.store` / `prosanti` (shown on the login card)
 - Dashboard: today's sales, live status pipeline, §88 delivery performance, low-stock alerts
 - Orders: search + status filters, order details with item snapshots, customer info, journey timeline, and state-machine-driven actions (advance / cancel per §34)
+- Products: catalog list w/ search + visibility filters, quick featured/archive actions, full sectioned editor (basics, pricing, variants/stock, media URLs + YouTube, publishing, SEO)
+- Categories: data-driven create/edit/reorder/hide with Bengali names & subcategories (§5)
+- Delivery zones: zone CRUD + reorder + active state — saved zones are what the customer checkout uses live (§20–21)
 
-Demo order status changes persist in `localStorage` (`prosanti.admin.orders.v1`) and can be reset from the Orders toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47).
+Demo data (orders, catalog, zones) persists in `localStorage` under `prosanti.admin.*` keys and can be reset from each toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47). Public storefront reads still come from `src/lib/catalog.ts` until the data layer lands; zones are the exception — checkout already consumes the shared zone store.
 
 Design language: deep forest green + warm ivory + muted gold, Playfair display serif + Inter + Noto Serif Bengali, arch-shaped brand imagery (signature motif), mobile-first.
 
@@ -74,7 +78,10 @@ src/
 │   ├── admin/                # separate admin surface (own layout + guard)
 │   │   ├── login/            # demo auth (§47)
 │   │   ├── page.tsx          # dashboard (§32, §88)
-│   │   └── orders/           # list + [id] detail w/ status machine (§33–34)
+│   │   ├── orders/           # list + [id] detail w/ status machine (§33–34)
+│   │   ├── products/         # list, new, [id] editor (§71–74)
+│   │   ├── categories/       # data-driven CRUD (§5)
+│   │   └── zones/            # delivery-zone manager (§20–21)
 │   ├── icon.png · favicon.ico
 │   └── globals.css           # design tokens (forest/ivory/gold)
 ├── components/
@@ -96,6 +103,5 @@ src/
 
 ## Next phases (in order)
 
-1. **Admin products & categories** (blueprint Phase 3): product/category CRUD, variants, media upload / external URL / YouTube fields, publish workflow — as mock-data UI like Orders.
-2. **Delivery zones manager** (§20–21) and homepage CMS skeleton (§31).
-3. Backend wiring per blueprint §41–50: Supabase schema (products, variants, media, orders, delivery zones, status history), RLS + auth (admin vs customer), Cloudinary upload for product media, and moving `src/lib/catalog.ts` + `src/lib/orders.ts` behind a data-access layer. `.env` keys are only needed then.
+1. **Homepage CMS skeleton (§31)** + customers/inventory/coupons screens as admin demo UI.
+2. Backend wiring per blueprint §41–50: Supabase schema (products, variants, media, orders, delivery zones, status history), RLS + auth (admin vs customer), Cloudinary upload for product media, and moving `src/lib/catalog.ts` + `src/lib/orders.ts` behind a data-access layer. `.env` keys are only needed then.

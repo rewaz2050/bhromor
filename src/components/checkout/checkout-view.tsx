@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
-import { DELIVERY_ZONES, ORDER_PREFIX } from "@/lib/catalog";
+import { useZones } from "@/lib/use-zones";
+import { ORDER_PREFIX } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import {
   IconArrowRight,
@@ -32,13 +33,15 @@ const initialForm: FormState = {
   area: "",
   address: "",
   note: "",
-  zoneId: DELIVERY_ZONES[0].id,
+  zoneId: "",
   payment: "cod",
   submitting: false,
 };
 
 export default function CheckoutView() {
   const { detail, subtotal, clear } = useCart();
+  /** Delivery zones come from the shared store — admin edits show here (§20). */
+  const { activeZones: zoneList } = useZones();
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
@@ -48,10 +51,13 @@ export default function CheckoutView() {
     addressSummary: string;
   } | null>(null);
 
-  const zone = DELIVERY_ZONES.find((z) => z.id === form.zoneId) ?? DELIVERY_ZONES[0];
+  const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
+    ? form.zoneId
+    : (zoneList[0]?.id ?? "");
+  const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
   const summary = useMemo(() => {
-    const charge = zone.charge;
+    const charge = zone?.charge ?? 0;
     const total = subtotal + charge;
     return { charge, total, itemCount: detail.reduce((n, l) => n + l.qty, 0) };
   }, [zone, subtotal, detail]);
@@ -135,6 +141,19 @@ export default function CheckoutView() {
     );
   }
 
+  if (!zone) {
+    return (
+      <div className="flex flex-col items-center px-6 py-20 text-center">
+        <h2 className="font-display text-2xl font-medium text-forest-900">
+          Delivery zones are being set up
+        </h2>
+        <p className="mt-2 max-w-sm text-sm text-ink-soft">
+          Please check back shortly — no service area is configured yet.
+        </p>
+      </div>
+    );
+  }
+
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -212,11 +231,11 @@ export default function CheckoutView() {
               </span>
               <select
                 required
-                value={form.zoneId}
+                value={zone.id}
                 onChange={(e) => update("zoneId", e.target.value)}
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
-                {DELIVERY_ZONES.map((z) => (
+                {zoneList.map((z) => (
                   <option key={z.id} value={z.id}>
                     {z.name} — {formatBdt(z.charge)} · {z.etaLabel}
                   </option>

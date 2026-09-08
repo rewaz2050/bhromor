@@ -17,6 +17,8 @@ import {
   IconExternal,
   IconGrid,
   IconLogout,
+  IconMapPin,
+  IconTag,
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
@@ -28,11 +30,18 @@ import { useSyncExternalStore } from "react";
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
   { href: "/admin/orders", label: "Orders", icon: IconBox, match: (p: string) => p.startsWith("/admin/orders") },
+  { href: "/admin/products", label: "Products", icon: IconTag, match: (p: string) => p.startsWith("/admin/products") },
+  { href: "/admin/categories", label: "Categories", icon: IconGrid, match: (p: string) => p === "/admin/categories" },
+  { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
 ];
 
 const TITLES: [RegExp, string][] = [
   [/^\/admin\/orders\/.+/, "Order details"],
   [/^\/admin\/orders$/, "Orders"],
+  [/^\/admin\/products\/(new|[^/]+)$/, "Product editor"],
+  [/^\/admin\/products$/, "Products"],
+  [/^\/admin\/categories$/, "Categories"],
+  [/^\/admin\/zones$/, "Delivery zones"],
   [/^\/admin$/, "Dashboard"],
 ];
 
@@ -114,10 +123,10 @@ export default function AdminGate({
 
           <div className="pt-2">
             <p className="px-3.5 pb-1 text-[0.6rem] uppercase tracking-[0.28em] text-ivory-100/40">
-              Coming next
+              Later phases
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Products · Categories · Zones · Customers
+              Customers · Coupons · Reviews · Media · Homepage CMS (§31, §56, §58)
             </p>
           </div>
         </nav>
