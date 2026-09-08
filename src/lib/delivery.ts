@@ -10,6 +10,15 @@
 import { bdt, type Bdt } from "./format";
 import type { DeliveryZone } from "./catalog";
 
+/**
+ * Customer-facing promise (§87). Instant delivery is the headline — it is what
+ * the brand actually sells; the free-delivery threshold below is a secondary
+ * reassurance and is always shown as the smaller line.
+ */
+export const DELIVERY_ETA = "45–50 min";
+export const INSTANT_DELIVERY_TITLE = "Instant delivery";
+export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the service area.`;
+
 /** Orders at or above this subtotal ship free (paisa). */
 export const FREE_DELIVERY_THRESHOLD: Bdt = bdt(2000);
 

@@ -8,6 +8,10 @@ import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import ProductCard from "@/components/product/product-card";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
+import {
+  DELIVERY_ETA,
+  INSTANT_DELIVERY_TITLE,
+} from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
 
 interface PageProps {
@@ -156,13 +160,13 @@ export default async function ProductPage({ params }: PageProps) {
           <div className="assurance-pill rounded-md bg-forest-900 p-8 text-ivory-100">
             <IconLeaf className="h-6 w-6 text-gold-300" />
             <h2 className="font-display mt-4 text-xl font-medium">
-              Delivery estimate
+              {INSTANT_DELIVERY_TITLE}
             </h2>
             <p className="mt-3 text-sm leading-7 text-ivory-100/70">
-              Select your area at checkout to see the exact charge and arrival
-              estimate. Inside the service area, expect{" "}
-              <strong className="text-gold-300">45–50 minutes</strong> from
-              confirmation.
+              Inside the service area your order arrives in{" "}
+              <strong className="text-gold-300">{DELIVERY_ETA}</strong> from
+              confirmation. Select your area at checkout to see the exact
+              charge and arrival estimate.
             </p>
             <p className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm text-ivory-100/85">
               Delivery from{" "}
@@ -173,7 +177,7 @@ export default async function ProductPage({ params }: PageProps) {
               <span className="font-semibold text-white">
                 {formatBdt(200000)}
               </span>{" "}
-              get free delivery.
+              also get free delivery.
             </p>
           </div>
         </aside>

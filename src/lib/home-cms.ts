@@ -46,7 +46,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 export const HOME_DEFAULTS: HomeSettings = {
   announcement: {
     enabled: false,
-    text: "Cash on Delivery · Fast Delivery · Easy Returns · Order Tracking",
+    text: "Cash on Delivery · Instant Delivery in 45–50 min · Easy Returns",
   },
   hero: {
     eyebrow: "PROSANTI",

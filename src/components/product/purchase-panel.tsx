@@ -7,6 +7,7 @@ import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
+import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { Price } from "@/components/ui/primitives";
 import {
   IconCheck,
@@ -259,8 +260,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         <TrustPill
           icon={IconTruck}
-          title="45–50 min"
-          text="Rapid delivery in the service area"
+          title={INSTANT_DELIVERY_TITLE}
+          text={`Arrives in ${DELIVERY_ETA} in the service area`}
         />
         <TrustPill
           icon={IconMapPin}

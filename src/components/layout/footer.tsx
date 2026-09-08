@@ -68,8 +68,8 @@ export default function Footer() {
             },
             {
               icon: <IconTruck className="h-5 w-5 text-gold-300" />,
-              title: "45–50 min delivery",
-              text: "Rapid dispatch inside the service area.",
+              title: "Instant delivery",
+              text: "Arrives in 45–50 min inside the service area.",
             },
             {
               icon: <IconMapPin className="h-5 w-5 text-gold-300" />,
@@ -146,7 +146,7 @@ export default function Footer() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
-              45–50 min rapid delivery
+              Instant delivery · 45–50 min
             </span>
           </p>
         </div>

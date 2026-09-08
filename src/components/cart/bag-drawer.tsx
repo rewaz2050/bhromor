@@ -10,9 +10,11 @@ import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
 import {
   amountToFreeDelivery,
+  DELIVERY_ETA,
   FREE_DELIVERY_THRESHOLD,
+  INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
-import { IconBag, IconClose } from "@/components/ui/icons";
+import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
 
 export default function BagDrawer() {
   const {
@@ -75,25 +77,17 @@ export default function BagDrawer() {
       ) : (
         <>
           <div className="border-b border-line bg-forest-50 px-6 py-4">
-            <p className="text-sm text-forest-900" role="status">
-              {remaining ? (
-                <>
-                  <strong className="font-semibold">
-                    {formatBdt(remaining)}
-                  </strong>{" "}
-                  away from free delivery.
-                </>
-              ) : (
-                <>
-                  <strong className="font-semibold">
-                    Free delivery unlocked.
-                  </strong>{" "}
-                  Enjoy it.
-                </>
-              )}
+            <p className="flex items-center gap-2 text-sm font-semibold text-forest-900">
+              <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
+              {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
+            </p>
+            <p className="mt-1.5 text-xs text-ink-soft" role="status">
+              {remaining
+                ? `${formatBdt(remaining)} more for free delivery.`
+                : "Free delivery unlocked on this order."}
             </p>
             <div
-              className="free-delivery-track mt-3"
+              className="free-delivery-track mt-2.5"
               role="progressbar"
               aria-label="Progress towards free delivery"
               aria-valuemin={0}
@@ -228,9 +222,10 @@ export default function BagDrawer() {
               </strong>
             </div>
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
+              {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
               {remaining
-                ? "Area-based delivery charge shown at checkout."
-                : "Delivery is free within available service areas."}
+                ? "area-based charge shown at checkout."
+                : "delivery is free on this order."}
             </p>
             <Link
               href="/checkout"

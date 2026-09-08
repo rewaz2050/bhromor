@@ -13,12 +13,13 @@ export const metadata: Metadata = {
     template: "%s · PROSANTI",
   },
   description:
-    "PROSANTI (প্রশান্তি) — thoughtfully made essentials for everyday Bangladesh. Explore modern clothing and heritage textiles with fast local delivery.",
+    "PROSANTI (প্রশান্তি) — thoughtfully made essentials for everyday Bangladesh. Explore modern clothing and heritage textiles with instant 45–50 minute delivery.",
   keywords: [
     "PROSANTI",
     "প্রশান্তি",
     "premium clothing Bangladesh",
-    "rapid delivery",
+    "instant delivery",
+    "45–50 minute delivery",
     "panjabi",
     "three-piece",
   ],
