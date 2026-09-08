@@ -3,14 +3,16 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { PRODUCTS } from "@/lib/catalog";
 import { useOrders } from "@/lib/use-orders";
+import { useCatalog } from "@/lib/use-catalog";
+import { useSettings } from "@/lib/use-settings";
 import {
   aggregateOrders,
   deliveryStats,
   ORDER_FLOW,
   STATUS_META,
 } from "@/lib/orders";
+import { displayStock } from "@/lib/catalog-store";
 import { formatBdt } from "@/lib/format";
 import {
   StatusBadge,
@@ -43,7 +45,12 @@ export default function AdminDashboard() {
   );
 
   const liveFlow = ORDER_FLOW.filter((s) => s !== "delivered");
-  const lowStock = PRODUCTS.filter((p) => p.lowStock);
+  const { products: catalogProducts } = useCatalog();
+  const { settings } = useSettings();
+  const threshold = settings.lowStockThreshold;
+  const lowStock = catalogProducts.filter(
+    (p) => displayStock(p) > 0 && displayStock(p) <= threshold,
+  );
 
   const cards = [
     {
@@ -227,11 +234,19 @@ export default function AdminDashboard() {
 
           {/* §58 low stock */}
           <section aria-label="Low stock" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
-            <div className="flex items-center gap-2">
-              <IconLeaf className="h-4 w-4 text-gold-500" />
-              <h2 className="font-display text-lg font-medium text-forest-900">
-                Low stock
-              </h2>
+            <div className="flex items-baseline justify-between">
+              <div className="flex items-center gap-2">
+                <IconLeaf className="h-4 w-4 text-gold-500" />
+                <h2 className="font-display text-lg font-medium text-forest-900">
+                  Low stock
+                </h2>
+              </div>
+              <Link
+                href="/admin/inventory"
+                className="text-xs font-semibold uppercase tracking-widest text-forest-700 hover:text-forest-900"
+              >
+                Manage
+              </Link>
             </div>
             {lowStock.length > 0 ? (
               <ul className="mt-4 space-y-3">
@@ -251,7 +266,7 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                     <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[0.7rem] font-bold text-amber-900">
-                      Few left
+                      {displayStock(p)} left
                     </span>
                   </li>
                 ))}
@@ -260,7 +275,7 @@ export default function AdminDashboard() {
               <p className="mt-4 text-sm text-ink-soft">All stock healthy.</p>
             )}
             <p className="mt-4 border-t border-line pt-3 text-xs leading-5 text-ink-soft">
-              Thresholds become configurable with the inventory module (§57–58).
+              Alert threshold: {threshold} units · manage in Inventory.
             </p>
           </section>
 

@@ -17,6 +17,16 @@ export const CATALOG_STORAGE_KEY = "prosanti.admin.catalog.v1";
 /* ------------------------------------------------------------------ */
 
 /** Clean URL/emoji-safe slug (§52) — keeps Bengali letters. */
+/**
+ * Display stock for catalog rows that predate explicit counts
+ * (seeds carry inStock/lowStock flags but not always a number).
+ */
+export const displayStock = (p: {
+  stock?: number;
+  inStock: boolean;
+  lowStock?: boolean;
+}): number => p.stock ?? (p.inStock ? (p.lowStock ? 3 : 12) : 0);
+
 export const slugify = (input: string): string =>
   input
     .trim()
