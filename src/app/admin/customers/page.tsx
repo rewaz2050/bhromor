@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
-import { maskPhone } from "@/lib/orders";
+import { normalizePhone } from "@/lib/orders";
 import { friendlyWhen } from "@/components/admin/order-ui";
 import { IconSearch } from "@/components/ui/icons";
 
@@ -104,7 +104,15 @@ export default function AdminCustomersPage() {
                     <td className="px-5 py-3.5">
                       <p className="font-medium text-ink">{r.name}</p>
                       <p className="mt-0.5 text-xs text-ink-soft">
-                        {maskPhone(r.phone)}
+                        {/* Full number (staff surface) so orders can be
+                            confirmed by phone — masking belongs on public
+                            pages, not the ops panel. */}
+                        <a
+                          href={`tel:+88${normalizePhone(r.phone)}`}
+                          className="text-forest-800 underline underline-offset-2"
+                        >
+                          {r.phone}
+                        </a>
                         {r.cancelled > 0 && (
                           <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[0.62rem] font-bold text-rose-800">
                             {r.cancelled} cancelled

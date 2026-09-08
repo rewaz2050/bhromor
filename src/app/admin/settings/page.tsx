@@ -12,6 +12,7 @@ import { useCms } from "@/lib/use-cms";
 import { useSettings } from "@/lib/use-settings";
 import { resetMediaStore } from "@/lib/media-store";
 import { displayStock } from "@/lib/catalog-store";
+import { useTransientValue } from "@/lib/use-transient-value";
 import { field, label } from "@/components/admin/form-ui";
 import { IconBanknote, IconCheck, IconSettings } from "@/components/ui/icons";
 
@@ -32,17 +33,14 @@ export default function AdminSettingsPage() {
   const cmsApi = useCms();
 
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useTransientValue<string | null>(null, 2200);
 
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
   const lowCount = catalogApi.products.filter(
     (p) => displayStock(p) > 0 && displayStock(p) <= thresholdValue,
   ).length;
 
-  const notify = (message: string) => {
-    setFlash(message);
-    window.setTimeout(() => setFlash(null), 2200);
-  };
+  const notify = (message: string) => setFlash(message);
 
   const commitThreshold = () => {
     saveSettings({ lowStockThreshold: thresholdValue });

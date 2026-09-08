@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useCatalog } from "@/lib/use-catalog";
 import { useSettings } from "@/lib/use-settings";
@@ -17,6 +17,20 @@ export default function AdminInventoryPage() {
   const [query, setQuery] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<number | null>(null);
+
+  const flashMessage = (text: string) => {
+    setFlash(text);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 1800);
+  };
+
+  useEffect(
+    () => () => {
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    },
+    [],
+  );
 
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
 
@@ -37,23 +51,32 @@ export default function AdminInventoryPage() {
 
   const commitThreshold = () => {
     saveSettings({ lowStockThreshold: thresholdValue });
-    setFlash("Threshold saved");
-    window.setTimeout(() => setFlash(null), 1800);
+    setThreshold(String(thresholdValue));
+    flashMessage("Threshold saved");
   };
 
   const commitStock = (id: string) => {
     const product = products.find((p) => p.id === id);
     if (!product) return;
+    // An untouched row used to save as 0 — `Number(undefined) || 0` wiped the
+    // real stock the moment anyone pressed Save.
     const raw = drafts[id];
-    const value = Math.max(0, Math.floor(Number(raw) || 0));
+    const parsed = raw === undefined || raw.trim() === "" ? NaN : Number(raw);
+    const value = Number.isFinite(parsed)
+      ? Math.max(0, Math.floor(parsed))
+      : displayStock(product);
     saveProduct({
       ...product,
       stock: value,
       inStock: value > 0,
       lowStock: value > 0 && value <= thresholdValue,
     });
-    setFlash(`${product.name}: ${value} in stock`);
-    window.setTimeout(() => setFlash(null), 1800);
+    setDrafts((d) => {
+      const next = { ...d };
+      delete next[id];
+      return next;
+    });
+    flashMessage(`${product.name}: ${value} in stock`);
   };
 
   const stockOf = (id: string): string => {

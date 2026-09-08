@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
+import { MAX_LINE_QTY } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
 import { Price, Rating } from "@/components/ui/primitives";
 import {
@@ -25,11 +26,25 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const [qty, setQty] = useState(1);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const variantLabel = `${color}${hasSizes && size ? ` · ${size}` : ""}`;
+  /** Join only the parts that exist — colourless products used to produce
+   *  a label like " · L" with a dangling separator. */
+  const variantLabel =
+    [color, hasSizes ? size : ""].filter(Boolean).join(" · ") || "Default";
+
+  const feedbackTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (feedbackTimer.current !== null)
+        window.clearTimeout(feedbackTimer.current);
+    },
+    [],
+  );
 
   const addedFeedback = () => {
     setFeedback(`Added to cart — ${formatBdt(product.price * qty)}`);
-    window.setTimeout(() => setFeedback(null), 2600);
+    if (feedbackTimer.current !== null)
+      window.clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = window.setTimeout(() => setFeedback(null), 2600);
   };
 
   const handleAdd = () => {
@@ -148,8 +163,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
           <button
             type="button"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
+            disabled={qty <= 1}
             aria-label="Decrease quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconMinus className="h-4 w-4" />
           </button>
@@ -158,9 +174,10 @@ export default function PurchasePanel({ product }: { product: Product }) {
           </span>
           <button
             type="button"
-            onClick={() => setQty((n) => Math.min(9, n + 1))}
+            onClick={() => setQty((n) => Math.min(MAX_LINE_QTY, n + 1))}
+            disabled={qty >= MAX_LINE_QTY}
             aria-label="Increase quantity"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconPlus className="h-4 w-4" />
           </button>
@@ -185,7 +202,11 @@ export default function PurchasePanel({ product }: { product: Product }) {
       </div>
 
       {feedback && (
-        <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-sm font-medium text-forest-900">
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-4 inline-flex items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-sm font-medium text-forest-900"
+        >
           <IconCheck className="h-4 w-4" /> {feedback}
         </p>
       )}

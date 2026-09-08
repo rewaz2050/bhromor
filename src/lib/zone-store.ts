@@ -102,8 +102,16 @@ export const subscribeZones = (listener: Listener): (() => void) => {
   return () => listeners.delete(listener);
 };
 
-/** Server-safe initial snapshot = the seed zones. */
-export const getZonesServer = (): DeliveryZone[] => seedZones();
+/**
+ * Server-safe initial snapshot = the seed zones.
+ *
+ * MUST be a stable reference: useSyncExternalStore compares snapshots by
+ * identity, and returning a fresh array on every call made React re-render
+ * forever ("The result of getServerSnapshot should be cached").
+ */
+let serverSnapshot: DeliveryZone[] | null = null;
+export const getZonesServer = (): DeliveryZone[] =>
+  (serverSnapshot ??= seedZones());
 
 export const getZones = (): DeliveryZone[] => ensureLoaded();
 

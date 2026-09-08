@@ -2,6 +2,7 @@ import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import CartButton from "./cart-button";
 import MobileNav from "./mobile-nav";
+import NavLinks from "./nav-links";
 import WishlistButton from "./wishlist-button";
 import AnnouncementBar from "./announcement-bar";
 import { IconSearch } from "@/components/ui/icons";
@@ -42,20 +43,7 @@ export default function Header() {
           </Link>
 
           {/* Desktop nav */}
-          <nav
-            aria-label="Primary"
-            className="ml-8 hidden items-center gap-7 lg:flex"
-          >
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-sm font-medium text-ink-soft transition-colors hover:text-forest-800"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <NavLinks items={NAV} />
 
           <div className="ml-auto flex items-center gap-1.5">
             <Link

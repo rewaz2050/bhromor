@@ -111,8 +111,12 @@ export const mergeCustom = (
 type Listener = () => void;
 
 let baseCache: MediaItem[] | null = null;
+let baseKey: string | null = null;
 let customCache: MediaItem[] | null = null;
 let loaded = false;
+/** Memoised merge — useSyncExternalStore needs a stable snapshot identity. */
+let mergedCache: MediaItem[] | null = null;
+let mergedFrom: { base: MediaItem[]; custom: MediaItem[] } | null = null;
 const listeners = new Set<Listener>();
 
 const notify = () => {
@@ -132,12 +136,28 @@ export const removeCustom = (custom: MediaItem[], id: string): MediaItem[] =>
 
 /* ------------------------------------------------------------------ */
 
+/** Cheap identity for the scanned catalog so the base list is rebuilt when
+ *  an admin adds/removes a product image (it used to be frozen forever). */
+const catalogKey = (products: Product[], categories: Category[]): string =>
+  `${products.length}:${products
+    .map((p) => `${p.id}#${p.media.map((m) => m.src).join(",")}`)
+    .join("|")}::${categories.map((c) => `${c.id}#${c.image}`).join("|")}`;
+
 const ensureLoaded = (
   products: Product[],
   categories: Category[],
 ): { base: MediaItem[]; custom: MediaItem[] } => {
-  baseCache ??= scanMedia(products, categories);
-  if (customCache && loaded) return { base: baseCache, custom: customCache };
+  const key = catalogKey(products, categories);
+  // Store-mutation helpers call this with empty lists; never let that wipe a
+  // base scan that was built from the real catalog.
+  const skipScan = baseCache !== null && products.length === 0 && categories.length === 0;
+  if (!skipScan && (!baseCache || baseKey !== key)) {
+    baseCache = scanMedia(products, categories);
+    baseKey = key;
+    mergedCache = null;
+  }
+  const base = baseCache ?? [];
+  if (customCache && loaded) return { base, custom: customCache };
   loaded = true;
   if (typeof window !== "undefined") {
     try {
@@ -151,11 +171,12 @@ const ensureLoaded = (
     }
   }
   customCache ??= [];
-  return { base: baseCache, custom: customCache };
+  return { base, custom: customCache };
 };
 
 const persist = (custom: MediaItem[]) => {
   customCache = custom;
+  mergedCache = null;
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(custom));
@@ -171,15 +192,26 @@ export const subscribeMedia = (listener: Listener): (() => void) => {
   return () => listeners.delete(listener);
 };
 
-export const getMediaServer = (): MediaItem[] =>
-  scanMedia([], []); // placeholder — page passes live catalog below
+/** Stable (empty-ish) server snapshot — a fresh array per call looped React. */
+const SERVER_SNAPSHOT: MediaItem[] = scanMedia([], []);
+export const getMediaServer = (): MediaItem[] => SERVER_SNAPSHOT;
 
 export const getMedia = (
   products: Product[],
   categories: Category[],
 ): MediaItem[] => {
   const { base, custom } = ensureLoaded(products, categories);
-  return mergeCustom(base, custom);
+  if (
+    mergedCache &&
+    mergedFrom &&
+    mergedFrom.base === base &&
+    mergedFrom.custom === custom
+  ) {
+    return mergedCache;
+  }
+  mergedCache = mergeCustom(base, custom);
+  mergedFrom = { base, custom };
+  return mergedCache;
 };
 
 export const getCustomMedia = (): MediaItem[] =>
@@ -204,5 +236,6 @@ export const resetMediaStore = () => {
     window.localStorage.removeItem(MEDIA_STORAGE_KEY);
   }
   customCache = [];
+  mergedCache = null;
   persist([]);
 };

@@ -12,6 +12,13 @@ export interface CartLine {
 
 export const CART_STORAGE_KEY = "prosanti.cart.v1";
 
+/** Per-line quantity ceiling — the product page capped at 9 while the cart
+ *  had no limit at all, so the same cart could hold 40 of one item. */
+export const MAX_LINE_QTY = 10;
+
+const clampQty = (qty: number): number =>
+  Math.max(1, Math.min(MAX_LINE_QTY, Math.floor(qty)));
+
 export const resolveProduct = (productId: string): Product | undefined =>
   PRODUCTS.find((p) => p.id === productId);
 
@@ -26,10 +33,10 @@ export const addLine = (
   );
   if (existing) {
     return lines.map((l) =>
-      l === existing ? { ...l, qty: l.qty + qty } : l,
+      l === existing ? { ...l, qty: clampQty(l.qty + qty) } : l,
     );
   }
-  return [...lines, { productId, variantLabel, qty }];
+  return [...lines, { productId, variantLabel, qty: clampQty(qty) }];
 };
 
 export const removeLine = (
@@ -50,7 +57,7 @@ export const setQty = (
   if (qty <= 0) return removeLine(lines, productId, variantLabel);
   return lines.map((l) =>
     l.productId === productId && l.variantLabel === variantLabel
-      ? { ...l, qty }
+      ? { ...l, qty: clampQty(qty) }
       : l,
   );
 };
@@ -63,6 +70,15 @@ export interface CartSummary {
 
 export const summarize = (lines: CartLine[]): CartSummary => {
   const detailed = lines
+    // Guard against corrupted/legacy storage payloads.
+    .filter(
+      (l): l is CartLine =>
+        !!l &&
+        typeof l.productId === "string" &&
+        typeof l.variantLabel === "string" &&
+        Number.isFinite(l.qty) &&
+        l.qty > 0,
+    )
     .map((l) => {
       const product = resolveProduct(l.productId);
       if (!product) return null;

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useCatalog } from "@/lib/use-catalog";
 import { slugify } from "@/lib/catalog-store";
+import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint, label } from "@/components/admin/form-ui";
 import {
   IconCheck,
@@ -33,7 +34,7 @@ function Row({
   const [image, setImage] = useState(category.image);
   const [subs, setSubs] = useState<string[]>([...category.subCategories]);
   const [subInput, setSubInput] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useTransientValue(false, 1600);
   const [dirty, setDirty] = useState(false);
 
   const addSub = () => {
@@ -60,7 +61,6 @@ function Row({
     });
     setSaved(true);
     setDirty(false);
-    window.setTimeout(() => setSaved(false), 1600);
   };
 
   const inputCls = `${field} bg-ivory-100/60`;

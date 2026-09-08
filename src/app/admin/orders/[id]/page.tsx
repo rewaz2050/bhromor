@@ -10,7 +10,7 @@ import {
   STATUS_META,
   canCancel,
   flowIndex,
-  maskPhone,
+  normalizePhone,
   nextActions,
   type OrderStatus,
 } from "@/lib/orders";
@@ -183,8 +183,15 @@ export default function AdminOrderDetailPage() {
               </div>
               <div>
                 <dt className="text-xs text-ink-soft">Phone</dt>
+                {/* Staff need the real number to confirm a COD order — this
+                    used to be masked, making the panel unusable for calls. */}
                 <dd className="font-medium text-ink">
-                  {maskPhone(order.customer.phone)}
+                  <a
+                    href={`tel:+88${normalizePhone(order.customer.phone)}`}
+                    className="text-forest-800 underline underline-offset-4 hover:text-forest-600"
+                  >
+                    {order.customer.phone}
+                  </a>
                 </dd>
               </div>
               <div>

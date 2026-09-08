@@ -3,15 +3,24 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
+import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
+import {
+  FREE_DELIVERY_THRESHOLD,
+  amountToFreeDelivery,
+  cheapestZoneCharge,
+  deliveryChargeFor,
+  orderTotal,
+} from "@/lib/delivery";
 import { FLAT_DELIVERY_NOTE } from "@/lib/catalog";
+import { MAX_LINE_QTY } from "@/lib/cart";
 import { ButtonLink } from "@/components/ui/primitives";
 import { IconArrowRight, IconBag, IconMinus, IconPlus, IconTrash } from "@/components/ui/icons";
 
-const SAMPLE_DELIVERY_FEE = 7000; // mock Zone B fee until area selection at checkout
-
 export default function CartView() {
   const { detail, updateQty, removeItem, subtotal } = useCart();
+  /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
+  const { activeZones } = useZones();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
   const empty = detail.length === 0;
 
@@ -37,10 +46,11 @@ export default function CartView() {
     );
   }
 
-  const freeDeliveryThreshold = 200000;
-  const freeDelivery = subtotal >= freeDeliveryThreshold;
-  const deliveryFee = freeDelivery ? 0 : SAMPLE_DELIVERY_FEE;
-  const total = subtotal + deliveryFee;
+  const fromCharge = cheapestZoneCharge(activeZones);
+  const deliveryFee = deliveryChargeFor(fromCharge, subtotal);
+  const freeDelivery = deliveryFee === 0;
+  const missingForFree = amountToFreeDelivery(subtotal);
+  const total = orderTotal(subtotal, deliveryFee);
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
@@ -91,12 +101,15 @@ export default function CartView() {
                         onClick={() =>
                           updateQty(product.id, line.variantLabel, line.qty - 1)
                         }
-                        aria-label="Decrease quantity"
+                        aria-label={`Decrease quantity of ${product.name}`}
                         className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100"
                       >
                         <IconMinus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-8 text-center text-sm font-semibold text-ink">
+                      <span
+                        className="w-8 text-center text-sm font-semibold text-ink"
+                        aria-live="polite"
+                      >
                         {line.qty}
                       </span>
                       <button
@@ -104,8 +117,14 @@ export default function CartView() {
                         onClick={() =>
                           updateQty(product.id, line.variantLabel, line.qty + 1)
                         }
-                        aria-label="Increase quantity"
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100"
+                        disabled={line.qty >= MAX_LINE_QTY}
+                        aria-label={`Increase quantity of ${product.name}`}
+                        title={
+                          line.qty >= MAX_LINE_QTY
+                            ? `Maximum ${MAX_LINE_QTY} per item`
+                            : undefined
+                        }
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <IconPlus className="h-3.5 w-3.5" />
                       </button>
@@ -149,7 +168,9 @@ export default function CartView() {
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-ink-soft">Delivery</dt>
+              <dt className="text-ink-soft">
+                Delivery{!freeDelivery && " (from)"}
+              </dt>
               <dd className="font-medium text-ink">
                 {deliveryFee === 0 ? (
                   <span className="text-forest-700">Free</span>
@@ -158,13 +179,20 @@ export default function CartView() {
                 )}
               </dd>
             </div>
-            {freeDelivery && (
+            {freeDelivery ? (
               <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
                 You unlocked free delivery.
               </p>
+            ) : (
+              <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
+                Add {formatBdt(missingForFree)} more for free delivery. The
+                exact charge depends on the area you pick at checkout.
+              </p>
             )}
             <div className="flex justify-between border-t border-line pt-4 text-base">
-              <dt className="font-semibold text-ink">Total</dt>
+              <dt className="font-semibold text-ink">
+                {freeDelivery ? "Total" : "Estimated total"}
+              </dt>
               <dd className="font-bold text-ink">{formatBdt(total)}</dd>
             </div>
           </dl>
@@ -179,7 +207,7 @@ export default function CartView() {
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             Cash on delivery available.{" "}
             {!freeDelivery &&
-              `Free delivery on orders over ${formatBdt(freeDeliveryThreshold)}.`}
+              `Free delivery on orders over ${formatBdt(FREE_DELIVERY_THRESHOLD)}.`}
           </p>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
             {FLAT_DELIVERY_NOTE}

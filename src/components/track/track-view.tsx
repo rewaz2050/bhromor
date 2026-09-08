@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useOrders } from "@/lib/use-orders";
 import {
   flowIndex,
+  samePhone,
   type Order,
   type OrderStatus,
 } from "@/lib/orders";
@@ -57,10 +58,19 @@ const STEPS: {
   },
 ];
 
-const stepReached = (order: Order, step: number): boolean =>
-  STEPS[step].statuses.some(
+/** Index of the step the order is actually sitting on (-1 when cancelled). */
+export const currentStepIndex = (order: Order): number =>
+  STEPS.findIndex((step) => step.statuses.includes(order.status));
+
+const stepReached = (order: Order, step: number): boolean => {
+  if (order.status === "cancelled") return false;
+  const current = currentStepIndex(order);
+  if (current !== -1) return step <= current;
+  // Unknown/legacy status → fall back to the flow position.
+  return STEPS[step].statuses.some(
     (s) => flowIndex(s) !== -1 && flowIndex(order.status) >= flowIndex(s),
   );
+};
 
 const stepTime = (order: Order, step: number): string | undefined => {
   for (const s of STEPS[step].statuses) {
@@ -81,9 +91,8 @@ export default function TrackView() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const id = orderId.trim().toUpperCase();
-    const digits = phone.replace(/\D/g, "");
     const order = orders.find(
-      (o) => o.id.toUpperCase() === id && o.customer.phone.replace(/\D/g, "") === digits,
+      (o) => o.id.toUpperCase() === id && samePhone(o.customer.phone, phone),
     );
     setResult(order ? { found: true, order } : { found: false });
   };
@@ -140,8 +149,8 @@ export default function TrackView() {
               required
               type="tel"
               inputMode="tel"
-              pattern="01[0-9]{9}"
-              title="A valid Bangladeshi mobile number"
+              pattern="(\+?88)?01[0-9]{9}"
+              title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="017XXXXXXXX"
@@ -272,15 +281,25 @@ export default function TrackView() {
             </div>
 
             {/* Timeline */}
+            {order.status === "cancelled" && (
+              <p
+                role="status"
+                className="rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
+              >
+                This order was cancelled. If that looks wrong, call us on
+                01700-000000 with the order ID and we will check it for you.
+              </p>
+            )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
               {STEPS.map((step, index) => {
                 const reached = stepReached(order, index);
+                // "Current" is the step the order is on — it used to point at
+                // the *next*, unreached step, so a pending order claimed it
+                // was already being confirmed.
                 const current =
-                  !reached && index > 0
-                    ? stepReached(order, index - 1)
-                    : order.status === "cancelled"
-                      ? false
-                      : false;
+                  order.status !== "cancelled" &&
+                  order.status !== "delivered" &&
+                  index === currentStepIndex(order);
                 const time = stepTime(order, index);
                 return (
                   <li
@@ -378,7 +397,11 @@ export default function TrackView() {
                   </div>
                   <div className="flex justify-between text-ink-soft">
                     <dt>Delivery</dt>
-                    <dd>{formatBdt(order.deliveryCharge)}</dd>
+                    <dd>
+                      {order.deliveryCharge === 0
+                        ? "Free"
+                        : formatBdt(order.deliveryCharge)}
+                    </dd>
                   </div>
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">

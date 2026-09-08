@@ -130,7 +130,13 @@ export const subscribeNotifs = (listener: Listener): (() => void) => {
 
 export const getNotifs = (): Notif[] => ensureLoaded();
 
-export const getNotifsServer = (): Notif[] => seedNotifs();
+/**
+ * Stable server snapshot. This used to call seedNotifs() on every render,
+ * producing a brand-new array with fresh `Date.now()` timestamps — an
+ * infinite re-render loop plus non-deterministic hydration output.
+ */
+let serverSnapshot: Notif[] | null = null;
+export const getNotifsServer = (): Notif[] => (serverSnapshot ??= seedNotifs());
 
 export const readNotif = (id: string) =>
   persist(markRead(ensureLoaded(), id));
