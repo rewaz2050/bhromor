@@ -1,29 +1,111 @@
 @import "tailwindcss";
 
 @theme {
-  /* Fonts (self-hosted via Fontsource — no runtime fetch to Google Fonts) */
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
-  --font-display: "Playfair Display Variable", "Georgia", ui-serif, serif;
+  /* Fonts — self-hosted via Fontsource (no runtime fetch) */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-display: "Playfair Display Variable", Georgia, ui-serif, serif;
+  --font-bengali: "Noto Serif Bengali", "Inter Variable", ui-serif, serif;
 
-  /* Palette: warm ivory / ink / terracotta */
-  --color-background: #faf7f2;
-  --color-foreground: #201a17;
-  --color-paper: #ffffff;
-  --color-sand: #f1eae0;
-  --color-clay: #a8572f;
-  --color-clay-dark: #8a4320;
-  --color-ink-soft: #6b625a;
-  --color-line: #e6ddd1;
+  /* PROSANTI palette — deep forest green · warm ivory/cream · muted gold */
+  --color-ivory-50: #fbf9f2;
+  --color-ivory-100: #f6f1e6;
+  --color-ivory-200: #ede4d0;
+  --color-ivory-300: #dfd2b6;
+  --color-paper: #fffdf7;
+
+  --color-ink: #1c2420;
+  --color-ink-soft: #5b645d;
+  --color-line: #e2dac8;
+
+  --color-forest-50: #edf3ef;
+  --color-forest-100: #d9e6de;
+  --color-forest-200: #b3cdbf;
+  --color-forest-300: #86ad97;
+  --color-forest-400: #588a6f;
+  --color-forest-500: #3a6f55;
+  --color-forest-600: #2b5943;
+  --color-forest-700: #224736;
+  --color-forest-800: #1b3a2d;
+  --color-forest-900: #14291f;
+  --color-forest-950: #0c1913;
+
+  --color-gold-100: #f2e9d6;
+  --color-gold-200: #e5d4ae;
+  --color-gold-300: #d4ba83;
+  --color-gold-400: #c2a065;
+  --color-gold-500: #ab8748;
+  --color-gold-600: #8f6f38;
+  --color-gold-700: #74582c;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
+  background: var(--color-ivory-50);
+  color: var(--color-ink);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: var(--color-clay);
-  color: #fff;
+  background: var(--color-forest-800);
+  color: var(--color-ivory-100);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-forest-600);
+  outline-offset: 2px;
+}
+
+/* Brand signature — Islamic-inspired arch, kept tasteful */
+.arch {
+  border-radius: 999px 999px 24px 24px;
+}
+
+.arch-sm {
+  border-radius: 999px 999px 14px 14px;
+}
+
+/* Editorial prose for informational pages */
+.prose-prosanti h2 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin: 2.25rem 0 0.75rem;
+  color: var(--color-forest-900);
+}
+.prose-prosanti p {
+  margin: 0.9rem 0;
+  line-height: 1.75;
+  color: var(--color-ink-soft);
+}
+.prose-prosanti ul {
+  margin: 0.9rem 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+  color: var(--color-ink-soft);
+  line-height: 1.75;
+}
+.prose-prosanti li {
+  margin: 0.35rem 0;
+}
+.prose-prosanti strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.prose-prosanti a {
+  color: var(--color-forest-600);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.prose-prosanti a:hover {
+  color: var(--color-forest-800);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }

@@ -1,0 +1,231 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { Product } from "@/lib/catalog";
+import { formatBdt } from "@/lib/format";
+import { useCart } from "@/components/cart/cart-provider";
+import { Price, Rating } from "@/components/ui/primitives";
+import {
+  IconCheck,
+  IconMapPin,
+  IconMinus,
+  IconPlus,
+  IconShield,
+  IconTruck,
+} from "@/components/ui/icons";
+
+export default function PurchasePanel({ product }: { product: Product }) {
+  const { addItem } = useCart();
+  const router = useRouter();
+
+  const hasSizes = product.sizes.length > 1 || !/free|one size/i.test(product.sizes[0] ?? "");
+  const [color, setColor] = useState(product.colors[0] ?? "");
+  const [size, setSize] = useState(product.sizes[0] ?? "");
+  const [qty, setQty] = useState(1);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const variantLabel = `${color}${hasSizes && size ? ` · ${size}` : ""}`;
+
+  const addedFeedback = () => {
+    setFeedback(`Added to cart — ${formatBdt(product.price * qty)}`);
+    window.setTimeout(() => setFeedback(null), 2600);
+  };
+
+  const handleAdd = () => {
+    addItem(product.id, variantLabel, qty);
+    addedFeedback();
+  };
+
+  const handleBuyNow = () => {
+    addItem(product.id, variantLabel, qty);
+    router.push("/checkout");
+  };
+
+  return (
+    <div>
+      <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-ink-soft">
+        {product.category} · {product.subCategory}
+      </p>
+      <h1 className="font-display mt-2 text-3xl font-medium leading-tight tracking-tight text-forest-900 sm:text-4xl">
+        {product.name}
+        {product.nameBn && (
+          <span className="font-bengali mt-1 block text-base font-normal text-ink-soft">
+            {product.nameBn}
+          </span>
+        )}
+      </h1>
+
+      <div className="mt-3">
+        <Rating value={product.rating} reviewCount={product.reviewCount} />
+      </div>
+
+      <div className="mt-5">
+        <Price value={product.price} compareAt={product.compareAtPrice} size="lg" />
+        <p className="mt-1 text-xs text-ink-soft">
+          Price is inclusive of VAT. Delivery charge calculated at checkout by
+          area.
+        </p>
+      </div>
+
+      <p className="mt-6 max-w-lg leading-7 text-ink-soft">
+        {product.shortDescription}
+      </p>
+
+      {/* Stock note */}
+      <div className="mt-5 flex items-center gap-2 text-sm">
+        {product.inStock ? (
+          <>
+            <span className="h-2 w-2 rounded-full bg-forest-500" />
+            <span className="text-forest-800">In stock</span>
+            {product.lowStock && (
+              <span className="text-ink-soft">
+                — only a few left in this size
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="h-2 w-2 rounded-full bg-gold-500" />
+            <span className="text-gold-700">Sold out — check back soon</span>
+          </>
+        )}
+      </div>
+
+      {/* Colour */}
+      {product.colors.length > 0 && (
+        <div className="mt-7">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+            Colour
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {product.colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                aria-pressed={color === c}
+                className={`rounded-full px-4 py-2 text-sm transition-colors ${
+                  color === c
+                    ? "bg-forest-800 font-medium text-ivory-50"
+                    : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Size */}
+      <div className="mt-6">
+        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+          Size
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {product.sizes.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSize(s)}
+              aria-pressed={size === s}
+              className={`h-11 min-w-11 rounded-full px-4 text-sm transition-colors ${
+                size === s
+                  ? "bg-forest-800 font-semibold text-ivory-50"
+                  : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Quantity + CTAs */}
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex h-14 items-center justify-between rounded-full bg-paper px-2 ring-1 ring-line sm:w-36">
+          <button
+            type="button"
+            onClick={() => setQty((n) => Math.max(1, n - 1))}
+            aria-label="Decrease quantity"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+          >
+            <IconMinus className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-semibold text-ink" aria-live="polite">
+            {qty}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQty((n) => Math.min(9, n + 1))}
+            aria-label="Increase quantity"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+          >
+            <IconPlus className="h-4 w-4" />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="h-14 flex-1 rounded-full bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
+          disabled={!product.inStock}
+        >
+          Add to Cart
+        </button>
+        <button
+          type="button"
+          onClick={handleBuyNow}
+          className="h-14 flex-1 rounded-full bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-colors hover:bg-gold-400 disabled:opacity-40"
+          disabled={!product.inStock}
+        >
+          Buy Now
+        </button>
+      </div>
+
+      {feedback && (
+        <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-sm font-medium text-forest-900">
+          <IconCheck className="h-4 w-4" /> {feedback}
+        </p>
+      )}
+
+      {/* Delivery trust card */}
+      <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        <TrustPill
+          icon={IconTruck}
+          title="45–50 min"
+          text="Rapid delivery in the service area"
+        />
+        <TrustPill
+          icon={IconMapPin}
+          title="Zone-based charge"
+          text="৳50 – ৳130, shown before you pay"
+        />
+        <TrustPill
+          icon={IconShield}
+          title="COD available"
+          text="Pay when it reaches your door"
+        />
+      </div>
+    </div>
+  );
+}
+
+function TrustPill({
+  icon: Icon,
+  title,
+  text,
+}: {
+  icon: (p: { className?: string }) => React.ReactNode;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-ivory-100 p-4 ring-1 ring-line">
+      <Icon className="h-5 w-5 text-forest-700" />
+      <p className="mt-2.5 text-sm font-semibold text-ink">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-ink-soft">{text}</p>
+    </div>
+  );
+}
