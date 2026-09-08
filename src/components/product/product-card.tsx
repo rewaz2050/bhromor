@@ -6,13 +6,15 @@ import { useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { defaultVariant } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
+import { useWishlist } from "@/lib/use-wishlist";
 import { Badge, Price } from "@/components/ui/primitives";
 import { IconCheck, IconHeart, IconPlus } from "@/components/ui/icons";
 
 export default function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart();
-  const [wished, setWished] = useState(false);
+  const { has, toggle } = useWishlist();
   const [added, setAdded] = useState(false);
+  const wished = has(product.id);
 
   const quickAdd = () => {
     addItem(product.id, defaultVariant(product), 1);
@@ -60,11 +62,12 @@ export default function ProductCard({ product }: { product: Product }) {
           </div>
         )}
 
-        {/* Wishlist */}
+        {/* Wishlist (§29) — shared store, so the heart follows the customer */}
         <button
           type="button"
-          onClick={() => setWished((v) => !v)}
+          onClick={() => toggle(product.id)}
           aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
+          aria-pressed={wished}
           className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-paper/90 text-ink-soft shadow-sm ring-1 ring-line backdrop-blur transition-colors hover:text-gold-600"
         >
           <IconHeart

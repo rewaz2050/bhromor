@@ -1,0 +1,69 @@
+/**
+ * Wishlist store (§29) — demo, browser-local.
+ * Pure list helpers on top; external store below feeds useSyncExternalStore.
+ */
+
+export const WISHLIST_STORAGE_KEY = "prosanti.wishlist.v1";
+
+export const toggleWish = (list: string[], id: string): string[] =>
+  list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+
+export const removeWish = (list: string[], id: string): string[] =>
+  list.filter((x) => x !== id);
+
+/* ------------------------------------------------------------------ */
+
+type Listener = () => void;
+
+let cache: string[] | null = null;
+let loaded = false;
+const listeners = new Set<Listener>();
+
+const notify = () => {
+  for (const l of listeners) l();
+};
+
+const ensureLoaded = (): string[] => {
+  if (cache && loaded) return cache;
+  loaded = true;
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(WISHLIST_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as string[];
+        if (Array.isArray(parsed)) {
+          cache = parsed;
+          return cache;
+        }
+      }
+    } catch {
+      // corrupted storage → start empty
+    }
+  }
+  cache = [];
+  return cache;
+};
+
+const persist = (next: string[]) => {
+  cache = next;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // storage unavailable — demo continues in memory
+    }
+  }
+  notify();
+};
+
+export const subscribeWishlist = (listener: Listener): (() => void) => {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+};
+
+export const getWishlist = (): string[] => ensureLoaded();
+
+export const toggleWishlistStore = (id: string) =>
+  persist(toggleWish(ensureLoaded(), id));
+
+export const clearWishlistStore = () => persist([]);

@@ -4,7 +4,18 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
-import { DELIVERY_ZONES, ORDER_PREFIX } from "@/lib/catalog";
+import { useZones } from "@/lib/use-zones";
+import { useCoupons } from "@/lib/use-coupons";
+import {
+  discountAmount,
+  eligibleSubtotal,
+  findCoupon,
+  isCouponRedeemable,
+  type Coupon,
+} from "@/lib/coupons";
+import { ORDER_PREFIX } from "@/lib/catalog";
+import { makePlacedOrder } from "@/lib/orders";
+import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
   IconArrowRight,
@@ -21,6 +32,7 @@ interface FormState {
   area: string;
   address: string;
   note: string;
+  couponCode: string;
   zoneId: string;
   payment: "cod";
   submitting: boolean;
@@ -32,13 +44,16 @@ const initialForm: FormState = {
   area: "",
   address: "",
   note: "",
-  zoneId: DELIVERY_ZONES[0].id,
+  couponCode: "",
+  zoneId: "",
   payment: "cod",
   submitting: false,
 };
 
 export default function CheckoutView() {
   const { detail, subtotal, clear } = useCart();
+  /** Delivery zones come from the shared store — admin edits show here (§20). */
+  const { activeZones: zoneList } = useZones();
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
@@ -48,13 +63,36 @@ export default function CheckoutView() {
     addressSummary: string;
   } | null>(null);
 
-  const zone = DELIVERY_ZONES.find((z) => z.id === form.zoneId) ?? DELIVERY_ZONES[0];
+  const { coupons: allCoupons, recordUse } = useCoupons();
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
+    ? form.zoneId
+    : (zoneList[0]?.id ?? "");
+  const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
   const summary = useMemo(() => {
-    const charge = zone.charge;
-    const total = subtotal + charge;
-    return { charge, total, itemCount: detail.reduce((n, l) => n + l.qty, 0) };
-  }, [zone, subtotal, detail]);
+    const charge = zone?.charge ?? 0;
+    const discount = appliedCoupon
+      ? discountAmount(
+          appliedCoupon,
+          eligibleSubtotal(
+            appliedCoupon,
+            detail.map((l) => ({
+              productCategory: l.product.category,
+              subtotal: l.lineTotal,
+            })),
+          ),
+        )
+      : 0;
+    return {
+      charge,
+      discount,
+      total: subtotal + charge - discount,
+      itemCount: detail.reduce((n, l) => n + l.qty, 0),
+    };
+  }, [zone, subtotal, detail, appliedCoupon]);
 
   const empty = detail.length === 0;
 
@@ -135,8 +173,40 @@ export default function CheckoutView() {
     );
   }
 
+  if (!zone) {
+    return (
+      <div className="flex flex-col items-center px-6 py-20 text-center">
+        <h2 className="font-display text-2xl font-medium text-forest-900">
+          Delivery zones are being set up
+        </h2>
+        <p className="mt-2 max-w-sm text-sm text-ink-soft">
+          Please check back shortly — no service area is configured yet.
+        </p>
+      </div>
+    );
+  }
+
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  const applyCoupon = () => {
+    const code = form.couponCode.trim().toUpperCase();
+    if (!code) return;
+    const coupon = findCoupon(allCoupons, code);
+    if (!coupon) {
+      setAppliedCoupon(null);
+      setCouponMsg({ ok: false, text: "Unknown code — double-check the spelling." });
+      return;
+    }
+    const check = isCouponRedeemable(coupon, subtotal);
+    if (!check.ok) {
+      setAppliedCoupon(null);
+      setCouponMsg({ ok: false, text: check.reason ?? "This code cannot be used." });
+      return;
+    }
+    setAppliedCoupon(coupon);
+    setCouponMsg({ ok: true, text: `${coupon.code} applied — discount shown below.` });
+  };
 
   const placeOrder = () => {
     if (form.submitting) return; // idempotent — no double submission (§79)
@@ -147,6 +217,32 @@ export default function CheckoutView() {
     const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
     // Simulated network/backend latency before showing confirmation.
     window.setTimeout(() => {
+      // Store the order in the demo backend (order-store) so the admin
+      // Orders queue and the public Track page can follow it live (§92).
+      addOrderToStore(
+        makePlacedOrder({
+          id: orderId,
+          createdAt: stamp.getTime(),
+          customer: {
+            name: form.name,
+            phone: form.phone,
+            area: form.area,
+            address: form.address,
+            note: form.note,
+          },
+          zone: { id: zone.id, name: zone.name, etaLabel: zone.etaLabel, charge: zone.charge },
+          items: detail.map((l) => ({
+            product: l.product,
+            image: l.product.media[0]?.src ?? "",
+            variant: l.variantLabel,
+            qty: l.qty,
+          })),
+          coupon: appliedCoupon
+            ? { code: appliedCoupon.code, discount: summary.discount }
+            : undefined,
+        }),
+      );
+      if (appliedCoupon) recordUse(appliedCoupon.code);
       setPlaced({
         orderId,
         eta: zone.etaLabel,
@@ -212,11 +308,11 @@ export default function CheckoutView() {
               </span>
               <select
                 required
-                value={form.zoneId}
+                value={zone.id}
                 onChange={(e) => update("zoneId", e.target.value)}
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
-                {DELIVERY_ZONES.map((z) => (
+                {zoneList.map((z) => (
                   <option key={z.id} value={z.id}>
                     {z.name} — {formatBdt(z.charge)} · {z.etaLabel}
                   </option>
@@ -393,11 +489,74 @@ export default function CheckoutView() {
               </li>
             ))}
           </ul>
-          <dl className="mt-6 space-y-2.5 border-t border-line pt-5 text-sm">
+          {/* Coupon (§56) */}
+          <div className="mt-6 border-t border-line pt-5">
+            <label className="mb-1.5 block text-xs font-medium text-ink">
+              Have a coupon code?
+            </label>
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
+                <span className="font-mono font-bold text-forest-800">
+                  {appliedCoupon.code}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedCoupon(null);
+                    setCouponMsg(null);
+                    update("couponCode", "");
+                  }}
+                  className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={form.couponCode}
+                  onChange={(e) => update("couponCode", e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), applyCoupon())}
+                  placeholder="e.g. WELCOME100"
+                  aria-label="Coupon code"
+                  className="h-11 w-full min-w-0 rounded-xl bg-ivory-50 px-3.5 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                />
+                <button
+                  type="button"
+                  onClick={applyCoupon}
+                  className="shrink-0 rounded-xl bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
+            {couponMsg && (
+              <p
+                role="status"
+                className={`mt-2 text-xs leading-5 ${
+                  couponMsg.ok ? "text-emerald-700" : "text-rose-700"
+                }`}
+              >
+                {couponMsg.text}
+              </p>
+            )}
+          </div>
+
+          <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">Subtotal</dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
+            {summary.discount > 0 && appliedCoupon && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">
+                  Coupon · {appliedCoupon.code}
+                </dt>
+                <dd className="font-medium text-emerald-700">
+                  −{formatBdt(summary.discount)}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-ink-soft">
                 Delivery · {zone.etaLabel}

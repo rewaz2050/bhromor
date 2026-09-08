@@ -37,9 +37,25 @@ export interface Product {
   rating: number;
   reviewCount: number;
   badge?: "new" | "sale" | "featured";
+  /* Admin-phase fields (§73–74) — optional so existing seeds stay valid.
+     Drafts/archived products simply never leave the demo admin catalog
+     until the Supabase data layer gates the public reads. */
+  status?: "draft" | "published";
+  active?: boolean;
+  stock?: number;
+  seo?: { title?: string; description?: string };
 }
 
-export type CategoryId = "men" | "women" | "traditional";
+/**
+ * Category ids are data-driven (§5) — admin adds categories without code
+ * changes. The literal union keeps autocomplete for the seeded ones while
+ * `(string & {})` admits ids created at runtime.
+ */
+export type CategoryId =
+  | "men"
+  | "women"
+  | "traditional"
+  | (string & {});
 
 export interface Category {
   id: CategoryId;
@@ -48,6 +64,7 @@ export interface Category {
   tagline: string;
   image: string;
   subCategories: string[];
+  active?: boolean;
 }
 
 export interface DeliveryZone {
@@ -56,6 +73,7 @@ export interface DeliveryZone {
   areas: string[];
   charge: number; // paisa
   etaLabel: string; // e.g. "40–50 min"
+  active?: boolean;
 }
 
 export const CATEGORIES: Category[] = [

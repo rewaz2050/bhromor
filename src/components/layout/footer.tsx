@@ -46,7 +46,10 @@ export default function Footer() {
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:grid-cols-2 sm:px-6 lg:grid-cols-5 lg:px-8">
         <div className="lg:col-span-2">
           <div className="flex items-center gap-3">
-            <LogoMark className="h-11 w-11" />
+            {/* Cream tile keeps the dark emblem visible on the dark footer */}
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-ivory-100">
+              <LogoMark className="h-[2.15rem] w-auto" />
+            </span>
             <span className="flex flex-col leading-none">
               <span className="font-display text-2xl font-semibold tracking-[0.14em]">
                 PROSANTI

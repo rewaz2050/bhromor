@@ -145,3 +145,116 @@ export const IconBox = (p: IconProps) => (
     <path d="M4.5 7.8 12 11.5l7.5-3.7M12 11.5V20" />
   </Svg>
 );
+
+export const IconGrid = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+  </Svg>
+);
+
+export const IconLogout = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4" />
+    <path d="m9.5 8-4 4 4 4M5.5 12H15" />
+  </Svg>
+);
+
+export const IconClock = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Svg>
+);
+
+export const IconTag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 12V4.5a1 1 0 0 1 1-1H12a1 1 0 0 1 .7.3l7 7a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-7-7a1 1 0 0 1-.3-.7Z" />
+    <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const IconExternal = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M14 4.5h5.5V10M19.5 4.5 11 13" />
+    <path d="M19 13.5V18a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18V7a1.5 1.5 0 0 1 1.5-1.5H10" />
+  </Svg>
+);
+
+export const IconReset = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+  </Svg>
+);
+
+export const IconUser = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="8" r="3.6" />
+    <path d="M4.5 20.5c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5" />
+  </Svg>
+);
+
+export const IconFlag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M5 21V4.5" />
+    <path d="M5 5c2.2-1.2 4.4-1.2 6.6 0 2.2 1.2 4.4 1.2 6.6 0v8c-2.2 1.2-4.4 1.2-6.6 0-2.2-1.2-4.4-1.2-6.6 0" />
+  </Svg>
+);
+
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </Svg>
+);
+
+export const IconBell = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+    <path d="M10 21h4" />
+  </Svg>
+);
+
+export const IconImage = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <circle cx="9" cy="10" r="1.8" />
+    <path d="m4.5 17.5 5-4.5 3 2.5 3.5-3.5 3 3" />
+  </Svg>
+);
+
+export const IconChart = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 3v16a2 2 0 0 0 2 2h16" />
+    <path d="M8 17v-6" />
+    <path d="M13 17V6" />
+    <path d="M18 17v-3" />
+  </Svg>
+);
+
+export const IconSettings = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);
+
+export const IconCard = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+    <path d="M2.5 10.5h19" />
+    <path d="M6.5 15h4" />
+  </Svg>
+);
+
+export const IconBanknote = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="6.5" width="20" height="11" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 12h.01" />
+    <path d="M18 12h.01" />
+  </Svg>
+);

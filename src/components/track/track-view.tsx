@@ -1,32 +1,105 @@
 "use client";
 
 import { useState } from "react";
-import { IconBox, IconCheck, IconMapPin, IconPhone, IconSearch } from "@/components/ui/icons";
+import Image from "next/image";
+import { useOrders } from "@/lib/use-orders";
+import {
+  flowIndex,
+  type Order,
+  type OrderStatus,
+} from "@/lib/orders";
+import { formatBdt } from "@/lib/format";
+import { clockTime } from "@/components/admin/order-ui";
+import {
+  IconBox,
+  IconCheck,
+  IconMapPin,
+  IconPhone,
+  IconSearch,
+  IconTruck,
+} from "@/components/ui/icons";
 
-const DEMO_ORDER = "PS-20260908-1042";
+/** Public-facing steps — “ready for pickup” folds into courier assignment. */
+const STEPS: {
+  statuses: OrderStatus[];
+  label: string;
+  note: string;
+}[] = [
+  {
+    statuses: ["pending"],
+    label: "Order Placed",
+    note: "Confirmed receipt of your order",
+  },
+  {
+    statuses: ["confirmed"],
+    label: "Order Confirmed",
+    note: "Stock reserved & payment method verified",
+  },
+  {
+    statuses: ["preparing"],
+    label: "Preparing",
+    note: "Being quality-checked & packed",
+  },
+  {
+    statuses: ["ready-for-pickup", "courier-assigned"],
+    label: "Courier Assigned",
+    note: "A rider is on the way to collect",
+  },
+  {
+    statuses: ["out-for-delivery"],
+    label: "Out for Delivery",
+    note: "Your order is on the move",
+  },
+  {
+    statuses: ["delivered"],
+    label: "Delivered",
+    note: "Enjoy — thank you for shopping with PROSANTI",
+  },
+];
 
-const STEPS = [
-  { key: "placed", label: "Order Placed", note: "Confirmed receipt of your order" },
-  { key: "confirmed", label: "Order Confirmed", note: "Stock reserved & payment method verified" },
-  { key: "preparing", label: "Preparing", note: "Being quality-checked & packed" },
-  { key: "assigned", label: "Courier Assigned", note: "A rider is on the way to collect" },
-  { key: "out", label: "Out for Delivery", note: "Your order is on the move" },
-  { key: "delivered", label: "Delivered", note: "Enjoy — thank you for shopping with PROSANTI" },
-] as const;
+const stepReached = (order: Order, step: number): boolean =>
+  STEPS[step].statuses.some(
+    (s) => flowIndex(s) !== -1 && flowIndex(order.status) >= flowIndex(s),
+  );
 
-const DEMO_PROGRESS = 4; // index of the active step (0-based)
+const stepTime = (order: Order, step: number): string | undefined => {
+  for (const s of STEPS[step].statuses) {
+    const entry = order.timeline.find((t) => t.status === s);
+    if (entry) return clockTime(entry.at);
+  }
+  return undefined;
+};
+
+type Result = { found: true; order: Order } | { found: false } | null;
 
 export default function TrackView() {
+  const { orders } = useOrders();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
-  const [searched, setSearched] = useState(false);
+  const [result, setResult] = useState<Result>(null);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    setSearched(true);
+    const id = orderId.trim().toUpperCase();
+    const digits = phone.replace(/\D/g, "");
+    const order = orders.find(
+      (o) => o.id.toUpperCase() === id && o.customer.phone.replace(/\D/g, "") === digits,
+    );
+    setResult(order ? { found: true, order } : { found: false });
   };
 
-  const activeIndex = Math.min(DEMO_PROGRESS, STEPS.length - 1);
+  const tryDemo = () => {
+    const sample =
+      [...orders]
+        .filter((o) => o.status !== "cancelled")
+        .sort((a, b) => b.createdAt - a.createdAt)[0] ?? orders[0];
+    if (!sample) return;
+    setOrderId(sample.id);
+    setPhone(sample.customer.phone);
+    setResult({ found: true, order: sample });
+  };
+
+  const order = result?.found ? result.order : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[420px_1fr]">
@@ -52,7 +125,7 @@ export default function TrackView() {
               required
               value={orderId}
               onChange={(e) => setOrderId(e.target.value)}
-              placeholder={`e.g. ${DEMO_ORDER}`}
+              placeholder="PS-YYYYMMDD-XXXX"
               className="h-12 w-full rounded-2xl bg-ivory-50 pl-11 pr-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
           </div>
@@ -84,20 +157,16 @@ export default function TrackView() {
         </button>
         <button
           type="button"
-          onClick={() => {
-            setOrderId(DEMO_ORDER);
-            setPhone("01712345678");
-            setSearched(true);
-          }}
+          onClick={tryDemo}
           className="mt-3 w-full text-center text-xs text-ink-soft underline underline-offset-4 hover:text-forest-700"
         >
-          View the demo order instead
+          View the newest demo order instead
         </button>
       </form>
 
       {/* Result */}
       <div>
-        {!searched ? (
+        {!result ? (
           <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-paper text-forest-700 ring-1 ring-line">
               <IconMapPin className="h-7 w-7" />
@@ -110,6 +179,26 @@ export default function TrackView() {
               preparation, courier assignment and delivery.
             </p>
           </div>
+        ) : !order ? (
+          <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-3xl bg-paper px-8 text-center ring-1 ring-line">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-200">
+              <IconSearch className="h-7 w-7" />
+            </span>
+            <h2 className="font-display mt-6 text-2xl font-medium text-forest-900">
+              No order found
+            </h2>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
+              Double-check the order ID and the phone number you ordered with.
+              Orders placed on this device appear here straight away.
+            </p>
+            <button
+              type="button"
+              onClick={tryDemo}
+              className="mt-6 text-xs font-medium text-forest-700 underline underline-offset-4 hover:text-forest-900"
+            >
+              Try the demo order
+            </button>
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Header card */}
@@ -120,16 +209,39 @@ export default function TrackView() {
                     Live order
                   </p>
                   <p className="font-display mt-1.5 text-2xl font-medium">
-                    {orderId || DEMO_ORDER}
+                    {order.id}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-ivory-100/60">Estimated arrival</p>
-                  <p className="mt-0.5 text-2xl font-semibold text-gold-300">
-                    18–25 min
-                  </p>
+                  {order.status === "delivered" ? (
+                    <>
+                      <p className="text-sm text-ivory-100/60">Delivered</p>
+                      <p className="mt-0.5 text-2xl font-semibold text-gold-300">
+                        {order.deliveredMinutes
+                          ? `${order.deliveredMinutes} min`
+                          : "✓"}
+                      </p>
+                    </>
+                  ) : order.status === "cancelled" ? (
+                    <>
+                      <p className="text-sm text-ivory-100/60">Status</p>
+                      <p className="mt-0.5 text-2xl font-semibold text-rose-300">
+                        Cancelled
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-ivory-100/60">
+                        Estimated arrival
+                      </p>
+                      <p className="mt-0.5 text-2xl font-semibold text-gold-300">
+                        {order.etaLabel}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
+
               {/* Mock live map */}
               <div className="relative mt-6 h-44 overflow-hidden rounded-2xl bg-forest-800">
                 <svg viewBox="0 0 400 176" className="h-full w-full" aria-hidden="true">
@@ -162,31 +274,39 @@ export default function TrackView() {
             {/* Timeline */}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
               {STEPS.map((step, index) => {
-                const done = index < activeIndex;
-                const current = index === activeIndex;
+                const reached = stepReached(order, index);
+                const current =
+                  !reached && index > 0
+                    ? stepReached(order, index - 1)
+                    : order.status === "cancelled"
+                      ? false
+                      : false;
+                const time = stepTime(order, index);
                 return (
                   <li
-                    key={step.key}
+                    key={step.label}
                     className="relative flex gap-4 pb-7 last:pb-0"
                   >
                     {index < STEPS.length - 1 && (
                       <span
                         aria-hidden="true"
                         className={`absolute left-[1.02rem] top-9 h-[calc(100%-2rem)] w-0.5 ${
-                          done ? "bg-forest-600" : "bg-line"
+                          reached && order.status !== "cancelled"
+                            ? "bg-forest-600"
+                            : "bg-line"
                         }`}
                       />
                     )}
                     <span
                       className={`relative z-10 flex h-[2.05rem] w-[2.05rem] shrink-0 items-center justify-center rounded-full ${
-                        done
+                        reached && order.status !== "cancelled"
                           ? "bg-forest-700 text-ivory-50"
                           : current
                             ? "bg-gold-500 text-forest-950 ring-4 ring-gold-500/20"
                             : "bg-ivory-100 text-ink-soft ring-1 ring-line"
                       }`}
                     >
-                      {done ? (
+                      {reached && order.status !== "cancelled" ? (
                         <IconCheck className="h-4 w-4" />
                       ) : current ? (
                         <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-forest-950" />
@@ -197,7 +317,7 @@ export default function TrackView() {
                     <div className="pt-0.5">
                       <p
                         className={`text-sm font-semibold ${
-                          done || current ? "text-ink" : "text-ink-soft"
+                          reached || current ? "text-ink" : "text-ink-soft"
                         }`}
                       >
                         {step.label}
@@ -209,6 +329,11 @@ export default function TrackView() {
                       </p>
                       <p className="mt-1 text-xs leading-5 text-ink-soft">
                         {step.note}
+                        {time && reached && (
+                          <span className="ml-2 text-ink-soft/70">
+                            · {time}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </li>
@@ -216,12 +341,79 @@ export default function TrackView() {
               })}
             </ol>
 
-            <p className="rounded-2xl bg-ivory-100 px-5 py-4 text-xs leading-5 text-ink-soft">
-              <strong className="text-ink">Demo data.</strong> In the live
-              system, the page refreshes automatically from real order status
-              and (in a later phase) a courier map. The 45–50 minute window is
-              an operational target, not a guarantee for every situation.
-            </p>
+            {/* Order snapshot */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
+                <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+                  Your order
+                </h3>
+                <ul className="mt-4 space-y-3">
+                  {order.items.map((it, i) => (
+                    <li key={i} className="flex items-center gap-3">
+                      <Image
+                        src={it.image}
+                        alt=""
+                        width={44}
+                        height={44}
+                        className="h-11 w-11 rounded-xl object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-ink">
+                          {it.name}
+                        </p>
+                        <p className="text-xs text-ink-soft">
+                          {it.variant} · ×{it.qty}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium text-ink">
+                        {formatBdt(it.unitPrice * it.qty)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+                <dl className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
+                  <div className="flex justify-between text-ink-soft">
+                    <dt>Subtotal</dt>
+                    <dd>{formatBdt(order.subtotal)}</dd>
+                  </div>
+                  <div className="flex justify-between text-ink-soft">
+                    <dt>Delivery</dt>
+                    <dd>{formatBdt(order.deliveryCharge)}</dd>
+                  </div>
+                  {order.coupon && (
+                    <div className="flex justify-between text-emerald-700">
+                      <dt>Coupon · {order.coupon.code}</dt>
+                      <dd>−{formatBdt(order.coupon.discount)}</dd>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1 font-semibold text-forest-900">
+                    <dt>Total (COD)</dt>
+                    <dd>{formatBdt(order.total)}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
+                <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+                  Delivery
+                </h3>
+                <p className="mt-4 flex items-start gap-2.5 text-sm text-ink">
+                  <IconMapPin className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
+                  {order.customer.area}
+                  {order.customer.address ? `, ${order.customer.address}` : ""}
+                </p>
+                <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
+                  <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
+                  {order.zoneName} · {order.etaLabel}
+                </p>
+                <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
+                  <strong className="text-ink">Demo data.</strong> This device
+                  is your browser&apos;s demo warehouse: the order status moves
+                  when the PROSANTI admin panel advances it. Real status
+                  updates, SMS and a courier map arrive with the backend and
+                  tracking phases.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>
