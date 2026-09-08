@@ -183,6 +183,8 @@ export const translations = {
       viewDetails: "View details →",
     },
     cart: {
+      pageEyebrow: "Your selection",
+      pageTitle: "Cart",
       yourCartIsEmpty: "Your cart is empty",
       discoverHint: "Discover something you may love — our catalog is small, curated and delivered fast.",
       exploreProducts: "Explore products",
@@ -205,6 +207,9 @@ export const translations = {
       items: "items",
     },
     wishlist: {
+      pageEyebrow: "Saved for later",
+      pageTitle: "Wishlist",
+      pageSubtitle: "Products you marked with a heart live here on this device — no account needed. When you are ready, add them to your cart.",
       wishlistWaiting: "Your wishlist is waiting.",
       tapHeartHint: "Tap the heart on any product you love — it will wait for you here.",
       savedToAccount: "Saved to your account.",
@@ -242,6 +247,9 @@ export const translations = {
       codText: "Pay when it reaches your door",
     },
     checkout: {
+      pageEyebrow: "Almost there",
+      pageTitle: "Checkout",
+      pageSubtitle: "A short form, an honest delivery estimate, and cash on delivery. No account required.",
       checkout: "Checkout",
       deliveryDetails: "1 · Delivery details",
       fullName: "Full name",
@@ -467,6 +475,8 @@ export const translations = {
       viewDetails: "বিস্তারিত দেখুন →",
     },
     cart: {
+      pageEyebrow: "আপনার নির্বাচন",
+      pageTitle: "কার্ট",
       yourCartIsEmpty: "আপনার কার্ট খালি",
       discoverHint: "আপনার পছন্দের কিছু আবিষ্কার করুন — আমাদের কালেকশন ছোট, বাছাই করা এবং দ্রুত ডেলিভারি।",
       exploreProducts: "পণ্য দেখুন",
@@ -489,6 +499,9 @@ export const translations = {
       items: "টি পণ্য",
     },
     wishlist: {
+      pageEyebrow: "পরে দেখার জন্য সংরক্ষিত",
+      pageTitle: "পছন্দের তালিকা",
+      pageSubtitle: "হার্ট দেওয়া পণ্যগুলো এখানে এই ডিভাইসে থাকে — অ্যাকাউন্ট ছাড়াই। প্রস্তুত হলে কার্টে যোগ করুন।",
       wishlistWaiting: "আপনার পছন্দের তালিকা অপেক্ষা করছে।",
       tapHeartHint: "যে কোনো পণ্যে হার্টে ট্যাপ করুন — এটি এখানে আপনার জন্য অপেক্ষা করবে।",
       savedToAccount: "আপনার অ্যাকাউন্টে সংরক্ষিত।",
@@ -526,6 +539,9 @@ export const translations = {
       codText: "পণ্য দোরগোড়ায় পৌঁছালে পেমেন্ট করুন",
     },
     checkout: {
+      pageEyebrow: "প্রায় প্রস্তুত",
+      pageTitle: "চেকআউট",
+      pageSubtitle: "ছোট্ট ফর্ম, সৎ ডেলিভারি অনুমান, আর ক্যাশ অন ডেলিভারি। অ্যাকাউন্ট প্রয়োজন নেই।",
       checkout: "চেকআউট",
       deliveryDetails: "১ · ডেলিভারি বিবরণ",
       fullName: "পুরো নাম",
