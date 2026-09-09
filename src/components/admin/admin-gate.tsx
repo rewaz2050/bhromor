@@ -29,7 +29,9 @@ import {
   IconMapPin,
   IconMenu,
   IconSettings,
+  IconShield,
   IconTag,
+  IconTruck,
   IconUser,
 } from "@/components/ui/icons";
 import {
@@ -43,6 +45,7 @@ import { isSupabaseConfigured } from "@/lib/env";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
+  { href: "/admin/staff", label: "Staff", icon: IconShield, match: (p: string) => p === "/admin/staff" },
   { href: "/admin/orders", label: "Orders", icon: IconBox, match: (p: string) => p.startsWith("/admin/orders") },
   { href: "/admin/reports", label: "Reports", icon: IconChart, match: (p: string) => p === "/admin/reports" },
   { href: "/admin/products", label: "Products", icon: IconTag, match: (p: string) => p.startsWith("/admin/products") },
@@ -52,6 +55,7 @@ const NAV = [
   { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
   { href: "/admin/shops", label: "Shops", icon: IconBox, match: (p: string) => p === "/admin/shops" },
   { href: "/admin/payouts", label: "Payouts", icon: IconCard, match: (p: string) => p === "/admin/payouts" },
+  { href: "/admin/riders", label: "Riders", icon: IconTruck, match: (p: string) => p === "/admin/riders" },
   { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
   { href: "/admin/coupons", label: "Coupons", icon: IconTag, match: (p: string) => p === "/admin/coupons" },
   { href: "/admin/inventory", label: "Inventory", icon: IconBox, match: (p: string) => p === "/admin/inventory" },
@@ -73,6 +77,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/customers$/, "Customers"],
   [/^\/admin\/shops$/, "Shops"],
   [/^\/admin\/payouts$/, "Payouts"],
+  [/^\/admin\/riders$/, "Riders"],
   [/^\/admin\/reviews$/, "Reviews"],
   [/^\/admin\/coupons$/, "Coupons"],
   [/^\/admin\/inventory$/, "Inventory"],
@@ -80,6 +85,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/notifications$/, "Notifications"],
   [/^\/admin\/payments$/, "Payments"],
   [/^\/admin\/settings$/, "Settings"],
+  [/^\/admin\/staff$/, "Staff"],
   [/^\/admin$/, "Dashboard"],
 ];
 

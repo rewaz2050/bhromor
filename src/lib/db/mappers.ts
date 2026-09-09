@@ -12,6 +12,7 @@ import type {
   DeliveryZone,
   Product,
   ProductMedia,
+  Rider,
   Shop,
 } from "../catalog";
 import type { Coupon } from "../coupons";
@@ -32,6 +33,7 @@ import type {
   DbOrderStatus,
   DbProduct,
   DbReview,
+  DbRider,
   DbShop,
   DbVariant,
   DbZone,
@@ -197,6 +199,21 @@ export const mapShop = (row: DbShop): Shop => ({
   commissionPct: Number(row.commission_pct),
   status: row.status,
   isOpen: row.is_open,
+  ratingAvg: Number(row.rating_avg),
+  ratingCount: row.rating_count,
+});
+
+/** Rider row → the marketplace `Rider` shape (slice 6). */
+export const mapRider = (row: DbRider): Rider => ({
+  id: row.id,
+  name: row.name,
+  phone: row.phone,
+  contactEmail: row.contact_email || undefined,
+  vehicle: row.vehicle,
+  zoneIds: [...row.zone_ids],
+  status: row.status,
+  isOnline: row.is_online,
+  cashInHand: row.cash_in_hand,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
 });

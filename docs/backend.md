@@ -25,6 +25,7 @@ src/app/api/
 ├── coupons/validate/route.ts  # POST: honest { valid, discount?, reason? }
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
 ├── shops/apply/route.ts   # POST public intake → pending row (5/min/IP)
+├── riders/apply/route.ts  # POST rider intake → pending row (5/min/IP)
 ├── admin/_lib.ts          # staffRoute() wrapper: auth + rate limit + errors
 ├── admin/orders/...       # list (filters) / detail / advance (cancel releases stock)
 ├── admin/products/...     # GET full catalog / POST create / PATCH update
@@ -35,6 +36,9 @@ src/app/api/
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
 ├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
+├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
+├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login
+├── admin/staff/route.ts   # GET list / POST grant / DELETE revoke (admin/super_admin)
 ├── vendor/_lib.ts         # vendorRoute() wrapper: vendor auth + rate limit + errors
 ├── vendor/me/route.ts     # vendor session probe (email + role + shop)
 ├── vendor/orders/...      # own-shop list (?status=) / detail / advance (early states)
@@ -60,6 +64,7 @@ src/lib/
 ├── use-live-catalog.ts / use-live-zones.ts / use-public-reviews.ts
 ├── admin-api.ts           # typed admin fetch (401 → sign out to login)
 ├── use-staff-live.ts      # shared staff probe for the upgraded hooks
+├── riders-store.ts/use-riders.ts  # demo rider queue + staff hook (no storefront)
 ├── use-orders/use-catalog/use-zones/use-coupons/use-reviews.ts  # demo ↔ live
 └── db/
     ├── types.ts           # row types mirroring schema.sql
@@ -68,6 +73,7 @@ src/lib/
     ├── orders.ts          # snapshot (+ shops) / placeLiveOrder (single RPC) / findLiveOrder
     ├── admin.ts           # staff CRUD used by /api/admin/* routes
     ├── marketplace.ts     # public shops discovery + application intake
+    ├── riders.ts          # public rider application intake
     ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)
     └── storefront.ts      # server page reads with seed fallback
 supabase/
@@ -76,8 +82,10 @@ supabase/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
     ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
-    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS + settlement triggers
+    ├── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS + settlement triggers
+    └── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
+scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
 
 ## Setup (deployment owner)
@@ -93,6 +101,7 @@ scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
    - `supabase/migrations/202609080002_order_guards.sql`
    - `supabase/migrations/202609080003_place_order_rpc.sql`
    - `supabase/migrations/202609090004_marketplace_shops.sql`
+   - `supabase/migrations/202609090005_riders.sql`
 
 ### 2. Environment
 
@@ -147,6 +156,12 @@ insert into admin_users (id, role)
 values ('<auth-user-uuid>', 'admin');
 ```
 
+For an existing Auth user, the repeatable alternative is:
+
+```bash
+npm run grant-admin -- user@example.com --role admin
+```
+
 Roles: `manager` (daily operations), `admin`, `super_admin`. All three pass
 the API gate today; finer per-action roles are a hardening follow-up.
 Further staff are added the same way. To revoke, delete the
@@ -187,6 +202,15 @@ storefront returns to demo mode — no code change, no broken pages.
   `src/lib/staff-auth.ts`). No session → 401; signed-in non-staff → 403.
   Admin reads/writes flow through RLS-bound clients, and staff endpoints
   are rate-limited per staff account (30–60/min depending on the route).
+  The role lookup itself needs the `staff read roles` policy on
+  `admin_users` — RLS with no policy denies everything, so without it no
+  staff login works at all.
+- **Staff management is admin-only with guardrails.** `admin_users` has no
+  write policy, so grants/revokes go only through `/api/admin/staff`
+  (service-role, gated by `requireStaffRole(admin, super_admin)` —
+  managers get 403). Nobody edits their own role, only a super_admin
+  touches super_admins, and the last super_admin cannot be demoted or
+  revoked until a successor exists.
 - **Anonymous clients cannot write orders.** There is deliberately no anon
   `INSERT` policy on `orders`; guest checkout writes go through
   `POST /api/orders`, which validates everything and prices from the
@@ -212,6 +236,12 @@ storefront returns to demo mode — no code change, no broken pages.
   calls from touching status/commission/zones), and cannot self-feature
   products. The `/vendor` dashboard has no demo mode — without Supabase
   there are no vendor accounts, and the UI says so.
+- **Rider intake confirms receipt only.** There is deliberately no anon
+  rider policy: the public application inserts a pending row through the
+  service role and never returns applicant PII. Staff approve/suspend rows
+  through the RLS-bound client, link Auth logins one-account-per-rider, and
+  a `trg_riders_guard_self_update` trigger lets riders change only their
+  own online switch.
 - **In-memory rate limits** blunt casual abuse only; edge rate-limiting is
   a hardening follow-up.
 

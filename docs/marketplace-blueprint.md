@@ -216,6 +216,7 @@ create table riders (
   user_id       uuid unique references auth.users (id) on delete cascade,
   name          text not null,
   phone         text not null unique,
+  contact_email text not null default '',
   vehicle       text not null default 'bike' check (vehicle in ('bicycle','bike','scooter')),
   zone_ids      text[] not null default '{}',  -- home zones
   status        text not null default 'pending' -- pending|active|suspended
@@ -229,7 +230,7 @@ create table riders (
 
 create table delivery_assignments (
   id          uuid primary key default gen_random_uuid(),
-  order_id    text not null references orders (id),
+  order_id    uuid not null references orders (id),
   rider_id    uuid not null references riders (id),
   state       text not null default 'offered'  -- offered|accepted|picked_up|delivered|cancelled|expired
               check (state in ('offered','accepted','picked_up','delivered','cancelled','expired')),
@@ -363,10 +364,9 @@ Phase 2 slices:
 3. ✅ Vendor auth + `/vendor` dashboard (orders → products → hours → earnings).
 4. ✅ Storefront: zone-scoped discovery, shop pages, single-shop cart, checkout split ETA.
 5. ✅ Ledger writer + Admin → Payouts + settlement report.
-5. Ledger writer + Admin → Payouts + settlement report.
 
 Phase 3 slices:
-6. `005` migration + rider onboarding (apply → approve) + Admin → Riders.
+6. ✅ `005` migration + rider onboarding (apply → approve) + Admin → Riders.
 7. Dispatch engine (offer/accept/expire/re-offer) + Admin → Deliveries board.
 8. `/rider` mobile app (online toggle → job → pickup → code → delivered).
 9. Delivery-code proof + Track page rider-leg timeline.

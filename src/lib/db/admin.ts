@@ -10,7 +10,13 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Category, DeliveryZone, Product, Shop } from "../catalog";
+import type {
+  Category,
+  DeliveryZone,
+  Product,
+  Rider,
+  Shop,
+} from "../catalog";
 import { slugify } from "../catalog-store";
 import type { Coupon } from "../coupons";
 import type { Order, OrderStatus } from "../orders";
@@ -21,10 +27,13 @@ import {
   mapOrder,
   mapProduct,
   mapReview,
+  mapRider,
   mapShop,
   mapZone,
 } from "./mappers";
 import { toDomain } from "./orders";
+import { getSupabaseService } from "../supabase-server";
+import type { StaffRole } from "../staff-auth";
 import type {
   DbCategory,
   DbCoupon,
@@ -34,6 +43,7 @@ import type {
   DbOrderItem,
   DbProduct,
   DbReview,
+  DbRider,
   DbShop,
   DbShopLedger,
   DbShopPayout,
@@ -1593,4 +1603,373 @@ export async function recordPayout(
     reference: row.reference,
     at: Date.parse(row.paid_at),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Riders (marketplace phase 3, slice 6)                               */
+/* ------------------------------------------------------------------ */
+
+/** All riders, newest-heavy queue first (pending, then the rest). */
+export async function listRidersFull(db: SupabaseClient): Promise<Rider[]> {
+  const { data, error } = await db
+    .from("riders")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error("riders list failed");
+  const rows = ((data ?? []) as DbRider[]).map(mapRider);
+  const rank = (s: Rider["status"]): number =>
+    s === "pending" ? 0 : s === "active" ? 1 : 2;
+  return rows.sort((a, b) => rank(a.status) - rank(b.status));
+}
+
+const VEHICLES = ["bicycle", "bike", "scooter"] as const;
+
+/**
+ * Staff rider upsert: manual create, plus approve/suspend/status edits.
+ * Approving a linked rider unlocks their /rider app access (the rider API
+ * checks status, slice 8); cash and ratings are never staff-editable.
+ */
+export async function upsertRider(
+  db: SupabaseClient,
+  raw: unknown,
+): Promise<Rider> {
+  const body = (raw ?? {}) as {
+    id?: string;
+    name?: string;
+    phone?: string;
+    contact_email?: string;
+    contactEmail?: string;
+    vehicle?: string;
+    zone_ids?: string[];
+    zoneIds?: string[];
+    status?: string;
+  };
+  const name = clean(body.name, 80);
+  if (name.length < 2) throw new AdminInputError("Rider name is too short.");
+  const phone = clean(body.phone, 20).replace(/[\s-]/g, "");
+  if (!/^01\d{9}$/.test(phone)) {
+    throw new AdminInputError("A valid Bangladeshi mobile number is required.");
+  }
+  const email = clean(
+    body.contact_email ?? body.contactEmail,
+    120,
+  ).toLowerCase();
+  const vehicle = clean(body.vehicle, 12).toLowerCase();
+  if (!VEHICLES.includes(vehicle as (typeof VEHICLES)[number])) {
+    throw new AdminInputError("Choose a vehicle: bicycle, bike or scooter.");
+  }
+  const zoneIds = Array.isArray(body.zone_ids ?? body.zoneIds)
+    ? [
+        ...new Set(
+          ((body.zone_ids ?? body.zoneIds) as unknown[])
+            .filter((z): z is string => typeof z === "string")
+            .map((z) => z.trim())
+            .filter(Boolean),
+        ),
+      ].slice(0, 24)
+    : [];
+  const { data: zones } = await db.from("delivery_zones").select("id");
+  const known = new Set(((zones ?? []) as { id: string }[]).map((z) => z.id));
+  const badZone = zoneIds.find((z) => !known.has(z));
+  if (badZone) throw new AdminInputError(`Unknown delivery zone: ${badZone}.`);
+  const status =
+    body.status === "active" || body.status === "suspended"
+      ? body.status
+      : "pending";
+
+  const id = clean(body.id, 64);
+  if (id !== "") {
+    // Suspending (or re-pending) boots the rider offline; approving
+    // leaves the toggle in the rider's own hands.
+    const patch: Record<string, unknown> = {
+      name,
+      phone,
+      contact_email: email,
+      vehicle,
+      zone_ids: zoneIds,
+      status,
+    };
+    if (status !== "active") patch.is_online = false;
+    const { data, error } = await db
+      .from("riders")
+      .update(patch)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new AdminInputError("Rider not found.", 404);
+    return mapRider(data as DbRider);
+  }
+
+  const { data, error } = await db
+    .from("riders")
+    .insert({
+      name,
+      phone,
+      contact_email: email,
+      vehicle,
+      zone_ids: zoneIds,
+      status: "pending",
+      is_online: false,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    if (error.code === "23505") {
+      throw new AdminInputError("That phone number is already a rider.", 409);
+    }
+    throw new Error("rider insert failed");
+  }
+  if (!data) throw new Error("rider insert failed");
+  return mapRider(data as DbRider);
+}
+
+/* ------------------------------------------------------------------ */
+/* Staff management (admin control center)                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * admin_users has a SELECT-only policy, so every helper here runs on the
+ * service-role client: staff grants/revokes bypass RLS deliberately and
+ * are gated by requireStaffRole(admin/super_admin) at the route instead.
+ * Auth emails come from the admin user list — never from client input.
+ */
+
+export interface StaffMember {
+  id: string;
+  email: string;
+  role: StaffRole;
+  emailConfirmed: boolean;
+  createdAt: number;
+}
+
+export interface StaffActor {
+  id: string;
+  role: StaffRole;
+}
+
+const STAFF_ROLE_RANK: Record<StaffRole, number> = {
+  manager: 0,
+  admin: 1,
+  super_admin: 2,
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Pure input shaping for staff grant/update — unit-tested without a DB. */
+export const shapeStaffInput = (
+  raw: unknown,
+): { email: string; role: StaffRole } => {
+  const body = (raw ?? {}) as { email?: unknown; role?: unknown };
+  const email =
+    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!EMAIL_RE.test(email)) {
+    throw new AdminInputError("Enter a valid email address.");
+  }
+  const role = typeof body.role === "string" ? body.role.trim() : "";
+  if (!(Object.keys(STAFF_ROLE_RANK) as string[]).includes(role)) {
+    throw new AdminInputError("Pick a staff role: manager, admin or super_admin.");
+  }
+  return { email, role: role as StaffRole };
+};
+
+/** Pure rank gate: an actor only touches roles at or below their own. */
+export const canManageRole = (
+  actorRole: StaffRole,
+  ...targetRoles: StaffRole[]
+): boolean =>
+  targetRoles.every(
+    (r) => STAFF_ROLE_RANK[actorRole] >= STAFF_ROLE_RANK[r],
+  );
+
+const serviceDb = () => {
+  const service = getSupabaseService();
+  if (!service) {
+    throw new AdminInputError("Service key is not configured.", 503);
+  }
+  return service;
+};
+
+type ServiceDb = ReturnType<typeof serviceDb>;
+
+const findAuthUserByEmail = async (
+  service: ServiceDb,
+  email: string,
+): Promise<{ id: string; emailConfirmed: boolean } | null> => {
+  for (let page = 1; page <= 10; page += 1) {
+    const { data, error } = await service.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
+    if (error) throw new Error("user lookup failed");
+    const match = (data?.users ?? []).find(
+      (u) => (u.email ?? "").toLowerCase() === email,
+    );
+    if (match) {
+      return { id: match.id, emailConfirmed: !!match.email_confirmed_at };
+    }
+    if ((data?.users ?? []).length < 200) return null;
+  }
+  return null;
+};
+
+/** All staff, oldest grant first, with Auth emails resolved. */
+export async function listStaff(): Promise<StaffMember[]> {
+  const service = serviceDb();
+  const { data: rows, error } = await service
+    .from("admin_users")
+    .select("id,role,created_at")
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) throw new Error("staff list failed");
+  const staff = (rows ?? []) as {
+    id: string;
+    role: StaffRole;
+    created_at: string;
+  }[];
+  const emails = new Map<string, { email: string; confirmed: boolean }>();
+  for (let page = 1; page <= 10 && emails.size < staff.length; page += 1) {
+    const { data, error: listError } = await service.auth.admin.listUsers({
+      page,
+      perPage: 200,
+    });
+    if (listError) throw new Error("user lookup failed");
+    for (const u of data?.users ?? []) {
+      emails.set(u.id, {
+        email: u.email ?? "",
+        confirmed: !!u.email_confirmed_at,
+      });
+    }
+    if ((data?.users ?? []).length < 200) break;
+  }
+  return staff.map((r) => {
+    const resolved = emails.get(r.id);
+    return {
+      id: r.id,
+      email: resolved?.email || "(unresolved account)",
+      role: r.role,
+      emailConfirmed: resolved?.confirmed ?? false,
+      createdAt: Date.parse(r.created_at),
+    };
+  });
+}
+
+const countSuperAdmins = async (service: ServiceDb): Promise<number> => {
+  const { data, error } = await service
+    .from("admin_users")
+    .select("id")
+    .eq("role", "super_admin")
+    .limit(10);
+  if (error) throw new Error("staff guard check failed");
+  return (data ?? []).length;
+};
+
+/**
+ * Grant a role to an existing Auth user, or change a staffer's role.
+ * Safeguards: no self-edits, rank order (only a super_admin touches a
+ * super_admin), and the last super_admin can never be demoted.
+ */
+export async function grantStaffRole(
+  actor: StaffActor,
+  raw: unknown,
+): Promise<StaffMember> {
+  const { email, role } = shapeStaffInput(raw);
+  const service = serviceDb();
+  const target = await findAuthUserByEmail(service, email);
+  if (!target) {
+    throw new AdminInputError(
+      "No account uses that email yet — ask them to sign up first.",
+      404,
+    );
+  }
+  if (target.id === actor.id) {
+    throw new AdminInputError("You cannot change your own role.", 403);
+  }
+  const { data: current } = await service
+    .from("admin_users")
+    .select("role,created_at")
+    .eq("id", target.id)
+    .single();
+  const currentRole = (current as { role: StaffRole } | null)?.role;
+  const touched: StaffRole[] = currentRole ? [currentRole, role] : [role];
+  if (!canManageRole(actor.role, ...touched)) {
+    throw new AdminInputError(
+      "Only a super_admin can grant or change that role.",
+      403,
+    );
+  }
+  if (currentRole === "super_admin" && role !== "super_admin") {
+    const remaining = await countSuperAdmins(service);
+    if (remaining <= 1) {
+      throw new AdminInputError(
+        "This is the last super_admin — promote someone else first.",
+        403,
+      );
+    }
+  }
+  const { data, error } = await service
+    .from("admin_users")
+    .upsert({ id: target.id, role }, { onConflict: "id" })
+    .select("id,role,created_at")
+    .single();
+  if (error || !data) throw new Error("staff grant failed");
+  const row = data as { id: string; role: StaffRole; created_at: string };
+  return {
+    id: row.id,
+    email,
+    role: row.role,
+    emailConfirmed: target.emailConfirmed,
+    createdAt: Date.parse(row.created_at),
+  };
+}
+
+/**
+ * Revoke staff access. Same safeguards as grants: no self-revoke, rank
+ * order, and the last super_admin stays until a successor exists.
+ */
+export async function revokeStaffRole(
+  actor: StaffActor,
+  raw: unknown,
+): Promise<{ email: string }> {
+  const body = (raw ?? {}) as { email?: unknown };
+  const email =
+    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (!EMAIL_RE.test(email)) {
+    throw new AdminInputError("Enter a valid email address.");
+  }
+  const service = serviceDb();
+  const target = await findAuthUserByEmail(service, email);
+  if (!target) {
+    throw new AdminInputError("That account is not staff.", 404);
+  }
+  if (target.id === actor.id) {
+    throw new AdminInputError("You cannot revoke your own access.", 403);
+  }
+  const { data: current } = await service
+    .from("admin_users")
+    .select("role")
+    .eq("id", target.id)
+    .single();
+  const currentRole = (current as { role: StaffRole } | null)?.role;
+  if (!currentRole) {
+    throw new AdminInputError("That account is not staff.", 404);
+  }
+  if (!canManageRole(actor.role, currentRole)) {
+    throw new AdminInputError(
+      "Only a super_admin can revoke that role.",
+      403,
+    );
+  }
+  if (currentRole === "super_admin") {
+    const remaining = await countSuperAdmins(service);
+    if (remaining <= 1) {
+      throw new AdminInputError(
+        "This is the last super_admin — promote someone else first.",
+        403,
+      );
+    }
+  }
+  const { error } = await service.from("admin_users").delete().eq("id", target.id);
+  if (error) throw new Error("staff revoke failed");
+  return { email };
 }

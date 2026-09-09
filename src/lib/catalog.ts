@@ -73,6 +73,26 @@ export interface Shop {
 }
 
 /**
+ * A delivery rider (marketplace phase 3). Riders never appear on the
+ * storefront — staff see them in Admin → Riders, riders see themselves
+ * in the /rider app.
+ */
+export interface Rider {
+  id: string;
+  name: string;
+  phone: string;
+  /** Login email — STAFF ONLY. Never sent to riders or the storefront. */
+  contactEmail?: string;
+  vehicle: "bicycle" | "bike" | "scooter";
+  zoneIds: string[];
+  status: "pending" | "active" | "suspended";
+  isOnline: boolean;
+  cashInHand: number;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+/**
  * Category ids are data-driven (§5) — admin adds categories without code
  * changes. The literal union keeps autocomplete for the seeded ones while
  * `(string & {})` admits ids created at runtime.

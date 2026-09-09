@@ -53,3 +53,21 @@ export async function requireStaff(): Promise<StaffContext> {
   }
   return { user: data.user, role: (row as { role: StaffRole }).role, db };
 }
+
+/**
+ * Verify the session AND that the role is one of the allowed ones.
+ * Staff management (/api/admin/staff) requires admin/super_admin —
+ * managers run daily ops but never hand out access.
+ */
+export async function requireStaffRole(
+  ...allowed: StaffRole[]
+): Promise<StaffContext> {
+  const ctx = await requireStaff();
+  if (!allowed.includes(ctx.role)) {
+    throw new StaffAuthError(
+      "Admin access is required for this action.",
+      403,
+    );
+  }
+  return ctx;
+}

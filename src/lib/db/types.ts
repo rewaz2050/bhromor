@@ -17,6 +17,41 @@ export type DbMediaType = "image" | "youtube" | "future_3d";
 
 export type DbReviewStatus = "pending" | "approved" | "hidden" | "flagged";
 
+export interface DbRider {
+  id: string;
+  user_id: string | null;
+  name: string;
+  phone: string;
+  contact_email: string;
+  vehicle: "bicycle" | "bike" | "scooter";
+  zone_ids: string[];
+  status: "pending" | "active" | "suspended";
+  is_online: boolean;
+  cash_in_hand: number;
+  rating_avg: number;
+  rating_count: number;
+  created_at: string;
+}
+
+export interface DbDeliveryAssignment {
+  id: string;
+  order_id: string;
+  rider_id: string;
+  state: "offered" | "accepted" | "picked_up" | "delivered" | "cancelled" | "expired";
+  offered_at: string;
+  expires_at: string;
+}
+
+export interface DbRiderSettlement {
+  id: string;
+  rider_id: string;
+  amount: number;
+  method: string;
+  reference: string;
+  settled_at: string;
+  settled_by: string | null;
+}
+
 export interface DbCategory {
   id: string;
   name: string;

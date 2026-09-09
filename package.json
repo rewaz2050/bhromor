@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "seed": "node scripts/seed-supabase.mjs",
-    "seed:dry": "node scripts/seed-supabase.mjs --dry-run"
+    "seed:dry": "node scripts/seed-supabase.mjs --dry-run",
+    "grant-admin": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

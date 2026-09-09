@@ -3,6 +3,7 @@ import {
   mapCoupon,
   mapOrder,
   mapProduct,
+  mapRider,
   mapShop,
   mapZone,
   youtubeIdFromUrl,
@@ -14,6 +15,7 @@ import type {
   DbOrderHistory,
   DbOrderItem,
   DbProduct,
+  DbRider,
   DbVariant,
   DbZone,
 } from "../types";
@@ -314,5 +316,41 @@ describe("mapShop (marketplace slice 1)", () => {
       etaLabel: "40–50 min",
     });
     expect(order.shopId).toBe("shop-uuid-1");
+  });
+});
+
+describe("mapRider (marketplace slice 6)", () => {
+  it("maps a rider row, clones zones and omits a blank login email", () => {
+    const row: DbRider = {
+      id: "rider-uuid-1",
+      user_id: null,
+      name: "Tanvir Rahman",
+      phone: "01811111111",
+      contact_email: "",
+      vehicle: "bicycle",
+      zone_ids: ["z1", "z2"],
+      status: "pending",
+      is_online: false,
+      cash_in_hand: 0,
+      rating_avg: 0,
+      rating_count: 0,
+      created_at: "2026-09-09T00:00:00.000Z",
+    };
+    const rider = mapRider(row);
+
+    expect(rider).toEqual({
+      id: "rider-uuid-1",
+      name: "Tanvir Rahman",
+      phone: "01811111111",
+      contactEmail: undefined,
+      vehicle: "bicycle",
+      zoneIds: ["z1", "z2"],
+      status: "pending",
+      isOnline: false,
+      cashInHand: 0,
+      ratingAvg: 0,
+      ratingCount: 0,
+    });
+    expect(rider.zoneIds).not.toBe(row.zone_ids);
   });
 });

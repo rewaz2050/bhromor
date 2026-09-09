@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { requireStaff, StaffAuthError, type StaffContext } from "@/lib/staff-auth";
+import { requireStaff, requireStaffRole, StaffAuthError, type StaffContext, type StaffRole } from "@/lib/staff-auth";
 import { AdminInputError } from "@/lib/db/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiError } from "@/lib/api-response";
@@ -18,14 +18,17 @@ export type StaffHandler = (
 export const staffRoute = (
   name: string,
   handler: StaffHandler,
-  opts: { limit?: number; windowMs?: number } = {},
+  opts: { limit?: number; windowMs?: number; roles?: readonly StaffRole[] } = {},
 ) => {
   const limit = opts.limit ?? 60;
   const windowMs = opts.windowMs ?? 60_000;
   return async (request: Request, routeContext?: unknown): Promise<NextResponse> => {
     let staff: StaffContext;
     try {
-      staff = await requireStaff();
+      staff =
+        opts.roles && opts.roles.length > 0
+          ? await requireStaffRole(...opts.roles)
+          : await requireStaff();
     } catch (err) {
       if (err instanceof StaffAuthError) {
         return apiError(err.message, err.status);
