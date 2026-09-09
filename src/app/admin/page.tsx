@@ -253,7 +253,7 @@ export default function AdminDashboard() {
                 {lowStock.map((p) => (
                   <li key={p.id} className="flex items-center gap-3">
                     <Image
-                      src={p.media[0]?.src ?? ""}
+                      src={p.media?.[0]?.src || "/file.svg"}
                       alt=""
                       width={40}
                       height={40}
@@ -262,7 +262,7 @@ export default function AdminDashboard() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-ink">{p.name}</p>
                       <p className="text-xs text-ink-soft">
-                        {p.colors[0]} · {p.sizes[0]} — {p.sku}
+                        {p.colors?.[0] || "No colour"} · {p.sizes?.[0] || "No size"} — {p.sku || "No SKU"}
                       </p>
                     </div>
                     <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[0.7rem] font-bold text-amber-900">
