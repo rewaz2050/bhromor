@@ -35,6 +35,7 @@ src/app/api/
 ├── rider/jobs/route.ts    # own delivery assignments with full order snapshots
 ├── rider/online/route.ts  # PATCH own online switch
 ├── rider/assignments/[id]/accept/route.ts    # offer → accepted
+├── rider/assignments/[id]/reject/route.ts    # offer → cancelled + next rider re-offered
 ├── rider/assignments/[id]/pickup/route.ts    # accepted → picked_up + order out-for-delivery
 ├── rider/assignments/[id]/deliver/route.ts   # 4-digit PIN proof → delivered + COD cash
 ├── rider/settle/route.ts  # POST cash settlement → rider_settlements + zero hand balance
@@ -277,13 +278,16 @@ storefront returns to demo mode — no code change, no broken pages.
   a `trg_riders_guard_self_update` trigger lets riders change only their
   own online switch.
 - **Rider dispatch changes happen in security-definer RPCs**
-  (`ps_rider_accept`, `ps_rider_pickup`, `ps_rider_deliver`,
-  `ps_rider_settle`). Every `/api/rider/*` route first calls `requireRider()`
-  and re-checks ownership server-side; assignment rows are locked before the
-  state transition, pickup moves the order only from `ready-for-pickup`, and
-  delivery compares the order's deterministic 4-digit code before crediting
-  `riders.cash_in_hand`. Cash settlement inserts a `rider_settlements` row and
-  zeroes the balance in the same transaction.
+  (`ps_rider_accept`, `ps_rider_reject`, `ps_rider_pickup`,
+  `ps_rider_deliver`, `ps_rider_settle`, plus staff `ps_offer_order`,
+  `ps_cancel_assignment`, `ps_admin_settle_rider`). Every `/api/rider/*`
+  route first calls `requireRider()` and re-checks ownership server-side;
+  assignment rows are locked before the state transition, rejected/expired
+  orders are re-offered to the next eligible rider, pickup moves the order
+  from `ready-for-pickup`/`courier-assigned`, and delivery compares the
+  order's deterministic 4-digit code before crediting `riders.cash_in_hand`.
+  Cash settlement inserts a `rider_settlements` row and zeroes the balance in
+  the same transaction.
 - **In-memory rate limits** blunt casual abuse only; edge rate-limiting is
   a hardening follow-up.
 
