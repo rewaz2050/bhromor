@@ -20,6 +20,7 @@ import {
   IconSearch,
   IconTruck,
 } from "@/components/ui/icons";
+import { LiveDeliveryMap } from "./live-delivery-map";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -257,75 +258,8 @@ export default function TrackView() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Header card */}
-            <div className="rounded-3xl bg-forest-900 p-7 text-ivory-100">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.3em] text-gold-300">
-                    Live order
-                  </p>
-                  <p className="font-display mt-1.5 text-2xl font-medium">
-                    {order.id}
-                  </p>
-                </div>
-                <div className="text-right">
-                  {order.status === "delivered" ? (
-                    <>
-                      <p className="text-sm text-ivory-100/60">Delivered</p>
-                      <p className="mt-0.5 text-2xl font-semibold text-gold-300">
-                        {order.deliveredMinutes
-                          ? `${order.deliveredMinutes} min`
-                          : "✓"}
-                      </p>
-                    </>
-                  ) : order.status === "cancelled" ? (
-                    <>
-                      <p className="text-sm text-ivory-100/60">Status</p>
-                      <p className="mt-0.5 text-2xl font-semibold text-rose-300">
-                        Cancelled
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm text-ivory-100/60">
-                        Estimated arrival
-                      </p>
-                      <p className="mt-0.5 text-2xl font-semibold text-gold-300">
-                        {order.etaLabel}
-                      </p>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Mock live map */}
-              <div className="relative mt-6 h-44 overflow-hidden rounded-2xl bg-forest-800">
-                <svg viewBox="0 0 400 176" className="h-full w-full" aria-hidden="true">
-                  <path
-                    d="M-10 140 C60 120 120 60 200 66 S330 90 410 40"
-                    fill="none"
-                    stroke="#86ad97"
-                    strokeWidth="2.5"
-                    strokeDasharray="1 9"
-                    strokeLinecap="round"
-                    opacity="0.9"
-                  />
-                  <path
-                    d="M-10 158 C90 140 170 120 260 122 S360 130 410 112"
-                    fill="none"
-                    stroke="#86ad97"
-                    strokeWidth="2"
-                    strokeDasharray="1 9"
-                    strokeLinecap="round"
-                    opacity="0.6"
-                  />
-                </svg>
-                <span className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full bg-gold-400 ring-4 ring-gold-400/30" />
-                <span className="absolute bottom-3 right-4 rounded-full bg-forest-950/70 px-3 py-1 text-[0.65rem] font-medium text-ivory-100/80">
-                  Demo view — live courier map arrives with the tracking phase
-                </span>
-              </div>
-            </div>
+            {/* Live Interactive Delivery Map & Security PIN */}
+            <LiveDeliveryMap order={order} />
 
             {/* Timeline */}
             {order.status === "cancelled" && (

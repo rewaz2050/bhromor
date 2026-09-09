@@ -1,10 +1,10 @@
-"use client";
-
+import Link from "next/link";
 import { useMemo } from "react";
 import type { DeliveryZone, Shop } from "@/lib/catalog";
 import { shopServesZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { IconTruck } from "@/components/ui/icons";
 import ShopCard from "./shop-card";
 
 /**
@@ -36,18 +36,31 @@ export default function ShopsDirectory({
 
   return (
     <div>
-      <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-gold-700">
-        Marketplace
-      </p>
-      <h1
-        lang={lang === "bn" ? "bn" : undefined}
-        className={`font-display mt-2 text-3xl font-medium tracking-tight text-forest-900 sm:text-4xl ${lang === "bn" ? "font-bengali" : ""}`}
-      >
-        {t("shops.title")}
-      </h1>
-      <p className="mt-3 max-w-2xl leading-7 text-ink-soft">
-        {t("shops.subtitle")}
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-gold-700">
+            Marketplace
+          </p>
+          <h1
+            lang={lang === "bn" ? "bn" : undefined}
+            className={`font-display mt-2 text-3xl font-medium tracking-tight text-forest-900 sm:text-4xl ${lang === "bn" ? "font-bengali" : ""}`}
+          >
+            {t("shops.title")}
+          </h1>
+          <p className="mt-3 max-w-2xl leading-7 text-ink-soft">
+            {t("shops.subtitle")}
+          </p>
+        </div>
+
+        <Link
+          href="/shops/apply"
+          className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+        >
+          <IconTruck className="h-4 w-4 text-gold-300" />
+          দোকান লিস্টিং করুন →
+        </Link>
+      </div>
+
       <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {ordered.map((shop) => (
           <ShopCard

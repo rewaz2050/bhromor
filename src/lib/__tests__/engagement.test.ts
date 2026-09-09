@@ -104,13 +104,11 @@ describe("homepage sanitizer", () => {
 
 describe("ops sanitizer", () => {
   it("accepts direct and wrapped values", () => {
-    expect(sanitizeOpsSettings({ lowStockThreshold: 3 })).toEqual({
-      lowStockThreshold: 3,
-    });
+    expect(sanitizeOpsSettings({ lowStockThreshold: 3 }).lowStockThreshold).toBe(3);
     expect(
-      sanitizeOpsSettings({ value: { lowStockThreshold: 9 } }),
-    ).toEqual({ lowStockThreshold: 9 });
-    expect(sanitizeOpsSettings({})).toEqual({ lowStockThreshold: 5 });
+      sanitizeOpsSettings({ value: { lowStockThreshold: 9 } }).lowStockThreshold,
+    ).toBe(9);
+    expect(sanitizeOpsSettings({}).lowStockThreshold).toBe(5);
   });
 });
 

@@ -10,19 +10,13 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 |---|---|
 | Phase 0 — Product definition (blueprint) | ✅ Complete |
 | Phase 1 — Foundation (design system, routing, header/footer) | ✅ Complete |
-| Phase 2 — Catalog (UI: shop, product pages, filters, search) | ✅ UI complete (mock data) |
-| Phase 3/5 — Admin foundation (login, dashboard, orders + status machine) | ✅ UI complete (demo data) |
-| Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
-| Phase 8 preview — Wishlist · Reviews · Coupons · Homepage CMS · Inventory | ✅ Live on Supabase (demo fallback w/o keys) |
-| Phase 3/6 preview — Media library (§49) · Notifications inbox (§35) | ✅ Live on Supabase (demo fallback w/o keys) |
-| Phase 6 preview — Reports · Settings · Payments (COD-only policy) | ✅ Live on Supabase (demo fallback w/o keys) |
-| Engagement — Contact inbox · Newsletter · CMS/media/notif/settings APIs | ✅ Live — see `docs/go-live.md` |
-| Supabase schema (products, variants, media, orders, RLS, §34 machine) | ✅ `supabase/schema.sql` ready |
-| Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
-| Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
-| Phase 5 — Order tracking (UI) | ✅ UI complete (demo timeline) |
-| Backend phase 1 (API routes + Supabase order pipeline, demo fallback) | ✅ Live when keys set — see `docs/backend.md` |
-| Backend phase 2 (staff auth, admin on live data, atomic checkout) | ⏳ Next |
+| Phase 2 — Catalog & Multi-Vendor Marketplace (shops, shop apply, vendor panel, single-shop cart) | ✅ Complete |
+| Phase 3 — Rider Network & Dispatch (mobile rider app, rider apply/login, 4-digit PIN verification, cash cap & settlements) | ✅ Complete |
+| Phase 4 — Cart & Checkout (atomic ordering, 4-digit security PIN display, instant ETA split) | ✅ Complete |
+| Phase 5 — Realtime Order Tracking (interactive live route map, simulated rider GPS, live ETA) | ✅ Complete |
+| Phase 6 — Loyalty & Retention (10-order stamp card, admin reward engine, celebration unlock) | ✅ Complete |
+| Phase 7 — Returns & Exchanges (7-day instant size exchange intake flow) | ✅ Complete |
+| Phase 8 — Admin Control & Ops (live orders state machine, catalog CRUD, staff/shops/riders queues, cash settlements) | ✅ Complete |
 
 The current catalog runs on typed mock data in `src/lib/catalog.ts`; the admin order domain lives in `src/lib/orders.ts`. Shapes follow the blueprint’s generic commerce model (§16, §34, §44, §75), so swapping in Supabase rows later does not require UI rewrites.
 

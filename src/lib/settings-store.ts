@@ -8,9 +8,23 @@ export const SETTINGS_STORAGE_KEY = "prosanti.admin.settings.v1";
 
 export interface AdminSettings {
   lowStockThreshold: number;
+  // Loyalty Stamp Card settings (§10-Order Reward Engine)
+  loyaltyEnabled: boolean;
+  loyaltyTargetOrders: number;
+  loyaltyRewardTitle: string;
+  loyaltyRewardDescription: string;
+  loyaltyMinOrderAmount: number; // in Taka
 }
 
-export const SETTINGS_DEFAULTS: AdminSettings = { lowStockThreshold: 5 };
+export const SETTINGS_DEFAULTS: AdminSettings = {
+  lowStockThreshold: 5,
+  loyaltyEnabled: true,
+  loyaltyTargetOrders: 10,
+  loyaltyRewardTitle: "এক্সক্লুসিভ গিফট হ্যাম্পার",
+  loyaltyRewardDescription:
+    "১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! পরবর্তী অর্ডারের সাথে আপনার বিশেষ উপহার পৌঁছে দেওয়া হবে।",
+  loyaltyMinOrderAmount: 0,
+};
 
 /* ------------------------------------------------------------------ */
 
@@ -31,7 +45,44 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     Number.isFinite(p.lowStockThreshold)
       ? Math.max(0, Math.floor(p.lowStockThreshold))
       : SETTINGS_DEFAULTS.lowStockThreshold;
-  return { lowStockThreshold: threshold };
+
+  const loyaltyEnabled =
+    typeof p.loyaltyEnabled === "boolean"
+      ? p.loyaltyEnabled
+      : SETTINGS_DEFAULTS.loyaltyEnabled;
+
+  const loyaltyTargetOrders =
+    typeof p.loyaltyTargetOrders === "number" &&
+    Number.isFinite(p.loyaltyTargetOrders)
+      ? Math.max(1, Math.min(50, Math.floor(p.loyaltyTargetOrders)))
+      : SETTINGS_DEFAULTS.loyaltyTargetOrders;
+
+  const loyaltyRewardTitle =
+    typeof p.loyaltyRewardTitle === "string" &&
+    p.loyaltyRewardTitle.trim().length > 0
+      ? p.loyaltyRewardTitle.trim().slice(0, 120)
+      : SETTINGS_DEFAULTS.loyaltyRewardTitle;
+
+  const loyaltyRewardDescription =
+    typeof p.loyaltyRewardDescription === "string" &&
+    p.loyaltyRewardDescription.trim().length > 0
+      ? p.loyaltyRewardDescription.trim().slice(0, 500)
+      : SETTINGS_DEFAULTS.loyaltyRewardDescription;
+
+  const loyaltyMinOrderAmount =
+    typeof p.loyaltyMinOrderAmount === "number" &&
+    Number.isFinite(p.loyaltyMinOrderAmount)
+      ? Math.max(0, Math.floor(p.loyaltyMinOrderAmount))
+      : SETTINGS_DEFAULTS.loyaltyMinOrderAmount;
+
+  return {
+    lowStockThreshold: threshold,
+    loyaltyEnabled,
+    loyaltyTargetOrders,
+    loyaltyRewardTitle,
+    loyaltyRewardDescription,
+    loyaltyMinOrderAmount,
+  };
 };
 
 const ensureLoaded = (): AdminSettings => {

@@ -10,6 +10,7 @@ import {
   subscribeWishlist,
 } from "@/lib/wishlist-store";
 import { IconShield } from "@/components/ui/icons";
+import { LoyaltyCard } from "./loyalty-card";
 
 export default function AccountView() {
   const { client, session, loading } = useCustomer();
@@ -109,214 +110,222 @@ export default function AccountView() {
     );
   if (!client)
     return (
-      <div className="border border-line bg-ivory-100 p-8">
-        <h2 className="font-display text-3xl text-forest-900">
-          Your favourites, for now on this device.
-        </h2>
-        <p className="mt-4 text-sm leading-7 text-ink-soft">
-          Account sign-in isn’t connected yet. You can still shop and save
-          favourites as a guest. No account is created in this preview.
-        </p>
-        <Link
-          href="/wishlist"
-          className="editorial-button mt-6 bg-forest-800 text-white"
-        >
-          View guest wishlist →
-        </Link>
-      </div>
-    );
-
-  return (
-    <div className="border border-line bg-paper p-6 sm:p-10">
-      {session ? (
-        <>
-          <p className="text-xs uppercase tracking-widest text-gold-600">
-            Signed in
-          </p>
-          <h2 className="mt-3 break-words font-display text-2xl text-forest-900">
-            {session.user.email}
+      <div className="space-y-8">
+        <div className="border border-line bg-ivory-100 p-8">
+          <h2 className="font-display text-3xl text-forest-900">
+            Your favourites, for now on this device.
           </h2>
           <p className="mt-4 text-sm leading-7 text-ink-soft">
-            Your account wishlist is stored separately from this browser’s guest
-            favourites. Changes refresh when you return to the tab.
+            Account sign-in isn’t connected yet. You can still shop and save
+            favourites as a guest. No account is created in this preview.
           </p>
           <Link
             href="/wishlist"
             className="editorial-button mt-6 bg-forest-800 text-white"
           >
-            Your wishlist ({cloud?.ids.length ?? 0}) →
+            View guest wishlist →
           </Link>
-          <div className="mt-7 border-y border-line py-6">
-            <h3 className="text-sm font-semibold text-forest-900">
-              Bring your guest favourites along
-            </h3>
-            <p className="mt-2 text-xs leading-6 text-ink-soft">
-              Import {guest.length} saved{" "}
-              {guest.length === 1 ? "item" : "items"} from this browser. This
-              only adds to your account; it never replaces existing saved items.
-              Guest favourites stay on this device.
+        </div>
+        <LoyaltyCard />
+      </div>
+    );
+
+  return (
+    <div className="space-y-8">
+      {/* Loyalty Stamp Card Banner */}
+      <LoyaltyCard email={session?.user?.email} phone={session?.user?.phone} />
+
+      <div className="border border-line bg-paper p-6 sm:p-10">
+        {session ? (
+          <>
+            <p className="text-xs uppercase tracking-widest text-gold-600">
+              Signed in
             </p>
-            <button
-              type="button"
-              disabled={!guest.length || !cloud?.ready || cloud.busy}
-              onClick={async () => {
-                setMessage("");
-                if (await cloud?.importGuest())
-                  setMessage("Guest favourites added to your account.");
-              }}
-              className="mt-3 min-h-11 text-sm font-medium text-forest-800 underline underline-offset-4 disabled:opacity-40"
+            <h2 className="mt-3 break-words font-display text-2xl text-forest-900">
+              {session.user.email}
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-ink-soft">
+              Your account wishlist is stored separately from this browser’s guest
+              favourites. Changes refresh when you return to the tab.
+            </p>
+            <Link
+              href="/wishlist"
+              className="editorial-button mt-6 bg-forest-800 text-white"
             >
-              {cloud?.busy ? "Syncing…" : "Import guest favourites"}
-            </button>
-          </div>
-          {cloud?.error && (
-            <div role="alert" className="mt-4 text-sm text-red-800">
-              <p>{cloud.error}</p>
+              Your wishlist ({cloud?.ids.length ?? 0}) →
+            </Link>
+            <div className="mt-7 border-y border-line py-6">
+              <h3 className="text-sm font-semibold text-forest-900">
+                Bring your guest favourites along
+              </h3>
+              <p className="mt-2 text-xs leading-6 text-ink-soft">
+                Import {guest.length} saved{" "}
+                {guest.length === 1 ? "item" : "items"} from this browser. This
+                only adds to your account; it never replaces existing saved items.
+                Guest favourites stay on this device.
+              </p>
               <button
-                disabled={cloud.busy}
-                onClick={() => void cloud.refresh()}
-                className="min-h-11 underline"
+                type="button"
+                disabled={!guest.length || !cloud?.ready || cloud.busy}
+                onClick={async () => {
+                  setMessage("");
+                  if (await cloud?.importGuest())
+                    setMessage("Guest favourites added to your account.");
+                }}
+                className="mt-3 min-h-11 text-sm font-medium text-forest-800 underline underline-offset-4 disabled:opacity-40"
               >
-                Retry wishlist sync
+                {cloud?.busy ? "Syncing…" : "Import guest favourites"}
               </button>
             </div>
-          )}
-          <button
-            type="button"
-            disabled={busy || cloud?.busy}
-            onClick={() => void signOut()}
-            className="mt-5 min-h-11 text-sm text-ink-soft underline disabled:opacity-40"
-          >
-            {busy ? "Signing out…" : "Sign out on this device"}
-          </button>
-        </>
-      ) : (
-        <>
-          <IconShield className="h-7 w-7 text-gold-600" />
-          <h2 className="mt-5 font-display text-3xl text-forest-900">
-            Make yourself at home.
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-ink-soft">
-            Sign in or create an account with an email code. No password to
-            remember.
-          </p>
-          {!sentTo ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void requestCode();
-              }}
-              className="mt-7"
-            >
-              <label
-                htmlFor="account-email"
-                className="text-sm text-forest-900"
-              >
-                Email address
-              </label>
-              <input
-                id="account-email"
-                type="email"
-                required
-                maxLength={254}
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={busy}
-                className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
-              />
-              <button
-                disabled={busy || cooldown > 0}
-                className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
-              >
-                {busy
-                  ? "Sending code…"
-                  : cooldown
-                    ? `Try again in ${cooldown}s`
-                    : "Send sign-in code"}
-              </button>
-            </form>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void verify();
-              }}
-              className="mt-7"
-            >
-              <p className="mb-4 break-words text-sm text-ink-soft">
-                Code sent to {sentTo}
-              </p>
-              <label htmlFor="account-code" className="text-sm text-forest-900">
-                Email code
-              </label>
-              <input
-                id="account-code"
-                required
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]{6,10}"
-                minLength={6}
-                maxLength={10}
-                value={token}
-                onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
-                disabled={busy}
-                className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-xl tracking-widest"
-              />
-              <button
-                disabled={busy}
-                className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
-              >
-                {busy ? "Verifying…" : "Verify & sign in"}
-              </button>
-              <div className="mt-3 flex flex-wrap justify-between gap-3">
+            {cloud?.error && (
+              <div role="alert" className="mt-4 text-sm text-red-800">
+                <p>{cloud.error}</p>
                 <button
-                  type="button"
-                  disabled={busy || cooldown > 0}
-                  onClick={() => void requestCode()}
-                  className="min-h-11 text-xs underline disabled:opacity-40"
+                  disabled={cloud.busy}
+                  onClick={() => void cloud.refresh()}
+                  className="min-h-11 underline"
                 >
-                  {cooldown ? `Resend in ${cooldown}s` : "Resend code"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setSentTo("");
-                    setToken("");
-                    setMessage("");
-                    setError("");
-                  }}
-                  className="min-h-11 text-xs underline"
-                >
-                  Use another email
+                  Retry wishlist sync
                 </button>
               </div>
-            </form>
-          )}
-          <p className="mt-5 text-xs leading-6 text-ink-soft">
-            By continuing, you agree to our{" "}
-            <Link href="/terms" className="underline">
-              terms
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="underline">
-              privacy policy
-            </Link>
-            . Guest checkout remains available.
+            )}
+            <button
+              type="button"
+              disabled={busy || cloud?.busy}
+              onClick={() => void signOut()}
+              className="mt-5 min-h-11 text-sm text-ink-soft underline disabled:opacity-40"
+            >
+              {busy ? "Signing out…" : "Sign out on this device"}
+            </button>
+          </>
+        ) : (
+          <>
+            <IconShield className="h-7 w-7 text-gold-600" />
+            <h2 className="mt-5 font-display text-3xl text-forest-900">
+              Make yourself at home.
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-ink-soft">
+              Sign in or create an account with an email code. No password to
+              remember.
+            </p>
+            {!sentTo ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void requestCode();
+                }}
+                className="mt-7"
+              >
+                <label
+                  htmlFor="account-email"
+                  className="text-sm text-forest-900"
+                >
+                  Email address
+                </label>
+                <input
+                  id="account-email"
+                  type="email"
+                  required
+                  maxLength={254}
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={busy}
+                  className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
+                />
+                <button
+                  disabled={busy || cooldown > 0}
+                  className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
+                >
+                  {busy
+                    ? "Sending code…"
+                    : cooldown
+                      ? `Try again in ${cooldown}s`
+                      : "Send sign-in code"}
+                </button>
+              </form>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void verify();
+                }}
+                className="mt-7"
+              >
+                <p className="mb-4 break-words text-sm text-ink-soft">
+                  Code sent to {sentTo}
+                </p>
+                <label htmlFor="account-code" className="text-sm text-forest-900">
+                  Email code
+                </label>
+                <input
+                  id="account-code"
+                  required
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6,10}"
+                  minLength={6}
+                  maxLength={10}
+                  value={token}
+                  onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+                  disabled={busy}
+                  className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-xl tracking-widest"
+                />
+                <button
+                  disabled={busy}
+                  className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
+                >
+                  {busy ? "Verifying…" : "Verify & sign in"}
+                </button>
+                <div className="mt-3 flex flex-wrap justify-between gap-3">
+                  <button
+                    type="button"
+                    disabled={busy || cooldown > 0}
+                    onClick={() => void requestCode()}
+                    className="min-h-11 text-xs underline disabled:opacity-40"
+                  >
+                    {cooldown ? `Resend in ${cooldown}s` : "Resend code"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSentTo("");
+                      setToken("");
+                      setMessage("");
+                      setError("");
+                    }}
+                    className="min-h-11 text-xs underline"
+                  >
+                    Use another email
+                  </button>
+                </div>
+              </form>
+            )}
+            <p className="mt-5 text-xs leading-6 text-ink-soft">
+              By continuing, you agree to our{" "}
+              <Link href="/terms" className="underline">
+                terms
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="underline">
+                privacy policy
+              </Link>
+              . Guest checkout remains available.
+            </p>
+          </>
+        )}
+        {error && (
+          <p role="alert" className="mt-5 text-sm text-red-800">
+            {error}
           </p>
-        </>
-      )}
-      {error && (
-        <p role="alert" className="mt-5 text-sm text-red-800">
-          {error}
-        </p>
-      )}
-      {message && (
-        <p role="status" className="mt-5 text-sm text-forest-800">
-          {message}
-        </p>
-      )}
+        )}
+        {message && (
+          <p role="status" className="mt-5 text-sm text-forest-800">
+            {message}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

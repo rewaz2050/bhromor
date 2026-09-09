@@ -50,7 +50,7 @@ export default function AdminInventoryPage() {
   const outCount = products.filter((p) => displayStock(p) === 0).length;
 
   const commitThreshold = () => {
-    saveSettings({ lowStockThreshold: thresholdValue });
+    saveSettings({ ...settings, lowStockThreshold: thresholdValue });
     setThreshold(String(thresholdValue));
     flashMessage("Threshold saved");
   };

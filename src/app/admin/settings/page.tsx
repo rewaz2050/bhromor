@@ -15,12 +15,17 @@ import { resetMediaStore } from "@/lib/media-store";
 import { displayStock } from "@/lib/catalog-store";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, label } from "@/components/admin/form-ui";
-import { IconBanknote, IconCheck, IconSettings } from "@/components/ui/icons";
+import {
+  IconBanknote,
+  IconCheck,
+  IconGift,
+  IconSettings,
+} from "@/components/ui/icons";
 
 /**
- * Settings (§58 ops + demo-phase housekeeping). Staff sessions persist the
- * threshold in `site_settings['ops']` (§44); the demo-data housekeeping
- * below only exists in demo mode.
+ * Settings (§58 ops + §loyalty reward program + demo-phase housekeeping).
+ * Staff sessions persist the settings in `site_settings['ops']` (§44); the
+ * demo-data housekeeping below only exists in demo mode.
  */
 
 export default function AdminSettingsPage() {
@@ -34,13 +39,31 @@ export default function AdminSettingsPage() {
   const cmsApi = useCms();
 
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
+  const [loyaltyEnabled, setLoyaltyEnabled] = useState(settings.loyaltyEnabled);
+  const [loyaltyTarget, setLoyaltyTarget] = useState(String(settings.loyaltyTargetOrders));
+  const [loyaltyRewardTitle, setLoyaltyRewardTitle] = useState(settings.loyaltyRewardTitle);
+  const [loyaltyRewardDesc, setLoyaltyRewardDesc] = useState(settings.loyaltyRewardDescription);
+  const [loyaltyMinAmount, setLoyaltyMinAmount] = useState(String(settings.loyaltyMinOrderAmount));
+
   const [flash, setFlash] = useTransientValue<string | null>(null, 2200);
 
-  // Live rows arrive async — adopt the published value when it lands.
+  // Live rows arrive async — adopt the published values when they land.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption
     setThreshold(String(settings.lowStockThreshold));
-  }, [settings.lowStockThreshold]);
+    setLoyaltyEnabled(settings.loyaltyEnabled);
+    setLoyaltyTarget(String(settings.loyaltyTargetOrders));
+    setLoyaltyRewardTitle(settings.loyaltyRewardTitle);
+    setLoyaltyRewardDesc(settings.loyaltyRewardDescription);
+    setLoyaltyMinAmount(String(settings.loyaltyMinOrderAmount));
+  }, [
+    settings.lowStockThreshold,
+    settings.loyaltyEnabled,
+    settings.loyaltyTargetOrders,
+    settings.loyaltyRewardTitle,
+    settings.loyaltyRewardDescription,
+    settings.loyaltyMinOrderAmount,
+  ]);
 
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
   const lowCount = catalogApi.products.filter(
@@ -50,10 +73,33 @@ export default function AdminSettingsPage() {
   const notify = (message: string) => setFlash(message);
 
   const commitThreshold = () => {
-    void saveSettings({ lowStockThreshold: thresholdValue }).then((ok) =>
+    void saveSettings({
+      ...settings,
+      lowStockThreshold: thresholdValue,
+    }).then((ok) =>
       notify(
         ok
           ? "Low-stock threshold saved — alerts use it immediately"
+          : "Could not save — please try again",
+      ),
+    );
+  };
+
+  const commitLoyalty = () => {
+    const target = Math.max(1, Math.min(50, Math.floor(Number(loyaltyTarget) || 10)));
+    const minAmount = Math.max(0, Math.floor(Number(loyaltyMinAmount) || 0));
+
+    void saveSettings({
+      ...settings,
+      loyaltyEnabled,
+      loyaltyTargetOrders: target,
+      loyaltyRewardTitle: loyaltyRewardTitle.trim() || "এক্সক্লুসিভ গিফট হ্যাম্পার",
+      loyaltyRewardDescription: loyaltyRewardDesc.trim() || "",
+      loyaltyMinOrderAmount: minAmount,
+    }).then((ok) =>
+      notify(
+        ok
+          ? "লয়্যালটি ও রিওয়ার্ড সেটিংস সফলভাবে সংরক্ষিত হয়েছে"
           : "Could not save — please try again",
       ),
     );
@@ -76,6 +122,11 @@ export default function AdminSettingsPage() {
     resetMediaStore();
     resetDemoMessages();
     setThreshold(String(settings.lowStockThreshold));
+    setLoyaltyEnabled(settings.loyaltyEnabled);
+    setLoyaltyTarget(String(settings.loyaltyTargetOrders));
+    setLoyaltyRewardTitle(settings.loyaltyRewardTitle);
+    setLoyaltyRewardDesc(settings.loyaltyRewardDescription);
+    setLoyaltyMinAmount(String(settings.loyaltyMinOrderAmount));
     notify("All demo data reset to seeds");
   };
 
@@ -176,6 +227,103 @@ export default function AdminSettingsPage() {
               className="rounded-xl bg-forest-800 px-4 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
             >
               Save
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Loyalty Reward Program (§10-Order Reward Engine) */}
+      <section aria-label="Loyalty Program" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <IconGift className="h-5 w-5 text-gold-600" />
+            <div>
+              <h3 className="font-display text-base font-medium text-forest-900">
+                লয়্যালটি ও রিওয়ার্ড প্রোগ্রাম (১০-অর্ডার রিওয়ার্ড)
+              </h3>
+              <p className="text-xs text-ink-soft">
+                কাস্টমার সফলভাবে নির্দিষ্ট সংখ্যক ডেলিভারি গ্রহণ করলে বিশেষ উপহার বা রিওয়ার্ড পাবেন।
+              </p>
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={loyaltyEnabled}
+              onChange={(e) => setLoyaltyEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-line text-forest-800 focus:ring-forest-800"
+            />
+            <span className="text-sm font-semibold text-ink">
+              {loyaltyEnabled ? "সক্রিয় (Active)" : "নিষ্ক্রিয় (Disabled)"}
+            </span>
+          </label>
+        </div>
+
+        <div className="mt-5 space-y-4 rounded-xl bg-ivory-100/60 p-5 ring-1 ring-line">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className={label}>টার্গেট ডেলিভারি সংখ্যা (টোকেন/স্ট্যাম্প)</span>
+              <input
+                className={`${field} w-full`}
+                type="number"
+                min="1"
+                max="50"
+                value={loyaltyTarget}
+                onChange={(e) => setLoyaltyTarget(e.target.value)}
+                placeholder="10"
+              />
+              <span className="mt-1 block text-xs text-ink-soft">
+                সাধারণত ১০টি সফল ডেলিভারিতে ১টি পুরস্কার আনলক হয়।
+              </span>
+            </label>
+
+            <label className="block">
+              <span className={label}>নূন্যতম অর্ডার মূল্য (৳ - ঐচ্ছিক)</span>
+              <input
+                className={`${field} w-full`}
+                type="number"
+                min="0"
+                value={loyaltyMinAmount}
+                onChange={(e) => setLoyaltyMinAmount(e.target.value)}
+                placeholder="0"
+              />
+              <span className="mt-1 block text-xs text-ink-soft">
+                ০ দিলে যেকোনো অর্ডারে স্ট্যাম্প পাবে, যেমন ৳৫০০ দিলে সর্বনিম্ন ৳৫০০ অর্ডারে স্ট্যাম্প পাবে।
+              </span>
+            </label>
+          </div>
+
+          <label className="block">
+            <span className={label}>আকর্ষণীয় পুরস্কারের নাম (Reward Title)</span>
+            <input
+              className={`${field} w-full`}
+              type="text"
+              maxLength={120}
+              value={loyaltyRewardTitle}
+              onChange={(e) => setLoyaltyRewardTitle(e.target.value)}
+              placeholder="যেমন: এক্সক্লুসিভ গিফট হ্যাম্পার / ৳৫০০ গিফট ভাউচার"
+            />
+          </label>
+
+          <label className="block">
+            <span className={label}>পুরস্কারের বিবরণ ও নির্দেশনাবলী (Description)</span>
+            <textarea
+              rows={2}
+              className={`${field} w-full`}
+              maxLength={500}
+              value={loyaltyRewardDesc}
+              onChange={(e) => setLoyaltyRewardDesc(e.target.value)}
+              placeholder="১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! আপনার গিফট পরবর্তী অর্ডারের সাথে পৌঁছে দেওয়া হবে।"
+            />
+          </label>
+
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={commitLoyalty}
+              className="rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+            >
+              সংরক্ষণ করুন (Save Reward Settings)
             </button>
           </div>
         </div>

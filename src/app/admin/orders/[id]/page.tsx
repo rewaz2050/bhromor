@@ -10,6 +10,7 @@ import {
   STATUS_META,
   canCancel,
   flowIndex,
+  getDeliveryCode,
   normalizePhone,
   nextActions,
   type OrderStatus,
@@ -21,7 +22,7 @@ import {
   clockTime,
   friendlyWhen,
 } from "@/components/admin/order-ui";
-import { IconArrowRight, IconClock } from "@/components/ui/icons";
+import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
@@ -196,9 +197,14 @@ export default function AdminOrderDetailPage() {
             aria-label="Customer and delivery"
             className="rounded-2xl bg-paper p-6 ring-1 ring-line"
           >
-            <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-              Customer & delivery
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                Customer & delivery
+              </h3>
+              <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold font-mono text-emerald-800">
+                <IconShield className="h-3 w-3" /> PIN: {getDeliveryCode(order.id)}
+              </span>
+            </div>
             <dl className="mt-4 space-y-3 text-sm">
               <div>
                 <dt className="text-xs text-ink-soft">Name</dt>
