@@ -5,7 +5,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
+import BagShopHeader from "@/components/cart/bag-shop-header";
 import { useLiveZones } from "@/lib/use-live-zones";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { useMyZone } from "@/lib/use-my-zone";
+import {
+  lineShopIds,
+  shopById,
+  splitEta,
+} from "@/lib/shop-utils";
 import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
 import { makePlacedOrder, type Order } from "@/lib/orders";
@@ -57,6 +65,14 @@ export default function CheckoutView() {
   const { detail, subtotal, clear } = useCart();
   /** Delivery zones are live-served when the backend is up, seeds otherwise. */
   const { activeZones: zoneList } = useLiveZones();
+  const { shops } = useLiveCatalog();
+  const { zoneId: myZoneId, setZoneId: setMyZoneId } = useMyZone();
+  /** The bag's shop (single-shop carts carry exactly one). */
+  const bagShop =
+    shopById(
+      shops,
+      lineShopIds(detail, shops[0]?.id ?? "")[0] ?? "",
+    ) ?? null;
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
@@ -82,9 +98,12 @@ export default function CheckoutView() {
   const submittingRef = useRef(false);
   const [orderError, setOrderError] = useState<string | null>(null);
 
+  /** Browse-time zone pre-fills checkout; an explicit pick wins after. */
+  const myZoneValid =
+    myZoneId && zoneList.some((z) => z.id === myZoneId) ? myZoneId : null;
   const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
     ? form.zoneId
-    : (zoneList[0]?.id ?? "");
+    : (myZoneValid ?? zoneList[0]?.id ?? "");
   const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
   const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}`;
@@ -454,7 +473,10 @@ export default function CheckoutView() {
               <select
                 required
                 value={zone.id}
-                onChange={(e) => update("zoneId", e.target.value)}
+                onChange={(e) => {
+                  update("zoneId", e.target.value);
+                  setMyZoneId(e.target.value);
+                }}
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
                 {zoneList.map((z) => (
@@ -521,6 +543,14 @@ export default function CheckoutView() {
             <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
             <div className="text-sm leading-6">
               <p className="font-semibold">{zone.name}</p>
+              {bagShop && (
+                <p className="mt-1 text-ivory-100/70">
+                  {t("shops.checkoutEta")}: {bagShop.name} ·{" "}
+                  <strong className="text-gold-300">
+                    {splitEta(bagShop.prepMinutes, zone.etaLabel)}
+                  </strong>
+                </p>
+              )}
               <p className="mt-1 text-ivory-100/70">
                 {INSTANT_DELIVERY_TITLE} — estimated arrival{" "}
                 <strong className="text-gold-300">{zone.etaLabel}</strong> from
@@ -628,6 +658,9 @@ export default function CheckoutView() {
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
             {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
           </p>
+          <div className="mt-4">
+            <BagShopHeader />
+          </div>
           <ul className="mt-5 space-y-4">
             {detail.map((line) => (
               <li

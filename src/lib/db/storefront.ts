@@ -14,25 +14,41 @@ import {
   type Category,
   type DeliveryZone,
   type Product,
+  type Shop,
 } from "../catalog";
+import { seedShops } from "../shops-store";
+import { toPublicShop } from "../shop-utils";
 import { fetchLiveCatalog } from "./catalog";
 
 export interface StorefrontCatalog {
   products: Product[];
   categories: Category[];
+  shops: Shop[];
   live: boolean;
 }
+
+const demoShops = (): Shop[] => seedShops().map(toPublicShop);
 
 export async function getStorefrontCatalog(): Promise<StorefrontCatalog> {
   try {
     const live = await fetchLiveCatalog();
     if (live && live.products.length > 0) {
-      return { products: live.products, categories: live.categories, live: true };
+      return {
+        products: live.products,
+        categories: live.categories,
+        shops: live.shops,
+        live: true,
+      };
     }
   } catch {
     // Fall through to seeds.
   }
-  return { products: PRODUCTS, categories: CATEGORIES, live: false };
+  return {
+    products: PRODUCTS,
+    categories: CATEGORIES,
+    shops: demoShops(),
+    live: false,
+  };
 }
 
 export async function getStorefrontZones(): Promise<{

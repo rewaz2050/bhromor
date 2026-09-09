@@ -84,6 +84,24 @@ describe("reviews routes (demo fallback, no keys)", () => {
   });
 });
 
+describe("GET /api/products carries shops (marketplace slice 4)", () => {
+  it("demo catalog includes stripped shop seeds", async () => {
+    const { GET } = await import("../products/route");
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      source: string;
+      products: unknown[];
+      shops: { slug: string; contactEmail?: string }[];
+    };
+    expect(data.source).toBe("demo");
+    expect(data.products.length).toBeGreaterThan(0);
+    expect(data.shops).toHaveLength(1);
+    expect(data.shops[0].slug).toBe("prosanti-direct");
+    expect(data.shops[0].contactEmail).toBeUndefined();
+  });
+});
+
 describe("shops routes (marketplace slice 2)", () => {
   it("GET /api/shops answers demo seeds without contact emails", async () => {
     const { GET } = await import("../shops/route");

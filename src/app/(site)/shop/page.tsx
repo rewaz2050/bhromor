@@ -1,6 +1,9 @@
 import { resolveMood } from "@/lib/merchandising";
 import type { Metadata } from "next";
-import { getStorefrontCatalog } from "@/lib/db/storefront";
+import {
+  getStorefrontCatalog,
+  getStorefrontZones,
+} from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
 
@@ -29,7 +32,10 @@ export default async function ShopPage({
   }>;
 }) {
   const params = await searchParams;
-  const { products, categories } = await getStorefrontCatalog();
+  const [{ products, categories, shops }, { zones }] = await Promise.all([
+    getStorefrontCatalog(),
+    getStorefrontZones(),
+  ]);
   // Categories are data-driven (§5) — validating against three hard-coded ids
   // meant any category added later silently fell back to "all".
   const category = categories.some((c) => c.id === params.category)
@@ -45,6 +51,8 @@ export default async function ShopPage({
         <ShopBrowser
           products={products}
           categories={categories}
+          shops={shops}
+          zones={zones}
           initialCategory={category}
           initialNew={onlyNew}
           initialQuery={query}

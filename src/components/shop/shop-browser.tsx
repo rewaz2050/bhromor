@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Category, CategoryId, Product } from "@/lib/catalog";
+import type {
+  Category,
+  CategoryId,
+  DeliveryZone,
+  Product,
+  Shop,
+} from "@/lib/catalog";
 import {
   MOODS,
   matchesMood,
@@ -9,6 +15,8 @@ import {
   type MoodId,
 } from "@/lib/merchandising";
 import { matchesProduct } from "@/lib/product-search";
+import { filterProductsForZone } from "@/lib/shop-utils";
+import { useMyZone } from "@/lib/use-my-zone";
 import { bdt } from "@/lib/format";
 import ProductCard from "@/components/product/product-card";
 import Drawer from "@/components/ui/drawer";
@@ -71,6 +79,8 @@ const collectColors = (products: Product[]): string[] => {
 export default function ShopBrowser({
   products,
   categories,
+  shops,
+  zones,
   initialCategory,
   initialNew,
   initialQuery = "",
@@ -79,6 +89,8 @@ export default function ShopBrowser({
 }: {
   products: Product[];
   categories: Category[];
+  shops: Shop[];
+  zones: DeliveryZone[];
   initialCategory: CategoryFilter;
   initialNew: boolean;
   initialQuery?: string;
@@ -96,6 +108,19 @@ export default function ShopBrowser({
   const [priceBand, setPriceBand] = useState<string>(initialPrice);
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /** Zone-scoped discovery (marketplace slice 4): the persisted "deliver
+   *  to" choice filters browse to serving shops. A stale id (zone removed
+   *  since) behaves as "all zones" instead of emptying the shop. */
+  const { zoneId, setZoneId } = useMyZone();
+  const scopedZoneId =
+    zoneId && zones.some((z) => z.id === zoneId) ? zoneId : null;
+  const scopedZone = zones.find((z) => z.id === scopedZoneId);
+  const fallbackShopId = shops[0]?.id ?? "";
+  const zonedProducts = useMemo(
+    () => filterProductsForZone(products, shops, scopedZoneId, fallbackShopId),
+    [products, shops, scopedZoneId, fallbackShopId],
+  );
 
   const SORTS: { key: SortKey; label: string }[] = [
     { key: "featured", label: t("shopBrowser.featured") },
@@ -157,14 +182,20 @@ export default function ShopBrowser({
     }
   }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice]);
 
-  const allSizes = useMemo(() => collectSizes(products), [products]);
-  const allColors = useMemo(() => collectColors(products), [products]);
+  const allSizes = useMemo(
+    () => collectSizes(zonedProducts),
+    [zonedProducts],
+  );
+  const allColors = useMemo(
+    () => collectColors(zonedProducts),
+    [zonedProducts],
+  );
 
   const toggle = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
   const visible = useMemo(() => {
-    let list = products
+    let list = zonedProducts
       .filter(isDiscoverable)
       .map((p, index) => ({ p, index }));
     if (mood) list = list.filter(({ p }) => matchesMood(p, mood));
@@ -202,7 +233,7 @@ export default function ShopBrowser({
     }
     return sorted.map(({ p }) => p);
   }, [
-    products,
+    zonedProducts,
     category,
     onlyNew,
     onlyInStock,
@@ -236,7 +267,7 @@ export default function ShopBrowser({
   };
 
   const categoryCount = (id: CategoryId) =>
-    products.filter((p) => p.category === id).length;
+    zonedProducts.filter((p) => p.category === id).length;
 
   /** Rendered twice (sidebar + drawer); `scope` keeps radio groups apart so
    *  the two copies do not fight over the same browser radio group. */
@@ -268,7 +299,7 @@ export default function ShopBrowser({
                   : (categories.find((c) => c.id === id)?.name ?? id);
               const count =
                 id === "all"
-                  ? products.length
+                  ? zonedProducts.length
                   : categoryCount(id as CategoryId);
               return (
                 <label
@@ -459,6 +490,29 @@ export default function ShopBrowser({
         </div>
 
         <div className="flex items-center gap-3">
+          <label className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
+            <span className="hidden whitespace-nowrap sm:inline">
+              {t("shopBrowser.deliverTo")}
+            </span>
+            <span className="relative min-w-0 flex-1 sm:flex-none">
+              <select
+                value={scopedZoneId ?? ""}
+                onChange={(e) => setZoneId(e.target.value || null)}
+                aria-label={t("shopBrowser.deliverTo")}
+                className="h-12 w-full min-w-0 appearance-none rounded-sm bg-paper pl-4 pr-9 text-sm font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500 sm:w-auto sm:pl-5 sm:pr-10"
+              >
+                <option value="">{t("shopBrowser.allZones")}</option>
+                {zones
+                  .filter((z) => z.active !== false)
+                  .map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name}
+                    </option>
+                  ))}
+              </select>
+              <IconChevron className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
+            </span>
+          </label>
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
@@ -504,6 +558,7 @@ export default function ShopBrowser({
           ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
         {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
+        {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name}`}
       </p>
 
       {hasActiveFilters && (
@@ -553,18 +608,32 @@ export default function ShopBrowser({
                 <IconBox className="h-6 w-6" />
               </span>
               <h2 className="font-display mt-5 text-2xl font-medium text-ink">
-                {t("shopBrowser.noProductsFound")}
+                {scopedZone && products.length > 0 && zonedProducts.length === 0
+                  ? t("shopBrowser.noShopsZone")
+                  : t("shopBrowser.noProductsFound")}
               </h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-                {t("shopBrowser.tryAnother")}
+                {scopedZone && products.length > 0 && zonedProducts.length === 0
+                  ? t("shopBrowser.noShopsZoneHint")
+                  : t("shopBrowser.tryAnother")}
               </p>
-              <button
-                type="button"
-                onClick={resetAll}
-                className="mt-6 rounded-full bg-forest-800 px-6 py-3 text-sm font-medium text-ivory-50 transition-colors hover:bg-forest-700"
-              >
-                {t("shopBrowser.clearFilters")}
-              </button>
+              {scopedZone && products.length > 0 && zonedProducts.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setZoneId(null)}
+                  className="mt-6 rounded-full bg-forest-800 px-6 py-3 text-sm font-medium text-ivory-50 transition-colors hover:bg-forest-700"
+                >
+                  {t("shopBrowser.showAllZones")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={resetAll}
+                  className="mt-6 rounded-full bg-forest-800 px-6 py-3 text-sm font-medium text-ivory-50 transition-colors hover:bg-forest-700"
+                >
+                  {t("shopBrowser.clearFilters")}
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -6,6 +6,7 @@ import {
   ensureLiveZones,
   getCategoriesSnapshot,
   getProductsSnapshot,
+  getShopsSnapshot,
   getZonesSnapshot,
   isCatalogSettled,
   isZonesSettled,
@@ -48,6 +49,28 @@ describe("live-catalog registry", () => {
     // Post-cutover, stale demo-id lookups quietly miss instead of crashing.
     expect(resolveCatalogProduct("p1")).toBeUndefined();
     expect(resolveCatalogProduct("uuid-live-1")).toEqual(liveProduct);
+  });
+
+  it("serves stripped demo shops, then live shops on cutover (slice 4)", async () => {
+    const demo = getShopsSnapshot();
+    expect(demo.length).toBeGreaterThan(0);
+    for (const s of demo) expect(s.contactEmail).toBeUndefined();
+
+    const liveShop = { ...demo[0], id: "uuid-shop-1" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          source: "live",
+          products: [liveProduct],
+          categories: CATEGORIES,
+          shops: [liveShop],
+        }),
+      })),
+    );
+    await expect(ensureLiveCatalog()).resolves.toBe(true);
+    expect(getShopsSnapshot()).toEqual([liveShop]);
   });
 
   it("keeps seeds when the backend is unreachable", async () => {

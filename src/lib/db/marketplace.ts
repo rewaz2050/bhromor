@@ -11,8 +11,11 @@ import "server-only";
 
 import { getSupabaseService } from "../supabase-server";
 import type { Shop } from "../catalog";
+import { toPublicShop } from "../shop-utils";
 import { mapShop } from "./mappers";
 import type { DbShop } from "./types";
+
+export { toPublicShop };
 
 export class ShopInputError extends Error {
   status: number;
@@ -27,13 +30,6 @@ const clean = (value: unknown, max: number): string =>
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BD_PHONE_RE = /^01\d{9}$/;
-
-/** Public shop card — contactEmail is ALWAYS stripped. */
-export const toPublicShop = (shop: Shop): Shop => {
-  const pub = { ...shop };
-  delete pub.contactEmail;
-  return pub;
-};
 
 /**
  * Active shops, optionally scoped to one delivery zone (area-scoped

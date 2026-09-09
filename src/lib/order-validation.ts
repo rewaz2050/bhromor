@@ -10,7 +10,7 @@
  */
 
 import { MAX_LINE_QTY, type CartLine } from "./cart";
-import type { DeliveryZone, Product } from "./catalog";
+import type { DeliveryZone, Product, Shop } from "./catalog";
 import {
   discountAmount,
   eligibleSubtotal,
@@ -42,6 +42,8 @@ export interface OrderSnapshot {
   products: Product[];
   zones: DeliveryZone[];
   coupons: import("./coupons").Coupon[];
+  /** Live shop rows (slice 4). Absent in demo-era snapshots → skipped. */
+  shops?: Shop[];
   now?: number;
 }
 
@@ -223,6 +225,47 @@ export const validateOrderPayload = (
         },
       ],
     };
+  }
+
+  // Shop availability (slice 4): the RPC re-enforces this authoritatively,
+  // but field-level errors here read better than a placement failure.
+  // Demo carts (no shopIds, no shops) skip the check entirely.
+  if (snapshot.shops && shopIds.size === 1) {
+    const shopId = [...shopIds][0];
+    const shop = snapshot.shops.find((s) => s.id === shopId);
+    if (!shop || shop.status !== "active") {
+      return {
+        ok: false,
+        errors: [
+          {
+            field: "items",
+            message: "That shop isn't taking orders right now.",
+          },
+        ],
+      };
+    }
+    if (!shop.isOpen) {
+      return {
+        ok: false,
+        errors: [
+          {
+            field: "items",
+            message: `“${shop.name}” is closed right now — your bag will keep until it reopens.`,
+          },
+        ],
+      };
+    }
+    if (!shop.zoneIds.includes(zone.id)) {
+      return {
+        ok: false,
+        errors: [
+          {
+            field: "zoneId",
+            message: `“${shop.name}” doesn't deliver to ${zone.name} — pick another zone or shop.`,
+          },
+        ],
+      };
+    }
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);

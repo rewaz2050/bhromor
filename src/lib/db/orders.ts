@@ -20,8 +20,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
 import type { Coupon } from "../coupons";
-import type { DeliveryZone, Product } from "../catalog";
-import { mapCoupon, mapOrder, mapProduct, mapZone } from "./mappers";
+import type { DeliveryZone, Product, Shop } from "../catalog";
+import { mapCoupon, mapOrder, mapProduct, mapShop, mapZone } from "./mappers";
 import type {
   DbCoupon,
   DbMedia,
@@ -29,6 +29,7 @@ import type {
   DbOrderHistory,
   DbOrderItem,
   DbProduct,
+  DbShop,
   DbVariant,
   DbZone,
 } from "./types";
@@ -42,13 +43,15 @@ export interface OrderSnapshot {
   coupons: Coupon[];
   variants: DbVariant[];
   mediaByProduct: Map<string, string>;
+  /** All shops (validator checks active/open/zone itself). */
+  shops: Shop[];
 }
 
 export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes] =
+  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes] =
     await Promise.all([
       db
         .from("products")
@@ -59,13 +62,15 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       db.from("product_media").select("*").order("sort_order"),
       db.from("delivery_zones").select("*").eq("active", true),
       db.from("coupons").select("*").eq("active", true),
+      db.from("shops").select("*"),
     ]);
   if (
     productsRes.error ||
     variantsRes.error ||
     mediaRes.error ||
     zonesRes.error ||
-    couponsRes.error
+    couponsRes.error ||
+    shopsRes.error
   ) {
     throw new Error("order snapshot read failed");
   }
@@ -91,6 +96,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     coupons: ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon),
     variants,
     mediaByProduct,
+    shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
   };
 }
 

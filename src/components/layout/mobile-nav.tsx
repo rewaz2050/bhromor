@@ -23,6 +23,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
   const { t, lang } = useLanguage();
   const PRIMARY = [
     { label: t("nav.shop"), href: "/shop" },
+    { label: t("nav.shops"), href: "/shops" },
     { label: t("nav.collections"), href: "/#collections" },
   ];
   // Secondary labels also translated where possible

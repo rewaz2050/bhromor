@@ -6,6 +6,8 @@
  */
 
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS } from "@/lib/catalog";
+import { seedShops } from "@/lib/shops-store";
+import { toPublicShop } from "@/lib/shop-utils";
 import { fetchLiveCatalog } from "@/lib/db/catalog";
 import { isSupabaseConfigured } from "@/lib/env";
 import { apiError, apiJson } from "@/lib/api-response";
@@ -19,6 +21,7 @@ export async function GET() {
       products: PRODUCTS,
       categories: CATEGORIES,
       zones: DELIVERY_ZONES.map((z) => ({ ...z, active: z.active ?? true })),
+      shops: seedShops().map(toPublicShop),
     });
   }
   try {

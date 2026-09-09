@@ -7,6 +7,8 @@ import Reveal from "@/components/ui/reveal";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { useMyZone } from "@/lib/use-my-zone";
+import { filterProductsForZone } from "@/lib/shop-utils";
 import { useCms } from "@/lib/use-cms";
 import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -147,11 +149,18 @@ function SectionHeading({
 
 function CollectionsSection() {
   const { t, lang } = useLanguage();
-  const { products, categories } = useLiveCatalog();
+  const { products, categories, shops } = useLiveCatalog();
+  const { zoneId } = useMyZone();
+  const zoned = filterProductsForZone(
+    products,
+    shops,
+    zoneId,
+    shops[0]?.id ?? "",
+  );
   const visibleCategories = categories.filter((category) => category.active !== false)
     .map((category) => ({
       category,
-      count: products.filter((p) => p.category === category.id).length,
+      count: zoned.filter((p) => p.category === category.id).length,
     }))
     .filter(({ count }) => count > 0);
 
@@ -223,8 +232,15 @@ function CollectionsSection() {
 
 function BestSellersSection() {
   const { t } = useLanguage();
-  const { products } = useLiveCatalog();
-  const featured = products.filter((p) => p.featured);
+  const { products, shops } = useLiveCatalog();
+  const { zoneId } = useMyZone();
+  const featured = filterProductsForZone(
+    products,
+    shops,
+    zoneId,
+    shops[0]?.id ?? "",
+  ).filter((p) => p.featured);
+  if (featured.length === 0) return null;
   return (
     <section id="best-sellers" className="border-y border-line bg-paper scroll-mt-28">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">

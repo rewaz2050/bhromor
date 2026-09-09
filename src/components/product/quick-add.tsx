@@ -6,6 +6,8 @@ import Link from "next/link";
 import type { Product } from "@/lib/catalog";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
+import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import { useGuardedAdd } from "@/lib/use-guarded-add";
 import Drawer from "@/components/ui/drawer";
 import { Price } from "@/components/ui/primitives";
 import { IconClose } from "@/components/ui/icons";
@@ -24,7 +26,8 @@ export default function QuickAdd({
   );
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
-  const { addItem, openBag } = useCart();
+  const { openBag } = useCart();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
   const ready = product.inStock && (product.sizes.length === 0 || !!size);
   return (
     <Drawer
@@ -122,9 +125,10 @@ export default function QuickAdd({
             [color, /^(free|one) size$/i.test(size) && color ? "" : size]
               .filter(Boolean)
               .join(" · ") || "Default";
-          addItem(product.id, variant, qty);
-          onClose();
-          openBag();
+          if (add(product, variant, qty)) {
+            onClose();
+            openBag();
+          }
         }}
         className="editorial-button mt-6 w-full justify-center bg-forest-800 text-white disabled:opacity-40"
       >
@@ -141,6 +145,18 @@ export default function QuickAdd({
       >
         View full details
       </Link>
+      {conflict && (
+        <ShopConflictDialog
+          fromShop={conflict.fromShopName}
+          toShop={conflict.toShopName}
+          onKeep={dismissConflict}
+          onStartNew={() => {
+            confirmConflict();
+            onClose();
+            openBag();
+          }}
+        />
+      )}
     </Drawer>
   );
 }

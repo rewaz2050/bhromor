@@ -10,16 +10,19 @@
 import "server-only";
 
 import { getSupabaseServer } from "../supabase-server";
-import { mapCategory, mapProduct, mapZone, type ProductRowBundle } from "./mappers";
+import { mapCategory, mapProduct, mapShop, mapZone, type ProductRowBundle } from "./mappers";
 import type {
   Category,
   DeliveryZone,
   Product,
+  Shop,
 } from "../catalog";
+import { toPublicShop } from "../shop-utils";
 import type {
   DbCategory,
   DbMedia,
   DbProduct,
+  DbShop,
   DbVariant,
   DbZone,
 } from "./types";
@@ -28,6 +31,8 @@ export interface LiveCatalog {
   products: Product[];
   categories: Category[];
   zones: DeliveryZone[];
+  /** Active shops (staff-only fields stripped) for zone-scoped discovery. */
+  shops: Shop[];
 }
 
 const toBundle = (
@@ -49,7 +54,7 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
   const db = await getSupabaseServer();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, categoriesRes, zonesRes] =
+  const [productsRes, variantsRes, mediaRes, categoriesRes, zonesRes, shopsRes] =
     await Promise.all([
       db
         .from("products")
@@ -65,6 +70,9 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
         .select("*")
         .eq("active", true)
         .order("sort_order"),
+      // Public read policy exposes active shops only; the strip below is
+      // defence-in-depth so contact emails can never leak.
+      db.from("shops").select("*").eq("status", "active").order("name"),
     ]);
 
   if (
@@ -72,7 +80,8 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
     variantsRes.error ||
     mediaRes.error ||
     categoriesRes.error ||
-    zonesRes.error
+    zonesRes.error ||
+    shopsRes.error
   ) {
     throw new Error("catalog read failed");
   }
@@ -86,5 +95,6 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
     products,
     categories: ((categoriesRes.data ?? []) as DbCategory[]).map(mapCategory),
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
+    shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop).map(toPublicShop),
   };
 }

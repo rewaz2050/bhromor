@@ -17,7 +17,7 @@ money paths.
 ```txt
 src/app/api/
 ├── health/route.ts        # mode probe (no keys leaked — booleans only)
-├── products/route.ts      # published catalog (live rows or demo seeds)
+├── products/route.ts      # published catalog + active shops (live rows or demo seeds)
 ├── zones/route.ts         # active delivery zones
 ├── orders/route.ts        # POST: validate → ps_place_order RPC → return order
 ├── track/route.ts         # GET ?id=&phone=: phone-gated lookup
@@ -49,7 +49,10 @@ src/lib/
 ├── staff-auth.ts          # requireStaff(): JWT verify + admin_users role (server-only)
 ├── vendor-auth.ts         # requireVendor(): JWT + vendor_users link + active shop (server-only)
 ├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (no demo mode)
-├── order-validation.ts    # pure checkout validator (client money ignored)
+├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
+├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
+├── use-my-zone.ts         # persisted customer "deliver to" zone for discovery
+├── use-guarded-add.ts     # single-shop add-to-bag guard (stages conflicts)
 ├── rate-limit.ts          # fixed windows: per-IP public, per-staff admin
 ├── api-response.ts        # JSON envelopes (always no-store)
 ├── live-catalog.ts        # client registry: seeds paint, live rows swap in
@@ -61,7 +64,7 @@ src/lib/
     ├── types.ts           # row types mirroring schema.sql
     ├── mappers.ts         # rows → Product/Order/Zone/Coupon (pure, tested)
     ├── catalog.ts         # server-side published-catalog read
-    ├── orders.ts          # snapshot / placeLiveOrder (single RPC) / findLiveOrder
+    ├── orders.ts          # snapshot (+ shops) / placeLiveOrder (single RPC) / findLiveOrder
     ├── admin.ts           # staff CRUD used by /api/admin/* routes
     ├── marketplace.ts     # public shops discovery + application intake
     ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)

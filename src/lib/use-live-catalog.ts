@@ -7,6 +7,7 @@ import {
   getLiveCategories,
   getLiveProducts,
   getProductsSnapshot,
+  getShopsSnapshot,
   isCatalogSettled,
   subscribeLiveCatalog,
 } from "./live-catalog";
@@ -26,6 +27,11 @@ export function useLiveCatalog() {
     getCategoriesSnapshot,
     getCategoriesSnapshot,
   );
+  const shops = useSyncExternalStore(
+    subscribeLiveCatalog,
+    getShopsSnapshot,
+    getShopsSnapshot,
+  );
   const [live, setLive] = useState(() => getLiveProducts() !== null);
   const [settled, setSettled] = useState(() => isCatalogSettled());
 
@@ -44,6 +50,7 @@ export function useLiveCatalog() {
   return {
     products,
     categories,
+    shops,
     /** True once live rows (not seeds) are serving. */
     live: live && getLiveProducts() !== null,
     loading: !settled,

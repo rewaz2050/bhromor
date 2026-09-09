@@ -17,7 +17,10 @@ import {
   type Category,
   type DeliveryZone,
   type Product,
+  type Shop,
 } from "./catalog";
+import { seedShops } from "./shops-store";
+import { toPublicShop } from "./shop-utils";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -33,6 +36,7 @@ export const subscribeLiveCatalog = (listener: Listener): (() => void) => {
 let liveProducts: Product[] | null = null;
 let liveCategories: Category[] | null = null;
 let liveZones: DeliveryZone[] | null = null;
+let liveShops: Shop[] | null = null;
 let catalogSettled = false;
 let zonesSettled = false;
 let catalogPromise: Promise<boolean> | null = null;
@@ -41,6 +45,7 @@ let zonesPromise: Promise<boolean> | null = null;
 export const getLiveProducts = (): Product[] | null => liveProducts;
 export const getLiveCategories = (): Category[] | null => liveCategories;
 export const getLiveZones = (): DeliveryZone[] | null => liveZones;
+export const getLiveShops = (): Shop[] | null => liveShops;
 export const isCatalogSettled = (): boolean => catalogSettled;
 export const isZonesSettled = (): boolean => zonesSettled;
 
@@ -48,6 +53,11 @@ export const isZonesSettled = (): boolean => zonesSettled;
 export const getProductsSnapshot = (): Product[] => liveProducts ?? PRODUCTS;
 export const getCategoriesSnapshot = (): Category[] => liveCategories ?? CATEGORIES;
 export const getZonesSnapshot = (): DeliveryZone[] | null => liveZones;
+
+/** Demo shops mirror shop #1 (stripped); live rows swap in on cutover. */
+let demoShopsSnapshot: Shop[] | null = null;
+export const getShopsSnapshot = (): Shop[] =>
+  liveShops ?? (demoShopsSnapshot ??= seedShops().map(toPublicShop));
 
 /**
  * Id resolution against the SERVING catalog only. Once live rows arrive,
@@ -74,6 +84,7 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
         source?: string;
         products?: Product[];
         categories?: Category[];
+        shops?: Shop[];
       };
       if (
         data.source === "live" &&
@@ -84,6 +95,7 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
         liveCategories = Array.isArray(data.categories)
           ? data.categories
           : CATEGORIES;
+        liveShops = Array.isArray(data.shops) ? data.shops : [];
         notify();
         return true;
       }
@@ -135,6 +147,7 @@ export const __resetLiveCatalog = (): void => {
   liveProducts = null;
   liveCategories = null;
   liveZones = null;
+  liveShops = null;
   catalogSettled = false;
   zonesSettled = false;
   catalogPromise = null;

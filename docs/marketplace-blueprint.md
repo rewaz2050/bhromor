@@ -361,7 +361,7 @@ Phase 2 slices:
 1. ✅ `004` migration + shop #1 backfill + `ps_place_order` shop guard (no UI).
 2. ✅ Admin → Shops queue (approve/suspend/commission) + public `/api/shops`.
 3. ✅ Vendor auth + `/vendor` dashboard (orders → products → hours → earnings).
-4. Storefront: zone-scoped discovery, shop pages, single-shop cart, checkout split ETA.
+4. ✅ Storefront: zone-scoped discovery, shop pages, single-shop cart, checkout split ETA.
 5. Ledger writer + Admin → Payouts + settlement report.
 
 Phase 3 slices:

@@ -4,6 +4,7 @@ export const translations = {
   en: {
     nav: {
       shop: "Shop",
+      shops: "Shops",
       collections: "Collections",
     },
     header: {
@@ -144,6 +145,12 @@ export const translations = {
       matching: "matching",
       style: "Style",
       search: "Search",
+      deliverTo: "Deliver to",
+      allZones: "All zones",
+      noShopsZone: "No shops deliver there yet",
+      noShopsZoneHint:
+        "No open shop serves that zone right now — try another zone, or browse everything.",
+      showAllZones: "Show all zones",
     },
     product: {
       quickAdd: "Quick add",
@@ -292,10 +299,38 @@ export const translations = {
       switchToEnglish: "Switch to English",
       switchToBengali: "Switch to Bengali",
     },
+    shops: {
+      title: "Shops on PROSANTI",
+      subtitle: "Independent sellers, one checkout each — pick a shop and fill your bag.",
+      openNow: "Open now",
+      closed: "Closed",
+      products: "products",
+      product: "product",
+      prepIn: "Prepares in ~{min} min",
+      deliversTo: "Delivers to",
+      everywhere: "everywhere we serve",
+      notInYourZone: "Doesn't deliver to your zone",
+      visitShop: "Visit shop",
+      backToShops: "All shops",
+      contact: "Contact",
+      rating: "Rating",
+      preparesIn: "Prepares in",
+      soldBy: "Sold by",
+      shopClosed: "This shop is closed right now",
+      shopClosedHint: "Browse freely — the shop will take orders again when it reopens.",
+      conflictTitle: "Start a new bag?",
+      conflictBody: "Your bag has items from {from}. One order = one shop, so adding from {to} starts a fresh bag.",
+      keepBag: "Keep my bag",
+      startNew: "Start new bag",
+      bagFrom: "Bag from",
+      mixedBag: "Your bag mixes {n} shops — check out each shop's bag separately.",
+      checkoutEta: "Kitchen + delivery estimate",
+    },
   },
   bn: {
     nav: {
       shop: "কেনাকাটা",
+      shops: "শপসমূহ",
       collections: "সংগ্রহ",
     },
     header: {
@@ -436,6 +471,12 @@ export const translations = {
       matching: "মিলছে",
       style: "স্টাইল",
       search: "অনুসন্ধান",
+      deliverTo: "ডেলিভারি এলাকা",
+      allZones: "সব এলাকা",
+      noShopsZone: "ওই এলাকায় এখনো কোনো শপ ডেলিভারি দেয় না",
+      noShopsZoneHint:
+        "ওই এলাকায় এখন কোনো খোলা শপ নেই — অন্য এলাকা বেছে দেখুন, বা সব ব্রাউজ করুন।",
+      showAllZones: "সব এলাকা দেখুন",
     },
     product: {
       quickAdd: "দ্রুত যোগ করুন",
@@ -584,6 +625,33 @@ export const translations = {
       switchToEnglish: "ইংরেজিতে দেখুন",
       switchToBengali: "বাংলায় দেখুন",
     },
+    shops: {
+      title: "প্রসান্তিতে শপসমূহ",
+      subtitle: "স্বাধীন বিক্রেতা, প্রতিটির আলাদা চেকআউট — একটি শপ বেছে ব্যাগ ভরুন।",
+      openNow: "এখন খোলা",
+      closed: "বন্ধ",
+      products: "টি পণ্য",
+      product: "টি পণ্য",
+      prepIn: "প্রস্তুতিতে ~{min} মিনিট",
+      deliversTo: "ডেলিভারি দেয়",
+      everywhere: "আমাদের সব এলাকায়",
+      notInYourZone: "আপনার এলাকায় ডেলিভারি দেয় না",
+      visitShop: "শপে যান",
+      backToShops: "সব শপ",
+      contact: "যোগাযোগ",
+      rating: "রেটিং",
+      preparesIn: "প্রস্তুতির সময়",
+      soldBy: "বিক্রেতা",
+      shopClosed: "এই শপটি এখন বন্ধ আছে",
+      shopClosedHint: "ঘুরে দেখুন — শপ আবার খুললে অর্ডার নেবে।",
+      conflictTitle: "নতুন ব্যাগ শুরু করবেন?",
+      conflictBody: "আপনার ব্যাগে {from}-এর পণ্য আছে। এক অর্ডার = এক শপ, তাই {to} থেকে যোগ করলে নতুন ব্যাগ শুরু হবে।",
+      keepBag: "আমার ব্যাগ রাখুন",
+      startNew: "নতুন ব্যাগ শুরু করুন",
+      bagFrom: "ব্যাগ:",
+      mixedBag: "আপনার ব্যাগে {n}টি শপের পণ্য মিশেছে — প্রতিটি শপের ব্যাগ আলাদা চেকআউট করুন।",
+      checkoutEta: "রান্না + ডেলিভারি অনুমান",
+    },
   },
 } as const;
 
@@ -605,4 +673,5 @@ export type TranslationKey =
   | `wishlist.${keyof typeof translations.en.wishlist}`
   | `purchase.${keyof typeof translations.en.purchase}`
   | `checkout.${keyof typeof translations.en.checkout}`
+  | `shops.${keyof typeof translations.en.shops}`
   | `language.${keyof typeof translations.en.language}`;

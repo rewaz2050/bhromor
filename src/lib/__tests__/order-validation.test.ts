@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DELIVERY_ZONES, PRODUCTS, type Product } from "../catalog";
+import { DELIVERY_ZONES, PRODUCTS, type Product, type Shop } from "../catalog";
 import { seedCoupons } from "../coupons-store";
 import { bdt } from "../format";
 import {
@@ -267,5 +267,79 @@ describe("validateOrderPayload single-shop rule (marketplace slice 1)", () => {
       snapshot(),
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("validateOrderPayload shop availability (marketplace slice 4)", () => {
+  const shop = (over: Partial<Shop> = {}): Shop => ({
+    id: "shop-1",
+    slug: "shop-one",
+    name: "Shop One",
+    phone: "01700000000",
+    zoneIds: ["z1"],
+    prepMinutes: 15,
+    commissionPct: 15,
+    status: "active",
+    isOpen: true,
+    ratingAvg: 0,
+    ratingCount: 0,
+    ...over,
+  });
+  const tagged = (): Product[] =>
+    PRODUCTS.map((p) => ({ ...p, shopId: "shop-1" }));
+  const snap = (shops: Shop[]): OrderSnapshot => ({
+    ...snapshot(),
+    products: tagged(),
+    shops,
+  });
+
+  it("accepts an open shop serving the zone", () => {
+    expect(validateOrderPayload(payload(), snap([shop()])).ok).toBe(true);
+  });
+
+  it("rejects a closed shop with an items error", () => {
+    const result = validateOrderPayload(
+      payload(),
+      snap([shop({ isOpen: false })]),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      {
+        field: "items",
+        message:
+          "“Shop One” is closed right now — your bag will keep until it reopens.",
+      },
+    ]);
+  });
+
+  it("rejects suspended and unknown shops", () => {
+    for (const shops of [
+      [shop({ status: "suspended" })],
+      [shop({ id: "other" })],
+    ]) {
+      const result = validateOrderPayload(payload(), snap(shops));
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.errors).toEqual([
+        { field: "items", message: "That shop isn't taking orders right now." },
+      ]);
+    }
+  });
+
+  it("rejects a zone the shop doesn't serve with a zone error", () => {
+    const result = validateOrderPayload(
+      payload(),
+      snap([shop({ zoneIds: ["z9"] })]),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0].field).toBe("zoneId");
+    expect(result.errors[0].message).toMatch(/doesn't deliver/);
+  });
+
+  it("skips the check when the snapshot carries no shops", () => {
+    const legacy: OrderSnapshot = { ...snapshot(), products: tagged() };
+    expect(validateOrderPayload(payload(), legacy).ok).toBe(true);
   });
 });

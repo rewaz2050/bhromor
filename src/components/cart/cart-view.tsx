@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
+import BagShopHeader from "./bag-shop-header";
 import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
 import {
@@ -64,6 +65,9 @@ export default function CartView() {
     <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
       {/* Lines */}
       <div>
+        <div className="mb-5">
+          <BagShopHeader />
+        </div>
         <ul className="divide-y divide-line border-y border-line">
           {detail.map((line) => {
             const { product } = line;
