@@ -38,6 +38,7 @@ src/app/api/
 ├── rider/assignments/[id]/pickup/route.ts    # accepted → picked_up + order out-for-delivery
 ├── rider/assignments/[id]/deliver/route.ts   # 4-digit PIN proof → delivered + COD cash
 ├── rider/settle/route.ts  # POST cash settlement → rider_settlements + zero hand balance
+├── rider/settlements/route.ts # GET own recent pay-in history
 ├── admin/_lib.ts          # staffRoute() wrapper: auth + rate limit + errors
 ├── admin/orders/...       # list (filters) / detail / advance (cancel releases stock)
 ├── admin/products/...     # GET full catalog / POST create / PATCH update
