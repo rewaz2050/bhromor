@@ -350,6 +350,38 @@ export default function RiderPage() {
           )}
         </section>
 
+        {/* Recent cash pay-ins (live only; demo has no persisted ledger) */}
+        {isLive && riderJobsApi.settlements.length > 0 && (
+          <section aria-label="Recent settlements">
+            <h2 className="font-display mb-3 text-base font-semibold text-forest-900">
+              সাম্প্রতিক টাকা জমা (Settlement ইতিহাস)
+            </h2>
+            <ul className="space-y-2">
+              {riderJobsApi.settlements.slice(0, 6).map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between rounded-xl bg-paper p-3 text-xs ring-1 ring-line"
+                >
+                  <div>
+                    <p className="font-semibold text-forest-900">
+                      {formatBdt(s.amount)} · {s.method.toUpperCase()}
+                    </p>
+                    <p className="mt-0.5 text-ink-soft">
+                      {new Date(s.at).toLocaleString("bn-BD", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {s.reference ? ` · ${s.reference}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* Quick Stats Strip */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">

@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { isSupabaseConfigured } from "./env";
 import type { Rider } from "./catalog";
-import type { RiderJob } from "./db/riders";
+import type { RiderJob, RiderSettlement } from "./db/riders";
 
 export class RiderApiError extends Error {
   status: number;
@@ -138,6 +138,7 @@ export const useRiderSession = () => {
 
 export const useRiderJobs = (enabled: boolean) => {
   const [jobs, setJobs] = useState<RiderJob[]>([]);
+  const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,8 +147,12 @@ export const useRiderJobs = (enabled: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs");
-      setJobs(data.jobs);
+      const [jobsData, settlementsData] = await Promise.all([
+        riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
+        riderFetch<{ settlements: RiderSettlement[] }>("/api/rider/settlements"),
+      ]);
+      setJobs(jobsData.jobs);
+      setSettlements(settlementsData.settlements);
       return true;
     } catch (err) {
       setError(riderErrorMessage(err));
@@ -223,5 +228,5 @@ export const useRiderJobs = (enabled: boolean) => {
     [enabled],
   );
 
-  return { jobs, loading, error, refresh, accept, pickup, deliver, setOnline, settle };
+  return { jobs, settlements, loading, error, refresh, accept, pickup, deliver, setOnline, settle };
 };

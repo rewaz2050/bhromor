@@ -19,7 +19,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
 import { toDomain } from "./orders";
 import { AdminInputError } from "./admin";
-import type { DbDeliveryAssignment, DbOrder, DbRider } from "./types";
+import type {
+  DbDeliveryAssignment,
+  DbOrder,
+  DbRider,
+  DbRiderSettlement,
+} from "./types";
 import type { Order } from "../orders";
 
 export interface RiderJob {
@@ -29,6 +34,15 @@ export interface RiderJob {
   offeredAt: number;
   expiresAt: number;
   order: Order;
+}
+
+/** A rider pay-in. Shown to the rider so they can reconcile COD vs deposit. */
+export interface RiderSettlement {
+  id: string;
+  amount: number;
+  method: string;
+  reference: string;
+  at: number;
 }
 
 /** Admin dispatcher row: assignment + rider + full order (slice 7 board). */
@@ -161,6 +175,26 @@ const epoch = (iso: string): number => {
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : Date.now();
 };
+
+export async function listRiderSettlements(
+  service: SupabaseClient,
+  riderId: string,
+): Promise<RiderSettlement[]> {
+  const { data, error } = await service
+    .from("rider_settlements")
+    .select("*")
+    .eq("rider_id", riderId)
+    .order("settled_at", { ascending: false })
+    .limit(25);
+  if (error) throw new Error("rider settlements read failed");
+  return ((data ?? []) as DbRiderSettlement[]).map((row) => ({
+    id: row.id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    at: epoch(row.settled_at),
+  }));
+}
 
 export async function listRiderJobs(
   service: SupabaseClient,
