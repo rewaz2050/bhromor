@@ -11,7 +11,6 @@ interface Props {
 export default function LanguageSwitcher({ variant = "header", className = "" }: Props) {
   const { lang, setLang, t } = useLanguage();
 
-  const isHeader = variant === "header";
   const isDrawer = variant === "drawer";
 
   const base =

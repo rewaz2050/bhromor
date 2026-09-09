@@ -32,7 +32,7 @@ export default function Footer() {
   ];
   const COMPANY_LINKS = [
     { label: t("footer.ourStory"), href: "/about" },
-    { label: t("footer.visualJournal"), href: "/#journal" },
+    { label: t("footer.visualJournal"), href: "/shop#journal" },
     { label: "দোকানদার রেজিস্ট্রেশন (Sell with us)", href: "/shops/apply" },
     { label: "রাইডার রেজিস্ট্রেশন (Become a Rider)", href: "/rider/apply" },
     { label: "রাইডার পোর্টাল (Rider App)", href: "/rider" },
@@ -42,8 +42,7 @@ export default function Footer() {
 
   return (
     <footer className="bg-forest-950 text-ivory-100">
-      {signupUrl && (
-        <div className="border-b border-white/15">
+      <div className="border-b border-white/15">
           <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-12 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-14">
             <div>
               <p className="text-[0.6rem] font-medium uppercase tracking-[0.25em] text-gold-300">
@@ -57,10 +56,9 @@ export default function Footer() {
                 {t("footer.newsletterText")}
               </p>
             </div>
-            <Newsletter signupUrl={signupUrl} />
+            <Newsletter signupUrl={signupUrl ?? undefined} />
           </div>
         </div>
-      )}
 
       {/* Assurance strip — what shopping with PROSANTI feels like */}
       <div className="border-b border-white/10">

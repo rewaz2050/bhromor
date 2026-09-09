@@ -94,8 +94,9 @@ export default async function DeliveryPage() {
             number — no account needed.
           </li>
           <li>
-            Orders are delivered by our own riders; a live courier map is
-            planned for a later phase.
+            Orders are delivered by our own riders — open the{" "}
+            <Link href="/track">Track page</Link> to follow the live courier
+            route map once an order is under way.
           </li>
           <li>
             We only expand delivery zones when the operation can reliably hold

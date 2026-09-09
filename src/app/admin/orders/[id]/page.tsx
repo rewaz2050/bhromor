@@ -202,7 +202,7 @@ export default function AdminOrderDetailPage() {
                 Customer & delivery
               </h3>
               <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold font-mono text-emerald-800">
-                <IconShield className="h-3 w-3" /> PIN: {getDeliveryCode(order.id)}
+                <IconShield className="h-3 w-3" /> PIN: {order.deliveryCode ?? getDeliveryCode(order.id)}
               </span>
             </div>
             <dl className="mt-4 space-y-3 text-sm">

@@ -35,19 +35,23 @@ Run **in this order, in one sequence** (skip files you already applied —
 4. `supabase/migrations/202609080003_place_order_rpc.sql`
 5. `supabase/migrations/202609090004_marketplace_shops.sql`
 6. `supabase/migrations/202609090005_riders.sql`
-7. **`supabase/migrations/202609090006_engagement.sql`** ← new:
-   contact/newsletter/media tables + the public homepage-CMS read policy
+7. `supabase/migrations/202609090006_engagement.sql`
+8. `supabase/migrations/202609090007_rider_dispatch.sql`
+9. **`supabase/migrations/202609090008_dispatch_auto.sql`** ← new:
+   auto-offer trigger + admin assign/cancel RPCs (Phase 3 slice 7)
 
-Quick check after step 7 (SQL editor):
+Quick check after step 9 (SQL editor):
 
 ```sql
 select key from site_settings where key in ('homepage', 'ops');
 select count(*) from contact_messages;
 select count(*) from newsletter_subscribers;
 select count(*) from media_library;
+select count(*) from orders where delivery_code is not null;
+select count(*) from delivery_assignments;
 ```
 
-All four statements must run without “relation does not exist”.
+All statements must run without “relation does not exist”.
 
 ## 2. Environment
 
@@ -109,8 +113,18 @@ Do these on the deployed site, in order:
       browsers (proves the shared table, not localStorage)
 - [ ] `/admin/settings` → set the low-stock threshold → dashboard and
       inventory alerts follow it; no “Reset demo” buttons anywhere in live
-- [ ] `/checkout` → place a real test order (COD) → `/track` finds it by
-      ID + phone → `/admin/orders` shows it → advance it → bell notice
+- [ ] `/checkout` → place a real test order (COD) → confirmation shows the
+      4-digit delivery PIN → `/track` finds it by ID + phone →
+      `/admin/orders` shows it → advance it → bell notice
+- [ ] Rider network: `/admin/riders` approve a rider → `/admin/riders` →
+      **link rider** with the rider's Auth email → open `/rider` in an
+      incognito window → sign in → `/rider` shows their job queue
+- [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
+      **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
+      for the auto-offer trigger) → the linked rider sees the offer → accept
+      → pickup → deliver with the customer's 4-digit code
+- [ ] `/api/rider/*` returns 401/403 for signed-out or unlinked visitors;
+      delivery only closes when the customer's 4-digit code matches
 - [ ] `/admin/notifications` → **Mark all read** → bell count clears
 - [ ] `/api/products`, `/api/zones`, `/api/reviews?featured=1` return rows
 
@@ -137,6 +151,7 @@ direct file-picker upload, add the four Cloudinary variables from
 |---|---|
 | `/api/products` → `NOT_SEEDED` | Step 3 not run → `npm run seed` |
 | Homepage publish “works” but `/` unchanged | Migration 006 not applied → public read policy missing; apply step 1.7 |
+| `/rider` shows only login in live mode | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |
 | Admin sign-in → “not a staff member” | Auth user exists but no `admin_users` row → step 4.2 |
 | Admin API → 401 right after sign-in | Session cookie lost (private window / clock skew) → sign in again |

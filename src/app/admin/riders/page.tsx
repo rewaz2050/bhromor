@@ -36,6 +36,7 @@ function RiderCard({
   onSave,
   onStatus,
   onLinkRider,
+  onSettle,
 }: {
   rider: Rider;
   zones: { id: string; name: string }[];
@@ -43,6 +44,7 @@ function RiderCard({
   onSave: (r: Rider) => Promise<boolean>;
   onStatus: (id: string, status: Rider["status"]) => void;
   onLinkRider: (id: string, email: string) => Promise<boolean>;
+  onSettle: (r: Rider) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(rider.name);
@@ -121,10 +123,10 @@ function RiderCard({
             onClick={() => {
               if (
                 window.confirm(
-                  `Settle ${formatBdt(rider.cashInHand)} cash from ${rider.name}? Cash in hand will be recorded and reset to 0.`,
+                  `Settle ${formatBdt(rider.cashInHand)} cash from ${rider.name}? A pay-in row is recorded and cash in hand resets to 0.`,
                 )
               ) {
-                void onSave({ ...rider, cashInHand: 0 });
+                void onSettle(rider);
               }
             }}
             className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 transition-colors hover:bg-amber-200"
@@ -294,7 +296,7 @@ function RiderCard({
 
 /** Marketplace phase 3 — staff rider queue: approve / suspend / zones. */
 export default function AdminRidersPage() {
-  const { riders, live, loading, error, clearError, saveRider, setStatus, linkRider, reset } =
+  const { riders, live, loading, error, clearError, saveRider, setStatus, settleCash, linkRider, reset } =
     useRiders();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
@@ -525,6 +527,7 @@ export default function AdminRidersPage() {
               onSave={saveRider}
               onStatus={(id, status) => void setStatus(id, status)}
               onLinkRider={linkRider}
+              onSettle={(r) => settleCash(r.id, "cash", "")}
             />
           ))}
         </ul>

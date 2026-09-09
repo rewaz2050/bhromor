@@ -30,6 +30,14 @@ src/app/api/
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
 ├── shops/apply/route.ts   # POST public intake → pending row (5/min/IP)
 ├── riders/apply/route.ts  # POST rider intake → pending row (5/min/IP)
+├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors
+├── rider/me/route.ts      # rider session probe (rider + linked email)
+├── rider/jobs/route.ts    # own delivery assignments with full order snapshots
+├── rider/online/route.ts  # PATCH own online switch
+├── rider/assignments/[id]/accept/route.ts    # offer → accepted
+├── rider/assignments/[id]/pickup/route.ts    # accepted → picked_up + order out-for-delivery
+├── rider/assignments/[id]/deliver/route.ts   # 4-digit PIN proof → delivered + COD cash
+├── rider/settle/route.ts  # POST cash settlement → rider_settlements + zero hand balance
 ├── admin/_lib.ts          # staffRoute() wrapper: auth + rate limit + errors
 ├── admin/orders/...       # list (filters) / detail / advance (cancel releases stock)
 ├── admin/products/...     # GET full catalog / POST create / PATCH update
@@ -42,6 +50,9 @@ src/app/api/
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
 ├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
 ├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login
+├── admin/deliveries/route.ts       # GET dispatch board (assignments + awaiting orders)
+├── admin/deliveries/offer/route.ts # POST {orderId}: staff re-offers an order
+├── admin/deliveries/[id]/cancel/route.ts # POST: staff cancels a live assignment
 ├── admin/staff/route.ts   # GET list / POST grant / DELETE revoke (admin/super_admin)
 ├── vendor/_lib.ts         # vendorRoute() wrapper: vendor auth + rate limit + errors
 ├── vendor/me/route.ts     # vendor session probe (email + role + shop)
@@ -63,6 +74,8 @@ src/lib/
 ├── supabase-server.ts     # RLS + service-role server clients (server-only)
 ├── staff-auth.ts          # requireStaff(): JWT verify + admin_users role (server-only)
 ├── vendor-auth.ts         # requireVendor(): JWT + vendor_users link + active shop (server-only)
+├── rider-auth.ts          # requireRider(): JWT + riders link + active rider (server-only)
+├── use-rider.ts           # rider fetch + session/jobs/actions hooks (live; CLI demo fallback in UI)
 ├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (no demo mode)
 ├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
 ├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
@@ -86,7 +99,7 @@ src/lib/
     ├── orders.ts          # snapshot (+ shops) / placeLiveOrder (single RPC) / findLiveOrder
     ├── admin.ts           # staff CRUD used by /api/admin/* routes
     ├── marketplace.ts     # public shops discovery + application intake
-    ├── riders.ts          # public rider application intake
+    ├── riders.ts          # rider application intake + live rider job/action helpers
     ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)
     ├── engagement.ts      # contact/newsletter/CMS/media/notif/settings + notifyStaff
     └── storefront.ts      # server page reads with seed fallback
@@ -98,7 +111,9 @@ supabase/
     ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
     ├── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS + settlement triggers
     ├── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
-    └── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
+    ├── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
+    ├── 202609090007_rider_dispatch.sql        # delivery_code trigger + rider accept/pickup/deliver/settle RPCs
+    └── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
@@ -118,6 +133,8 @@ scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_a
    - `supabase/migrations/202609090004_marketplace_shops.sql`
    - `supabase/migrations/202609090005_riders.sql`
    - `supabase/migrations/202609090006_engagement.sql`
+   - `supabase/migrations/202609090007_rider_dispatch.sql`
+   - `supabase/migrations/202609090008_dispatch_auto.sql`
 
 ### 2. Environment
 
@@ -258,6 +275,14 @@ storefront returns to demo mode — no code change, no broken pages.
   through the RLS-bound client, link Auth logins one-account-per-rider, and
   a `trg_riders_guard_self_update` trigger lets riders change only their
   own online switch.
+- **Rider dispatch changes happen in security-definer RPCs**
+  (`ps_rider_accept`, `ps_rider_pickup`, `ps_rider_deliver`,
+  `ps_rider_settle`). Every `/api/rider/*` route first calls `requireRider()`
+  and re-checks ownership server-side; assignment rows are locked before the
+  state transition, pickup moves the order only from `ready-for-pickup`, and
+  delivery compares the order's deterministic 4-digit code before crediting
+  `riders.cash_in_hand`. Cash settlement inserts a `rider_settlements` row and
+  zeroes the balance in the same transaction.
 - **In-memory rate limits** blunt casual abuse only; edge rate-limiting is
   a hardening follow-up.
 
@@ -265,9 +290,12 @@ storefront returns to demo mode — no code change, no broken pages.
 
 - **SMS/WhatsApp** notifications and **online payment gateways** need third
   party accounts — documented only, no code paths pretend otherwise.
-- Admin **Homepage CMS, Notifications, Payments, Settings** pages stay
-  browser-local (no live tables yet); the dashboard, reports, customers,
-  inventory and catalog-overview pages read through the upgraded hooks, so
-  they reflect live data automatically.
+- **Image upload is add-by-URL until Cloudinary keys are set**; without
+  keys `POST /api/media/sign` answers 503.
+- Auto-dispatch uses longest-idle eligibility (active + online + home-zone
+  + under cap). Offer expiry is re-checked on every rider/admin read and
+  the same order is re-offered to the next eligible rider; no-eligible-rider
+  leaves it on the awaiting board for manual assignment. A live push channel
+  and GPS-based nearest-rider matching are dispatch hardening follow-ups.
 - Hardening follow-ups: edge rate limits, audit logging (§76), per-action
   staff roles, variant-level stock counts.

@@ -199,6 +199,8 @@ export interface DbOrder {
   total: number;
   payment: "cod";
   status: DbOrderStatus;
+  rider_id: string | null;
+  delivery_code: string | null;
   created_at: string;
   updated_at: string;
 }

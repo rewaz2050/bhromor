@@ -44,11 +44,11 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 261 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 282 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
-The public homepage now follows one shorter editorial journey: **cinematic hero → collections → best sellers → brand philosophy → service strip → visual journal**. Duplicate new-arrival, mood, budget and delivery rails were removed from the landing page; those discovery paths remain available in the shop. The hero and journal use dedicated lifestyle imagery, while product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
+The public homepage now follows one shorter editorial journey: **cinematic hero → collections → featured edit → service promise strip**. Duplicate new-arrival, mood, budget and delivery rails were removed from the landing page; those discovery paths and the owned visual journal remain available in the shop. The hero and journal use dedicated lifestyle imagery, while product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
 
 The palette is warm ivory, deep charcoal/forest and restrained bronze-gold. English display type (Playfair), interface type (Inter) and Bengali copy (Noto Serif Bengali) have explicit roles. Seed/demo ratings and reviews are not rendered on public home or product pages; the moderation prototype remains available in admin until genuine customer proof is connected.
 
@@ -91,6 +91,7 @@ Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated
 - Products: catalog list w/ search + visibility filters, quick featured/archive actions, full sectioned editor (basics, pricing, variants/stock, media URLs + YouTube, publishing, SEO)
 - Categories: data-driven create/edit/reorder/hide with Bengali names & subcategories (§5)
 - Delivery zones: zone CRUD + reorder + active state — saved zones are what the customer checkout uses live (§20–21)
+- Deliveries: §3.2 dispatch board — auto-offer on ready-for-pickup, offer expiry + re-offer, manual assign/cancel, rider cash exposure
 - Reviews: moderation queue — approve/hide/flag/feature/delete; storefront reviews wait for approval, verified badge only with matching order (§30)
 - Coupons: fixed/percent, min order, category scope, validity & usage limits; checkout applies codes live; usage is recorded when an order is placed (§56)
 - Inventory: per-product stock editor with configurable low-stock threshold that drives the dashboard alert (§57–58)
@@ -126,6 +127,7 @@ src/
 │   │   ├── products/         # list, new, [id] editor (§71–74)
 │   │   ├── categories/       # data-driven CRUD (§5)
 │   │   ├── zones/            # delivery-zone manager (§20–21)
+│   │   ├── deliveries/       # §3.2 dispatch board + manual assign/cancel
 │   │   ├── homepage/         # §31 CMS: announcement, hero, sections
 │   │   ├── customers/        # derived from the order store
 │   │   ├── reviews/          # §30 moderation queue
@@ -138,6 +140,10 @@ src/
 │   │   ├── reports/          # sales reports over the order store
 │   │   ├── settings/         # ops settings + demo-data resets
 │   │   └── payments/         # COD-only policy + method roadmap
+│   └── rider/                # mobile rider surface (login/apply/shell)
+│       ├── page.tsx          # live jobs, PIN proof, COD settlement
+│       ├── login/            # rider Auth sign-in / sign-up
+│       └── apply/            # pending rider intake
 ├── supabase/schema.sql       # §41–46: tables, RLS, order state machine
 │   ├── icon.png · favicon.ico
 │   └── globals.css           # design tokens (forest/ivory/gold)
@@ -150,6 +156,8 @@ src/
 │   └── ui/                   # buttons, badges, prices, icons
 ├── public/brand/             # official emblem artwork (transparent PNG + lockup)
 └── lib/                      # catalog, orders (state machine), cart, money (paisa)
+    ├── rider-auth.ts         # requireRider(): session → riders row gate
+    └── use-rider.ts          # rider session/jobs/actions client hooks
 ```
 
 ## Deploying to Vercel
@@ -163,7 +171,7 @@ Live project: [bhromor-zeta.vercel.app](https://bhromor-zeta.vercel.app). `verce
 
 ## Next phases (in order)
 
-1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply SQL through migration `006`, `npm run seed`, grant the first staff role, run the verify checklist. Production currently serves the catalog but the database must be seeded before live checkout works.
+1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply SQL through migration `008`, `npm run seed`, approve + link the first rider, grant the first staff role, run the verify checklist. Production currently serves the catalog but the database must be seeded before live checkout works.
 2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) once a gateway account exists; Cloudinary keys enable direct media upload (§48) — both optional, everything else is already real.
 
 

@@ -82,6 +82,7 @@ export default function CheckoutView() {
     charge: number;
     total: number;
     addressSummary: string;
+    deliveryCode?: string;
   } | null>(null);
 
   // Coupon truth lives on the server: the code is validated against the
@@ -185,7 +186,7 @@ export default function CheckoutView() {
   const empty = detail.length === 0;
 
   if (placed) {
-    const deliveryCode = getDeliveryCode(placed.orderId);
+    const deliveryCode = placed.deliveryCode ?? getDeliveryCode(placed.orderId);
 
     return (
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
@@ -438,6 +439,7 @@ export default function CheckoutView() {
         charge: data.order.deliveryCharge,
         total: data.order.total,
         addressSummary: `${form.address || form.area}, ${data.order.zoneName}`,
+        deliveryCode: data.order.deliveryCode,
       });
       clear();
       return;

@@ -16,7 +16,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   const isAssigned = order.status === "courier-assigned" || order.status === "ready-for-pickup";
   const isPreparing = order.status === "preparing" || order.status === "confirmed" || order.status === "pending";
 
-  const deliveryCode = getDeliveryCode(order.id);
+  const deliveryCode = order.deliveryCode ?? getDeliveryCode(order.id);
 
   // Derive base progress and animate subtle simulated motion when active
   const baseProgress = isDelivered ? 1 : isOut ? 0.65 : isAssigned ? 0.25 : 0.05;
@@ -58,10 +58,15 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
   const riderPos = getPointOnCurve(transitProgress);
 
-  // Mock rider info for active delivery legs
-  const riderName = "তানভীর আহমেদ (Tanvir)";
-  const riderPhone = "01811111111";
-  const riderRating = "4.9 ★";
+  // Live orders carry the assigned rider; demo/older rows keep the mock so
+  // the editorial preview still has a rider to show.
+  const riderName =
+    order.rider?.name ?? "তানভীর আহমেদ (Tanvir)";
+  const riderPhone = order.rider?.phone ?? "01811111111";
+  const riderRating =
+    order.rider?.ratingCount != null && order.rider.ratingCount > 0
+      ? `${order.rider.ratingAvg.toFixed(1)} ★`
+      : "4.9 ★";
 
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-paper shadow-sm" data-testid="live-delivery-map">

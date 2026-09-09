@@ -5,6 +5,7 @@ import {
   getStorefrontZones,
 } from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
+import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
 
 export const metadata: Metadata = {
@@ -60,6 +61,8 @@ export default async function ShopPage({
           initialPrice={params.price === "under500" ? "under500" : "any"}
         />
       </div>
+      {/* Visual journal retained on the shop (removed from the short homepage). */}
+      <BrandJournal />
     </>
   );
 }

@@ -37,7 +37,7 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 export const SECTION_LABELS: Record<SectionKey, string> = {
   hero: "Cinematic hero",
   collections: "Collections",
-  featured: "Best sellers",
+  featured: "Featured edit",
   brandStory: "Brand philosophy",
   trust: "Service promise strip",
   brandJournal: "Visual journal",

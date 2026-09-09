@@ -233,7 +233,7 @@ export const toDomain = async (
     );
   }
   const zone = (zoneRes.data ?? {}) as { name?: string; eta_label?: string };
-  return mapOrder({
+  const domain = mapOrder({
     order,
     items,
     history: (historyRes.data ?? []) as DbOrderHistory[],
@@ -242,6 +242,46 @@ export const toDomain = async (
     couponCode: (couponRes.data as { code: string } | null)?.code,
     products,
   });
+  if (!domain) return null;
+  if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+
+  // Slice 9 rider-leg: attach the assigned rider when dispatch has started.
+  if (["courier-assigned", "out-for-delivery", "delivered"].includes(domain.status)) {
+    const { data: assignment } = await db
+      .from("delivery_assignments")
+      .select("rider_id")
+      .eq("order_id", order.id)
+      .order("offered_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const riderId = (assignment as { rider_id?: string } | null)?.rider_id;
+    if (riderId) {
+      const { data: rider } = await db
+        .from("riders")
+        .select("id,name,phone,rating_avg,rating_count")
+        .eq("id", riderId)
+        .maybeSingle();
+      const r = rider as
+        | {
+            id: string;
+            name: string;
+            phone: string;
+            rating_avg: number;
+            rating_count: number;
+          }
+        | null;
+      if (r) {
+        domain.rider = {
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          ratingAvg: r.rating_avg,
+          ratingCount: r.rating_count,
+        };
+      }
+    }
+  }
+  return domain;
 };
 
 const findLiveOrderById = async (

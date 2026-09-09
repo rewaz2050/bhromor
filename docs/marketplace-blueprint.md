@@ -367,10 +367,10 @@ Phase 2 slices:
 
 Phase 3 slices:
 6. ✅ `005` migration + rider onboarding (apply → approve) + Admin → Riders.
-7. Dispatch engine (offer/accept/expire/re-offer) + Admin → Deliveries board.
-8. `/rider` mobile app (online toggle → job → pickup → code → delivered).
-9. Delivery-code proof + Track page rider-leg timeline.
-10. Cash settlement + caps + exposure dashboard.
+7. ✅ Dispatch engine (auto-offer on ready-for-pickup, offer expiry, staff re-offer/cancel) + Admin → Deliveries board.
+8. ✅ `/rider` mobile app (online toggle → job → pickup → code → delivered).
+9. ✅ Delivery-code proof (DB-generated 4-digit code, customer confirmation/track + admin PIN) + Track page rider-leg timeline.
+10. ✅ Cash settlement (rider self-settle + staff records pay-in) + ৳5,000 cap + Admin → Riders cash exposure.
 
 Rule per slice: demo mode keeps working with zero keys (same standard as
 Phase 1 — every slice ships with seeds/fallbacks and gates green).

@@ -129,6 +129,16 @@ export interface Order {
   coupon?: { code: string; discount: number };
   /** Owning shop (marketplace slice 1). Live orders always carry it. */
   shopId?: string;
+  /** Live 4-digit proof code; absent in demo (the UI derives a demo code). */
+  deliveryCode?: string;
+  /** Assigned rider when dispatch has moved the order (slice 9 tracking). */
+  rider?: {
+    id: string;
+    name: string;
+    phone: string;
+    ratingAvg: number;
+    ratingCount: number;
+  };
 }
 
 export interface PlacedOrderInput {
