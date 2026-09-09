@@ -3,6 +3,7 @@ import {
   mapCoupon,
   mapOrder,
   mapProduct,
+  mapShop,
   mapZone,
   youtubeIdFromUrl,
 } from "../mappers";
@@ -19,6 +20,7 @@ import type {
 
 const productRow = (overrides: Partial<DbProduct> = {}): DbProduct => ({
   id: "uuid-p1",
+  shop_id: "shop-uuid-1",
   slug: "heritage-green-panjabi",
   name: "Heritage Green Panjabi",
   name_bn: "হেরিটেজ সবুজ পাঞ্জাবি",
@@ -166,6 +168,7 @@ describe("mapZone / mapCoupon", () => {
 describe("mapOrder", () => {
   const orderRow = (overrides: Partial<DbOrder> = {}): DbOrder => ({
     id: "order-uuid",
+    shop_id: "shop-uuid-1",
     order_no: "PS-20260908-1234",
     customer_id: null,
     customer_name: "Rahat Ahmed",
@@ -247,5 +250,68 @@ describe("mapOrder", () => {
       { status: "pending", at: Date.parse("2026-09-08T10:00:00.000Z") },
     ]);
     expect(bare.items[0].slug).toBe("");
+  });
+});
+
+describe("mapShop (marketplace slice 1)", () => {
+  it("maps a shop row and passes shopId through product/order mappers", () => {
+    const shop = mapShop({
+      id: "shop-uuid-1",
+      slug: "prosanti-direct",
+      name: "PROSANTI Direct",
+      tagline: "",
+      logo_url: "",
+      phone: "01700000000",
+      address: "House 1",
+      zone_ids: ["z1", "z2"],
+      prep_minutes: 15,
+      commission_pct: 15,
+      status: "active",
+      is_open: true,
+      rating_avg: 4.5,
+      rating_count: 10,
+      created_at: "2026-09-09T00:00:00.000Z",
+    });
+    expect(shop.slug).toBe("prosanti-direct");
+    expect(shop.tagline).toBeUndefined();
+    expect(shop.zoneIds).toEqual(["z1", "z2"]);
+    expect(shop.commissionPct).toBe(15);
+    expect(shop.ratingAvg).toBe(4.5);
+
+    const product = mapProduct({
+      product: productRow(),
+      variants: [],
+      media: [],
+    });
+    expect(product.shopId).toBe("shop-uuid-1");
+
+    const order = mapOrder({
+      order: {
+        id: "order-uuid",
+        shop_id: "shop-uuid-1",
+        order_no: "PS-20260908-1234",
+        customer_id: null,
+        customer_name: "Rahat Ahmed",
+        customer_phone: "01712345678",
+        area: "Kandirpar",
+        address: "House 12",
+        note: "",
+        zone_id: "z1",
+        subtotal: 149000,
+        delivery_charge: 5000,
+        discount: 0,
+        coupon_id: null,
+        total: 154000,
+        payment: "cod",
+        status: "pending",
+        created_at: "2026-09-08T10:00:00.000Z",
+        updated_at: "2026-09-08T10:00:00.000Z",
+      },
+      items: [],
+      history: [],
+      zoneName: "Zone A",
+      etaLabel: "40–50 min",
+    });
+    expect(order.shopId).toBe("shop-uuid-1");
   });
 });

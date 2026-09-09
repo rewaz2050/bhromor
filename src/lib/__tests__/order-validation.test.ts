@@ -217,3 +217,55 @@ describe("validateOrderPayload", () => {
     expect(result.draft.total).toBe(result.draft.deliveryCharge);
   });
 });
+
+describe("validateOrderPayload single-shop rule (marketplace slice 1)", () => {
+  const shopped = (shopOf: Record<string, string>): Product[] =>
+    PRODUCTS.map((p) => ({ ...p, shopId: shopOf[p.id] ?? "shop-1" }));
+
+  it("accepts items from one shop", () => {
+    const result = validateOrderPayload(
+      payload({
+        items: [
+          { productId: "p1", variantLabel: "Forest Green · L", qty: 1 },
+          { productId: "p4", variantLabel: "Emerald · L", qty: 1 },
+        ],
+      }),
+      { ...snapshot(), products: shopped({}) },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects mixed-shop bags with a field error", () => {
+    const result = validateOrderPayload(
+      payload({
+        items: [
+          { productId: "p1", variantLabel: "Forest Green · L", qty: 1 },
+          { productId: "p4", variantLabel: "Emerald · L", qty: 1 },
+        ],
+      }),
+      { ...snapshot(), products: shopped({ p4: "shop-2" }) },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      {
+        field: "items",
+        message:
+          "One order can only contain items from one shop — check out each shop's bag separately.",
+      },
+    ]);
+  });
+
+  it("skips the check for demo seeds without shopId", () => {
+    const result = validateOrderPayload(
+      payload({
+        items: [
+          { productId: "p1", variantLabel: "Forest Green · L", qty: 1 },
+          { productId: "p4", variantLabel: "Emerald · L", qty: 1 },
+        ],
+      }),
+      snapshot(),
+    );
+    expect(result.ok).toBe(true);
+  });
+});

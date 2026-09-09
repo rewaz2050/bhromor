@@ -44,6 +44,30 @@ export interface Product {
   active?: boolean;
   stock?: number;
   seo?: { title?: string; description?: string };
+  /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
+      implicitly belong to shop #1, so demo rows omit it. */
+  shopId?: string;
+}
+
+/**
+ * A listed shop (marketplace phase 2). Phase 1 has exactly one — shop #1,
+ * the owner's own catalog ("PROSANTI Direct" until D9 is decided).
+ */
+export interface Shop {
+  id: string;
+  slug: string;
+  name: string;
+  tagline?: string;
+  logoUrl?: string;
+  phone: string;
+  address?: string;
+  zoneIds: string[];
+  prepMinutes: number;
+  commissionPct: number;
+  status: "pending" | "active" | "suspended";
+  isOpen: boolean;
+  ratingAvg: number;
+  ratingCount: number;
 }
 
 /**

@@ -22,6 +22,8 @@ export interface Review {
   status: ReviewStatus;
   verified: boolean;
   featured?: boolean;
+  /** Owning shop, denormalized for shop ratings (marketplace slice 1). */
+  shopId?: string;
 }
 
 export const STATUS_LABEL: Record<ReviewStatus, string> = {

@@ -135,7 +135,7 @@ export const placementErrorFrom = (error: {
       ? "couponCode"
       : /zone/i.test(message)
         ? "zoneId"
-        : /qty|quantity|product|variant|stock|left of|empty/i.test(message)
+        : /qty|quantity|product|variant|stock|left of|empty|shop/i.test(message)
           ? "items"
           : "order";
     return new OrderPlacementError(field, message, 422);

@@ -12,6 +12,7 @@ import type {
   DeliveryZone,
   Product,
   ProductMedia,
+  Shop,
 } from "../catalog";
 import type { Coupon } from "../coupons";
 import type {
@@ -31,6 +32,7 @@ import type {
   DbOrderStatus,
   DbProduct,
   DbReview,
+  DbShop,
   DbVariant,
   DbZone,
 } from "./types";
@@ -176,8 +178,27 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
             description: p.seo_description ?? undefined,
           }
         : undefined,
+    shopId: p.shop_id,
   };
 };
+
+/** Shop row → the marketplace `Shop` shape (slice 1: read-only use). */
+export const mapShop = (row: DbShop): Shop => ({
+  id: row.id,
+  slug: row.slug,
+  name: row.name,
+  tagline: row.tagline || undefined,
+  logoUrl: row.logo_url || undefined,
+  phone: row.phone,
+  address: row.address || undefined,
+  zoneIds: [...row.zone_ids],
+  prepMinutes: row.prep_minutes,
+  commissionPct: Number(row.commission_pct),
+  status: row.status,
+  isOpen: row.is_open,
+  ratingAvg: Number(row.rating_avg),
+  ratingCount: row.rating_count,
+});
 
 export interface OrderRowBundle {
   order: DbOrder;
@@ -255,6 +276,7 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       bundle.couponCode && o.discount > 0
         ? { code: bundle.couponCode, discount: o.discount }
         : undefined,
+    shopId: o.shop_id,
   };
 };
 
@@ -270,4 +292,5 @@ export const mapReview = (row: DbReview): Review => ({
   status: row.status as ReviewStatus,
   verified: row.verified,
   featured: row.featured || undefined,
+  shopId: row.shop_id,
 });

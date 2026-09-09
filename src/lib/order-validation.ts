@@ -206,6 +206,25 @@ export const validateOrderPayload = (
   if (errors.length > 0) return { ok: false, errors };
   if (!zone) return { ok: false, errors }; // narrowed above; keeps TS honest
 
+  // Single-shop rule (D1, Foodpanda model): one order = one shop. Live
+  // products always carry shopId; demo seeds omit it and skip the check.
+  // The ps_place_order RPC re-enforces this authoritatively.
+  const shopIds = new Set(
+    priced.map((it) => it.product.shopId).filter((s): s is string => !!s),
+  );
+  if (shopIds.size > 1) {
+    return {
+      ok: false,
+      errors: [
+        {
+          field: "items",
+          message:
+            "One order can only contain items from one shop — check out each shop's bag separately.",
+        },
+      ],
+    };
+  }
+
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
   const deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
 

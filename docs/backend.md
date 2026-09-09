@@ -56,7 +56,8 @@ supabase/
 └── migrations/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
-    └── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
+    ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
+    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + single-shop RPC guard
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
 ```
 
@@ -72,6 +73,7 @@ scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
    - `supabase/migrations/202609080001_storefront_saved_items.sql`
    - `supabase/migrations/202609080002_order_guards.sql`
    - `supabase/migrations/202609080003_place_order_rpc.sql`
+   - `supabase/migrations/202609090004_marketplace_shops.sql`
 
 ### 2. Environment
 
@@ -104,7 +106,7 @@ On Vercel, set the same variables in the project settings.
 
 ```bash
 npm run seed:dry   # review the plan (writes nothing)
-npm run seed       # upsert categories, zones, coupons, products + variants + media
+npm run seed       # upsert shop #1, categories, zones, coupons, products + variants + media
 ```
 
 Re-running is safe (upserts on natural keys; media rows are rebuilt per

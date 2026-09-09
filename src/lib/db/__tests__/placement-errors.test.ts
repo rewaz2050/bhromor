@@ -38,3 +38,24 @@ describe("placementErrorFrom (ps_place_order failures)", () => {
     expect(err.message).not.toContain("deadlock");
   });
 });
+
+describe("placementErrorFrom shop messages (marketplace slice 1)", () => {
+  it("maps shop-guard raises to items-field 422s", () => {
+    for (const message of [
+      "shop unavailable",
+      "shop closed",
+      "order mixes multiple shops",
+    ]) {
+      const err = placementErrorFrom({ code: "P0001", message });
+      expect(err.status).toBe(422);
+      expect(err.field).toBe("items");
+    }
+    // Zone mismatch points at the zone picker instead.
+    const zoneErr = placementErrorFrom({
+      code: "P0001",
+      message: "shop does not deliver to zone",
+    });
+    expect(zoneErr.status).toBe(422);
+    expect(zoneErr.field).toBe("zoneId");
+  });
+});

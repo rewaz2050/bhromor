@@ -28,8 +28,54 @@ export interface DbCategory {
   active: boolean;
 }
 
+export interface DbShop {
+  id: string;
+  slug: string;
+  name: string;
+  tagline: string;
+  logo_url: string;
+  phone: string;
+  address: string;
+  zone_ids: string[];
+  prep_minutes: number;
+  commission_pct: number;
+  status: "pending" | "active" | "suspended";
+  is_open: boolean;
+  rating_avg: number;
+  rating_count: number;
+  created_at: string;
+}
+
+export interface DbVendorUser {
+  user_id: string;
+  shop_id: string;
+  role: "owner" | "staff";
+  created_at: string;
+}
+
+export interface DbShopLedger {
+  id: string;
+  shop_id: string;
+  order_id: string;
+  subtotal: number;
+  commission: number;
+  payable: number;
+  created_at: string;
+}
+
+export interface DbShopPayout {
+  id: string;
+  shop_id: string;
+  amount: number;
+  method: string;
+  reference: string;
+  paid_at: string;
+  paid_by: string | null;
+}
+
 export interface DbProduct {
   id: string;
+  shop_id: string;
   slug: string;
   name: string;
   name_bn: string;
@@ -101,6 +147,7 @@ export interface DbCoupon {
 
 export interface DbOrder {
   id: string;
+  shop_id: string;
   order_no: string | null;
   customer_id: string | null;
   customer_name: string;
@@ -143,6 +190,7 @@ export interface DbOrderHistory {
 
 export interface DbReview {
   id: string;
+  shop_id: string;
   product_id: string;
   customer_id: string | null;
   author: string;

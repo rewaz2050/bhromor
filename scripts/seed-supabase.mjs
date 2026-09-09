@@ -249,6 +249,7 @@ if (DRY) {
   const variantCount = PRODUCTS.reduce((n, p) => n + p.colors.length * p.sizes.length, 0);
   const mediaCount = PRODUCTS.reduce((n, p) => n + p.media.length, 0);
   console.log("Dry run — would upsert:");
+  console.log(`  shops: 1 (prosanti-direct — owner's own catalog)`);
   console.log(`  categories: ${CATEGORIES.length}`);
   console.log(`  delivery_zones: ${ZONES.length}`);
   console.log(`  coupons: ${COUPONS.length}`);
@@ -260,6 +261,33 @@ if (DRY) {
 }
 
 console.log(`Seeding ${URL} …`);
+
+// 0. shop #1 — the owner's own catalog (marketplace slice 1). Everything
+// seeded below belongs to it; vendors onboard later via Admin → Shops.
+{
+  const { error } = await db.from("shops").upsert(
+    {
+      slug: "prosanti-direct",
+      name: "PROSANTI Direct",
+      phone: "",
+      zone_ids: ZONES.map((z) => z.id),
+      prep_minutes: 15,
+      commission_pct: 15,
+      status: "active",
+      is_open: true,
+    },
+    { onConflict: "slug" },
+  );
+  if (error) fail("shops upsert", error);
+  console.log(`✓ shops (prosanti-direct)`);
+}
+const { data: shopRow, error: shopError } = await db
+  .from("shops")
+  .select("id")
+  .eq("slug", "prosanti-direct")
+  .single();
+if (shopError || !shopRow) fail("shops re-read", shopError);
+const SHOP_ID = shopRow.id;
 
 // 1. lookup tables
 {
@@ -287,6 +315,7 @@ console.log(`Seeding ${URL} …`);
 {
   const rows = PRODUCTS.map((p) => ({
     slug: p.slug,
+    shop_id: SHOP_ID,
     name: p.name,
     name_bn: p.name_bn,
     sku: p.sku,
