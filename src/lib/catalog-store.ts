@@ -131,10 +131,24 @@ const notify = () => {
 const seedProducts = (): Product[] => PRODUCTS.map(cloneProduct);
 const seedCategories = (): Category[] => CATEGORIES.map(cloneCategory);
 
-const ensureLoaded = (): { products: Product[]; categories: Category[] } => {
-  if (loaded && productsCache && categoriesCache) {
-    return { products: productsCache, categories: categoriesCache };
-  }
+type CatalogSnapshot = { products: Product[]; categories: Category[] };
+
+/**
+ * Cached snapshot wrapper — useSyncExternalStore needs a stable identity.
+ * Returning a fresh object per call makes React re-render forever until it
+ * throws "Maximum update depth exceeded", which surfaces as the Next.js
+ * "This page couldn't load" error page (the same bug class as #58/getMedia
+ * and live-catalog.getProductsSnapshot).
+ */
+let snapshotCache: CatalogSnapshot | null = null;
+
+const makeSnapshot = (): CatalogSnapshot => ({
+  products: productsCache ?? seedProducts(),
+  categories: categoriesCache ?? seedCategories(),
+});
+
+const ensureLoaded = (): CatalogSnapshot => {
+  if (loaded && snapshotCache) return snapshotCache;
   loaded = true;
   if (typeof window !== "undefined") {
     try {
@@ -157,12 +171,15 @@ const ensureLoaded = (): { products: Product[]; categories: Category[] } => {
   }
   productsCache ??= seedProducts();
   categoriesCache ??= seedCategories();
-  return { products: productsCache, categories: categoriesCache };
+  snapshotCache = makeSnapshot();
+  return snapshotCache;
 };
 
 const persist = (products: Product[], categories: Category[]) => {
   productsCache = products;
   categoriesCache = categories;
+  // New wrapper per mutation so subscribers see a changed snapshot.
+  snapshotCache = makeSnapshot();
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(

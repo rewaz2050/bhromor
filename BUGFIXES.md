@@ -155,6 +155,24 @@ builds a new object per call makes React re-render forever
 
 ---
 
+## 10. Follow-up: admin "This page couldn't load" after login
+
+Same snapshot-identity class as §7, but in the **admin catalog store**, which the
+dashboard reads on `/admin` — so login worked and the dashboard instantly
+crashed with "Maximum update depth exceeded" (surfaced by Next as *This page
+couldn't load. Reload to try again, or go back*).
+
+| # | Fix |
+|---|-----|
+| 86 | `getCatalog()` returned a fresh `{ products, categories }` object every call → infinite re-render on `/admin` (dashboard) |
+| 87 | `getCouponsServer()` re-seeded coupons every call (`/admin/coupons`) |
+| 88 | `getReviewsServer()` re-seeded reviews every call (`/admin/reviews`) |
+
+Fixes memoise the snapshot (new identity only on real mutations), with
+regression tests in `src/lib/__tests__/store-snapshots.test.ts`.
+
+---
+
 ## New files
 
 - `src/components/ui/drawer.tsx` — accessible, portalled drawer (menu, shop filters, admin nav)

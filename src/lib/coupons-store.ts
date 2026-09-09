@@ -103,7 +103,14 @@ export const subscribeCoupons = (listener: Listener): (() => void) => {
 
 export const getCoupons = (): Coupon[] => ensureLoaded();
 
-export const getCouponsServer = (): Coupon[] => seedCoupons();
+/**
+ * Stable server snapshot for useSyncExternalStore — a fresh `seedCoupons()`
+ * per call re-renders forever until React throws ("The result of
+ * getServerSnapshot should be cached" → Next "This page couldn't load").
+ */
+let serverSnapshot: Coupon[] | null = null;
+export const getCouponsServer = (): Coupon[] =>
+  (serverSnapshot ??= seedCoupons());
 
 export const saveCouponInStore = (coupon: Coupon) =>
   persist(upsertCoupon(ensureLoaded(), coupon));
