@@ -21,6 +21,12 @@ Vercel replaced the old “Sensitive” checkbox. Each variable now has a **type
 
 Save stays disabled until **Name**, **Value**, **type**, and at least one **environment** are all filled.
 
+If Save fails with:
+
+> Remove the public framework prefix to keep this value private. Public prefixes expose values to the browser. If that’s safe, change the variable to Config.
+
+the **Key** starts with `NEXT_PUBLIC_` but **Type** is Secret. `NEXT_PUBLIC_` values are inlined into the browser bundle — Vercel will not store them as Secret. Switch **Type** to **Config** and Save again. Do the opposite for real secrets: `SUPABASE_SERVICE_ROLE_KEY` must stay **Secret** and must **not** use a `NEXT_PUBLIC_` prefix.
+
 ### Add one variable
 
 1. Open the [Environment Variables](https://vercel.com/rewaz2050-8233/bhromor/settings/environment-variables) page.
