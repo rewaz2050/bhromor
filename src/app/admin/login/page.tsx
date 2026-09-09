@@ -128,7 +128,7 @@ export default function AdminLoginPage() {
             <p className="mt-1.5">
               {getAdminMode() === "live"
                 ? "Signed-in staff session detected — dashboard data comes from the database."
-                : "Sign in with your staff account — dashboard data comes from the database."}
+                : "Demo login (admin@prosanti.store) is off. Sign in with the email you created in Supabase → Authentication → Users. That user also needs a row in admin_users."}
             </p>
           </div>
         ) : (

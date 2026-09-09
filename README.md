@@ -152,9 +152,12 @@ src/
 
 ## Deploying to Vercel
 
-1. Merge `arena/01a07f14-bhromor` → `main` when the phase is reviewed.
-2. At [vercel.com/new](https://vercel.com/new), import `rewaz2050/bhromor` — Next.js is auto-detected, no settings needed.
-3. Push to `main` → auto-deploys.
+Live project: [bhromor-zeta.vercel.app](https://bhromor-zeta.vercel.app). `vercel.json` pins Framework = Next.js so dashboard Build settings cannot drift.
+
+1. Push to `main` → auto-deploys.
+2. Add keys in **Project → Settings → Environment Variables** (not team settings). Vercel’s form now asks **Config** vs **Secret** instead of a Sensitive checkbox — see **[docs/vercel.md](docs/vercel.md)** for the exact keys, types, and how to reset Build settings if they were changed by mistake.
+3. After any env change: Deployments → ⋯ → **Redeploy** with “Use existing Build Cache” **unchecked**.
+4. `GET /api/health` reports `"mode":"live"` when Supabase keys are present; otherwise the storefront stays in demo mode.
 
 ## Next phases (in order)
 
