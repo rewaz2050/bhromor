@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useZones } from "@/lib/use-zones";
 import { useRiders } from "@/lib/use-riders";
+import { isSupabaseConfigured } from "@/lib/env";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 
@@ -15,7 +16,10 @@ const VEHICLES = [
 
 export default function RiderApplyPage() {
   const { zones } = useZones();
-  const { saveRider, live } = useRiders();
+  const { saveRider } = useRiders();
+  // Public intake uses the backend whenever Supabase is configured; staff
+  // sessions are irrelevant to an applicant and must not force demo mode.
+  const live = isSupabaseConfigured();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");

@@ -4,12 +4,16 @@ import { useState } from "react";
 import Link from "next/link";
 import { useZones } from "@/lib/use-zones";
 import { useShops } from "@/lib/use-shops";
+import { isSupabaseConfigured } from "@/lib/env";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 
 export default function ShopApplyPage() {
   const { zones } = useZones();
-  const { saveShop, live } = useShops();
+  const { saveShop } = useShops();
+  // Public intake uses the backend whenever Supabase is configured; staff
+  // sessions are irrelevant to an applicant and must not force demo mode.
+  const live = isSupabaseConfigured();
 
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
