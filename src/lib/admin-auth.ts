@@ -69,19 +69,72 @@ export const getAdminMode = (): AdminMode => {
 
 export const isAdminAuthed = (): boolean => getAdminAuthed();
 
-/** Live-mode session probe — the server re-checks role on every call. */
-export const probeStaffSession = async (): Promise<{
+export type StaffProbe = {
   staff: boolean;
   role?: string;
-}> => {
-  try {
-    const res = await fetch("/api/admin/me", { cache: "no-store" });
-    if (!res.ok) return { staff: false };
-    const data = (await res.json()) as { staff?: boolean; role?: string };
-    return data.staff ? { staff: true, role: data.role } : { staff: false };
-  } catch {
-    return { staff: false };
+  status: number;
+  reason?: string;
+};
+
+/** Map a Supabase Auth error into a staff-login explanation. */
+export const mapSupabaseAuthError = (message: string): string => {
+  const m = message.toLowerCase();
+  if (m.includes("email not confirmed")) {
+    return "This email is not confirmed yet. In Supabase → Authentication → Users, open the user and confirm the email (or disable Confirm email).";
   }
+  if (
+    m.includes("invalid login") ||
+    m.includes("invalid credentials") ||
+    m.includes("invalid_credentials")
+  ) {
+    return "Incorrect email or password.";
+  }
+  if (m.includes("failed to fetch") || m.includes("network")) {
+    return "Could not reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL and that the project is not paused.";
+  }
+  return "Incorrect email or password.";
+};
+
+export const isDemoAdminAttempt = (email: string, password: string): boolean =>
+  email.trim().toLowerCase() === DEMO_ADMIN.email &&
+  password === DEMO_ADMIN.password;
+
+export const DEMO_BLOCKED_IN_LIVE =
+  "Demo login is off because Supabase is connected. Sign in with a real staff email — create the user in Supabase → Authentication → Users (auto-confirm), then grant admin_users.";
+
+/** Live-mode session probe — the server re-checks role on every call. */
+export const probeStaffSession = async (): Promise<StaffProbe> => {
+  try {
+    const res = await fetch("/api/admin/me", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      staff?: boolean;
+      role?: string;
+      reason?: string;
+    };
+    if (res.ok && data.staff) {
+      return { staff: true, role: data.role, status: res.status };
+    }
+    return {
+      staff: false,
+      status: res.status,
+      reason: data.reason,
+    };
+  } catch {
+    return { staff: false, status: 0, reason: "Could not reach the server." };
+  }
+};
+
+export const staffProbeError = (probe: StaffProbe): string => {
+  if (probe.status === 403) {
+    return "This account signed in, but it is not staff. In the Supabase SQL editor run: insert into admin_users (id, role) select id, 'admin' from auth.users where email = 'YOUR_EMAIL';";
+  }
+  if (probe.status === 401 || probe.status === 0) {
+    return "Signed in, but the server did not see the session. Redeploy after adding env vars, and set the Site URL in Supabase → Authentication → URL configuration to this Vercel domain.";
+  }
+  return probe.reason ?? "Staff sign-in failed. Try again.";
 };
 
 /**
@@ -124,20 +177,22 @@ export const signInStaff = async (
   email: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string }> => {
+  if (isDemoAdminAttempt(email, password)) {
+    return { ok: false, error: DEMO_BLOCKED_IN_LIVE };
+  }
   const client = getSupabaseBrowser();
   if (!client) return { ok: false, error: "Staff sign-in is not configured." };
   const { error } = await client.auth.signInWithPassword({
     email: email.trim(),
     password,
   });
-  if (error) return { ok: false, error: "Incorrect email or password." };
-  const { staff } = await probeStaffSession();
-  if (!staff) {
+  if (error) return { ok: false, error: mapSupabaseAuthError(error.message) };
+  // Flush the session cookie before the staff probe hits the server.
+  await client.auth.getSession().catch(() => undefined);
+  const probe = await probeStaffSession();
+  if (!probe.staff) {
     await client.auth.signOut().catch(() => undefined);
-    return {
-      ok: false,
-      error: "This account is not staff. Ask an admin for access.",
-    };
+    return { ok: false, error: staffProbeError(probe) };
   }
   if (typeof window !== "undefined") {
     window.localStorage.setItem(ADMIN_SESSION_KEY, "1");

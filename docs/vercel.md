@@ -87,6 +87,27 @@ Do **not** enable the team security policy **Separate Production Secret Values**
 - Looking at Team settings instead of the **bhromor** project.
 - `NEXT_PUBLIC_*` changed but an old client bundle is still cached — needs a fresh build, not just a restart.
 
+## Admin login after keys are live
+
+Once `NEXT_PUBLIC_SUPABASE_*` is on the deployment, `/admin/login` switches to **Live mode**. The demo pair `admin@prosanti.store` / `prosanti` **stops working** — that is intentional.
+
+1. Supabase → **Authentication → Users → Add user**. Use a real email + strong password. Tick **Auto Confirm User**.
+2. Apply `supabase/schema.sql` (and the later migrations) if you have not already — this creates `admin_users`.
+3. SQL editor, with your staff email:
+
+```sql
+insert into admin_users (id, role)
+select id, 'admin'
+from auth.users
+where email = 'you@example.com'
+on conflict (id) do update set role = excluded.role;
+```
+
+4. Supabase → **Authentication → URL configuration**: Site URL = `https://bhromor-zeta.vercel.app` (and add that origin under Redirect URLs).
+5. Sign in at `/admin/login` with **that** email and password.
+
+If the form says the account is not staff, step 3 is missing. If it says the email is not confirmed, open the user and confirm it. If it says the server did not see the session, redeploy with build cache off after saving the env vars.
+
 ## CLI alternative (same keys, no dashboard form)
 
 From a machine logged into the Vercel account that owns `bhromor`:
