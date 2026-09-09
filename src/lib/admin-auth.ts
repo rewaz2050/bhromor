@@ -1,23 +1,34 @@
 /**
- * Admin session helpers (§47) — demo phase.
+ * Admin session (§47) — demo gate + real staff auth.
  *
- * The blueprint requires server/database-enforced authorization before
- * launch; until Supabase Auth + admin_users exist, this client-side gate
- * only shapes the demo UI and is NOT a security boundary.
+ * - Demo mode (Supabase unconfigured): the local credential check shapes
+ *   the UI only and is NOT a security boundary.
+ * - Live mode: staff sign in with Supabase Auth (email/password); the
+ *   session lives in cookies and every /api/admin/* route re-verifies the
+ *   JWT + admin_users role. This store only mirrors the outcome for gating.
  */
 
-export const ADMIN_SESSION_KEY = "prosanti.admin.session.v1";
+"use client";
 
-/** Demo credentials — replaced by real admin authentication later. */
+import { getSupabaseBrowser } from "./supabase-browser";
+import { isSupabaseConfigured } from "./env";
+
+export const ADMIN_SESSION_KEY = "prosanti.admin.session.v1";
+export const ADMIN_MODE_KEY = "prosanti.admin.mode.v1";
+
+/** Demo credentials — used ONLY when Supabase is unconfigured. */
 export const DEMO_ADMIN = {
   email: "admin@prosanti.store",
   password: "prosanti",
 };
 
+export type AdminMode = "demo" | "live";
+
 /* External store so components can read auth with useSyncExternalStore
  * (hydration-safe, no setState-in-effect lint issues). */
 type Listener = () => void;
 let authed: boolean | null = null;
+let mode: AdminMode | null = null;
 const listeners = new Set<Listener>();
 
 const notify = () => {
@@ -29,16 +40,67 @@ export const subscribeAdminAuth = (listener: Listener): (() => void) => {
   return () => listeners.delete(listener);
 };
 
+const readStored = (): { authed: boolean; mode: AdminMode } => {
+  if (typeof window === "undefined") return { authed: false, mode: "demo" };
+  const flag = window.localStorage.getItem(ADMIN_SESSION_KEY) === "1";
+  const storedMode =
+    window.localStorage.getItem(ADMIN_MODE_KEY) === "live" ? "live" : "demo";
+  // A stored live flag without Supabase config is stale (keys removed) —
+  // never honour it; the backend is demonstrably in demo mode.
+  if (storedMode === "live" && !isSupabaseConfigured()) {
+    return { authed: false, mode: "demo" };
+  }
+  return { authed: flag, mode: storedMode };
+};
+
 export const getAdminAuthed = (): boolean => {
   if (authed === null) {
-    authed =
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(ADMIN_SESSION_KEY) === "1";
+    const stored = readStored();
+    authed = stored.authed;
+    mode = stored.mode;
   }
   return authed;
 };
 
+export const getAdminMode = (): AdminMode => {
+  getAdminAuthed();
+  return mode ?? "demo";
+};
+
 export const isAdminAuthed = (): boolean => getAdminAuthed();
+
+/** Live-mode session probe — the server re-checks role on every call. */
+export const probeStaffSession = async (): Promise<{
+  staff: boolean;
+  role?: string;
+}> => {
+  try {
+    const res = await fetch("/api/admin/me", { cache: "no-store" });
+    if (!res.ok) return { staff: false };
+    const data = (await res.json()) as { staff?: boolean; role?: string };
+    return data.staff ? { staff: true, role: data.role } : { staff: false };
+  } catch {
+    return { staff: false };
+  }
+};
+
+/**
+ * Reconcile the mirrored flag with the server (call on gate mount).
+ * Returns the live authed state; clears stale flags on failure.
+ */
+export const refreshStaffSession = async (): Promise<boolean> => {
+  getAdminAuthed();
+  if (mode !== "live") return authed === true;
+  const { staff } = await probeStaffSession();
+  authed = staff;
+  if (!staff && typeof window !== "undefined") {
+    window.localStorage.removeItem(ADMIN_SESSION_KEY);
+    window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
+    mode = "demo";
+  }
+  notify();
+  return staff;
+};
 
 export const signInAdmin = (email: string, password: string): boolean => {
   if (
@@ -47,18 +109,58 @@ export const signInAdmin = (email: string, password: string): boolean => {
   ) {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
+      window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
     }
     authed = true;
+    mode = "demo";
     notify();
     return true;
   }
   return false;
 };
 
+/** Staff sign-in: Supabase Auth + role verification. Never falls back. */
+export const signInStaff = async (
+  email: string,
+  password: string,
+): Promise<{ ok: boolean; error?: string }> => {
+  const client = getSupabaseBrowser();
+  if (!client) return { ok: false, error: "Staff sign-in is not configured." };
+  const { error } = await client.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+  });
+  if (error) return { ok: false, error: "Incorrect email or password." };
+  const { staff } = await probeStaffSession();
+  if (!staff) {
+    await client.auth.signOut().catch(() => undefined);
+    return {
+      ok: false,
+      error: "This account is not staff. Ask an admin for access.",
+    };
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
+    window.localStorage.setItem(ADMIN_MODE_KEY, "live");
+  }
+  authed = true;
+  mode = "live";
+  notify();
+  return { ok: true };
+};
+
 export const signOutAdmin = (): void => {
+  // Best-effort server sign-out; the local flag clears regardless.
+  try {
+    void getSupabaseBrowser()?.auth.signOut();
+  } catch {
+    // browser client unavailable — local-only session
+  }
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);
+    window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
   }
   authed = false;
+  mode = "demo";
   notify();
 };

@@ -14,6 +14,7 @@ import {
   removeAccountItems,
   saveAccountItems,
 } from "@/lib/account-wishlist";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { getWishlist } from "@/lib/wishlist-store";
 
 interface AccountWishlistState {
@@ -64,6 +65,13 @@ function CloudWishlist({
   const [error, setError] = useState("");
   const locked = useRef(false);
   const active = useRef(true);
+  // Live-mode ids are uuids — slug mapping must use the serving catalog.
+  // Synced via effect: ref writes during render break concurrent mode.
+  const { products: servingProducts } = useLiveCatalog();
+  const productsRef = useRef(servingProducts);
+  useEffect(() => {
+    productsRef.current = servingProducts;
+  }, [servingProducts]);
 
   const run = useCallback(
     async (write?: () => Promise<void>) => {
@@ -73,7 +81,7 @@ function CloudWishlist({
       setError("");
       try {
         if (write) await write();
-        const next = await readAccountWishlist(client, userId);
+        const next = await readAccountWishlist(client, userId, productsRef.current);
         if (active.current) {
           setIds(next);
           setReady(true);
@@ -98,7 +106,6 @@ function CloudWishlist({
   useEffect(() => {
     active.current = true;
     // Refresh on mount and focus; account data is never copied into guest storage.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial remote fetch updates loading state before awaiting network
     void run();
     const refresh = () => {
       void run();
@@ -114,17 +121,17 @@ function CloudWishlist({
     if (!ready || !client || !userId) return false;
     return run(() =>
       ids.includes(id)
-        ? removeAccountItems(client, userId, id)
-        : saveAccountItems(client, userId, [id]),
+        ? removeAccountItems(client, userId, id, productsRef.current)
+        : saveAccountItems(client, userId, [id], productsRef.current),
     );
   };
   const clear = async () =>
     ready && client && userId
-      ? run(() => removeAccountItems(client, userId))
+      ? run(() => removeAccountItems(client, userId, undefined, productsRef.current))
       : false;
   const importGuest = async () =>
     ready && client && userId
-      ? run(() => saveAccountItems(client, userId, getWishlist()))
+      ? run(() => saveAccountItems(client, userId, getWishlist(), productsRef.current))
       : false;
 
   return (

@@ -44,6 +44,52 @@ export interface Product {
   active?: boolean;
   stock?: number;
   seo?: { title?: string; description?: string };
+  /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
+      implicitly belong to shop #1, so demo rows omit it. */
+  shopId?: string;
+}
+
+/**
+ * A listed shop (marketplace phase 2). Phase 1 has exactly one — shop #1,
+ * the owner's own catalog ("PROSANTI Direct" until D9 is decided).
+ */
+export interface Shop {
+  id: string;
+  slug: string;
+  name: string;
+  tagline?: string;
+  logoUrl?: string;
+  phone: string;
+  /** Applicant email — STAFF ONLY. Public endpoints must strip it. */
+  contactEmail?: string;
+  address?: string;
+  zoneIds: string[];
+  prepMinutes: number;
+  commissionPct: number;
+  status: "pending" | "active" | "suspended";
+  isOpen: boolean;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+/**
+ * A delivery rider (marketplace phase 3). Riders never appear on the
+ * storefront — staff see them in Admin → Riders, riders see themselves
+ * in the /rider app.
+ */
+export interface Rider {
+  id: string;
+  name: string;
+  phone: string;
+  /** Login email — STAFF ONLY. Never sent to riders or the storefront. */
+  contactEmail?: string;
+  vehicle: "bicycle" | "bike" | "scooter";
+  zoneIds: string[];
+  status: "pending" | "active" | "suspended";
+  isOnline: boolean;
+  cashInHand: number;
+  ratingAvg: number;
+  ratingCount: number;
 }
 
 /**

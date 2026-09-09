@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DELIVERY_ZONES } from "@/lib/catalog";
+import { getStorefrontZones } from "@/lib/db/storefront";
 import { formatBdt } from "@/lib/format";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck } from "@/components/ui/icons";
@@ -11,7 +11,10 @@ export const metadata: Metadata = {
     "PROSANTI delivery — zone-based charges, 45–50 minute rapid delivery target inside the service area, COD and tracking.",
 };
 
-export default function DeliveryPage() {
+export const dynamic = "force-dynamic";
+
+export default async function DeliveryPage() {
+  const { zones } = await getStorefrontZones();
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:py-16">
       <Eyebrow>Transparent, zone-based</Eyebrow>
@@ -58,7 +61,7 @@ export default function DeliveryPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {DELIVERY_ZONES.map((zone) => (
+            {zones.map((zone) => (
               <tr key={zone.id}>
                 <td className="px-5 py-4 font-medium text-ink">{zone.name}</td>
                 <td className="px-5 py-4 text-ink-soft">

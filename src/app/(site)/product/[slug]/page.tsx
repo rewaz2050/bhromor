@@ -2,11 +2,16 @@ import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PRODUCTS, getProductBySlug, productsByCategory } from "@/lib/catalog";
+import { PRODUCTS } from "@/lib/catalog";
+import {
+  findStorefrontProduct,
+  getStorefrontCatalog,
+} from "@/lib/db/storefront";
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import ProductCard from "@/components/product/product-card";
+import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
   DELIVERY_ETA,
@@ -22,11 +27,18 @@ export function generateStaticParams() {
   return PRODUCTS.map((p) => ({ slug: p.slug }));
 }
 
+/**
+ * Rendered on demand for the same reason as /shop: seed-prerendered pages
+ * would show stale demo ids/prices once the backend goes live.
+ */
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { products } = await getStorefrontCatalog();
+  const product = findStorefrontProduct(products, slug);
   if (!product) return {};
   return {
     title: product.name,
@@ -42,14 +54,15 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { products } = await getStorefrontCatalog();
+  const product = findStorefrontProduct(products, slug);
   if (!product) notFound();
 
-  const complements = completeTheLook(product, PRODUCTS);
-  const related = productsByCategory(product.category)
-    .filter((p) => p.id !== product.id)
+  const complements = completeTheLook(product, products);
+  const related = products
+    .filter((p) => p.category === product.category && p.id !== product.id)
     .concat(
-      PRODUCTS.filter((p) => p.category !== product.category && p.featured),
+      products.filter((p) => p.category !== product.category && p.featured),
     )
     .filter(
       (p) => isDiscoverable(p) && !complements.some((item) => item.id === p.id),
@@ -183,7 +196,7 @@ export default async function ProductPage({ params }: PageProps) {
         </aside>
       </div>
 
-      {/* Public reviews remain hidden until genuine customer proof is connected. */}
+
       {complements.length > 0 && (
         <section
           aria-labelledby="complete-look-heading"
@@ -221,6 +234,8 @@ export default async function ProductPage({ params }: PageProps) {
           </div>
         </section>
       )}
+      {/* §30 reviews — live approved reviews + moderated submission form */}
+      <ReviewsSection product={product} />
     </div>
   );
 }

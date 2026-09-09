@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Drawer from "@/components/ui/drawer";
 import { useCart } from "./cart-provider";
+import BagShopHeader from "./bag-shop-header";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
 import {
@@ -113,6 +114,9 @@ export default function BagDrawer() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-6">
+            <div className="pt-4">
+              <BagShopHeader />
+            </div>
             {detail.map(({ product, variantLabel, qty, lineTotal }) => (
               <article
                 key={`${product.id}-${variantLabel}`}

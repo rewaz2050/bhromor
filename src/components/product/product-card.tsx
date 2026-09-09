@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { useWishlist } from "@/lib/use-wishlist";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { productShopId, shopById } from "@/lib/shop-utils";
 import { Price } from "@/components/ui/primitives";
 import { IconArrowRight, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
@@ -38,6 +40,8 @@ export default function ProductCard({ product }: { product: Product }) {
   const wished = has(product.id);
   const secondImage = product.media[1];
   const styleName = editorialProductName(product);
+  const { shops } = useLiveCatalog();
+  const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
 
   return (
     <article className="product-card group relative flex min-w-0 flex-col">
@@ -161,6 +165,17 @@ export default function ProductCard({ product }: { product: Product }) {
             compareAt={product.compareAtPrice}
             size="sm"
           />
+          {shop && (
+            <p className="mt-1 truncate text-xs text-ink-soft">
+              {t("shops.soldBy")}{" "}
+              <Link
+                href={`/shops/${shop.slug}`}
+                className="font-medium text-forest-700 underline-offset-2 hover:underline"
+              >
+                {shop.name}
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </article>

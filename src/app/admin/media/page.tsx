@@ -10,6 +10,7 @@ import {
 } from "@/lib/media-store";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint } from "@/components/admin/form-ui";
+import MediaUploader from "@/components/admin/media-uploader";
 import { IconCheck, IconCopy, IconPlus, IconSearch, IconTrash } from "@/components/ui/icons";
 
 const KINDS: (MediaKind | "all")[] = ["all", "product", "category", "homepage", "brand", "custom"];
@@ -85,6 +86,13 @@ export default function AdminMediaPage() {
         </button>
       </div>
 
+      {/* Direct upload → Cloudinary (§48), with add-by-URL as fallback */}
+      <MediaUploader
+        onUploaded={(urlToAdd, label) =>
+          add({ url: urlToAdd, alt: label, label })
+        }
+      />
+
       {/* Add by URL (§50) */}
       <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
         <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
@@ -121,9 +129,8 @@ export default function AdminMediaPage() {
           </button>
         </div>
         <p className={hint}>
-          Uploads (file picker → Cloudinary → stored reference) arrive with the
-          backend phase; until then the system accepts hosted URLs and local
-          /images paths (§13, §50).
+          Prefer the uploader above — this form is for already-hosted URLs and
+          local /images paths (§13, §50).
         </p>
       </div>
 

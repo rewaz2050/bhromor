@@ -11,7 +11,7 @@ import { IconCheck, IconSearch } from "@/components/ui/icons";
 
 /** §57–58 inventory + configurable low-stock threshold. */
 export default function AdminInventoryPage() {
-  const { products, saveProduct } = useCatalog();
+  const { products, loading, error, clearError, saveProduct } = useCatalog();
   const { settings, save: saveSettings } = useSettings();
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
   const [query, setQuery] = useState("");
@@ -55,7 +55,7 @@ export default function AdminInventoryPage() {
     flashMessage("Threshold saved");
   };
 
-  const commitStock = (id: string) => {
+  const commitStock = async (id: string) => {
     const product = products.find((p) => p.id === id);
     if (!product) return;
     // An untouched row used to save as 0 — `Number(undefined) || 0` wiped the
@@ -65,12 +65,13 @@ export default function AdminInventoryPage() {
     const value = Number.isFinite(parsed)
       ? Math.max(0, Math.floor(parsed))
       : displayStock(product);
-    saveProduct({
+    const ok = await saveProduct({
       ...product,
       stock: value,
       inStock: value > 0,
       lowStock: value > 0 && value <= thresholdValue,
     });
+    if (!ok) return; // page banner carries the hook error
     setDrafts((d) => {
       const next = { ...d };
       delete next[id];
@@ -92,8 +93,29 @@ export default function AdminInventoryPage() {
     return "ok";
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading inventory">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">
@@ -208,7 +230,7 @@ export default function AdminInventoryPage() {
                           onChange={(e) =>
                             setDrafts((d) => ({ ...d, [p.id]: e.target.value }))
                           }
-                          onBlur={() => commitStock(p.id)}
+                          onBlur={() => void commitStock(p.id)}
                           aria-label={`Stock for ${p.name}`}
                           className="w-20 rounded-lg border-0 bg-ivory-50 px-3 py-1.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600"
                         />
@@ -233,7 +255,7 @@ export default function AdminInventoryPage() {
                       <td className="px-5 py-3.5 text-right">
                         <button
                           type="button"
-                          onClick={() => commitStock(p.id)}
+                          onClick={() => void commitStock(p.id)}
                           className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50"
                         >
                           Update

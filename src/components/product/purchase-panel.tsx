@@ -2,11 +2,20 @@
 
 import SizeGuide from "./size-guide";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { useCart } from "@/components/cart/cart-provider";
+import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { useGuardedAdd } from "@/lib/use-guarded-add";
+import {
+  isShopOrderable,
+  productShopId,
+  shopById,
+} from "@/lib/shop-utils";
 import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { Price } from "@/components/ui/primitives";
 import {
@@ -21,8 +30,14 @@ import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function PurchasePanel({ product }: { product: Product }) {
   const { t } = useLanguage();
-  const { addItem, openBag } = useCart();
+  const { openBag } = useCart();
+  const { shops } = useLiveCatalog();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
   const router = useRouter();
+  const [pendingBuyNow, setPendingBuyNow] = useState(false);
+
+  const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
+  const shopClosed = shop !== undefined && !isShopOrderable(shop);
 
   const hasSizes =
     product.sizes.length > 1 || !/free|one size/i.test(product.sizes[0] ?? "");
@@ -74,9 +89,11 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
   /** One definition for the gate and the label so the inline CTA, the
    *  sticky bar and the disabled state can never disagree. */
-  const ctaDisabled = !product.inStock || (product.sizes.length > 0 && !size);
-  const ctaLabel =
-    !product.inStock
+  const ctaDisabled =
+    shopClosed || !product.inStock || (product.sizes.length > 0 && !size);
+  const ctaLabel = shopClosed
+    ? t("shops.closed")
+    : !product.inStock
       ? t("purchase.soldOut")
       : product.sizes.length > 0 && !size
         ? t("purchase.selectASize")
@@ -84,15 +101,32 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
   const handleAdd = () => {
     if (ctaDisabled) return;
-    addItem(product.id, variantLabel, qty);
-    addedFeedback();
-    openBag();
+    setPendingBuyNow(false);
+    if (add(product, variantLabel, qty)) {
+      addedFeedback();
+      openBag();
+    }
   };
 
   const handleBuyNow = () => {
     if (ctaDisabled) return;
-    addItem(product.id, variantLabel, qty);
-    router.push("/checkout");
+    setPendingBuyNow(true);
+    if (add(product, variantLabel, qty)) {
+      router.push("/checkout");
+    }
+  };
+
+  const resolveConflict = (confirmed: boolean) => {
+    const done = confirmed ? confirmConflict() : null;
+    if (!confirmed) dismissConflict();
+    if (done) {
+      if (pendingBuyNow) router.push("/checkout");
+      else {
+        addedFeedback();
+        openBag();
+      }
+    }
+    setPendingBuyNow(false);
   };
 
   return (
@@ -108,6 +142,29 @@ export default function PurchasePanel({ product }: { product: Product }) {
           </span>
         )}
       </h1>
+
+      {shop && (
+        <p className="mt-3 text-sm text-ink-soft">
+          {t("shops.soldBy")}{" "}
+          <Link
+            href={`/shops/${shop.slug}`}
+            className="font-medium text-forest-700 underline-offset-2 hover:underline"
+          >
+            {shop.name}
+          </Link>
+          {!isShopOrderable(shop) && (
+            <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
+              {t("shops.closed")}
+            </span>
+          )}
+        </p>
+      )}
+      {shopClosed && (
+        <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          <span className="font-semibold">{t("shops.shopClosed")}</span> —{" "}
+          {t("shops.shopClosedHint")}
+        </p>
+      )}
 
       <div className="mt-6">
         <Price
@@ -302,6 +359,15 @@ export default function PurchasePanel({ product }: { product: Product }) {
           </button>
         </div>
       </div>
+
+      {conflict && (
+        <ShopConflictDialog
+          fromShop={conflict.fromShopName}
+          toShop={conflict.toShopName}
+          onKeep={() => resolveConflict(false)}
+          onStartNew={() => resolveConflict(true)}
+        />
+      )}
     </div>
   );
 }

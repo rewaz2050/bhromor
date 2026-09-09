@@ -24,7 +24,7 @@ function ZoneRow({
   zone: DeliveryZone;
   first: boolean;
   last: boolean;
-  onSave: (z: DeliveryZone) => void;
+  onSave: (z: DeliveryZone) => Promise<boolean> | void;
   onMove: (dir: -1 | 1) => void;
   onDelete: () => void;
 }) {
@@ -43,7 +43,7 @@ function ZoneRow({
     [],
   );
 
-  const save = () => {
+  const save = async () => {
     const taka = Number(chargeTaka);
     if (!Number.isFinite(taka) || taka < 0) {
       setError("Enter a valid delivery charge.");
@@ -57,7 +57,7 @@ function ZoneRow({
       setError("List at least one covered area.");
       return;
     }
-    onSave({
+    const ok = await onSave({
       ...zone,
       name: name.trim() || zone.name,
       charge: bdt(taka),
@@ -65,6 +65,10 @@ function ZoneRow({
       areas,
       active,
     });
+    if (ok === false) {
+      setError("Could not save this zone — try again.");
+      return;
+    }
     setError(null);
     setSaved(true);
     if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
@@ -186,26 +190,62 @@ function ZoneRow({
 
 /** §20–21 delivery-zone manager — shared store with the public checkout. */
 export default function AdminZonesPage() {
-  const { zones, saveZone, removeZone, moveZone, reset } = useZones();
+  const {
+    zones,
+    live,
+    loading,
+    error,
+    clearError,
+    saveZone,
+    removeZone,
+    moveZone,
+    reset,
+  } = useZones();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newAreas, setNewAreas] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
-  const add = () => {
+  const add = async () => {
     const name = newName.trim();
     if (!name) return;
-    saveZone({
-      id: nextZoneId(zones),
-      name,
-      areas: [],
-      charge: bdt(80),
-      etaLabel: "45–55 min",
-      active: true,
-    });
+    setAddError(null);
+    if (live) {
+      // Live zone ids are server-assigned (z{N}); the server also requires
+      // at least one covered area up front.
+      const areas = newAreas
+        .split(/[\n,]/g)
+        .map((a) => a.trim())
+        .filter(Boolean);
+      if (areas.length === 0) {
+        setAddError("List at least one covered area for the new zone.");
+        return;
+      }
+      const ok = await saveZone({
+        id: "",
+        name,
+        areas,
+        charge: bdt(80),
+        etaLabel: "45–55 min",
+        active: true,
+      });
+      if (!ok) return;
+    } else {
+      await saveZone({
+        id: nextZoneId(zones),
+        name,
+        areas: [],
+        charge: bdt(80),
+        etaLabel: "45–55 min",
+        active: true,
+      });
+    }
     setNewName("");
+    setNewAreas("");
     setAdding(false);
   };
 
-  const del = (z: DeliveryZone) => {
+  const del = async (z: DeliveryZone) => {
     // The last zone can never be removed — say so instead of asking a
     // question whose "OK" then failed with a second alert.
     if (zones.length <= 1) {
@@ -221,13 +261,36 @@ export default function AdminZonesPage() {
     ) {
       return;
     }
-    if (!removeZone(z.id)) {
-      window.alert("Keep at least one delivery zone.");
+    if (!(await removeZone(z.id))) {
+      window.alert(
+        "Could not delete this zone — it may already have orders.",
+      );
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-5" role="status" aria-label="Loading zones">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">
@@ -239,15 +302,17 @@ export default function AdminZonesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Reset zones to the seeded sample areas?")) reset();
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset demo zones
-          </button>
+          {!live && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Reset zones to the seeded sample areas?")) reset();
+              }}
+              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+            >
+              Reset demo zones
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}
@@ -261,23 +326,37 @@ export default function AdminZonesPage() {
 
       {adding && (
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+          {addError && (
+            <p role="alert" className="mb-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+              {addError}
+            </p>
+          )}
           <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <input
               className={field}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), void add())}
               placeholder="e.g. Zone D — Extended Ring"
               aria-label="New zone name"
             />
             <button
               type="button"
-              onClick={add}
+              onClick={() => void add()}
               className="rounded-xl bg-forest-800 px-6 text-sm font-semibold text-ivory-50 hover:bg-forest-700"
             >
               Add zone
             </button>
           </div>
+          {live && (
+            <input
+              className={`${field} mt-3`}
+              value={newAreas}
+              onChange={(e) => setNewAreas(e.target.value)}
+              placeholder="Covered areas, comma-separated (e.g. Savar, Ashulia)"
+              aria-label="Covered areas"
+            />
+          )}
           <p className={hint}>Fill in the areas, charge and ETA in the new row.</p>
         </div>
       )}

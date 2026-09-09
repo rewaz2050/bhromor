@@ -32,9 +32,10 @@ const stockOf = (p: {
   lowStock?: boolean;
 }): number => p.stock ?? (p.inStock ? (p.lowStock ? 3 : 12) : 0);
 
-/** §72–74 product management list (demo catalog store). */
+/** §72–74 product management list. */
 export default function AdminProductsPage() {
-  const { products, categories, toggleFlag, setProductActive } = useCatalog();
+  const { products, categories, loading, error, clearError, toggleFlag, setProductActive } =
+    useCatalog();
   const [vis, setVis] = useState<Vis>("all");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
@@ -58,8 +59,29 @@ export default function AdminProductsPage() {
       ? products.length
       : products.filter((p) => visOf(p) === id).length;
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading catalog">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-medium text-forest-900">
           Catalog
@@ -227,7 +249,7 @@ export default function AdminProductsPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => toggleFlag(p.id, "featured", !p.featured)}
+                            onClick={() => void toggleFlag(p.id, "featured", !p.featured)}
                             aria-pressed={p.featured}
                             aria-label={p.featured ? "Unfeature" : "Feature"}
                             title="Toggle featured"
@@ -255,7 +277,7 @@ export default function AdminProductsPage() {
                                     : `Archive “${p.name}”? It stays in history and can be restored anytime (§74).`,
                                 )
                               ) {
-                                setProductActive(p.id, p.active === false);
+                                void setProductActive(p.id, p.active === false);
                               }
                             }}
                             className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"

@@ -7,15 +7,26 @@ import ProductEditor from "@/components/admin/product-editor";
 
 export default function EditProductPage() {
   const params = useParams<{ id: string }>();
-  const { products, categories } = useCatalog();
+  const { products, categories, live, loading } = useCatalog();
   const product = products.find((p) => p.id === params.id);
+
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading product">
+        <div className="h-8 w-64 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
 
   if (!product) {
     return (
       <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">
         <p className="font-display text-lg text-forest-900">Product not found</p>
         <p className="mt-1 text-sm text-ink-soft">
-          It may belong to a different demo dataset.
+          {live
+            ? "It may have been deleted, or belong to a different dataset."
+            : "It may belong to a different demo dataset."}
         </p>
         <Link
           href="/admin/products"

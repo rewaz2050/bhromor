@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
-import { DEMO_ADMIN, isAdminAuthed, signInAdmin } from "@/lib/admin-auth";
+import {
+  DEMO_ADMIN,
+  getAdminMode,
+  isAdminAuthed,
+  signInAdmin,
+  signInStaff,
+} from "@/lib/admin-auth";
+import { isSupabaseConfigured } from "@/lib/env";
 import { IconCheck } from "@/components/ui/icons";
 
 export default function AdminLoginPage() {
@@ -12,6 +19,7 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const live = isSupabaseConfigured();
 
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
@@ -22,7 +30,21 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    // Small delay so the demo reads like a real auth round-trip.
+    if (live) {
+      // Live mode: real Supabase staff sign-in.
+      void signInStaff(email, password).then(({ ok, error: signInError }) => {
+        setBusy(false);
+        if (ok) {
+          router.replace("/admin");
+        } else {
+          setError(
+            signInError ?? "Sign-in failed — check your email and password.",
+          );
+        }
+      });
+      return;
+    }
+    // Demo mode: browser-local session (§47).
     window.setTimeout(() => {
       if (signInAdmin(email, password)) {
         router.replace("/admin");
@@ -65,7 +87,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border-0 bg-white px-4 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-forest-600"
-              placeholder="admin@prosanti.store"
+              placeholder={live ? "you@prosanti.store" : "admin@prosanti.store"}
             />
           </label>
           <label className="mt-4 block">
@@ -98,20 +120,33 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
-          <p className="flex items-center gap-1.5 font-semibold text-gold-300">
-            <IconCheck className="h-3.5 w-3.5" /> Demo mode
-          </p>
-          <p className="mt-1.5">
-            Email: <span className="text-ivory-50">{DEMO_ADMIN.email}</span>
-            <br />
-            Password: <span className="text-ivory-50">{DEMO_ADMIN.password}</span>
-          </p>
-          <p className="mt-2 text-ivory-100/50">
-            Session lives in this browser only — real authentication arrives
-            with the Supabase phase (§47).
-          </p>
-        </div>
+        {live ? (
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
+            <p className="flex items-center gap-1.5 font-semibold text-emerald-300">
+              <IconCheck className="h-3.5 w-3.5" /> Live mode
+            </p>
+            <p className="mt-1.5">
+              {getAdminMode() === "live"
+                ? "Signed-in staff session detected — dashboard data comes from the database."
+                : "Sign in with your staff account — dashboard data comes from the database."}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
+            <p className="flex items-center gap-1.5 font-semibold text-gold-300">
+              <IconCheck className="h-3.5 w-3.5" /> Demo mode
+            </p>
+            <p className="mt-1.5">
+              Email: <span className="text-ivory-50">{DEMO_ADMIN.email}</span>
+              <br />
+              Password: <span className="text-ivory-50">{DEMO_ADMIN.password}</span>
+            </p>
+            <p className="mt-2 text-ivory-100/50">
+              Session lives in this browser only — connect Supabase to enable
+              staff sign-in (§47).
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

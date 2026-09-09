@@ -127,6 +127,8 @@ export interface Order {
   deliveredMinutes?: number;
   /** Applied promo code + discount snapshot, when the customer used one (§56). */
   coupon?: { code: string; discount: number };
+  /** Owning shop (marketplace slice 1). Live orders always carry it. */
+  shopId?: string;
 }
 
 export interface PlacedOrderInput {

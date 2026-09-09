@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useReviews } from "@/lib/use-reviews";
+import { usePublicReviews } from "@/lib/use-public-reviews";
 import {
   averageOf,
   visibleCount,
   visibleReviews,
-  type Review,
 } from "@/lib/review-store";
 import type { Product } from "@/lib/catalog";
 import { IconCheck, IconStar } from "@/components/ui/icons";
@@ -45,7 +44,7 @@ function Stars({
 
 /** §30 customer reviews — approved entries + submission form (moderated). */
 export default function ReviewsSection({ product }: { product: Product }) {
-  const { reviews, submit } = useReviews();
+  const { reviews, submit, live } = usePublicReviews({ product: product.id });
   const [name, setName] = useState("");
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
@@ -70,25 +69,25 @@ export default function ReviewsSection({ product }: { product: Product }) {
     if (rating < 1) return setError("Pick a star rating first.");
     if (body.trim().length < 10)
       return setError("Tell us a little more — at least a sentence.");
-    const review: Review = {
-      id: `u${Date.now()}`,
+    void submit({
       productId: product.id,
+      author: name.trim(),
       rating,
-      author: name.trim() || "Anonymous customer",
       title: title.trim() || undefined,
       body: body.trim(),
-      date: Date.now(),
-      status: "pending", // hidden from the storefront until an admin approves
-      verified: false,
-    };
-    submit(review);
-    setRating(0);
-    setTitle("");
-    setBody("");
-    setSent(true);
-    setError(null);
-    if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
-    sentTimer.current = window.setTimeout(() => setSent(false), 5000);
+    }).then(({ ok, error: submitError }) => {
+      if (!ok) {
+        setError(submitError ?? "Could not save the review.");
+        return;
+      }
+      setRating(0);
+      setTitle("");
+      setBody("");
+      setSent(true);
+      setError(null);
+      if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
+      sentTimer.current = window.setTimeout(() => setSent(false), 5000);
+    });
   };
 
   return (
@@ -114,11 +113,13 @@ export default function ReviewsSection({ product }: { product: Product }) {
             )}
           </div>
 
-          <p className="mt-4 border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
-            Demo review preview: includes sample reviews and browser-local
-            submissions. Purchase flags are demo data, not verified customer
-            proof.
-          </p>
+          {!live && (
+            <p className="mt-4 border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
+              Demo review preview: includes sample reviews and browser-local
+              submissions. Purchase flags are demo data, not verified customer
+              proof.
+            </p>
+          )}
           {visible.length === 0 ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-14 text-center">
               <p className="font-display text-xl text-forest-900">

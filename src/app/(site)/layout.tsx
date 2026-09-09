@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/components/i18n/language-provider";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
+import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -65,6 +66,7 @@ export default function SiteLayout({
           {/* Thumb-reach navigation on phones (§67) */}
           <BottomNav />
           <BagDrawer />
+          <LiveCatalogBoot />
         </CustomerProvider>
       </CartProvider>
     </LanguageProvider>

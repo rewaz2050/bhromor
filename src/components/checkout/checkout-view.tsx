@@ -5,17 +5,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
-import { useZones } from "@/lib/use-zones";
-import { useCoupons } from "@/lib/use-coupons";
+import BagShopHeader from "@/components/cart/bag-shop-header";
+import { useLiveZones } from "@/lib/use-live-zones";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { useMyZone } from "@/lib/use-my-zone";
 import {
-  discountAmount,
-  eligibleSubtotal,
-  findCoupon,
-  isCouponRedeemable,
-  type Coupon,
-} from "@/lib/coupons";
+  lineShopIds,
+  shopById,
+  splitEta,
+} from "@/lib/shop-utils";
+import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
-import { makePlacedOrder } from "@/lib/orders";
+import { makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
@@ -62,8 +63,16 @@ const initialForm: FormState = {
 export default function CheckoutView() {
   const { t } = useLanguage();
   const { detail, subtotal, clear } = useCart();
-  /** Delivery zones come from the shared store — admin edits show here (§20). */
-  const { activeZones: zoneList } = useZones();
+  /** Delivery zones are live-served when the backend is up, seeds otherwise. */
+  const { activeZones: zoneList } = useLiveZones();
+  const { shops } = useLiveCatalog();
+  const { zoneId: myZoneId, setZoneId: setMyZoneId } = useMyZone();
+  /** The bag's shop (single-shop carts carry exactly one). */
+  const bagShop =
+    shopById(
+      shops,
+      lineShopIds(detail, shops[0]?.id ?? "")[0] ?? "",
+    ) ?? null;
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
@@ -73,78 +82,94 @@ export default function CheckoutView() {
     addressSummary: string;
   } | null>(null);
 
-  const { coupons: allCoupons, recordUse } = useCoupons();
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  // Coupon truth lives on the server: the code is validated against the
+  // *current* cart via /api/coupons/validate, debounced so shrinking the
+  // cart can never leave a stale discount attached to the order.
+  const [appliedCode, setAppliedCode] = useState("");
+  const [couponCheck, setCouponCheck] = useState<{
+    code: string | null;
+    discount: number;
+    problem: string | null;
+  }>({ code: null, discount: 0, problem: null });
   const [couponMsg, setCouponMsg] = useState<{
     ok: boolean;
     text: string;
   } | null>(null);
   const submittingRef = useRef(false);
-  const placeTimer = useRef<number | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
-  // Never call setState after the page has gone away.
-  useEffect(
-    () => () => {
-      if (placeTimer.current !== null) window.clearTimeout(placeTimer.current);
-    },
-    [],
-  );
-
+  /** Browse-time zone pre-fills checkout; an explicit pick wins after. */
+  const myZoneValid =
+    myZoneId && zoneList.some((z) => z.id === myZoneId) ? myZoneId : null;
   const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
     ? form.zoneId
-    : (zoneList[0]?.id ?? "");
+    : (myZoneValid ?? zoneList[0]?.id ?? "");
   const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
-  /**
-   * A coupon is re-validated on every render against the *current* cart, so
-   * emptying or shrinking the cart can never leave a stale discount attached
-   * to the order (it used to survive until checkout).
-   */
-  const couponCheck = useMemo(() => {
-    if (!appliedCoupon)
-      return { coupon: null as Coupon | null, problem: null as string | null };
-    const redeemable = isCouponRedeemable(appliedCoupon, subtotal);
-    if (!redeemable.ok) {
-      return {
-        coupon: null,
-        problem:
-          redeemable.reason ?? "That code is no longer valid for this order.",
-      };
-    }
-    const eligible = eligibleSubtotal(
-      appliedCoupon,
-      detail.map((l) => ({
-        productCategory: l.product.category,
-        subtotal: l.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      return {
-        coupon: null,
-        problem: "That code no longer applies to the items in your cart.",
-      };
-    }
-    return { coupon: appliedCoupon, problem: null, eligible };
-  }, [appliedCoupon, subtotal, detail]);
+  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}`;
+  useEffect(() => {
+    // Clearing happens at the call sites (apply/remove); the effect only
+    // answers for a non-empty code so no sync setState runs here.
+    if (!appliedCode) return;
+    const items = detail.map((l) => ({ productId: l.product.id, qty: l.qty }));
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        interface ValidateResponse {
+          valid?: boolean;
+          code?: string;
+          discount?: number;
+          reason?: string | null;
+        }
+        let data: ValidateResponse | null = null;
+        try {
+          const res = await fetch("/api/coupons/validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: appliedCode, items }),
+          });
+          data = (await res.json().catch(() => null)) as ValidateResponse | null;
+          if (res.ok && data?.valid && data.code) {
+            setCouponCheck({
+              code: data.code,
+              discount: Math.max(
+                0,
+                Math.min(data.discount ?? 0, subtotal),
+              ),
+              problem: null,
+            });
+            setCouponMsg({
+              ok: true,
+              text: `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.`,
+            });
+            return;
+          }
+        } catch {
+          data = null;
+        }
+        setCouponCheck({
+          code: null,
+          discount: 0,
+          problem:
+            data?.reason ??
+            "That code is no longer valid for this order.",
+        });
+      })();
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // cartKey (not detail) keeps the effect keyed on a stable string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedCode, cartKey]);
 
-  const activeCoupon = couponCheck.coupon;
+  const activeCoupon = useMemo(
+    () => (couponCheck.code ? { code: couponCheck.code } : null),
+    [couponCheck.code],
+  );
 
   const summary = useMemo(() => {
     // Free delivery now applies here too — the cart promised it and
     // checkout silently charged anyway.
     const charge = deliveryChargeFor(zone?.charge ?? 0, subtotal);
-    const discount = activeCoupon
-      ? discountAmount(
-          activeCoupon,
-          eligibleSubtotal(
-            activeCoupon,
-            detail.map((l) => ({
-              productCategory: l.product.category,
-              subtotal: l.lineTotal,
-            })),
-          ),
-        )
-      : 0;
+    const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
       fullCharge: zone?.charge ?? 0,
@@ -153,7 +178,7 @@ export default function CheckoutView() {
       total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
     };
-  }, [zone, subtotal, detail, activeCoupon]);
+  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount]);
 
   const empty = detail.length === 0;
 
@@ -251,59 +276,38 @@ export default function CheckoutView() {
   const applyCoupon = () => {
     const code = form.couponCode.trim().toUpperCase();
     if (!code) return;
-    const coupon = findCoupon(allCoupons, code);
-    if (!coupon) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: "Unknown code — double-check the spelling.",
-      });
-      return;
-    }
-    const check = isCouponRedeemable(coupon, subtotal);
-    if (!check.ok) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: check.reason ?? "This code cannot be used.",
-      });
-      return;
-    }
-    // Category-restricted codes must actually match something in the cart.
-    const eligible = eligibleSubtotal(
-      coupon,
-      detail.map((l) => ({
-        productCategory: l.product.category,
-        subtotal: l.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: "This code does not apply to the items in your cart.",
-      });
-      return;
-    }
-    setAppliedCoupon(coupon);
-    setCouponMsg({
-      ok: true,
-      text: `${coupon.code} applied — ${formatBdt(discountAmount(coupon, eligible))} off.`,
-    });
+    // The validation effect above answers with success or a reason.
+    setCouponCheck({ code: null, discount: 0, problem: null });
+    setCouponMsg({ ok: true, text: "Checking code…" });
+    setAppliedCode(code);
   };
 
-  const placeOrder = () => {
+  /**
+   * Place the order through the backend when it is live, else keep the
+   * browser-local demo flow. Live failures NEVER fall back to a local
+   * order — a customer must not see “confirmed” for an order the shop
+   * will never receive.
+   */
+  const placeOrder = async () => {
     // Ref guard: two submits inside one tick both passed the state check,
     // which could place the same order twice.
     if (submittingRef.current) return; // idempotent — no double submission (§79)
     submittingRef.current = true;
     update("submitting", true);
-    const stamp = new Date();
-    const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
-    const seq = String(Math.floor(1000 + Math.random() * 9000));
-    const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
-    // Simulated network/backend latency before showing confirmation.
-    placeTimer.current = window.setTimeout(() => {
+    setOrderError(null);
+
+    const fail = (message: string) => {
+      submittingRef.current = false;
+      update("submitting", false);
+      setOrderError(message);
+    };
+
+    /** Demo-mode placement: local store only, exactly as before. */
+    const placeLocally = () => {
+      const stamp = new Date();
+      const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
+      const seq = String(Math.floor(1000 + Math.random() * 9000));
+      const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
       // Store the order in the demo backend (order-store) so the admin
       // Orders queue and the public Track page can follow it live (§92).
       addOrderToStore(
@@ -334,7 +338,7 @@ export default function CheckoutView() {
             : undefined,
         }),
       );
-      if (activeCoupon) recordUse(activeCoupon.code);
+      if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
       setPlaced({
         orderId,
         eta: zone.etaLabel,
@@ -343,7 +347,73 @@ export default function CheckoutView() {
         addressSummary: `${form.address || form.area}, ${zone.name}`,
       });
       clear();
-    }, 900);
+    };
+
+    let res: Response;
+    try {
+      res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          area: form.area,
+          address: form.address,
+          note: form.note,
+          zoneId: zone.id,
+          couponCode: activeCoupon?.code,
+          items: detail.map((l) => ({
+            productId: l.product.id,
+            variantLabel: l.variantLabel,
+            qty: l.qty,
+          })),
+        }),
+      });
+    } catch {
+      fail(
+        "Could not reach the shop — check your connection and try again. Your cart is untouched.",
+      );
+      return;
+    }
+
+    let body: unknown = null;
+    try {
+      body = await res.json();
+    } catch {
+      // Non-JSON error page — fall through to the generic failure below.
+    }
+    const data = (body ?? {}) as {
+      demoMode?: boolean;
+      order?: Order;
+      error?: string;
+      errors?: { message: string }[];
+    };
+
+    if (res.ok && data.demoMode) {
+      placeLocally();
+      return;
+    }
+    if (res.ok && data.order) {
+      // Live order: mirror it into the local store so the Track page keeps
+      // working on this device (§92). Coupon usage is incremented by the
+      // order RPC itself — never locally in live mode.
+      addOrderToStore(data.order);
+      setPlaced({
+        orderId: data.order.id,
+        eta: data.order.etaLabel,
+        charge: data.order.deliveryCharge,
+        total: data.order.total,
+        addressSummary: `${form.address || form.area}, ${data.order.zoneName}`,
+      });
+      clear();
+      return;
+    }
+    const serverMessage =
+      data.errors?.map((e) => e.message).join(" ") || data.error;
+    fail(
+      serverMessage ||
+        "Could not place the order — please try again. Your cart is untouched.",
+    );
   };
 
   // Plain area names — the old `"Kandirpar · Zone A"` strings were stored
@@ -403,7 +473,10 @@ export default function CheckoutView() {
               <select
                 required
                 value={zone.id}
-                onChange={(e) => update("zoneId", e.target.value)}
+                onChange={(e) => {
+                  update("zoneId", e.target.value);
+                  setMyZoneId(e.target.value);
+                }}
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
                 {zoneList.map((z) => (
@@ -470,6 +543,14 @@ export default function CheckoutView() {
             <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
             <div className="text-sm leading-6">
               <p className="font-semibold">{zone.name}</p>
+              {bagShop && (
+                <p className="mt-1 text-ivory-100/70">
+                  {t("shops.checkoutEta")}: {bagShop.name} ·{" "}
+                  <strong className="text-gold-300">
+                    {splitEta(bagShop.prepMinutes, zone.etaLabel)}
+                  </strong>
+                </p>
+              )}
               <p className="mt-1 text-ivory-100/70">
                 {INSTANT_DELIVERY_TITLE} — estimated arrival{" "}
                 <strong className="text-gold-300">{zone.etaLabel}</strong> from
@@ -538,6 +619,14 @@ export default function CheckoutView() {
         </section>
 
         <CheckoutAssurance />
+        {orderError && (
+          <p
+            role="alert"
+            className="mt-8 rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
+          >
+            {orderError}
+          </p>
+        )}
         <button
           type="submit"
           disabled={form.submitting}
@@ -569,6 +658,9 @@ export default function CheckoutView() {
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
             {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
           </p>
+          <div className="mt-4">
+            <BagShopHeader />
+          </div>
           <ul className="mt-5 space-y-4">
             {detail.map((line) => (
               <li
@@ -611,7 +703,8 @@ export default function CheckoutView() {
                 <button
                   type="button"
                   onClick={() => {
-                    setAppliedCoupon(null);
+                    setAppliedCode("");
+                    setCouponCheck({ code: null, discount: 0, problem: null });
                     setCouponMsg(null);
                     update("couponCode", "");
                   }}

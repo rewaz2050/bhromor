@@ -20,6 +20,7 @@ export default function Header() {
   const { t } = useLanguage();
   const NAV = [
     { label: t("nav.shop"), href: "/shop" },
+    { label: t("nav.shops"), href: "/shops" },
     { label: t("nav.collections"), href: "/#collections" },
   ];
   const [scrolled, setScrolled] = useState(false);

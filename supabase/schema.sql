@@ -398,6 +398,15 @@ create policy "zones public read" on delivery_zones
 create policy "flow public read" on ps_order_flow
   for select using (true);
 
+-- Staff role lookup: requireStaff() reads its own admin_users row through
+-- the user's JWT. RLS with no policy denies everything, so without this
+-- policy no staff login works at all. ps_is_admin() is security definer,
+-- so this does not recurse. Writes stay service-role-only (no write
+-- policy): staff grants/revokes go through the gated /api/admin/staff
+-- endpoints, never direct client writes.
+create policy "staff read roles" on admin_users
+  for select using (ps_is_admin());
+
 -- Admin full access (staff bypasses the restrictive policies above).
 create policy "admin all products" on products
   for all using (ps_is_admin()) with check (ps_is_admin());

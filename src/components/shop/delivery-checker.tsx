@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useZones } from "@/lib/use-zones";
+import { useLiveZones } from "@/lib/use-live-zones";
+import { useMyZone } from "@/lib/use-my-zone";
 import { formatBdt } from "@/lib/format";
 import { IconTruck } from "@/components/ui/icons";
 
 export default function DeliveryChecker() {
-  const { activeZones } = useZones();
+  const { activeZones } = useLiveZones();
+  const { zoneId: myZoneId, setZoneId } = useMyZone();
   const [area, setArea] = useState("");
   const [checked, setChecked] = useState(false);
   const zone = activeZones.find(
@@ -72,7 +74,22 @@ export default function DeliveryChecker() {
           <div role="status" className="mt-3 text-sm text-forest-800">
             {checked &&
               (zone ? (
-                `✓ Available · Estimated delivery: ${zone.etaLabel} · Delivery from ${formatBdt(zone.charge)} (free on qualifying orders).`
+                <>
+                  {`✓ Available · Estimated delivery: ${zone.etaLabel} · Delivery from ${formatBdt(zone.charge)} (free on qualifying orders).`}{" "}
+                  {myZoneId === zone.id ? (
+                    <span className="font-medium">
+                      Showing shops for {zone.name}.
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setZoneId(zone.id)}
+                      className="font-semibold underline underline-offset-2 hover:text-forest-900"
+                    >
+                      Shop for {zone.name}
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   We couldn’t confirm this area. Choose a suggested area or{" "}

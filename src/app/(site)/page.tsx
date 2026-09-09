@@ -6,11 +6,9 @@ import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
-import {
-  CATEGORIES,
-  FEATURED_PRODUCTS,
-  productsByCategory,
-} from "@/lib/catalog";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { useMyZone } from "@/lib/use-my-zone";
+import { filterProductsForZone } from "@/lib/shop-utils";
 import { useCms } from "@/lib/use-cms";
 import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -151,10 +149,18 @@ function SectionHeading({
 
 function CollectionsSection() {
   const { t, lang } = useLanguage();
-  const visibleCategories = CATEGORIES.filter((category) => category.active !== false)
+  const { products, categories, shops } = useLiveCatalog();
+  const { zoneId } = useMyZone();
+  const zoned = filterProductsForZone(
+    products,
+    shops,
+    zoneId,
+    shops[0]?.id ?? "",
+  );
+  const visibleCategories = categories.filter((category) => category.active !== false)
     .map((category) => ({
       category,
-      count: productsByCategory(category.id).length,
+      count: zoned.filter((p) => p.category === category.id).length,
     }))
     .filter(({ count }) => count > 0);
 
@@ -226,6 +232,15 @@ function CollectionsSection() {
 
 function BestSellersSection() {
   const { t } = useLanguage();
+  const { products, shops } = useLiveCatalog();
+  const { zoneId } = useMyZone();
+  const featured = filterProductsForZone(
+    products,
+    shops,
+    zoneId,
+    shops[0]?.id ?? "",
+  ).filter((p) => p.featured);
+  if (featured.length === 0) return null;
   return (
     <section id="best-sellers" className="border-y border-line bg-paper scroll-mt-28">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
@@ -237,7 +252,7 @@ function BestSellersSection() {
           linkLabel={t("bestSellers.shopCollection")}
         />
         <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7">
-          {FEATURED_PRODUCTS.slice(0, 4).map((product, index) => (
+          {featured.slice(0, 4).map((product, index) => (
             <Reveal
               key={product.id}
               delay={index * 80}

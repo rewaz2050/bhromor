@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/drawer";
 import { IconArrowRight, IconClose, IconSearch } from "@/components/ui/icons";
-import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { formatBdt } from "@/lib/format";
 import { matchesProduct, shopSearchHref } from "@/lib/product-search";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -17,6 +17,7 @@ export default function ProductSearch() {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { products: PRODUCTS, categories: CATEGORIES } = useLiveCatalog();
   const searching = query.trim().length > 0;
   const matches = searching
     ? PRODUCTS.filter((product) => matchesProduct(product, query))

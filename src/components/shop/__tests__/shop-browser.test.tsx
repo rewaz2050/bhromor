@@ -8,7 +8,9 @@ import {
 } from "@testing-library/react";
 import ShopBrowser from "@/components/shop/shop-browser";
 import { CartProvider } from "@/components/cart/cart-provider";
-import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
+import { CATEGORIES, DELIVERY_ZONES, PRODUCTS } from "@/lib/catalog";
+import { seedShops } from "@/lib/shops-store";
+import { toPublicShop } from "@/lib/shop-utils";
 import { bdt } from "@/lib/format";
 
 vi.mock("next/navigation", () => ({
@@ -24,6 +26,8 @@ const renderShop = (
       <ShopBrowser
         products={PRODUCTS}
         categories={CATEGORIES}
+        shops={seedShops().map(toPublicShop)}
+        zones={DELIVERY_ZONES}
         initialCategory="all"
         initialNew={false}
         {...props}
@@ -40,7 +44,10 @@ const gridNames = () =>
   });
 
 describe("ShopBrowser", () => {
-  beforeEach(() => cleanup());
+  beforeEach(() => {
+    cleanup();
+    window.localStorage.removeItem("prosanti.myzone.v1");
+  });
 
   it("respects BOTH bounds of a price band", () => {
     renderShop();
@@ -80,6 +87,8 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
+          shops={seedShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew
         />
@@ -159,6 +168,8 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
+          shops={seedShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew={false}
           initialQuery="gamcha"
@@ -206,6 +217,8 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
+          shops={seedShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew={false}
           initialPrice="under500"
@@ -231,5 +244,36 @@ describe("ShopBrowser", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
     expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("scopes discovery to the chosen delivery zone (slice 4)", () => {
+    const shops = seedShops().map(toPublicShop);
+    // Demo shop #1 serves every seeded zone; narrow it to the first zone.
+    const onlyFirst = [
+      { ...shops[0], zoneIds: [DELIVERY_ZONES[0].id] },
+    ];
+    const otherZone = DELIVERY_ZONES[1];
+    renderShop({ shops: onlyFirst });
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+
+    fireEvent.change(screen.getByLabelText(/deliver to/i), {
+      target: { value: otherZone.id },
+    });
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(screen.getByText(/no shops deliver there yet/i)).toBeInTheDocument();
+
+    // Clearing the zone restores the full catalog.
+    fireEvent.change(screen.getByLabelText(/deliver to/i), {
+      target: { value: "" },
+    });
+    expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("hides closed shops from browse surfaces (slice 4)", () => {
+    const shops = seedShops().map(toPublicShop);
+    renderShop({ shops: [{ ...shops[0], isOpen: false }] });
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    // …but the empty state stays the generic one without a zone set.
+    expect(screen.getByText(/no products found/i)).toBeInTheDocument();
   });
 });

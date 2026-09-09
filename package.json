@@ -9,17 +9,22 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "seed": "node scripts/seed-supabase.mjs",
+    "seed:dry": "node scripts/seed-supabase.mjs --dry-run",
+    "grant-admin": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/playfair-display": "^5.3.0",
     "@fontsource/noto-serif-bengali": "^5.3.0",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "lenis": "^1.3.26",
     "next": "16.3.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
