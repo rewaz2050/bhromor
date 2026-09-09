@@ -103,11 +103,16 @@ export const DEMO_BLOCKED_IN_LIVE =
   "Demo login is off because Supabase is connected. Sign in with a real staff email — create the user in Supabase → Authentication → Users (auto-confirm), then grant admin_users.";
 
 /** Live-mode session probe — the server re-checks role on every call. */
-export const probeStaffSession = async (): Promise<StaffProbe> => {
+export const probeStaffSession = async (
+  accessToken?: string,
+): Promise<StaffProbe> => {
   try {
+    const headers: HeadersInit = {};
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const res = await fetch("/api/admin/me", {
       cache: "no-store",
       credentials: "same-origin",
+      headers,
     });
     const data = (await res.json().catch(() => ({}))) as {
       staff?: boolean;
@@ -144,7 +149,11 @@ export const staffProbeError = (probe: StaffProbe): string => {
 export const refreshStaffSession = async (): Promise<boolean> => {
   getAdminAuthed();
   if (mode !== "live") return authed === true;
-  const { staff } = await probeStaffSession();
+  const token = await getSupabaseBrowser()
+    ?.auth.getSession()
+    .then((r) => r.data.session?.access_token)
+    .catch(() => undefined);
+  const { staff } = await probeStaffSession(token);
   authed = staff;
   if (!staff && typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);
@@ -182,14 +191,15 @@ export const signInStaff = async (
   }
   const client = getSupabaseBrowser();
   if (!client) return { ok: false, error: "Staff sign-in is not configured." };
-  const { error } = await client.auth.signInWithPassword({
+  const { data, error } = await client.auth.signInWithPassword({
     email: email.trim(),
     password,
   });
   if (error) return { ok: false, error: mapSupabaseAuthError(error.message) };
-  // Flush the session cookie before the staff probe hits the server.
+  // Flush cookies, then probe with the access token so the server does not
+  // depend on middleware having already copied the session.
   await client.auth.getSession().catch(() => undefined);
-  const probe = await probeStaffSession();
+  const probe = await probeStaffSession(data.session?.access_token);
   if (!probe.staff) {
     await client.auth.signOut().catch(() => undefined);
     return { ok: false, error: staffProbeError(probe) };

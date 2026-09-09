@@ -7,6 +7,20 @@
  */
 
 import { signOutAdmin } from "./admin-auth";
+import { getSupabaseBrowser } from "./supabase-browser";
+
+const bearerHeaders = async (
+  extra?: HeadersInit,
+): Promise<HeadersInit> => {
+  const headers = new Headers(extra);
+  const client = getSupabaseBrowser();
+  if (client) {
+    const { data } = await client.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
+};
 
 export class AdminApiError extends Error {
   status: number;
@@ -49,7 +63,8 @@ export const apiSend = async <T>(
   try {
     res = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      headers: await bearerHeaders({ "Content-Type": "application/json" }),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
