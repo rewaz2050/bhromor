@@ -49,7 +49,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 169 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 242 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 

@@ -127,8 +127,14 @@ export const subscribeReviews = (listener: Listener): (() => void) => {
 
 export const getReviews = (): Review[] => ensureLoaded();
 
-/** Server snapshot — seed reviews without any localStorage overlay. */
-export const getReviewsServer = (): Review[] => seedReviews(PRODUCTS);
+/**
+ * Stable server snapshot for useSyncExternalStore — a fresh `seedReviews()`
+ * per call re-renders forever until React throws ("The result of
+ * getServerSnapshot should be cached" → Next "This page couldn't load").
+ */
+let serverSnapshot: Review[] | null = null;
+export const getReviewsServer = (): Review[] =>
+  (serverSnapshot ??= seedReviews(PRODUCTS));
 
 export const submitReview = (review: Review) =>
   persist(upsertReview(ensureLoaded(), review));

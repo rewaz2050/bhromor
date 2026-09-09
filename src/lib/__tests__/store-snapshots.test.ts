@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getZonesServer } from "@/lib/zone-store";
 import { getNotifsServer } from "@/lib/notifications-store";
 import { getMedia, getMediaServer } from "@/lib/media-store";
+import { getCatalog, saveProductInStore } from "@/lib/catalog-store";
+import { getCouponsServer } from "@/lib/coupons-store";
+import { getReviewsServer } from "@/lib/reviews-store";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 
 /**
@@ -44,5 +47,25 @@ describe("external store snapshots are stable", () => {
     const after = getMedia(extended, CATEGORIES);
     expect(after).not.toBe(before);
     expect(after.some((m) => m.url === "/images/test-only.jpg")).toBe(true);
+  });
+
+  it("returns the same admin catalog snapshot every call", () => {
+    expect(getCatalog()).toBe(getCatalog());
+  });
+
+  it("rebuilds the admin catalog snapshot when a product changes", () => {
+    const before = getCatalog();
+    saveProductInStore({ ...PRODUCTS[0], id: "snap-test-product" });
+    const after = getCatalog();
+    expect(after).not.toBe(before);
+    expect(after.products.some((p) => p.id === "snap-test-product")).toBe(true);
+  });
+
+  it("returns the same coupon server snapshot every call", () => {
+    expect(getCouponsServer()).toBe(getCouponsServer());
+  });
+
+  it("returns the same review server snapshot every call", () => {
+    expect(getReviewsServer()).toBe(getReviewsServer());
   });
 });
