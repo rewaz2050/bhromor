@@ -147,6 +147,17 @@ export default function RiderPage() {
     showFlash("অর্ডার একসেপ্ট হয়েছে! পিকআপ কনফার্ম করুন।");
   };
 
+  const handleReject = async (task: RiderTask) => {
+    if (!isLive) return;
+    const ok = await riderJobsApi.reject(task.id);
+    if (!ok) {
+      setActionError(riderJobsApi.error);
+      return;
+    }
+    setActionError(null);
+    showFlash("অফারটি বাতিল করা হয়েছে।");
+  };
+
   const handlePickup = async (task: RiderTask) => {
     if (isLive) {
       const ok = await riderJobsApi.pickup(task.id);
@@ -498,13 +509,22 @@ export default function RiderPage() {
                       </a>
 
                       {task.state === "offered" ? (
-                        <button
-                          type="button"
-                          onClick={() => handleAccept(task)}
-                          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500"
-                        >
-                          অর্ডার একসেপ্ট করুন
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleReject(task)}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                          >
+                            বাতিল
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAccept(task)}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500"
+                          >
+                            অর্ডার একসেপ্ট করুন
+                          </button>
+                        </>
                       ) : isReady ? (
                         <button
                           type="button"

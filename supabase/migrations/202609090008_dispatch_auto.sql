@@ -108,6 +108,45 @@ begin
   return v_assignment_id;
 end $$;
 
+-- Rider rejects an offer: cancel their assignment and immediately offer the
+-- same order to the next eligible rider (the rejecting rider never sees it
+-- again through ps_next_eligible_rider's seen check).
+create or replace function ps_rider_reject(p_assignment_id uuid)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_rider_id   uuid;
+begin
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  if v_assignment.state <> 'offered' then
+    raise exception 'assignment already handled';
+  end if;
+  update delivery_assignments set state = 'cancelled' where id = v_assignment.id
+  returning * into v_assignment;
+
+  if (
+    select o.status from orders o where o.id = v_assignment.order_id
+  ) in ('ready-for-pickup', 'courier-assigned', 'out-for-delivery')
+     and not exists (
+       select 1 from delivery_assignments
+       where order_id = v_assignment.order_id
+         and state in ('offered', 'accepted', 'picked_up')
+     ) then
+    v_rider_id := ps_next_eligible_rider(v_assignment.order_id);
+    if v_rider_id is not null then
+      insert into delivery_assignments (order_id, rider_id, state, offered_at, expires_at)
+      values (v_assignment.order_id, v_rider_id, 'offered', now(), now() + interval '90 seconds');
+    end if;
+  end if;
+  return v_assignment;
+end $$;
+
 -- Staff closes a live assignment (wrong rider, order cancelled, etc.).
 create or replace function ps_expire_stale_offers()
 returns int

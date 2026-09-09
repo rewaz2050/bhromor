@@ -193,6 +193,11 @@ export const useRiderJobs = (enabled: boolean) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enabled],
   );
+  const reject = useCallback(
+    (id: string) => run(`/api/rider/assignments/${encodeURIComponent(id)}/reject`),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enabled],
+  );
   const deliver = useCallback(
     (id: string, code: string) =>
       run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, { code }),
@@ -228,5 +233,5 @@ export const useRiderJobs = (enabled: boolean) => {
     [enabled],
   );
 
-  return { jobs, settlements, loading, error, refresh, accept, pickup, deliver, setOnline, settle };
+  return { jobs, settlements, loading, error, refresh, accept, pickup, reject, deliver, setOnline, settle };
 };

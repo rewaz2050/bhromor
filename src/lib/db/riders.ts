@@ -393,6 +393,16 @@ export const acceptRiderAssignment = async (
   if (error) throw new Error(error.message);
 };
 
+export const rejectRiderAssignment = async (
+  db: SupabaseClient,
+  assignmentId: string,
+): Promise<void> => {
+  const { error } = await db.rpc("ps_rider_reject", {
+    p_assignment_id: assignmentId,
+  });
+  if (error) throw new Error(error.message);
+};
+
 export const pickupRiderAssignment = async (
   db: SupabaseClient,
   assignmentId: string,
