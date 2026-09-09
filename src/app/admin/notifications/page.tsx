@@ -29,7 +29,7 @@ const FILTERS: (NotifKind | "all")[] = ["all", "order", "review", "stock", "syst
 
 /** §35 notifications — live attention summary + readable inbox. */
 export default function AdminNotificationsPage() {
-  const { notifs, read, readAll, reset } = useNotifications();
+  const { notifs, read, readAll, reset, live, loading, error } = useNotifications();
   const { orders } = useOrders();
   const { products } = useCatalog();
   const { settings } = useSettings();
@@ -102,18 +102,20 @@ export default function AdminNotificationsPage() {
           )}
         </h2>
         <div className="flex gap-2">
+          {!live && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Reset notifications to the seeded samples?")) reset();
+              }}
+              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+            >
+              Reset demo
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm("Reset notifications to the seeded samples?")) reset();
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset demo
-          </button>
-          <button
-            type="button"
-            onClick={readAll}
+            onClick={() => void readAll()}
             className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
             <IconCheck className="h-3.5 w-3.5" /> Mark all read
@@ -148,7 +150,17 @@ export default function AdminNotificationsPage() {
         ))}
       </div>
 
-      {visible.length === 0 ? (
+      {error && (
+        <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
+          <p className="font-display text-lg text-forest-900">Loading your inbox…</p>
+        </div>
+      ) : visible.length === 0 ? (
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">Nothing here</p>
           <p className="mt-1 text-sm text-ink-soft">
@@ -189,7 +201,7 @@ export default function AdminNotificationsPage() {
             return (
               <li key={n.id}>
                 {n.href ? (
-                  <Link href={n.href} className={cls} onClick={() => !n.read && read(n.id)}>
+                  <Link href={n.href} className={cls} onClick={() => !n.read && void read(n.id)}>
                     {content}
                   </Link>
                 ) : (

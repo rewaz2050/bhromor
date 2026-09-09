@@ -238,3 +238,49 @@ export interface DbReview {
   featured: boolean;
   created_at: string;
 }
+
+export type DbContactStatus = "new" | "read" | "replied";
+
+export interface DbContactMessage {
+  id: string;
+  name: string;
+  phone: string;
+  topic: string;
+  message: string;
+  status: DbContactStatus;
+  created_at: string;
+}
+
+export type DbSubscriberStatus = "subscribed" | "unsubscribed";
+
+export interface DbNewsletterSubscriber {
+  id: string;
+  email: string;
+  status: DbSubscriberStatus;
+  token: string;
+  created_at: string;
+}
+
+export interface DbMediaLibrary {
+  id: string;
+  url: string;
+  alt: string;
+  label: string;
+  created_at: string;
+}
+
+export interface DbNotification {
+  id: string;
+  recipient: string;
+  kind: string;
+  title: string;
+  body: string;
+  href: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface DbSiteSetting {
+  key: string;
+  value: unknown;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
 import { useCatalog } from "@/lib/use-catalog";
@@ -10,6 +10,7 @@ import { useCoupons } from "@/lib/use-coupons";
 import { useNotifications } from "@/lib/use-notifications";
 import { useCms } from "@/lib/use-cms";
 import { useSettings } from "@/lib/use-settings";
+import { resetDemoMessages } from "@/lib/engagement";
 import { resetMediaStore } from "@/lib/media-store";
 import { displayStock } from "@/lib/catalog-store";
 import { useTransientValue } from "@/lib/use-transient-value";
@@ -17,13 +18,13 @@ import { field, label } from "@/components/admin/form-ui";
 import { IconBanknote, IconCheck, IconSettings } from "@/components/ui/icons";
 
 /**
- * Settings (§58 ops + demo-phase housekeeping). The Supabase phase moves
- * these into `site_settings`/`admin_users` (blueprint §44, §46) — every
- * control here is a real, live setting of the demo stores.
+ * Settings (§58 ops + demo-phase housekeeping). Staff sessions persist the
+ * threshold in `site_settings['ops']` (§44); the demo-data housekeeping
+ * below only exists in demo mode.
  */
 
 export default function AdminSettingsPage() {
-  const { settings, save: saveSettings } = useSettings();
+  const { settings, save: saveSettings, live } = useSettings();
   const ordersApi = useOrders();
   const catalogApi = useCatalog();
   const zonesApi = useZones();
@@ -35,6 +36,12 @@ export default function AdminSettingsPage() {
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
   const [flash, setFlash] = useTransientValue<string | null>(null, 2200);
 
+  // Live rows arrive async — adopt the published value when it lands.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption
+    setThreshold(String(settings.lowStockThreshold));
+  }, [settings.lowStockThreshold]);
+
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
   const lowCount = catalogApi.products.filter(
     (p) => displayStock(p) > 0 && displayStock(p) <= thresholdValue,
@@ -43,14 +50,19 @@ export default function AdminSettingsPage() {
   const notify = (message: string) => setFlash(message);
 
   const commitThreshold = () => {
-    saveSettings({ lowStockThreshold: thresholdValue });
-    notify("Low-stock threshold saved — alerts use it immediately");
+    void saveSettings({ lowStockThreshold: thresholdValue }).then((ok) =>
+      notify(
+        ok
+          ? "Low-stock threshold saved — alerts use it immediately"
+          : "Could not save — please try again",
+      ),
+    );
   };
 
   const resetAll = () => {
     if (
       !window.confirm(
-        "Reset ALL demo data (orders, catalog, zones, reviews, coupons, notifications, homepage, media, settings) to the seeded samples?",
+        "Reset ALL demo data (orders, catalog, zones, reviews, coupons, notifications, homepage, media, messages, settings) to the seeded samples?",
       )
     )
       return;
@@ -62,6 +74,7 @@ export default function AdminSettingsPage() {
     notifsApi.reset();
     cmsApi.reset();
     resetMediaStore();
+    resetDemoMessages();
     setThreshold(String(settings.lowStockThreshold));
     notify("All demo data reset to seeds");
   };
@@ -75,13 +88,16 @@ export default function AdminSettingsPage() {
     { key: "notifs", name: "Notifications", count: notifsApi.notifs.length, reset: notifsApi.reset, hint: "Inbox + bell unread state (§35)" },
     { key: "cms", name: "Homepage CMS", count: 0, reset: cmsApi.reset, hint: "Announcement, hero and homepage sections (§31)" },
     { key: "media", name: "Media additions", count: 0, reset: resetMediaStore, hint: "Custom URLs added in the media library (§49)" },
+    { key: "messages", name: "Contact messages", count: 0, reset: resetDemoMessages, hint: "Demo inbox for the contact form" },
   ];
 
   const constants = [
     { k: "Currency", v: "Bangladeshi Taka — integer paisa end to end (§69)" },
     { k: "Order numbers", v: "PS-YYYYMMDD-NNNN, assigned at placement (§70)" },
     { k: "Payments", v: "Cash on delivery only — see the Payments page (§20–21)" },
-    { k: "Demo storage", v: "this browser's localStorage under prosanti.* keys" },
+    live
+      ? { k: "Storage", v: "Supabase Postgres — every change here is live data" }
+      : { k: "Demo storage", v: "this browser's localStorage under prosanti.* keys" },
   ];
 
   return (
@@ -90,17 +106,28 @@ export default function AdminSettingsPage() {
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">Settings</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Operational preferences of the demo platform. Supabase phase moves
-            them into <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">site_settings</code> (§44).
+            {live ? (
+              <>
+                Operational preferences — saved in{" "}
+                <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">site_settings</code> (§44).
+              </>
+            ) : (
+              <>
+                Operational preferences of the demo platform. Demo data below
+                lives in this browser only.
+              </>
+            )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={resetAll}
-          className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-forest-950 hover:text-ivory-50"
-        >
-          Reset all demo data
-        </button>
+        {!live && (
+          <button
+            type="button"
+            onClick={resetAll}
+            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-forest-950 hover:text-ivory-50"
+          >
+            Reset all demo data
+          </button>
+        )}
       </div>
 
       {flash && (
@@ -154,7 +181,8 @@ export default function AdminSettingsPage() {
         </div>
       </section>
 
-      {/* Demo data */}
+      {/* Demo data — demo mode only; live data is never reset */}
+      {!live && (
       <section aria-label="Demo data" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
         <div className="flex items-center justify-between">
           <div>
@@ -195,6 +223,7 @@ export default function AdminSettingsPage() {
           ))}
         </ul>
       </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Platform constants */}

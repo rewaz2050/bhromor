@@ -10,6 +10,7 @@
  */
 
 import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
+import { notifyStaff } from "@/lib/db/engagement";
 import { mapReview } from "@/lib/db/mappers";
 import type { DbReview } from "@/lib/db/types";
 import { isServiceRoleConfigured, isSupabaseConfigured } from "@/lib/env";
@@ -115,6 +116,12 @@ export async function POST(request: Request) {
       .select("*")
       .single();
     if (error || !data) return apiError("Could not save the review.", 503);
+    await notifyStaff(db, {
+      kind: "review",
+      title: "Review awaiting moderation",
+      body: `“${(data as DbReview).title || "Untitled"}” — ${rating}★ from ${(data as DbReview).author}.`,
+      href: "/admin/reviews",
+    });
     return apiJson({ review: mapReview(data as DbReview) }, 201);
   } catch {
     return apiError("Could not save the review.", 503);

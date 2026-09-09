@@ -18,6 +18,10 @@ money paths.
 src/app/api/
 ├── health/route.ts        # mode probe (no keys leaked — booleans only)
 ├── products/route.ts      # published catalog + active shops (live rows or demo seeds)
+├── contact/route.ts       # POST public intake → contact_messages + staff notice
+├── newsletter/subscribe/route.ts    # POST table-based signup
+├── newsletter/unsubscribe/route.ts  # GET ?token= one-click unsubscribe
+├── homepage/route.ts      # GET published CMS (public read policy)
 ├── zones/route.ts         # active delivery zones
 ├── orders/route.ts        # POST: validate → ps_place_order RPC → return order
 ├── track/route.ts         # GET ?id=&phone=: phone-gated lookup
@@ -47,6 +51,12 @@ src/app/api/
 ├── vendor/earnings/route.ts    # ledger + payouts + balance
 ├── vendor/categories/route.ts  # active categories for the product editor
 ├── admin/me/route.ts      # staff session probe for the admin gate
+├── admin/messages/route.ts      # GET inbox (?status=) / PATCH read-replied
+├── admin/newsletter/route.ts    # GET list / DELETE remove
+├── admin/homepage/route.ts      # GET + PATCH published CMS
+├── admin/media/route.ts         # GET + POST + DELETE library shelf
+├── admin/notifications/route.ts # GET my inbox / PATCH read
+├── admin/settings/route.ts      # GET + PATCH site_settings['ops']
 └── media/sign/route.ts    # STAFF-ONLY Cloudinary signed-upload params (§48)
 src/lib/
 ├── env.ts                 # typed env access + is*Configured() checks
@@ -66,6 +76,9 @@ src/lib/
 ├── use-staff-live.ts      # shared staff probe for the upgraded hooks
 ├── riders-store.ts/use-riders.ts  # demo rider queue + staff hook (no storefront)
 ├── use-orders/use-catalog/use-zones/use-coupons/use-reviews.ts  # demo ↔ live
+├── engagement.ts        # contact/newsletter/CMS/media/notif domain (client-safe)
+├── use-cms/use-settings/use-notifications/use-media/use-messages.ts  # demo ↔ live
+├── use-newsletter-admin.ts  # staff subscriber list (live only)
 └── db/
     ├── types.ts           # row types mirroring schema.sql
     ├── mappers.ts         # rows → Product/Order/Zone/Coupon (pure, tested)
@@ -75,6 +88,7 @@ src/lib/
     ├── marketplace.ts     # public shops discovery + application intake
     ├── riders.ts          # public rider application intake
     ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)
+    ├── engagement.ts      # contact/newsletter/CMS/media/notif/settings + notifyStaff
     └── storefront.ts      # server page reads with seed fallback
 supabase/
 ├── schema.sql                              # base tables, RLS, §34 machine
@@ -83,7 +97,8 @@ supabase/
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
     ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
     ├── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS + settlement triggers
-    └── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
+    ├── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
+    └── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
@@ -102,6 +117,7 @@ scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_a
    - `supabase/migrations/202609080003_place_order_rpc.sql`
    - `supabase/migrations/202609090004_marketplace_shops.sql`
    - `supabase/migrations/202609090005_riders.sql`
+   - `supabase/migrations/202609090006_engagement.sql`
 
 ### 2. Environment
 

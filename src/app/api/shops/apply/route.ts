@@ -8,9 +8,10 @@
  */
 
 import { ShopInputError, applyShop } from "@/lib/db/marketplace";
+import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { getSupabaseServer } from "@/lib/supabase-server";
+import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,19 @@ export async function POST(request: Request) {
       applicantUserId = undefined;
     }
     const { id } = await applyShop(body, applicantUserId);
+    const staffDb = getSupabaseService();
+    if (staffDb) {
+      const shopName =
+        typeof (body as Record<string, unknown>)?.name === "string"
+          ? String((body as Record<string, unknown>).name).trim().slice(0, 80)
+          : "A shop";
+      await notifyStaff(staffDb, {
+        kind: "system",
+        title: "New shop application",
+        body: `${shopName} applied to sell on PROSANTI.`,
+        href: "/admin/shops",
+      });
+    }
     return apiJson(
       {
         applied: true as const,

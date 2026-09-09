@@ -2,13 +2,63 @@
 
 import { useState } from "react";
 import { IconCheck } from "@/components/ui/icons";
+import {
+  CONTACT_TOPICS,
+  addDemoMessage,
+  validateContact,
+} from "@/lib/engagement";
 
 export default function ContactForm() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [topic, setTopic] = useState("Order support");
+  const [topic, setTopic] = useState<string>(CONTACT_TOPICS[0]);
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sending) return;
+    const checked = validateContact({ name, phone, topic, message });
+    if (!checked.ok) {
+      setError(
+        checked.errors.name ??
+          checked.errors.phone ??
+          checked.errors.message ??
+          "Please fix the highlighted fields.",
+      );
+      return;
+    }
+    setError(null);
+    setSending(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(checked.value),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        sent?: boolean;
+        demoMode?: boolean;
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        setError(data?.error ?? "Could not send — please try again.");
+        return;
+      }
+      if (data?.demoMode) {
+        // Demo mode: no backend — the browser-local demo inbox keeps it so
+        // the admin Messages page still demonstrates the flow.
+        addDemoMessage(checked.value);
+      }
+      setSent(true);
+    } catch {
+      setError("Could not reach the shop — check your connection.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   if (sent) {
     return (
@@ -29,10 +79,7 @@ export default function ContactForm() {
 
   return (
     <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        setSent(true);
-      }}
+      onSubmit={(e) => void submit(e)}
       className="rounded-3xl bg-paper p-7 ring-1 ring-line"
     >
       <h2 className="font-display text-2xl font-medium text-forest-900">
@@ -49,6 +96,7 @@ export default function ContactForm() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
+            autoComplete="name"
             className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
           />
         </label>
@@ -63,6 +111,7 @@ export default function ContactForm() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="017XXXXXXXX"
+            autoComplete="tel"
             className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
           />
         </label>
@@ -76,11 +125,9 @@ export default function ContactForm() {
           onChange={(e) => setTopic(e.target.value)}
           className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
         >
-          {["Order support", "Delivery", "Product question", "Return / exchange", "Feedback", "Partnership"].map(
-            (t) => (
-              <option key={t}>{t}</option>
-            ),
-          )}
+          {CONTACT_TOPICS.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
         </select>
       </label>
       <label className="mt-4 block">
@@ -96,11 +143,17 @@ export default function ContactForm() {
           className="w-full rounded-2xl bg-ivory-50 px-4 py-3 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
         />
       </label>
+      {error && (
+        <p role="alert" className="mt-4 text-sm leading-6 text-rose-700">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
-        className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+        disabled={sending}
+        className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
       >
-        Send message
+        {sending ? "Sending…" : "Send message"}
       </button>
     </form>
   );
