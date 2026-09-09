@@ -71,7 +71,7 @@ export const useRiderSession = () => {
       setStatus("demo");
       return;
     }
-    setStatus("checking");
+    setStatus((prev) => (prev === "authed" ? prev : "checking"));
     setError(null);
     try {
       const data = await riderFetch<{ rider: Rider; email: string }>(
