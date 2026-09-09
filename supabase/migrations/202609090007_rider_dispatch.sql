@@ -12,7 +12,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.delivery_code is null or new.delivery_code !~ '^[0-9]{4}$' then
     new.delivery_code := lpad(
-      ((abs(hashtext(coalesce(new.order_no, new.id::text))) % 9000 + 1000)::text),
+      (mod(hashtext(coalesce(new.order_no, new.id::text))::bigint, 9000)::int + 1000)::text,
       4,
       '0'
     );
@@ -27,7 +27,7 @@ create trigger trg_orders_set_delivery_code
 
 update orders
 set delivery_code = lpad(
-  ((abs(hashtext(coalesce(order_no, id::text))) % 9000 + 1000)::text),
+  (mod(hashtext(coalesce(order_no, id::text))::bigint, 9000)::int + 1000)::text,
   4,
   '0'
 )
