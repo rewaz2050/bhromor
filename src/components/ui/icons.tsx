@@ -258,3 +258,17 @@ export const IconBanknote = (p: IconProps) => (
     <path d="M18 12h.01" />
   </Svg>
 );
+
+export const IconMail = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </Svg>
+);
+
+export const IconSend = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m4 11.5 16-7-5.5 16-3-6.5-7.5-2.5Z" />
+    <path d="M11.5 14.5 20 4.5" />
+  </Svg>
+);

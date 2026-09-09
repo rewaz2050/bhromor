@@ -16,8 +16,10 @@ import {
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
+import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +65,15 @@ export async function POST(request: Request) {
     const order = await placeLiveOrder(validation.draft, snapshot);
     if (!order) {
       return apiError("Could not place the order — please try again.", 503);
+    }
+    const staffDb = getSupabaseService();
+    if (staffDb) {
+      await notifyStaff(staffDb, {
+        kind: "order",
+        title: `New order ${order.id} awaiting confirmation`,
+        body: `${order.customer.name} (${order.customer.area}) — ${(order.total / 100).toLocaleString("en-IN")} taka, cash on delivery.`,
+        href: `/admin/orders/${order.id}`,
+      });
     }
     return apiJson({ order }, 201);
   } catch (err) {

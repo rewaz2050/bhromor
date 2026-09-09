@@ -4,6 +4,8 @@
  */
 import { advanceOrderAsStaff } from "@/lib/db/admin";
 import { AdminInputError } from "@/lib/db/admin";
+import { notifyStaff } from "@/lib/db/engagement";
+import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
 import { routeId, staffRoute } from "../../../_lib";
 import type { OrderStatus } from "@/lib/orders";
@@ -40,6 +42,19 @@ export const POST = staffRoute(
       body.to as OrderStatus,
       typeof body.note === "string" ? body.note : undefined,
     );
+    const staffDb = getSupabaseService();
+    if (staffDb) {
+      const label = (body.to as string).replace(/-/g, " ");
+      await notifyStaff(staffDb, {
+        kind: "order",
+        title: `Order ${order.id} → ${label}`,
+        body:
+          body.to === "cancelled"
+            ? `${order.id} was cancelled; reserved stock is released.`
+            : `${order.id} moved to ${label}.`,
+        href: `/admin/orders/${order.id}`,
+      });
+    }
     return apiJson({ order });
   },
 );

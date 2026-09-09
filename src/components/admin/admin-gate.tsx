@@ -26,8 +26,10 @@ import {
   IconImage,
   IconLeaf,
   IconLogout,
+  IconMail,
   IconMapPin,
   IconMenu,
+  IconSend,
   IconSettings,
   IconShield,
   IconTag,
@@ -53,6 +55,8 @@ const NAV = [
   { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
   { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
   { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
+  { href: "/admin/messages", label: "Messages", icon: IconMail, match: (p: string) => p === "/admin/messages" },
+  { href: "/admin/newsletter", label: "Newsletter", icon: IconSend, match: (p: string) => p === "/admin/newsletter" },
   { href: "/admin/shops", label: "Shops", icon: IconBox, match: (p: string) => p === "/admin/shops" },
   { href: "/admin/payouts", label: "Payouts", icon: IconCard, match: (p: string) => p === "/admin/payouts" },
   { href: "/admin/riders", label: "Riders", icon: IconTruck, match: (p: string) => p === "/admin/riders" },
@@ -108,7 +112,7 @@ export default function AdminGate({
   const onLogin = pathname.startsWith("/admin/login");
   const { unread } = useNotifications();
   /** Phones had no way to reach the admin nav: the sidebar simply stacked its
-   *  15 links above every page. It is a drawer below `lg` now. */
+   *  17 links above every page. It is a drawer below `lg` now. */
   const [navOpen, setNavOpen] = useState(false);
   const lastPath = useRef(pathname);
   useEffect(() => {

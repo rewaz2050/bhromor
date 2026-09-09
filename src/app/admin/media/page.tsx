@@ -15,10 +15,10 @@ import { IconCheck, IconCopy, IconPlus, IconSearch, IconTrash } from "@/componen
 
 const KINDS: (MediaKind | "all")[] = ["all", "product", "category", "homepage", "brand", "custom"];
 
-/** §49 media library — organised references; Cloudinary upload later (§13, §48). */
+/** §49 media library — in-use scan plus the persistent “added” shelf. */
 export default function AdminMediaPage() {
   const { products, categories } = useCatalog();
-  const { items, add, remove, reset } = useMedia(products, categories);
+  const { items, add, remove, reset, live, loading, error: liveError } = useMedia(products, categories);
   const [kind, setKind] = useState<MediaKind | "all">("all");
   const [query, setQuery] = useState("");
   const [url, setUrl] = useState("");
@@ -57,10 +57,17 @@ export default function AdminMediaPage() {
       setError("Paste a full image URL — http(s) to a hosted image.");
       return;
     }
-    add({ url: u, alt: alt.trim(), label: alt.trim() || "Admin added image" });
-    setUrl("");
-    setAlt("");
     setError(null);
+    void add({ url: u, alt: alt.trim(), label: alt.trim() || "Admin added image" }).then(
+      (ok) => {
+        if (ok) {
+          setUrl("");
+          setAlt("");
+        } else {
+          setError(liveError ?? "Could not save the image — please try again.");
+        }
+      },
+    );
   };
 
   return (
@@ -71,25 +78,34 @@ export default function AdminMediaPage() {
             Media library
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Every image the storefront actually uses, organised the way
-            Cloudinary will store it (§49).
+            {live
+              ? "Every image the storefront uses, plus the shared library shelf (§49)."
+              : "Every image the storefront actually uses, organised the way Cloudinary will store it (§49)."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("Remove admin-added entries? In-use media stays.")) reset();
-          }}
-          className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-        >
-          Reset additions
-        </button>
+        {!live && (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Remove admin-added entries? In-use media stays.")) reset();
+            }}
+            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+          >
+            Reset additions
+          </button>
+        )}
       </div>
+
+      {liveError && (
+        <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">
+          {liveError}
+        </p>
+      )}
 
       {/* Direct upload → Cloudinary (§48), with add-by-URL as fallback */}
       <MediaUploader
         onUploaded={(urlToAdd, label) =>
-          add({ url: urlToAdd, alt: label, label })
+          void add({ url: urlToAdd, alt: label, label })
         }
       />
 
@@ -170,7 +186,11 @@ export default function AdminMediaPage() {
       </div>
 
       {/* Grid */}
-      {visible.length === 0 ? (
+      {loading ? (
+        <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
+          <p className="font-display text-lg text-forest-900">Loading the library…</p>
+        </div>
+      ) : visible.length === 0 ? (
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">No media here</p>
           <p className="mt-1 text-sm text-ink-soft">
@@ -208,7 +228,7 @@ export default function AdminMediaPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (window.confirm("Remove this entry from the library?")) remove(m.id);
+                        if (window.confirm("Remove this entry from the library?")) void remove(m.id);
                       }}
                       aria-label={`Remove ${m.label}`}
                       className="ml-auto rounded-full p-1.5 text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"

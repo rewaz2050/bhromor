@@ -2,37 +2,39 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
-  getSettings,
-  getSettingsServer,
-  resetSettings,
-  saveSettings,
-  subscribeSettings,
-  type AdminSettings,
-} from "./settings-store";
+  getDemoMessages,
+  resetDemoMessages,
+  setDemoMessageStatus,
+  subscribeDemoMessages,
+  type ContactMessage,
+  type ContactStatus,
+} from "./engagement";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /**
- * Ops settings (§58) with live cutover (see use-coupons.ts).
- * Staff sessions read/write site_settings['ops']; demo keeps the browser
- * store. Dashboard + inventory alerts read through here either way.
+ * Staff contact inbox with live cutover (see use-coupons.ts).
+ * Staff sessions read/mark the contact_messages table; demo keeps the
+ * browser-local inbox the demo contact form writes to.
  */
-export function useSettings() {
+export function useMessages() {
   const demo = useSyncExternalStore(
-    subscribeSettings,
-    getSettings,
-    getSettingsServer,
+    subscribeDemoMessages,
+    getDemoMessages,
+    getDemoMessages,
   );
   const { live, checked } = useStaffLive();
-  const [liveSettings, setLiveSettings] = useState<AdminSettings | null>(null);
+  const [liveMessages, setLiveMessages] = useState<ContactMessage[] | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const data = await apiGet<{ settings: AdminSettings }>(
-        "/api/admin/settings",
+      const data = await apiGet<{ messages: ContactMessage[] }>(
+        "/api/admin/messages",
       );
-      setLiveSettings(data.settings);
+      setLiveMessages(data.messages);
       setError(null);
       return true;
     } catch (err) {
@@ -44,27 +46,25 @@ export function useSettings() {
   useEffect(() => {
     if (!live) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
-      setLiveSettings(null);
+      setLiveMessages(null);
       setError(null);
       return;
     }
     void refresh();
   }, [live, refresh]);
 
-  const save = useCallback(
-    async (s: AdminSettings): Promise<boolean> => {
+  const setStatus = useCallback(
+    async (id: string, status: ContactStatus): Promise<boolean> => {
       if (!live) {
-        saveSettings(s);
+        setDemoMessageStatus(id, status);
         return true;
       }
       try {
-        const data = await apiSend<{ settings: AdminSettings }>(
-          "/api/admin/settings",
-          "PATCH",
-          s,
-        );
-        setLiveSettings(data.settings);
+        await apiSend("/api/admin/messages", "PATCH", { id, status });
         setError(null);
+        setLiveMessages((prev) =>
+          prev ? prev.map((m) => (m.id === id ? { ...m, status } : m)) : prev,
+        );
         return true;
       } catch (err) {
         setError(apiErrorMessage(err));
@@ -76,15 +76,16 @@ export function useSettings() {
 
   const reset = useCallback(() => {
     if (live) void refresh();
-    else resetSettings();
+    else resetDemoMessages();
   }, [live, refresh]);
 
   return {
-    settings: live ? (liveSettings ?? demo) : demo,
-    save,
+    messages: live ? (liveMessages ?? []) : demo,
+    setStatus,
     reset,
+    refresh,
     live,
-    loading: live && (!checked || liveSettings === null),
+    loading: live && (!checked || liveMessages === null),
     error,
     clearError: () => setError(null),
   };

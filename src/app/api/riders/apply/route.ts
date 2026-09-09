@@ -7,9 +7,10 @@
  */
 
 import { RiderInputError, applyRider } from "@/lib/db/riders";
+import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { getSupabaseServer } from "@/lib/supabase-server";
+import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,19 @@ export async function POST(request: Request) {
       applicantUserId = undefined;
     }
     const { id } = await applyRider(body, applicantUserId);
+    const staffDb = getSupabaseService();
+    if (staffDb) {
+      const riderName =
+        typeof (body as Record<string, unknown>)?.name === "string"
+          ? String((body as Record<string, unknown>).name).trim().slice(0, 80)
+          : "A rider";
+      await notifyStaff(staffDb, {
+        kind: "system",
+        title: "New rider application",
+        body: `${riderName} applied to ride for PROSANTI.`,
+        href: "/admin/riders",
+      });
+    }
     return apiJson(
       {
         applied: true as const,

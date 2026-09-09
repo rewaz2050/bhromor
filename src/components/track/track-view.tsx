@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useLocalOrders } from "@/lib/use-orders";
+import { isSupabaseConfigured } from "@/lib/env";
 import {
   flowIndex,
   samePhone,
@@ -80,10 +81,14 @@ const stepTime = (order: Order, step: number): string | undefined => {
   return undefined;
 };
 
-type Result = { found: true; order: Order } | { found: false } | null;
+type Result =
+  | { found: true; order: Order; via: "device" | "live" }
+  | { found: false }
+  | null;
 
 export default function TrackView() {
   const { orders } = useLocalOrders();
+  const demoMode = !isSupabaseConfigured();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
@@ -99,7 +104,7 @@ export default function TrackView() {
     );
     if (local) {
       setLookupFailed(false);
-      setResult({ found: true, order: local });
+      setResult({ found: true, order: local, via: "device" });
       return;
     }
     // Otherwise ask the backend — cross-device orders live there.
@@ -116,7 +121,7 @@ export default function TrackView() {
         order?: Order;
       } | null;
       if (res.ok && data?.order) {
-        setResult({ found: true, order: data.order });
+        setResult({ found: true, order: data.order, via: "live" });
       } else if (res.status === 404 || data?.demoMode) {
         setResult({ found: false });
       } else {
@@ -137,10 +142,11 @@ export default function TrackView() {
     if (!sample) return;
     setOrderId(sample.id);
     setPhone(sample.customer.phone);
-    setResult({ found: true, order: sample });
+    setResult({ found: true, order: sample, via: "device" });
   };
 
   const order = result?.found ? result.order : null;
+  const via = result?.found ? result.via : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[420px_1fr]">
@@ -203,13 +209,15 @@ export default function TrackView() {
             Could not reach the shop — check your connection and try again.
           </p>
         )}
-        <button
-          type="button"
-          onClick={tryDemo}
-          className="mt-3 w-full text-center text-xs text-ink-soft underline underline-offset-4 hover:text-forest-700"
-        >
-          View the newest demo order instead
-        </button>
+        {demoMode && (
+          <button
+            type="button"
+            onClick={tryDemo}
+            className="mt-3 w-full text-center text-xs text-ink-soft underline underline-offset-4 hover:text-forest-700"
+          >
+            View the newest demo order instead
+          </button>
+        )}
       </form>
 
       {/* Result */}
@@ -467,13 +475,14 @@ export default function TrackView() {
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.zoneName} · {order.etaLabel}
                 </p>
-                <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
-                  <strong className="text-ink">Demo data.</strong> This device
-                  is your browser&apos;s demo warehouse: the order status moves
-                  when the PROSANTI admin panel advances it. Real status
-                  updates, SMS and a courier map arrive with the backend and
-                  tracking phases.
-                </p>
+                {(demoMode || via === "device") && (
+                  <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
+                    <strong className="text-ink">Demo data.</strong>{" "}
+                    {demoMode
+                      ? "This device is your browser's demo warehouse: the order status moves when the PROSANTI admin panel advances it."
+                      : "This order lives in this browser only — orders placed on PROSANTI are tracked live from our system instead."}
+                  </p>
+                )}
               </div>
             </div>
           </div>

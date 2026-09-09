@@ -13,9 +13,10 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 2 — Catalog (UI: shop, product pages, filters, search) | ✅ UI complete (mock data) |
 | Phase 3/5 — Admin foundation (login, dashboard, orders + status machine) | ✅ UI complete (demo data) |
 | Phase 3 rest — Admin products & categories CRUD, publish workflow | ✅ UI complete (demo store) |
-| Phase 8 preview — Wishlist · Reviews · Coupons · Homepage CMS · Inventory | ✅ UI complete (browser demo) |
-| Phase 3/6 preview — Media library (§49) · Notifications inbox (§35) | ✅ UI complete (browser demo) |
-| Phase 6 preview — Reports · Settings · Payments (COD-only policy) | ✅ UI complete (browser demo) |
+| Phase 8 preview — Wishlist · Reviews · Coupons · Homepage CMS · Inventory | ✅ Live on Supabase (demo fallback w/o keys) |
+| Phase 3/6 preview — Media library (§49) · Notifications inbox (§35) | ✅ Live on Supabase (demo fallback w/o keys) |
+| Phase 6 preview — Reports · Settings · Payments (COD-only policy) | ✅ Live on Supabase (demo fallback w/o keys) |
+| Engagement — Contact inbox · Newsletter · CMS/media/notif/settings APIs | ✅ Live — see `docs/go-live.md` |
 | Supabase schema (products, variants, media, orders, RLS, §34 machine) | ✅ `supabase/schema.sql` ready |
 | Phase 4 — Cart & Checkout (UI + client state) | ✅ UI complete (demo flow) |
 | Phase 4 rest — Delivery-zone manager (shared with checkout) | ✅ UI complete (shared store) |
@@ -49,7 +50,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 242 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 261 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -88,9 +89,9 @@ All motion stays inside the existing tokens (`--motion-*`, `--ease-refined`) and
 
 Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Wishlist · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
 
-**Admin demo** (`/admin`, demo mode — UI only, session lives in the browser):
+**Admin** (`/admin` — live on Supabase when keys are set, browser demo otherwise):
 
-- Login: `admin@prosanti.store` / `prosanti` (shown on the login card)
+- Login: staff Supabase Auth in live mode; `admin@prosanti.store` / `prosanti` in demo mode only (shown on the login card)
 - Dashboard: today's sales, live status pipeline, §88 delivery performance, low-stock alerts
 - Orders: search + status filters, order details with item snapshots, customer info, journey timeline, and state-machine-driven actions (advance / cancel per §34)
 - Products: catalog list w/ search + visibility filters, quick featured/archive actions, full sectioned editor (basics, pricing, variants/stock, media URLs + YouTube, publishing, SEO)
@@ -100,10 +101,15 @@ Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated
 - Coupons: fixed/percent, min order, category scope, validity & usage limits; checkout applies codes live; usage is recorded when an order is placed (§56)
 - Inventory: per-product stock editor with configurable low-stock threshold that drives the dashboard alert (§57–58)
 - Reports: period presets (7/30/all days) over the live order store — booked vs collected COD revenue, daily revenue chart, top products, zone and coupon breakdowns
-- Settings: low-stock threshold (§58), platform constants (§68–70), per-domain demo-data resets (orders/catalog/zones/reviews/coupons/notifications/CMS/media)
+- Homepage: §31 CMS — announcement, hero copy, section visibility; Publish updates the live storefront (demo: this browser only)
+- Media: §49 library — in-use scan plus a shared “added” shelf (live table for staff; direct Cloudinary upload when keys are set)
+- Notifications: §35 per-staff inbox fed by real order/review/application/message/signup events, plus a live “needs attention” summary
+- Messages: contact-form inbox — read/reply triage with click-to-call phone links
+- Newsletter: table-based subscriber list with search, CSV export and per-subscriber unsubscribe links (no third party)
+- Settings: low-stock threshold (§58) saved live; platform constants (§68–70); per-domain demo-data resets in demo mode only (orders/catalog/zones/reviews/coupons/notifications/CMS/media/messages)
 - Payments: launch is **Cash on Delivery only** (§20–21, §26) with a live COD book; bKash/Nagad/cards listed as next-phase methods — no fake gateway wiring
 
-Demo data (orders, catalog, zones, reviews, coupons, notifications, media) persists in `localStorage` under `prosanti.*` keys and can be reset from each toolbar. This is a UI prototype, not a security boundary — server/database authorization arrives with Supabase (§46–47). Public storefront reads still come from `src/lib/catalog.ts` until the data layer lands; zones are the exception — checkout already consumes the shared zone store.
+Without Supabase keys every domain above runs on browser-local demo stores (`prosanti.*` keys, resettable per toolbar). With keys set + SQL applied + seed run, the same UI reads/writes Postgres — see **[docs/go-live.md](docs/go-live.md)** for the owner-run launch checklist.
 
 Design language: deep forest green + warm ivory + muted gold, Playfair display serif + Inter + Noto Serif Bengali, arch-shaped brand imagery (signature motif), mobile-first.
 
@@ -131,7 +137,9 @@ src/
 │   │   ├── reviews/          # §30 moderation queue
 │   │   ├── coupons/          # §56 discount-code manager
 │   │   ├── inventory/        # §57–58 stock + threshold
-│   │   ├── media/            # §49 library (URLs, sections, copy)
+│   │   ├── media/            # §49 library (in-use scan + shared shelf)
+│   │   ├── messages/         # contact-form inbox (triage)
+│   │   ├── newsletter/       # subscriber list + CSV export
 │   │   ├── notifications/    # §35 inbox + bell + live attention
 │   │   ├── reports/          # sales reports over the order store
 │   │   ├── settings/         # ops settings + demo-data resets
@@ -161,8 +169,8 @@ Live project: [bhromor-zeta.vercel.app](https://bhromor-zeta.vercel.app). `verce
 
 ## Next phases (in order)
 
-1. **Backend wiring** — apply `supabase/schema.sql`, then move `src/lib/*` demo stores behind data-access adapters backed by Supabase (catalog, orders, coupons, reviews, notifications, media refs); Cloudinary signed uploads (§48); `.env` keys are only needed then.
-2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) and customer accounts (§27) once auth is live.
+1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply SQL through migration `006`, `npm run seed`, grant the first staff role, run the verify checklist. Production currently serves the catalog but the database must be seeded before live checkout works.
+2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) once a gateway account exists; Cloudinary keys enable direct media upload (§48) — both optional, everything else is already real.
 
 
 ## Customer accounts & remote wishlists
