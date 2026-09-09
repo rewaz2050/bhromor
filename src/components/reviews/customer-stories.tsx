@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useReviews } from "@/lib/use-reviews";
-import { PRODUCTS } from "@/lib/catalog";
+import { usePublicReviews } from "@/lib/use-public-reviews";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { PRODUCTS, type Product } from "@/lib/catalog";
 import { isDiscoverable } from "@/lib/merchandising";
 import { averageOf, type Review } from "@/lib/review-store";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconStar } from "@/components/ui/icons";
 
-export function approvedStories(reviews: Review[]) {
+export function approvedStories(reviews: Review[], products: Product[] = PRODUCTS) {
   return reviews
     .filter(
       (r) =>
@@ -16,7 +17,7 @@ export function approvedStories(reviews: Review[]) {
         Number.isFinite(r.rating) &&
         r.rating >= 1 &&
         r.rating <= 5 &&
-        PRODUCTS.some((p) => p.id === r.productId && isDiscoverable(p)),
+        products.some((p) => p.id === r.productId && isDiscoverable(p)),
     )
     .sort(
       (a, b) => Number(!!b.featured) - Number(!!a.featured) || b.date - a.date,
@@ -24,8 +25,9 @@ export function approvedStories(reviews: Review[]) {
 }
 
 export default function CustomerStories() {
-  const { reviews } = useReviews();
-  const approved = approvedStories(reviews);
+  const { reviews, live } = usePublicReviews({ featured: true });
+  const { products } = useLiveCatalog();
+  const approved = approvedStories(reviews, products);
   return (
     <section
       aria-labelledby="stories-heading"
@@ -40,11 +42,13 @@ export default function CustomerStories() {
           >
             Comfort, in their words.
           </h2>
-          <p className="mt-4 max-w-xl border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
-            Preview content: these reviews come from the demo review store,
-            including sample entries and browser-local submissions. They are not
-            verified customer proof.
-          </p>
+          {!live && (
+            <p className="mt-4 max-w-xl border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
+              Preview content: these reviews come from the demo review store,
+              including sample entries and browser-local submissions. They are not
+              verified customer proof.
+            </p>
+          )}
         </div>
         {approved.length > 0 && (
           <div className="text-forest-900">
@@ -53,7 +57,7 @@ export default function CustomerStories() {
               <span className="text-xl text-ink-soft">/ 5</span>
             </p>
             <p className="mt-2 text-xs text-ink-soft">
-              Across {approved.length} approved demo reviews
+              Across {approved.length} approved{live ? "" : " demo"} reviews
             </p>
           </div>
         )}
@@ -61,7 +65,8 @@ export default function CustomerStories() {
       {approved.length ? (
         <div className="grid gap-5 md:grid-cols-3">
           {approved.slice(0, 3).map((review) => {
-            const product = PRODUCTS.find((p) => p.id === review.productId)!;
+            const product = products.find((p) => p.id === review.productId);
+            if (!product) return null;
             return (
               <article
                 key={review.id}
@@ -85,7 +90,7 @@ export default function CustomerStories() {
                 <p className="mt-6 text-xs font-medium text-ink">
                   {review.author}{" "}
                   <span className="font-normal text-ink-soft">
-                    · Demo review
+                    {live ? (review.verified ? "· Verified purchase" : "") : "· Demo review"}
                   </span>
                 </p>
                 <Link

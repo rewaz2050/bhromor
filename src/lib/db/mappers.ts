@@ -20,6 +20,7 @@ import type {
   OrderStatus,
   OrderTimelineEntry,
 } from "../orders";
+import type { Review, ReviewStatus } from "../review-store";
 import type {
   DbCategory,
   DbCoupon,
@@ -29,6 +30,7 @@ import type {
   DbOrderItem,
   DbOrderStatus,
   DbProduct,
+  DbReview,
   DbVariant,
   DbZone,
 } from "./types";
@@ -255,3 +257,17 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
         : undefined,
   };
 };
+
+/** Review row → the moderation-queue + storefront `Review` shape. */
+export const mapReview = (row: DbReview): Review => ({
+  id: row.id,
+  productId: row.product_id,
+  rating: Math.max(1, Math.min(5, row.rating)),
+  author: row.author,
+  title: row.title ?? undefined,
+  body: row.body,
+  date: epoch(row.created_at),
+  status: row.status as ReviewStatus,
+  verified: row.verified,
+  featured: row.featured || undefined,
+});

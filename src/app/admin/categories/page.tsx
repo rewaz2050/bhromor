@@ -24,7 +24,7 @@ function Row({
   category: Category;
   first: boolean;
   last: boolean;
-  onSave: (c: Category) => void;
+  onSave: (c: Category) => Promise<boolean> | void;
   onMove: (dir: -1 | 1) => void;
   onToggleActive: () => void;
 }) {
@@ -50,8 +50,8 @@ function Row({
     setDirty(true);
   };
 
-  const save = () => {
-    onSave({
+  const save = async () => {
+    const ok = await onSave({
       ...category,
       name: name.trim() || category.name,
       nameBn: nameBn.trim(),
@@ -59,6 +59,9 @@ function Row({
       image: image.trim() || category.image,
       subCategories: subs,
     });
+    // In live mode a failed write must keep the row dirty — the page-level
+    // banner carries the reason.
+    if (ok === false) return;
     setSaved(true);
     setDirty(false);
   };
@@ -181,21 +184,31 @@ function Row({
 
 /** §5 data-driven category management. */
 export default function AdminCategoriesPage() {
-  const { categories, saveCategory, setCategoryActive, moveCategory } = useCatalog();
+  const {
+    categories,
+    loading,
+    error,
+    clearError,
+    saveCategory,
+    setCategoryActive,
+    moveCategory,
+  } = useCatalog();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newBn, setNewBn] = useState("");
 
-  const create = () => {
+  const create = async () => {
     const name = newName.trim();
     if (!name) return;
+    // Slug ids are shared by both modes, and the live upsert would silently
+    // overwrite a same-slug row — so dedupe against the current list first.
     let id = slugify(name);
     let n = 2;
     while (categories.some((c) => c.id === id)) {
       id = `${slugify(name)}-${n}`;
       n += 1;
     }
-    saveCategory({
+    const ok = await saveCategory({
       id,
       name,
       nameBn: newBn.trim(),
@@ -204,13 +217,35 @@ export default function AdminCategoriesPage() {
       subCategories: [],
       active: true,
     });
+    if (!ok) return; // page banner carries the hook error
     setNewName("");
     setNewBn("");
     setCreating(false);
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-5" role="status" aria-label="Loading categories">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-medium text-forest-900">
           Categories
@@ -252,7 +287,7 @@ export default function AdminCategoriesPage() {
               Create
             </button>
           </div>
-          <p className={hint}>The id is generated from the name (e.g. “accessories”). New categories join the demo store only after the data layer lands.</p>
+          <p className={hint}>The id is generated from the name (e.g. “accessories”). Categories appear on the storefront once they hold products.</p>
         </div>
       )}
 

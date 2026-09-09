@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useOrders } from "@/lib/use-orders";
+import { useLocalOrders } from "@/lib/use-orders";
 import {
   flowIndex,
   samePhone,
@@ -83,7 +83,7 @@ const stepTime = (order: Order, step: number): string | undefined => {
 type Result = { found: true; order: Order } | { found: false } | null;
 
 export default function TrackView() {
-  const { orders } = useOrders();
+  const { orders } = useLocalOrders();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);

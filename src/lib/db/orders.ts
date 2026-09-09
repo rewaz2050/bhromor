@@ -3,17 +3,16 @@
  *
  * - `loadOrderSnapshot()` — one batched read of everything checkout needs
  *   to price an order (products + variants + media + zones + coupons).
- * - `placeLiveOrder()` — persists a validated draft: orders row, item
- *   snapshots, the opening history entry, coupon usage and variant
- *   reservation. Money comes from the draft, which the validator priced
- *   from this same snapshot — the client never sets a total.
+ * - `placeLiveOrder()` — persists a validated draft through the atomic
+ *   `ps_place_order` RPC: row-locked stock reservation, coupon increment,
+ *   order + snapshots + history in ONE transaction. Money comes from the
+ *   draft, which the validator priced from this same snapshot — the client
+ *   never sets a total — and the RPC re-validates authoritatively.
  * - `findLiveOrder()` — phone-gated tracking lookup. Returns null on any
  *   mismatch so callers cannot probe which half of (id, phone) was wrong.
  *
  * All functions return null when the service role is unconfigured; routes
- * answer with demo-mode responses in that case. Stock and coupon updates
- * are best-effort read-modify-write in this phase (documented in
- * docs/backend.md) — the follow-up moves them into one RPC.
+ * answer with demo-mode responses in that case.
  */
 
 import "server-only";
@@ -125,60 +124,27 @@ export class OrderPlacementError extends Error {
   }
 }
 
-const reserveStock = async (
-  db: SupabaseClient,
-  variant: DbVariant,
-  qty: number,
-  productName: string,
-): Promise<void> => {
-  const { data, error } = await db
-    .from("product_variants")
-    .select("stock,reserved")
-    .eq("id", variant.id)
-    .single();
-  if (error || !data) {
-    throw new OrderPlacementError("items", `“${productName}” just sold out.`);
+/** Map an RPC failure to a field-scoped, status-coded placement error (exported for tests). Our RPC raises user-safe messages (P0001); anything else is a 503. */
+export const placementErrorFrom = (error: {
+  code?: string;
+  message?: string;
+}): OrderPlacementError => {
+  const message = error.message?.trim() || "";
+  if (error.code === "P0001" && message !== "") {
+    const field = /coupon/i.test(message)
+      ? "couponCode"
+      : /zone/i.test(message)
+        ? "zoneId"
+        : /qty|quantity|product|variant|stock|left of|empty/i.test(message)
+          ? "items"
+          : "order";
+    return new OrderPlacementError(field, message, 422);
   }
-  const available = (data.stock as number) - (data.reserved as number);
-  if (available < qty) {
-    throw new OrderPlacementError(
-      "items",
-      `Only ${Math.max(0, available)} left of “${productName}” in that variant.`,
-    );
-  }
-  const { error: updateError } = await db
-    .from("product_variants")
-    .update({ reserved: (data.reserved as number) + qty })
-    .eq("id", variant.id);
-  if (updateError) {
-    throw new OrderPlacementError(
-      "items",
-      `Could not reserve “${productName}” — please try again.`,
-      503,
-    );
-  }
-};
-
-const recordCouponUse = async (
-  db: SupabaseClient,
-  couponId: string,
-): Promise<void> => {
-  // Atomic increment + limit guard when migration 002 is applied …
-  const { error: rpcError } = await db.rpc("ps_use_coupon", {
-    p_coupon_id: couponId,
-  });
-  if (!rpcError) return;
-  // … otherwise a plain increment (phase-1 fallback, documented).
-  const { data, error } = await db
-    .from("coupons")
-    .select("used")
-    .eq("id", couponId)
-    .single();
-  if (error || !data) return;
-  await db
-    .from("coupons")
-    .update({ used: (data.used as number) + 1 })
-    .eq("id", couponId);
+  return new OrderPlacementError(
+    "order",
+    "Could not place the order — please try again.",
+    503,
+  );
 };
 
 export async function placeLiveOrder(
@@ -188,82 +154,38 @@ export async function placeLiveOrder(
   const db = getSupabaseService();
   if (!db) return null;
 
-  // 1. Reserve stock first so a failure never leaves a half-written order.
   const variantByLine = draft.items.map((it) =>
     resolveVariant(snapshot.variants, it.product.id, it.variantLabel),
   );
-  for (let i = 0; i < draft.items.length; i++) {
-    const variant = variantByLine[i];
-    if (variant) {
-      await reserveStock(db, variant, draft.items[i].qty, draft.items[i].product.name);
-    }
-  }
-
-  // 2. Order row — order_no is assigned by the ps_assign_order_no trigger.
-  const { data: created, error: orderError } = await db
-    .from("orders")
-    .insert({
+  const { data: orderId, error } = await db.rpc("ps_place_order", {
+    p_order: {
       customer_name: draft.customer.name,
       customer_phone: draft.customer.phone,
       area: draft.customer.area,
       address: draft.customer.address,
       note: draft.customer.note,
       zone_id: draft.zone.id,
-      subtotal: draft.subtotal,
-      delivery_charge: draft.deliveryCharge,
-      discount: draft.discount,
-      coupon_id: draft.coupon?.id ?? null,
-      total: draft.total,
-      payment: "cod",
-      status: "pending",
-    })
-    .select("*")
-    .single();
-  if (orderError || !created) {
-    throw new OrderPlacementError(
-      "order",
-      "Could not place the order — please try again.",
-      503,
-    );
-  }
-  const order = created as DbOrder;
-
-  // 3. Item snapshots (§75) + opening history entry (§34).
-  const { error: itemsError } = await db.from("order_items").insert(
-    draft.items.map((it, i) => ({
-      order_id: order.id,
+      coupon_code: draft.coupon?.code ?? null,
+    },
+    p_items: draft.items.map((it, i) => ({
       product_id: it.product.id,
       variant_id: variantByLine[i]?.id ?? null,
-      name: it.product.name,
-      sku: it.product.sku,
-      variant: it.variantLabel,
-      unit_price: it.unitPrice,
+      variant_label: it.variantLabel,
       qty: it.qty,
     })),
-  );
-  if (itemsError) {
-    throw new OrderPlacementError(
-      "order",
-      "Could not place the order — please try again.",
-      503,
-    );
-  }
-  await db.from("order_status_history").insert({
-    order_id: order.id,
-    status: "pending",
-    note: "Placed via storefront checkout",
   });
-
-  // 4. Coupon usage (best-effort — the discount is already snapshotted).
-  if (draft.coupon) {
-    await recordCouponUse(db, draft.coupon.id);
+  if (error || !orderId) {
+    throw placementErrorFrom({
+      code: (error as { code?: string })?.code,
+      message: error?.message,
+    });
   }
-
-  // 5. Read back the full bundle for the confirmation + tracking views.
-  return findLiveOrderById(db, order.id, draft.customer.phone);
+  // Read back the full bundle for the confirmation + tracking views.
+  return findLiveOrderById(db, orderId as string, draft.customer.phone);
 }
 
-const toDomain = async (
+/** Full order bundle → domain Order. Works with service or staff clients. */
+export const toDomain = async (
   db: SupabaseClient,
   order: DbOrder,
 ): Promise<Order | null> => {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useWishlist } from "@/lib/use-wishlist";
-import { PRODUCTS } from "@/lib/catalog";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import ProductCard from "@/components/product/product-card";
 import { IconHeart, IconTrash } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -11,7 +11,8 @@ import { useLanguage } from "@/components/i18n/language-provider";
 export default function WishlistView() {
   const { t } = useLanguage();
   const { ids, clear, ready, busy, error, synced, retry } = useWishlist();
-  const saved = PRODUCTS.filter((p) => ids.includes(p.id));
+  const { products } = useLiveCatalog();
+  const saved = products.filter((p) => ids.includes(p.id));
 
   if (!ready)
     return (

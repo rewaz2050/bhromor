@@ -1,4 +1,5 @@
-import { PRODUCTS, type Product } from "./catalog";
+import type { Product } from "./catalog";
+import { resolveCatalogProduct } from "./live-catalog";
 import { totalInPaisa } from "./format";
 
 /** Cart model — pure functions so they are easy to unit test. */
@@ -19,8 +20,9 @@ export const MAX_LINE_QTY = 10;
 const clampQty = (qty: number): number =>
   Math.max(1, Math.min(MAX_LINE_QTY, Math.floor(qty)));
 
+/** Resolves through the live registry first, then the seeds. */
 export const resolveProduct = (productId: string): Product | undefined =>
-  PRODUCTS.find((p) => p.id === productId);
+  resolveCatalogProduct(productId);
 
 export const addLine = (
   lines: CartLine[],

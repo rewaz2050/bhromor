@@ -8,7 +8,6 @@ import {
   normalizeCode,
   type Coupon,
 } from "@/lib/coupons";
-import { categoryNameOf } from "@/lib/coupons-store";
 import { bdt, formatBdt } from "@/lib/format";
 import { field, hint, label } from "@/components/admin/form-ui";
 import {
@@ -33,10 +32,13 @@ const parseOptionalNumber = (
   return { ok: true, value: n };
 };
 
-/** §56 promotions — discount codes admin (demo store). */
+/** §56 promotions — discount codes admin. */
 export default function AdminCouponsPage() {
-  const { coupons, save, remove, reset } = useCoupons();
+  const { coupons, live, loading, error, clearError, save, remove, reset } =
+    useCoupons();
   const { categories } = useCatalog();
+  const categoryNameOf = (id: string): string =>
+    categories.find((c) => c.id === id)?.name ?? id;
 
   // New-coupon form
   const [open, setOpen] = useState(false);
@@ -56,7 +58,7 @@ export default function AdminCouponsPage() {
   const [editLimit, setEditLimit] = useState("");
   const [editUntil, setEditUntil] = useState("");
 
-  const create = () => {
+  const create = async () => {
     const c = normalizeCode(code);
     if (c.length < 3) return setFormError("Code must be at least 3 characters.");
     if (findCoupon(coupons, c))
@@ -79,8 +81,7 @@ export default function AdminCouponsPage() {
       return setFormError("That end date is not valid.");
     if (until && until <= now)
       return setFormError("End date must be in the future.");
-    save({
-      id: `c${Date.now()}`,
+    const payload = {
       code: c,
       type,
       value: type === "fixed" ? bdt(val) : val,
@@ -91,7 +92,14 @@ export default function AdminCouponsPage() {
         limit.value !== undefined ? Math.floor(limit.value) : undefined,
       used: 0,
       active: true,
+    };
+    // Live ids are server-assigned: an empty id means "insert", and the
+    // server rejects duplicate codes with a 409 the banner surfaces.
+    const ok = await save({
+      ...payload,
+      id: live ? "" : `c${Date.now()}`,
     });
+    if (!ok) return;
     setCode("");
     setValue("");
     setMinTaka("");
@@ -110,7 +118,7 @@ export default function AdminCouponsPage() {
     setEditUntil(fmtDate(c.validUntil));
   };
 
-  const commitEdit = (c: Coupon) => {
+  const commitEdit = async (c: Coupon) => {
     const val = Number(editValue);
     // Silent no-op before: the row just refused to save with no explanation.
     if (!Number.isFinite(val) || val <= 0 || (c.type === "percent" && val > 100))
@@ -126,7 +134,7 @@ export default function AdminCouponsPage() {
     const until = editUntil ? new Date(`${editUntil}T23:59:59`).getTime() : undefined;
     if (until !== undefined && !Number.isFinite(until))
       return setFormError("That end date is not valid.");
-    save({
+    const ok = await save({
       ...c,
       value: c.type === "fixed" ? bdt(val) : val,
       minOrder: min.value !== undefined ? bdt(min.value) : 0,
@@ -134,12 +142,34 @@ export default function AdminCouponsPage() {
         limit.value !== undefined ? Math.floor(limit.value) : undefined,
       validUntil: until,
     });
+    if (!ok) return; // page banner carries the hook error
     setFormError(null);
     setEditing(null);
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading coupons">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">
@@ -150,15 +180,17 @@ export default function AdminCouponsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Reset coupons to the seeded samples?")) reset();
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset demo codes
-          </button>
+          {!live && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("Reset coupons to the seeded samples?")) reset();
+              }}
+              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+            >
+              Reset demo codes
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -297,7 +329,7 @@ export default function AdminCouponsPage() {
                   <input
                     type="checkbox"
                     checked={c.active}
-                    onChange={(e) => save({ ...c, active: e.target.checked })}
+                    onChange={(e) => void save({ ...c, active: e.target.checked })}
                     className="h-4 w-4 rounded accent-forest-700"
                   />
                   Active
@@ -312,7 +344,7 @@ export default function AdminCouponsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Delete coupon ${c.code}?`)) remove(c.id);
+                    if (window.confirm(`Delete coupon ${c.code}?`)) void remove(c.id);
                   }}
                   aria-label={`Delete ${c.code}`}
                   className="rounded-full p-2 text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"

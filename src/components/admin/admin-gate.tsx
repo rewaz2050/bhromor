@@ -34,9 +34,12 @@ import {
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
+  getAdminMode,
+  refreshStaffSession,
   signOutAdmin,
   subscribeAdminAuth,
 } from "@/lib/admin-auth";
+import { isSupabaseConfigured } from "@/lib/env";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
@@ -105,16 +108,39 @@ export default function AdminGate({
     }
   }, [pathname]);
 
+  // In live mode the mirrored flag may outlast the real session — confirm
+  // with the server before deciding anything, and hold the splash until
+  // the verdict lands so a valid session never flash-redirects to login.
+  const [sessionReady, setSessionReady] = useState(
+    () => !isSupabaseConfigured() || getAdminMode() !== "live",
+  );
   useEffect(() => {
+    // The initial state is already `true` for every path except a live-mode
+    // dashboard visit, which is the only one that must wait on the probe.
+    // (Fresh staff sign-ins probe once more here — harmless, since the
+    // session was verified seconds ago at sign-in.)
+    if (onLogin) return;
+    if (!isSupabaseConfigured() || getAdminMode() !== "live") return;
+    let cancelled = false;
+    void refreshStaffSession().then(() => {
+      if (!cancelled) setSessionReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onLogin]);
+
+  useEffect(() => {
+    if (!sessionReady) return;
     if (!authed && !onLogin) router.replace("/admin/login");
     if (authed && onLogin) router.replace("/admin");
-  }, [authed, onLogin, router]);
+  }, [authed, onLogin, router, sessionReady]);
 
   // The login page is public: it renders children regardless of auth and
   // redirects to the dashboard once a session exists.
   if (onLogin) return <>{children}</>;
 
-  if (!authed) {
+  if (!authed || !sessionReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-forest-950">
         <div className="flex items-center gap-3 text-ivory-100/80">
@@ -166,7 +192,7 @@ export default function AdminGate({
               Backend (next)
             </p>
             <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              Supabase wiring · Cloudinary · SMS/WhatsApp · online gateways
+              SMS/WhatsApp · online gateways
             </p>
           </div>
         </nav>
@@ -230,6 +256,15 @@ export default function AdminGate({
             <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
               {titleFor(pathname)}
             </h1>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider ${
+                getAdminMode() === "live"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-gold-100 text-gold-700"
+              }`}
+            >
+              {getAdminMode() === "live" ? "Live data" : "Demo data"}
+            </span>
           </div>
           <p className="hidden text-sm text-ink-soft sm:block">
             {new Date().toLocaleDateString("en-GB", {

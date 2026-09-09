@@ -25,19 +25,30 @@ import { IconArrowRight, IconClock } from "@/components/ui/icons";
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { orders, advance, cancel } = useOrders();
+  const { orders, live, loading, error, clearError, advance, cancel } = useOrders();
 
   const order = useMemo(
     () => orders.find((o) => o.id === params.id),
     [orders, params.id],
   );
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading order">
+        <div className="h-8 w-64 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   if (!order) {
     return (
       <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">
         <p className="font-display text-lg text-forest-900">Order not found</p>
         <p className="mt-1 text-sm text-ink-soft">
-          It may belong to a different demo dataset.
+          {live
+            ? "It may have been deleted, or belong to a different dataset."
+            : "It may belong to a different demo dataset."}
         </p>
         <Link
           href="/admin/orders"
@@ -56,15 +67,27 @@ export default function AdminOrderDetailPage() {
 
   const doAdvance = (to: OrderStatus) => {
     if (to === "cancelled") {
-      if (!window.confirm("Cancel this order? This cannot be undone in the demo.")) return;
-      cancel(order.id);
+      if (!window.confirm(live ? "Cancel this order? Reserved stock is released." : "Cancel this order? This cannot be undone in the demo.")) return;
+      void cancel(order.id);
       return;
     }
-    advance(order.id, to);
+    void advance(order.id, to);
   };
 
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       {/* Header */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Link

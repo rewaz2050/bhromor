@@ -22,7 +22,8 @@ const BADGE: Record<ReviewStatus, string> = {
 
 /** §30 admin moderation queue — approve / hide / flag / feature / delete. */
 export default function AdminReviewsPage() {
-  const { reviews, moderate, feature, remove, reset } = useReviews();
+  const { reviews, live, loading, error, clearError, moderate, feature, remove, reset } =
+    useReviews();
   const { products } = useCatalog();
   const [filter, setFilter] = useState<ReviewStatus | "all">("all");
   const [productId, setProductId] = useState<string>("all");
@@ -40,21 +41,44 @@ export default function AdminReviewsPage() {
 
   const productOf = (id: string) => products.find((p) => p.id === id);
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading reviews">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-ivory-200" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-medium text-forest-900">
           Reviews
         </h2>
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("Reset reviews to the seeded sample data?")) reset();
-          }}
-          className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-        >
-          Reset demo reviews
-        </button>
+        {!live && (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Reset reviews to the seeded sample data?")) reset();
+            }}
+            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+          >
+            Reset demo reviews
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -158,7 +182,7 @@ export default function AdminReviewsPage() {
                   {r.status !== "approved" && (
                     <button
                       type="button"
-                      onClick={() => moderate(r.id, "approved")}
+                      onClick={() => void moderate(r.id, "approved")}
                       className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
                     >
                       <IconCheck className="h-3.5 w-3.5" /> Approve
@@ -167,7 +191,7 @@ export default function AdminReviewsPage() {
                   {r.status !== "hidden" && (
                     <button
                       type="button"
-                      onClick={() => moderate(r.id, "hidden")}
+                      onClick={() => void moderate(r.id, "hidden")}
                       className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-ink"
                     >
                       Hide
@@ -176,7 +200,7 @@ export default function AdminReviewsPage() {
                   {r.status !== "flagged" && (
                     <button
                       type="button"
-                      onClick={() => moderate(r.id, "flagged")}
+                      onClick={() => void moderate(r.id, "flagged")}
                       className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
                     >
                       <IconFlag className="h-3.5 w-3.5" /> Flag
@@ -184,7 +208,7 @@ export default function AdminReviewsPage() {
                   )}
                   <button
                     type="button"
-                    onClick={() => feature(r.id)}
+                    onClick={() => void feature(r.id)}
                     className="rounded-full px-4 py-1.5 text-xs font-semibold text-gold-700 ring-1 ring-gold-300 transition-colors hover:bg-gold-100"
                   >
                     {r.featured ? "Unfeature" : "Feature"}
@@ -192,7 +216,7 @@ export default function AdminReviewsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm("Delete this review permanently?")) remove(r.id);
+                      if (window.confirm("Delete this review permanently?")) void remove(r.id);
                     }}
                     className="ml-auto inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
                   >

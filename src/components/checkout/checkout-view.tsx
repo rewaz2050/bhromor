@@ -1,19 +1,12 @@
 "use client";
 
 import CheckoutAssurance from "./checkout-assurance";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
-import { useZones } from "@/lib/use-zones";
-import { useCoupons } from "@/lib/use-coupons";
-import {
-  discountAmount,
-  eligibleSubtotal,
-  findCoupon,
-  isCouponRedeemable,
-  type Coupon,
-} from "@/lib/coupons";
+import { useLiveZones } from "@/lib/use-live-zones";
+import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
 import { makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
@@ -62,8 +55,8 @@ const initialForm: FormState = {
 export default function CheckoutView() {
   const { t } = useLanguage();
   const { detail, subtotal, clear } = useCart();
-  /** Delivery zones come from the shared store — admin edits show here (§20). */
-  const { activeZones: zoneList } = useZones();
+  /** Delivery zones are live-served when the backend is up, seeds otherwise. */
+  const { activeZones: zoneList } = useLiveZones();
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
@@ -73,8 +66,15 @@ export default function CheckoutView() {
     addressSummary: string;
   } | null>(null);
 
-  const { coupons: allCoupons, recordUse } = useCoupons();
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  // Coupon truth lives on the server: the code is validated against the
+  // *current* cart via /api/coupons/validate, debounced so shrinking the
+  // cart can never leave a stale discount attached to the order.
+  const [appliedCode, setAppliedCode] = useState("");
+  const [couponCheck, setCouponCheck] = useState<{
+    code: string | null;
+    discount: number;
+    problem: string | null;
+  }>({ code: null, discount: 0, problem: null });
   const [couponMsg, setCouponMsg] = useState<{
     ok: boolean;
     text: string;
@@ -87,56 +87,70 @@ export default function CheckoutView() {
     : (zoneList[0]?.id ?? "");
   const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
-  /**
-   * A coupon is re-validated on every render against the *current* cart, so
-   * emptying or shrinking the cart can never leave a stale discount attached
-   * to the order (it used to survive until checkout).
-   */
-  const couponCheck = useMemo(() => {
-    if (!appliedCoupon)
-      return { coupon: null as Coupon | null, problem: null as string | null };
-    const redeemable = isCouponRedeemable(appliedCoupon, subtotal);
-    if (!redeemable.ok) {
-      return {
-        coupon: null,
-        problem:
-          redeemable.reason ?? "That code is no longer valid for this order.",
-      };
-    }
-    const eligible = eligibleSubtotal(
-      appliedCoupon,
-      detail.map((l) => ({
-        productCategory: l.product.category,
-        subtotal: l.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      return {
-        coupon: null,
-        problem: "That code no longer applies to the items in your cart.",
-      };
-    }
-    return { coupon: appliedCoupon, problem: null, eligible };
-  }, [appliedCoupon, subtotal, detail]);
+  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}`;
+  useEffect(() => {
+    // Clearing happens at the call sites (apply/remove); the effect only
+    // answers for a non-empty code so no sync setState runs here.
+    if (!appliedCode) return;
+    const items = detail.map((l) => ({ productId: l.product.id, qty: l.qty }));
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        interface ValidateResponse {
+          valid?: boolean;
+          code?: string;
+          discount?: number;
+          reason?: string | null;
+        }
+        let data: ValidateResponse | null = null;
+        try {
+          const res = await fetch("/api/coupons/validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: appliedCode, items }),
+          });
+          data = (await res.json().catch(() => null)) as ValidateResponse | null;
+          if (res.ok && data?.valid && data.code) {
+            setCouponCheck({
+              code: data.code,
+              discount: Math.max(
+                0,
+                Math.min(data.discount ?? 0, subtotal),
+              ),
+              problem: null,
+            });
+            setCouponMsg({
+              ok: true,
+              text: `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.`,
+            });
+            return;
+          }
+        } catch {
+          data = null;
+        }
+        setCouponCheck({
+          code: null,
+          discount: 0,
+          problem:
+            data?.reason ??
+            "That code is no longer valid for this order.",
+        });
+      })();
+    }, 350);
+    return () => window.clearTimeout(timer);
+    // cartKey (not detail) keeps the effect keyed on a stable string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedCode, cartKey]);
 
-  const activeCoupon = couponCheck.coupon;
+  const activeCoupon = useMemo(
+    () => (couponCheck.code ? { code: couponCheck.code } : null),
+    [couponCheck.code],
+  );
 
   const summary = useMemo(() => {
     // Free delivery now applies here too — the cart promised it and
     // checkout silently charged anyway.
     const charge = deliveryChargeFor(zone?.charge ?? 0, subtotal);
-    const discount = activeCoupon
-      ? discountAmount(
-          activeCoupon,
-          eligibleSubtotal(
-            activeCoupon,
-            detail.map((l) => ({
-              productCategory: l.product.category,
-              subtotal: l.lineTotal,
-            })),
-          ),
-        )
-      : 0;
+    const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
       fullCharge: zone?.charge ?? 0,
@@ -145,7 +159,7 @@ export default function CheckoutView() {
       total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
     };
-  }, [zone, subtotal, detail, activeCoupon]);
+  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount]);
 
   const empty = detail.length === 0;
 
@@ -243,45 +257,10 @@ export default function CheckoutView() {
   const applyCoupon = () => {
     const code = form.couponCode.trim().toUpperCase();
     if (!code) return;
-    const coupon = findCoupon(allCoupons, code);
-    if (!coupon) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: "Unknown code — double-check the spelling.",
-      });
-      return;
-    }
-    const check = isCouponRedeemable(coupon, subtotal);
-    if (!check.ok) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: check.reason ?? "This code cannot be used.",
-      });
-      return;
-    }
-    // Category-restricted codes must actually match something in the cart.
-    const eligible = eligibleSubtotal(
-      coupon,
-      detail.map((l) => ({
-        productCategory: l.product.category,
-        subtotal: l.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      setAppliedCoupon(null);
-      setCouponMsg({
-        ok: false,
-        text: "This code does not apply to the items in your cart.",
-      });
-      return;
-    }
-    setAppliedCoupon(coupon);
-    setCouponMsg({
-      ok: true,
-      text: `${coupon.code} applied — ${formatBdt(discountAmount(coupon, eligible))} off.`,
-    });
+    // The validation effect above answers with success or a reason.
+    setCouponCheck({ code: null, discount: 0, problem: null });
+    setCouponMsg({ ok: true, text: "Checking code…" });
+    setAppliedCode(code);
   };
 
   /**
@@ -340,7 +319,7 @@ export default function CheckoutView() {
             : undefined,
         }),
       );
-      if (activeCoupon) recordUse(activeCoupon.code);
+      if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
       setPlaced({
         orderId,
         eta: zone.etaLabel,
@@ -396,10 +375,10 @@ export default function CheckoutView() {
       return;
     }
     if (res.ok && data.order) {
-      // Live order: mirror it into the local store so this device's admin
-      // queue and Track page keep working until the admin migrates (§92).
+      // Live order: mirror it into the local store so the Track page keeps
+      // working on this device (§92). Coupon usage is incremented by the
+      // order RPC itself — never locally in live mode.
       addOrderToStore(data.order);
-      if (activeCoupon) recordUse(activeCoupon.code);
       setPlaced({
         orderId: data.order.id,
         eta: data.order.etaLabel,
@@ -691,7 +670,8 @@ export default function CheckoutView() {
                 <button
                   type="button"
                   onClick={() => {
-                    setAppliedCoupon(null);
+                    setAppliedCode("");
+                    setCouponCheck({ code: null, discount: 0, problem: null });
                     setCouponMsg(null);
                     update("couponCode", "");
                   }}

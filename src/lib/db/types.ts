@@ -140,3 +140,17 @@ export interface DbOrderHistory {
   changed_by: string | null;
   created_at: string;
 }
+
+export interface DbReview {
+  id: string;
+  product_id: string;
+  customer_id: string | null;
+  author: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  status: DbReviewStatus;
+  verified: boolean;
+  featured: boolean;
+  created_at: string;
+}

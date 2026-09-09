@@ -91,9 +91,13 @@ describe("Account wishlist isolation", () => {
     expect(saveAccountItems).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
     await waitFor(() =>
-      expect(saveAccountItems).toHaveBeenCalledWith(client, "customer-a", [
-        PRODUCTS[0].id,
-      ]),
+      expect(saveAccountItems).toHaveBeenCalledWith(
+        client,
+        "customer-a",
+        [PRODUCTS[0].id],
+        // Serving catalog the ids were validated against (live or seeds).
+        expect.any(Array),
+      ),
     );
     await waitFor(() =>
       expect(screen.getByLabelText("saved")).toHaveTextContent(

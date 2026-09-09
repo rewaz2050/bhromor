@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useZones } from "@/lib/use-zones";
+import { useLiveZones } from "@/lib/use-live-zones";
 import { formatBdt } from "@/lib/format";
 import { IconTruck } from "@/components/ui/icons";
 
 export default function DeliveryChecker() {
-  const { activeZones } = useZones();
+  const { activeZones } = useLiveZones();
   const [area, setArea] = useState("");
   const [checked, setChecked] = useState(false);
   const zone = activeZones.find(

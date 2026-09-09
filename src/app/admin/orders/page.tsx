@@ -21,7 +21,7 @@ const FILTERS: (OrderStatus | "all")[] = [
 
 /** §33 admin order list with status filters + search. */
 export default function AdminOrdersPage() {
-  const { orders, reset } = useOrders();
+  const { orders, live, loading, error, clearError, reset } = useOrders();
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [query, setQuery] = useState("");
 
@@ -42,8 +42,29 @@ export default function AdminOrdersPage() {
       );
   }, [orders, filter, query]);
 
+  if (loading) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Loading orders">
+        <div className="h-10 w-full max-w-xs animate-pulse rounded-full bg-paper ring-1 ring-line" />
+        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={clearError}
+            className="underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-xs">
           <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
@@ -56,21 +77,23 @@ export default function AdminOrdersPage() {
             className="w-full rounded-full border-0 bg-paper py-2.5 pl-10 pr-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/70 focus:outline-none focus:ring-2 focus:ring-forest-600"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (
-              window.confirm(
-                "Reset demo orders to the seeded sample data? Your local changes will be lost.",
-              )
-            ) {
-              reset();
-            }
-          }}
-          className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-        >
-          Reset demo data
-        </button>
+        {!live && (
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Reset demo orders to the seeded sample data? Your local changes will be lost.",
+                )
+              ) {
+                reset();
+              }
+            }}
+            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
+          >
+            Reset demo data
+          </button>
+        )}
       </div>
 
       {/* Status filter chips */}

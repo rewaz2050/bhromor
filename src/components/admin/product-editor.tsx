@@ -86,7 +86,8 @@ export default function ProductEditor({
   categoriesList: { id: string; name: string; subCategories: string[] }[];
 }) {
   const router = useRouter();
-  const { products, saveProduct } = useCatalog();
+  const { products, error: saveError, saveProduct } = useCatalog();
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => ({
     ...draftFrom(product),
     category: product?.category ?? (categoriesList[0]?.id ?? ""),
@@ -156,7 +157,7 @@ export default function ProductEditor({
     return null;
   };
 
-  const save = () => {
+  const save = async () => {
     const problem = validate();
     if (problem) {
       set("error", problem);
@@ -210,7 +211,15 @@ export default function ProductEditor({
     else if (now.isNew) now.badge = "new";
     else if (now.compareAtPrice) now.badge = "sale";
 
-    saveProduct(now);
+    // Await the save: in live mode it is a network write, and navigating
+    // first would strand the editor on a failure with no message.
+    setSaving(true);
+    const ok = await saveProduct(now);
+    setSaving(false);
+    if (!ok) {
+      setDraft((d) => ({ ...d, error: saveError ?? "Could not save the product." }));
+      return;
+    }
     router.push("/admin/products");
     router.refresh();
   };
@@ -610,10 +619,11 @@ export default function ProductEditor({
         <button
           type="button"
           onClick={save}
-          className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-7 py-3 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-7 py-3 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
         >
           <IconCheck className="h-4 w-4" />
-          {isNew ? "Create product" : "Save changes"}
+          {saving ? "Saving…" : isNew ? "Create product" : "Save changes"}
         </button>
         <button
           type="button"
