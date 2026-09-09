@@ -344,3 +344,140 @@ begin
 end $$;
 
 commit;
+
+-- ----------------------------------------------------------------
+-- Slice 3: vendor row policies + vendor leg of ps_advance_order.
+-- Vendors touch ONLY their own shop's rows; the API + a guard trigger
+-- keep platform-owned shop fields (status/commission/zones) staff-only.
+-- ----------------------------------------------------------------
+begin;
+
+-- products: vendors read all own rows (incl. drafts), insert/update own.
+-- No delete: vendors archive via active=false, like staff.
+create policy "products vendor select own" on products
+  for select using (shop_id = ps_vendor_shop());
+create policy "products vendor insert own" on products
+  for insert with check (shop_id = ps_vendor_shop());
+create policy "products vendor update own" on products
+  for update using (shop_id = ps_vendor_shop())
+  with check (shop_id = ps_vendor_shop());
+
+-- variants/media: full scoped access via product ownership (the product
+-- editor rebuilds these rows on save).
+create policy "variants vendor all own" on product_variants
+  for all using (exists (
+    select 1 from products p
+    where p.id = product_variants.product_id and p.shop_id = ps_vendor_shop()
+  )) with check (exists (
+    select 1 from products p
+    where p.id = product_variants.product_id and p.shop_id = ps_vendor_shop()
+  ));
+create policy "media vendor all own" on product_media
+  for all using (exists (
+    select 1 from products p
+    where p.id = product_media.product_id and p.shop_id = ps_vendor_shop()
+  )) with check (exists (
+    select 1 from products p
+    where p.id = product_media.product_id and p.shop_id = ps_vendor_shop()
+  ));
+
+-- orders: vendors read own-shop orders; moves go through ps_advance_order.
+create policy "orders vendor select own" on orders
+  for select using (shop_id = ps_vendor_shop());
+create policy "order items vendor select own" on order_items
+  for select using (exists (
+    select 1 from orders o
+    where o.id = order_items.order_id and o.shop_id = ps_vendor_shop()
+  ));
+create policy "history vendor select own" on order_status_history
+  for select using (exists (
+    select 1 from orders o
+    where o.id = order_status_history.order_id and o.shop_id = ps_vendor_shop()
+  ));
+
+-- reviews: vendors read reviews of their own products (platform moderates).
+create policy "reviews vendor select own" on reviews
+  for select using (exists (
+    select 1 from products p
+    where p.id = reviews.product_id and p.shop_id = ps_vendor_shop()
+  ));
+
+-- Guard: vendors may edit profile-ish fields only. A vendor calling
+-- Supabase directly (anon key + JWT) hits this trigger, not just the API.
+drop trigger if exists trg_shops_guard_vendor_update on shops;
+create or replace function ps_guard_shop_vendor_update()
+returns trigger language plpgsql as $$
+begin
+  if (select ps_is_admin()) then
+    return new;
+  end if;
+  if new.status is distinct from old.status
+     or new.commission_pct is distinct from old.commission_pct
+     or new.zone_ids is distinct from old.zone_ids
+     or new.slug is distinct from old.slug then
+    raise exception 'forbidden';
+  end if;
+  return new;
+end $$;
+
+create trigger trg_shops_guard_vendor_update
+  before update on shops
+  for each row execute function ps_guard_shop_vendor_update();
+
+-- ps_advance_order: vendors move their OWN orders through early states
+-- only (confirm → prepare → ready-for-pickup, cancel early). Dispatch
+-- states stay staff/dispatch-owned. Legality still checked below, shared.
+create or replace function ps_advance_order(
+  p_order_id uuid,
+  p_to ps_order_status,
+  p_note text default null
+) returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_from_pos int;
+  v_to_pos   int;
+  v_is_admin boolean;
+  v_shop uuid;
+begin
+  v_is_admin := (select ps_is_admin());
+  v_shop := (select ps_vendor_shop());
+
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if not v_is_admin then
+    if v_shop is null or v_order.shop_id is distinct from v_shop then
+      raise exception 'forbidden';
+    end if;
+    if p_to not in ('confirmed', 'preparing', 'ready-for-pickup', 'cancelled') then
+      raise exception 'forbidden';
+    end if;
+  end if;
+
+  -- legal moves
+  if v_order.status = p_to then
+    return v_order;                          -- idempotent
+  end if;
+  if p_to = 'cancelled' then
+    if v_order.status not in ('pending', 'confirmed', 'preparing') then
+      raise exception 'cannot cancel from %', v_order.status;
+    end if;
+  else
+    select position into v_from_pos from ps_order_flow where status = v_order.status;
+    select position into v_to_pos   from ps_order_flow where status = p_to;
+    if v_to_pos is null or v_from_pos is null or v_to_pos <> v_from_pos + 1 then
+      raise exception 'illegal transition % -> %', v_order.status, p_to;
+    end if;
+  end if;
+
+  update orders set status = p_to, updated_at = now()
+  where id = p_order_id;
+  insert into order_status_history (order_id, status, note, changed_by)
+  values (p_order_id, p_to, p_note, auth.uid());
+  return v_order;
+end $$;
+
+commit;

@@ -33,12 +33,22 @@ src/app/api/
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
+├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner
+├── vendor/_lib.ts         # vendorRoute() wrapper: vendor auth + rate limit + errors
+├── vendor/me/route.ts     # vendor session probe (email + role + shop)
+├── vendor/orders/...      # own-shop list (?status=) / detail / advance (early states)
+├── vendor/products/...    # own catalog incl. drafts / POST create / PATCH update
+├── vendor/shop/route.ts   # GET + PATCH profile/prep/open (whitelisted fields)
+├── vendor/earnings/route.ts    # ledger + payouts + balance
+├── vendor/categories/route.ts  # active categories for the product editor
 ├── admin/me/route.ts      # staff session probe for the admin gate
 └── media/sign/route.ts    # STAFF-ONLY Cloudinary signed-upload params (§48)
 src/lib/
 ├── env.ts                 # typed env access + is*Configured() checks
 ├── supabase-server.ts     # RLS + service-role server clients (server-only)
 ├── staff-auth.ts          # requireStaff(): JWT verify + admin_users role (server-only)
+├── vendor-auth.ts         # requireVendor(): JWT + vendor_users link + active shop (server-only)
+├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (no demo mode)
 ├── order-validation.ts    # pure checkout validator (client money ignored)
 ├── rate-limit.ts          # fixed windows: per-IP public, per-staff admin
 ├── api-response.ts        # JSON envelopes (always no-store)
@@ -53,6 +63,8 @@ src/lib/
     ├── catalog.ts         # server-side published-catalog read
     ├── orders.ts          # snapshot / placeLiveOrder (single RPC) / findLiveOrder
     ├── admin.ts           # staff CRUD used by /api/admin/* routes
+    ├── marketplace.ts     # public shops discovery + application intake
+    ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)
     └── storefront.ts      # server page reads with seed fallback
 supabase/
 ├── schema.sql                              # base tables, RLS, §34 machine
@@ -60,7 +72,7 @@ supabase/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
     ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
-    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + single-shop RPC guard
+    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
 ```
 
@@ -188,6 +200,14 @@ storefront returns to demo mode — no code change, no broken pages.
 - **Media signing is staff-only.** `POST /api/media/sign` requires a staff
   session (quota abuse vector otherwise) and returns short-lived signature
   material; uploads go browser → Cloudinary directly.
+- **Vendor routes verify JWT + shop link + active status on every call**
+  (`requireVendor` in `src/lib/vendor-auth.ts`). Suspended shops lose API
+  access immediately. Vendors advance only their own orders through early
+  states (the `ps_advance_order` vendor leg), edit only whitelisted shop
+  fields (a `trg_shops_guard_vendor_update` trigger stops direct Supabase
+  calls from touching status/commission/zones), and cannot self-feature
+  products. The `/vendor` dashboard has no demo mode — without Supabase
+  there are no vendor accounts, and the UI says so.
 - **In-memory rate limits** blunt casual abuse only; edge rate-limiting is
   a hardening follow-up.
 

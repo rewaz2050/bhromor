@@ -81,12 +81,26 @@ const draftFrom = (p?: Product | null): Draft => ({
 export default function ProductEditor({
   product,
   categoriesList,
+  products: productsProp,
+  saveError: saveErrorProp,
+  onSave,
+  redirectTo = "/admin/products",
+  hideCuration = false,
 }: {
   product?: Product | null;
   categoriesList: { id: string; name: string; subCategories: string[] }[];
+  /** Vendor reuse (marketplace slice 3): override the catalog source, the
+   * save sink, and the post-save destination. Admin defaults unchanged. */
+  products?: Product[];
+  saveError?: string | null;
+  onSave?: (product: Product, isNew: boolean) => Promise<boolean>;
+  redirectTo?: string;
+  hideCuration?: boolean;
 }) {
   const router = useRouter();
-  const { products, error: saveError, saveProduct } = useCatalog();
+  const catalog = useCatalog();
+  const products = productsProp ?? catalog.products;
+  const saveError = saveErrorProp ?? catalog.error;
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => ({
     ...draftFrom(product),
@@ -214,13 +228,13 @@ export default function ProductEditor({
     // Await the save: in live mode it is a network write, and navigating
     // first would strand the editor on a failure with no message.
     setSaving(true);
-    const ok = await saveProduct(now);
+    const ok = onSave ? await onSave(now, isNew) : await catalog.saveProduct(now);
     setSaving(false);
     if (!ok) {
       setDraft((d) => ({ ...d, error: saveError ?? "Could not save the product." }));
       return;
     }
-    router.push("/admin/products");
+    router.push(redirectTo);
     router.refresh();
   };
 
@@ -571,29 +585,31 @@ export default function ProductEditor({
               Active in catalog (uncheck to archive — orders keep history §74)
             </label>
           </div>
-          <div>
-            <span className={label}>Badges</span>
-            <div className="flex gap-2">
-              <label className="flex flex-1 items-center gap-2.5 rounded-xl bg-white px-3 py-2.5 text-sm text-ink ring-1 ring-line">
-                <input
-                  type="checkbox"
-                  checked={draft.isNew}
-                  onChange={(e) => set("isNew", e.target.checked)}
-                  className="h-4 w-4 rounded accent-forest-700"
-                />
-                New arrival
-              </label>
-              <label className="flex flex-1 items-center gap-2.5 rounded-xl bg-white px-3 py-2.5 text-sm text-ink ring-1 ring-line">
-                <input
-                  type="checkbox"
-                  checked={draft.featured}
-                  onChange={(e) => set("featured", e.target.checked)}
-                  className="h-4 w-4 rounded accent-gold-600"
-                />
-                Featured
-              </label>
+          {!hideCuration && (
+            <div>
+              <span className={label}>Badges</span>
+              <div className="flex gap-2">
+                <label className="flex flex-1 items-center gap-2.5 rounded-xl bg-white px-3 py-2.5 text-sm text-ink ring-1 ring-line">
+                  <input
+                    type="checkbox"
+                    checked={draft.isNew}
+                    onChange={(e) => set("isNew", e.target.checked)}
+                    className="h-4 w-4 rounded accent-forest-700"
+                  />
+                  New arrival
+                </label>
+                <label className="flex flex-1 items-center gap-2.5 rounded-xl bg-white px-3 py-2.5 text-sm text-ink ring-1 ring-line">
+                  <input
+                    type="checkbox"
+                    checked={draft.featured}
+                    onChange={(e) => set("featured", e.target.checked)}
+                    className="h-4 w-4 rounded accent-gold-600"
+                  />
+                  Featured
+                </label>
+              </div>
             </div>
-          </div>
+          )}
           <label className="block sm:col-span-2">
             <span className={label}>SEO title (optional)</span>
             <input

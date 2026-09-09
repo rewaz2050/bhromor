@@ -10,6 +10,7 @@
 import { ShopInputError, applyShop } from "@/lib/db/marketplace";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { getSupabaseServer } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +44,22 @@ export async function POST(request: Request) {
     return apiJson({ demoMode: true as const });
   }
   try {
-    const { id } = await applyShop(body);
+    // Signed-in applicants link their login to the application (slice 3):
+    // the staff queue can approve straight into an active vendor account.
+    let applicantUserId: string | undefined;
+    try {
+      const session = await getSupabaseServer();
+      const { data } = (await session?.auth.getUser()) ?? { data: null };
+      applicantUserId = data?.user?.id;
+    } catch {
+      applicantUserId = undefined;
+    }
+    const { id } = await applyShop(body, applicantUserId);
     return apiJson(
       {
         applied: true as const,
         id,
+        linked: applicantUserId !== undefined,
         message:
           "Application received — we'll call you back after verification.",
       },

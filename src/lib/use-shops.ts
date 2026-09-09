@@ -86,6 +86,29 @@ export function useShops() {
     [live, liveShops, demoShops, saveShop],
   );
 
+  /** Link an Auth account as the shop's vendor owner (live only). */
+  const linkVendor = useCallback(
+    async (id: string, email: string): Promise<boolean> => {
+      if (!live) {
+        setError("Vendor linking needs live mode — demo shops have no accounts.");
+        return false;
+      }
+      try {
+        await apiSend(
+          `/api/admin/shops/${encodeURIComponent(id)}/link-vendor`,
+          "POST",
+          { email },
+        );
+        setError(null);
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [live],
+  );
+
   const reset = useCallback(() => {
     if (live) void refresh();
     else resetShopStore();
@@ -99,6 +122,7 @@ export function useShops() {
     pending: shops.filter((s) => s.status === "pending"),
     saveShop,
     setStatus,
+    linkVendor,
     reset,
     live,
     loading: live && (!checked || liveShops === null),

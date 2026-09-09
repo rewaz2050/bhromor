@@ -535,7 +535,7 @@ const syncMedia = async (
   if (error) throw new Error("media insert failed");
 };
 
-const readProductBundle = async (
+export const readProductBundle = async (
   db: SupabaseClient,
   id: string,
 ): Promise<Product> => {
@@ -555,10 +555,23 @@ const readProductBundle = async (
 export async function createProduct(
   db: SupabaseClient,
   raw: unknown,
+  shopId?: string,
 ): Promise<Product> {
   const input = sanitizeProductInput(raw, false);
   const { data: cats } = await db.from("categories").select("id");
   validateProductInput(input, (cats ?? []) as { id: string }[]);
+  // Every product belongs to exactly one shop (004 NOT NULL). Vendors pass
+  // their own shop; staff creates land on shop #1 (the platform catalog).
+  let resolvedShop = (shopId ?? "").trim();
+  if (resolvedShop === "") {
+    const { data: first } = await db
+      .from("shops")
+      .select("id")
+      .eq("slug", "prosanti-direct")
+      .single();
+    resolvedShop = ((first ?? {}) as { id?: string }).id ?? "";
+    if (resolvedShop === "") throw new Error("shop #1 missing");
+  }
   const slugBase =
     input.slug && input.slug !== "" ? input.slug : slugify(input.name);
   const { data: dupe } = await db
@@ -572,6 +585,7 @@ export async function createProduct(
   const { data, error } = await db
     .from("products")
     .insert({
+      shop_id: resolvedShop,
       slug: slugBase,
       name: input.name,
       name_bn: (input as { nameBn?: string }).nameBn ?? "",

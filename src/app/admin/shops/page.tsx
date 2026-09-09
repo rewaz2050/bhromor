@@ -19,13 +19,17 @@ const BADGE: Record<Shop["status"], string> = {
 function ShopCard({
   shop,
   zones,
+  live,
   onSave,
   onStatus,
+  onLinkVendor,
 }: {
   shop: AdminShopClient;
   zones: { id: string; name: string }[];
+  live: boolean;
   onSave: (s: Shop) => Promise<boolean>;
   onStatus: (id: string, status: Shop["status"]) => void;
+  onLinkVendor: (id: string, email: string) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(shop.name);
@@ -38,6 +42,9 @@ function ShopCard({
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [linkEmail, setLinkEmail] = useState(shop.contactEmail ?? "");
+  const [linking, setLinking] = useState(false);
+  const [linked, setLinked] = useState(false);
 
   const save = async () => {
     const pct = Number(commission);
@@ -214,6 +221,44 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
+          <div className="rounded-xl bg-cream/70 p-3 ring-1 ring-line sm:col-span-2">
+            <span className={label}>Vendor login</span>
+            {linked ? (
+              <p className="text-xs font-medium text-forest-800">
+                Linked — the vendor can sign in at /vendor once the shop is active.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  className={`${field} flex-1`}
+                  value={linkEmail}
+                  onChange={(e) => setLinkEmail(e.target.value)}
+                  placeholder="vendor account email"
+                  aria-label="Vendor account email"
+                  disabled={!live}
+                />
+                <button
+                  type="button"
+                  disabled={linking || !live || linkEmail.trim() === ""}
+                  onClick={() => {
+                    setLinking(true);
+                    void onLinkVendor(shop.id, linkEmail.trim()).then((ok) => {
+                      setLinking(false);
+                      if (ok) setLinked(true);
+                    });
+                  }}
+                  className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-800 hover:text-ivory-50 disabled:opacity-60"
+                >
+                  {linking ? "Linking…" : "Link vendor"}
+                </button>
+              </div>
+            )}
+            {!live && (
+              <p className="mt-1 text-xs text-ink-soft">
+                Vendor linking needs live mode — demo shops have no accounts.
+              </p>
+            )}
+          </div>
         </div>
       )}
     </li>
@@ -222,7 +267,7 @@ function ShopCard({
 
 /** Marketplace phase 2 — staff shops queue: approve / suspend / commission. */
 export default function AdminShopsPage() {
-  const { shops, live, loading, error, clearError, saveShop, setStatus, reset } =
+  const { shops, live, loading, error, clearError, saveShop, setStatus, linkVendor, reset } =
     useShops();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
@@ -403,8 +448,10 @@ export default function AdminShopsPage() {
               key={s.id}
               shop={s}
               zones={zones}
+              live={live}
               onSave={saveShop}
               onStatus={(id, status) => void setStatus(id, status)}
+              onLinkVendor={linkVendor}
             />
           ))}
         </ul>

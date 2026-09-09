@@ -60,9 +60,27 @@ export async function listPublicShops(zoneId?: string): Promise<Shop[] | null> {
  * queue — never active, never open, no vendor login (slice 3 links the
  * vendor account at approval time via contact_email).
  */
-export async function applyShop(raw: unknown): Promise<{ id: string }> {
+export async function applyShop(
+  raw: unknown,
+  applicantUserId?: string,
+): Promise<{ id: string }> {
   const db = getSupabaseService();
   if (!db) throw new Error("shop intake unavailable");
+  // A signed-in applicant links their login to the application immediately —
+  // one account owns at most one shop, so an existing link rejects early.
+  if (applicantUserId) {
+    const { data: existing } = await db
+      .from("vendor_users")
+      .select("shop_id")
+      .eq("user_id", applicantUserId)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      throw new ShopInputError(
+        "This account already has a shop — sign in to the vendor dashboard instead.",
+        409,
+      );
+    }
+  }
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
@@ -129,5 +147,16 @@ export async function applyShop(raw: unknown): Promise<{ id: string }> {
     .select("id")
     .single();
   if (error || !data) throw new Error("shop application failed");
-  return { id: (data as { id: string }).id };
+  const shopId = (data as { id: string }).id;
+  if (applicantUserId) {
+    const { error: linkError } = await db.from("vendor_users").insert({
+      user_id: applicantUserId,
+      shop_id: shopId,
+      role: "owner",
+    });
+    if (linkError && linkError.code !== "23505") {
+      throw new Error("shop application link failed");
+    }
+  }
+  return { id: shopId };
 }
