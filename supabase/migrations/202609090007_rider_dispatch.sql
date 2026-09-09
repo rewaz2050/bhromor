@@ -93,7 +93,7 @@ begin
   end if;
 
   if v_order.status is distinct from 'out-for-delivery' then
-    if v_order.status <> 'ready-for-pickup' then
+    if v_order.status not in ('ready-for-pickup', 'courier-assigned') then
       raise exception 'order not ready for pickup';
     end if;
     update orders
