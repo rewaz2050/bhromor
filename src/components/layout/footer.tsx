@@ -33,6 +33,9 @@ export default function Footer() {
   const COMPANY_LINKS = [
     { label: t("footer.ourStory"), href: "/about" },
     { label: t("footer.visualJournal"), href: "/#journal" },
+    { label: "দোকানদার রেজিস্ট্রেশন (Sell with us)", href: "/shops/apply" },
+    { label: "রাইডার রেজিস্ট্রেশন (Become a Rider)", href: "/rider/apply" },
+    { label: "রাইডার পোর্টাল (Rider App)", href: "/rider" },
     { label: t("footer.privacy"), href: "/privacy" },
     { label: t("footer.terms"), href: "/terms" },
   ];

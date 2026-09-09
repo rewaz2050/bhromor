@@ -6,7 +6,7 @@
  * cancel early). Dispatch states are read-only here.
  */
 
-import { use, useState } from "react";
+import { useEffect, use, useState } from "react";
 import Link from "next/link";
 import { useVendor } from "@/components/vendor/vendor-shell";
 import {
@@ -30,6 +30,49 @@ const NEXT_ACTION: Partial<Record<OrderStatus, { to: OrderStatus; label: string 
   confirmed: { to: "preparing", label: "Start preparing" },
   preparing: { to: "ready-for-pickup", label: "Mark ready for pickup" },
 };
+
+function PrepTimer({ createdAt, prepMinutes = 15 }: { createdAt: number; prepMinutes?: number }) {
+  const [now, setNow] = useState(createdAt);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- adopt current epoch on mount
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const target = createdAt + prepMinutes * 60 * 1000;
+  const diffMs = target - now;
+  const remainingMin = Math.max(0, Math.ceil(diffMs / (60 * 1000)));
+  const isOverdue = diffMs < 0;
+
+  return (
+    <div
+      className={`mb-4 flex items-center justify-between rounded-2xl p-4 ring-1 ${
+        isOverdue
+          ? "bg-rose-50 text-rose-900 ring-rose-200"
+          : "bg-amber-50 text-amber-900 ring-amber-200"
+      }`}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="text-lg">⏱️</span>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider">
+            {isOverdue ? "প্যাকিং সময় অতিক্রান্ত" : "প্যাকিং কাউন্টডাউন (Prep Clock)"}
+          </p>
+          <p className="text-xs text-ink-soft">
+            {isOverdue
+              ? "দ্রুত পার্সেল রেডি করুন যাতে ৪৫-৬০ মিনিটে কাস্টমারকে দেওয়া যায়"
+              : `লক্ষ্য: ${prepMinutes} মিনিটের মধ্যে পার্সেল রেডি করে 'Ready for Pickup' চাপুন`}
+          </p>
+        </div>
+      </div>
+      <div className="text-right font-mono font-bold text-lg">
+        {isOverdue ? "লেট" : `${remainingMin} মিনিট`}
+      </div>
+    </div>
+  );
+}
 
 export default function VendorOrderDetailPage({
   params,
@@ -104,6 +147,10 @@ export default function VendorOrderDetailPage({
         <div className="mb-4">
           <ErrorBox message={actionError} />
         </div>
+      )}
+
+      {(order.status === "confirmed" || order.status === "preparing") && (
+        <PrepTimer createdAt={order.createdAt} prepMinutes={me?.shop.prepMinutes ?? 15} />
       )}
 
       {(next || canCancel) && (

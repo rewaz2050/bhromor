@@ -484,3 +484,18 @@ export const MOCK_ORDERS: Order[] = [
 
 /* Demo persistence key — replaced by Supabase `orders` later. */
 export const ORDERS_STORAGE_KEY = "prosanti.admin.orders.v1";
+
+/**
+ * Deterministically generates a 4-digit verification code from an order ID.
+ * Shown to the customer on order tracking and given to the rider upon delivery.
+ */
+export const getDeliveryCode = (orderId: string): string => {
+  let hash = 0;
+  const cleanId = orderId.toUpperCase();
+  for (let i = 0; i < cleanId.length; i++) {
+    hash = (hash * 37 + cleanId.charCodeAt(i)) % 100000;
+  }
+  const code = (Math.abs(hash) % 9000) + 1000;
+  return String(code);
+};
+

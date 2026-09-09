@@ -16,7 +16,7 @@ import {
 } from "@/lib/shop-utils";
 import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
-import { makePlacedOrder, type Order } from "@/lib/orders";
+import { getDeliveryCode, makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
@@ -31,7 +31,9 @@ import {
   IconBag,
   IconBox,
   IconCheck,
+  IconGift,
   IconMapPin,
+  IconShield,
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -183,10 +185,12 @@ export default function CheckoutView() {
   const empty = detail.length === 0;
 
   if (placed) {
+    const deliveryCode = getDeliveryCode(placed.orderId);
+
     return (
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
         <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-forest-100 text-forest-800">
-          <IconCheck className="h-9 w-9" />
+          <IconCheck className="h-9 w-9 stroke-[2.5]" />
         </span>
         <p className="font-bengali mt-8 text-sm text-ink-soft">
           {t("checkout.orderConfirmedBn")}
@@ -195,14 +199,48 @@ export default function CheckoutView() {
           {t("checkout.orderConfirmed")}
         </h1>
         <p className="mt-4 text-ink-soft">
-          Order <strong className="text-ink">{placed.orderId}</strong> — thank
-          you{form.name ? `, ${form.name.split(" ")[0]}` : ""}. We are preparing
-          your delivery now.
+          অর্ডার নম্বর <strong className="text-ink">{placed.orderId}</strong> — ধন্যবাদ
+          {form.name ? `, ${form.name.split(" ")[0]}` : ""}। আপনার ডেলিভারি প্রস্তুত করা হচ্ছে।
         </p>
-        <div className="mx-auto mt-8 max-w-sm space-y-3 rounded-3xl bg-paper p-6 text-left text-sm ring-1 ring-line">
+
+        {/* 4-digit Security PIN card */}
+        <div className="mx-auto mt-6 max-w-sm rounded-2xl bg-gold-50/80 p-5 ring-1 ring-gold-300 shadow-sm text-center">
+          <div className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-forest-900">
+            <IconShield className="h-4 w-4 text-gold-600" />
+            আপনার নিরাপদ ডেলিভারি পিন (Security PIN)
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-2 font-mono text-2xl font-bold text-forest-900">
+            {deliveryCode.split("").map((digit, i) => (
+              <span
+                key={i}
+                className="flex h-11 w-10 items-center justify-center rounded-xl bg-paper shadow-sm ring-1 ring-line"
+              >
+                {digit}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-ink-soft">
+            পার্সেল ও ক্যাশ লেনদেনের সময় এই ৪-সংখ্যার কোডটি রাইডারকে বলুন।
+          </p>
+        </div>
+
+        {/* Loyalty Card Boost Notice */}
+        <div className="mx-auto mt-4 max-w-sm rounded-2xl bg-forest-50 p-3.5 ring-1 ring-forest-200 text-xs text-forest-900 flex items-center gap-2.5 text-left">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-forest-800 text-gold-300">
+            <IconGift className="h-4 w-4" />
+          </span>
+          <div>
+            <strong className="block font-semibold">১০-অর্ডার রিওয়ার্ড প্রগ্রেস</strong>
+            <span className="text-ink-soft text-[11px]">
+              এই অর্ডার ডেলিভারি রিসিভ করলে আপনার লয়্যালটি কার্ডে +১ স্ট্যাম্প যোগ হবে!
+            </span>
+          </div>
+        </div>
+
+        <div className="mx-auto mt-6 max-w-sm space-y-3 rounded-3xl bg-paper p-6 text-left text-sm ring-1 ring-line">
           <p className="flex items-center gap-3">
             <IconTruck className="h-5 w-5 text-forest-700" />
-            Estimated arrival:{" "}
+            আনুমানিক সময়:{" "}
             <strong className="text-ink">{placed.eta}</strong>
           </p>
           <p className="flex items-center gap-3">
@@ -214,12 +252,13 @@ export default function CheckoutView() {
             <span>{formatBdt(placed.total)}</span>
           </p>
         </div>
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-4">
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
             href="/track"
             className="inline-flex h-12 items-center gap-2 rounded-full bg-forest-800 px-7 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            {t("checkout.trackThisOrder")} <IconArrowRight className="h-4 w-4" />
+            লাইভ ম্যাপে ট্র্যাক করুন <IconArrowRight className="h-4 w-4" />
           </Link>
           <Link
             href="/shop"
@@ -228,11 +267,6 @@ export default function CheckoutView() {
             {t("checkout.continueShopping")}
           </Link>
         </div>
-        <p className="mt-8 text-xs text-ink-soft">
-          A confirmation will also arrive by SMS once messaging is enabled.
-          Tracking with this order ID and your phone number works on the Track
-          page.
-        </p>
       </div>
     );
   }

@@ -108,13 +108,30 @@ function RiderCard({
             {rider.contactEmail ?? "no email"} · {rider.phone} ·{" "}
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
-              <> · cash held {formatBdt(rider.cashInHand)}</>
+              <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
             )}
             {rider.ratingCount > 0 && (
               <> · ★ {rider.ratingAvg.toFixed(1)} ({rider.ratingCount})</>
             )}
           </p>
         </div>
+        {rider.cashInHand > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Settle ${formatBdt(rider.cashInHand)} cash from ${rider.name}? Cash in hand will be recorded and reset to 0.`,
+                )
+              ) {
+                void onSave({ ...rider, cashInHand: 0 });
+              }
+            }}
+            className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 transition-colors hover:bg-amber-200"
+          >
+            Settle Cash ({formatBdt(rider.cashInHand)})
+          </button>
+        )}
         {rider.status === "pending" && (
           <button
             type="button"
@@ -288,6 +305,10 @@ export default function AdminRidersPage() {
   const [newVehicle, setNewVehicle] = useState<Rider["vehicle"]>("bike");
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const totalCashHeld = useMemo(() => {
+    return riders.reduce((acc, r) => acc + (r.cashInHand || 0), 0);
+  }, [riders]);
+
   const counts = useMemo(() => {
     const c: Record<Filter, number> = {
       all: riders.length,
@@ -392,6 +413,23 @@ export default function AdminRidersPage() {
           </button>
         </div>
       </div>
+
+      {/* Total cash exposure banner */}
+      {totalCashHeld > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50/80 p-4 ring-1 ring-amber-200">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
+              রাইডারদের হাতে মোট ক্যাশ (COD Cash in Hand)
+            </p>
+            <p className="text-xs text-amber-800/80 mt-0.5">
+              ক্যাশ লিমিট প্রতি রাইডারে সর্বোচ্চ ৳৫,০০০। টাকা পাওয়ার পর Settle বাটনে চাপুন।
+            </p>
+          </div>
+          <div className="font-display text-xl font-bold text-amber-950">
+            {formatBdt(totalCashHeld)}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
         {FILTERS.map((s) => (

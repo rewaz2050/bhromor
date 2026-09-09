@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui/primitives";
+import { ExchangeForm } from "@/components/returns/exchange-form";
 
 export const metadata: Metadata = {
   title: "Returns & Exchange",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
 const STEPS = [
   {
     title: "Request",
-    text: "Contact support (phone, WhatsApp or the contact form) within 7 days of delivery with your order ID and the item you wish to return or exchange.",
+    text: "Contact support (phone, WhatsApp or the online form below) within 7 days of delivery with your order ID and the item you wish to return or exchange.",
   },
   {
     title: "Review",
@@ -24,33 +25,38 @@ const STEPS = [
 
 export default function ReturnsPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:py-16">
-      <Eyebrow>Easy, fair, clear</Eyebrow>
-      <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
-        Returns &amp; exchange
-      </h1>
-      <p className="mt-4 leading-7 text-ink-soft">
-        We want the fit and feel to be right. If it is not, you have 7 days
-        from delivery to request a return or exchange on most items.
-      </p>
+    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:py-16 space-y-12">
+      <div>
+        <Eyebrow>Easy, fair, clear</Eyebrow>
+        <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
+          Returns &amp; exchange
+        </h1>
+        <p className="mt-4 leading-7 text-ink-soft">
+          We want the fit and feel to be right. If it is not, you have 7 days
+          from delivery to request a return or exchange on most items.
+        </p>
 
-      <ol className="mt-10 space-y-6">
-        {STEPS.map((step, index) => (
-          <li key={step.title} className="flex gap-5 rounded-3xl bg-paper p-6 ring-1 ring-line">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-forest-800 font-display text-lg font-semibold text-ivory-50">
-              {index + 1}
-            </span>
-            <div>
-              <h2 className="font-display text-xl font-medium text-forest-900">
-                {step.title}
-              </h2>
-              <p className="mt-2 text-sm leading-7 text-ink-soft">{step.text}</p>
-            </div>
-          </li>
-        ))}
-      </ol>
+        <ol className="mt-8 space-y-5">
+          {STEPS.map((step, index) => (
+            <li key={step.title} className="flex gap-5 rounded-3xl bg-paper p-6 ring-1 ring-line">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-forest-800 font-display text-lg font-semibold text-ivory-50">
+                {index + 1}
+              </span>
+              <div>
+                <h2 className="font-display text-xl font-medium text-forest-900">
+                  {step.title}
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-ink-soft">{step.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
 
-      <div className="prose-prosanti mt-12">
+      {/* Interactive Size Exchange & Return Form */}
+      <ExchangeForm />
+
+      <div className="prose-prosanti">
         <h2>Policy notes</h2>
         <ul>
           <li>
@@ -80,7 +86,7 @@ export default function ReturnsPage() {
         </ul>
         <h2>Start a return</h2>
         <p>
-          The fastest way is WhatsApp or a phone call — both are listed on the{" "}
+          The fastest way is using the form above or via phone call — both are listed on the{" "}
           <Link href="/contact">Contact page</Link>. Have your order ID ready.
         </p>
       </div>
