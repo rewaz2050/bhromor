@@ -262,6 +262,7 @@ describe("mapShop (marketplace slice 1)", () => {
       tagline: "",
       logo_url: "",
       phone: "01700000000",
+      contact_email: "owner@example.com",
       address: "House 1",
       zone_ids: ["z1", "z2"],
       prep_minutes: 15,

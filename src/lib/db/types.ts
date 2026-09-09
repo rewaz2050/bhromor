@@ -35,6 +35,7 @@ export interface DbShop {
   tagline: string;
   logo_url: string;
   phone: string;
+  contact_email: string;
   address: string;
   zone_ids: string[];
   prep_minutes: number;

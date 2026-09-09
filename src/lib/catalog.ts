@@ -60,6 +60,8 @@ export interface Shop {
   tagline?: string;
   logoUrl?: string;
   phone: string;
+  /** Applicant email — STAFF ONLY. Public endpoints must strip it. */
+  contactEmail?: string;
   address?: string;
   zoneIds: string[];
   prepMinutes: number;

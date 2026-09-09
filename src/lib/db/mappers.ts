@@ -190,6 +190,7 @@ export const mapShop = (row: DbShop): Shop => ({
   tagline: row.tagline || undefined,
   logoUrl: row.logo_url || undefined,
   phone: row.phone,
+  contactEmail: row.contact_email || undefined,
   address: row.address || undefined,
   zoneIds: [...row.zone_ids],
   prepMinutes: row.prep_minutes,

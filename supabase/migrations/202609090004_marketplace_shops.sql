@@ -17,6 +17,7 @@ create table shops (
   tagline        text not null default '',
   logo_url       text not null default '',
   phone          text not null,
+  contact_email  text not null default '',  -- applicant email; vendor link key at approval
   address        text not null default '',
   zone_ids       text[] not null default '{}',      -- delivery_zones served
   prep_minutes   int not null default 15,

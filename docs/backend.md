@@ -23,6 +23,8 @@ src/app/api/
 ├── track/route.ts         # GET ?id=&phone=: phone-gated lookup
 ├── reviews/route.ts       # GET approved-only (?product, ?featured) / POST pending
 ├── coupons/validate/route.ts  # POST: honest { valid, discount?, reason? }
+├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
+├── shops/apply/route.ts   # POST public intake → pending row (5/min/IP)
 ├── admin/_lib.ts          # staffRoute() wrapper: auth + rate limit + errors
 ├── admin/orders/...       # list (filters) / detail / advance (cancel releases stock)
 ├── admin/products/...     # GET full catalog / POST create / PATCH update
@@ -30,6 +32,7 @@ src/app/api/
 ├── admin/zones/...        # upsert + move + delete (last-zone/order guards)
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
+├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
 ├── admin/me/route.ts      # staff session probe for the admin gate
 └── media/sign/route.ts    # STAFF-ONLY Cloudinary signed-upload params (§48)
 src/lib/

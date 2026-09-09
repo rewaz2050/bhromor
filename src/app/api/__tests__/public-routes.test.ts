@@ -83,3 +83,73 @@ describe("reviews routes (demo fallback, no keys)", () => {
     await expect(res.json()).resolves.toEqual({ demoMode: true });
   });
 });
+
+describe("shops routes (marketplace slice 2)", () => {
+  it("GET /api/shops answers demo seeds without contact emails", async () => {
+    const { GET } = await import("../shops/route");
+    const res = await GET(new Request("http://localhost/api/shops"));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      source: string;
+      shops: { slug: string; contactEmail?: string }[];
+    };
+    expect(data.source).toBe("demo");
+    expect(data.shops).toHaveLength(1);
+    expect(data.shops[0].slug).toBe("prosanti-direct");
+    expect(data.shops[0].contactEmail).toBeUndefined();
+  });
+
+  it("GET /api/shops?zone= filters by served zone", async () => {
+    const { GET } = await import("../shops/route");
+    const hit = (await (
+      await GET(new Request("http://localhost/api/shops?zone=z1"))
+    ).json()) as { shops: unknown[] };
+    expect(hit.shops).toHaveLength(1);
+    const miss = (await (
+      await GET(new Request("http://localhost/api/shops?zone=nope"))
+    ).json()) as { shops: unknown[] };
+    expect(miss.shops).toHaveLength(0);
+  });
+
+  it("POST /api/shops/apply validates then answers demoMode", async () => {
+    const { POST } = await import("../shops/apply/route");
+    const good = req({
+      name: "Karim Fabrics",
+      phone: "01711111111",
+      email: "karim@example.com",
+      address: "Shop 5, New Market",
+      zoneIds: ["z1"],
+    });
+    const res = await POST(good);
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ demoMode: true });
+
+    const bad = await POST(req({ name: "K", email: "nope" }));
+    expect(bad.status).toBe(400);
+  });
+
+  it("POST /api/shops/apply rate-limits at 5/min per IP", async () => {
+    const { POST } = await import("../shops/apply/route");
+    const body = {
+      name: "Rate Test",
+      phone: "01711111111",
+      email: "rate@example.com",
+      zoneIds: ["z1"],
+    };
+    const mk = () =>
+      new Request("http://localhost/api/shops/apply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-forwarded-for": "10.9.9.9",
+        },
+        body: JSON.stringify(body),
+      });
+    for (let i = 0; i < 5; i += 1) {
+      const res = await POST(mk());
+      expect(res.status).toBe(200);
+    }
+    const limited = await POST(mk());
+    expect(limited.status).toBe(429);
+  });
+});

@@ -10,7 +10,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Category, DeliveryZone, Product } from "../catalog";
+import type { Category, DeliveryZone, Product, Shop } from "../catalog";
 import { slugify } from "../catalog-store";
 import type { Coupon } from "../coupons";
 import type { Order, OrderStatus } from "../orders";
@@ -21,6 +21,7 @@ import {
   mapOrder,
   mapProduct,
   mapReview,
+  mapShop,
   mapZone,
 } from "./mappers";
 import { toDomain } from "./orders";
@@ -33,6 +34,7 @@ import type {
   DbOrderItem,
   DbProduct,
   DbReview,
+  DbShop,
   DbVariant,
   DbZone,
 } from "./types";
@@ -1197,4 +1199,149 @@ export async function deleteReviewRow(
 ): Promise<void> {
   const { error } = await db.from("reviews").delete().eq("id", id);
   if (error) throw new Error("review delete failed");
+}
+
+/* ------------------------------------------------------------------ */
+/* Shops (marketplace phase 2, slice 2)                                */
+/* ------------------------------------------------------------------ */
+
+export interface AdminShop extends Shop {
+  productCount: number;
+}
+
+export async function listShopsFull(
+  db: SupabaseClient,
+): Promise<AdminShop[]> {
+  const { data, error } = await db
+    .from("shops")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error("shop list failed");
+  const shops = ((data ?? []) as DbShop[]).map(mapShop);
+  const counts = new Map<string, number>();
+  if (shops.length > 0) {
+    const { data: rows } = await db
+      .from("products")
+      .select("shop_id")
+      .in(
+        "shop_id",
+        shops.map((s) => s.id),
+      );
+    for (const r of ((rows ?? []) as { shop_id: string }[])) {
+      counts.set(r.shop_id, (counts.get(r.shop_id) ?? 0) + 1);
+    }
+  }
+  return shops.map((s) => ({ ...s, productCount: counts.get(s.id) ?? 0 }));
+}
+
+/**
+ * Staff upsert: full-object save from the Shops queue (new manual rows send
+ * no id; approval/suspend/commission edits send the row id). Vendors never
+ * reach this — their PATCH is field-whitelisted in slice 3.
+ */
+export async function upsertShop(
+  db: SupabaseClient,
+  raw: unknown,
+): Promise<Shop> {
+  const body = (raw ?? {}) as {
+    id?: string;
+    slug?: string;
+    name?: string;
+    tagline?: string;
+    logo_url?: string;
+    logoUrl?: string;
+    phone?: string;
+    contact_email?: string;
+    contactEmail?: string;
+    address?: string;
+    zone_ids?: string[];
+    zoneIds?: string[];
+    prep_minutes?: number;
+    prepMinutes?: number;
+    commission_pct?: number;
+    commissionPct?: number;
+    status?: string;
+    is_open?: boolean;
+    isOpen?: boolean;
+  };
+  const name = clean(body.name, 80);
+  if (name.length < 2) throw new AdminInputError("Shop name is too short.");
+  const phone = clean(body.phone, 20);
+  const email = clean(body.contact_email ?? body.contactEmail, 120).toLowerCase();
+  const zoneIds = Array.isArray(body.zone_ids ?? body.zoneIds)
+    ? [...new Set(
+        ((body.zone_ids ?? body.zoneIds) as unknown[])
+          .filter((z): z is string => typeof z === "string")
+          .map((z) => z.trim())
+          .filter(Boolean),
+      )].slice(0, 24)
+    : [];
+  const { data: zones } = await db.from("delivery_zones").select("id");
+  const known = new Set(((zones ?? []) as { id: string }[]).map((z) => z.id));
+  const badZone = zoneIds.find((z) => !known.has(z));
+  if (badZone) throw new AdminInputError(`Unknown delivery zone: ${badZone}.`);
+  const prep = Math.max(0, Math.min(240, cleanInt(body.prep_minutes ?? body.prepMinutes, 15)));
+  const pctRaw = body.commission_pct ?? body.commissionPct;
+  const commission = typeof pctRaw === "number" && Number.isFinite(pctRaw) ? pctRaw : 15;
+  if (commission < 0 || commission > 90) {
+    throw new AdminInputError("Commission must be between 0 and 90 percent.");
+  }
+  const status = body.status === "active" || body.status === "suspended" ? body.status : "pending";
+  const isOpen = (body.is_open ?? body.isOpen) === true;
+
+  const id = clean(body.id, 64);
+  if (id !== "") {
+    const patch = {
+      name,
+      tagline: clean(body.tagline, 200),
+      logo_url: clean(body.logo_url ?? body.logoUrl, 500),
+      phone,
+      contact_email: email,
+      address: clean(body.address, 300),
+      zone_ids: zoneIds,
+      prep_minutes: prep,
+      commission_pct: commission,
+      status,
+      is_open: status === "active" ? isOpen : false,
+    };
+    const { data, error } = await db
+      .from("shops")
+      .update(patch)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error || !data) throw new AdminInputError("Shop not found.", 404);
+    return mapShop(data as DbShop);
+  }
+
+  const base =
+    clean(body.slug, 60).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ||
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) ||
+    "shop";
+  const { data, error } = await db
+    .from("shops")
+    .insert({
+      slug: base,
+      name,
+      tagline: clean(body.tagline, 200),
+      logo_url: clean(body.logo_url ?? body.logoUrl, 500),
+      phone,
+      contact_email: email,
+      address: clean(body.address, 300),
+      zone_ids: zoneIds,
+      prep_minutes: prep,
+      commission_pct: commission,
+      status: "pending",
+      is_open: false,
+    })
+    .select("*")
+    .single();
+  if (error) {
+    if (error.code === "23505") {
+      throw new AdminInputError("That shop slug is taken.", 409);
+    }
+    throw new Error("shop insert failed");
+  }
+  if (!data) throw new Error("shop insert failed");
+  return mapShop(data as DbShop);
 }
