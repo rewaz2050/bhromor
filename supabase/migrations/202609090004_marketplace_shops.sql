@@ -481,3 +481,64 @@ begin
 end $$;
 
 commit;
+
+-- ----------------------------------------------------------------
+-- Slice 5: settlement writer + payout guard.
+-- The ledger is written by the database, not the app: no code path can
+-- deliver an order and forget the vendor's money. Commission follows D5
+-- (% of item subtotal, delivery fee excluded), snapshotted from the
+-- shop's rate at delivery time so later rate changes don't rewrite
+-- history. Payouts can never exceed the earned balance (per-shop lock
+-- serializes concurrent staff payouts).
+-- ----------------------------------------------------------------
+begin;
+
+create or replace function ps_write_shop_ledger()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_pct numeric;
+  v_comm bigint;
+begin
+  if new.status = 'delivered' and old.status is distinct from 'delivered' then
+    select commission_pct into v_pct from shops where id = new.shop_id;
+    -- floor: fractions of a paisa always favour the vendor.
+    v_comm := floor(new.subtotal * coalesce(v_pct, 0) / 100);
+    insert into shop_ledger (shop_id, order_id, subtotal, commission, payable)
+    values (new.shop_id, new.id, new.subtotal, v_comm, new.subtotal - v_comm)
+    on conflict (order_id) do nothing;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_ledger_on_delivered on orders;
+create trigger trg_orders_ledger_on_delivered
+  after update of status on orders
+  for each row execute function ps_write_shop_ledger();
+
+create or replace function ps_guard_payout_balance()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_earned bigint;
+  v_paid bigint;
+begin
+  if new.amount is null or new.amount <= 0 then
+    raise exception 'payout must be positive';
+  end if;
+  -- Serialize payouts per shop so two staff can't overpay concurrently.
+  perform 1 from shops where id = new.shop_id for update;
+  select coalesce(sum(payable), 0) into v_earned
+  from shop_ledger where shop_id = new.shop_id;
+  select coalesce(sum(amount), 0) into v_paid
+  from shop_payouts where shop_id = new.shop_id;
+  if new.amount > v_earned - v_paid then
+    raise exception 'payout exceeds balance';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_payouts_check_balance on shop_payouts;
+create trigger trg_payouts_check_balance
+  before insert on shop_payouts
+  for each row execute function ps_guard_payout_balance();
+
+commit;

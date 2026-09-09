@@ -35,6 +35,8 @@ import type {
   DbProduct,
   DbReview,
   DbShop,
+  DbShopLedger,
+  DbShopPayout,
   DbVariant,
   DbZone,
 } from "./types";
@@ -1358,4 +1360,237 @@ export async function upsertShop(
   }
   if (!data) throw new Error("shop insert failed");
   return mapShop(data as DbShop);
+}
+
+/* ------------------------------------------------------------------ */
+/* Payouts + settlement (marketplace slice 5)                          */
+/* ------------------------------------------------------------------ */
+
+export interface ShopBalance {
+  shop: Shop;
+  earned: number;
+  paid: number;
+  balance: number;
+  lastPayoutAt: number | null;
+}
+
+export interface LedgerLine {
+  id: string;
+  shopId: string;
+  orderId: string;
+  orderNo: string;
+  subtotal: number;
+  commission: number;
+  payable: number;
+  at: number;
+}
+
+export interface PayoutLine {
+  id: string;
+  shopId: string;
+  amount: number;
+  method: string;
+  reference: string;
+  at: number;
+}
+
+/**
+ * Per-shop settlement balances. Ledger + payout reads are capped — this
+ * is a staff screen, not an export job; the DB trigger (not this sum) is
+ * what stops overpayment.
+ */
+export async function listShopBalances(
+  db: SupabaseClient,
+): Promise<ShopBalance[]> {
+  const [shopsRes, ledgerRes, payoutRes] = await Promise.all([
+    db.from("shops").select("*").order("name"),
+    db.from("shop_ledger").select("shop_id,payable").limit(5000),
+    db
+      .from("shop_payouts")
+      .select("shop_id,amount,paid_at")
+      .order("paid_at", { ascending: false })
+      .limit(5000),
+  ]);
+  if (shopsRes.error || ledgerRes.error || payoutRes.error) {
+    throw new Error("payout overview failed");
+  }
+  const earned = new Map<string, number>();
+  for (const r of ((ledgerRes.data ?? []) as { shop_id: string; payable: number }[])) {
+    earned.set(r.shop_id, (earned.get(r.shop_id) ?? 0) + r.payable);
+  }
+  const paid = new Map<string, number>();
+  const lastAt = new Map<string, number>();
+  for (const r of ((payoutRes.data ?? []) as {
+    shop_id: string;
+    amount: number;
+    paid_at: string;
+  }[])) {
+    paid.set(r.shop_id, (paid.get(r.shop_id) ?? 0) + r.amount);
+    if (!lastAt.has(r.shop_id)) lastAt.set(r.shop_id, Date.parse(r.paid_at));
+  }
+  return ((shopsRes.data ?? []) as DbShop[])
+    .map(mapShop)
+    .map((shop) => {
+      const e = earned.get(shop.id) ?? 0;
+      const p = paid.get(shop.id) ?? 0;
+      return {
+        shop,
+        earned: e,
+        paid: p,
+        balance: e - p,
+        lastPayoutAt: lastAt.get(shop.id) ?? null,
+      };
+    })
+    .sort((a, b) => b.balance - a.balance);
+}
+
+export async function listLedgerLines(
+  db: SupabaseClient,
+  shopId?: string,
+): Promise<LedgerLine[]> {
+  let query = db
+    .from("shop_ledger")
+    .select("*, orders!inner(order_no)")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (shopId) query = query.eq("shop_id", shopId);
+  const { data, error } = await query;
+  if (error) throw new Error("ledger list failed");
+  return ((data ?? []) as (DbShopLedger & {
+    orders: { order_no: string } | { order_no: string }[];
+  })[]).map((r) => ({
+    id: r.id,
+    shopId: r.shop_id,
+    orderId: r.order_id,
+    orderNo: Array.isArray(r.orders) ? (r.orders[0]?.order_no ?? "") : (r.orders?.order_no ?? ""),
+    subtotal: r.subtotal,
+    commission: r.commission,
+    payable: r.payable,
+    at: Date.parse(r.created_at),
+  }));
+}
+
+export async function listPayoutLines(
+  db: SupabaseClient,
+  shopId?: string,
+): Promise<PayoutLine[]> {
+  let query = db
+    .from("shop_payouts")
+    .select("*")
+    .order("paid_at", { ascending: false })
+    .limit(200);
+  if (shopId) query = query.eq("shop_id", shopId);
+  const { data, error } = await query;
+  if (error) throw new Error("payout list failed");
+  return ((data ?? []) as DbShopPayout[]).map((r) => ({
+    id: r.id,
+    shopId: r.shop_id,
+    amount: r.amount,
+    method: r.method,
+    reference: r.reference,
+    at: Date.parse(r.paid_at),
+  }));
+}
+
+const PAYOUT_METHODS = ["bank", "bkash", "nagad", "cash"] as const;
+
+/** Pure input shaping for recordPayout — unit-tested without a database. */
+export const shapePayoutInput = (
+  raw: unknown,
+): { shopId: string; amount: number; method: string; reference: string } => {
+  const body = (raw ?? {}) as Record<string, unknown>;
+  const shopId = clean(body.shopId, 64);
+  if (!shopId) throw new AdminInputError("Pick a shop to pay.");
+  // Staff type taka ("2500"); paisa math stays integer-only downstream.
+  const amountTaka =
+    typeof body.amountTaka === "number" ? body.amountTaka : Number.NaN;
+  const amount = Number.isFinite(amountTaka)
+    ? Math.round(amountTaka * 100)
+    : Number.NaN;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AdminInputError("Enter a payout amount above ৳0.");
+  }
+  const method = clean(body.method, 16).toLowerCase();
+  if (!(PAYOUT_METHODS as readonly string[]).includes(method)) {
+    throw new AdminInputError("Pick a payout method (bank, bKash, Nagad, cash).");
+  }
+  return {
+    shopId,
+    amount,
+    method,
+    reference: clean(body.reference, 120),
+  };
+};
+
+/**
+ * Record a manual payout batch. The app pre-checks the balance for a kind
+ * error; the trg_payouts_check_balance trigger enforces it under a
+ * per-shop lock, so concurrent staff can't overpay.
+ */
+export async function recordPayout(
+  db: SupabaseClient,
+  paidBy: string,
+  raw: unknown,
+): Promise<PayoutLine> {
+  const input = shapePayoutInput(raw);
+  const { data: shop, error: shopError } = await db
+    .from("shops")
+    .select("id")
+    .eq("id", input.shopId)
+    .single();
+  if (shopError || !shop) throw new AdminInputError("Shop not found.", 404);
+  const [ledgerRes, payoutRes] = await Promise.all([
+    db.from("shop_ledger").select("payable").eq("shop_id", input.shopId).limit(5000),
+    db.from("shop_payouts").select("amount").eq("shop_id", input.shopId).limit(5000),
+  ]);
+  if (ledgerRes.error || payoutRes.error) {
+    throw new Error("payout balance check failed");
+  }
+  const earned = ((ledgerRes.data ?? []) as { payable: number }[]).reduce(
+    (s, r) => s + r.payable,
+    0,
+  );
+  const paid = ((payoutRes.data ?? []) as { amount: number }[]).reduce(
+    (s, r) => s + r.amount,
+    0,
+  );
+  if (input.amount > earned - paid) {
+    throw new AdminInputError(
+      "That exceeds the shop's unsettled balance.",
+      422,
+    );
+  }
+  const { data, error } = await db
+    .from("shop_payouts")
+    .insert({
+      shop_id: input.shopId,
+      amount: input.amount,
+      method: input.method,
+      reference: input.reference,
+      paid_by: paidBy,
+    })
+    .select("*")
+    .single();
+  if (error || !data) {
+    const msg = (error?.message ?? "").toLowerCase();
+    if (msg.includes("exceeds balance")) {
+      throw new AdminInputError(
+        "That exceeds the shop's unsettled balance.",
+        422,
+      );
+    }
+    if (msg.includes("must be positive")) {
+      throw new AdminInputError("Enter a payout amount above ৳0.");
+    }
+    throw new Error("payout insert failed");
+  }
+  const row = data as DbShopPayout;
+  return {
+    id: row.id,
+    shopId: row.shop_id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    at: Date.parse(row.paid_at),
+  };
 }

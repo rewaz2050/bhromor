@@ -34,6 +34,7 @@ src/app/api/
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
 ├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner
+├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
 ├── vendor/_lib.ts         # vendorRoute() wrapper: vendor auth + rate limit + errors
 ├── vendor/me/route.ts     # vendor session probe (email + role + shop)
 ├── vendor/orders/...      # own-shop list (?status=) / detail / advance (early states)
@@ -75,7 +76,7 @@ supabase/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
     ├── 202609080003_place_order_rpc.sql         # ps_place_order: atomic checkout + coupon increment
-    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS
+    └── 202609090004_marketplace_shops.sql       # shops/vendors/ledger + guards + vendor RLS + settlement triggers
 scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
 ```
 

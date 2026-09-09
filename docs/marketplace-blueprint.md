@@ -362,6 +362,7 @@ Phase 2 slices:
 2. ✅ Admin → Shops queue (approve/suspend/commission) + public `/api/shops`.
 3. ✅ Vendor auth + `/vendor` dashboard (orders → products → hours → earnings).
 4. ✅ Storefront: zone-scoped discovery, shop pages, single-shop cart, checkout split ETA.
+5. ✅ Ledger writer + Admin → Payouts + settlement report.
 5. Ledger writer + Admin → Payouts + settlement report.
 
 Phase 3 slices:
