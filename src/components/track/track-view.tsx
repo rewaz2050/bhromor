@@ -157,11 +157,11 @@ export default function TrackView() {
         className="h-fit rounded-3xl bg-paper p-7 ring-1 ring-line lg:sticky lg:top-28"
       >
         <h2 className="font-display text-2xl font-medium text-forest-900">
-          Track your order
+          Track your order — Sunamganj Sadar
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          No account needed — enter the order ID from your confirmation and the
-          phone number you ordered with.
+          District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
+          No account needed — order ID + phone. PIN required for COD delivery.
         </p>
         <label className="mt-6 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
@@ -398,8 +398,9 @@ export default function TrackView() {
               </div>
               <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
                 <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-                  Delivery
+                  Delivery — Sunamganj Sadar
                 </h3>
+                <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা: Sunamganj · উপজেলা: Sunamganj Sadar · Hub: Traffic Point</p>
                 <p className="mt-4 flex items-start gap-2.5 text-sm text-ink">
                   <IconMapPin className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.customer.area}
@@ -408,7 +409,13 @@ export default function TrackView() {
                 <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.zoneName} · {order.etaLabel}
+                  {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
                 </p>
+                {order.customer.note && (
+                  <p className="mt-3 text-xs leading-5 text-ink-soft">
+                    <strong className="text-ink">Note:</strong> {order.customer.note}
+                  </p>
+                )}
                 {(demoMode || via === "device") && (
                   <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
                     <strong className="text-ink">Demo data.</strong>{" "}
