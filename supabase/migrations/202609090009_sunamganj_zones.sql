@@ -2,11 +2,10 @@
 -- District: Sunamganj, Upazila: Sunamganj Sadar.
 -- Replaces the old Comilla-centric demo zones with real Sunamganj paras.
 -- Also adds first-1000-orders FREE promo into ps_place_order.
+-- Safe: upsert only, no delete (FK safe if orders already reference zones).
 begin;
 
--- Replace zones with Sunamganj paras (idempotent upsert)
-delete from delivery_zones where id in ('z1','z2','z3','z4');
-
+-- Upsert Sunamganj paras (idempotent, FK-safe)
 insert into delivery_zones (id, name, areas, charge, eta_label, sort_order, active) values
   ('z1', 'Zone A — Traffic Point (0-1.5km)', array['Boropara','Shologhar','Ukilpara','Courtpara','Jail Road','Modhyabazar','Kalibari','Arambagh','Mollapara'], 3000, '30–40 min', 0, true),
   ('z2', 'Zone B — Sadar Core (1.5-2.5km)', array['Notunpara','Hasannagar','Tegharia','Nabinagar','Sahib Bari Ghat','Hospital Road','Kazir Point','Purba Bazar','Paschim Bazar'], 5000, '40–50 min', 1, true),
@@ -19,6 +18,13 @@ on conflict (id) do update set
   eta_label = excluded.eta_label,
   sort_order = excluded.sort_order,
   active = excluded.active;
+
+-- Clean any leftover old Comilla demo zones that are not referenced by orders
+-- (only delete if no orders reference them, to stay FK-safe)
+delete from delivery_zones
+where id not in ('z1','z2','z3','z4')
+  and id in ('z-old-1','z-old-2','z-old-3','kandirpar','rampur','court-road')
+  and not exists (select 1 from orders where orders.zone_id = delivery_zones.id);
 
 -- Update ps_place_order: first 1000 orders FREE promo + 1000 taka threshold
 create or replace function ps_place_order(p_order jsonb, p_items jsonb)
@@ -117,7 +123,7 @@ begin
       end if;
       v_available := v_variant.stock - v_variant.reserved;
       if v_available < v_qty then
-        raise exception 'only % left of \"%\"', greatest(0, v_available), v_product.name;
+        raise exception 'only % left of "%"', greatest(0, v_available), v_product.name;
       end if;
       update product_variants
       set reserved = reserved + v_qty

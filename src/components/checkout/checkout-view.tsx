@@ -21,10 +21,11 @@ import { getDeliveryCode, makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
-  DELIVERY_ETA,
   FREE_DELIVERY_THRESHOLD,
   INSTANT_DELIVERY_TITLE,
+  FIRST_1000_FREE_LIMIT,
   deliveryChargeFor,
+  deliveryChargeWithPromo,
   orderTotal,
 } from "@/lib/delivery";
 import {
@@ -38,6 +39,25 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { usePromo } from "@/lib/use-promo";
+import {
+  SUNAMGANJ_DISTRICT,
+  SUNAMGANJ_UPAZILA,
+  ALL_PARAS,
+  ROAD_NAMES,
+  findZoneByPara,
+  getParaSuggestions,
+  MIN_ORDER_OUTSIDE_PAISA,
+} from "@/lib/sunamganj";
+import {
+  getSavedAddresses,
+  saveAddress,
+  deleteAddress,
+  formatFullAddress,
+  type SavedAddress,
+} from "@/lib/address-book";
+
+type TimeSlot = "now" | "evening" | "tomorrow_morning";
 
 interface FormState {
   name: string;
@@ -50,6 +70,7 @@ interface FormState {
   couponCode: string;
   zoneId: string;
   payment: "cod";
+  timeSlot: TimeSlot;
   submitting: boolean;
 }
 
@@ -64,20 +85,20 @@ const initialForm: FormState = {
   couponCode: "",
   zoneId: "",
   payment: "cod",
+  timeSlot: "now",
   submitting: false,
 };
 
-const DISTRICT = "Sunamganj";
-const UPAZILA = "Sunamganj Sadar";
+const DISTRICT = SUNAMGANJ_DISTRICT;
+const UPAZILA = SUNAMGANJ_UPAZILA;
 
 export default function CheckoutView() {
   const { t } = useLanguage();
   const { detail, subtotal, clear } = useCart();
-  /** Delivery zones are live-served when the backend is up, seeds otherwise. */
   const { activeZones: zoneList } = useLiveZones();
   const { shops } = useLiveCatalog();
   const { zoneId: myZoneId, setZoneId: setMyZoneId } = useMyZone();
-  /** The bag's shop (single-shop carts carry exactly one). */
+  const promo = usePromo();
   const bagShop =
     shopById(
       shops,
@@ -93,9 +114,6 @@ export default function CheckoutView() {
     deliveryCode?: string;
   } | null>(null);
 
-  // Coupon truth lives on the server: the code is validated against the
-  // *current* cart via /api/coupons/validate, debounced so shrinking the
-  // cart can never leave a stale discount attached to the order.
   const [appliedCode, setAppliedCode] = useState("");
   const [couponCheck, setCouponCheck] = useState<{
     code: string | null;
@@ -114,6 +132,14 @@ export default function CheckoutView() {
   const areaRef = useRef<HTMLInputElement>(null);
   const addressRef = useRef<HTMLTextAreaElement>(null);
 
+  const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+
+  useEffect(() => {
+    setSavedAddrs(getSavedAddresses());
+  }, []);
+
   /** Browse-time zone pre-fills checkout; an explicit pick wins after. */
   const myZoneValid =
     myZoneId && zoneList.some((z) => z.id === myZoneId) ? myZoneId : null;
@@ -124,8 +150,6 @@ export default function CheckoutView() {
 
   const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}`;
   useEffect(() => {
-    // Clearing happens at the call sites (apply/remove); the effect only
-    // answers for a non-empty code so no sync setState runs here.
     if (!appliedCode) return;
     const items = detail.map((l) => ({ productId: l.product.id, qty: l.qty }));
     const timer = window.setTimeout(() => {
@@ -172,7 +196,6 @@ export default function CheckoutView() {
       })();
     }, 350);
     return () => window.clearTimeout(timer);
-    // cartKey (not detail) keeps the effect keyed on a stable string.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appliedCode, cartKey]);
 
@@ -181,20 +204,42 @@ export default function CheckoutView() {
     [couponCheck.code],
   );
 
+  // Auto-detect zone from para input
+  useEffect(() => {
+    if (!form.area.trim()) return;
+    const matched = findZoneByPara(form.area.trim());
+    if (matched && matched.id !== chosenZoneId) {
+      // Only auto-switch if user hasn't manually picked a zone that already contains this para
+      const currentZone = zoneList.find((z) => z.id === chosenZoneId);
+      const alreadyContains = currentZone?.areas.some(
+        (a) => a.toLowerCase() === form.area.trim().toLowerCase(),
+      );
+      if (!alreadyContains) {
+        setForm((f) => ({ ...f, zoneId: matched.id }));
+        setMyZoneId(matched.id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.area]);
+
   const summary = useMemo(() => {
-    // Free delivery now applies here too — the cart promised it and
-    // checkout silently charged anyway.
-    const charge = deliveryChargeFor(zone?.charge ?? 0, subtotal);
+    const baseCharge = zone?.charge ?? 0;
+    // Use promo-aware charge if promo active
+    const charge = promo.promoActive
+      ? deliveryChargeWithPromo(baseCharge, subtotal, promo.totalOrders)
+      : deliveryChargeFor(baseCharge, subtotal);
     const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
-      fullCharge: zone?.charge ?? 0,
-      freeDelivery: (zone?.charge ?? 0) > 0 && charge === 0,
+      fullCharge: baseCharge,
+      freeDelivery: baseCharge > 0 && charge === 0,
+      promoFree: promo.promoActive && baseCharge > 0 && charge === 0 && promo.totalOrders < FIRST_1000_FREE_LIMIT,
       discount,
       total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
+      isOutside: zone?.id === "z4",
     };
-  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount]);
+  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo]);
 
   const empty = detail.length === 0;
   const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
@@ -202,7 +247,6 @@ export default function CheckoutView() {
 
   if (placed) {
     const deliveryCode = placed.deliveryCode ?? getDeliveryCode(placed.orderId);
-
     return (
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
         <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-forest-100 text-forest-800">
@@ -219,7 +263,6 @@ export default function CheckoutView() {
           {form.name ? `, ${form.name.split(" ")[0]}` : ""}। আপনার ডেলিভারি প্রস্তুত করা হচ্ছে।
         </p>
 
-        {/* 4-digit Security PIN card */}
         <div className="mx-auto mt-6 max-w-sm rounded-2xl bg-gold-50/80 p-5 ring-1 ring-gold-300 shadow-sm text-center">
           <div className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-forest-900">
             <IconShield className="h-4 w-4 text-gold-600" />
@@ -240,7 +283,6 @@ export default function CheckoutView() {
           </p>
         </div>
 
-        {/* Loyalty Card Boost Notice */}
         <div className="mx-auto mt-4 max-w-sm rounded-2xl bg-forest-50 p-3.5 ring-1 ring-forest-200 text-xs text-forest-900 flex items-center gap-2.5 text-left">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-forest-800 text-gold-300">
             <IconGift className="h-4 w-4" />
@@ -326,22 +368,45 @@ export default function CheckoutView() {
   const applyCoupon = () => {
     const code = form.couponCode.trim().toUpperCase();
     if (!code) return;
-    // The validation effect above answers with success or a reason.
     setCouponCheck({ code: null, discount: 0, problem: null });
     setCouponMsg({ ok: true, text: "Checking code…" });
     setAppliedCode(code);
   };
 
-  /**
-   * Place the order through the backend when it is live, else keep the
-   * browser-local demo flow. Live failures NEVER fall back to a local
-   * order — a customer must not see “confirmed” for an order the shop
-   * will never receive.
-   */
+  const handleUseSaved = (addr: SavedAddress) => {
+    setForm((f) => ({
+      ...f,
+      name: addr.name,
+      phone: addr.phone,
+      area: addr.area,
+      houseNo: addr.houseNo,
+      roadName: addr.roadName,
+      address: addr.fullAddress,
+      note: addr.note,
+      zoneId: addr.zoneId,
+    }));
+    setMyZoneId(addr.zoneId);
+    setShowSaved(false);
+  };
+
+  const handleGeolocate = () => {
+    if (!navigator.geolocation) return;
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        // For Sunamganj Sadar, we can't do real distance without map, but we suggest Zone A as nearest to Traffic Point
+        setGeoLoading(false);
+        const nearest = zoneList.find((z) => z.id === "z1") ?? zoneList[0];
+        setForm((f) => ({ ...f, zoneId: nearest.id }));
+        setMyZoneId(nearest.id);
+      },
+      () => setGeoLoading(false),
+      { enableHighAccuracy: false, timeout: 5000 },
+    );
+  };
+
   const placeOrder = async () => {
-    // Ref guard: two submits inside one tick both passed the state check,
-    // which could place the same order twice.
-    if (submittingRef.current) return; // idempotent — no double submission (§79)
+    if (submittingRef.current) return;
     submittingRef.current = true;
     update("submitting", true);
     setOrderError(null);
@@ -352,7 +417,6 @@ export default function CheckoutView() {
       update("submitting", false);
       setOrderError(message);
       if (fields) setFieldErrors(fields);
-      // Focus first invalid field for accessibility
       const firstField = Object.keys(fields ?? {})[0];
       if (firstField === "name") nameRef.current?.focus();
       else if (firstField === "phone") phoneRef.current?.focus();
@@ -360,41 +424,52 @@ export default function CheckoutView() {
       else if (firstField === "address") addressRef.current?.focus();
     };
 
-    // Client-side quick checks before hitting the network — gives instant
-    // feedback and matches the server's validateOrderPayload rules.
     const localErrors: Record<string, string> = {};
     if (form.name.trim().length < 2) localErrors.name = "Please share your full name (at least 2 characters).";
     const phoneClean = form.phone.replace(/[\s\-]/g, "");
     if (!/^(?:\+?88)?01[0-9]{9}$/.test(phoneClean)) {
       localErrors.phone = "A valid Bangladeshi mobile number is required — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
     }
-    if (form.area.trim().length < 2) localErrors.area = "Please share your area / neighbourhood.";
+    if (form.area.trim().length < 2) localErrors.area = "Please share your para / neighbourhood — e.g. Boropara, Shologhar.";
     if (form.address.trim().length < 8) localErrors.address = "Please share a full delivery address (house, road, landmark).";
+    // Minimum order for outside zone
+    if (zone.id === "z4" && subtotal < MIN_ORDER_OUTSIDE_PAISA) {
+      localErrors.items = `Zone D (outside Sadar) requires minimum ${formatBdt(MIN_ORDER_OUTSIDE_PAISA)} order — add ${formatBdt(MIN_ORDER_OUTSIDE_PAISA - subtotal)} more.`;
+    }
     if (Object.keys(localErrors).length > 0) {
       fail("Please fix the highlighted fields.", localErrors);
       return;
     }
 
-    // Build full address from structured fields + free-form box
     const buildFullAddress = () => {
-      const parts: string[] = [];
-      if (form.houseNo.trim()) parts.push(`House: ${form.houseNo.trim()}`);
-      if (form.roadName.trim()) parts.push(`Road: ${form.roadName.trim()}`);
-      if (form.area.trim()) parts.push(`Para: ${form.area.trim()}`);
-      parts.push(`${DISTRICT}, ${UPAZILA}`);
-      if (form.address.trim()) parts.push(form.address.trim());
-      return parts.join(", ");
+      return formatFullAddress({
+        houseNo: form.houseNo,
+        roadName: form.roadName,
+        area: form.area,
+        fullAddress: form.address,
+      });
     };
 
-    /** Demo-mode placement: local store only, exactly as before. */
     const placeLocally = () => {
       const stamp = new Date();
       const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
       const seq = String(Math.floor(1000 + Math.random() * 9000));
       const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
       const fullAddress = buildFullAddress();
-      // Store the order in the demo backend (order-store) so the admin
-      // Orders queue and the public Track page can follow it live (§92).
+      // Save address for next time
+      try {
+        saveAddress({
+          label: `${form.area} - ${form.name.split(" ")[0]}`,
+          name: form.name,
+          phone: form.phone,
+          area: form.area,
+          houseNo: form.houseNo,
+          roadName: form.roadName,
+          fullAddress: form.address,
+          note: form.note,
+          zoneId: zone.id,
+        });
+      } catch {}
       addOrderToStore(
         makePlacedOrder({
           id: orderId,
@@ -404,7 +479,7 @@ export default function CheckoutView() {
             phone: form.phone,
             area: form.area,
             address: fullAddress,
-            note: form.note,
+            note: `${form.note}${form.timeSlot !== "now" ? ` [Slot: ${form.timeSlot}]` : ""}`.trim(),
           },
           zone: {
             id: zone.id,
@@ -445,7 +520,7 @@ export default function CheckoutView() {
           phone: form.phone,
           area: form.area,
           address: fullAddress,
-          note: form.note,
+          note: `${form.note}${form.timeSlot !== "now" ? ` [Slot: ${form.timeSlot}]` : ""}`.trim(),
           zoneId: zone.id,
           couponCode: activeCoupon?.code,
           items: detail.map((l) => ({
@@ -465,9 +540,7 @@ export default function CheckoutView() {
     let body: unknown = null;
     try {
       body = await res.json();
-    } catch {
-      // Non-JSON error page — fall through to the generic failure below.
-    }
+    } catch {}
     const data = (body ?? {}) as {
       demoMode?: boolean;
       order?: Order;
@@ -481,9 +554,19 @@ export default function CheckoutView() {
       return;
     }
     if (res.ok && data.order) {
-      // Live order: mirror it into the local store so the Track page keeps
-      // working on this device (§92). Coupon usage is incremented by the
-      // order RPC itself — never locally in live mode.
+      try {
+        saveAddress({
+          label: `${form.area} - ${form.name.split(" ")[0]}`,
+          name: form.name,
+          phone: form.phone,
+          area: form.area,
+          houseNo: form.houseNo,
+          roadName: form.roadName,
+          fullAddress: form.address,
+          note: form.note,
+          zoneId: zone.id,
+        });
+      } catch {}
       addOrderToStore(data.order);
       setPlaced({
         orderId: data.order.id,
@@ -496,12 +579,9 @@ export default function CheckoutView() {
       clear();
       return;
     }
-    // Server returns field-scoped errors (422) — map them to the form so
-    // the customer sees exactly which input needs fixing.
     const fieldMap: Record<string, string> = {};
     for (const e of data.errors ?? []) {
       if (e.field) fieldMap[e.field] = e.message;
-      // items[0] → items, couponCode stays couponCode
       if (e.field?.startsWith("items")) fieldMap.items = e.message;
     }
     if (data.field) fieldMap[data.field] = data.error ?? "";
@@ -514,9 +594,8 @@ export default function CheckoutView() {
     );
   };
 
-  // Plain area names — the old `"Kandirpar · Zone A"` strings were stored
-  // verbatim as the customer's area on the order.
-  const areaOptions = zone.areas;
+  const areaOptions = getParaSuggestions(form.area, 10);
+  const roadOptions = ROAD_NAMES;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_400px]">
@@ -527,20 +606,41 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
-        {/* First 1000 FREE promo banner */}
+        {/* Real-time promo banner */}
         <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
               <IconGift className="h-4 w-4" />
             </span>
-            <div>
-              <p className="text-sm font-bold">🎉 প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!</p>
-              <p className="text-xs text-ivory-100/80 mt-0.5">এরপর জায়গা অনুযায়ী চার্জ: Zone A ৳30, Zone B ৳50, Zone C ৳70, বাইরে ৳100 · ৳1000+ অর্ডারে সবসময় ফ্রি</p>
+            <div className="flex-1">
+              {promo.loading ? (
+                <p className="text-sm font-bold">🎉 প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!</p>
+              ) : promo.promoActive ? (
+                <>
+                  <p className="text-sm font-bold">
+                    🎉 প্রথম {promo.limit} অর্ডারে ডেলিভারি ফ্রি! {promo.remainingFree} টা বাকি
+                  </p>
+                  <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/20">
+                    <div
+                      className="h-1.5 rounded-full bg-gold-400 transition-all"
+                      style={{ width: `${Math.max(5, (promo.totalOrders / promo.limit) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-ivory-100/70 mt-1">
+                    {promo.totalOrders}/{promo.limit} claimed — এখন অর্ডার করলে ফ্রি পাবেন!
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm font-bold">🎉 প্রথম {promo.limit} ফ্রি শেষ — এখন ৳1000+ অর্ডারে ফ্রি!</p>
+              )}
+              <p className="text-xs text-ivory-100/80 mt-1">
+                জায়গা অনুযায়ী: Zone A ৳30, Zone B ৳50, Zone C ৳70, বাইরে ৳100 · ৳1000+ অর্ডারে সবসময় ফ্রি
+              </p>
             </div>
           </div>
         </div>
 
-        {/* District / Upazila fixed */}
+        {/* District / Upazila + Geolocate */}
         <div className="mb-6 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-ivory-100 px-4 py-3 ring-1 ring-line">
             <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা (District)</p>
@@ -551,6 +651,60 @@ export default function CheckoutView() {
             <p className="mt-1 text-sm font-semibold text-forest-900">{UPAZILA}</p>
           </div>
         </div>
+        <div className="mb-6 flex gap-2">
+          <button
+            type="button"
+            onClick={handleGeolocate}
+            disabled={geoLoading}
+            className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
+          >
+            <IconMapPin className="h-3.5 w-3.5" />
+            {geoLoading ? "Locating..." : "Use my location — auto zone"}
+          </button>
+          {savedAddrs.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowSaved(!showSaved)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
+            >
+              📚 Saved addresses ({savedAddrs.length})
+            </button>
+          )}
+        </div>
+        {showSaved && savedAddrs.length > 0 && (
+          <div className="mb-6 rounded-2xl bg-paper p-4 ring-1 ring-line">
+            <p className="text-xs font-bold uppercase tracking-wider text-ink-soft mb-3">Saved addresses — Sunamganj</p>
+            <div className="space-y-2">
+              {savedAddrs.map((addr) => (
+                <div key={addr.id} className="flex items-center justify-between rounded-xl bg-ivory-50 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-ink truncate">{addr.label} — {addr.area}</p>
+                    <p className="text-xs text-ink-soft truncate">{addr.houseNo} {addr.roadName} {addr.fullAddress}</p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0 ml-3">
+                    <button
+                      type="button"
+                      onClick={() => handleUseSaved(addr)}
+                      className="rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
+                    >
+                      Use
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteAddress(addr.id);
+                        setSavedAddrs(getSavedAddresses());
+                      }}
+                      className="rounded-full bg-paper px-2.5 py-1 text-xs ring-1 ring-line"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Contact */}
         <section>
@@ -634,7 +788,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.areaNeighbourhood")} <span className="text-rose-600">*</span>
+                পাড়া / Area <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={areaRef}
@@ -645,7 +799,7 @@ export default function CheckoutView() {
                   update("area", e.target.value);
                   if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
                 }}
-                placeholder="e.g. Kandirpar"
+                placeholder="e.g. Boropara, Shologhar, Notunpara"
                 aria-invalid={!!fieldErrors.area}
                 aria-describedby={fieldErrors.area ? "err-area" : "hint-area"}
                 className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.area ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
@@ -654,12 +808,15 @@ export default function CheckoutView() {
                 {areaOptions.map((a) => (
                   <option key={a} value={a} />
                 ))}
+                {ALL_PARAS.map((a) => (
+                  <option key={`all-${a}`} value={a} />
+                ))}
               </datalist>
               {fieldErrors.area ? (
                 <p id="err-area" className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
               ) : (
                 <p id="hint-area" className="mt-1 text-[11px] text-ink-soft">
-                  {zone.areas.length > 0 ? `Suggested: ${zone.areas.slice(0, 3).join(", ")}${zone.areas.length > 3 ? "…" : ""}` : ""}
+                  Auto zone: {findZoneByPara(form.area)?.name ?? zone.name} · Suggested: {zone.areas.slice(0, 3).join(", ")}
                 </p>
               )}
             </label>
@@ -683,11 +840,17 @@ export default function CheckoutView() {
                 রোডের নাম / Road Name <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
               </span>
               <input
+                list="prosanti-roads"
                 value={form.roadName}
                 onChange={(e) => update("roadName", e.target.value)}
                 placeholder="যেমন: College Road, Hospital Road"
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
               />
+              <datalist id="prosanti-roads">
+                {roadOptions.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
             </label>
           </div>
 
@@ -726,10 +889,36 @@ export default function CheckoutView() {
             <input
               value={form.note}
               onChange={(e) => update("note", e.target.value)}
-              placeholder="e.g. Call before arriving"
+              placeholder="e.g. Call before arriving, near Mosque"
               className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
           </label>
+
+          {/* Delivery Time Slot */}
+          <div className="mt-6">
+            <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot</span>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { id: "now" as TimeSlot, label: "এখনই", sub: `30-50 min`, icon: "⚡" },
+                { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: "6-9 PM", icon: "🌙" },
+                { id: "tomorrow_morning" as TimeSlot, label: "কাল সকালে", sub: "9-12 AM", icon: "🌅" },
+              ].map((slot) => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => update("timeSlot", slot.id)}
+                  className={`rounded-2xl px-3 py-3 text-left ring-1 transition-colors ${
+                    form.timeSlot === slot.id
+                      ? "bg-forest-800 text-ivory-50 ring-forest-700"
+                      : "bg-paper text-ink ring-line hover:bg-ivory-100"
+                  }`}
+                >
+                  <span className="text-sm">{slot.icon} {slot.label}</span>
+                  <span className={`block text-[11px] mt-0.5 ${form.timeSlot === slot.id ? "text-ivory-100/70" : "text-ink-soft"}`}>{slot.sub}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         {/* Delivery estimate */}
@@ -754,8 +943,19 @@ export default function CheckoutView() {
                 <strong className="text-gold-300">{zone.etaLabel}</strong> from
                 confirmation · Delivery charge{" "}
                 <strong>
-                  {summary.freeDelivery ? "Free" : formatBdt(summary.charge)}
+                  {summary.freeDelivery ? (
+                    <span className="text-gold-300">
+                      {summary.promoFree ? "FREE (First 1000 promo) 🎉" : "Free"}
+                    </span>
+                  ) : (
+                    formatBdt(summary.charge)
+                  )}
                 </strong>
+                {summary.isOutside && (
+                  <span className="block mt-1 text-xs text-amber-200">
+                    Zone D: Sunamganj Sadar বাইরে — minimum {formatBdt(MIN_ORDER_OUTSIDE_PAISA)} required
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -787,7 +987,7 @@ export default function CheckoutView() {
                   {t("checkout.cashOnDelivery")}
                 </span>
                 <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                  {t("checkout.cashOnDeliveryText")}
+                  {t("checkout.cashOnDeliveryText")} — Sunamganj Sadar COD
                 </span>
               </span>
               <span className="rounded-full bg-ivory-100 px-3 py-1 text-xs font-semibold text-forest-800 ring-1 ring-line">
@@ -816,7 +1016,6 @@ export default function CheckoutView() {
           </div>
         </section>
 
-        {/* Shop / bag level guard messages */}
         {mixedBag && (
           <p role="alert" className="mt-8 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
             Your bag has items from {lineShopIds(detail, shops[0]?.id ?? "").length} different shops — one order can only be from one shop. Check out each shop separately.
@@ -824,14 +1023,13 @@ export default function CheckoutView() {
         )}
         {shopClosed && bagShop && (
           <p role="alert" className="mt-4 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-            “{bagShop.name}” is closed right now — your bag will keep until it reopens. You can still browse, but placing the order will fail until the shop opens.
+            “{bagShop.name}” is closed right now — your bag will keep until it reopens.
           </p>
         )}
 
-        {/* Items-level error (e.g. mixed shops, out of stock) */}
         {fieldErrors.items && (
           <p role="alert" className="mt-4 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-            {fieldErrors.items} — Please review your bag or try again.
+            {fieldErrors.items}
           </p>
         )}
         {fieldErrors.couponCode && (
@@ -881,8 +1079,13 @@ export default function CheckoutView() {
           </h2>
           <p className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-forest-800">
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-            {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
+            {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · Traffic Point
           </p>
+          {promo.promoActive && !promo.loading && (
+            <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
+              🎉 {promo.remainingFree} free deliveries left of {promo.limit}!
+            </p>
+          )}
           <div className="mt-4">
             <BagShopHeader />
           </div>
@@ -915,7 +1118,7 @@ export default function CheckoutView() {
               </li>
             ))}
           </ul>
-          {/* Coupon (§56) */}
+          {/* Coupon */}
           <div className="mt-6 border-t border-line pt-5">
             <label className="mb-1.5 block text-xs font-medium text-ink">
               {t("checkout.haveCoupon")}
@@ -996,7 +1199,7 @@ export default function CheckoutView() {
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
-                    Free{" "}
+                    {summary.promoFree ? "FREE 🎉" : "Free"}{" "}
                     <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
@@ -1006,10 +1209,14 @@ export default function CheckoutView() {
                 )}
               </dd>
             </div>
-            {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && (
+            {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && !promo.promoActive && (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
-                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more also
-                unlocks free delivery.
+                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more unlocks free delivery.
+              </p>
+            )}
+            {summary.promoFree && (
+              <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
+                🎉 First {FIRST_1000_FREE_LIMIT} promo — delivery free! {promo.remainingFree} left.
               </p>
             )}
             <div className="flex justify-between pt-2 text-base">
@@ -1019,7 +1226,7 @@ export default function CheckoutView() {
           </dl>
           <p className="mt-5 flex items-start gap-2 rounded-xl bg-ivory-100 px-3.5 py-3 text-xs leading-5 text-ink-soft">
             <IconBox className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-            {t("checkout.followOrderHint")}
+            {t("checkout.followOrderHint")} — Sunamganj Sadar COD, PIN required.
           </p>
         </div>
       </aside>

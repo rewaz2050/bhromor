@@ -109,7 +109,7 @@ export const validateOrderPayload = (
   const name = clean(body.name, 120);
   const phone = clean(body.phone, 20).replace(/[\s-]/g, "");
   const area = clean(body.area, 120);
-  const address = clean(body.address, 500);
+  const address = clean(body.address, 800); // Sunamganj full address with District/Upazila + house/road
   const note = clean(body.note, 500);
   const zoneId = clean(body.zoneId, 64);
   const couponCode =
@@ -269,6 +269,18 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
+  // Zone D (outside Sadar) requires minimum ৳500
+  if (zone.id === "z4" && subtotal < 50000) {
+    return {
+      ok: false,
+      errors: [
+        {
+          field: "items",
+          message: `Zone D (Sunamganj Sadar outside) requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
+        },
+      ],
+    };
+  }
   const deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
 
   let coupon: ValidOrderDraft["coupon"];

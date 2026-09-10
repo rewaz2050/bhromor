@@ -17,6 +17,7 @@ import {
 } from "@/lib/delivery";
 import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { usePromo } from "@/lib/use-promo";
 
 export default function BagDrawer() {
   const { t } = useLanguage();
@@ -29,6 +30,7 @@ export default function BagDrawer() {
     updateQty,
     removeItem,
   } = useCart();
+  const promo = usePromo();
   const recommendations = Array.from(
     new Map(
       detail
@@ -84,12 +86,19 @@ export default function BagDrawer() {
           <div className="border-b border-line bg-forest-50 px-6 py-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-forest-900">
               <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-              {INSTANT_DELIVERY_TITLE} — arrives in {DELIVERY_ETA}
+              {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
             </p>
+            {promo.promoActive && !promo.loading && (
+              <p className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200">
+                🎉 {promo.remainingFree} free deliveries left!
+              </p>
+            )}
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
-              {remaining
-                ? `${formatBdt(remaining)} ${t("bag.moreForFreeDelivery")}`
-                : t("bag.freeDeliveryUnlocked")}
+              {promo.promoActive
+                ? `🎉 First ${promo.limit} FREE — you get free delivery!`
+                : remaining
+                  ? `${formatBdt(remaining)} ${t("bag.moreForFreeDelivery")}`
+                  : t("bag.freeDeliveryUnlocked")}
             </p>
             <div
               className="free-delivery-track mt-2.5"
@@ -230,10 +239,12 @@ export default function BagDrawer() {
               </strong>
             </div>
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
-              {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
-              {remaining
-                ? "area-based charge shown at checkout."
-                : t("bag.freeDeliveryUnlocked").toLowerCase()}
+              {INSTANT_DELIVERY_TITLE} · Sunamganj Sadar · {DELIVERY_ETA} —{" "}
+              {promo.promoActive
+                ? `FREE for first ${promo.limit}!`
+                : remaining
+                  ? "area-based charge shown at checkout."
+                  : t("bag.freeDeliveryUnlocked").toLowerCase()}
             </p>
             <Link
               href="/checkout"
@@ -250,7 +261,7 @@ export default function BagDrawer() {
               {t("bag.viewBag")}
             </Link>
             <p className="mt-4 text-center text-xs text-ink-soft">
-              {t("bag.cashQuality")}
+              {t("bag.cashQuality")} — Sunamganj Sadar COD
             </p>
           </div>
         </>

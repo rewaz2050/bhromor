@@ -508,6 +508,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
 ];
 
 export const FLAT_DELIVERY_NOTE =
-  "During the launch window, delivery is served inside a carefully selected service area. Zones expand as operations can reliably hold the 45–50 minute promise (§87).";
+  "Sunamganj Sadar launch: District Sunamganj, Upazila Sunamganj Sadar, Hub Traffic Point. Zone A ৳30 (0-1.5km), Zone B ৳50, Zone C ৳70, Zone D (Bahire) ৳100. First 1000 orders FREE, then ৳1000+ free. Zones expand as operations can reliably hold the promise.";
 
 export const ORDER_PREFIX = "PS";
