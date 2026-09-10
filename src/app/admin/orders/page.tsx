@@ -51,8 +51,32 @@ export default function AdminOrdersPage() {
     );
   }
 
+  const newOrdersCount = orders.filter((o) => o.status === "pending").length;
+
+  const exportCsv = () => {
+    const header = ["OrderID","Customer","Phone","Area","Total","Status","Created"].join(",");
+    const rows = visible.map((o) => [o.id, `"${o.customer.name}"`, o.customer.phone, `"${o.customer.area}"`, o.total, o.status, new Date(o.createdAt).toISOString()].join(","));
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prosanti-orders-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
+      {live && newOrdersCount > 0 && (
+        <div className="flex items-center justify-between rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200 animate-pulse">
+          <p className="text-sm font-bold text-amber-900">🔔 {newOrdersCount} new pending order(s) — Sunamganj Sadar live! Auto-refresh every 10s, sound + browser notification enabled (free).</p>
+          <div className="flex gap-2">
+            <button onClick={() => { if ("Notification" in window) Notification.requestPermission(); }} className="rounded-full bg-forest-800 px-3 py-1 text-xs text-white">Enable Browser Alert</button>
+            <button onClick={exportCsv} className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">Export CSV (free)</button>
+          </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
           {error}{" "}
@@ -66,6 +90,10 @@ export default function AdminOrdersPage() {
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button onClick={exportCsv} className="rounded-full bg-paper px-4 py-2 text-xs font-semibold ring-1 ring-line hover:bg-ivory-100">📥 Export CSV (free)</button>
+          <span className="text-[11px] text-ink-soft">Live auto-refresh 10s — no cost, OSM map free, Cloudinary free tier</span>
+        </div>
         <div className="relative w-full max-w-xs">
           <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
           <input

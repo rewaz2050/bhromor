@@ -106,31 +106,51 @@ export default function AdminOrderDetailPage() {
         </span>
       </div>
 
-      {/* Actions — only legal transitions are offered (§34) */}
-      {(steps.length > 0 || cancellable) && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
-          {steps.map((to) => (
-            <button
-              key={to}
-              type="button"
-              onClick={() => doAdvance(to)}
-              className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
-            >
-              Mark {STATUS_META[to].label.toLowerCase()}
-              <IconArrowRight className="h-4 w-4" />
-            </button>
-          ))}
-          {cancellable && (
-            <button
-              type="button"
-              onClick={() => doAdvance("cancelled")}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
-            >
-              Cancel order
-            </button>
-          )}
-        </div>
-      )}
+      {/* Actions — only legal transitions are offered (§34) + free print invoice */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
+        {(steps.length > 0 || cancellable) && (
+          <>
+            {steps.map((to) => (
+              <button
+                key={to}
+                type="button"
+                onClick={() => doAdvance(to)}
+                className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+              >
+                Mark {STATUS_META[to].label.toLowerCase()}
+                <IconArrowRight className="h-4 w-4" />
+              </button>
+            ))}
+            {cancellable && (
+              <button
+                type="button"
+                onClick={() => doAdvance("cancelled")}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
+              >
+                Cancel order
+              </button>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-full bg-paper px-5 py-2.5 text-sm font-semibold ring-1 ring-line hover:bg-ivory-100"
+        >
+          🖨️ Print Invoice (free)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} Total ${order.total/100} taka COD. Track: https://prosanti.com/track/${order.id}`;
+            const url = `https://wa.me/88${order.customer.phone.replace(/[^0-9]/g,"").slice(-11)}?text=${encodeURIComponent(text)}`;
+            window.open(url, "_blank");
+          }}
+          className="rounded-full bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white"
+        >
+          WhatsApp Customer (free)
+        </button>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Items + totals */}

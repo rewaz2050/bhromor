@@ -47,12 +47,16 @@ export function useOrders() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
       setLiveOrders(null);
       setError(null);
       return;
     }
     void refresh();
+    // Free real-time polling every 10s — admin sees new orders instantly without cost
+    const id = window.setInterval(() => {
+      void refresh();
+    }, 10000);
+    return () => window.clearInterval(id);
   }, [live, refresh]);
 
   const advance = useCallback(
