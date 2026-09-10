@@ -67,7 +67,8 @@ import MapPinPicker from "./map-pin-picker";
 import type { LatLng } from "@/lib/sunamganj";
 import { distanceFromHubKm, findZoneByDistance } from "@/lib/sunamganj";
 
-type TimeSlot = "now" | "evening" | "tomorrow_morning";
+type TimeSlot = "now" | "evening" | "tomorrow_morning" | "scheduled";
+type DeliveryWindow = "9-11" | "11-1" | "2-4" | "4-6" | "6-8" | "8-10" | "express";
 
 interface FormState {
   name: string;
@@ -83,6 +84,8 @@ interface FormState {
   lng?: number;
   payment: "cod";
   timeSlot: TimeSlot;
+  deliveryDate: string; // YYYY-MM-DD
+  deliveryWindow: DeliveryWindow;
   submitting: boolean;
 }
 
@@ -100,6 +103,8 @@ const initialForm: FormState = {
   lng: undefined,
   payment: "cod",
   timeSlot: "now",
+  deliveryDate: new Date().toISOString().slice(0,10),
+  deliveryWindow: "express",
   submitting: false,
 };
 
@@ -263,6 +268,7 @@ export default function CheckoutView() {
     const distanceKm = pinPos ? distanceFromHubKm(pinPos) : undefined;
     const isNight = settings.nightSurchargeEnabled ? isNightHour(new Date().getHours()) : false;
     const isRain = settings.rainSurchargeEnabled;
+    const isExpress = (form.timeSlot === "now" && form.deliveryWindow === "express") || form.deliveryWindow === "express";
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
@@ -270,7 +276,7 @@ export default function CheckoutView() {
       distanceKm,
       isNight,
       isRain,
-      isExpress: form.timeSlot === "now" && settings.expressDeliveryEnabled ? false : false, // express handled via slot
+      isExpress: isExpress && settings.expressDeliveryEnabled,
       couponFree: couponFreeDelivery && !!activeCoupon,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
@@ -540,7 +546,7 @@ export default function CheckoutView() {
             phone: form.phone,
             area: form.area,
             address: fullAddress,
-            note: `${form.note}${form.timeSlot !== "now" ? ` [Slot: ${form.timeSlot}]` : ""}`.trim(),
+            note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}]`.trim(),
           },
           zone: {
             id: zone.id,
@@ -573,6 +579,7 @@ export default function CheckoutView() {
     let res: Response;
     try {
       const fullAddress = buildFullAddress();
+      const scheduledAt = form.timeSlot === "scheduled" ? new Date(`${form.deliveryDate}T${form.deliveryWindow.split("-")[0].padStart(2,"0")}:00:00`).toISOString() : null;
       res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -581,10 +588,18 @@ export default function CheckoutView() {
           phone: form.phone,
           area: form.area,
           address: fullAddress,
-          note: `${form.note}${form.timeSlot !== "now" ? ` [Slot: ${form.timeSlot}]` : ""}`.trim(),
+          note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}]`.trim(),
           zoneId: zone.id,
           lat: pinPos?.lat,
           lng: pinPos?.lng,
+          distance_km: summary.distanceKm,
+          scheduled_at: scheduledAt,
+          delivery_window: form.timeSlot === "scheduled" ? form.deliveryWindow : form.timeSlot,
+          is_express: summary.breakdown?.surcharge.express ? true : false,
+          surcharge_night: summary.breakdown?.surcharge.night ?? 0,
+          surcharge_rain: summary.breakdown?.surcharge.rain ?? 0,
+          surcharge_distance: summary.breakdown?.surcharge.distance ?? 0,
+          surcharge_express: summary.breakdown?.surcharge.express ?? 0,
           couponCode: activeCoupon?.code,
           items: detail.map((l) => ({
             productId: l.product.id,
@@ -1000,14 +1015,14 @@ export default function CheckoutView() {
             />
           </label>
 
-          {/* Delivery Time Slot */}
-          <div className="mt-6">
-            <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot</span>
+          {/* Delivery Time Slot - Scheduled Calendar */}
+          <div className="mt-6 space-y-3">
+            <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot — Scheduled Calendar</span>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { id: "now" as TimeSlot, label: "এখনই", sub: `30-50 min`, icon: "⚡" },
+                { id: "now" as TimeSlot, label: "এখনই", sub: `${summary.breakdown?.eta ?? "30-50 min"}`, icon: "⚡" },
                 { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: "6-9 PM", icon: "🌙" },
-                { id: "tomorrow_morning" as TimeSlot, label: "কাল সকালে", sub: "9-12 AM", icon: "🌅" },
+                { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "Pick date/time", icon: "📅" },
               ].map((slot) => (
                 <button
                   key={slot.id}
@@ -1024,6 +1039,42 @@ export default function CheckoutView() {
                 </button>
               ))}
             </div>
+            {form.timeSlot === "scheduled" && (
+              <div className="rounded-2xl bg-paper p-4 ring-1 ring-line space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink">Delivery Date</span>
+                    <input
+                      type="date"
+                      value={form.deliveryDate}
+                      min={new Date().toISOString().slice(0,10)}
+                      max={new Date(Date.now()+3*86400000).toISOString().slice(0,10)}
+                      onChange={(e) => update("deliveryDate", e.target.value)}
+                      className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink">Time Window</span>
+                    <select
+                      value={form.deliveryWindow}
+                      onChange={(e) => update("deliveryWindow", e.target.value as DeliveryWindow)}
+                      className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
+                    >
+                      <option value="9-11">9 AM - 11 AM</option>
+                      <option value="11-1">11 AM - 1 PM</option>
+                      <option value="2-4">2 PM - 4 PM</option>
+                      <option value="4-6">4 PM - 6 PM</option>
+                      <option value="6-8">6 PM - 8 PM</option>
+                      <option value="8-10">8 PM - 10 PM</option>
+                      <option value="express">⚡ Express 30min (+৳40)</option>
+                    </select>
+                  </label>
+                </div>
+                <p className="text-[11px] text-ink-soft">
+                  Scheduled delivery: {form.deliveryDate} {form.deliveryWindow} · Shop will prepare accordingly. Express adds {formatBdt(4000)}.
+                </p>
+              </div>
+            )}
           </div>
         </section>
 

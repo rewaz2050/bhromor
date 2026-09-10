@@ -217,6 +217,19 @@ export const useRiderJobs = (enabled: boolean) => {
     },
     [],
   );
+  const updateLocation = useCallback(
+    async (lat: number, lng: number): Promise<boolean> => {
+      try {
+        await riderFetch("/api/rider/location", "PATCH", { lat, lng });
+        setError(null);
+        return true;
+      } catch (err) {
+        // silent fail for location
+        return false;
+      }
+    },
+    [],
+  );
   const settle = useCallback(
     async (method: string, reference: string): Promise<boolean> => {
       try {
@@ -233,5 +246,5 @@ export const useRiderJobs = (enabled: boolean) => {
     [enabled],
   );
 
-  return { jobs, settlements, loading, error, refresh, accept, pickup, reject, deliver, setOnline, settle };
+  return { jobs, settlements, loading, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
 };

@@ -138,7 +138,49 @@ export default function RiderPage() {
     }
     setIsOnline(nextState);
     void session.refresh();
+    if (nextState && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          void riderJobsApi.updateLocation(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 },
+      );
+    }
   };
+
+  // Auto location tracking when online (every 30s)
+  useEffect(() => {
+    if (!isLive || !isOnline) return;
+    let watchId: number | null = null;
+    let intervalId: number | null = null;
+
+    const sendLocation = (lat: number, lng: number) => {
+      void riderJobsApi.updateLocation(lat, lng);
+    };
+
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+      );
+      // Fallback interval
+      intervalId = window.setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+          () => {},
+          { enableHighAccuracy: false, timeout: 8000 },
+        );
+      }, 30000);
+    }
+
+    return () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isOnline]);
 
   const handleAccept = async (task: RiderTask) => {
     if (!isLive) return;

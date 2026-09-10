@@ -174,6 +174,13 @@ export async function placeLiveOrder(
       lat: draft.geo?.lat ?? null,
       lng: draft.geo?.lng ?? null,
       distance_km: draft.geo?.distanceKm ?? null,
+      scheduled_at: (draft as any).scheduledAt ?? null,
+      delivery_window: (draft as any).deliveryWindow ?? null,
+      is_express: (draft as any).isExpress ?? false,
+      surcharge_night: (draft as any).surchargeNight ?? 0,
+      surcharge_rain: (draft as any).surchargeRain ?? 0,
+      surcharge_distance: (draft as any).surchargeDistance ?? 0,
+      surcharge_express: (draft as any).surchargeExpress ?? 0,
       coupon_code: draft.coupon?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({

@@ -198,6 +198,13 @@ export interface DbOrder {
   lat?: number | null;
   lng?: number | null;
   distance_km?: number | null;
+  scheduled_at?: string | null;
+  delivery_window?: string | null;
+  is_express?: boolean;
+  surcharge_night?: number;
+  surcharge_rain?: number;
+  surcharge_distance?: number;
+  surcharge_express?: number;
   delivery_proof_url?: string | null;
   delivery_proof_uploaded_at?: string | null;
   delivery_failed_reason?: string | null;

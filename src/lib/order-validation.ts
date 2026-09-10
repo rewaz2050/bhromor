@@ -65,6 +65,13 @@ export interface ValidOrderDraft {
   customer: { name: string; phone: string; area: string; address: string; note: string };
   zone: DeliveryZone;
   geo?: { lat: number; lng: number; distanceKm: number } | null;
+  scheduledAt?: string | null;
+  deliveryWindow?: string | null;
+  isExpress?: boolean;
+  surchargeNight?: number;
+  surchargeRain?: number;
+  surchargeDistance?: number;
+  surchargeExpress?: number;
   items: PricedOrderItem[];
   coupon?: { code: string; discount: number; id: string };
   subtotal: number;
@@ -130,6 +137,13 @@ export const validateOrderPayload = (
     const dist = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm >= 0 ? distanceKm : computed;
     geo = { lat, lng, distanceKm: dist };
   }
+  const scheduledAt = typeof (body as any).scheduled_at === 'string' ? (body as any).scheduled_at : typeof (body as any).scheduledAt === 'string' ? (body as any).scheduledAt : null;
+  const deliveryWindow = typeof (body as any).delivery_window === 'string' ? (body as any).delivery_window : typeof (body as any).deliveryWindow === 'string' ? (body as any).deliveryWindow : null;
+  const isExpress = !!(body as any).is_express || !!(body as any).isExpress;
+  const surchargeNight = Math.max(0, Math.floor(Number((body as any).surcharge_night ?? (body as any).surchargeNight ?? 0) || 0));
+  const surchargeRain = Math.max(0, Math.floor(Number((body as any).surcharge_rain ?? (body as any).surchargeRain ?? 0) || 0));
+  const surchargeDistance = Math.max(0, Math.floor(Number((body as any).surcharge_distance ?? (body as any).surchargeDistance ?? 0) || 0));
+  const surchargeExpress = Math.max(0, Math.floor(Number((body as any).surcharge_express ?? (body as any).surchargeExpress ?? 0) || 0));
   const couponCode =
     typeof body.couponCode === "string" && body.couponCode.trim() !== ""
       ? normalizeCode(body.couponCode)
@@ -354,6 +368,13 @@ export const validateOrderPayload = (
       customer: { name, phone, area, address, note },
       zone,
       geo,
+      scheduledAt,
+      deliveryWindow,
+      isExpress,
+      surchargeNight,
+      surchargeRain,
+      surchargeDistance,
+      surchargeExpress,
       items: priced,
       coupon,
       subtotal,

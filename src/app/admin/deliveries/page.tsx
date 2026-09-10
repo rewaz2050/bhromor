@@ -3,9 +3,12 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
+import { useRiders } from "@/lib/use-riders";
+import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
 import { friendlyWhen } from "@/components/admin/order-ui";
 import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons";
+import AdminLiveMap from "@/components/admin/admin-live-map";
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   offered: { label: "Offered", cls: "bg-amber-100 text-amber-900" },
@@ -28,6 +31,8 @@ export default function AdminDeliveriesPage() {
     offer,
     cancel,
   } = useAdminDeliveries();
+  const { riders } = useRiders();
+  const { orders } = useOrders();
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {
@@ -106,6 +111,19 @@ export default function AdminDeliveriesPage() {
           ),
         )}
       </div>
+
+      {/* Live Dispatch Map - Serial 3: Auto-assign nearest */}
+      <section className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+        <h3 className="font-display text-base font-semibold text-forest-900 mb-3">🗺️ Live Dispatch Map — Sunamganj Sadar (Nearest Rider Auto-Assign)</h3>
+        <AdminLiveMap
+          riders={live ? riders : riders}
+          orders={live ? awaitingOrders.concat(deliveries.map(d=>d.order)) : orders}
+          deliveries={deliveries.map(d=>({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
+        />
+        <p className="mt-3 text-xs text-ink-soft">
+          Auto-assign: nearest rider by haversine distance from Traffic Point hub, rating high → low, load low → high, longest idle. Max 2 concurrent per rider, cash limit ৳5000. Rider location updates every 30s when online via <code>/api/rider/location</code> (Cloudinary proof flow already).
+        </p>
+      </section>
 
       <section>
         <div className="mb-3 flex items-center gap-2">

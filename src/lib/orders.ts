@@ -135,6 +135,13 @@ export interface Order {
   lat?: number;
   lng?: number;
   distanceKm?: number;
+  scheduledAt?: number;
+  deliveryWindow?: string;
+  isExpress?: boolean;
+  surchargeNight?: number;
+  surchargeRain?: number;
+  surchargeDistance?: number;
+  surchargeExpress?: number;
   /** Delivery proof photo via Cloudinary */
   deliveryProofUrl?: string;
   deliveryProofUploadedAt?: number;

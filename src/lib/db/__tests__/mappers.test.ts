@@ -354,6 +354,11 @@ describe("mapRider (marketplace slice 6)", () => {
       cashInHand: 0,
       ratingAvg: 0,
       ratingCount: 0,
+      lat: undefined,
+      lng: undefined,
+      lastLocationAt: undefined,
+      currentLoad: 0,
+      totalDeliveries: 0,
     });
     expect(rider.zoneIds).not.toBe(row.zone_ids);
   });

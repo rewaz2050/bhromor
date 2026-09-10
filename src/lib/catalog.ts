@@ -90,6 +90,11 @@ export interface Rider {
   cashInHand: number;
   ratingAvg: number;
   ratingCount: number;
+  lat?: number;
+  lng?: number;
+  lastLocationAt?: number;
+  currentLoad?: number;
+  totalDeliveries?: number;
 }
 
 /**
