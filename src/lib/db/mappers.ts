@@ -298,6 +298,13 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
         ? { code: bundle.couponCode, discount: o.discount }
         : undefined,
     shopId: o.shop_id,
+    lat: (o as any).lat ?? undefined,
+    lng: (o as any).lng ?? undefined,
+    distanceKm: (o as any).distance_km ?? undefined,
+    deliveryProofUrl: (o as any).delivery_proof_url ?? undefined,
+    deliveryProofUploadedAt: (o as any).delivery_proof_uploaded_at ? new Date((o as any).delivery_proof_uploaded_at).getTime() : undefined,
+    deliveryAttempts: (o as any).delivery_attempts ?? undefined,
+    deliveryFailedReason: (o as any).delivery_failed_reason ?? undefined,
   };
 };
 

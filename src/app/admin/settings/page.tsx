@@ -44,6 +44,10 @@ export default function AdminSettingsPage() {
   const [loyaltyRewardTitle, setLoyaltyRewardTitle] = useState(settings.loyaltyRewardTitle);
   const [loyaltyRewardDesc, setLoyaltyRewardDesc] = useState(settings.loyaltyRewardDescription);
   const [loyaltyMinAmount, setLoyaltyMinAmount] = useState(String(settings.loyaltyMinOrderAmount));
+  const [rainEnabled, setRainEnabled] = useState(settings.rainSurchargeEnabled);
+  const [nightEnabled, setNightEnabled] = useState(settings.nightSurchargeEnabled);
+  const [expressEnabled, setExpressEnabled] = useState(settings.expressDeliveryEnabled);
+  const [perZoneFreeEnabled, setPerZoneFreeEnabled] = useState(settings.perZoneFreeThresholdEnabled);
 
   const [flash, setFlash] = useTransientValue<string | null>(null, 2200);
 
@@ -56,6 +60,10 @@ export default function AdminSettingsPage() {
     setLoyaltyRewardTitle(settings.loyaltyRewardTitle);
     setLoyaltyRewardDesc(settings.loyaltyRewardDescription);
     setLoyaltyMinAmount(String(settings.loyaltyMinOrderAmount));
+    setRainEnabled(settings.rainSurchargeEnabled);
+    setNightEnabled(settings.nightSurchargeEnabled);
+    setExpressEnabled(settings.expressDeliveryEnabled);
+    setPerZoneFreeEnabled(settings.perZoneFreeThresholdEnabled);
   }, [
     settings.lowStockThreshold,
     settings.loyaltyEnabled,
@@ -63,6 +71,10 @@ export default function AdminSettingsPage() {
     settings.loyaltyRewardTitle,
     settings.loyaltyRewardDescription,
     settings.loyaltyMinOrderAmount,
+    settings.rainSurchargeEnabled,
+    settings.nightSurchargeEnabled,
+    settings.expressDeliveryEnabled,
+    settings.perZoneFreeThresholdEnabled,
   ]);
 
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
@@ -96,6 +108,10 @@ export default function AdminSettingsPage() {
       loyaltyRewardTitle: loyaltyRewardTitle.trim() || "এক্সক্লুসিভ গিফট হ্যাম্পার",
       loyaltyRewardDescription: loyaltyRewardDesc.trim() || "",
       loyaltyMinOrderAmount: minAmount,
+      rainSurchargeEnabled: rainEnabled,
+      nightSurchargeEnabled: nightEnabled,
+      expressDeliveryEnabled: expressEnabled,
+      perZoneFreeThresholdEnabled: perZoneFreeEnabled,
     }).then((ok) =>
       notify(
         ok
@@ -103,6 +119,16 @@ export default function AdminSettingsPage() {
           : "Could not save — please try again",
       ),
     );
+  };
+
+  const commitDeliverySurcharges = () => {
+    void saveSettings({
+      ...settings,
+      rainSurchargeEnabled: rainEnabled,
+      nightSurchargeEnabled: nightEnabled,
+      expressDeliveryEnabled: expressEnabled,
+      perZoneFreeThresholdEnabled: perZoneFreeEnabled,
+    }).then((ok) => notify(ok ? "Delivery surcharge settings saved" : "Could not save"));
   };
 
   const resetAll = () => {
@@ -316,6 +342,30 @@ export default function AdminSettingsPage() {
               placeholder="১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! আপনার গিফট পরবর্তী অর্ডারের সাথে পৌঁছে দেওয়া হবে।"
             />
           </label>
+
+          <div className="mt-6 rounded-xl bg-forest-900 p-4 text-ivory-100">
+            <h4 className="text-sm font-semibold text-gold-300">🚚 Delivery Surcharges — Sunamganj Real</h4>
+            <p className="mt-1 text-xs text-ivory-100/70">Cloudinary proof + map pin er por eita next feature. Night 9PM-6AM +৳20, Rain +৳15, Express +৳40, per-zone free threshold.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={nightEnabled} onChange={(e) => setNightEnabled(e.target.checked)} className="h-4 w-4" />
+                Night Surcharge (9PM-6AM +৳20) {nightEnabled ? "ON" : "OFF"}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={rainEnabled} onChange={(e) => setRainEnabled(e.target.checked)} className="h-4 w-4" />
+                Rain Surcharge (+৳15) {rainEnabled ? "ON - Bristy" : "OFF"}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={expressEnabled} onChange={(e) => setExpressEnabled(e.target.checked)} className="h-4 w-4" />
+                Express Delivery (+৳40) {expressEnabled ? "ON" : "OFF"}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={perZoneFreeEnabled} onChange={(e) => setPerZoneFreeEnabled(e.target.checked)} className="h-4 w-4" />
+                Per-Zone Free Threshold {perZoneFreeEnabled ? "ON (z1 600, z4 1500)" : "OFF (flat 1000)"}
+              </label>
+            </div>
+            <button type="button" onClick={commitDeliverySurcharges} className="mt-3 rounded-xl bg-gold-400 px-4 py-2 text-xs font-semibold text-forest-900">Save Delivery Settings</button>
+          </div>
 
           <div className="flex justify-end pt-2">
             <button

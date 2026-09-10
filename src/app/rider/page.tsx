@@ -61,6 +61,10 @@ export default function RiderPage() {
   const [settle, setSettle] = useState(false);
   const flashTimer = useRef<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
+  const [failedReason, setFailedReason] = useState("");
+  const [showFailed, setShowFailed] = useState<string | null>(null);
 
   useEffect(
     () => () => {
@@ -183,9 +187,51 @@ export default function RiderPage() {
     }
   };
 
+  const handleProofUpload = async (file: File) => {
+    if (!file) return;
+    setProofUploading(true);
+    setPinError("");
+    try {
+      // Get Cloudinary signature
+      const signRes = await fetch("/api/media/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: "prosanti/delivery-proofs" }),
+      });
+      const signData = await signRes.json().catch(() => null) as any;
+      if (!signRes.ok || !signData?.cloudName) {
+        // Fallback: if Cloudinary not configured, use local preview (demo)
+        const localUrl = URL.createObjectURL(file);
+        setProofUrl(localUrl);
+        showFlash("Cloudinary not configured - demo preview only. Configure CLOUDINARY_*");
+        return;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      form.append("api_key", signData.apiKey);
+      form.append("timestamp", String(signData.timestamp));
+      form.append("folder", signData.folder);
+      form.append("signature", signData.signature);
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/image/upload`, {
+        method: "POST",
+        body: form,
+      });
+      const upData = await upRes.json().catch(() => null) as any;
+      if (!upRes.ok || !upData?.secure_url) {
+        throw new Error(upData?.error?.message || "Upload failed");
+      }
+      setProofUrl(upData.secure_url);
+      showFlash("📸 Proof photo uploaded to Cloudinary!");
+    } catch (e: any) {
+      setPinError(e?.message || "Photo upload failed");
+    } finally {
+      setProofUploading(false);
+    }
+  };
+
   const handleVerifyPin = async (task: RiderTask) => {
     if (isLive) {
-      const ok = await riderJobsApi.deliver(task.id, enteredPin.trim());
+      const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
       if (!ok) {
         setPinError(riderJobsApi.error ?? "ভুল কোড!");
         return;
@@ -194,8 +240,9 @@ export default function RiderPage() {
       setSelectedPinTask(null);
       setEnteredPin("");
       setPinError("");
+      setProofUrl(null);
       showFlash(
-        `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।`,
+        `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে। Proof: ${proofUrl ? "with photo" : "no photo"}`,
       );
       void session.refresh();
       return;
@@ -217,6 +264,7 @@ export default function RiderPage() {
     setSelectedPinTask(null);
     setEnteredPin("");
     setPinError("");
+    setProofUrl(null);
     showFlash(
       `🎉 অভিনন্দন! অর্ডার #${order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।`,
     );
@@ -500,13 +548,14 @@ export default function RiderPage() {
                     </div>
 
                     {/* Action Controls */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <a
-                        href={`tel:${order.customer.phone}`}
-                        className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
-                      >
-                        <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
-                      </a>
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`tel:${order.customer.phone}`}
+                          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                        >
+                          <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
+                        </a>
 
                       {task.state === "offered" ? (
                         <>
@@ -540,11 +589,59 @@ export default function RiderPage() {
                             setSelectedPinTask(task.id);
                             setEnteredPin("");
                             setPinError("");
+                            setProofUrl(null);
                           }}
                           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 text-xs font-semibold text-ivory-50 hover:bg-emerald-800"
                         >
                           <IconCheck className="h-4 w-4" /> ডেলিভারি কোড দিন
                         </button>
+                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFailed(showFailed === task.id ? null : task.id)}
+                        className="text-[11px] text-rose-700 underline"
+                      >
+                        Customer unreachable? Report failed attempt
+                      </button>
+                      {showFailed === task.id && (
+                        <div className="rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 space-y-2">
+                          <input
+                            value={failedReason}
+                            onChange={(e) => setFailedReason(e.target.value)}
+                            placeholder="Reason: phone off, address wrong, etc"
+                            className="w-full rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-line"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (isLive) {
+                                  const res = await fetch(`/api/rider/assignments/${task.id}/failed`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ reason: failedReason }),
+                                  });
+                                  if (res.ok) {
+                                    showFlash("Failed attempt recorded");
+                                    setShowFailed(null);
+                                    setFailedReason("");
+                                  } else {
+                                    const d = await res.json().catch(() => null) as any;
+                                    setPinError(d?.error || "Failed");
+                                  }
+                                } else {
+                                  showFlash("Demo: failed attempt logged");
+                                  setShowFailed(null);
+                                }
+                              }}
+                              className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white"
+                            >
+                              Submit failed
+                            </button>
+                            <button type="button" onClick={() => setShowFailed(null)} className="text-xs text-ink-soft">Cancel</button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -602,6 +699,29 @@ export default function RiderPage() {
                   </p>
                 );
               })()}
+            </div>
+
+            {/* Cloudinary Proof Photo */}
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">📸 Delivery Proof Photo (Cloudinary)</p>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleProofUpload(f);
+                }}
+                className="w-full rounded-xl bg-ivory-100 px-3 py-2 text-xs ring-1 ring-line"
+              />
+              {proofUploading && <p className="text-xs text-amber-700">Uploading to Cloudinary...</p>}
+              {proofUrl && (
+                <div className="rounded-xl overflow-hidden ring-1 ring-line">
+                  <img src={proofUrl} alt="Proof" className="w-full h-32 object-cover" />
+                  <p className="p-2 text-[10px] break-all text-ink-soft">{proofUrl}</p>
+                </div>
+              )}
+              <p className="text-[11px] text-ink-soft">Photo ta Cloudinary te jabe - `prosanti/delivery-proofs` folder. Optional but recommended.</p>
             </div>
 
             <div className="flex gap-2.5 pt-2">

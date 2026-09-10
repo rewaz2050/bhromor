@@ -131,6 +131,15 @@ export interface Order {
   shopId?: string;
   /** Live 4-digit proof code; absent in demo (the UI derives a demo code). */
   deliveryCode?: string;
+  /** Geo pin from map — exact delivery location */
+  lat?: number;
+  lng?: number;
+  distanceKm?: number;
+  /** Delivery proof photo via Cloudinary */
+  deliveryProofUrl?: string;
+  deliveryProofUploadedAt?: number;
+  deliveryAttempts?: number;
+  deliveryFailedReason?: string;
   /** Assigned rider when dispatch has moved the order (slice 9 tracking). */
   rider?: {
     id: string;

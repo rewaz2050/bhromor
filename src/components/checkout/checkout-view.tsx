@@ -26,8 +26,15 @@ import {
   FIRST_1000_FREE_LIMIT,
   deliveryChargeFor,
   deliveryChargeWithPromo,
+  deliveryBreakdown,
+  freeThresholdForZone,
+  isNightHour,
+  NIGHT_SURCHARGE_PAISA,
+  RAIN_SURCHARGE_PAISA,
+  EXPRESS_SURCHARGE_PAISA,
   orderTotal,
 } from "@/lib/delivery";
+import { useSettings } from "@/lib/use-settings";
 import {
   IconArrowRight,
   IconBag,
@@ -56,6 +63,9 @@ import {
   formatFullAddress,
   type SavedAddress,
 } from "@/lib/address-book";
+import MapPinPicker from "./map-pin-picker";
+import type { LatLng } from "@/lib/sunamganj";
+import { distanceFromHubKm, findZoneByDistance } from "@/lib/sunamganj";
 
 type TimeSlot = "now" | "evening" | "tomorrow_morning";
 
@@ -69,6 +79,8 @@ interface FormState {
   note: string;
   couponCode: string;
   zoneId: string;
+  lat?: number;
+  lng?: number;
   payment: "cod";
   timeSlot: TimeSlot;
   submitting: boolean;
@@ -84,6 +96,8 @@ const initialForm: FormState = {
   note: "",
   couponCode: "",
   zoneId: "",
+  lat: undefined,
+  lng: undefined,
   payment: "cod",
   timeSlot: "now",
   submitting: false,
@@ -99,6 +113,7 @@ export default function CheckoutView() {
   const { shops } = useLiveCatalog();
   const { zoneId: myZoneId, setZoneId: setMyZoneId } = useMyZone();
   const promo = usePromo();
+  const { settings } = useSettings();
   const bagShop =
     shopById(
       shops,
@@ -135,6 +150,8 @@ export default function CheckoutView() {
   const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [pinPos, setPinPos] = useState<LatLng | null>(null);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     setSavedAddrs(getSavedAddresses());
@@ -228,27 +245,56 @@ export default function CheckoutView() {
   }, [form.area]);
 
   const summary = useMemo(() => {
-    const baseCharge = zone?.charge ?? 0;
-    let charge = promo.promoActive
-      ? deliveryChargeWithPromo(baseCharge, subtotal, promo.totalOrders)
-      : deliveryChargeFor(baseCharge, subtotal);
-    // Coupon free delivery overrides
-    if (couponFreeDelivery && activeCoupon) {
-      charge = 0;
+    if (!zone) {
+      return {
+        charge: 0,
+        fullCharge: 0,
+        freeDelivery: false,
+        promoFree: false,
+        couponFree: false,
+        discount: 0,
+        total: subtotal,
+        itemCount: detail.reduce((n, l) => n + l.qty, 0),
+        isOutside: false,
+        breakdown: null as any,
+        freeThreshold: FREE_DELIVERY_THRESHOLD,
+      };
     }
+    const distanceKm = pinPos ? distanceFromHubKm(pinPos) : undefined;
+    const isNight = settings.nightSurchargeEnabled ? isNightHour(new Date().getHours()) : false;
+    const isRain = settings.rainSurchargeEnabled;
+    const breakdown = deliveryBreakdown({
+      zone,
+      subtotal,
+      totalOrders: promo.totalOrders,
+      distanceKm,
+      isNight,
+      isRain,
+      isExpress: form.timeSlot === "now" && settings.expressDeliveryEnabled ? false : false, // express handled via slot
+      couponFree: couponFreeDelivery && !!activeCoupon,
+      shopPrepMinutes: bagShop?.prepMinutes ?? 15,
+      queueCount: 0,
+    });
+    // Coupon free overrides already in breakdown
+    const charge = breakdown.totalCharge;
     const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
-      fullCharge: baseCharge,
-      freeDelivery: baseCharge > 0 && charge === 0,
-      promoFree: promo.promoActive && baseCharge > 0 && charge === 0 && promo.totalOrders < FIRST_1000_FREE_LIMIT && !couponFreeDelivery,
-      couponFree: couponFreeDelivery && !!activeCoupon,
+      fullCharge: zone.charge,
+      freeDelivery: breakdown.freeDelivery,
+      promoFree: breakdown.promoFree,
+      couponFree: breakdown.couponFree,
       discount,
       total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
       isOutside: zone?.id === "z4",
+      breakdown,
+      freeThreshold: freeThresholdForZone(zone.id),
+      distanceKm,
+      isNight,
+      isRain,
     };
-  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo, couponFreeDelivery]);
+  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo, couponFreeDelivery, pinPos, settings, bagShop, form.timeSlot]);
 
   const empty = detail.length === 0;
   const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
@@ -393,7 +439,10 @@ export default function CheckoutView() {
       address: addr.fullAddress,
       note: addr.note,
       zoneId: addr.zoneId,
+      lat: addr.lat,
+      lng: addr.lng,
     }));
+    if (addr.lat && addr.lng) setPinPos({ lat: addr.lat, lng: addr.lng });
     setMyZoneId(addr.zoneId);
     setShowSaved(false);
   };
@@ -456,6 +505,7 @@ export default function CheckoutView() {
         roadName: form.roadName,
         area: form.area,
         fullAddress: form.address,
+        latLng: pinPos,
       });
     };
 
@@ -477,6 +527,8 @@ export default function CheckoutView() {
           fullAddress: form.address,
           note: form.note,
           zoneId: zone.id,
+          lat: pinPos?.lat,
+          lng: pinPos?.lng,
         });
       } catch {}
       addOrderToStore(
@@ -531,6 +583,8 @@ export default function CheckoutView() {
           address: fullAddress,
           note: `${form.note}${form.timeSlot !== "now" ? ` [Slot: ${form.timeSlot}]` : ""}`.trim(),
           zoneId: zone.id,
+          lat: pinPos?.lat,
+          lng: pinPos?.lng,
           couponCode: activeCoupon?.code,
           items: detail.map((l) => ({
             productId: l.product.id,
@@ -563,6 +617,7 @@ export default function CheckoutView() {
       return;
     }
     if (res.ok && data.order) {
+      // Save address for next time
       try {
         saveAddress({
           label: `${form.area} - ${form.name.split(" ")[0]}`,
@@ -574,6 +629,8 @@ export default function CheckoutView() {
           fullAddress: form.address,
           note: form.note,
           zoneId: zone.id,
+          lat: pinPos?.lat,
+          lng: pinPos?.lng,
         });
       } catch {}
       addOrderToStore(data.order);
@@ -863,6 +920,46 @@ export default function CheckoutView() {
             </label>
           </div>
 
+          {/* Map Pin Picker - Sunamganj real geo */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <span className="mb-2 block text-sm font-medium text-ink">
+                📍 ম্যাপে বাড়ি সিলেক্ট করুন / Pin your house
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMap((v) => !v)}
+                className="mb-2 rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
+              >
+                {showMap ? "Hide Map" : "Show Map — auto zone"}
+              </button>
+            </div>
+            {showMap && (
+              <MapPinPicker
+                value={pinPos}
+                onChange={(pos) => {
+                  setPinPos(pos);
+                  setForm((f) => ({ ...f, lat: pos.lat, lng: pos.lng }));
+                  const autoZone = findZoneByDistance(pos);
+                  const dist = distanceFromHubKm(pos);
+                  // Auto switch zone if far from current
+                  if (autoZone.id !== zone.id) {
+                    setForm((f) => ({ ...f, zoneId: autoZone.id }));
+                    setMyZoneId(autoZone.id);
+                  }
+                }}
+                onZoneDetected={(zId, distKm) => {
+                  // Zone detected callback
+                }}
+              />
+            )}
+            {pinPos && (
+              <p className="mt-2 text-xs text-forest-700 font-medium">
+                📌 Pin: {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)} · {distanceFromHubKm(pinPos).toFixed(2)} km from Traffic Point · Zone: {findZoneByDistance(pinPos).name}
+              </p>
+            )}
+          </div>
+
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               বিস্তারিত ঠিকানা / Full Address <span className="text-rose-600">*</span>
@@ -930,26 +1027,29 @@ export default function CheckoutView() {
           </div>
         </section>
 
-        {/* Delivery estimate */}
+        {/* Delivery estimate - Dynamic ETA + surcharges */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
-            {t("checkout.deliveryEstimate")}
+            {t("checkout.deliveryEstimate")} — Dynamic
           </h2>
           <div className="mt-5 flex items-start gap-4 rounded-2xl bg-forest-900 p-5 text-ivory-100">
             <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
-            <div className="text-sm leading-6">
-              <p className="font-semibold">{zone.name}</p>
+            <div className="text-sm leading-6 flex-1">
+              <p className="font-semibold">{zone.name} {summary.distanceKm ? `· ${summary.distanceKm.toFixed(2)}km from hub` : ""}</p>
               {bagShop && (
                 <p className="mt-1 text-ivory-100/70">
-                  {t("shops.checkoutEta")}: {bagShop.name} ·{" "}
+                  {t("shops.checkoutEta")}: {bagShop.name} · Prep {bagShop.prepMinutes}min + Delivery ·{" "}
                   <strong className="text-gold-300">
-                    {splitEta(bagShop.prepMinutes, zone.etaLabel)}
+                    {summary.breakdown?.eta ?? zone.etaLabel}
                   </strong>
+                  {summary.breakdown && summary.breakdown.etaMinutes !== parseInt(zone.etaLabel) && (
+                    <span className="ml-2 text-[11px] bg-gold-400 text-forest-900 px-2 py-0.5 rounded-full">Dynamic ETA</span>
+                  )}
                 </p>
               )}
               <p className="mt-1 text-ivory-100/70">
                 {INSTANT_DELIVERY_TITLE} — estimated arrival{" "}
-                <strong className="text-gold-300">{zone.etaLabel}</strong> from
+                <strong className="text-gold-300">{summary.breakdown?.eta ?? zone.etaLabel}</strong> from
                 confirmation · Delivery charge{" "}
                 <strong>
                   {summary.freeDelivery ? (
@@ -960,11 +1060,28 @@ export default function CheckoutView() {
                     formatBdt(summary.charge)
                   )}
                 </strong>
+                {summary.breakdown?.surcharge.total ? (
+                  <span className="block mt-1 text-xs text-amber-200">
+                    Base {formatBdt(summary.fullCharge)}
+                    {summary.breakdown.surcharge.distance ? ` + Distance ${formatBdt(summary.breakdown.surcharge.distance)}` : ""}
+                    {summary.breakdown.surcharge.night ? ` + Night ${formatBdt(summary.breakdown.surcharge.night)}` : ""}
+                    {summary.breakdown.surcharge.rain ? ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}` : ""}
+                  </span>
+                ) : null}
                 {summary.isOutside && (
                   <span className="block mt-1 text-xs text-amber-200">
                     Zone D: Sunamganj Sadar বাইরে — minimum {formatBdt(MIN_ORDER_OUTSIDE_PAISA)} required
                   </span>
                 )}
+                {summary.isNight && !summary.freeDelivery && (
+                  <span className="block mt-1 text-xs text-gold-300">🌙 Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
+                )}
+                {summary.isRain && !summary.freeDelivery && (
+                  <span className="block mt-1 text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
+                )}
+                <span className="block mt-1 text-xs text-ivory-100/60">
+                  Free delivery at {formatBdt(summary.freeThreshold)} for {zone.name} · {formatBdt(summary.freeThreshold - subtotal > 0 ? summary.freeThreshold - subtotal : 0)} more needed
+                </span>
               </p>
             </div>
           </div>
@@ -1205,7 +1322,7 @@ export default function CheckoutView() {
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-ink-soft">{t("checkout.delivery")} · {zone.etaLabel}</dt>
+              <dt className="text-ink-soft">{t("checkout.delivery")} · {summary.breakdown?.eta ?? zone.etaLabel}</dt>
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
@@ -1219,9 +1336,17 @@ export default function CheckoutView() {
                 )}
               </dd>
             </div>
-            {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && !promo.promoActive && (
+            {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
+              <div className="text-xs space-y-1 pl-1 text-ink-soft">
+                <div className="flex justify-between"><span>Base {zone.name}</span><span>{formatBdt(summary.fullCharge)}</span></div>
+                {summary.breakdown.surcharge.distance > 0 && <div className="flex justify-between"><span>Distance {summary.distanceKm?.toFixed(2)}km</span><span>+{formatBdt(summary.breakdown.surcharge.distance)}</span></div>}
+                {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span>🌙 Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
+                {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
+              </div>
+            )}
+            {!summary.freeDelivery && subtotal < summary.freeThreshold && !promo.promoActive && (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
-                {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more unlocks free delivery.
+                {formatBdt(summary.freeThreshold - subtotal)} more unlocks free delivery for {zone.name} (threshold {formatBdt(summary.freeThreshold)}).
               </p>
             )}
             {summary.couponFree && (

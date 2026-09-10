@@ -2,10 +2,11 @@
 
 /**
  * Sunamganj address book — saves real addresses locally for repeat orders.
- * No demo, just user's own saved addresses.
+ * Now with lat/lng map pin.
  */
 
 import { SUNAMGANJ_DISTRICT, SUNAMGANJ_UPAZILA } from "./sunamganj";
+import type { LatLng } from "./sunamganj";
 
 export interface SavedAddress {
   id: string;
@@ -20,6 +21,8 @@ export interface SavedAddress {
   zoneId: string;
   district: string;
   upazila: string;
+  lat?: number;
+  lng?: number;
   createdAt: number;
 }
 
@@ -65,6 +68,7 @@ export const formatFullAddress = (parts: {
   roadName?: string;
   area: string;
   fullAddress: string;
+  latLng?: LatLng | null;
 }): string => {
   const segs: string[] = [];
   if (parts.houseNo?.trim()) segs.push(`House: ${parts.houseNo.trim()}`);
@@ -72,5 +76,6 @@ export const formatFullAddress = (parts: {
   if (parts.area?.trim()) segs.push(`Para: ${parts.area.trim()}`);
   segs.push(`${SUNAMGANJ_DISTRICT}, ${SUNAMGANJ_UPAZILA}`);
   if (parts.fullAddress?.trim()) segs.push(parts.fullAddress.trim());
+  if (parts.latLng) segs.push(`Pin: ${parts.latLng.lat.toFixed(5)},${parts.latLng.lng.toFixed(5)}`);
   return segs.join(", ");
 };

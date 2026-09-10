@@ -199,8 +199,8 @@ export const useRiderJobs = (enabled: boolean) => {
     [enabled],
   );
   const deliver = useCallback(
-    (id: string, code: string) =>
-      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, { code }),
+    (id: string, code: string, proofUrl?: string | null) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, { code, proofUrl }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enabled],
   );

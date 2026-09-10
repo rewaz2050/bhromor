@@ -1,7 +1,6 @@
 /**
- * Operational settings (§58) — configurable low-stock threshold for the
- * inventory alerts. Browser-local demo store; the Supabase phase moves it
- * to `site_settings` (blueprint §44).
+ * Operational settings (§58) — configurable low-stock threshold + delivery surcharges
+ * + loyalty. Browser-local demo store; Supabase phase moves to site_settings.
  */
 
 export const SETTINGS_STORAGE_KEY = "prosanti.admin.settings.v1";
@@ -14,6 +13,11 @@ export interface AdminSettings {
   loyaltyRewardTitle: string;
   loyaltyRewardDescription: string;
   loyaltyMinOrderAmount: number; // in Taka
+  // Delivery surcharges — Sunamganj real
+  rainSurchargeEnabled: boolean;
+  nightSurchargeEnabled: boolean;
+  expressDeliveryEnabled: boolean;
+  perZoneFreeThresholdEnabled: boolean;
 }
 
 export const SETTINGS_DEFAULTS: AdminSettings = {
@@ -24,6 +28,10 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   loyaltyRewardDescription:
     "১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! পরবর্তী অর্ডারের সাথে আপনার বিশেষ উপহার পৌঁছে দেওয়া হবে।",
   loyaltyMinOrderAmount: 0,
+  rainSurchargeEnabled: false,
+  nightSurchargeEnabled: true,
+  expressDeliveryEnabled: true,
+  perZoneFreeThresholdEnabled: true,
 };
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +83,23 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
       ? Math.max(0, Math.floor(p.loyaltyMinOrderAmount))
       : SETTINGS_DEFAULTS.loyaltyMinOrderAmount;
 
+  const rainSurchargeEnabled =
+    typeof p.rainSurchargeEnabled === "boolean"
+      ? p.rainSurchargeEnabled
+      : SETTINGS_DEFAULTS.rainSurchargeEnabled;
+  const nightSurchargeEnabled =
+    typeof p.nightSurchargeEnabled === "boolean"
+      ? p.nightSurchargeEnabled
+      : SETTINGS_DEFAULTS.nightSurchargeEnabled;
+  const expressDeliveryEnabled =
+    typeof p.expressDeliveryEnabled === "boolean"
+      ? p.expressDeliveryEnabled
+      : SETTINGS_DEFAULTS.expressDeliveryEnabled;
+  const perZoneFreeThresholdEnabled =
+    typeof p.perZoneFreeThresholdEnabled === "boolean"
+      ? p.perZoneFreeThresholdEnabled
+      : SETTINGS_DEFAULTS.perZoneFreeThresholdEnabled;
+
   return {
     lowStockThreshold: threshold,
     loyaltyEnabled,
@@ -82,6 +107,10 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     loyaltyRewardTitle,
     loyaltyRewardDescription,
     loyaltyMinOrderAmount,
+    rainSurchargeEnabled,
+    nightSurchargeEnabled,
+    expressDeliveryEnabled,
+    perZoneFreeThresholdEnabled,
   };
 };
 

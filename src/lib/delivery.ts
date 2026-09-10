@@ -1,43 +1,61 @@
 /**
  * Delivery pricing rules — one source of truth (§20–21, §69).
- *
- * The cart used to invent a flat “sample” ৳70 fee and promise free delivery
- * over ৳2,000, while checkout charged the zone fee with no free-delivery
- * rule at all. Customers saw one total in the cart and a different one at
- * checkout. Both surfaces now call these helpers.
+ * Sunamganj Sadar real — now with dynamic ETA, night/rain surcharge,
+ * per-zone free threshold, distance-based extra.
  */
 
 import { bdt, type Bdt } from "./format";
 import type { DeliveryZone } from "./catalog";
 
 /**
- * Customer-facing promise (§87). Instant delivery is the headline — it is what
- * the brand actually sells; the free-delivery threshold below is a secondary
- * reassurance and is always shown as the smaller line.
+ * Customer-facing promise (§87). Instant delivery is the headline.
  */
 export const DELIVERY_ETA = "45–50 min";
 export const INSTANT_DELIVERY_TITLE = "Instant delivery";
 export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the service area.`;
 
-/** Orders at or above this subtotal ship free (paisa) — Sunamganj promo: ৳1000. */
+/** Orders at or above this subtotal ship free (paisa) — Sunamganj promo: ৳1000 default. */
 export const FREE_DELIVERY_THRESHOLD: Bdt = bdt(1000);
+
+/** Per-zone free thresholds — Zone D needs more */
+export const FREE_THRESHOLD_BY_ZONE: Record<string, Bdt> = {
+  z1: bdt(600),   // Zone A: ৳600 e free — Traffic Point close
+  z2: bdt(800),   // Zone B: ৳800
+  z3: bdt(1000),  // Zone C: ৳1000
+  z4: bdt(1500),  // Zone D: ৳1500 (outside Sadar)
+};
+
+export const freeThresholdForZone = (zoneId: string): Bdt =>
+  FREE_THRESHOLD_BY_ZONE[zoneId] ?? FREE_DELIVERY_THRESHOLD;
 
 /** First 1000 orders overall FREE delivery (promo counter lives in DB). */
 export const FIRST_1000_FREE_PROMO = true;
 export const FIRST_1000_FREE_LIMIT = 1000;
 
-export const qualifiesForFreeDelivery = (subtotal: Bdt): boolean =>
-  subtotal >= FREE_DELIVERY_THRESHOLD;
+/** Surcharges — Sunamganj real */
+export const NIGHT_SURCHARGE_PAISA: Bdt = bdt(20); // 9PM-6AM
+export const RAIN_SURCHARGE_PAISA: Bdt = bdt(15); // when admin toggles rain
+export const EXPRESS_SURCHARGE_PAISA: Bdt = bdt(40); // 30min express
+
+export const isNightHour = (hour: number): boolean => hour >= 21 || hour < 6;
+export const isRushHour = (hour: number): boolean =>
+  (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 20);
+
+export const qualifiesForFreeDelivery = (subtotal: Bdt, zoneId?: string): boolean => {
+  const threshold = zoneId ? freeThresholdForZone(zoneId) : FREE_DELIVERY_THRESHOLD;
+  return subtotal >= threshold;
+};
 
 /** Charge actually payable for a zone at a given subtotal. */
-export const deliveryChargeFor = (zoneCharge: Bdt, subtotal: Bdt): Bdt =>
-  qualifiesForFreeDelivery(subtotal) ? 0 : Math.max(0, zoneCharge);
+export const deliveryChargeFor = (zoneCharge: Bdt, subtotal: Bdt, zoneId?: string): Bdt =>
+  qualifiesForFreeDelivery(subtotal, zoneId) ? 0 : Math.max(0, zoneCharge);
 
 /** Promotional check: if total orders < 1000, delivery is free regardless. */
 export const deliveryChargeWithPromo = (
   zoneCharge: Bdt,
   subtotal: Bdt,
   totalOrders?: number,
+  zoneId?: string,
 ): Bdt => {
   if (
     FIRST_1000_FREE_PROMO &&
@@ -46,11 +64,140 @@ export const deliveryChargeWithPromo = (
   ) {
     return 0;
   }
-  return deliveryChargeFor(zoneCharge, subtotal);
+  return deliveryChargeFor(zoneCharge, subtotal, zoneId);
 };
 
-/** Cheapest active zone — what the cart can honestly quote before an
- *  address is known ("from ৳X"). */
+export interface DeliverySurcharge {
+  night: Bdt;
+  rain: Bdt;
+  express: Bdt;
+  distance: Bdt;
+  total: Bdt;
+}
+
+export interface DeliveryBreakdown {
+  baseCharge: Bdt;
+  surcharge: DeliverySurcharge;
+  freeDelivery: boolean;
+  promoFree: boolean;
+  couponFree: boolean;
+  totalCharge: Bdt;
+  eta: string;
+  etaMinutes: number;
+}
+
+/** Distance extra: beyond 4km, +৳10 per km */
+export const distanceExtraCharge = (distanceKm?: number): Bdt => {
+  if (!distanceKm || distanceKm <= 4) return 0;
+  return bdt(Math.ceil((distanceKm - 4) * 10));
+};
+
+/** Dynamic ETA based on zone + shop prep + queue + time of day */
+export const dynamicEta = (opts: {
+  zoneId: string;
+  shopPrepMinutes?: number;
+  queueCount?: number;
+  hour?: number;
+  distanceKm?: number;
+}): { label: string; minutes: number } => {
+  const { zoneId, shopPrepMinutes = 15, queueCount = 0, hour, distanceKm } = opts;
+  const nowHour = hour ?? new Date().getHours();
+  let base: number;
+  switch (zoneId) {
+    case "z1": base = 35; break;
+    case "z2": base = 45; break;
+    case "z3": base = 55; break;
+    default: base = 70; break;
+  }
+  let extra = 0;
+  if (isNightHour(nowHour)) extra += 10;
+  else if (isRushHour(nowHour)) extra += 8;
+  extra += queueCount * 4;
+  if (distanceKm && distanceKm > 4) extra += Math.ceil((distanceKm - 4) * 3);
+
+  const total = base + shopPrepMinutes + extra;
+  return {
+    minutes: total,
+    label: `${total - 5}–${total + 5} min`,
+  };
+};
+
+export const deliveryBreakdown = (opts: {
+  zone: DeliveryZone;
+  subtotal: Bdt;
+  totalOrders?: number;
+  distanceKm?: number;
+  isNight?: boolean;
+  isRain?: boolean;
+  isExpress?: boolean;
+  couponFree?: boolean;
+  shopPrepMinutes?: number;
+  queueCount?: number;
+}): DeliveryBreakdown => {
+  const {
+    zone,
+    subtotal,
+    totalOrders,
+    distanceKm,
+    isNight,
+    isRain,
+    isExpress,
+    couponFree,
+    shopPrepMinutes,
+    queueCount,
+  } = opts;
+
+  const nowHour = new Date().getHours();
+  const night = isNight ?? isNightHour(nowHour);
+  const baseCharge = zone.charge;
+
+  let freeDelivery = qualifiesForFreeDelivery(subtotal, zone.id);
+  let promoFree = false;
+
+  if (FIRST_1000_FREE_PROMO && typeof totalOrders === "number" && totalOrders < FIRST_1000_FREE_LIMIT) {
+    freeDelivery = true;
+    promoFree = true;
+  }
+  if (couponFree) freeDelivery = true;
+
+  let totalCharge: Bdt;
+  if (freeDelivery) {
+    totalCharge = 0;
+  } else {
+    totalCharge = baseCharge;
+    totalCharge += distanceExtraCharge(distanceKm);
+    if (night) totalCharge += NIGHT_SURCHARGE_PAISA;
+    if (isRain) totalCharge += RAIN_SURCHARGE_PAISA;
+    if (isExpress) totalCharge += EXPRESS_SURCHARGE_PAISA;
+  }
+
+  const eta = dynamicEta({
+    zoneId: zone.id,
+    shopPrepMinutes,
+    queueCount,
+    hour: nowHour,
+    distanceKm,
+  });
+
+  return {
+    baseCharge,
+    surcharge: {
+      night: night && !freeDelivery ? NIGHT_SURCHARGE_PAISA : 0,
+      rain: isRain && !freeDelivery ? RAIN_SURCHARGE_PAISA : 0,
+      express: isExpress && !freeDelivery ? EXPRESS_SURCHARGE_PAISA : 0,
+      distance: !freeDelivery ? distanceExtraCharge(distanceKm) : 0,
+      total: !freeDelivery ? totalCharge - baseCharge : 0,
+    },
+    freeDelivery,
+    promoFree: promoFree && !couponFree,
+    couponFree: !!couponFree,
+    totalCharge,
+    eta: eta.label,
+    etaMinutes: eta.minutes,
+  };
+};
+
+/** Cheapest active zone — what the cart can honestly quote before an address is known */
 export const cheapestZoneCharge = (zones: DeliveryZone[]): Bdt => {
   const active = zones.filter((z) => z.active !== false);
   if (active.length === 0) return 0;
@@ -58,8 +205,10 @@ export const cheapestZoneCharge = (zones: DeliveryZone[]): Bdt => {
 };
 
 /** Amount still needed to unlock free delivery (0 when already unlocked). */
-export const amountToFreeDelivery = (subtotal: Bdt): Bdt =>
-  Math.max(0, FREE_DELIVERY_THRESHOLD - subtotal);
+export const amountToFreeDelivery = (subtotal: Bdt, zoneId?: string): Bdt => {
+  const threshold = zoneId ? freeThresholdForZone(zoneId) : FREE_DELIVERY_THRESHOLD;
+  return Math.max(0, threshold - subtotal);
+};
 
 /** Final payable total, never negative. */
 export const orderTotal = (

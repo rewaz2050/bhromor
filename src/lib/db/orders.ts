@@ -171,6 +171,9 @@ export async function placeLiveOrder(
       address: draft.customer.address,
       note: draft.customer.note,
       zone_id: draft.zone.id,
+      lat: draft.geo?.lat ?? null,
+      lng: draft.geo?.lng ?? null,
+      distance_km: draft.geo?.distanceKm ?? null,
       coupon_code: draft.coupon?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({

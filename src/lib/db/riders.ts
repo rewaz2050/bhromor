@@ -417,10 +417,24 @@ export const deliverRiderAssignment = async (
   db: SupabaseClient,
   assignmentId: string,
   code: string,
+  proofUrl?: string | null,
 ): Promise<void> => {
   const { error } = await db.rpc("ps_rider_deliver", {
     p_assignment_id: assignmentId,
     p_code: code,
+    p_proof_url: proofUrl ?? null,
+  });
+  if (error) throw new Error(error.message);
+};
+
+export const failedRiderAttempt = async (
+  db: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> => {
+  const { error } = await db.rpc("ps_rider_failed_attempt", {
+    p_assignment_id: assignmentId,
+    p_reason: reason,
   });
   if (error) throw new Error(error.message);
 };

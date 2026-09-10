@@ -21,6 +21,7 @@ import {
 } from "./coupons";
 import { deliveryChargeFor, orderTotal } from "./delivery";
 import { normalizePhone } from "./orders";
+import { haversineKm, SUNAMGANJ_HUB_COORDS, type LatLng } from "./sunamganj";
 
 export interface OrderPayloadItem {
   productId: string;
@@ -35,6 +36,9 @@ export interface OrderPayload {
   address: string;
   note?: string;
   zoneId: string;
+  lat?: number;
+  lng?: number;
+  distance_km?: number;
   couponCode?: string;
   items: OrderPayloadItem[];
 }
@@ -60,6 +64,7 @@ export interface PricedOrderItem {
 export interface ValidOrderDraft {
   customer: { name: string; phone: string; area: string; address: string; note: string };
   zone: DeliveryZone;
+  geo?: { lat: number; lng: number; distanceKm: number } | null;
   items: PricedOrderItem[];
   coupon?: { code: string; discount: number; id: string };
   subtotal: number;
@@ -113,6 +118,18 @@ export const validateOrderPayload = (
   const address = clean(body.address, 800); // Sunamganj full address with District/Upazila + house/road
   const note = clean(body.note, 500);
   const zoneId = clean(body.zoneId, 64);
+  const latRaw = (body as any).lat;
+  const lngRaw = (body as any).lng;
+  const lat = typeof latRaw === 'number' ? latRaw : typeof latRaw === 'string' ? parseFloat(latRaw) : undefined;
+  const lng = typeof lngRaw === 'number' ? lngRaw : typeof lngRaw === 'string' ? parseFloat(lngRaw) : undefined;
+  const distRaw = (body as any).distance_km ?? (body as any).distanceKm;
+  const distanceKm = typeof distRaw === 'number' ? distRaw : typeof distRaw === 'string' ? parseFloat(distRaw) : undefined;
+  let geo: ValidOrderDraft['geo'] = null;
+  if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    const computed = haversineKm(SUNAMGANJ_HUB_COORDS as LatLng, { lat, lng });
+    const dist = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm >= 0 ? distanceKm : computed;
+    geo = { lat, lng, distanceKm: dist };
+  }
   const couponCode =
     typeof body.couponCode === "string" && body.couponCode.trim() !== ""
       ? normalizeCode(body.couponCode)
@@ -336,6 +353,7 @@ export const validateOrderPayload = (
     draft: {
       customer: { name, phone, area, address, note },
       zone,
+      geo,
       items: priced,
       coupon,
       subtotal,

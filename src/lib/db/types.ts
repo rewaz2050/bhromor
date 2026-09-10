@@ -195,6 +195,13 @@ export interface DbOrder {
   address: string;
   note: string;
   zone_id: string;
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number | null;
+  delivery_proof_url?: string | null;
+  delivery_proof_uploaded_at?: string | null;
+  delivery_failed_reason?: string | null;
+  delivery_attempts?: number;
   subtotal: number;
   delivery_charge: number;
   discount: number;

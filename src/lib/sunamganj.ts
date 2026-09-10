@@ -1,7 +1,7 @@
 /**
  * Sunamganj Sadar real data — single source of truth for paras, zones, roads.
  * District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
- * No demo, all real.
+ * No demo, all real. Now with real lat/lng + distance-based zone.
  */
 
 import type { DeliveryZone } from "./catalog";
@@ -9,6 +9,12 @@ import type { DeliveryZone } from "./catalog";
 export const SUNAMGANJ_DISTRICT = "Sunamganj";
 export const SUNAMGANJ_UPAZILA = "Sunamganj Sadar";
 export const SUNAMGANJ_HUB = "Traffic Point";
+
+/** Traffic Point, Sunamganj Sadar — central hub */
+export const SUNAMGANJ_HUB_COORDS = {
+  lat: 25.0703,
+  lng: 91.4067,
+} as const;
 
 export const SUNAMGANJ_ZONES: DeliveryZone[] = [
   {
@@ -116,3 +122,53 @@ export const getRoadSuggestions = (input: string, limit = 6): string[] => {
 };
 
 export const MIN_ORDER_OUTSIDE_PAISA = 50000; // ৳500 minimum for Zone D
+
+/* ------------------------------------------------------------------ */
+/* Geo — Haversine distance from Traffic Point hub                    */
+/* ------------------------------------------------------------------ */
+
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+/** Distance in km between two lat/lng using Haversine */
+export const haversineKm = (a: LatLng, b: LatLng): number => {
+  const R = 6371; // km
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  return R * 2 * Math.asin(Math.sqrt(h));
+};
+
+export const distanceFromHubKm = (point: LatLng): number =>
+  haversineKm(SUNAMGANJ_HUB_COORDS, point);
+
+/** Zone by distance from hub — real geo-based fallback */
+export const findZoneByDistance = (point: LatLng): DeliveryZone => {
+  const d = distanceFromHubKm(point);
+  if (d <= 1.5) return SUNAMGANJ_ZONES[0]; // z1
+  if (d <= 2.5) return SUNAMGANJ_ZONES[1]; // z2
+  if (d <= 4.0) return SUNAMGANJ_ZONES[2]; // z3
+  return SUNAMGANJ_ZONES[3]; // z4
+};
+
+/** Best zone — para name first, then distance if lat/lng given */
+export const findBestZone = (para: string, latLng?: LatLng | null): DeliveryZone | null => {
+  const byPara = para ? findZoneByPara(para) : null;
+  if (byPara) return byPara;
+  if (latLng) return findZoneByDistance(latLng);
+  return null;
+};
+
+/** Rough bounds for Sunamganj Sadar map */
+export const SUNAMGANJ_BOUNDS = {
+  north: 25.12,
+  south: 25.02,
+  east: 91.45,
+  west: 91.35,
+} as const;

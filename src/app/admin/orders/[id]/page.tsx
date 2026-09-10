@@ -243,6 +243,40 @@ export default function AdminOrderDetailPage() {
                 <IconClock className="h-3.5 w-3.5" />
                 Zone: {order.zoneName}
               </div>
+              {order.lat && order.lng && (
+                <div className="mt-3 rounded-xl bg-ivory-100 p-3 ring-1 ring-line">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-ink-soft">Map Pin — Geo</p>
+                  <p className="mt-1 text-xs font-mono">Lat: {order.lat.toFixed(5)}, Lng: {order.lng.toFixed(5)}</p>
+                  {order.distanceKm !== undefined && <p className="text-xs">Distance from Hub: {order.distanceKm.toFixed(2)} km</p>}
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`}
+                    target="_blank"
+                    className="mt-2 inline-block rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Open in OSM
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps?q=${order.lat},${order.lng}`}
+                    target="_blank"
+                    className="ml-2 inline-block rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line"
+                  >
+                    Google Maps
+                  </a>
+                </div>
+              )}
+              {order.deliveryProofUrl && (
+                <div className="mt-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-emerald-800">Delivery Proof — Cloudinary</p>
+                  <img src={order.deliveryProofUrl} alt="Proof" className="mt-2 w-full rounded-xl object-cover max-h-64" />
+                  <p className="mt-1 text-[10px] break-all text-ink-soft">{order.deliveryProofUrl}</p>
+                </div>
+              )}
+              {order.deliveryFailedReason && (
+                <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+                  <p className="text-xs font-bold text-rose-800">Failed attempt: {order.deliveryFailedReason}</p>
+                  <p className="text-xs">Attempts: {order.deliveryAttempts}</p>
+                </div>
+              )}
             </dl>
           </section>
 
