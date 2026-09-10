@@ -129,6 +129,32 @@ export interface Order {
   coupon?: { code: string; discount: number };
   /** Owning shop (marketplace slice 1). Live orders always carry it. */
   shopId?: string;
+  /** Live 4-digit proof code; absent in demo (the UI derives a demo code). */
+  deliveryCode?: string;
+  /** Geo pin from map — exact delivery location */
+  lat?: number;
+  lng?: number;
+  distanceKm?: number;
+  scheduledAt?: number;
+  deliveryWindow?: string;
+  isExpress?: boolean;
+  surchargeNight?: number;
+  surchargeRain?: number;
+  surchargeDistance?: number;
+  surchargeExpress?: number;
+  /** Delivery proof photo via Cloudinary */
+  deliveryProofUrl?: string;
+  deliveryProofUploadedAt?: number;
+  deliveryAttempts?: number;
+  deliveryFailedReason?: string;
+  /** Assigned rider when dispatch has moved the order (slice 9 tracking). */
+  rider?: {
+    id: string;
+    name: string;
+    phone: string;
+    ratingAvg: number;
+    ratingCount: number;
+  };
 }
 
 export interface PlacedOrderInput {
@@ -321,7 +347,7 @@ export const aggregateOrders = (orders: Order[]): OrderAggregates => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Mock seed orders (demo phase — replaces Supabase reads later)       */
+/* Mock seed orders (Sunamganj Sadar — real paras)                     */
 /* ------------------------------------------------------------------ */
 
 const now = Date.now();
@@ -350,10 +376,16 @@ interface SeedSpec {
 }
 
 const AREAS = [
-  { zoneId: "z1", zoneName: "Zone A — City Centre", area: "Kandirpar", eta: "40–50 min" },
-  { zoneId: "z2", zoneName: "Zone B — Inner Ring", area: "Rampur", eta: "45–55 min" },
-  { zoneId: "z1", zoneName: "Zone A — City Centre", area: "Court Road", eta: "40–50 min" },
-  { zoneId: "z3", zoneName: "Zone C — Outer Ring", area: "Lalchandpur", eta: "60–75 min" },
+  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Boropara", eta: "30–40 min" },
+  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Shologhar", eta: "30–40 min" },
+  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Ukilpara", eta: "30–40 min" },
+  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Kalibari", eta: "30–40 min" },
+  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Notunpara", eta: "40–50 min" },
+  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Hasannagar", eta: "40–50 min" },
+  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Tegharia", eta: "40–50 min" },
+  { zoneId: "z3", zoneName: "Zone C — Sadar Extended (2.5-4km)", area: "Wayesspur", eta: "50–60 min" },
+  { zoneId: "z3", zoneName: "Zone C — Sadar Extended (2.5-4km)", area: "Balaka Para", eta: "50–60 min" },
+  { zoneId: "z4", zoneName: "Zone D — Sunamganj Sadar Bahire", area: "Sunamganj Sadar Other", eta: "60–80 min" },
 ];
 
 const CADENCE = {
@@ -431,7 +463,9 @@ const makeOrder = (spec: SeedSpec): Order => {
     };
   });
   const subtotal = items.reduce((s, it) => s + it.unitPrice * it.qty, 0);
-  const deliveryCharge = zone.zoneId === "z1" ? bdt(50) : zone.zoneId === "z2" ? bdt(70) : bdt(100);
+  // Sunamganj charges: z1=30, z2=50, z3=70, z4=100
+  const chargeMap: Record<string, number> = { z1: 3000, z2: 5000, z3: 7000, z4: 10000 };
+  const deliveryCharge = chargeMap[zone.zoneId] ?? 5000;
   return {
     id: nextId(),
     createdAt,
@@ -439,7 +473,7 @@ const makeOrder = (spec: SeedSpec): Order => {
       name: spec.name ?? "Customer",
       phone: "01700000000",
       area: zone.area,
-      address: "House 12, Road 5",
+      address: `House 12, ${zone.area}, Sunamganj Sadar`,
       note: spec.note,
     },
     zoneId: zone.zoneId,
@@ -468,18 +502,18 @@ export const MOCK_ORDERS: Order[] = [
   makeOrder({ status: "pending", placedAgoMin: 18, productIds: ["p2"], name: NAMES[1], areaIdx: 1, variantOf: () => "Ivory · XL" }),
   makeOrder({ status: "confirmed", placedAgoMin: 33, productIds: ["p5"], name: NAMES[2], areaIdx: 2 }),
   makeOrder({ status: "preparing", placedAgoMin: 52, productIds: ["p3", "p7"], name: NAMES[3], areaIdx: 0, qtyOf: (i) => (i === 0 ? 2 : 1) }),
-  makeOrder({ status: "preparing", placedAgoMin: 70, productIds: ["p6"], name: NAMES[4], areaIdx: 3, variantOf: () => "Deep Teal · M" }),
-  makeOrder({ status: "ready-for-pickup", placedAgoMin: 95, productIds: ["p1"], name: NAMES[5], areaIdx: 1, qtyOf: () => 2 }),
-  makeOrder({ status: "courier-assigned", placedAgoMin: 130, productIds: ["p4", "p2"], name: NAMES[6], areaIdx: 0 }),
-  makeOrder({ status: "out-for-delivery", placedAgoMin: 165, productIds: ["p5", "p7"], name: NAMES[7], areaIdx: 2 }),
-  makeOrder({ status: "out-for-delivery", placedAgoMin: 210, productIds: ["p2"], name: NAMES[8], areaIdx: 1 }),
+  makeOrder({ status: "preparing", placedAgoMin: 70, productIds: ["p6"], name: NAMES[4], areaIdx: 4, variantOf: () => "Deep Teal · M" }),
+  makeOrder({ status: "ready-for-pickup", placedAgoMin: 95, productIds: ["p1"], name: NAMES[5], areaIdx: 5, qtyOf: () => 2 }),
+  makeOrder({ status: "courier-assigned", placedAgoMin: 130, productIds: ["p4", "p2"], name: NAMES[6], areaIdx: 6 }),
+  makeOrder({ status: "out-for-delivery", placedAgoMin: 165, productIds: ["p5", "p7"], name: NAMES[7], areaIdx: 7 }),
+  makeOrder({ status: "out-for-delivery", placedAgoMin: 210, productIds: ["p2"], name: NAMES[8], areaIdx: 8 }),
   makeOrder({ status: "delivered", placedAgoMin: 260, deliveredInMin: 41, productIds: ["p3"], name: NAMES[9], areaIdx: 0, qtyOf: () => 1 }),
-  makeOrder({ status: "delivered", placedAgoMin: 340, deliveredInMin: 47, productIds: ["p1", "p6"], name: NAMES[10], areaIdx: 3, qtyOf: (i) => (i === 0 ? 1 : 2) }),
+  makeOrder({ status: "delivered", placedAgoMin: 340, deliveredInMin: 47, productIds: ["p1", "p6"], name: NAMES[10], areaIdx: 9, qtyOf: (i) => (i === 0 ? 1 : 2) }),
   makeOrder({ status: "delivered", placedAgoMin: 430, deliveredInMin: 38, productIds: ["p7"], name: NAMES[11], areaIdx: 1, qtyOf: () => 3 }),
   // — a few from previous days so “today” stays meaningful —
   makeOrder({ status: "delivered", placedAgoMin: 60 * 26, deliveredInMin: 44, productIds: ["p4"], name: NAMES[2], areaIdx: 0 }),
-  makeOrder({ status: "cancelled", placedAgoMin: 60 * 30, productIds: ["p5"], name: NAMES[5], areaIdx: 2 }),
-  makeOrder({ status: "delivered", placedAgoMin: 60 * 52, deliveredInMin: 52, productIds: ["p2", "p3"], name: NAMES[7], areaIdx: 1 }),
+  makeOrder({ status: "cancelled", placedAgoMin: 60 * 30, productIds: ["p5"], name: NAMES[5], areaIdx: 4 }),
+  makeOrder({ status: "delivered", placedAgoMin: 60 * 52, deliveredInMin: 52, productIds: ["p2", "p3"], name: NAMES[7], areaIdx: 5 }),
 ];
 
 /* Demo persistence key — replaced by Supabase `orders` later. */
@@ -498,4 +532,3 @@ export const getDeliveryCode = (orderId: string): string => {
   const code = (Math.abs(hash) % 9000) + 1000;
   return String(code);
 };
-

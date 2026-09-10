@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { useLocalOrders } from "@/lib/use-orders";
 import { isSupabaseConfigured } from "@/lib/env";
@@ -21,6 +21,10 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
+import { SignatureCanvas } from "./signature-canvas";
+import { DeliveryRating } from "./delivery-rating";
+import { RescheduleDelivery } from "./reschedule-delivery";
+import { DeliveryFeeCalculator } from "@/components/delivery/delivery-fee-calculator";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -157,11 +161,11 @@ export default function TrackView() {
         className="h-fit rounded-3xl bg-paper p-7 ring-1 ring-line lg:sticky lg:top-28"
       >
         <h2 className="font-display text-2xl font-medium text-forest-900">
-          Track your order
+          Track your order — Sunamganj Sadar
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          No account needed — enter the order ID from your confirmation and the
-          phone number you ordered with.
+          District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
+          No account needed — order ID + phone. PIN required for COD delivery.
         </p>
         <label className="mt-6 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
@@ -377,13 +381,29 @@ export default function TrackView() {
                     <dd>{formatBdt(order.subtotal)}</dd>
                   </div>
                   <div className="flex justify-between text-ink-soft">
-                    <dt>Delivery</dt>
+                    <dt>Delivery{(order as any).isPickup ? " — Pickup" : ""}{(order as any).isExpress ? " — Express" : ""}</dt>
                     <dd>
-                      {order.deliveryCharge === 0
-                        ? "Free"
-                        : formatBdt(order.deliveryCharge)}
+                      {(order as any).isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
+                  {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+                    <div className="text-xs text-ink-soft bg-amber-50 p-2 rounded-xl">
+                      {(order.surchargeNight ?? 0) > 0 && <div>Night: {formatBdt(order.surchargeNight ?? 0)}</div>}
+                      {(order.surchargeRain ?? 0) > 0 && <div>Rain: {formatBdt(order.surchargeRain ?? 0)}</div>}
+                      {(order.surchargeDistance ?? 0) > 0 && <div>Distance: {formatBdt(order.surchargeDistance ?? 0)}</div>}
+                      {(order.surchargeExpress ?? 0) > 0 && <div>Express: {formatBdt(order.surchargeExpress ?? 0)}</div>}
+                      {(order as any).surchargeWeight > 0 && <div>Weight: {formatBdt((order as any).surchargeWeight)}</div>}
+                    </div>
+                  )}
+                  {(order as any).tipAmount > 0 && (
+                    <div className="flex justify-between text-forest-700">
+                      <dt>💝 Tip</dt>
+                      <dd>+{formatBdt((order as any).tipAmount)}</dd>
+                    </div>
+                  )}
+                  {(order as any).scheduledAt && (
+                    <div className="text-xs text-sky-800">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</div>
+                  )}
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">
                       <dt>Coupon · {order.coupon.code}</dt>
@@ -391,15 +411,16 @@ export default function TrackView() {
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
-                    <dt>Total (COD)</dt>
+                    <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
                     <dd>{formatBdt(order.total)}</dd>
                   </div>
                 </dl>
               </div>
               <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
                 <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-                  Delivery
+                  Delivery — Sunamganj Sadar
                 </h3>
+                <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা: Sunamganj · উপজেলা: Sunamganj Sadar · Hub: Traffic Point</p>
                 <p className="mt-4 flex items-start gap-2.5 text-sm text-ink">
                   <IconMapPin className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.customer.area}
@@ -408,7 +429,18 @@ export default function TrackView() {
                 <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.zoneName} · {order.etaLabel}
+                  {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
+                  {(order as any).isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href={`https://wa.me/8801700000000?text=${encodeURIComponent(`PROSANTI order ${order.id} track: https://prosanti.com/track/${order.id}`)}`} target="_blank" className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white">WhatsApp Support</a>
+                  {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
+                </div>
+                {order.customer.note && (
+                  <p className="mt-3 text-xs leading-5 text-ink-soft">
+                    <strong className="text-ink">Note:</strong> {order.customer.note}
+                  </p>
+                )}
                 {(demoMode || via === "device") && (
                   <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
                     <strong className="text-ink">Demo data.</strong>{" "}

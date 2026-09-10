@@ -45,7 +45,7 @@ export const translations = {
     },
     bestSellers: {
       eyebrow: "The considered edit",
-      title: "Best sellers.",
+      title: "Featured.",
       subtitle: "The pieces our wardrobe begins with — purposeful, versatile and made to be worn often.",
       shopCollection: "Shop the collection",
     },
@@ -371,7 +371,7 @@ export const translations = {
     },
     bestSellers: {
       eyebrow: "বাছাই করা সেরা",
-      title: "বেস্ট সেলার।",
+      title: "ফিচার্ড।",
       subtitle: "যে পোশাকগুলো দিয়ে আমাদের ওয়ারড্রোব শুরু — উদ্দেশ্যময়, বহুমুখী আর বারবার পরার জন্য তৈরি।",
       shopCollection: "কালেকশন দেখুন",
     },

@@ -197,10 +197,10 @@ test("reduced motion disables entrance and feedback animations", async ({
   ).toBe("none");
   await page.keyboard.press("Escape");
   await page
-    .getByRole("heading", { name: "Best sellers." })
+    .getByRole("heading", { name: "Featured." })
     .scrollIntoViewIfNeeded();
   await expect(
-    page.getByRole("heading", { name: "Best sellers." }),
+    page.getByRole("heading", { name: "Featured." }),
   ).toBeVisible();
 });
 

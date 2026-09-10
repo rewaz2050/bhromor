@@ -103,8 +103,9 @@ describe("zone store pure helpers (§20–21)", () => {
 
   it("reorders within bounds only", () => {
     const list = DELIVERY_ZONES.map(cloneZone);
+    const lastId = list[list.length - 1].id;
     expect(moveZone(list, "z1", 1)[1].id).toBe("z1");
-    expect(moveZone(list, "z3", 1)).toBe(list);
+    expect(moveZone(list, lastId, 1)).toBe(list);
     expect(moveZone(list, "z1", -1)).toBe(list);
   });
 });

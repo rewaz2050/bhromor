@@ -25,7 +25,7 @@ export default function VendorEarningsPage() {
     <div>
       <PageHeader
         title="Earnings"
-        sub={`PROSANTI keeps ${Math.round(me?.shop.commissionPct ?? 15)}% per order — the rest is yours.`}
+        sub={`PROSANTI keeps ${Math.round(me?.shop.commissionPct ?? 15)}% per order — rest yours. Delivery charge + surcharges (night/rain/distance/weight/express) go to platform/rider, tip 100% to rider via Cloudinary-tracked settlement.`}
       />
 
       {loading ? (
@@ -80,11 +80,13 @@ export default function VendorEarningsPage() {
                       <th className="px-4 py-3 font-semibold">Order</th>
                       <th className="px-4 py-3 text-right font-semibold">Sale</th>
                       <th className="px-4 py-3 text-right font-semibold">Fee</th>
+                      <th className="px-4 py-3 text-right font-semibold">Delivery</th>
+                      <th className="px-4 py-3 text-right font-semibold">Tip/Sur</th>
                       <th className="px-4 py-3 text-right font-semibold">Yours</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {earnings.ledger.map((r) => (
+                    {earnings.ledger.map((r: any) => (
                       <tr key={r.id} className="border-b border-line/60 last:border-0">
                         <td className="px-4 py-2.5 text-xs text-ink-soft">
                           {formatDateTime(r.at)}
@@ -97,6 +99,12 @@ export default function VendorEarningsPage() {
                         </td>
                         <td className="px-4 py-2.5 text-right text-ink-soft">
                           −{formatBdt(r.commission)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs">
+                          {r.deliveryCharge ? formatBdt(r.deliveryCharge) : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs">
+                          {(r.tipAmount ? `Tip ${formatBdt(r.tipAmount)}` : "") + (r.surchargeTotal ? ` +${formatBdt(r.surchargeTotal)}` : "") || "—"}
                         </td>
                         <td className="px-4 py-2.5 text-right font-semibold text-forest-900">
                           {formatBdt(r.payable)}

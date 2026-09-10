@@ -276,6 +276,9 @@ export interface VendorEarnings {
     subtotal: number;
     commission: number;
     payable: number;
+    deliveryCharge?: number;
+    tipAmount?: number;
+    surchargeTotal?: number;
     at: number;
   }[];
   payouts: {
@@ -308,12 +311,15 @@ export async function listVendorEarnings(
   if (ledgerRes.error || payoutRes.error) {
     throw new Error("vendor earnings failed");
   }
-  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r) => ({
+  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r: any) => ({
     id: r.id,
     orderId: r.order_id,
     subtotal: r.subtotal,
     commission: r.commission,
     payable: r.payable,
+    deliveryCharge: r.delivery_charge ?? 0,
+    tipAmount: r.tip_amount ?? 0,
+    surchargeTotal: r.surcharge_total ?? 0,
     at: Date.parse(r.created_at),
   }));
   const payouts = ((payoutRes.data ?? []) as DbShopPayout[]).map((r) => ({

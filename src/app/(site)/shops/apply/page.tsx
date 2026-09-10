@@ -4,12 +4,16 @@ import { useState } from "react";
 import Link from "next/link";
 import { useZones } from "@/lib/use-zones";
 import { useShops } from "@/lib/use-shops";
+import { isSupabaseConfigured } from "@/lib/env";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 
 export default function ShopApplyPage() {
   const { zones } = useZones();
-  const { saveShop, live } = useShops();
+  const { saveShop } = useShops();
+  // Public intake uses the backend whenever Supabase is configured; staff
+  // sessions are irrelevant to an applicant and must not force demo mode.
+  const live = isSupabaseConfigured();
 
   const [name, setName] = useState("");
   const [tagline, setTagline] = useState("");
@@ -67,9 +71,33 @@ export default function ShopApplyPage() {
           }),
         });
 
-        const data = await res.json().catch(() => null);
+        const data = (await res.json().catch(() => null)) as {
+          demoMode?: boolean;
+          error?: string;
+        } | null;
         if (!res.ok) {
           throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
+        }
+        // Public keys configured but service role missing: the API answered
+        // demoMode, so keep the local demo queue instead of confirming a
+        // backend write that never happened.
+        if (data?.demoMode) {
+          await saveShop({
+            id: `shop-demo-${Date.now()}`,
+            name: cleanName,
+            slug: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            tagline: tagline.trim() || "Local Clothing Shop",
+            phone: cleanPhone,
+            contactEmail: cleanEmail,
+            address: address.trim(),
+            zoneIds: selectedZones.length > 0 ? selectedZones : zones.map((z) => z.id),
+            prepMinutes: Math.max(5, Math.floor(Number(prepMinutes) || 15)),
+            commissionPct: 15,
+            status: "pending",
+            isOpen: false,
+            ratingAvg: 0,
+            ratingCount: 0,
+          });
         }
       } else {
         // Demo Mode: save into browser demo store with 'pending' status

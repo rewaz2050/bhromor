@@ -1,11 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
 import { useRiders } from "@/lib/use-riders";
+import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
-import { getDeliveryCode } from "@/lib/orders";
+import { getDeliveryCode, type Order } from "@/lib/orders";
+import type { RiderJob } from "@/lib/db/riders";
 import {
   IconBox,
   IconCheck,
@@ -15,109 +17,322 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 
-export default function RiderPage() {
-  const { orders, advance } = useOrders();
-  const { riders, saveRider } = useRiders();
+interface RiderTask {
+  /** Identifier of the action target — assignment id live, order id in demo. */
+  id: string;
+  order: Order;
+  state: "offered" | "accepted" | "picked_up" | "delivered";
+}
 
-  // Active rider (defaulting to the first active rider or demo rider)
+const DEMO_RIDER = {
+  id: "rider-default",
+  name: "তানভীর আহমেদ (Tanvir)",
+  phone: "01811111111",
+  vehicle: "bike",
+  zoneIds: [] as string[],
+  status: "active" as const,
+  isOnline: true,
+  cashInHand: 156000,
+  ratingAvg: 4.9,
+  ratingCount: 18,
+};
+
+export default function RiderPage() {
+  const session = useRiderSession();
+  const isLive = session.status === "authed";
+  const { orders: demoOrders, advance } = useOrders();
+  const { riders, saveRider } = useRiders();
+  const riderJobsApi = useRiderJobs(isLive);
+
   const activeRider = useMemo(() => {
+    if (isLive && session.rider) return session.rider;
     return (
       riders.find((r) => r.status === "active") ??
-      riders[0] ?? {
-        id: "rider-default",
-        name: "তানভীর আহমেদ (Tanvir)",
-        phone: "01811111111",
-        vehicle: "bike",
-        zoneIds: [],
-        status: "active",
-        isOnline: true,
-        cashInHand: 156000, // ৳1560
-        ratingAvg: 4.9,
-        ratingCount: 18,
-      }
+      riders[0] ??
+      DEMO_RIDER
     );
-  }, [riders]);
+  }, [isLive, session.rider, riders]);
 
   const [isOnline, setIsOnline] = useState(activeRider.isOnline);
-  const [selectedPinOrder, setSelectedPinOrder] = useState<string | null>(null);
+  const [selectedPinTask, setSelectedPinTask] = useState<string | null>(null);
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
+  const [settle, setSettle] = useState(false);
+  const flashTimer = useRef<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
+  const [failedReason, setFailedReason] = useState("");
+  const [showFailed, setShowFailed] = useState<string | null>(null);
 
-  // Cash limit: ৳5,000 (500,000 paisa)
+  useEffect(
+    () => () => {
+      if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    },
+    [],
+  );
+
+  const showFlash = (message: string) => {
+    setFlash(message);
+    if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 3500);
+  };
+
   const CASH_LIMIT_PAISA = 500000;
   const isCashLimitReached = activeRider.cashInHand >= CASH_LIMIT_PAISA;
 
-  // Active orders assigned or ready for dispatch
-  const activeJobs = useMemo(() => {
-    return orders.filter(
-      (o) =>
-        o.status === "ready-for-pickup" ||
-        o.status === "courier-assigned" ||
-        o.status === "out-for-delivery",
-    );
-  }, [orders]);
+  const tasks = useMemo<RiderTask[]>(() => {
+    if (isLive) {
+      return riderJobsApi.jobs
+        .filter(
+          (job) =>
+            job.state !== "delivered" &&
+            job.state !== "cancelled" &&
+            job.state !== "expired",
+        )
+        .map((job: RiderJob) => ({
+          id: job.id,
+          order: job.order,
+          state:
+            job.state === "offered"
+              ? "offered"
+              : job.state === "picked_up"
+                ? "picked_up"
+                : "accepted",
+        }));
+    }
+    return demoOrders
+      .filter(
+        (o) =>
+          o.status === "ready-for-pickup" ||
+          o.status === "courier-assigned" ||
+          o.status === "out-for-delivery",
+      )
+      .map((order) => ({
+        id: order.id,
+        order,
+        state:
+          order.status === "out-for-delivery" ? "picked_up" : "accepted",
+      }));
+  }, [isLive, riderJobsApi.jobs, demoOrders]);
 
-  const deliveredJobs = useMemo(() => {
-    return orders.filter((o) => o.status === "delivered");
-  }, [orders]);
+  const deliveredCount = useMemo(() => {
+    if (isLive) {
+      return riderJobsApi.jobs.filter((j) => j.state === "delivered").length;
+    }
+    return demoOrders.filter((o) => o.status === "delivered").length;
+  }, [isLive, riderJobsApi.jobs, demoOrders]);
 
-  const toggleOnline = () => {
+  const toggleOnline = async () => {
     const nextState = !isOnline;
+    if (isLive) {
+      const ok = await riderJobsApi.setOnline(nextState);
+      if (!ok) {
+        setActionError(riderJobsApi.error);
+        return;
+      }
+      setActionError(null);
+    } else {
+      void saveRider({ ...activeRider, isOnline: nextState });
+    }
     setIsOnline(nextState);
-    void saveRider({
-      ...activeRider,
-      isOnline: nextState,
-    });
-  };
-
-  const handlePickup = async (orderId: string) => {
-    const ok = await advance(orderId, "out-for-delivery", "রাইডার পার্সেল সংগ্রহ করেছেন");
-    if (ok) {
-      setFlash(`অর্ডার #${orderId} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`);
-      setTimeout(() => setFlash(null), 3000);
+    void session.refresh();
+    if (nextState && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          void riderJobsApi.updateLocation(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 },
+      );
     }
   };
 
-  const handleVerifyPin = async (orderId: string) => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) return;
+  // Auto location tracking when online (every 30s)
+  useEffect(() => {
+    if (!isLive || !isOnline) return;
+    let watchId: number | null = null;
+    let intervalId: number | null = null;
 
-    const expectedCode = getDeliveryCode(order.id);
-    if (enteredPin.trim() !== expectedCode) {
-      setPinError(`ভুল কোড! সঠিক ৪-সংখ্যার কোডটি কাস্টমারের কাছ থেকে নিন।`);
+    const sendLocation = (lat: number, lng: number) => {
+      void riderJobsApi.updateLocation(lat, lng);
+    };
+
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
+      );
+      // Fallback interval
+      intervalId = window.setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+          () => {},
+          { enableHighAccuracy: false, timeout: 8000 },
+        );
+      }, 30000);
+    }
+
+    return () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, isOnline]);
+
+  const handleAccept = async (task: RiderTask) => {
+    if (!isLive) return;
+    const ok = await riderJobsApi.accept(task.id);
+    if (!ok) {
+      setActionError(riderJobsApi.error);
+      return;
+    }
+    setActionError(null);
+    showFlash("অর্ডার একসেপ্ট হয়েছে! পিকআপ কনফার্ম করুন।");
+  };
+
+  const handleReject = async (task: RiderTask) => {
+    if (!isLive) return;
+    const ok = await riderJobsApi.reject(task.id);
+    if (!ok) {
+      setActionError(riderJobsApi.error);
+      return;
+    }
+    setActionError(null);
+    showFlash("অফারটি বাতিল করা হয়েছে।");
+  };
+
+  const handlePickup = async (task: RiderTask) => {
+    if (isLive) {
+      const ok = await riderJobsApi.pickup(task.id);
+      if (!ok) {
+        setActionError(riderJobsApi.error);
+        return;
+      }
+      setActionError(null);
+      showFlash(
+        `অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`,
+      );
+      return;
+    }
+    const ok = await advance(
+      task.order.id,
+      "out-for-delivery",
+      "রাইডার পার্সেল সংগ্রহ করেছেন",
+    );
+    if (ok) {
+      showFlash(
+        `অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`,
+      );
+    }
+  };
+
+  const handleProofUpload = async (file: File) => {
+    if (!file) return;
+    setProofUploading(true);
+    setPinError("");
+    try {
+      // Get Cloudinary signature
+      const signRes = await fetch("/api/media/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder: "prosanti/delivery-proofs" }),
+      });
+      const signData = await signRes.json().catch(() => null) as any;
+      if (!signRes.ok || !signData?.cloudName) {
+        // Fallback: if Cloudinary not configured, use local preview (demo)
+        const localUrl = URL.createObjectURL(file);
+        setProofUrl(localUrl);
+        showFlash("Cloudinary not configured - demo preview only. Configure CLOUDINARY_*");
+        return;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      form.append("api_key", signData.apiKey);
+      form.append("timestamp", String(signData.timestamp));
+      form.append("folder", signData.folder);
+      form.append("signature", signData.signature);
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/image/upload`, {
+        method: "POST",
+        body: form,
+      });
+      const upData = await upRes.json().catch(() => null) as any;
+      if (!upRes.ok || !upData?.secure_url) {
+        throw new Error(upData?.error?.message || "Upload failed");
+      }
+      setProofUrl(upData.secure_url);
+      showFlash("📸 Proof photo uploaded to Cloudinary!");
+    } catch (e: any) {
+      setPinError(e?.message || "Photo upload failed");
+    } finally {
+      setProofUploading(false);
+    }
+  };
+
+  const handleVerifyPin = async (task: RiderTask) => {
+    if (isLive) {
+      const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
+      if (!ok) {
+        setPinError(riderJobsApi.error ?? "ভুল কোড!");
+        return;
+      }
+      setActionError(null);
+      setSelectedPinTask(null);
+      setEnteredPin("");
+      setPinError("");
+      setProofUrl(null);
+      showFlash(
+        `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে। Proof: ${proofUrl ? "with photo" : "no photo"}`,
+      );
+      void session.refresh();
       return;
     }
 
-    const ok = await advance(orderId, "delivered", "সফল ডেলিভারি সম্পন্ন ও ক্যাশ গ্রহণ");
-    if (ok) {
-      // Add COD total to rider's cash in hand
-      void saveRider({
-        ...activeRider,
-        cashInHand: activeRider.cashInHand + order.total,
-      });
-
-      setSelectedPinOrder(null);
-      setEnteredPin("");
-      setPinError("");
-      setFlash(`🎉 অভিনন্দন! অর্ডার #${order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।`);
-      setTimeout(() => setFlash(null), 4000);
+    const order = demoOrders.find((o) => o.id === task.order.id);
+    if (!order) return;
+    const expectedCode = order.deliveryCode ?? getDeliveryCode(order.id);
+    if (enteredPin.trim() !== expectedCode) {
+      setPinError("ভুল কোড! সঠিক ৪-সংখ্যার কোডটি কাস্টমারের কাছ থেকে নিন।");
+      return;
     }
+    const ok = await advance(order.id, "delivered", "সফল ডেলিভারি সম্পন্ন ও ক্যাশ গ্রহণ");
+    if (!ok) return;
+    void saveRider({
+      ...activeRider,
+      cashInHand: activeRider.cashInHand + order.total,
+    });
+    setSelectedPinTask(null);
+    setEnteredPin("");
+    setPinError("");
+    setProofUrl(null);
+    showFlash(
+      `🎉 অভিনন্দন! অর্ডার #${order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।`,
+    );
   };
 
-  const handleSettleCash = () => {
+  const handleSettleCash = async () => {
     if (
-      window.confirm(
-        `আপনি কি অফিসে/bKash-এ ${formatBdt(activeRider.cashInHand)} টাকা জমা দিয়ে ক্যাশ সেটেল করতে চান?`,
+      !window.confirm(
+        `আপনি কি অফিসে/bKash-এ ${formatBdt(activeRider.cashInHand)} টাকা জমা দিয়ে ক্যাশ সেটেল করতে চান?`,
       )
-    ) {
-      void saveRider({
-        ...activeRider,
-        cashInHand: 0,
-      });
-      setFlash("ক্যাশ সেটেলমেন্ট সম্পন্ন হয়েছে! নতুন ট্রিপ একসেপ্ট করতে পারবেন।");
-      setTimeout(() => setFlash(null), 3000);
+    )
+      return;
+    if (isLive) {
+      const ok = await riderJobsApi.settle("cash", "");
+      if (!ok) {
+        setActionError(riderJobsApi.error);
+        setSettle(false);
+        return;
+      }
+      setActionError(null);
+      void session.refresh();
+    } else {
+      void saveRider({ ...activeRider, cashInHand: 0 });
     }
+    setSettle(false);
+    showFlash("ক্যাশ সেটেলমেন্ট সম্পন্ন হয়েছে! নতুন ট্রিপ একসেপ্ট করতে পারবেন।");
   };
 
   return (
@@ -165,8 +380,23 @@ export default function RiderPage() {
             <span>{flash}</span>
           </div>
         )}
+        {actionError && (
+          <div
+            role="alert"
+            className="flex items-center gap-2 rounded-2xl bg-rose-50 p-4 text-xs font-semibold text-rose-900 ring-1 ring-rose-300"
+          >
+            <span>{actionError}</span>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="ml-auto rounded-full px-2 py-0.5 text-rose-700 underline"
+            >
+              বন্ধ
+            </button>
+          </div>
+        )}
 
-        {/* Cash-in-hand safety meter card (§Zero-Pera Model) */}
+        {/* Cash-in-hand safety meter card */}
         <section
           aria-label="Cash in hand"
           className="rounded-2xl border border-line bg-ivory-100/70 p-4 shadow-sm"
@@ -190,7 +420,7 @@ export default function RiderPage() {
             {activeRider.cashInHand > 0 && (
               <button
                 type="button"
-                onClick={handleSettleCash}
+                onClick={() => setSettle(true)}
                 className="rounded-full bg-forest-800 px-3 py-1 text-[11px] font-semibold text-ivory-50 hover:bg-forest-900"
               >
                 টাকা জমা দিন (Settle)
@@ -205,8 +435,8 @@ export default function RiderPage() {
                 isCashLimitReached
                   ? "bg-rose-600"
                   : activeRider.cashInHand > 300000
-                  ? "bg-amber-500"
-                  : "bg-emerald-600"
+                    ? "bg-amber-500"
+                    : "bg-emerald-600"
               }`}
               style={{
                 width: `${Math.min(100, Math.round((activeRider.cashInHand / CASH_LIMIT_PAISA) * 100))}%`,
@@ -216,10 +446,42 @@ export default function RiderPage() {
 
           {isCashLimitReached && (
             <p className="mt-2 text-xs font-semibold text-rose-700">
-              ⚠️ ক্যাশ লিমিট পূর্ণ হয়েছে! নতুন অর্ডার পেতে অফিসে বা bKash-এ টাকা জমা দিন।
+              ⚠️ ক্যাশ লিমিট পূর্ণ হয়েছে! নতুন অর্ডার পেতে অফিসে বা bKash-এ টাকা জমা দিন।
             </p>
           )}
         </section>
+
+        {/* Recent cash pay-ins (live only; demo has no persisted ledger) */}
+        {isLive && riderJobsApi.settlements.length > 0 && (
+          <section aria-label="Recent settlements">
+            <h2 className="font-display mb-3 text-base font-semibold text-forest-900">
+              সাম্প্রতিক টাকা জমা (Settlement ইতিহাস)
+            </h2>
+            <ul className="space-y-2">
+              {riderJobsApi.settlements.slice(0, 6).map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between rounded-xl bg-paper p-3 text-xs ring-1 ring-line"
+                >
+                  <div>
+                    <p className="font-semibold text-forest-900">
+                      {formatBdt(s.amount)} · {s.method.toUpperCase()}
+                    </p>
+                    <p className="mt-0.5 text-ink-soft">
+                      {new Date(s.at).toLocaleString("bn-BD", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {s.reference ? ` · ${s.reference}` : ""}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Quick Stats Strip */}
         <div className="grid grid-cols-2 gap-3">
@@ -228,7 +490,7 @@ export default function RiderPage() {
               চলমান ডেলিভারি
             </p>
             <p className="font-display mt-1 text-2xl font-bold text-forest-900">
-              {activeJobs.length}
+              {tasks.length}
             </p>
           </div>
           <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
@@ -236,7 +498,7 @@ export default function RiderPage() {
               মোট সম্পন্ন
             </p>
             <p className="font-display mt-1 text-2xl font-bold text-emerald-700">
-              {deliveredJobs.length}
+              {deliveredCount}
             </p>
           </div>
         </div>
@@ -245,7 +507,7 @@ export default function RiderPage() {
         <section aria-label="Active tasks">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-base font-semibold text-forest-900">
-              অ্যাসাইন্ড অর্ডার সমূহ ({activeJobs.length})
+              অ্যাসাইন্ড অর্ডার সমূহ ({tasks.length})
             </h2>
             <span className="text-xs text-ink-soft">৪৫-৬০ মিনিট ডেলিভারি</span>
           </div>
@@ -259,11 +521,11 @@ export default function RiderPage() {
                 নতুন ডেলিভারি টাস্ক পেতে উপরে &apos;অনলাইন&apos; বাটনটি চালু করুন।
               </p>
             </div>
-          ) : activeJobs.length === 0 ? (
+          ) : tasks.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-ivory-100/50 p-8 text-center">
               <IconBox className="mx-auto h-8 w-8 text-ink-soft/60" />
               <p className="mt-2 text-sm font-semibold text-forest-900">
-                বর্তমানে কোনো সক্রিয় ট্রিপ নেই
+                বর্তমানে কোনো সক্রিয় ট্রিপ নেই
               </p>
               <p className="mt-1 text-xs text-ink-soft">
                 দোকানদার পার্সেল রেডি করলেই এখানে নোটিফিকেশন আসবে।
@@ -271,15 +533,15 @@ export default function RiderPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {activeJobs.map((order) => {
-                const isOut = order.status === "out-for-delivery";
+              {tasks.map((task) => {
+                const isOut = task.state === "picked_up";
                 const isReady =
-                  order.status === "ready-for-pickup" ||
-                  order.status === "courier-assigned";
+                  task.state === "accepted" || task.state === "offered";
+                const order = task.order;
 
                 return (
                   <div
-                    key={order.id}
+                    key={task.id}
                     className="rounded-2xl border border-line bg-paper p-5 shadow-sm space-y-4"
                   >
                     {/* Header */}
@@ -300,7 +562,7 @@ export default function RiderPage() {
                             : "bg-forest-100 text-forest-800"
                         }`}
                       >
-                        {isOut ? "পথে আছেন" : "পিকআপ রেডি"}
+                        {isOut ? "পথে আছেন" : task.state === "offered" ? "নতুন অফার" : "পিকআপ রেডি"}
                       </span>
                     </div>
 
@@ -325,21 +587,47 @@ export default function RiderPage() {
                           {formatBdt(order.total)}
                         </strong>
                       </div>
+                      {(order as any).tipAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-forest-700">💝 Tip for you</span>
+                          <span className="font-bold text-forest-700">+{formatBdt((order as any).tipAmount)}</span>
+                        </div>
+                      )}
+                      {(order as any).isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
+                      {(order as any).scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</p>}
                     </div>
 
                     {/* Action Controls */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <a
-                        href={`tel:${order.customer.phone}`}
-                        className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
-                      >
-                        <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
-                      </a>
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={`tel:${order.customer.phone}`}
+                          className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                        >
+                          <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
+                        </a>
 
-                      {isReady ? (
+                      {task.state === "offered" ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleReject(task)}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                          >
+                            বাতিল
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAccept(task)}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500"
+                          >
+                            অর্ডার একসেপ্ট করুন
+                          </button>
+                        </>
+                      ) : isReady ? (
                         <button
                           type="button"
-                          onClick={() => handlePickup(order.id)}
+                          onClick={() => handlePickup(task)}
                           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
                         >
                           পিকআপ কনফার্ম করুন
@@ -348,14 +636,62 @@ export default function RiderPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedPinOrder(order.id);
+                            setSelectedPinTask(task.id);
                             setEnteredPin("");
                             setPinError("");
+                            setProofUrl(null);
                           }}
                           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 text-xs font-semibold text-ivory-50 hover:bg-emerald-800"
                         >
                           <IconCheck className="h-4 w-4" /> ডেলিভারি কোড দিন
                         </button>
+                      )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFailed(showFailed === task.id ? null : task.id)}
+                        className="text-[11px] text-rose-700 underline"
+                      >
+                        Customer unreachable? Report failed attempt
+                      </button>
+                      {showFailed === task.id && (
+                        <div className="rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 space-y-2">
+                          <input
+                            value={failedReason}
+                            onChange={(e) => setFailedReason(e.target.value)}
+                            placeholder="Reason: phone off, address wrong, etc"
+                            className="w-full rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-line"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (isLive) {
+                                  const res = await fetch(`/api/rider/assignments/${task.id}/failed`, {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ reason: failedReason }),
+                                  });
+                                  if (res.ok) {
+                                    showFlash("Failed attempt recorded");
+                                    setShowFailed(null);
+                                    setFailedReason("");
+                                  } else {
+                                    const d = await res.json().catch(() => null) as any;
+                                    setPinError(d?.error || "Failed");
+                                  }
+                                } else {
+                                  showFlash("Demo: failed attempt logged");
+                                  setShowFailed(null);
+                                }
+                              }}
+                              className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white"
+                            >
+                              Submit failed
+                            </button>
+                            <button type="button" onClick={() => setShowFailed(null)} className="text-xs text-ink-soft">Cancel</button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -367,7 +703,7 @@ export default function RiderPage() {
       </div>
 
       {/* PIN Verification Modal */}
-      {selectedPinOrder && (
+      {selectedPinTask && (
         <div
           role="dialog"
           aria-modal="true"
@@ -382,7 +718,7 @@ export default function RiderPage() {
                 ডেলিভারি ভেরিফিকেশন পিন
               </h3>
               <p className="mt-1 text-xs text-ink-soft">
-                কাস্টমারের কাছ থেকে ৪-সংখ্যার কোডটি নিয়ে নিচে টাইপ করুন
+                কাস্টমারের কাছ থেকে ৪-সংখ্যার কোডটি নিয়ে নিচে টাইপ করুন
               </p>
             </div>
 
@@ -404,15 +740,44 @@ export default function RiderPage() {
                 className="h-14 w-full rounded-2xl border border-line bg-ivory-50 text-center font-mono text-2xl font-bold tracking-[0.5em] text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-800"
                 autoFocus
               />
-              <p className="mt-2 text-center text-[11px] text-ink-soft">
-                (ডেমো টেস্ট কোড: {getDeliveryCode(selectedPinOrder)})
-              </p>
+              {!isLive && (() => {
+                const demoTask = tasks.find((t) => t.id === selectedPinTask);
+                const code = demoTask ? (demoTask.order.deliveryCode ?? getDeliveryCode(demoTask.order.id)) : getDeliveryCode(selectedPinTask);
+                return (
+                  <p className="mt-2 text-center text-[11px] text-ink-soft">
+                    (ডেমো টেস্ট কোড: {code})
+                  </p>
+                );
+              })()}
+            </div>
+
+            {/* Cloudinary Proof Photo */}
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">📸 Delivery Proof Photo (Cloudinary)</p>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleProofUpload(f);
+                }}
+                className="w-full rounded-xl bg-ivory-100 px-3 py-2 text-xs ring-1 ring-line"
+              />
+              {proofUploading && <p className="text-xs text-amber-700">Uploading to Cloudinary...</p>}
+              {proofUrl && (
+                <div className="rounded-xl overflow-hidden ring-1 ring-line">
+                  <img src={proofUrl} alt="Proof" className="w-full h-32 object-cover" />
+                  <p className="p-2 text-[10px] break-all text-ink-soft">{proofUrl}</p>
+                </div>
+              )}
+              <p className="text-[11px] text-ink-soft">Photo ta Cloudinary te jabe - `prosanti/delivery-proofs` folder. Optional but recommended.</p>
             </div>
 
             <div className="flex gap-2.5 pt-2">
               <button
                 type="button"
-                onClick={() => setSelectedPinOrder(null)}
+                onClick={() => setSelectedPinTask(null)}
                 className="h-12 flex-1 rounded-full border border-line bg-paper text-xs font-semibold text-ink-soft hover:bg-ivory-100"
               >
                 বাতিল
@@ -420,10 +785,53 @@ export default function RiderPage() {
               <button
                 type="button"
                 disabled={enteredPin.length !== 4}
-                onClick={() => handleVerifyPin(selectedPinOrder)}
+                onClick={() => {
+                  const task = tasks.find((t) => t.id === selectedPinTask);
+                  if (task) void handleVerifyPin(task);
+                }}
                 className="h-12 flex-1 rounded-full bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
               >
                 ডেলিভারি সম্পন্ন করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash settlement confirm */}
+      {settle && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        >
+          <div className="w-full max-w-sm rounded-3xl border border-line bg-paper p-6 shadow-xl space-y-4">
+            <div className="text-center">
+              <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-forest-100 text-forest-800">
+                <IconShield className="h-6 w-6" />
+              </span>
+              <h3 className="font-display mt-3 text-lg font-bold text-forest-900">
+                ক্যাশ সেটেলমেন্ট
+              </h3>
+              <p className="mt-1 text-xs text-ink-soft">
+                {formatBdt(activeRider.cashInHand)} অফিসে বা bKash-এ জমা দিয়ে
+                নিশ্চিত করুন।
+              </p>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSettle(false)}
+                className="h-12 flex-1 rounded-full border border-line bg-paper text-xs font-semibold text-ink-soft hover:bg-ivory-100"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                onClick={handleSettleCash}
+                className="h-12 flex-1 rounded-full bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+              >
+                নিশ্চিত করুন
               </button>
             </div>
           </div>

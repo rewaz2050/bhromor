@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useZones } from "@/lib/use-zones";
 import { useRiders } from "@/lib/use-riders";
+import { isSupabaseConfigured } from "@/lib/env";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 
@@ -15,7 +16,10 @@ const VEHICLES = [
 
 export default function RiderApplyPage() {
   const { zones } = useZones();
-  const { saveRider, live } = useRiders();
+  const { saveRider } = useRiders();
+  // Public intake uses the backend whenever Supabase is configured; staff
+  // sessions are irrelevant to an applicant and must not force demo mode.
+  const live = isSupabaseConfigured();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -69,9 +73,30 @@ export default function RiderApplyPage() {
           }),
         });
 
-        const data = await res.json().catch(() => null);
+        const data = (await res.json().catch(() => null)) as {
+          demoMode?: boolean;
+          error?: string;
+        } | null;
         if (!res.ok) {
           throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
+        }
+        // Public keys configured but service role missing: the API answered
+        // demoMode, so keep the local demo queue instead of confirming a
+        // backend write that never happened.
+        if (data?.demoMode) {
+          await saveRider({
+            id: `rider-demo-${Date.now()}`,
+            name: cleanName,
+            phone: cleanPhone,
+            contactEmail: cleanEmail,
+            vehicle,
+            zoneIds: selectedZones.length > 0 ? selectedZones : zones.map((z) => z.id),
+            status: "pending",
+            isOnline: false,
+            cashInHand: 0,
+            ratingAvg: 0,
+            ratingCount: 0,
+          });
         }
       } else {
         // Demo Mode: save into browser demo store with 'pending' status

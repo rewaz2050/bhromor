@@ -171,6 +171,16 @@ export async function placeLiveOrder(
       address: draft.customer.address,
       note: draft.customer.note,
       zone_id: draft.zone.id,
+      lat: draft.geo?.lat ?? null,
+      lng: draft.geo?.lng ?? null,
+      distance_km: draft.geo?.distanceKm ?? null,
+      scheduled_at: (draft as any).scheduledAt ?? null,
+      delivery_window: (draft as any).deliveryWindow ?? null,
+      is_express: (draft as any).isExpress ?? false,
+      surcharge_night: (draft as any).surchargeNight ?? 0,
+      surcharge_rain: (draft as any).surchargeRain ?? 0,
+      surcharge_distance: (draft as any).surchargeDistance ?? 0,
+      surcharge_express: (draft as any).surchargeExpress ?? 0,
       coupon_code: draft.coupon?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({
@@ -233,7 +243,7 @@ export const toDomain = async (
     );
   }
   const zone = (zoneRes.data ?? {}) as { name?: string; eta_label?: string };
-  return mapOrder({
+  const domain = mapOrder({
     order,
     items,
     history: (historyRes.data ?? []) as DbOrderHistory[],
@@ -242,6 +252,46 @@ export const toDomain = async (
     couponCode: (couponRes.data as { code: string } | null)?.code,
     products,
   });
+  if (!domain) return null;
+  if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+
+  // Slice 9 rider-leg: attach the assigned rider when dispatch has started.
+  if (["courier-assigned", "out-for-delivery", "delivered"].includes(domain.status)) {
+    const { data: assignment } = await db
+      .from("delivery_assignments")
+      .select("rider_id")
+      .eq("order_id", order.id)
+      .order("offered_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const riderId = (assignment as { rider_id?: string } | null)?.rider_id;
+    if (riderId) {
+      const { data: rider } = await db
+        .from("riders")
+        .select("id,name,phone,rating_avg,rating_count")
+        .eq("id", riderId)
+        .maybeSingle();
+      const r = rider as
+        | {
+            id: string;
+            name: string;
+            phone: string;
+            rating_avg: number;
+            rating_count: number;
+          }
+        | null;
+      if (r) {
+        domain.rider = {
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          ratingAvg: r.rating_avg,
+          ratingCount: r.rating_count,
+        };
+      }
+    }
+  }
+  return domain;
 };
 
 const findLiveOrderById = async (

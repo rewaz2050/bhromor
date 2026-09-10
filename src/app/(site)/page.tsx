@@ -15,7 +15,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 
 /**
  * The storefront deliberately follows one short editorial journey:
- * Hero → Collections → Best sellers → Service strip.
+ * Hero → Collections → Featured edit → Service strip.
  * Visual Journal and Our Story have been removed per request — keeping the
  * homepage tight and commerce-focused.
  */
@@ -242,7 +242,7 @@ function BestSellersSection() {
   ).filter((p) => p.featured);
   if (featured.length === 0) return null;
   return (
-    <section id="best-sellers" className="border-y border-line bg-paper scroll-mt-28">
+    <section id="featured" className="border-y border-line bg-paper scroll-mt-28">
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
         <SectionHeading
           eyebrow={t("bestSellers.eyebrow")}

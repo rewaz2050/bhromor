@@ -1023,6 +1023,9 @@ export async function upsertCoupon(
     value?: number;
     minOrder?: number;
     categoryId?: string | null;
+    zoneId?: string | null;
+    maxDiscount?: number | null;
+    description?: string | null;
     validFrom?: number | null;
     validUntil?: number | null;
     usageLimit?: number | null;
@@ -1032,15 +1035,16 @@ export async function upsertCoupon(
   if (!COUPON_CODE_RE.test(code)) {
     throw new AdminInputError("Code must be 3–24 letters/digits.");
   }
-  const type = body.type === "percent" ? "percent" : body.type === "fixed" ? "fixed" : "";
-  if (type === "") throw new AdminInputError("Coupon type must be percent or fixed.");
-  const value = cleanInt(body.value, -1);
+  const type = body.type === "percent" ? "percent" : body.type === "fixed" ? "fixed" : body.type === "free_delivery" ? "free_delivery" : "";
+  if (type === "") throw new AdminInputError("Coupon type must be percent, fixed, or free_delivery.");
+  let value = cleanInt(body.value, 0);
   if (type === "percent" && (value < 1 || value > 100)) {
     throw new AdminInputError("Percent must be between 1 and 100.");
   }
   if (type === "fixed" && value <= 0) {
     throw new AdminInputError("Fixed discount must be above 0 paisa.");
   }
+  if (type === "free_delivery") value = 0;
   const minOrder = Math.max(0, cleanInt(body.minOrder));
   const categoryId = clean(body.categoryId ?? "", 64) || null;
   if (categoryId) {
@@ -1051,6 +1055,16 @@ export async function upsertCoupon(
       .single();
     if (!cat) throw new AdminInputError("That category does not exist.");
   }
+  const zoneId = clean(body.zoneId ?? "", 32) || null;
+  if (zoneId) {
+    const { data: z } = await db.from("delivery_zones").select("id").eq("id", zoneId).single();
+    if (!z) throw new AdminInputError("That zone does not exist.");
+  }
+  const maxDiscount = body.maxDiscount ? Math.max(0, cleanInt(body.maxDiscount)) : null;
+  if (maxDiscount !== null && type !== "percent") {
+    throw new AdminInputError("Max discount cap only applies to percent type.");
+  }
+  const description = clean(body.description ?? "", 300) || null;
   const toIso = (v: unknown): string | null => {
     if (v === null || v === undefined || v === "") return null;
     const ms = typeof v === "number" ? v : Date.parse(String(v));
@@ -1087,6 +1101,7 @@ export async function upsertCoupon(
       .from("coupons")
       .update({
         code, type, value, min_order: minOrder, category_id: categoryId,
+        zone_id: zoneId, max_discount: maxDiscount, description,
         valid_from: validFrom, valid_until: validUntil,
         usage_limit: usageLimit, active: body.active !== false,
       })
@@ -1103,6 +1118,7 @@ export async function upsertCoupon(
     }
     const { error } = await db.from("coupons").insert({
       code, type, value, min_order: minOrder, category_id: categoryId,
+      zone_id: zoneId, max_discount: maxDiscount, description,
       valid_from: validFrom, valid_until: validUntil,
       usage_limit: usageLimit, used: 0, active: body.active !== false,
     });

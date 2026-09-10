@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -11,6 +11,20 @@ import ProductCard from "@/components/product/product-card";
 import { CartProvider, useCart } from "@/components/cart/cart-provider";
 import { PRODUCTS } from "@/lib/catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
+
+vi.mock("@/lib/use-live-catalog", async () => {
+  const { CATEGORIES, PRODUCTS } = await import("@/lib/catalog");
+  return {
+    useLiveCatalog: () => ({
+      products: PRODUCTS,
+      categories: CATEGORIES,
+      shops: [],
+      live: false,
+      loading: false,
+      liveCategories: CATEGORIES,
+    }),
+  };
+});
 
 const product = PRODUCTS.find((item) => item.inStock)!;
 

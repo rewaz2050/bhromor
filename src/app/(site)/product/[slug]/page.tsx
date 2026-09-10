@@ -15,6 +15,8 @@ import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
   DELIVERY_ETA,
+  FREE_DELIVERY_THRESHOLD,
+  FIRST_1000_FREE_LIMIT,
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -154,7 +156,7 @@ export default async function ProductPage({ params }: PageProps) {
               <ul className="space-y-3 text-sm leading-7 text-ink-soft">
                 <li>· 7-day easy return &amp; exchange on unworn items</li>
                 <li>· Quality checked before every dispatch</li>
-                <li>· Cash on delivery across all service areas</li>
+                <li>· Cash on delivery across Sunamganj Sadar</li>
                 <li>
                   · Questions?{" "}
                   <Link
@@ -176,21 +178,25 @@ export default async function ProductPage({ params }: PageProps) {
               {INSTANT_DELIVERY_TITLE}
             </h2>
             <p className="mt-3 text-sm leading-7 text-ivory-100/70">
-              Inside the service area your order arrives in{" "}
+              Inside Sunamganj Sadar your order arrives in{" "}
               <strong className="text-gold-300">{DELIVERY_ETA}</strong> from
-              confirmation. Select your area at checkout to see the exact
+              confirmation. Select your para at checkout to see the exact
               charge and arrival estimate.
             </p>
             <p className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm text-ivory-100/85">
               Delivery from{" "}
               <span className="font-semibold text-white">
-                {formatBdt(5000)}
+                {formatBdt(3000)}
               </span>{" "}
-              in Zone A · orders over{" "}
+              in Zone A (Traffic Point) · orders over{" "}
               <span className="font-semibold text-white">
-                {formatBdt(200000)}
+                {formatBdt(FREE_DELIVERY_THRESHOLD)}
               </span>{" "}
-              also get free delivery.
+              free · first{" "}
+              <span className="font-semibold text-gold-300">
+                {FIRST_1000_FREE_LIMIT}
+              </span>{" "}
+              orders FREE!
             </p>
           </div>
         </aside>

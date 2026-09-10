@@ -95,10 +95,13 @@ export const mapZone = (row: DbZone): DeliveryZone => ({
 export const mapCoupon = (row: DbCoupon): Coupon => ({
   id: row.id,
   code: row.code,
-  type: row.type,
+  type: row.type as Coupon["type"],
   value: row.value,
   minOrder: row.min_order,
   categoryId: row.category_id ?? undefined,
+  zoneId: (row as any).zone_id ?? undefined,
+  maxDiscount: (row as any).max_discount ?? undefined,
+  description: (row as any).description ?? undefined,
   validFrom: row.valid_from ? epoch(row.valid_from) : undefined,
   validUntil: row.valid_until ? epoch(row.valid_until) : undefined,
   usageLimit: row.usage_limit ?? undefined,
@@ -216,6 +219,11 @@ export const mapRider = (row: DbRider): Rider => ({
   cashInHand: row.cash_in_hand,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
+  lat: (row as any).lat ?? undefined,
+  lng: (row as any).lng ?? undefined,
+  lastLocationAt: (row as any).last_location_at ? Date.parse((row as any).last_location_at) : undefined,
+  currentLoad: (row as any).current_load ?? 0,
+  totalDeliveries: (row as any).total_deliveries ?? 0,
 });
 
 export interface OrderRowBundle {
@@ -295,6 +303,20 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
         ? { code: bundle.couponCode, discount: o.discount }
         : undefined,
     shopId: o.shop_id,
+    lat: (o as any).lat ?? undefined,
+    lng: (o as any).lng ?? undefined,
+    distanceKm: (o as any).distance_km ?? undefined,
+    scheduledAt: (o as any).scheduled_at ? new Date((o as any).scheduled_at).getTime() : undefined,
+    deliveryWindow: (o as any).delivery_window ?? undefined,
+    isExpress: (o as any).is_express ?? undefined,
+    surchargeNight: (o as any).surcharge_night ?? undefined,
+    surchargeRain: (o as any).surcharge_rain ?? undefined,
+    surchargeDistance: (o as any).surcharge_distance ?? undefined,
+    surchargeExpress: (o as any).surcharge_express ?? undefined,
+    deliveryProofUrl: (o as any).delivery_proof_url ?? undefined,
+    deliveryProofUploadedAt: (o as any).delivery_proof_uploaded_at ? new Date((o as any).delivery_proof_uploaded_at).getTime() : undefined,
+    deliveryAttempts: (o as any).delivery_attempts ?? undefined,
+    deliveryFailedReason: (o as any).delivery_failed_reason ?? undefined,
   };
 };
 

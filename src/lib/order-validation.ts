@@ -16,10 +16,12 @@ import {
   eligibleSubtotal,
   findCoupon,
   isCouponRedeemable,
+  isFreeDeliveryCoupon,
   normalizeCode,
 } from "./coupons";
 import { deliveryChargeFor, orderTotal } from "./delivery";
 import { normalizePhone } from "./orders";
+import { haversineKm, SUNAMGANJ_HUB_COORDS, type LatLng } from "./sunamganj";
 
 export interface OrderPayloadItem {
   productId: string;
@@ -34,6 +36,9 @@ export interface OrderPayload {
   address: string;
   note?: string;
   zoneId: string;
+  lat?: number;
+  lng?: number;
+  distance_km?: number;
   couponCode?: string;
   items: OrderPayloadItem[];
 }
@@ -59,6 +64,14 @@ export interface PricedOrderItem {
 export interface ValidOrderDraft {
   customer: { name: string; phone: string; area: string; address: string; note: string };
   zone: DeliveryZone;
+  geo?: { lat: number; lng: number; distanceKm: number } | null;
+  scheduledAt?: string | null;
+  deliveryWindow?: string | null;
+  isExpress?: boolean;
+  surchargeNight?: number;
+  surchargeRain?: number;
+  surchargeDistance?: number;
+  surchargeExpress?: number;
   items: PricedOrderItem[];
   coupon?: { code: string; discount: number; id: string };
   subtotal: number;
@@ -109,9 +122,28 @@ export const validateOrderPayload = (
   const name = clean(body.name, 120);
   const phone = clean(body.phone, 20).replace(/[\s-]/g, "");
   const area = clean(body.area, 120);
-  const address = clean(body.address, 500);
+  const address = clean(body.address, 800); // Sunamganj full address with District/Upazila + house/road
   const note = clean(body.note, 500);
   const zoneId = clean(body.zoneId, 64);
+  const latRaw = (body as any).lat;
+  const lngRaw = (body as any).lng;
+  const lat = typeof latRaw === 'number' ? latRaw : typeof latRaw === 'string' ? parseFloat(latRaw) : undefined;
+  const lng = typeof lngRaw === 'number' ? lngRaw : typeof lngRaw === 'string' ? parseFloat(lngRaw) : undefined;
+  const distRaw = (body as any).distance_km ?? (body as any).distanceKm;
+  const distanceKm = typeof distRaw === 'number' ? distRaw : typeof distRaw === 'string' ? parseFloat(distRaw) : undefined;
+  let geo: ValidOrderDraft['geo'] = null;
+  if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    const computed = haversineKm(SUNAMGANJ_HUB_COORDS as LatLng, { lat, lng });
+    const dist = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm >= 0 ? distanceKm : computed;
+    geo = { lat, lng, distanceKm: dist };
+  }
+  const scheduledAt = typeof (body as any).scheduled_at === 'string' ? (body as any).scheduled_at : typeof (body as any).scheduledAt === 'string' ? (body as any).scheduledAt : null;
+  const deliveryWindow = typeof (body as any).delivery_window === 'string' ? (body as any).delivery_window : typeof (body as any).deliveryWindow === 'string' ? (body as any).deliveryWindow : null;
+  const isExpress = !!(body as any).is_express || !!(body as any).isExpress;
+  const surchargeNight = Math.max(0, Math.floor(Number((body as any).surcharge_night ?? (body as any).surchargeNight ?? 0) || 0));
+  const surchargeRain = Math.max(0, Math.floor(Number((body as any).surcharge_rain ?? (body as any).surchargeRain ?? 0) || 0));
+  const surchargeDistance = Math.max(0, Math.floor(Number((body as any).surcharge_distance ?? (body as any).surchargeDistance ?? 0) || 0));
+  const surchargeExpress = Math.max(0, Math.floor(Number((body as any).surcharge_express ?? (body as any).surchargeExpress ?? 0) || 0));
   const couponCode =
     typeof body.couponCode === "string" && body.couponCode.trim() !== ""
       ? normalizeCode(body.couponCode)
@@ -269,7 +301,19 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
-  const deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
+  // Zone D (outside Sadar) requires minimum ৳500
+  if (zone.id === "z4" && subtotal < 50000) {
+    return {
+      ok: false,
+      errors: [
+        {
+          field: "items",
+          message: `Zone D (Sunamganj Sadar outside) requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
+        },
+      ],
+    };
+  }
+  let deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
 
   let coupon: ValidOrderDraft["coupon"];
   let discount = 0;
@@ -281,7 +325,7 @@ export const validateOrderPayload = (
         errors: [{ field: "couponCode", message: "Unknown code — double-check the spelling." }],
       };
     }
-    const redeemable = isCouponRedeemable(found, subtotal, now);
+    const redeemable = isCouponRedeemable(found, subtotal, zone.id, now);
     if (!redeemable.ok) {
       return {
         ok: false,
@@ -290,26 +334,32 @@ export const validateOrderPayload = (
         ],
       };
     }
-    const eligible = eligibleSubtotal(
-      found,
-      priced.map((it) => ({
-        productCategory: it.product.category,
-        subtotal: it.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      return {
-        ok: false,
-        errors: [
-          {
-            field: "couponCode",
-            message: "This code does not apply to the items in your cart.",
-          },
-        ],
-      };
+    if (isFreeDeliveryCoupon(found)) {
+      deliveryCharge = 0;
+      discount = 0;
+      coupon = { code: found.code, discount: 0, id: found.id };
+    } else {
+      const eligible = eligibleSubtotal(
+        found,
+        priced.map((it) => ({
+          productCategory: it.product.category,
+          subtotal: it.lineTotal,
+        })),
+      );
+      if (eligible <= 0) {
+        return {
+          ok: false,
+          errors: [
+            {
+              field: "couponCode",
+              message: "This code does not apply to the items in your cart.",
+            },
+          ],
+        };
+      }
+      discount = Math.min(discountAmount(found, eligible), subtotal);
+      coupon = { code: found.code, discount, id: found.id };
     }
-    discount = Math.min(discountAmount(found, eligible), subtotal);
-    coupon = { code: found.code, discount, id: found.id };
   }
 
   return {
@@ -317,6 +367,14 @@ export const validateOrderPayload = (
     draft: {
       customer: { name, phone, area, address, note },
       zone,
+      geo,
+      scheduledAt,
+      deliveryWindow,
+      isExpress,
+      surchargeNight,
+      surchargeRain,
+      surchargeDistance,
+      surchargeExpress,
       items: priced,
       coupon,
       subtotal,

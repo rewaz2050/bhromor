@@ -96,6 +96,9 @@ export interface DbShopLedger {
   subtotal: number;
   commission: number;
   payable: number;
+  delivery_charge?: number;
+  tip_amount?: number;
+  surcharge_total?: number;
   created_at: string;
 }
 
@@ -170,10 +173,13 @@ export interface DbZone {
 export interface DbCoupon {
   id: string;
   code: string;
-  type: "percent" | "fixed";
+  type: "percent" | "fixed" | "free_delivery";
   value: number;
   min_order: number;
   category_id: string | null;
+  zone_id?: string | null;
+  max_discount?: number | null;
+  description?: string | null;
   valid_from: string | null;
   valid_until: string | null;
   usage_limit: number | null;
@@ -192,6 +198,30 @@ export interface DbOrder {
   address: string;
   note: string;
   zone_id: string;
+  lat?: number | null;
+  lng?: number | null;
+  distance_km?: number | null;
+  scheduled_at?: string | null;
+  delivery_window?: string | null;
+  is_express?: boolean;
+  is_pickup?: boolean;
+  is_return?: boolean;
+  return_reason?: string | null;
+  return_parent_id?: string | null;
+  return_status?: string | null;
+  return_pickup_at?: string | null;
+  pickup_slot?: string | null;
+  tip_amount?: number;
+  weight_kg?: number | null;
+  surcharge_night?: number;
+  surcharge_rain?: number;
+  surcharge_distance?: number;
+  surcharge_express?: number;
+  surcharge_weight?: number;
+  delivery_proof_url?: string | null;
+  delivery_proof_uploaded_at?: string | null;
+  delivery_failed_reason?: string | null;
+  delivery_attempts?: number;
   subtotal: number;
   delivery_charge: number;
   discount: number;
@@ -199,6 +229,8 @@ export interface DbOrder {
   total: number;
   payment: "cod";
   status: DbOrderStatus;
+  rider_id: string | null;
+  delivery_code: string | null;
   created_at: string;
   updated_at: string;
 }

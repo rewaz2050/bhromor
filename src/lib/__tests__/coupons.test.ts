@@ -45,6 +45,10 @@ describe("coupons (§56)", () => {
     expect(
       isCouponRedeemable(coupon({ validFrom: now + 5000 }), bdt(5000)).ok,
     ).toBe(false);
+    // zone restriction
+    expect(isCouponRedeemable(coupon({ zoneId: "z1" }), bdt(5000), "z1").ok).toBe(true);
+    expect(isCouponRedeemable(coupon({ zoneId: "z1" }), bdt(5000), "z2").ok).toBe(false);
+    expect(isCouponRedeemable(coupon({ zoneId: "z1" }), bdt(5000)).ok).toBe(false);
   });
 
   it("computes eligible subtotal for all vs one category", () => {
@@ -59,14 +63,19 @@ describe("coupons (§56)", () => {
     expect(discountAmount(coupon(), bdt(5000))).toBe(bdt(100));
     expect(discountAmount(coupon({ type: "percent", value: 15 }), bdt(2000))).toBe(bdt(300));
     expect(discountAmount(coupon({ type: "percent", value: 15 }), 0)).toBe(0);
+    // maxDiscount cap
+    expect(discountAmount(coupon({ type: "percent", value: 20, maxDiscount: bdt(300) }), bdt(5000))).toBe(bdt(300));
+    // free_delivery gives 0 discount (waives delivery separately)
+    expect(discountAmount(coupon({ type: "free_delivery", value: 0 }), bdt(5000))).toBe(0);
   });
 
   it("finds by normalized code and detects duplicates", () => {
     const list = seedCoupons();
     expect(findCoupon(list, " welcome100 ")?.id).toBe("c1");
     expect(findCoupon(list, "nope")).toBeUndefined();
-    expect(codeTaken(list, "prosanti15")).toBe(true);
-    expect(codeTaken(list, "prosanti15", "c2")).toBe(false); // itself excepted
+    expect(codeTaken(list, "sunamganj15")).toBe(true);
+    expect(codeTaken(list, "sunamganj15", "c2")).toBe(false); // itself excepted
+    expect(codeTaken(list, "freedelivery")).toBe(true);
   });
 
   it("upserts normalized codes and replaces by id", () => {

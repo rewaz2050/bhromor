@@ -12,6 +12,19 @@ import { PRODUCTS } from "@/lib/catalog";
 
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+vi.mock("@/lib/use-live-catalog", async () => {
+  const { CATEGORIES, PRODUCTS } = await import("@/lib/catalog");
+  return {
+    useLiveCatalog: () => ({
+      products: PRODUCTS,
+      categories: CATEGORIES,
+      shops: [],
+      live: false,
+      loading: false,
+      liveCategories: CATEGORIES,
+    }),
+  };
+});
 
 function openSearch() {
   render(<ProductSearch />);

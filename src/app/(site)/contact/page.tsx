@@ -77,8 +77,9 @@ export default function ContactPage() {
             </p>
             <p className="mt-5 flex items-start gap-3 text-sm text-ivory-100/85">
               <IconMapPin className="mt-0.5 h-5 w-5 shrink-0 text-gold-300" />
-              Fulfilment hub: Comilla, Bangladesh — delivery zones expand
-              gradually.
+              Fulfilment hub: Sunamganj Sadar, Traffic Point — District:
+              Sunamganj, Upazila: Sunamganj Sadar. Real paras: Boropara,
+              Shologhar, Notunpara, Mollapara &amp; more.
             </p>
             <p className="mt-3 flex items-start gap-3 text-sm text-ivory-100/85">
               <IconPhone className="mt-0.5 h-5 w-5 shrink-0 text-gold-300" />

@@ -106,31 +106,51 @@ export default function AdminOrderDetailPage() {
         </span>
       </div>
 
-      {/* Actions — only legal transitions are offered (§34) */}
-      {(steps.length > 0 || cancellable) && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
-          {steps.map((to) => (
-            <button
-              key={to}
-              type="button"
-              onClick={() => doAdvance(to)}
-              className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
-            >
-              Mark {STATUS_META[to].label.toLowerCase()}
-              <IconArrowRight className="h-4 w-4" />
-            </button>
-          ))}
-          {cancellable && (
-            <button
-              type="button"
-              onClick={() => doAdvance("cancelled")}
-              className="rounded-full px-5 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
-            >
-              Cancel order
-            </button>
-          )}
-        </div>
-      )}
+      {/* Actions — only legal transitions are offered (§34) + free print invoice */}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
+        {(steps.length > 0 || cancellable) && (
+          <>
+            {steps.map((to) => (
+              <button
+                key={to}
+                type="button"
+                onClick={() => doAdvance(to)}
+                className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+              >
+                Mark {STATUS_META[to].label.toLowerCase()}
+                <IconArrowRight className="h-4 w-4" />
+              </button>
+            ))}
+            {cancellable && (
+              <button
+                type="button"
+                onClick={() => doAdvance("cancelled")}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
+              >
+                Cancel order
+              </button>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="rounded-full bg-paper px-5 py-2.5 text-sm font-semibold ring-1 ring-line hover:bg-ivory-100"
+        >
+          🖨️ Print Invoice (free)
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} Total ${order.total/100} taka COD. Track: https://prosanti.com/track/${order.id}`;
+            const url = `https://wa.me/88${order.customer.phone.replace(/[^0-9]/g,"").slice(-11)}?text=${encodeURIComponent(text)}`;
+            window.open(url, "_blank");
+          }}
+          className="rounded-full bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white"
+        >
+          WhatsApp Customer (free)
+        </button>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Items + totals */}
@@ -175,9 +195,39 @@ export default function AdminOrderDetailPage() {
             <div className="flex justify-between text-ink-soft">
               <dt>
                 Delivery · {order.etaLabel}
+                {(order as any).isPickup ? " — PICKUP" : ""}
+                {(order as any).isExpress ? " — Express" : ""}
               </dt>
               <dd>{formatBdt(order.deliveryCharge)}</dd>
             </div>
+            {(order as any).scheduledAt && (
+              <div className="flex justify-between text-sky-800 bg-sky-50 px-2 py-1 rounded">
+                <dt>Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</dt>
+                <dd>{(order as any).isExpress ? "+Express" : ""}</dd>
+              </div>
+            )}
+            {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+              <div className="rounded-xl bg-amber-50 p-2 ring-1 ring-amber-200 text-xs space-y-1">
+                <p className="font-bold text-amber-900">Surcharges breakdown</p>
+                {(order.surchargeNight ?? 0) > 0 && <div className="flex justify-between"><span>Night (9PM-6AM)</span><span>{formatBdt(order.surchargeNight ?? 0)}</span></div>}
+                {(order.surchargeRain ?? 0) > 0 && <div className="flex justify-between"><span>Rain</span><span>{formatBdt(order.surchargeRain ?? 0)}</span></div>}
+                {(order.surchargeDistance ?? 0) > 0 && <div className="flex justify-between"><span>Distance &gt;4km</span><span>{formatBdt(order.surchargeDistance ?? 0)}</span></div>}
+                {(order.surchargeExpress ?? 0) > 0 && <div className="flex justify-between"><span>Express</span><span>{formatBdt(order.surchargeExpress ?? 0)}</span></div>}
+                {(order as any).surchargeWeight > 0 && <div className="flex justify-between"><span>Weight &gt;5kg</span><span>{formatBdt((order as any).surchargeWeight)}</span></div>}
+              </div>
+            )}
+            {(order as any).tipAmount > 0 && (
+              <div className="flex justify-between text-forest-700">
+                <dt>💝 Tip for Rider</dt>
+                <dd>+{formatBdt((order as any).tipAmount)}</dd>
+              </div>
+            )}
+            {(order as any).weightKg && (
+              <div className="flex justify-between text-ink-soft text-xs">
+                <dt>Approx weight</dt>
+                <dd>{(order as any).weightKg} kg</dd>
+              </div>
+            )}
             {order.coupon && (
               <div className="flex justify-between text-emerald-700">
                 <dt>Coupon · {order.coupon.code}</dt>
@@ -185,7 +235,7 @@ export default function AdminOrderDetailPage() {
               </div>
             )}
             <div className="flex justify-between border-t border-line pt-3 text-base font-semibold text-forest-900">
-              <dt>Total (COD)</dt>
+              <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
               <dd>{formatBdt(order.total)}</dd>
             </div>
           </dl>
@@ -202,7 +252,7 @@ export default function AdminOrderDetailPage() {
                 Customer & delivery
               </h3>
               <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold font-mono text-emerald-800">
-                <IconShield className="h-3 w-3" /> PIN: {getDeliveryCode(order.id)}
+                <IconShield className="h-3 w-3" /> PIN: {order.deliveryCode ?? getDeliveryCode(order.id)}
               </span>
             </div>
             <dl className="mt-4 space-y-3 text-sm">
@@ -212,14 +262,19 @@ export default function AdminOrderDetailPage() {
               </div>
               <div>
                 <dt className="text-xs text-ink-soft">Phone</dt>
-                {/* Staff need the real number to confirm a COD order — this
-                    used to be masked, making the panel unusable for calls. */}
-                <dd className="font-medium text-ink">
+                <dd className="font-medium text-ink flex flex-wrap gap-2 items-center">
                   <a
                     href={`tel:+88${normalizePhone(order.customer.phone)}`}
                     className="text-forest-800 underline underline-offset-4 hover:text-forest-600"
                   >
                     {order.customer.phone}
+                  </a>
+                  <a
+                    href={`https://wa.me/88${normalizePhone(order.customer.phone)}?text=${encodeURIComponent(`Assalamualaikum! PROSANTI order ${order.id} — ${order.status}. Traffic Point, Sunamganj Sadar. Track: https://prosanti.com/track/${order.id}`)}`}
+                    target="_blank"
+                    className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    WhatsApp
                   </a>
                 </dd>
               </div>
@@ -243,6 +298,59 @@ export default function AdminOrderDetailPage() {
                 <IconClock className="h-3.5 w-3.5" />
                 Zone: {order.zoneName}
               </div>
+              {order.lat && order.lng && (
+                <div className="mt-3 rounded-xl bg-ivory-100 p-3 ring-1 ring-line">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-ink-soft">Map Pin — Geo</p>
+                  <p className="mt-1 text-xs font-mono">Lat: {order.lat.toFixed(5)}, Lng: {order.lng.toFixed(5)}</p>
+                  {order.distanceKm !== undefined && <p className="text-xs">Distance from Hub: {order.distanceKm.toFixed(2)} km</p>}
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`}
+                    target="_blank"
+                    className="mt-2 inline-block rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    Open in OSM
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps?q=${order.lat},${order.lng}`}
+                    target="_blank"
+                    className="ml-2 inline-block rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line"
+                  >
+                    Google Maps
+                  </a>
+                </div>
+              )}
+              {order.deliveryProofUrl && (
+                <div className="mt-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-emerald-800">Delivery Proof — Cloudinary</p>
+                  <img src={order.deliveryProofUrl} alt="Proof" className="mt-2 w-full rounded-xl object-cover max-h-64" />
+                  <p className="mt-1 text-[10px] break-all text-ink-soft">{order.deliveryProofUrl}</p>
+                </div>
+              )}
+              {order.deliveryFailedReason && (
+                <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
+                  <p className="text-xs font-bold text-rose-800">Failed attempt: {order.deliveryFailedReason}</p>
+                  <p className="text-xs">Attempts: {order.deliveryAttempts}</p>
+                </div>
+              )}
+              {(order as any).isReturn && (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-amber-900">Return / Exchange — Pickup</p>
+                  <p className="text-xs">Parent: {(order as any).returnParentId}</p>
+                  <p className="text-xs">Reason: {(order as any).returnReason}</p>
+                  <p className="text-xs">Status: {(order as any).returnStatus}</p>
+                  {(order as any).pickupSlot && <p className="text-xs">Pickup Slot: {(order as any).pickupSlot}</p>}
+                  <div className="mt-2 flex gap-2">
+                    <a href={`/admin/orders/${(order as any).returnParentId}`} className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Parent</a>
+                  </div>
+                </div>
+              )}
+              {(order as any).isPickup && (
+                <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">Store Pickup — Traffic Point</p>
+                  <p className="text-xs">Pickup Slot: {(order as any).pickupSlot || (order as any).deliveryWindow || "now"}</p>
+                  <p className="text-xs">Ready in ~{order.etaLabel}</p>
+                </div>
+              )}
             </dl>
           </section>
 

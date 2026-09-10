@@ -9,18 +9,8 @@ import { IconArrowRight, IconClose, IconMenu } from "@/components/ui/icons";
 import LanguageSwitcher from "./language-switcher";
 import { useLanguage } from "@/components/i18n/language-provider";
 
-// keep original for reference fallback
-const SECONDARY_FALLBACK = [
-  { label: "Wishlist", href: "/wishlist" },
-  { label: "Your Account", href: "/account" },
-  { label: "Track Order", href: "/track" },
-  { label: "Delivery & Returns", href: "/delivery" },
-  { label: "Contact", href: "/contact" },
-  { label: "FAQ", href: "/faq" },
-];
-
 export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const PRIMARY = [
     { label: t("nav.shop"), href: "/shop" },
     { label: t("nav.shops"), href: "/shops" },
