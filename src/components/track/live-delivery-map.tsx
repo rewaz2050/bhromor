@@ -5,6 +5,12 @@ import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
 import { IconMapPin, IconPhone, IconShield, IconTruck } from "@/components/ui/icons";
 
+interface RiderLivePos {
+  lat: number;
+  lng: number;
+  updatedAt: string;
+}
+
 interface LiveDeliveryMapProps {
   order: Order;
 }
@@ -21,16 +27,37 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   // Derive base progress and animate subtle simulated motion when active
   const baseProgress = isDelivered ? 1 : isOut ? 0.65 : isAssigned ? 0.25 : 0.05;
   const [liveOffset, setLiveOffset] = useState(0);
+  const [riderLive, setRiderLive] = useState<RiderLivePos | null>(null);
 
   useEffect(() => {
     if (!isOut) return;
-
     const interval = setInterval(() => {
       setLiveOffset((prev) => (prev >= 0.18 ? -0.15 : prev + 0.03));
     }, 2500);
-
     return () => clearInterval(interval);
   }, [isOut]);
+
+  // Free real rider location polling (no cost, uses existing rider/location API)
+  useEffect(() => {
+    if (!isOut || !order.id) return;
+    let cancelled = false;
+    const fetchRiderPos = async () => {
+      try {
+        const res = await fetch(`/api/track/rider-location?orderId=${encodeURIComponent(order.id)}`);
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null) as any;
+        if (data?.lat && data?.lng && !cancelled) {
+          setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString() });
+        }
+      } catch {}
+    };
+    void fetchRiderPos();
+    const id = window.setInterval(fetchRiderPos, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [isOut, order.id]);
 
   const transitProgress = Math.min(1, Math.max(0, baseProgress + (isOut ? liveOffset : 0)));
 
@@ -167,6 +194,9 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               ? "১০–১৫ মিনিট বাকি"
               : order.etaLabel}
           </p>
+          {riderLive && (
+            <p className="mt-1 text-[10px] text-emerald-300">📍 Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
+          )}
         </div>
 
         {/* Destination Chip on Map Bottom Right */}

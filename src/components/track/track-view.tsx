@@ -21,6 +21,10 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
+import { SignatureCanvas } from "./signature-canvas";
+import { DeliveryRating } from "./delivery-rating";
+import { RescheduleDelivery } from "./reschedule-delivery";
+import { DeliveryFeeCalculator } from "@/components/delivery/delivery-fee-calculator";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {

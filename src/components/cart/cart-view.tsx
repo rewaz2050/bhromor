@@ -30,6 +30,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { DeliveryFeeCalculator } from "@/components/delivery/delivery-fee-calculator";
 
 export default function CartView() {
   const { t } = useLanguage();
@@ -240,6 +241,9 @@ export default function CartView() {
           <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
             {FLAT_DELIVERY_NOTE}
           </p>
+          <div className="mt-6">
+            <DeliveryFeeCalculator subtotalTaka={subtotal/100} />
+          </div>
         </div>
       </aside>
     </div>
