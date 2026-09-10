@@ -10,6 +10,7 @@ import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useMyZone } from "@/lib/use-my-zone";
 import {
+  isShopOrderable,
   lineShopIds,
   shopById,
   splitEta,
@@ -100,6 +101,11 @@ export default function CheckoutView() {
   } | null>(null);
   const submittingRef = useRef(false);
   const [orderError, setOrderError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const nameRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLTextAreaElement>(null);
 
   /** Browse-time zone pre-fills checkout; an explicit pick wins after. */
   const myZoneValid =
@@ -184,6 +190,8 @@ export default function CheckoutView() {
   }, [zone, subtotal, detail, activeCoupon, couponCheck.discount]);
 
   const empty = detail.length === 0;
+  const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
+  const mixedBag = lineShopIds(detail, shops[0]?.id ?? "").length > 1;
 
   if (placed) {
     const deliveryCode = placed.deliveryCode ?? getDeliveryCode(placed.orderId);
@@ -330,12 +338,35 @@ export default function CheckoutView() {
     submittingRef.current = true;
     update("submitting", true);
     setOrderError(null);
+    setFieldErrors({});
 
-    const fail = (message: string) => {
+    const fail = (message: string, fields?: Record<string, string>) => {
       submittingRef.current = false;
       update("submitting", false);
       setOrderError(message);
+      if (fields) setFieldErrors(fields);
+      // Focus first invalid field for accessibility
+      const firstField = Object.keys(fields ?? {})[0];
+      if (firstField === "name") nameRef.current?.focus();
+      else if (firstField === "phone") phoneRef.current?.focus();
+      else if (firstField === "area") areaRef.current?.focus();
+      else if (firstField === "address") addressRef.current?.focus();
     };
+
+    // Client-side quick checks before hitting the network — gives instant
+    // feedback and matches the server's validateOrderPayload rules.
+    const localErrors: Record<string, string> = {};
+    if (form.name.trim().length < 2) localErrors.name = "Please share your full name (at least 2 characters).";
+    const phoneClean = form.phone.replace(/[\s\-]/g, "");
+    if (!/^(?:\+?88)?01[0-9]{9}$/.test(phoneClean)) {
+      localErrors.phone = "A valid Bangladeshi mobile number is required — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
+    }
+    if (form.area.trim().length < 2) localErrors.area = "Please share your area / neighbourhood.";
+    if (form.address.trim().length < 8) localErrors.address = "Please share a full delivery address (house, road, landmark).";
+    if (Object.keys(localErrors).length > 0) {
+      fail("Please fix the highlighted fields.", localErrors);
+      return;
+    }
 
     /** Demo-mode placement: local store only, exactly as before. */
     const placeLocally = () => {
@@ -421,7 +452,8 @@ export default function CheckoutView() {
       demoMode?: boolean;
       order?: Order;
       error?: string;
-      errors?: { message: string }[];
+      errors?: { field: string; message: string }[];
+      field?: string;
     };
 
     if (res.ok && data.demoMode) {
@@ -444,11 +476,21 @@ export default function CheckoutView() {
       clear();
       return;
     }
+    // Server returns field-scoped errors (422) — map them to the form so
+    // the customer sees exactly which input needs fixing.
+    const fieldMap: Record<string, string> = {};
+    for (const e of data.errors ?? []) {
+      if (e.field) fieldMap[e.field] = e.message;
+      // items[0] → items, couponCode stays couponCode
+      if (e.field?.startsWith("items")) fieldMap.items = e.message;
+    }
+    if (data.field) fieldMap[data.field] = data.error ?? "";
     const serverMessage =
       data.errors?.map((e) => e.message).join(" ") || data.error;
     fail(
       serverMessage ||
         "Could not place the order — please try again. Your cart is untouched.",
+      Object.keys(fieldMap).length > 0 ? fieldMap : undefined,
     );
   };
 
@@ -473,38 +515,56 @@ export default function CheckoutView() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.fullName")}
+                {t("checkout.fullName")} <span className="text-rose-600">*</span>
               </span>
               <input
+                ref={nameRef}
                 required
                 value={form.name}
-                onChange={(e) => update("name", e.target.value)}
+                onChange={(e) => {
+                  update("name", e.target.value);
+                  if (fieldErrors.name) setFieldErrors((f) => ({ ...f, name: "" }));
+                }}
                 placeholder="e.g. Rahat Ahmed"
-                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                aria-invalid={!!fieldErrors.name}
+                aria-describedby={fieldErrors.name ? "err-name" : undefined}
+                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.name ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
               />
+              {fieldErrors.name && (
+                <p id="err-name" className="mt-1.5 text-xs text-rose-700">{fieldErrors.name}</p>
+              )}
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.phoneNumber")}
+                {t("checkout.phoneNumber")} <span className="text-rose-600">*</span>
               </span>
               <input
+                ref={phoneRef}
                 required
                 type="tel"
                 inputMode="tel"
-                pattern="(\+?88)?01[0-9]{9}"
-                title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
                 value={form.phone}
-                onChange={(e) => update("phone", e.target.value)}
-                placeholder="017XXXXXXXX"
-                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                onChange={(e) => {
+                  update("phone", e.target.value);
+                  if (fieldErrors.phone) setFieldErrors((f) => ({ ...f, phone: "" }));
+                }}
+                placeholder="017XXXXXXXX or +88017XXXXXXXX"
+                aria-invalid={!!fieldErrors.phone}
+                aria-describedby={fieldErrors.phone ? "err-phone" : undefined}
+                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.phone ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
               />
+              {fieldErrors.phone ? (
+                <p id="err-phone" className="mt-1.5 text-xs text-rose-700">{fieldErrors.phone}</p>
+              ) : (
+                <p className="mt-1 text-[11px] text-ink-soft">Spaces and dashes are okay — we’ll normalize it.</p>
+              )}
             </label>
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.deliveryArea")}
+                {t("checkout.deliveryArea")} <span className="text-rose-600">*</span>
               </span>
               <select
                 required
@@ -512,8 +572,10 @@ export default function CheckoutView() {
                 onChange={(e) => {
                   update("zoneId", e.target.value);
                   setMyZoneId(e.target.value);
+                  if (fieldErrors.zoneId) setFieldErrors((f) => ({ ...f, zoneId: "" }));
                 }}
-                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
+                aria-invalid={!!fieldErrors.zoneId}
+                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 focus:ring-2 focus:ring-forest-500 ${fieldErrors.zoneId ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
               >
                 {zoneList.map((z) => (
                   <option key={z.id} value={z.id}>
@@ -521,39 +583,64 @@ export default function CheckoutView() {
                   </option>
                 ))}
               </select>
+              {fieldErrors.zoneId && (
+                <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.zoneId}</p>
+              )}
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.areaNeighbourhood")}
+                {t("checkout.areaNeighbourhood")} <span className="text-rose-600">*</span>
               </span>
               <input
+                ref={areaRef}
                 required
                 list="prosanti-areas"
                 value={form.area}
-                onChange={(e) => update("area", e.target.value)}
+                onChange={(e) => {
+                  update("area", e.target.value);
+                  if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                }}
                 placeholder="e.g. Kandirpar"
-                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                aria-invalid={!!fieldErrors.area}
+                aria-describedby={fieldErrors.area ? "err-area" : "hint-area"}
+                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.area ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
               />
               <datalist id="prosanti-areas">
                 {areaOptions.map((a) => (
                   <option key={a} value={a} />
                 ))}
               </datalist>
+              {fieldErrors.area ? (
+                <p id="err-area" className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+              ) : (
+                <p id="hint-area" className="mt-1 text-[11px] text-ink-soft">
+                  {zone.areas.length > 0 ? `Suggested: ${zone.areas.slice(0, 3).join(", ")}${zone.areas.length > 3 ? "…" : ""}` : ""}
+                </p>
+              )}
             </label>
           </div>
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              {t("checkout.fullAddress")}
+              {t("checkout.fullAddress")} <span className="text-rose-600">*</span>
             </span>
             <textarea
+              ref={addressRef}
               required
               rows={3}
               value={form.address}
-              onChange={(e) => update("address", e.target.value)}
-              placeholder="House, road, landmark…"
-              className="w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+              onChange={(e) => {
+                update("address", e.target.value);
+                if (fieldErrors.address) setFieldErrors((f) => ({ ...f, address: "" }));
+              }}
+              placeholder="House, road, landmark, floor — e.g. House 12, Road 5, Kandirpar"
+              aria-invalid={!!fieldErrors.address}
+              aria-describedby={fieldErrors.address ? "err-address" : undefined}
+              className={`w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.address ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
             />
+            {fieldErrors.address && (
+              <p id="err-address" className="mt-1.5 text-xs text-rose-700">{fieldErrors.address}</p>
+            )}
           </label>
 
           <label className="mt-4 block">
@@ -654,6 +741,30 @@ export default function CheckoutView() {
           </div>
         </section>
 
+        {/* Shop / bag level guard messages */}
+        {mixedBag && (
+          <p role="alert" className="mt-8 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
+            Your bag has items from {lineShopIds(detail, shops[0]?.id ?? "").length} different shops — one order can only be from one shop. Check out each shop separately.
+          </p>
+        )}
+        {shopClosed && bagShop && (
+          <p role="alert" className="mt-4 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
+            “{bagShop.name}” is closed right now — your bag will keep until it reopens. You can still browse, but placing the order will fail until the shop opens.
+          </p>
+        )}
+
+        {/* Items-level error (e.g. mixed shops, out of stock) */}
+        {fieldErrors.items && (
+          <p role="alert" className="mt-4 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
+            {fieldErrors.items} — Please review your bag or try again.
+          </p>
+        )}
+        {fieldErrors.couponCode && (
+          <p role="alert" className="mt-4 rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
+            Coupon: {fieldErrors.couponCode}
+          </p>
+        )}
+
         <CheckoutAssurance />
         {orderError && (
           <p
@@ -665,12 +776,15 @@ export default function CheckoutView() {
         )}
         <button
           type="submit"
-          disabled={form.submitting}
+          disabled={form.submitting || mixedBag || shopClosed}
           className="mt-10 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60 sm:w-auto sm:px-10"
         >
           {form.submitting ? t("checkout.placingOrder") : t("checkout.placeOrder")}
           {!form.submitting && <IconArrowRight className="h-4 w-4" />}
         </button>
+        {(mixedBag || shopClosed) && (
+          <p className="mt-3 text-xs text-amber-800">Fix the bag issue above before placing the order.</p>
+        )}
         <p className="mt-4 text-xs leading-5 text-ink-soft">
           By placing the order you agree to our{" "}
           <Link href="/terms" className="underline underline-offset-2">
