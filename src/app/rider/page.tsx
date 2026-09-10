@@ -203,7 +203,7 @@ export default function RiderPage() {
 
     const order = demoOrders.find((o) => o.id === task.order.id);
     if (!order) return;
-    const expectedCode = getDeliveryCode(order.id);
+    const expectedCode = order.deliveryCode ?? getDeliveryCode(order.id);
     if (enteredPin.trim() !== expectedCode) {
       setPinError("ভুল কোড! সঠিক ৪-সংখ্যার কোডটি কাস্টমারের কাছ থেকে নিন।");
       return;
@@ -593,11 +593,15 @@ export default function RiderPage() {
                 className="h-14 w-full rounded-2xl border border-line bg-ivory-50 text-center font-mono text-2xl font-bold tracking-[0.5em] text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-800"
                 autoFocus
               />
-              {!isLive && (
-                <p className="mt-2 text-center text-[11px] text-ink-soft">
-                  (ডেমো টেস্ট কোড: {getDeliveryCode(selectedPinTask)})
-                </p>
-              )}
+              {!isLive && (() => {
+                const demoTask = tasks.find((t) => t.id === selectedPinTask);
+                const code = demoTask ? (demoTask.order.deliveryCode ?? getDeliveryCode(demoTask.order.id)) : getDeliveryCode(selectedPinTask);
+                return (
+                  <p className="mt-2 text-center text-[11px] text-ink-soft">
+                    (ডেমো টেস্ট কোড: {code})
+                  </p>
+                );
+              })()}
             </div>
 
             <div className="flex gap-2.5 pt-2">
