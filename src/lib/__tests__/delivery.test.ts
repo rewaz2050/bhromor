@@ -21,8 +21,8 @@ const zone = (id: string, charge: number, active = true): DeliveryZone => ({
 
 describe("delivery pricing (shared by cart + checkout)", () => {
   it("charges the zone fee below the free-delivery threshold", () => {
-    expect(deliveryChargeFor(bdt(70), bdt(1500))).toBe(bdt(70));
-    expect(qualifiesForFreeDelivery(bdt(1999))).toBe(false);
+    expect(deliveryChargeFor(bdt(70), bdt(500))).toBe(bdt(70));
+    expect(qualifiesForFreeDelivery(bdt(999))).toBe(false);
   });
 
   it("waives delivery at and above the threshold", () => {
@@ -31,8 +31,8 @@ describe("delivery pricing (shared by cart + checkout)", () => {
   });
 
   it("reports how much more unlocks free delivery", () => {
-    expect(amountToFreeDelivery(bdt(1500))).toBe(bdt(500));
-    expect(amountToFreeDelivery(bdt(2500))).toBe(0);
+    expect(amountToFreeDelivery(bdt(500))).toBe(bdt(500));
+    expect(amountToFreeDelivery(bdt(1500))).toBe(0);
   });
 
   it("quotes from the cheapest ACTIVE zone", () => {

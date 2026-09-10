@@ -6,9 +6,9 @@ import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck } from "@/components/ui/icons";
 
 export const metadata: Metadata = {
-  title: "Delivery Information",
+  title: "Delivery Information — Sunamganj Sadar",
   description:
-    "PROSANTI delivery — zone-based charges, 45–50 minute rapid delivery target inside the service area, COD and tracking.",
+    "PROSANTI Sunamganj delivery — Traffic Point centric zones, first 1000 orders FREE, ৳1000+ free delivery, COD and tracking.",
 };
 
 export const dynamic = "force-dynamic";
@@ -17,14 +17,12 @@ export default async function DeliveryPage() {
   const { zones } = await getStorefrontZones();
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:py-16">
-      <Eyebrow>Transparent, zone-based</Eyebrow>
+      <Eyebrow>Sunamganj Sadar · Traffic Point centric</Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
-        Delivery information
+        Delivery information — Sunamganj
       </h1>
       <p className="mt-4 leading-7 text-ink-soft">
-        Delivery is not a flat fee — it depends on your area. Choose your zone
-        at checkout and the exact charge and arrival estimate appear before you
-        pay.
+        District: <strong>Sunamganj</strong> · Upazila: <strong>Sunamganj Sadar</strong>. Delivery charge depends on your para — Traffic Point থেকে 10-20 মিনিটের সাইকেল দূরত্ব অনুযায়ী। প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!
       </p>
 
       {/* Promise */}
@@ -46,9 +44,15 @@ export default async function DeliveryPage() {
         </div>
       </div>
 
+      {/* Promo */}
+      <div className="mt-8 rounded-2xl bg-gold-50 p-5 ring-1 ring-gold-200">
+        <p className="text-sm font-bold text-forest-900">🎉 প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!</p>
+        <p className="mt-1 text-xs leading-5 text-ink-soft">এরপর ৳১০০০+ অর্ডারে সবসময় ফ্রি। এর নিচে জায়গা অনুযায়ী: Zone A (Traffic Point 0-1.5km) ৳30, Zone B (Sadar Core) ৳50, Zone C (Extended) ৳70, Zone D (Sadar বাইরে) ৳100।</p>
+      </div>
+
       {/* Zones */}
       <h2 className="font-display mt-12 text-2xl font-medium text-forest-900">
-        Delivery zones (launch)
+        Delivery zones — Sunamganj Sadar (launch)
       </h2>
       <div className="mt-5 overflow-hidden rounded-3xl bg-paper ring-1 ring-line">
         <table className="w-full text-left text-sm">
@@ -85,8 +89,14 @@ export default async function DeliveryPage() {
             area — pay only when the order arrives.
           </li>
           <li>
-            <strong>Free delivery</strong> on orders over ৳2,000 — every order
+            <strong>First 1000 FREE</strong> — প্রথম ১০০০ অর্ডারে কোনো ডেলিভারি চার্জ নেই।
+          </li>
+          <li>
+            <strong>Free delivery</strong> on orders over ৳1,000 — every order
             still arrives inside the instant-delivery window.
+          </li>
+          <li>
+            <strong>Address box</strong> — checkout এ পাড়া সিলেক্ট করার পর আলাদা বক্সে বাড়ির নম্বর, রোডের নাম, পাড়ার বিস্তারিত, ল্যান্ডমার্ক + extra note লিখতে পারবেন।
           </li>
           <li>
             Every order can be followed on the{" "}

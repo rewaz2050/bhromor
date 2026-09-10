@@ -29,11 +29,11 @@ describe("validateOrderPayload", () => {
     const result = validateOrderPayload(payload(), snapshot());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // p1 = ৳1,490 → 149000 paisa; z1 charge ৳50, below the free threshold.
+    // p1 = ৳1,490 → 149000 paisa; threshold now ৳1000, so free delivery.
     expect(result.draft.subtotal).toBe(bdt(1490));
-    expect(result.draft.deliveryCharge).toBe(bdt(50));
+    expect(result.draft.deliveryCharge).toBe(bdt(0));
     expect(result.draft.discount).toBe(0);
-    expect(result.draft.total).toBe(bdt(1540));
+    expect(result.draft.total).toBe(bdt(1490));
     expect(result.draft.items[0].unitPrice).toBe(bdt(1490));
   });
 
@@ -56,13 +56,13 @@ describe("validateOrderPayload", () => {
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // WELCOME100 = ৳100 off, min ৳1,000 — p1 qualifies.
+    // WELCOME100 = ৳100 off, min ৳1,000 — p1 qualifies, now free delivery.
     expect(result.draft.coupon).toEqual({
       code: "WELCOME100",
       discount: bdt(100),
       id: "c1",
     });
-    expect(result.draft.total).toBe(bdt(1490) - bdt(100) + bdt(50));
+    expect(result.draft.total).toBe(bdt(1490) - bdt(100) + bdt(0));
   });
 
   it("restricts category coupons to eligible lines only", () => {

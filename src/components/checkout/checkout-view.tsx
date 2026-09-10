@@ -43,6 +43,8 @@ interface FormState {
   name: string;
   phone: string;
   area: string;
+  houseNo: string;
+  roadName: string;
   address: string;
   note: string;
   couponCode: string;
@@ -55,6 +57,8 @@ const initialForm: FormState = {
   name: "",
   phone: "",
   area: "",
+  houseNo: "",
+  roadName: "",
   address: "",
   note: "",
   couponCode: "",
@@ -62,6 +66,9 @@ const initialForm: FormState = {
   payment: "cod",
   submitting: false,
 };
+
+const DISTRICT = "Sunamganj";
+const UPAZILA = "Sunamganj Sadar";
 
 export default function CheckoutView() {
   const { t } = useLanguage();
@@ -368,12 +375,24 @@ export default function CheckoutView() {
       return;
     }
 
+    // Build full address from structured fields + free-form box
+    const buildFullAddress = () => {
+      const parts: string[] = [];
+      if (form.houseNo.trim()) parts.push(`House: ${form.houseNo.trim()}`);
+      if (form.roadName.trim()) parts.push(`Road: ${form.roadName.trim()}`);
+      if (form.area.trim()) parts.push(`Para: ${form.area.trim()}`);
+      parts.push(`${DISTRICT}, ${UPAZILA}`);
+      if (form.address.trim()) parts.push(form.address.trim());
+      return parts.join(", ");
+    };
+
     /** Demo-mode placement: local store only, exactly as before. */
     const placeLocally = () => {
       const stamp = new Date();
       const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
       const seq = String(Math.floor(1000 + Math.random() * 9000));
       const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
+      const fullAddress = buildFullAddress();
       // Store the order in the demo backend (order-store) so the admin
       // Orders queue and the public Track page can follow it live (§92).
       addOrderToStore(
@@ -384,7 +403,7 @@ export default function CheckoutView() {
             name: form.name,
             phone: form.phone,
             area: form.area,
-            address: form.address,
+            address: fullAddress,
             note: form.note,
           },
           zone: {
@@ -410,13 +429,14 @@ export default function CheckoutView() {
         eta: zone.etaLabel,
         charge: summary.charge,
         total: summary.total,
-        addressSummary: `${form.address || form.area}, ${zone.name}`,
+        addressSummary: `${fullAddress}, ${zone.name}`,
       });
       clear();
     };
 
     let res: Response;
     try {
+      const fullAddress = buildFullAddress();
       res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -424,7 +444,7 @@ export default function CheckoutView() {
           name: form.name,
           phone: form.phone,
           area: form.area,
-          address: form.address,
+          address: fullAddress,
           note: form.note,
           zoneId: zone.id,
           couponCode: activeCoupon?.code,
@@ -507,6 +527,31 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
+        {/* First 1000 FREE promo banner */}
+        <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
+              <IconGift className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-bold">🎉 প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!</p>
+              <p className="text-xs text-ivory-100/80 mt-0.5">এরপর জায়গা অনুযায়ী চার্জ: Zone A ৳30, Zone B ৳50, Zone C ৳70, বাইরে ৳100 · ৳1000+ অর্ডারে সবসময় ফ্রি</p>
+            </div>
+          </div>
+        </div>
+
+        {/* District / Upazila fixed */}
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-ivory-100 px-4 py-3 ring-1 ring-line">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা (District)</p>
+            <p className="mt-1 text-sm font-semibold text-forest-900">{DISTRICT}</p>
+          </div>
+          <div className="rounded-xl bg-ivory-100 px-4 py-3 ring-1 ring-line">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">উপজেলা (Upazila)</p>
+            <p className="mt-1 text-sm font-semibold text-forest-900">{UPAZILA}</p>
+          </div>
+        </div>
+
         {/* Contact */}
         <section>
           <h2 className="font-display text-xl font-medium text-forest-900">
@@ -620,9 +665,35 @@ export default function CheckoutView() {
             </label>
           </div>
 
+          {/* House / Road structured fields */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                বাড়ির নম্বর / House No. <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+              </span>
+              <input
+                value={form.houseNo}
+                onChange={(e) => update("houseNo", e.target.value)}
+                placeholder="যেমন: 12/A, Holding 45"
+                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                রোডের নাম / Road Name <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+              </span>
+              <input
+                value={form.roadName}
+                onChange={(e) => update("roadName", e.target.value)}
+                placeholder="যেমন: College Road, Hospital Road"
+                className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+              />
+            </label>
+          </div>
+
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              {t("checkout.fullAddress")} <span className="text-rose-600">*</span>
+              বিস্তারিত ঠিকানা / Full Address <span className="text-rose-600">*</span>
             </span>
             <textarea
               ref={addressRef}
@@ -633,13 +704,17 @@ export default function CheckoutView() {
                 update("address", e.target.value);
                 if (fieldErrors.address) setFieldErrors((f) => ({ ...f, address: "" }));
               }}
-              placeholder="House, road, landmark, floor — e.g. House 12, Road 5, Kandirpar"
+              placeholder="বাড়ির নম্বর, পাড়ার নাম, রোড, ল্যান্ডমার্ক, ফ্লোর — যেমন: House 12, Boropara, College Road, 2nd floor, near Mosque"
               aria-invalid={!!fieldErrors.address}
-              aria-describedby={fieldErrors.address ? "err-address" : undefined}
+              aria-describedby={fieldErrors.address ? "err-address" : "hint-full-address"}
               className={`w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.address ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
             />
-            {fieldErrors.address && (
+            {fieldErrors.address ? (
               <p id="err-address" className="mt-1.5 text-xs text-rose-700">{fieldErrors.address}</p>
+            ) : (
+              <p id="hint-full-address" className="mt-1.5 text-[11px] text-ink-soft">
+                পাড়া ({form.area || "Boropara"}) + বাড়ি + রোড + ল্যান্ডমার্ক লিখুন। জেলা: {DISTRICT}, উপজেলা: {UPAZILA} অটো যোগ হবে।
+              </p>
             )}
           </label>
 

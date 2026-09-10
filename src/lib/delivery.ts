@@ -19,8 +19,12 @@ export const DELIVERY_ETA = "45–50 min";
 export const INSTANT_DELIVERY_TITLE = "Instant delivery";
 export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the service area.`;
 
-/** Orders at or above this subtotal ship free (paisa). */
-export const FREE_DELIVERY_THRESHOLD: Bdt = bdt(2000);
+/** Orders at or above this subtotal ship free (paisa) — Sunamganj promo: ৳1000. */
+export const FREE_DELIVERY_THRESHOLD: Bdt = bdt(1000);
+
+/** First 1000 orders overall FREE delivery (promo counter lives in DB). */
+export const FIRST_1000_FREE_PROMO = true;
+export const FIRST_1000_FREE_LIMIT = 1000;
 
 export const qualifiesForFreeDelivery = (subtotal: Bdt): boolean =>
   subtotal >= FREE_DELIVERY_THRESHOLD;
@@ -28,6 +32,22 @@ export const qualifiesForFreeDelivery = (subtotal: Bdt): boolean =>
 /** Charge actually payable for a zone at a given subtotal. */
 export const deliveryChargeFor = (zoneCharge: Bdt, subtotal: Bdt): Bdt =>
   qualifiesForFreeDelivery(subtotal) ? 0 : Math.max(0, zoneCharge);
+
+/** Promotional check: if total orders < 1000, delivery is free regardless. */
+export const deliveryChargeWithPromo = (
+  zoneCharge: Bdt,
+  subtotal: Bdt,
+  totalOrders?: number,
+): Bdt => {
+  if (
+    FIRST_1000_FREE_PROMO &&
+    typeof totalOrders === "number" &&
+    totalOrders < FIRST_1000_FREE_LIMIT
+  ) {
+    return 0;
+  }
+  return deliveryChargeFor(zoneCharge, subtotal);
+};
 
 /** Cheapest active zone — what the cart can honestly quote before an
  *  address is known ("from ৳X"). */

@@ -436,28 +436,74 @@ export const getCategory = (id: string): Category | undefined =>
 export const productsByCategory = (id: CategoryId) =>
   PRODUCTS.filter((p) => p.category === id);
 
-/** Sample service area + delivery pricing (§20–21). Mock data for the UI phase. */
+/** Sunamganj Sadar delivery zones — Traffic Point centric (10-20 min cycle).
+ *  District: Sunamganj, Upazila: Sunamganj Sadar.
+ *  First 1000 orders FREE (promo), then zone-based charge + ৳1000 free-delivery threshold.
+ */
 export const DELIVERY_ZONES: DeliveryZone[] = [
   {
     id: "z1",
-    name: "Zone A — City Centre",
-    areas: ["Kandirpar", "Court Road", "Dhaka–Chittagong Road (core)"],
+    name: "Zone A — Traffic Point (0-1.5km)",
+    areas: [
+      "Boropara",
+      "Shologhar",
+      "Ukilpara",
+      "Courtpara",
+      "Jail Road",
+      "Modhyabazar",
+      "Kalibari",
+      "Arambagh",
+      "Mollapara",
+    ],
+    charge: bdt(30),
+    etaLabel: "30–40 min",
+  },
+  {
+    id: "z2",
+    name: "Zone B — Sadar Core (1.5-2.5km)",
+    areas: [
+      "Notunpara",
+      "Hasannagar",
+      "Tegharia",
+      "Nabinagar",
+      "Sahib Bari Ghat",
+      "Hospital Road",
+      "Kazir Point",
+      "Purba Bazar",
+      "Paschim Bazar",
+    ],
     charge: bdt(50),
     etaLabel: "40–50 min",
   },
   {
-    id: "z2",
-    name: "Zone B — Inner Ring",
-    areas: ["Rampur", "Paduar Bazar", "Badurtala"],
+    id: "z3",
+    name: "Zone C — Sadar Extended (2.5-4km)",
+    areas: [
+      "Wayesspur",
+      "Balaka Para",
+      "Jaliapara",
+      "Palpur",
+      "Dargahpara",
+      "Uttarpara",
+      "Dakkhinpara",
+      "Shologhar Bypass",
+    ],
     charge: bdt(70),
-    etaLabel: "45–55 min",
+    etaLabel: "50–60 min",
   },
   {
-    id: "z3",
-    name: "Zone C — Outer Ring",
-    areas: ["Lalchandpur", "Gouripur", "Suaganj"],
+    id: "z4",
+    name: "Zone D — Sunamganj Sadar Bahire",
+    areas: [
+      "Sunamganj Sadar Other",
+      "Dolura",
+      "Gouripur",
+      "Surma River Side",
+      "Mollapara Bahire",
+      "Shantiganj Border",
+    ],
     charge: bdt(100),
-    etaLabel: "60–75 min",
+    etaLabel: "60–80 min",
   },
 ];
 
