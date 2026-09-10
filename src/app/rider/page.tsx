@@ -587,6 +587,14 @@ export default function RiderPage() {
                           {formatBdt(order.total)}
                         </strong>
                       </div>
+                      {(order as any).tipAmount > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-forest-700">💝 Tip for you</span>
+                          <span className="font-bold text-forest-700">+{formatBdt((order as any).tipAmount)}</span>
+                        </div>
+                      )}
+                      {(order as any).isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
+                      {(order as any).scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</p>}
                     </div>
 
                     {/* Action Controls */}

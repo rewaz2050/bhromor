@@ -36,6 +36,9 @@ export const FIRST_1000_FREE_LIMIT = 1000;
 export const NIGHT_SURCHARGE_PAISA: Bdt = bdt(20); // 9PM-6AM
 export const RAIN_SURCHARGE_PAISA: Bdt = bdt(15); // when admin toggles rain
 export const EXPRESS_SURCHARGE_PAISA: Bdt = bdt(40); // 30min express
+export const WEIGHT_SURCHARGE_PER_KG: Bdt = bdt(10); // +10 per kg beyond 5kg
+export const WEIGHT_FREE_KG = 5;
+export const TIP_OPTIONS: Bdt[] = [bdt(0), bdt(10), bdt(20), bdt(30), bdt(50)];
 
 export const isNightHour = (hour: number): boolean => hour >= 21 || hour < 6;
 export const isRushHour = (hour: number): boolean =>
@@ -72,6 +75,8 @@ export interface DeliverySurcharge {
   rain: Bdt;
   express: Bdt;
   distance: Bdt;
+  weight: Bdt;
+  tip: Bdt;
   total: Bdt;
 }
 
@@ -81,6 +86,7 @@ export interface DeliveryBreakdown {
   freeDelivery: boolean;
   promoFree: boolean;
   couponFree: boolean;
+  isPickup: boolean;
   totalCharge: Bdt;
   eta: string;
   etaMinutes: number;
@@ -90,6 +96,11 @@ export interface DeliveryBreakdown {
 export const distanceExtraCharge = (distanceKm?: number): Bdt => {
   if (!distanceKm || distanceKm <= 4) return 0;
   return bdt(Math.ceil((distanceKm - 4) * 10));
+};
+
+export const weightExtraCharge = (weightKg?: number): Bdt => {
+  if (!weightKg || weightKg <= WEIGHT_FREE_KG) return 0;
+  return bdt(Math.ceil((weightKg - WEIGHT_FREE_KG) * 10));
 };
 
 /** Dynamic ETA based on zone + shop prep + queue + time of day */
@@ -127,9 +138,12 @@ export const deliveryBreakdown = (opts: {
   subtotal: Bdt;
   totalOrders?: number;
   distanceKm?: number;
+  weightKg?: number;
   isNight?: boolean;
   isRain?: boolean;
   isExpress?: boolean;
+  isPickup?: boolean;
+  tipAmount?: Bdt;
   couponFree?: boolean;
   shopPrepMinutes?: number;
   queueCount?: number;
@@ -139,9 +153,12 @@ export const deliveryBreakdown = (opts: {
     subtotal,
     totalOrders,
     distanceKm,
+    weightKg,
     isNight,
     isRain,
     isExpress,
+    isPickup,
+    tipAmount,
     couponFree,
     shopPrepMinutes,
     queueCount,
@@ -150,6 +167,21 @@ export const deliveryBreakdown = (opts: {
   const nowHour = new Date().getHours();
   const night = isNight ?? isNightHour(nowHour);
   const baseCharge = zone.charge;
+
+  if (isPickup) {
+    const eta = dynamicEta({ zoneId: zone.id, shopPrepMinutes, queueCount, hour: nowHour, distanceKm: 0 });
+    return {
+      baseCharge: 0,
+      surcharge: { night: 0, rain: 0, express: 0, distance: 0, weight: 0, tip: tipAmount ?? 0, total: 0 },
+      freeDelivery: true,
+      promoFree: false,
+      couponFree: false,
+      isPickup: true,
+      totalCharge: 0,
+      eta: "Ready in " + (shopPrepMinutes ?? 15) + " min — Pickup at Traffic Point",
+      etaMinutes: shopPrepMinutes ?? 15,
+    };
+  }
 
   let freeDelivery = qualifiesForFreeDelivery(subtotal, zone.id);
   let promoFree = false;
@@ -166,6 +198,7 @@ export const deliveryBreakdown = (opts: {
   } else {
     totalCharge = baseCharge;
     totalCharge += distanceExtraCharge(distanceKm);
+    totalCharge += weightExtraCharge(weightKg);
     if (night) totalCharge += NIGHT_SURCHARGE_PAISA;
     if (isRain) totalCharge += RAIN_SURCHARGE_PAISA;
     if (isExpress) totalCharge += EXPRESS_SURCHARGE_PAISA;
@@ -179,18 +212,24 @@ export const deliveryBreakdown = (opts: {
     distanceKm,
   });
 
+  const surcharge = {
+    night: night && !freeDelivery ? NIGHT_SURCHARGE_PAISA : 0,
+    rain: isRain && !freeDelivery ? RAIN_SURCHARGE_PAISA : 0,
+    express: isExpress && !freeDelivery ? EXPRESS_SURCHARGE_PAISA : 0,
+    distance: !freeDelivery ? distanceExtraCharge(distanceKm) : 0,
+    weight: !freeDelivery ? weightExtraCharge(weightKg) : 0,
+    tip: tipAmount ?? 0,
+    total: 0,
+  };
+  surcharge.total = surcharge.night + surcharge.rain + surcharge.express + surcharge.distance + surcharge.weight;
+
   return {
     baseCharge,
-    surcharge: {
-      night: night && !freeDelivery ? NIGHT_SURCHARGE_PAISA : 0,
-      rain: isRain && !freeDelivery ? RAIN_SURCHARGE_PAISA : 0,
-      express: isExpress && !freeDelivery ? EXPRESS_SURCHARGE_PAISA : 0,
-      distance: !freeDelivery ? distanceExtraCharge(distanceKm) : 0,
-      total: !freeDelivery ? totalCharge - baseCharge : 0,
-    },
+    surcharge,
     freeDelivery,
     promoFree: promoFree && !couponFree,
     couponFree: !!couponFree,
+    isPickup: false,
     totalCharge,
     eta: eta.label,
     etaMinutes: eta.minutes,

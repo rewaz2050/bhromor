@@ -86,6 +86,9 @@ interface FormState {
   timeSlot: TimeSlot;
   deliveryDate: string; // YYYY-MM-DD
   deliveryWindow: DeliveryWindow;
+  isPickup: boolean;
+  tipAmount: number; // taka
+  weightKg: number;
   submitting: boolean;
 }
 
@@ -105,6 +108,9 @@ const initialForm: FormState = {
   timeSlot: "now",
   deliveryDate: new Date().toISOString().slice(0,10),
   deliveryWindow: "express",
+  isPickup: false,
+  tipAmount: 0,
+  weightKg: 0,
   submitting: false,
 };
 
@@ -290,8 +296,10 @@ export default function CheckoutView() {
       freeDelivery: breakdown.freeDelivery,
       promoFree: breakdown.promoFree,
       couponFree: breakdown.couponFree,
+      isPickup: breakdown.isPickup,
       discount,
-      total: orderTotal(subtotal, charge, discount),
+      tip: (form.tipAmount * 100) as number,
+      total: (orderTotal(subtotal, charge, discount) + form.tipAmount * 100) as number,
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
       isOutside: zone?.id === "z4",
       breakdown,
@@ -588,7 +596,7 @@ export default function CheckoutView() {
           phone: form.phone,
           area: form.area,
           address: fullAddress,
-          note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}]`.trim(),
+          note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}${form.isPickup ? " PICKUP" : ""}]`.trim(),
           zoneId: zone.id,
           lat: pinPos?.lat,
           lng: pinPos?.lng,
@@ -596,10 +604,14 @@ export default function CheckoutView() {
           scheduled_at: scheduledAt,
           delivery_window: form.timeSlot === "scheduled" ? form.deliveryWindow : form.timeSlot,
           is_express: summary.breakdown?.surcharge.express ? true : false,
+          is_pickup: form.isPickup,
+          tip_amount: form.tipAmount * 100,
+          weight_kg: summary.breakdown ? detail.reduce((s,l)=>s+l.qty*0.5,0) : 0,
           surcharge_night: summary.breakdown?.surcharge.night ?? 0,
           surcharge_rain: summary.breakdown?.surcharge.rain ?? 0,
           surcharge_distance: summary.breakdown?.surcharge.distance ?? 0,
           surcharge_express: summary.breakdown?.surcharge.express ?? 0,
+          surcharge_weight: summary.breakdown?.surcharge.weight ?? 0,
           couponCode: activeCoupon?.code,
           items: detail.map((l) => ({
             productId: l.product.id,
@@ -1138,6 +1150,33 @@ export default function CheckoutView() {
           </div>
         </section>
 
+        {/* Pickup + Tips */}
+        <section className="mt-10 space-y-4">
+          <h2 className="font-display text-xl font-medium text-forest-900">Pickup & Tips — Cloudinary proof already</h2>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex items-center gap-2 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line cursor-pointer">
+              <input type="checkbox" checked={form.isPickup} onChange={(e) => update("isPickup", e.target.checked)} className="h-4 w-4" />
+              <span className="text-sm font-medium">🏪 Store Pickup at Traffic Point — Free, no delivery charge</span>
+            </label>
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-2">💝 Tip for Rider (optional) — 100% goes to rider</p>
+            <div className="flex flex-wrap gap-2">
+              {[0,10,20,30,50].map((tip) => (
+                <button
+                  key={tip}
+                  type="button"
+                  onClick={() => update("tipAmount", tip)}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold ring-1 ${form.tipAmount === tip ? "bg-forest-800 text-white ring-forest-700" : "bg-paper text-ink ring-line"}`}
+                >
+                  {tip === 0 ? "No tip" : `৳${tip}`}
+                </button>
+              ))}
+            </div>
+            {form.tipAmount > 0 && <p className="mt-2 text-xs text-forest-700">Thank you! ৳{form.tipAmount} will go to your rider via Cloudinary-tracked settlement.</p>}
+          </div>
+        </section>
+
         {/* Payment */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
@@ -1410,8 +1449,17 @@ export default function CheckoutView() {
                 🎉 First {FIRST_1000_FREE_LIMIT} promo — delivery free! {promo.remainingFree} left.
               </p>
             )}
+            {(summary as any).tip > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">💝 Tip for Rider</dt>
+                <dd className="font-medium text-forest-700">+{formatBdt((summary as any).tip)}</dd>
+              </div>
+            )}
+            {summary.isPickup && (
+              <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">🏪 Pickup at Traffic Point — no delivery, ready in {bagShop?.prepMinutes ?? 15} min</p>
+            )}
             <div className="flex justify-between pt-2 text-base">
-              <dt className="font-semibold text-ink">{t("checkout.totalCod")}</dt>
+              <dt className="font-semibold text-ink">{t("checkout.totalCod")}{summary.isPickup ? " (Pickup)" : ""}</dt>
               <dd className="font-bold text-ink">{formatBdt(summary.total)}</dd>
             </div>
           </dl>

@@ -377,13 +377,29 @@ export default function TrackView() {
                     <dd>{formatBdt(order.subtotal)}</dd>
                   </div>
                   <div className="flex justify-between text-ink-soft">
-                    <dt>Delivery</dt>
+                    <dt>Delivery{(order as any).isPickup ? " — Pickup" : ""}{(order as any).isExpress ? " — Express" : ""}</dt>
                     <dd>
-                      {order.deliveryCharge === 0
-                        ? "Free"
-                        : formatBdt(order.deliveryCharge)}
+                      {(order as any).isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
+                  {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+                    <div className="text-xs text-ink-soft bg-amber-50 p-2 rounded-xl">
+                      {(order.surchargeNight ?? 0) > 0 && <div>Night: {formatBdt(order.surchargeNight ?? 0)}</div>}
+                      {(order.surchargeRain ?? 0) > 0 && <div>Rain: {formatBdt(order.surchargeRain ?? 0)}</div>}
+                      {(order.surchargeDistance ?? 0) > 0 && <div>Distance: {formatBdt(order.surchargeDistance ?? 0)}</div>}
+                      {(order.surchargeExpress ?? 0) > 0 && <div>Express: {formatBdt(order.surchargeExpress ?? 0)}</div>}
+                      {(order as any).surchargeWeight > 0 && <div>Weight: {formatBdt((order as any).surchargeWeight)}</div>}
+                    </div>
+                  )}
+                  {(order as any).tipAmount > 0 && (
+                    <div className="flex justify-between text-forest-700">
+                      <dt>💝 Tip</dt>
+                      <dd>+{formatBdt((order as any).tipAmount)}</dd>
+                    </div>
+                  )}
+                  {(order as any).scheduledAt && (
+                    <div className="text-xs text-sky-800">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</div>
+                  )}
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">
                       <dt>Coupon · {order.coupon.code}</dt>
@@ -391,7 +407,7 @@ export default function TrackView() {
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
-                    <dt>Total (COD)</dt>
+                    <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
                     <dd>{formatBdt(order.total)}</dd>
                   </div>
                 </dl>
@@ -410,7 +426,12 @@ export default function TrackView() {
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.zoneName} · {order.etaLabel}
                   {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
+                  {(order as any).isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <a href={`https://wa.me/8801700000000?text=${encodeURIComponent(`PROSANTI order ${order.id} track: https://prosanti.com/track/${order.id}`)}`} target="_blank" className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white">WhatsApp Support</a>
+                  {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
+                </div>
                 {order.customer.note && (
                   <p className="mt-3 text-xs leading-5 text-ink-soft">
                     <strong className="text-ink">Note:</strong> {order.customer.note}
