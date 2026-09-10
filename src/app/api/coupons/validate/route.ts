@@ -1,10 +1,9 @@
 /**
- * POST /api/coupons/validate { code, items: [{ productId, qty }] } —
+ * POST /api/coupons/validate { code, items: [{ productId, qty }], zoneId? } —
  * single source of truth for coupon checks at checkout.
  *
  * Live mode prices against the database; demo mode against the seeds.
- * Either way the client never decides a discount by itself, and the order
- * route re-validates before persisting.
+ * Supports percent, fixed, and free_delivery with zone restriction and max cap.
  */
 
 import { PRODUCTS, type Product } from "@/lib/catalog";
@@ -14,6 +13,7 @@ import {
   eligibleSubtotal,
   findCoupon,
   isCouponRedeemable,
+  isFreeDeliveryCoupon,
   normalizeCode,
   type Coupon,
 } from "@/lib/coupons";
@@ -40,10 +40,12 @@ export async function POST(request: Request) {
   }
   const b = (body ?? {}) as {
     code?: string;
+    zoneId?: string;
     items?: { productId?: string; qty?: number }[];
   };
   const code = typeof b.code === "string" ? normalizeCode(b.code) : "";
   if (code === "") return apiError("Coupon code is required.", 400);
+  const zoneId = typeof b.zoneId === "string" ? b.zoneId.trim() : undefined;
   const rawItems = Array.isArray(b.items) ? b.items.slice(0, 20) : [];
   if (rawItems.length === 0) return apiError("The cart is empty.", 400);
 
@@ -80,11 +82,20 @@ export async function POST(request: Request) {
   if (!coupon) {
     return apiJson({ valid: false as const, reason: "Unknown code — double-check the spelling." });
   }
-  const redeemable = isCouponRedeemable(coupon, subtotal);
+  const redeemable = isCouponRedeemable(coupon, subtotal, zoneId);
   if (!redeemable.ok) {
     return apiJson({
       valid: false as const,
       reason: redeemable.reason ?? "This code cannot be used.",
+    });
+  }
+  if (isFreeDeliveryCoupon(coupon)) {
+    return apiJson({
+      valid: true as const,
+      code: coupon.code,
+      discount: 0,
+      freeDelivery: true as const,
+      description: coupon.description,
     });
   }
   const eligible = eligibleSubtotal(coupon, lines);
@@ -98,5 +109,8 @@ export async function POST(request: Request) {
     valid: true as const,
     code: coupon.code,
     discount: Math.min(discountAmount(coupon, eligible), subtotal),
+    type: coupon.type,
+    maxDiscount: coupon.maxDiscount,
+    description: coupon.description,
   });
 }

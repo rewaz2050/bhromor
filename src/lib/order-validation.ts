@@ -16,6 +16,7 @@ import {
   eligibleSubtotal,
   findCoupon,
   isCouponRedeemable,
+  isFreeDeliveryCoupon,
   normalizeCode,
 } from "./coupons";
 import { deliveryChargeFor, orderTotal } from "./delivery";
@@ -281,7 +282,7 @@ export const validateOrderPayload = (
       ],
     };
   }
-  const deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
+  let deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
 
   let coupon: ValidOrderDraft["coupon"];
   let discount = 0;
@@ -293,7 +294,7 @@ export const validateOrderPayload = (
         errors: [{ field: "couponCode", message: "Unknown code — double-check the spelling." }],
       };
     }
-    const redeemable = isCouponRedeemable(found, subtotal, now);
+    const redeemable = isCouponRedeemable(found, subtotal, zone.id, now);
     if (!redeemable.ok) {
       return {
         ok: false,
@@ -302,26 +303,32 @@ export const validateOrderPayload = (
         ],
       };
     }
-    const eligible = eligibleSubtotal(
-      found,
-      priced.map((it) => ({
-        productCategory: it.product.category,
-        subtotal: it.lineTotal,
-      })),
-    );
-    if (eligible <= 0) {
-      return {
-        ok: false,
-        errors: [
-          {
-            field: "couponCode",
-            message: "This code does not apply to the items in your cart.",
-          },
-        ],
-      };
+    if (isFreeDeliveryCoupon(found)) {
+      deliveryCharge = 0;
+      discount = 0;
+      coupon = { code: found.code, discount: 0, id: found.id };
+    } else {
+      const eligible = eligibleSubtotal(
+        found,
+        priced.map((it) => ({
+          productCategory: it.product.category,
+          subtotal: it.lineTotal,
+        })),
+      );
+      if (eligible <= 0) {
+        return {
+          ok: false,
+          errors: [
+            {
+              field: "couponCode",
+              message: "This code does not apply to the items in your cart.",
+            },
+          ],
+        };
+      }
+      discount = Math.min(discountAmount(found, eligible), subtotal);
+      coupon = { code: found.code, discount, id: found.id };
     }
-    discount = Math.min(discountAmount(found, eligible), subtotal);
-    coupon = { code: found.code, discount, id: found.id };
   }
 
   return {

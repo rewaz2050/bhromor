@@ -108,11 +108,11 @@ describe("validateOrderPayload", () => {
       }).ok,
     ).toBe(false);
 
-    // PROSANTI15 needs ৳2,000; a lone gamcha set is ৳350.
+    // SUNAMGANJ15 needs ৳2,000; a lone gamcha set is ৳350.
     expect(
       validateOrderPayload(
         payload({
-          couponCode: "PROSANTI15",
+          couponCode: "SUNAMGANJ15",
           items: [{ productId: "p7", variantLabel: "Red & Cream", qty: 1 }],
         }),
         snap,

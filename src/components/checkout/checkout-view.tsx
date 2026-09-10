@@ -148,7 +148,8 @@ export default function CheckoutView() {
     : (myZoneValid ?? zoneList[0]?.id ?? "");
   const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
 
-  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}`;
+  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}|${chosenZoneId}`;
+  const [couponFreeDelivery, setCouponFreeDelivery] = useState(false);
   useEffect(() => {
     if (!appliedCode) return;
     const items = detail.map((l) => ({ productId: l.product.id, qty: l.qty }));
@@ -158,34 +159,38 @@ export default function CheckoutView() {
           valid?: boolean;
           code?: string;
           discount?: number;
+          freeDelivery?: boolean;
           reason?: string | null;
+          description?: string;
         }
         let data: ValidateResponse | null = null;
         try {
           const res = await fetch("/api/coupons/validate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code: appliedCode, items }),
+            body: JSON.stringify({ code: appliedCode, items, zoneId: chosenZoneId }),
           });
           data = (await res.json().catch(() => null)) as ValidateResponse | null;
           if (res.ok && data?.valid && data.code) {
+            const isFree = !!data.freeDelivery;
+            setCouponFreeDelivery(isFree);
             setCouponCheck({
               code: data.code,
-              discount: Math.max(
-                0,
-                Math.min(data.discount ?? 0, subtotal),
-              ),
+              discount: isFree ? 0 : Math.max(0, Math.min(data.discount ?? 0, subtotal)),
               problem: null,
             });
             setCouponMsg({
               ok: true,
-              text: `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.`,
+              text: isFree
+                ? `${data.code} — Free Delivery 🚚 ${data.description ? `· ${data.description}` : ""}`
+                : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
             });
             return;
           }
         } catch {
           data = null;
         }
+        setCouponFreeDelivery(false);
         setCouponCheck({
           code: null,
           discount: 0,
@@ -197,7 +202,7 @@ export default function CheckoutView() {
     }, 350);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedCode, cartKey]);
+  }, [appliedCode, cartKey, chosenZoneId]);
 
   const activeCoupon = useMemo(
     () => (couponCheck.code ? { code: couponCheck.code } : null),
@@ -224,22 +229,26 @@ export default function CheckoutView() {
 
   const summary = useMemo(() => {
     const baseCharge = zone?.charge ?? 0;
-    // Use promo-aware charge if promo active
-    const charge = promo.promoActive
+    let charge = promo.promoActive
       ? deliveryChargeWithPromo(baseCharge, subtotal, promo.totalOrders)
       : deliveryChargeFor(baseCharge, subtotal);
+    // Coupon free delivery overrides
+    if (couponFreeDelivery && activeCoupon) {
+      charge = 0;
+    }
     const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
       fullCharge: baseCharge,
       freeDelivery: baseCharge > 0 && charge === 0,
-      promoFree: promo.promoActive && baseCharge > 0 && charge === 0 && promo.totalOrders < FIRST_1000_FREE_LIMIT,
+      promoFree: promo.promoActive && baseCharge > 0 && charge === 0 && promo.totalOrders < FIRST_1000_FREE_LIMIT && !couponFreeDelivery,
+      couponFree: couponFreeDelivery && !!activeCoupon,
       discount,
       total: orderTotal(subtotal, charge, discount),
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
       isOutside: zone?.id === "z4",
     };
-  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo]);
+  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo, couponFreeDelivery]);
 
   const empty = detail.length === 0;
   const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
@@ -945,7 +954,7 @@ export default function CheckoutView() {
                 <strong>
                   {summary.freeDelivery ? (
                     <span className="text-gold-300">
-                      {summary.promoFree ? "FREE (First 1000 promo) 🎉" : "Free"}
+                      {summary.couponFree ? "FREE — Coupon 🚚" : summary.promoFree ? "FREE (First 1000 promo) 🎉" : "Free"}
                     </span>
                   ) : (
                     formatBdt(summary.charge)
@@ -1133,6 +1142,7 @@ export default function CheckoutView() {
                   onClick={() => {
                     setAppliedCode("");
                     setCouponCheck({ code: null, discount: 0, problem: null });
+                    setCouponFreeDelivery(false);
                     setCouponMsg(null);
                     update("couponCode", "");
                   }}
@@ -1199,7 +1209,7 @@ export default function CheckoutView() {
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
-                    {summary.promoFree ? "FREE 🎉" : "Free"}{" "}
+                    {summary.couponFree ? "FREE 🚚 Coupon" : summary.promoFree ? "FREE 🎉" : "Free"}{" "}
                     <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
@@ -1212,6 +1222,11 @@ export default function CheckoutView() {
             {!summary.freeDelivery && subtotal < FREE_DELIVERY_THRESHOLD && !promo.promoActive && (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
                 {formatBdt(FREE_DELIVERY_THRESHOLD - subtotal)} more unlocks free delivery.
+              </p>
+            )}
+            {summary.couponFree && (
+              <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
+                🚚 Free delivery coupon applied — {activeCoupon?.code}
               </p>
             )}
             {summary.promoFree && (

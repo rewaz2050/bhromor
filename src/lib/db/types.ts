@@ -170,10 +170,13 @@ export interface DbZone {
 export interface DbCoupon {
   id: string;
   code: string;
-  type: "percent" | "fixed";
+  type: "percent" | "fixed" | "free_delivery";
   value: number;
   min_order: number;
   category_id: string | null;
+  zone_id?: string | null;
+  max_discount?: number | null;
+  description?: string | null;
   valid_from: string | null;
   valid_until: string | null;
   usage_limit: number | null;
