@@ -3,7 +3,8 @@
 begin;
 
 -- Ensure site_settings has correct threshold (upsert)
-insert into site_settings (key, value) values ('free_delivery_threshold_paisa', 100000)
+-- `value` is jsonb, so the integer must be converted explicitly.
+insert into site_settings (key, value) values ('free_delivery_threshold_paisa', to_jsonb(100000))
 on conflict (key) do update set value = excluded.value;
 
 -- Update ps_place_order to include Zone D minimum check

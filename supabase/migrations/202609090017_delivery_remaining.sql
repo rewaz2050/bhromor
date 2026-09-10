@@ -15,12 +15,12 @@ alter table orders add column if not exists pickup_slot text; -- e.g. "now", "9-
 create table if not exists delivery_slots (
   id uuid primary key default gen_random_uuid(),
   slot_date date not null,
-  window text not null check (window in ('9-11','11-1','2-4','4-6','6-8','8-10','express','now','evening','scheduled','pickup')),
+  slot_window text not null check (slot_window in ('9-11','11-1','2-4','4-6','6-8','8-10','express','now','evening','scheduled','pickup')),
   max_orders int not null default 20,
   booked_orders int not null default 0,
   is_blocked boolean not null default false,
   created_at timestamptz not null default now(),
-  unique(slot_date, window)
+  unique(slot_date, slot_window)
 );
 alter table delivery_slots enable row level security;
 drop policy if exists "delivery_slots public read" on delivery_slots;
@@ -35,14 +35,14 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_row delivery_slots%rowtype;
 begin
-  insert into delivery_slots (slot_date, window, max_orders, booked_orders)
+  insert into delivery_slots (slot_date, slot_window, max_orders, booked_orders)
   values (p_date, p_window, 20, 0)
-  on conflict (slot_date, window) do nothing;
+  on conflict (slot_date, slot_window) do nothing;
 
-  select * into v_row from delivery_slots where slot_date = p_date and window = p_window for update;
+  select * into v_row from delivery_slots where slot_date = p_date and slot_window = p_window for update;
   if v_row.is_blocked then return false; end if;
   if v_row.booked_orders >= v_row.max_orders then return false; end if;
-  update delivery_slots set booked_orders = booked_orders + 1 where slot_date = p_date and window = p_window;
+  update delivery_slots set booked_orders = booked_orders + 1 where slot_date = p_date and slot_window = p_window;
   return true;
 end $$;
 
