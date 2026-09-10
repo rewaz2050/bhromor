@@ -312,6 +312,25 @@ export default function AdminOrderDetailPage() {
                   <p className="text-xs">Attempts: {order.deliveryAttempts}</p>
                 </div>
               )}
+              {(order as any).isReturn && (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-amber-900">Return / Exchange — Pickup</p>
+                  <p className="text-xs">Parent: {(order as any).returnParentId}</p>
+                  <p className="text-xs">Reason: {(order as any).returnReason}</p>
+                  <p className="text-xs">Status: {(order as any).returnStatus}</p>
+                  {(order as any).pickupSlot && <p className="text-xs">Pickup Slot: {(order as any).pickupSlot}</p>}
+                  <div className="mt-2 flex gap-2">
+                    <a href={`/admin/orders/${(order as any).returnParentId}`} className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Parent</a>
+                  </div>
+                </div>
+              )}
+              {(order as any).isPickup && (
+                <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">Store Pickup — Traffic Point</p>
+                  <p className="text-xs">Pickup Slot: {(order as any).pickupSlot || (order as any).deliveryWindow || "now"}</p>
+                  <p className="text-xs">Ready in ~{order.etaLabel}</p>
+                </div>
+              )}
             </dl>
           </section>
 

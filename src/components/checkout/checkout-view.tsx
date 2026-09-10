@@ -87,6 +87,7 @@ interface FormState {
   deliveryDate: string; // YYYY-MM-DD
   deliveryWindow: DeliveryWindow;
   isPickup: boolean;
+  pickupSlot: string;
   tipAmount: number; // taka
   weightKg: number;
   submitting: boolean;
@@ -109,6 +110,7 @@ const initialForm: FormState = {
   deliveryDate: new Date().toISOString().slice(0,10),
   deliveryWindow: "express",
   isPickup: false,
+  pickupSlot: "now",
   tipAmount: 0,
   weightKg: 0,
   submitting: false,
@@ -605,6 +607,7 @@ export default function CheckoutView() {
           delivery_window: form.timeSlot === "scheduled" ? form.deliveryWindow : form.timeSlot,
           is_express: summary.breakdown?.surcharge.express ? true : false,
           is_pickup: form.isPickup,
+          pickup_slot: (form as any).pickupSlot || "now",
           tip_amount: form.tipAmount * 100,
           weight_kg: summary.breakdown ? detail.reduce((s,l)=>s+l.qty*0.5,0) : 0,
           surcharge_night: summary.breakdown?.surcharge.night ?? 0,
@@ -1159,6 +1162,23 @@ export default function CheckoutView() {
               <span className="text-sm font-medium">🏪 Store Pickup at Traffic Point — Free, no delivery charge</span>
             </label>
           </div>
+          {form.isPickup && (
+            <div className="mt-2">
+              <p className="text-xs font-medium mb-1">Pickup time slot (Sunamganj Sadar Traffic Point)</p>
+              <div className="flex flex-wrap gap-2">
+                {["now","9-11","11-1","2-4","4-6","6-8"].map((slot) => (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => update("pickupSlot" as any, slot)}
+                    className={`rounded-full px-3 py-1.5 text-xs ring-1 ${((form as any).pickupSlot || "now") === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
+                  >
+                    {slot === "now" ? "Now (15 min)" : slot}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <p className="text-sm font-medium mb-2">💝 Tip for Rider (optional) — 100% goes to rider</p>
             <div className="flex flex-wrap gap-2">

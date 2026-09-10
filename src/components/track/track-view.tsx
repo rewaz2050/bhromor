@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { useLocalOrders } from "@/lib/use-orders";
 import { isSupabaseConfigured } from "@/lib/env";

@@ -96,6 +96,9 @@ export interface DbShopLedger {
   subtotal: number;
   commission: number;
   payable: number;
+  delivery_charge?: number;
+  tip_amount?: number;
+  surcharge_total?: number;
   created_at: string;
 }
 
@@ -201,10 +204,20 @@ export interface DbOrder {
   scheduled_at?: string | null;
   delivery_window?: string | null;
   is_express?: boolean;
+  is_pickup?: boolean;
+  is_return?: boolean;
+  return_reason?: string | null;
+  return_parent_id?: string | null;
+  return_status?: string | null;
+  return_pickup_at?: string | null;
+  pickup_slot?: string | null;
+  tip_amount?: number;
+  weight_kg?: number | null;
   surcharge_night?: number;
   surcharge_rain?: number;
   surcharge_distance?: number;
   surcharge_express?: number;
+  surcharge_weight?: number;
   delivery_proof_url?: string | null;
   delivery_proof_uploaded_at?: string | null;
   delivery_failed_reason?: string | null;
