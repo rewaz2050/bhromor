@@ -77,9 +77,10 @@ const CATEGORIES = [
 ];
 
 const ZONES = [
-  { id: "z1", name: "Zone A — City Centre", areas: ["Kandirpar", "Court Road", "Dhaka–Chittagong Road (core)"], charge: 5000, eta_label: "40–50 min", sort_order: 0 },
-  { id: "z2", name: "Zone B — Inner Ring", areas: ["Rampur", "Paduar Bazar", "Badurtala"], charge: 7000, eta_label: "45–55 min", sort_order: 1 },
-  { id: "z3", name: "Zone C — Outer Ring", areas: ["Lalchandpur", "Gouripur", "Suaganj"], charge: 10000, eta_label: "60–75 min", sort_order: 2 },
+  { id: "z1", name: "Zone A — Traffic Point (0-1.5km)", areas: ["Boropara","Shologhar","Ukilpara","Courtpara","Jail Road","Modhyabazar","Kalibari","Arambagh","Mollapara"], charge: 3000, eta_label: "30–40 min", sort_order: 0 },
+  { id: "z2", name: "Zone B — Sadar Core (1.5-2.5km)", areas: ["Notunpara","Hasannagar","Tegharia","Nabinagar","Sahib Bari Ghat","Hospital Road","Kazir Point","Purba Bazar","Paschim Bazar"], charge: 5000, eta_label: "40–50 min", sort_order: 1 },
+  { id: "z3", name: "Zone C — Sadar Extended (2.5-4km)", areas: ["Wayesspur","Balaka Para","Jaliapara","Palpur","Dargahpara","Uttarpara","Dakkhinpara","Shologhar Bypass"], charge: 7000, eta_label: "50–60 min", sort_order: 2 },
+  { id: "z4", name: "Zone D — Sunamganj Sadar Bahire", areas: ["Sunamganj Sadar Other","Dolura","Gouripur","Surma River Side","Mollapara Bahire","Shantiganj Border"], charge: 10000, eta_label: "60–80 min", sort_order: 3 },
 ];
 
 const now = Date.now();
@@ -236,7 +237,7 @@ const PRODUCTS = [
 
 const SETTINGS = [
   { key: "low_stock_threshold", value: 5 },
-  { key: "free_delivery_threshold_paisa", value: 200000 },
+  { key: "free_delivery_threshold_paisa", value: 100000 },
 ];
 
 /* ------------------------------------------------------------------ */
