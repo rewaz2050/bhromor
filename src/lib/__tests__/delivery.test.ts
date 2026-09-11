@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   FIRST_FREE_DELIVERY_LIMIT,
   FREE_DELIVERY_ZONE_ID,
+  FREE_DELIVERY_MIN_SUBTOTAL_PAISA,
+  LAUNCH_FREE_DELIVERY_LIMIT,
   cheapestZoneCharge,
   deliveryBreakdown,
   deliveryChargeFor,
   distanceExtraCharge,
+  launchOfferFreeDelivery,
   orderTotal,
   promoFreeDelivery,
+  subtotalFreeDelivery,
   weightExtraCharge,
 } from "@/lib/delivery";
 import { bdt } from "@/lib/format";
@@ -94,6 +98,7 @@ describe("delivery pricing — simple model", () => {
     const br = deliveryBreakdown({
       zone: zone("z2", 50),
       subtotal: bdt(5000),
+      thresholdEnabled: false, // isolate the per-user promo from the threshold
       totalOrders: 0,
       isNight: true,
       isRain: true,
@@ -161,6 +166,47 @@ describe("deriveZoneChoice — simple form picks the zone", () => {
     const derived = deriveZoneChoice("Sunamganj", "Sunamganj Sadar", "Naya Para");
     expect(derived.zoneId).toBe("z3");
     expect(derived.paraListed).toBe(false);
+  });
+
+  it("launch offer: under 1000 store-wide orders rides free in any zone", () => {
+    expect(launchOfferFreeDelivery(0)).toBe(true);
+    expect(launchOfferFreeDelivery(LAUNCH_FREE_DELIVERY_LIMIT - 1)).toBe(true);
+    expect(launchOfferFreeDelivery(LAUNCH_FREE_DELIVERY_LIMIT)).toBe(false);
+    expect(launchOfferFreeDelivery(undefined)).toBe(false); // fail closed
+    expect(launchOfferFreeDelivery(null)).toBe(false);
+
+    const br = deliveryBreakdown({
+      zone: zone("z2", 50),
+      subtotal: bdt(500),
+      globalOrders: LAUNCH_FREE_DELIVERY_LIMIT - 1,
+      thresholdEnabled: false,
+      totalOrders: 50,
+    });
+    expect(br.launchFree).toBe(true);
+    expect(br.freeDelivery).toBe(true);
+    expect(br.totalCharge).toBe(0);
+  });
+
+  it("৳1000+ subtotal rides free in any zone (admin can toggle off)", () => {
+    expect(subtotalFreeDelivery(FREE_DELIVERY_MIN_SUBTOTAL_PAISA)).toBe(true);
+    expect(subtotalFreeDelivery(FREE_DELIVERY_MIN_SUBTOTAL_PAISA - 1)).toBe(false);
+    expect(subtotalFreeDelivery(undefined)).toBe(false);
+
+    const on = deliveryBreakdown({
+      zone: zone("z2", 50),
+      subtotal: FREE_DELIVERY_MIN_SUBTOTAL_PAISA,
+    });
+    expect(on.thresholdFree).toBe(true);
+    expect(on.freeDelivery).toBe(true);
+    expect(on.totalCharge).toBe(0);
+
+    const off = deliveryBreakdown({
+      zone: zone("z2", 50),
+      subtotal: FREE_DELIVERY_MIN_SUBTOTAL_PAISA,
+      thresholdEnabled: false,
+    });
+    expect(off.thresholdFree).toBe(false);
+    expect(off.totalCharge).toBe(bdt(50));
   });
 
   it("other upazila of Sunamganj → Zone D (outside)", () => {

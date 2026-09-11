@@ -14,6 +14,10 @@ const snapshot = (): OrderSnapshot => ({
   coupons: seedCoupons(),
   // Promo exhausted by default — tests opt in with customerOrderCount < 10.
   customerOrderCount: 100,
+  // Launch offer + ৳1000 threshold OFF by default — the dedicated tests
+  // below opt in, so every zone-charge expectation above stays intact.
+  totalOrders: 1000,
+  freeThresholdEnabled: false,
   // Fixed midday clock → deterministic night surcharge (off at 15:00).
   now: new Date("2026-09-11T15:00:00").getTime(),
 });
@@ -47,6 +51,52 @@ describe("validateOrderPayload", () => {
     expect(result.draft.customer.district).toBe("Sunamganj");
     expect(result.draft.customer.upazila).toBe("Sunamganj Sadar");
     expect(result.draft.customer.para).toBe("Boropara");
+  });
+
+  it("LAUNCH OFFER: under 1000 store-wide orders → free in ANY zone", () => {
+    const launchSnap = { ...snapshot(), totalOrders: 999 };
+    const inB = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2" }),
+      launchSnap,
+    );
+    expect(inB.ok).toBe(true);
+    if (inB.ok) expect(inB.draft.deliveryCharge).toBe(0);
+  });
+
+  it("LAUNCH OFFER: exhausted counter + ৳1000+ subtotal → still free (threshold)", () => {
+    const snap = { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: true };
+    const result = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2" }),
+      snap,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.draft.deliveryCharge).toBe(0);
+  });
+
+  it("threshold respects the admin toggle; undefined counter fails closed", () => {
+    // Threshold ON + small cart (p6 = ৳540) → zone charge stands.
+    const on = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: true },
+    );
+    expect(on.ok).toBe(true);
+    if (on.ok) expect(on.draft.deliveryCharge).toBe(bdt(50));
+
+    // Threshold OFF + small cart + launch exhausted → charged.
+    const off = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: false },
+    );
+    expect(off.ok).toBe(true);
+    if (off.ok) expect(off.draft.deliveryCharge).toBe(bdt(50));
+
+    // totalOrders undefined → launch offer NOT granted (fail closed).
+    const closed = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: undefined, freeThresholdEnabled: false },
+    );
+    expect(closed.ok).toBe(true);
+    if (closed.ok) expect(closed.draft.deliveryCharge).toBe(bdt(50));
   });
 
   it("first 10 orders ride free — but ONLY inside Zone A", () => {

@@ -4,7 +4,7 @@ import { getStorefrontZones } from "@/lib/db/storefront";
 import { formatBdt } from "@/lib/format";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
-import DeliveryPromoLive from "@/components/delivery/delivery-promo-live";
+import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 import { FIRST_FREE_DELIVERY_LIMIT } from "@/lib/delivery";
 
 export const metadata: Metadata = {
@@ -32,7 +32,7 @@ export default async function DeliveryPage() {
       </p>
 
       {/* Live Promo Counter */}
-      <DeliveryPromoLive />
+      <LaunchOfferBanner />
 
       {/* Promise */}
       <div className="mt-8 flex items-start gap-5 rounded-3xl bg-forest-900 p-7 text-ivory-100 sm:p-8">

@@ -3,9 +3,11 @@
  *
  * Pricing model (owner decisions):
  *   • Four flat zones around the Traffic Point hub in Sunamganj.
- *   • The FIRST 10 ORDERS overall get FREE delivery — but ONLY inside
- *     Sunamganj city Zone A. Everywhere else the zone charge applies.
- *   • No ৳1000 subtotal threshold — the old threshold tables are gone.
+ *   • LAUNCH OFFER: the FIRST 1000 ORDERS overall get FREE delivery in any
+ *     zone ("প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি" + live 0/1000 counter).
+ *   • ৳1000+ subtotal orders always ride free, in any zone.
+ *   • Per-customer first 10 orders also ride free — inside Sunamganj city
+ *     Zone A only.
  *   • Delivery features kept: dynamic ETA, night/rain/express/distance/
  *     weight surcharges, rider tips and store pickup.
  *
@@ -22,15 +24,22 @@ export const DELIVERY_ETA = "45–50 min";
 export const INSTANT_DELIVERY_TITLE = "Instant delivery";
 export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the service area.`;
 
-/** The first N orders overall ride free (promo counter lives in the DB). */
+/** Per-customer first N orders ride free (Zone A only). */
 export const FIRST_FREE_DELIVERY_LIMIT = 10;
 
 /** Free-delivery promo applies ONLY inside Sunamganj city Zone A. */
 export const FREE_DELIVERY_ZONE_ID = "z1";
 
+/** LAUNCH OFFER: the store-wide first N orders ride free in ANY zone. */
+export const LAUNCH_FREE_DELIVERY_LIMIT = 1000;
+
+/** Orders with a subtotal at/above this (paisa) always ride free, any zone. */
+export const FREE_DELIVERY_MIN_SUBTOTAL_PAISA = 100_000; // ৳1000
+
 /**
- * True when this order still qualifies for the first-10-free promo.
- * Outside Zone A (or once the counter is exhausted) the zone charge applies.
+ * True when this order still qualifies for the per-customer first-10 promo.
+ * Outside Zone A (or once the phone's counter is exhausted) the zone charge
+ * applies.
  */
 export const promoFreeDelivery = (
   totalOrders: number | null | undefined,
@@ -39,6 +48,20 @@ export const promoFreeDelivery = (
   typeof totalOrders === "number" &&
   totalOrders < FIRST_FREE_DELIVERY_LIMIT &&
   zoneId === FREE_DELIVERY_ZONE_ID;
+
+/**
+ * LAUNCH OFFER: while the store-wide counter is under 1000, every order
+ * rides free in any zone. Undefined counter → NOT granted (fail closed).
+ */
+export const launchOfferFreeDelivery = (
+  totalOrdersAllTime?: number | null,
+): boolean =>
+  typeof totalOrdersAllTime === "number" &&
+  totalOrdersAllTime < LAUNCH_FREE_DELIVERY_LIMIT;
+
+/** ৳1000+ subtotal orders always ride free, any zone. */
+export const subtotalFreeDelivery = (subtotal?: number | null): boolean =>
+  typeof subtotal === "number" && subtotal >= FREE_DELIVERY_MIN_SUBTOTAL_PAISA;
 
 /**
  * Charge actually payable: zone fee, waived only by the first-10 promo
@@ -121,6 +144,8 @@ export interface DeliveryBreakdown {
   surcharge: DeliverySurcharge;
   freeDelivery: boolean;
   promoFree: boolean;
+  launchFree: boolean;
+  thresholdFree: boolean;
   couponFree: boolean;
   isPickup: boolean;
   totalCharge: Bdt;
@@ -131,8 +156,12 @@ export interface DeliveryBreakdown {
 export const deliveryBreakdown = (opts: {
   zone: DeliveryZone;
   subtotal: Bdt;
-  /** Total orders ever placed — drives the first-10-free promo. */
+  /** THIS phone's earlier orders — drives the per-user first-10 promo. */
   totalOrders?: number;
+  /** Store-wide all-time order count — drives the 0/1000 launch offer. */
+  globalOrders?: number;
+  /** ৳1000+ always-free toggle (admin). Default on. */
+  thresholdEnabled?: boolean;
   distanceKm?: number;
   weightKg?: number;
   isNight?: boolean;
@@ -146,8 +175,10 @@ export const deliveryBreakdown = (opts: {
 }): DeliveryBreakdown => {
   const {
     zone,
-    subtotal: _subtotal,
+    subtotal,
     totalOrders,
+    globalOrders,
+    thresholdEnabled,
     distanceKm,
     weightKg,
     isNight,
@@ -170,6 +201,8 @@ export const deliveryBreakdown = (opts: {
       surcharge: { night: 0, rain: 0, express: 0, distance: 0, weight: 0, tip: tipAmount ?? 0, total: 0 },
       freeDelivery: true,
       promoFree: false,
+      launchFree: false,
+      thresholdFree: false,
       couponFree: false,
       isPickup: true,
       totalCharge: 0,
@@ -179,7 +212,10 @@ export const deliveryBreakdown = (opts: {
   }
 
   const promoFree = promoFreeDelivery(totalOrders, zone.id);
-  const freeDelivery = promoFree || !!couponFree;
+  const launchFree = launchOfferFreeDelivery(globalOrders);
+  const thresholdFree =
+    (thresholdEnabled ?? true) && subtotalFreeDelivery(subtotal);
+  const freeDelivery = promoFree || launchFree || thresholdFree || !!couponFree;
 
   let totalCharge: Bdt;
   const surcharge = {
@@ -212,6 +248,8 @@ export const deliveryBreakdown = (opts: {
     surcharge,
     freeDelivery,
     promoFree: promoFree && !couponFree,
+    launchFree: launchFree && !couponFree,
+    thresholdFree: thresholdFree && !couponFree,
     couponFree: !!couponFree,
     isPickup: false,
     totalCharge,

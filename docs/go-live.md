@@ -45,6 +45,10 @@ Run **in this order, in one sequence** (skip files you already applied —
 11. **`supabase/migrations/202609110004_customer_accounts.sql`** — Smart Card
     accounts: `customers` (phone+password, no verification by design) +
     `customer_sessions`; service-role only via the /api/account/* routes
+12. **`supabase/migrations/202609110005_launch_offer_free.sql`** — LAUNCH
+    OFFER: store-wide first 1000 orders ride free (any zone) + ৳1000+
+    subtotal always free; keeps the per-user first-10 (Zone A). Supersedes
+    202609100003 — run only this one for the pricing rule
 
 Quick check after step 11 (SQL editor):
 

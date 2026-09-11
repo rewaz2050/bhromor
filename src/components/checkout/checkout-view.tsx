@@ -69,6 +69,7 @@ import {
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
 import { addNotificationToStore } from "@/lib/notifications-store";
 import { useCustomer } from "@/lib/use-customer";
+import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 import { useSmartCard } from "@/lib/use-smart-card";
 import MapPinPicker from "./map-pin-picker";
 
@@ -336,6 +337,8 @@ export default function CheckoutView() {
       zone,
       subtotal,
       totalOrders: userOrderCount,
+      globalOrders: getOrders().length,
+      thresholdEnabled: settings.perZoneFreeThresholdEnabled,
       distanceKm,
       weightKg,
       isNight,
@@ -858,6 +861,9 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
+        {/* LAUNCH OFFER — first 1000 orders ride free, any zone */}
+        <LaunchOfferBanner className="mb-6" />
+
         {/* Per-user first-10-free promo note */}
         <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
           <div className="flex items-center gap-3">

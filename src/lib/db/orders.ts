@@ -48,6 +48,8 @@ export interface OrderSnapshot {
   totalOrders: number;
   /** THIS customer's earlier order count — set per-request by the route. */
   customerOrderCount?: number;
+  /** ৳1000+-always-free toggle (ops). Absent/false semantics: see validation. */
+  freeThresholdEnabled?: boolean;
 }
 
 /**
@@ -75,7 +77,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes, ordersCountRes] =
+  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes, ordersCountRes, opsRes] =
     await Promise.all([
       db
         .from("products")
@@ -88,6 +90,8 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       db.from("coupons").select("*").eq("active", true),
       db.from("shops").select("*"),
       db.from("orders").select("id", { count: "exact", head: true }),
+      // ৳1000+-always-free toggle; read failure keeps the default (on).
+      db.from("site_settings").select("value").eq("key", "ops").maybeSingle(),
     ]);
   if (
     productsRes.error ||
@@ -115,6 +119,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       mediaByProduct.set(m.product_id, m.url);
     }
   }
+  const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
   return {
     products,
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
@@ -123,6 +128,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     mediaByProduct,
     shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
     totalOrders: ordersCountRes.count ?? 0,
+    freeThresholdEnabled: ops.perZoneFreeThresholdEnabled !== false,
   };
 }
 

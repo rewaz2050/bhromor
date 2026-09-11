@@ -23,10 +23,11 @@ import {
 } from "./coupons";
 import {
   distanceExtraCharge,
-  deliveryChargeFor,
   isNightHour,
   orderTotal,
   promoFreeDelivery,
+  launchOfferFreeDelivery,
+  subtotalFreeDelivery,
   weightExtraCharge,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
@@ -92,6 +93,17 @@ export interface OrderSnapshot {
    * promo is NOT granted (fail closed).
    */
   customerOrderCount?: number;
+  /**
+   * Store-wide all-time order count — drives the LAUNCH OFFER (first 1000
+   * orders ride free in any zone). Undefined → the launch offer is NOT
+   * granted (fail closed).
+   */
+  totalOrders?: number;
+  /**
+   * ৳1000+-always-free threshold toggle (site_settings ops, admin). Absent
+   * → threshold is ON (the standing offer); false disables it.
+   */
+  freeThresholdEnabled?: boolean;
   /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
   now?: number;
 }
@@ -473,14 +485,19 @@ export const validateOrderPayload = (
   }
 
   /* ---------------- delivery charge ----------------
-   * Pickup → free. First-10 promo (Zone A only) or a free-delivery
-   * coupon → free (surcharges waived too). Otherwise the flat zone
-   * charge + surcharges. */
+   * Pickup → free. Launch offer (store-wide first 1000, any zone),
+   * ৳1000+ subtotal (any zone), per-user first-10 promo (Zone A only)
+   * or a free-delivery coupon → free (surcharges waived too). Otherwise
+   * the flat zone charge + surcharges. */
   const freeDelivery =
-    isPickup || couponFreeDelivery || promoFreeDelivery(snapshot.customerOrderCount, zone.id);
+    isPickup ||
+    couponFreeDelivery ||
+    launchOfferFreeDelivery(snapshot.totalOrders) ||
+    (snapshot.freeThresholdEnabled !== false && subtotalFreeDelivery(subtotal)) ||
+    promoFreeDelivery(snapshot.customerOrderCount, zone.id);
   const deliveryCharge = freeDelivery
     ? 0
-    : deliveryChargeFor(zone.charge, subtotal) +
+    : Math.max(0, zone.charge) +
       surchargeNight +
       surchargeRain +
       surchargeExpress +
