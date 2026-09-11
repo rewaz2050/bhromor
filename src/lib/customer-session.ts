@@ -1,11 +1,14 @@
 "use client";
 
 /**
- * Customer session — single shared probe + demo store.
+ * Customer session — single shared probe + stores (live and demo).
  *
- * Live mode: the httpOnly session cookie is probed once per mount cycle via
- * GET /api/account/me (module-cached, like the staff probe). The cookie is
- * unreadable from JS by design, so "signed in" always comes from this probe.
+ * Live mode: the httpOnly session cookie is probed via GET /api/account/me
+ * (module-cached per refresh cycle). The cookie is unreadable from JS by
+ * design, so "signed in" always comes from this probe — and the result lives
+ * in a SHARED store below, so every hook instance sees the login instantly
+ * (per-instance state once left the account panel stuck on the form after a
+ * successful signup/login — that regression is locked out by tests).
  *
  * Demo mode (no Supabase keys): accounts live in localStorage — signup is
  * instant and verification-free, mirroring the live API contract. Passwords
@@ -20,6 +23,14 @@ export interface CustomerInfo {
   phone: string;
 }
 
+export type SessionMode = "live" | "demo";
+
+export interface AuthSnapshot {
+  checked: boolean;
+  mode: SessionMode | null;
+  customer: CustomerInfo | null;
+}
+
 const ACCOUNTS_KEY = "prosanti.customers.v1";
 const SESSION_KEY = "prosanti.customer-session.v1";
 
@@ -29,13 +40,20 @@ interface DemoAccount extends CustomerInfo {
   createdAt: string;
 }
 
-/* --------------------------- demo session store --------------------------- */
+/* --------------------------- session store (shared) ----------------------- */
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
 let demoSession: { customer: CustomerInfo | null } = { customer: null };
 let demoLoaded = false;
+
+/** Result of the live probe, shared by every hook instance. */
+let liveAuth: { checked: boolean; mode: SessionMode | null; customer: CustomerInfo | null } = {
+  checked: false,
+  mode: null,
+  customer: null,
+};
 
 const notify = () => {
   for (const l of listeners) l();
@@ -83,6 +101,54 @@ export const getCustomerSnapshot = (): { customer: CustomerInfo | null } => {
 export const getCustomerServerSnapshot = (): { customer: CustomerInfo | null } => ({
   customer: null,
 });
+
+/**
+ * Combined snapshot for `useSyncExternalStore`. Identity is stable between
+ * real changes (BUGFIXES §7/§10: a fresh object per call re-renders forever),
+ * so a key of the visible values gates the rebuild.
+ */
+let authSnapshot: AuthSnapshot = { checked: false, mode: null, customer: null };
+let authKey = "";
+
+const visibleCustomer = (): CustomerInfo | null =>
+  liveAuth.mode === "live"
+    ? liveAuth.customer
+    : liveAuth.mode === "demo"
+      ? demoSession.customer
+      : null;
+
+const getAuthSnapshot = (): AuthSnapshot => {
+  loadDemo();
+  const customer = visibleCustomer();
+  const key = `${liveAuth.checked}|${liveAuth.mode ?? ""}|${customer?.id ?? ""}`;
+  if (key !== authKey) {
+    authKey = key;
+    authSnapshot = { checked: liveAuth.checked, mode: liveAuth.mode, customer };
+  }
+  return authSnapshot;
+};
+
+const AUTH_SERVER_SNAPSHOT: AuthSnapshot = {
+  checked: false,
+  mode: null,
+  customer: null,
+};
+
+export { getAuthSnapshot, AUTH_SERVER_SNAPSHOT };
+
+const setLiveAuth = (
+  next: Partial<typeof liveAuth> & { checked?: boolean; mode?: SessionMode | null; customer?: CustomerInfo | null },
+): void => {
+  liveAuth = { ...liveAuth, ...next };
+  notify();
+};
+
+/** Test escape hatch: put the shared live store back to its initial state. */
+export const __resetLiveAuthForTests = (): void => {
+  liveAuth = { checked: false, mode: null, customer: null };
+  __resetCustomerProbe();
+  notify();
+};
 
 const setDemoSession = (customer: CustomerInfo | null): void => {
   demoSession = { customer };
@@ -188,32 +254,48 @@ let probePromise: Promise<{
   mode: "live" | "demo";
 }> | null = null;
 
+/**
+ * Probe `/api/account/me` once per cycle (shared promise) and publish the
+ * result to the store every `useCustomer()` consumer reads from. The
+ * resolved shape is unchanged for existing callers.
+ */
 export const probeCustomerSession = (): Promise<{
   customer: CustomerInfo | null;
   mode: "live" | "demo";
 }> => {
   if (!probePromise) {
     probePromise = (async () => {
+      let result: { customer: CustomerInfo | null; mode: "live" | "demo" };
       try {
         const res = await fetch("/api/account/me", { cache: "no-store" });
-        if (res.status === 401) return { customer: null, mode: "live" as const };
-        const body = (await res.json().catch(() => ({}))) as {
-          customer?: CustomerInfo | null;
-          demoMode?: boolean;
-        };
-        if (body.demoMode) {
-          loadDemo();
-          return { customer: demoSession.customer, mode: "demo" as const };
+        if (res.status === 401) {
+          result = { customer: null, mode: "live" as const };
+        } else {
+          const body = (await res.json().catch(() => ({}))) as {
+            customer?: CustomerInfo | null;
+            demoMode?: boolean;
+          };
+          if (body.demoMode) {
+            loadDemo();
+            result = { customer: demoSession.customer, mode: "demo" as const };
+          } else if (res.ok && body.customer?.id) {
+            result = { customer: body.customer, mode: "live" as const };
+          } else {
+            result = { customer: null, mode: "live" as const };
+          }
         }
-        if (res.ok && body.customer?.id) {
-          return { customer: body.customer, mode: "live" as const };
-        }
-        return { customer: null, mode: "live" as const };
       } catch {
         // Network failure — fall back to the demo store for this session.
         loadDemo();
-        return { customer: demoSession.customer, mode: "demo" as const };
+        result = { customer: demoSession.customer, mode: "demo" as const };
       }
+      // Publish for ALL consumers, not just the one that triggered the probe.
+      setLiveAuth({
+        checked: true,
+        mode: result.mode,
+        customer: result.mode === "live" ? result.customer : null,
+      });
+      return result;
     })();
   }
   return probePromise;

@@ -6,8 +6,11 @@
  * flashes: seeds simply stay.
  *
  * IMPORTANT: in live mode product ids are database uuids, not p1…p7.
- * Anything stored by id (cart, wishlist) resolves through here, so old
- * demo-id entries quietly stop matching after cutover instead of crashing.
+ * Anything stored by id (cart, wishlist) resolves through here — legacy
+ * demo ids bridge to their live row via the launch-catalog slug, so a cart
+ * built before the database was seeded survives the cutover (and the
+ * checkout auto-seed) at LIVE prices. Anything that matches neither simply
+ * stops matching — quiet, never a crash.
  */
 
 import {
@@ -60,12 +63,23 @@ export const getShopsSnapshot = (): Shop[] =>
   liveShops ?? (demoShopsSnapshot ??= seedShops().map(toPublicShop));
 
 /**
- * Id resolution against the SERVING catalog only. Once live rows arrive,
- * stale demo-id entries (cart, wishlist) quietly stop matching instead of
- * resolving to seed rows with stale prices that checkout would then 422.
+ * Id resolution against the SERVING catalog. Once live rows arrive, legacy
+ * demo ids (p1…p7) are bridged through their launch-catalog slug to the
+ * seeded row's uuid — so carts that were built while the store was
+ * unseeded survive the cutover (including the checkout auto-seed moment)
+ * instead of silently emptying the cart. Entries that match neither the
+ * live rows nor a seed slug stop matching quietly, as before.
  */
-export const resolveCatalogProduct = (id: string): Product | undefined =>
-  (liveProducts ?? PRODUCTS).find((p) => p.id === id);
+export const resolveCatalogProduct = (id: string): Product | undefined => {
+  const pool = liveProducts ?? PRODUCTS;
+  const direct = pool.find((p) => p.id === id);
+  if (direct) return direct;
+  if (liveProducts) {
+    const seed = PRODUCTS.find((p) => p.id === id);
+    if (seed) return liveProducts.find((p) => p.slug === seed.slug);
+  }
+  return undefined;
+};
 
 export const resolveCatalogCategory = (id: string): Category | undefined =>
   (liveCategories ?? CATEGORIES).find((c) => c.id === id);

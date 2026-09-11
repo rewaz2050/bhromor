@@ -6,9 +6,9 @@ import { useSyncExternalStore } from "react";
 import {
   demoLogin,
   demoSignup,
+  getAuthSnapshot,
 } from "@/lib/customer-session";
-import { useCustomer } from "./customer-provider";
-import { useCustomer as useCustomerSession } from "@/lib/use-customer";
+import { useCustomer } from "@/lib/use-customer";
 import {
   getWishlist,
   getWishlistServer,
@@ -19,10 +19,30 @@ import { LoyaltyCard } from "./loyalty-card";
 /**
  * Account panel — signup/login with NO verification: phone + password and
  * you are in, instantly (live: session cookie; demo: browser-local store).
+ * On success the shared session store flips every consumer to the signed-in
+ * dashboard view right here; a `?next=/somewhere` link (e.g. from checkout)
+ * carries the customer back to where they were heading.
  */
+
+/** Same-origin relative redirect target from ?next= — or null. */
+const nextFromQuery = (): string | null => {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("next");
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return null;
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    // Already on the destination (e.g. /account?next=/account): the in-place
+    // dashboard switch IS the navigation — don't reload the same page.
+    if (url.pathname === window.location.pathname) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+};
+
 export default function AccountView() {
-  const { customer, mode, checked } = useCustomer();
-  const { refresh, signOut } = useCustomerSession();
+  const { customer, mode, checked, refresh, signOut } = useCustomer();
   const guest = useSyncExternalStore(
     subscribeWishlist,
     getWishlist,
@@ -44,6 +64,34 @@ export default function AccountView() {
       </p>
     );
   }
+
+  /** Shared success tail: refresh the session store, announce, then move. */
+  const finishAuth = async (signup: boolean) => {
+    await refresh();
+    setPassword("");
+    if (mode === "live") {
+      // The cookie is set — but if the probe still can't see a session, say
+      // so instead of a fake success that leaves the form on screen.
+      const snap = getAuthSnapshot();
+      if (snap.mode === "live" && !snap.customer) {
+        throw new Error(
+          "সেশন তৈরি হলো বলে মনে হচ্ছে না — ব্রাউজারে third-party/cookie block বন্ধ করে আবার চেষ্টা করুন।",
+        );
+      }
+    }
+    setDone(
+      signup
+        ? "✅ অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন করা আছেন!"
+        : "✅ লগ ইন সম্পন্ন — আপনি এখন আপনার অ্যাকাউন্ট ড্যাশবোর্ডে আছেন!",
+    );
+    const goTo = nextFromQuery();
+    if (goTo) window.location.assign(goTo);
+  };
+
+  /** Duplicate phone tells the customer to log in — jump them to that tab. */
+  const maybeSwitchToLogin = (message: string) => {
+    if (tab === "signup" && /লগ ইন করুন/.test(message)) setTab("login");
+  };
 
   const submit = async () => {
     if (busy) return;
@@ -68,32 +116,32 @@ export default function AccountView() {
         };
         if (body.demoMode) throw new Error("demo");
         if (!res.ok) {
-          throw new Error(body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।");
+          const message = body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।";
+          maybeSwitchToLogin(message);
+          throw new Error(message);
         }
       } else {
         const result =
           tab === "signup"
             ? await demoSignup({ name, phone, password })
             : await demoLogin({ phone, password });
-        if (!result.ok) throw new Error(result.error);
+        if (!result.ok) {
+          maybeSwitchToLogin(result.error);
+          throw new Error(result.error);
+        }
       }
-      await refresh();
-      setPassword("");
-      setDone(
-        tab === "signup"
-          ? "✅ অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন করা আছেন!"
-          : "✅ লগ ইন সম্পন্ন!",
-      );
+      await finishAuth(tab === "signup");
     } catch (err) {
       if (err instanceof Error && err.message === "demo") {
         const result =
           tab === "signup"
             ? await demoSignup({ name, phone, password })
             : await demoLogin({ phone, password });
-        if (!result.ok) setError(result.error);
-        else {
-          await refresh();
-          setDone("✅ সাথে সাথে লগ ইন হয়ে গেছে!");
+        if (!result.ok) {
+          setError(result.error);
+          maybeSwitchToLogin(result.error);
+        } else {
+          await finishAuth(tab === "signup");
         }
       } else {
         setError(err instanceof Error ? err.message : "সমস্যা হয়েছে।");
@@ -111,8 +159,13 @@ export default function AccountView() {
         {customer ? (
           <>
             <p className="text-xs uppercase tracking-widest text-gold-600">
-              লগ ইন করা আছে
+              লগ ইন করা আছে — আপনার ড্যাশবোর্ড
             </p>
+            {done && (
+              <p role="status" className="mt-3 text-sm text-forest-800">
+                {done}
+              </p>
+            )}
             <h2 className="mt-3 break-words font-display text-2xl text-forest-900">
               {customer.name}
             </h2>
