@@ -46,8 +46,10 @@ describe("live-catalog registry", () => {
     await expect(ensureLiveCatalog()).resolves.toBe(true);
     expect(getProductsSnapshot()).toEqual([liveProduct]);
     expect(isCatalogSettled()).toBe(true);
-    // Post-cutover, stale demo-id lookups quietly miss instead of crashing.
-    expect(resolveCatalogProduct("p1")).toBeUndefined();
+    // Post-cutover, legacy demo ids bridge through slug to the LIVE row
+    // (live prices, not stale seed prices) so carts survive seeding.
+    expect(resolveCatalogProduct("p1")).toBe(liveProduct);
+    expect(resolveCatalogProduct("p2")).toBeUndefined(); // no live row
     expect(resolveCatalogProduct("uuid-live-1")).toEqual(liveProduct);
   });
 

@@ -2,9 +2,17 @@
  * POST /api/account/signup — create a customer account, instantly signed in.
  * No email/OTP verification by design: response sets the session cookie.
  * Demo mode returns `{ demoMode: true }` and the browser-local store takes over.
+ * An unseeded accounts store (migration not applied yet) also degrades to
+ * demo mode — the customer still gets a working account, the owner gets a
+ * clear pointer in the server log instead of a silent 500.
  */
 
-import { signupCustomer, createSession, sessionCookie, CustomerAuthError } from "@/lib/customer-auth";
+import {
+  signupCustomer,
+  createSession,
+  sessionCookie,
+  CustomerAuthError,
+} from "@/lib/customer-auth";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
@@ -39,6 +47,10 @@ export async function POST(request: Request) {
     return res;
   } catch (err) {
     if (err instanceof CustomerAuthError) {
+      if (err.storeMissing) {
+        console.error("[account/signup]", err.message);
+        return apiJson({ demoMode: true as const });
+      }
       return apiError(err.message, err.status);
     }
     return apiError("অ্যাকাউন্ট খোলা গেল না — আবার চেষ্টা করুন।", 500);

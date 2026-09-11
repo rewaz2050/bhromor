@@ -65,12 +65,22 @@ const COUPONS = [
 const variantStock = (lowStock: boolean): number => (lowStock ? 3 : 12);
 
 /**
- * Upsert the launch catalog into an empty database.
+ * Upsert the launch catalog into a database whose products table is EMPTY.
  * Returns true when every step succeeded; false on the first DB rejection.
+ * "Empty" is TOTAL-row based: a catalog that exists but is all draft was
+ * left that way on purpose by the admin — the slug-conflict upsert would
+ * republish those rows. Non-empty table → hands off, no writes at all.
  */
 export async function ensureLaunchCatalog(
   db: SupabaseClient,
 ): Promise<boolean> {
+  // Guard: never mutate an existing catalog.
+  const total = await db
+    .from("products")
+    .select("id", { count: "exact", head: true });
+  if (total.error) return false;
+  if ((total.count ?? 0) > 0) return false;
+
   // 0. shop #1 — the owner's own catalog (everything seeded below belongs
   //    to it). Same row as the script; vendors onboard later via admin.
   {

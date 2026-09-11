@@ -38,6 +38,10 @@ export async function POST(request: Request) {
     return res;
   } catch (err) {
     if (err instanceof CustomerAuthError) {
+      if (err.storeMissing) {
+        console.error("[account/login]", err.message);
+        return apiJson({ demoMode: true as const });
+      }
       return apiError(err.message, err.status);
     }
     return apiError("লগ ইন করা গেল না — আবার চেষ্টা করুন।", 500);

@@ -34,11 +34,35 @@ export interface CustomerInfo {
 
 export class CustomerAuthError extends Error {
   status: number;
-  constructor(message: string, status = 400) {
+  /** True when the accounts tables themselves are missing (42P01): callers
+   *  should answer `{ demoMode: true }` so the storefront's browser-local
+   *  store takes over instead of failing the customer. */
+  storeMissing: boolean;
+  constructor(message: string, status = 400, storeMissing = false) {
     super(message);
     this.status = status;
+    this.storeMissing = storeMissing;
   }
 }
+
+/** Postgres "relation does not exist" / PostgREST schema-cache miss. */
+export const isMissingTableError = (
+  error: { code?: string; message?: string } | null | undefined,
+): boolean =>
+  error?.code === "42P01" ||
+  /does not exist/i.test(error?.message ?? "") ||
+  /schema cache/i.test(error?.message ?? "");
+
+const MISSING_STORE_MESSAGE =
+  "accounts store missing — run supabase/migrations/202609110004_customer_accounts.sql";
+
+type ServiceDb = NonNullable<ReturnType<typeof getSupabaseService>>;
+
+/** Cheap probe: are the customer account tables reachable at all? */
+export const customerStoreReady = async (db: ServiceDb): Promise<boolean> => {
+  const res = await db.from("customer_sessions").select("token").limit(1);
+  return !isMissingTableError(res.error as { code?: string; message?: string });
+};
 
 /* ----------------------------- passwords ----------------------------- */
 
@@ -109,6 +133,9 @@ export const signupCustomer = async (input: {
     .select("id")
     .eq("phone", phone)
     .maybeSingle();
+  if (existing.error && isMissingTableError(existing.error)) {
+    throw new CustomerAuthError(MISSING_STORE_MESSAGE, 503, true);
+  }
   if (existing.data) {
     throw new CustomerAuthError(
       "এই নম্বরে অ্যাকাউন্ট আগেই আছে — লগ ইন করুন।",
@@ -121,7 +148,13 @@ export const signupCustomer = async (input: {
     .insert({ name, phone, password_hash: hashPassword(password) })
     .select("id, name, phone")
     .single();
-  if (inserted.error || !inserted.data) {
+  if (inserted.error) {
+    if (isMissingTableError(inserted.error)) {
+      throw new CustomerAuthError(MISSING_STORE_MESSAGE, 503, true);
+    }
+    throw new CustomerAuthError("অ্যাকাউন্ট খোলা গেল না — আবার চেষ্টা করুন।", 500);
+  }
+  if (!inserted.data) {
     throw new CustomerAuthError("অ্যাকাউন্ট খোলা গেল না — আবার চেষ্টা করুন।", 500);
   }
   return inserted.data as CustomerInfo;
@@ -142,6 +175,9 @@ export const loginCustomer = async (input: {
     .select("id, name, phone, password_hash")
     .eq("phone", phone ?? "")
     .maybeSingle();
+  if (found.error && isMissingTableError(found.error)) {
+    throw new CustomerAuthError(MISSING_STORE_MESSAGE, 503, true);
+  }
   const row = found.data as
     | (CustomerInfo & { password_hash: string })
     | null;
@@ -169,7 +205,12 @@ export const createSession = async (
     customer_id: customerId,
     expires_at: expires,
   });
-  if (res.error) throw new CustomerAuthError("Session error.", 500);
+  if (res.error) {
+    if (isMissingTableError(res.error)) {
+      throw new CustomerAuthError(MISSING_STORE_MESSAGE, 503, true);
+    }
+    throw new CustomerAuthError("Session error.", 500);
+  }
   return { token, maxAgeSec };
 };
 
@@ -223,11 +264,17 @@ export const destroySession = async (request: Request): Promise<void> => {
 
 /* ------------------------------ cookies ------------------------------ */
 
+/**
+ * Production serves over HTTPS only (Vercel) — mark the session cookie
+ * `Secure` there; local `npm run dev` (http) must stay without it.
+ */
+const SECURE = process.env.NODE_ENV === "production" ? "; Secure" : "";
+
 export const sessionCookie = (token: string, maxAgeSec: number): string =>
-  `${CUSTOMER_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`;
+  `${CUSTOMER_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${SECURE}; Max-Age=${maxAgeSec}`;
 
 export const clearedCookie = (): string =>
-  `${CUSTOMER_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  `${CUSTOMER_COOKIE}=; Path=/; HttpOnly; SameSite=Lax${SECURE}; Max-Age=0`;
 
 /* --------------------------- loyalty target --------------------------- */
 

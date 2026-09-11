@@ -46,6 +46,8 @@ const makeDb = () => {
           chain._eq = val;
           return chain;
         },
+        // customerStoreReady probes with .select(...).limit(1)
+        limit: async () => ({ data: [] as unknown[], error: null }),
         maybeSingle: async () => {
           if (table === "customers") {
             return { data: findCustomer(chain._eq), error: null };
@@ -242,5 +244,53 @@ describe("customer account routes — no verification, instant session", () => {
     const body = (await res.json()) as { demoMode?: boolean };
     expect(body.demoMode).toBe(true);
     expect((await meGet(get("/api/account/me"))).headers.get("Set-Cookie")).toBeNull();
+  });
+});
+
+describe("customer account routes — accounts store never migrated (42P01)", () => {
+  /** A db double whose every read/write reports the relation is missing. */
+  const missingRelation = { code: "42P01", message: 'relation "public.customers" does not exist' };
+  const brokenDb = {
+    from: () => {
+      const chain: Record<string, unknown> = {
+        select: () => chain,
+        eq: () => chain,
+        insert: () => chain,
+        maybeSingle: async () => ({ data: null, error: missingRelation }),
+        single: async () => ({ data: null, error: missingRelation }),
+        limit: async () => ({ data: null, error: missingRelation }),
+      };
+      return chain;
+    },
+  };
+
+  beforeEach(() => {
+    // Keys ARE configured — only the tables are missing (the go-live gap).
+    state.serviceConfigured = true;
+    state.db = brokenDb as unknown as typeof state.db;
+  });
+
+  it("signup degrades to demoMode (customer gets a local account, no 500)", async () => {
+    const res = await signupPost(send("/api/account/signup", {
+      name: "রহিম",
+      phone: "01712345678",
+      password: "secret123",
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ demoMode: true });
+  });
+
+  it("login degrades to demoMode for the same reason", async () => {
+    const res = await loginPost(send("/api/account/login", {
+      phone: "01712345678",
+      password: "secret123",
+    }));
+    expect(await res.json()).toEqual({ demoMode: true });
+  });
+
+  it("me answers demoMode, not a live 401 — the panel must leave live mode", async () => {
+    const res = await meGet(get("/api/account/me"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ demoMode: true });
   });
 });
