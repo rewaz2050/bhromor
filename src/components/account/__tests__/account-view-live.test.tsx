@@ -10,7 +10,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import AccountView from "../account-view";
 import {
   __resetLiveAuthForTests,
-  demoLogout,
 } from "@/lib/customer-session";
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -21,8 +20,6 @@ type Handler = (url: string, init?: RequestInit) => Promise<Response>;
 let routes: Record<string, Handler>;
 const originalFetch = globalThis.fetch;
 beforeEach(() => {
-  window.localStorage.clear();
-  demoLogout();
   __resetLiveAuthForTests();
   routes = {};
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

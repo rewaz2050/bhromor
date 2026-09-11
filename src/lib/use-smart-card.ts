@@ -1,18 +1,13 @@
 "use client";
 
 /**
- * The signed-in customer's Smart Card (stamp card).
- * Live → GET /api/account/card (server counts this phone's orders).
- * Demo → browser-local orders + settings through the shared calculator.
+ * The signed-in customer's Smart Card (stamp card) — live only.
+ * GET /api/account/card (server counts this phone's orders).
  * Signed-out → card === null; the UI shows the join teaser instead.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomer } from "./use-customer";
-import { useSettings } from "./use-settings";
-import { useLocalOrders } from "./use-orders";
-import { calculateLoyaltyProgress } from "./loyalty";
-import { samePhone } from "./orders";
 
 export interface SmartCard {
   stamps: number;
@@ -34,8 +29,6 @@ export function useSmartCard(): {
   loading: boolean;
 } {
   const { customer, mode, checked } = useCustomer();
-  const { orders } = useLocalOrders();
-  const { settings } = useSettings();
   const [liveState, setLiveState] = useState<{
     key: string;
     card: SmartCard | null;
@@ -89,40 +82,11 @@ export function useSmartCard(): {
   const liveError =
     liveState.key === (customer?.id ?? "") ? liveState.error : false;
 
-  const demoCard = useMemo(() => {
-    if (mode !== "demo" || !customer) return null;
-    const mine = orders.filter(
-      (o) => o.status !== "cancelled" && samePhone(o.customer?.phone ?? "", customer.phone),
-    );
-    const progress = calculateLoyaltyProgress(mine, settings, {
-      phone: customer.phone,
-    });
-    const card: SmartCard = {
-      stamps: progress.currentStamps,
-      orderCount: progress.totalDelivered,
-      target: progress.targetOrders,
-      cycles: progress.completedCycles,
-      unlocked: progress.isUnlocked,
-      revealed: progress.prizeRevealed,
-      enabled: progress.enabled,
-      rewardTitle: progress.rewardTitle,
-      rewardDescription: progress.rewardDescription,
-      afterOrderStamps:
-        progress.currentStamps >= progress.targetOrders
-          ? 1
-          : progress.currentStamps + 1,
-    };
-    return card;
-  }, [mode, customer, orders, settings]);
-
   if (!checked) return { card: null, signedIn: false, loading: true };
   if (!customer) return { card: null, signedIn: false, loading: false };
-  if (mode === "live") {
-    return {
-      card: liveCard,
-      signedIn: true,
-      loading: !liveCard && !liveError,
-    };
-  }
-  return { card: demoCard, signedIn: true, loading: false };
+  return {
+    card: liveCard,
+    signedIn: true,
+    loading: !liveCard && !liveError,
+  };
 }

@@ -2,16 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useOrders } from "@/lib/use-orders";
 import { useCatalog } from "@/lib/use-catalog";
-import { useZones } from "@/lib/use-zones";
-import { useReviews } from "@/lib/use-reviews";
-import { useCoupons } from "@/lib/use-coupons";
-import { useNotifications } from "@/lib/use-notifications";
-import { useCms } from "@/lib/use-cms";
 import { useSettings } from "@/lib/use-settings";
-import { resetDemoMessages } from "@/lib/engagement";
-import { resetMediaStore } from "@/lib/media-store";
 import { displayStock } from "@/lib/catalog-store";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, label } from "@/components/admin/form-ui";
@@ -23,20 +15,13 @@ import {
 } from "@/components/ui/icons";
 
 /**
- * Settings (§58 ops + §loyalty reward program + demo-phase housekeeping).
- * Staff sessions persist the settings in `site_settings['ops']` (§44); the
- * demo-data housekeeping below only exists in demo mode.
+ * Settings (§58 ops + §loyalty reward program).
+ * Staff sessions persist the settings in `site_settings['ops']` (§44).
  */
 
 export default function AdminSettingsPage() {
-  const { settings, save: saveSettings, live } = useSettings();
-  const ordersApi = useOrders();
+  const { settings, save: saveSettings } = useSettings();
   const catalogApi = useCatalog();
-  const zonesApi = useZones();
-  const reviewsApi = useReviews();
-  const couponsApi = useCoupons();
-  const notifsApi = useNotifications();
-  const cmsApi = useCms();
 
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(settings.loyaltyEnabled);
@@ -125,50 +110,11 @@ export default function AdminSettingsPage() {
     );
   };
 
-  const resetAll = () => {
-    if (
-      !window.confirm(
-        "Reset ALL demo data (orders, catalog, zones, reviews, coupons, notifications, homepage, media, messages, settings) to the seeded samples?",
-      )
-    )
-      return;
-    ordersApi.reset();
-    catalogApi.reset();
-    zonesApi.reset();
-    reviewsApi.reset();
-    couponsApi.reset();
-    notifsApi.reset();
-    cmsApi.reset();
-    resetMediaStore();
-    resetDemoMessages();
-    setThreshold(String(settings.lowStockThreshold));
-    setLoyaltyEnabled(settings.loyaltyEnabled);
-    setLoyaltyTarget(String(settings.loyaltyTargetOrders));
-    setLoyaltyRewardTitle(settings.loyaltyRewardTitle);
-    setLoyaltyRewardDesc(settings.loyaltyRewardDescription);
-    setLoyaltyMinAmount(String(settings.loyaltyMinOrderAmount));
-    notify("All demo data reset to seeds");
-  };
-
-  const stores = [
-    { key: "orders", name: "Orders", count: ordersApi.orders.length, reset: ordersApi.reset, hint: "12 seeded demo orders across statuses (§33–34)" },
-    { key: "catalog", name: "Products & categories", count: catalogApi.products.length, reset: catalogApi.reset, hint: "Catalog used by the storefront + inventory (§5, §71)" },
-    { key: "zones", name: "Delivery zones", count: zonesApi.zones.length, reset: zonesApi.reset, hint: "Zones and charges the checkout charges live (§20–21)" },
-    { key: "reviews", name: "Reviews", count: reviewsApi.reviews.length, reset: reviewsApi.reset, hint: "Storefront reviews + moderation queue (§30)" },
-    { key: "coupons", name: "Coupons", count: couponsApi.coupons.length, reset: couponsApi.reset, hint: "WELCOME100 · PROSANTI15 · EID50 + usage counts (§56)" },
-    { key: "notifs", name: "Notifications", count: notifsApi.notifs.length, reset: notifsApi.reset, hint: "Inbox + bell unread state (§35)" },
-    { key: "cms", name: "Homepage CMS", count: 0, reset: cmsApi.reset, hint: "Announcement, hero and homepage sections (§31)" },
-    { key: "media", name: "Media additions", count: 0, reset: resetMediaStore, hint: "Custom URLs added in the media library (§49)" },
-    { key: "messages", name: "Contact messages", count: 0, reset: resetDemoMessages, hint: "Demo inbox for the contact form" },
-  ];
-
   const constants = [
     { k: "Currency", v: "Bangladeshi Taka — integer paisa end to end (§69)" },
     { k: "Order numbers", v: "PS-YYYYMMDD-NNNN, assigned at placement (§70)" },
     { k: "Payments", v: "Cash on delivery only — see the Payments page (§20–21)" },
-    live
-      ? { k: "Storage", v: "Supabase Postgres — every change here is live data" }
-      : { k: "Demo storage", v: "this browser's localStorage under prosanti.* keys" },
+    { k: "Storage", v: "Supabase Postgres — every change here is live data" },
   ];
 
   return (
@@ -177,28 +123,10 @@ export default function AdminSettingsPage() {
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">Settings</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            {live ? (
-              <>
-                Operational preferences — saved in{" "}
-                <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">site_settings</code> (§44).
-              </>
-            ) : (
-              <>
-                Operational preferences of the demo platform. Demo data below
-                lives in this browser only.
-              </>
-            )}
+            Operational preferences — saved in{" "}
+            <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">site_settings</code> (§44).
           </p>
         </div>
-        {!live && (
-          <button
-            type="button"
-            onClick={resetAll}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-forest-950 hover:text-ivory-50"
-          >
-            Reset all demo data
-          </button>
-        )}
       </div>
 
       {flash && (
@@ -370,50 +298,6 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </section>
-
-      {/* Demo data — demo mode only; live data is never reset */}
-      {!live && (
-      <section aria-label="Demo data" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-display text-base font-medium text-forest-900">Demo data</h3>
-            <p className="mt-1 text-xs leading-5 text-ink-soft">
-              Every domain below persists independently. Resetting restores the seeded sample — a
-              storefront demo aid, replaced by Supabase rows in the backend phase.
-            </p>
-          </div>
-        </div>
-        <ul className="mt-4 divide-y divide-line">
-          {stores.map((s) => (
-            <li key={s.key} className="flex items-center gap-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink">
-                  {s.name}
-                  {s.count > 0 && (
-                    <span className="ml-2 rounded-full bg-ivory-100 px-2 py-0.5 text-xs font-bold tabular-nums text-ink-soft">
-                      {s.count}
-                    </span>
-                  )}
-                </p>
-                <p className="mt-0.5 text-xs leading-5 text-ink-soft">{s.hint}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm(`Reset ${s.name} to the seeded sample data?`)) {
-                    s.reset();
-                    notify(`${s.name} reset to seeds`);
-                  }
-                }}
-                className="shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-forest-950 hover:text-ivory-50"
-              >
-                Reset
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Platform constants */}

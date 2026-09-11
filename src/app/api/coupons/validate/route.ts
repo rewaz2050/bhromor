@@ -2,12 +2,11 @@
  * POST /api/coupons/validate { code, items: [{ productId, qty }], zoneId? } —
  * single source of truth for coupon checks at checkout.
  *
- * Live mode prices against the database; demo mode against the seeds.
+ * Prices against the database; an unconfigured backend answers 503.
  * Supports percent, fixed, and free_delivery with zone restriction and max cap.
  */
 
-import { PRODUCTS, type Product } from "@/lib/catalog";
-import { seedCoupons } from "@/lib/coupons-store";
+import type { Product } from "@/lib/catalog";
 import {
   discountAmount,
   eligibleSubtotal,
@@ -18,7 +17,6 @@ import {
   type Coupon,
 } from "@/lib/coupons";
 import { loadOrderSnapshot } from "@/lib/db/orders";
-import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -51,20 +49,15 @@ export async function POST(request: Request) {
 
   let products: Product[];
   let coupons: Coupon[];
-  if (isServiceRoleConfigured()) {
-    try {
-      const snapshot = await loadOrderSnapshot();
-      if (!snapshot || snapshot.products.length === 0) {
-        return apiError("Coupons are unavailable right now.", 503);
-      }
-      products = snapshot.products;
-      coupons = snapshot.coupons;
-    } catch {
+  try {
+    const snapshot = await loadOrderSnapshot();
+    if (!snapshot || snapshot.products.length === 0) {
       return apiError("Coupons are unavailable right now.", 503);
     }
-  } else {
-    products = PRODUCTS;
-    coupons = seedCoupons();
+    products = snapshot.products;
+    coupons = snapshot.coupons;
+  } catch {
+    return apiError("Coupons are unavailable right now.", 503);
   }
 
   const lines: { productCategory: string; subtotal: number }[] = [];

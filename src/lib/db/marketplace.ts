@@ -33,7 +33,7 @@ const BD_PHONE_RE = /^01\d{9}$/;
 
 /**
  * Active shops, optionally scoped to one delivery zone (area-scoped
- * discovery, D3). Null when the backend is unconfigured (demo fallback).
+ * discovery, D3). Null when the backend is unconfigured.
  */
 export async function listPublicShops(zoneId?: string): Promise<Shop[] | null> {
   const db = getSupabaseService();

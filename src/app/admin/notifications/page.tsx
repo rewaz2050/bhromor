@@ -102,17 +102,6 @@ export default function AdminNotificationsPage() {
           )}
         </h2>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset notifications to the seeded samples?")) reset();
-              }}
-              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-            >
-              Reset demo
-            </button>
-          )}
           <button
             type="button"
             onClick={() => void readAll()}
@@ -214,8 +203,8 @@ export default function AdminNotificationsPage() {
       )}
 
       <p className="text-xs leading-5 text-ink-soft">
-        Demo mode. Real delivery channels (SMS, WhatsApp where officially
-        supported) plug into this same inbox with the Supabase phase (§35).
+        Live inbox. Order events (new order, delivery confirmation, smart-card
+        completion) land here automatically.
       </p>
     </div>
   );

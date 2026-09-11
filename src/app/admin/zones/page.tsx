@@ -302,17 +302,6 @@ export default function AdminZonesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset zones to the seeded sample areas?")) reset();
-              }}
-              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-            >
-              Reset demo zones
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setAdding((v) => !v)}
@@ -363,8 +352,8 @@ export default function AdminZonesPage() {
 
       {zones.map((z, i) => (
         <ZoneRow
-          /* Keyed on the stored values so "Reset demo zones" (or any external
-             change) refreshes the row inputs instead of leaving stale text. */
+          /* Keyed on the stored values so any external change refreshes the
+             row inputs instead of leaving stale text. */
           key={`${z.id}:${z.name}:${z.charge}:${z.etaLabel}:${z.areas.join(",")}:${z.active !== false}`}
           zone={z}
           first={i === 0}

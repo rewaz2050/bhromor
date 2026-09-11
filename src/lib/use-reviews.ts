@@ -1,32 +1,17 @@
 "use client";
 
 /**
- * Admin review data with live cutover (see use-orders.ts).
- * Public reads/writes go through usePublicReviews() instead — staff
- * endpoints must never serve the storefront.
+ * Admin review data — live only. Reads/writes go through /api/admin/reviews.
+ * Public reads/writes use usePublicReviews() instead — staff endpoints must
+ * never serve the storefront.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  deleteReview,
-  featureReview,
-  getReviews,
-  getReviewsServer,
-  moderateReview,
-  resetReviews,
-  submitReview,
-  subscribeReviews,
-} from "./reviews-store";
+import { useCallback, useEffect, useState } from "react";
 import type { Review, ReviewStatus } from "./review-store";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export function useReviews() {
-  const demoReviews = useSyncExternalStore(
-    subscribeReviews,
-    getReviews,
-    getReviewsServer,
-  );
   const { live, checked } = useStaffLive();
   const [liveReviews, setLiveReviews] = useState<Review[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +30,7 @@ export function useReviews() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveReviews(null);
       setError(null);
       return;
@@ -53,20 +38,13 @@ export function useReviews() {
     void refresh();
   }, [live, refresh]);
 
-  /** Demo-only: public submissions use usePublicReviews(). */
-  const submit = useCallback(
-    (r: Review) => {
-      if (!live) submitReview(r);
-    },
-    [live],
-  );
+  const submit = useCallback((_r: Review) => {
+    // Public submissions go through usePublicReviews() — no-op here.
+  }, []);
 
   const moderate = useCallback(
     async (id: string, status: ReviewStatus): Promise<void> => {
-      if (!live) {
-        moderateReview(id, status as "approved" | "hidden" | "flagged");
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend(
           `/api/admin/reviews/${encodeURIComponent(id)}`,
@@ -84,10 +62,7 @@ export function useReviews() {
 
   const feature = useCallback(
     async (id: string): Promise<void> => {
-      if (!live) {
-        featureReview(id);
-        return;
-      }
+      if (!live) return;
       const current = liveReviews?.find((r) => r.id === id);
       try {
         await apiSend(
@@ -106,10 +81,7 @@ export function useReviews() {
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      if (!live) {
-        deleteReview(id);
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend(
           `/api/admin/reviews/${encodeURIComponent(id)}`,
@@ -124,18 +96,13 @@ export function useReviews() {
     [live, refresh],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetReviews();
-  }, [live, refresh]);
-
   return {
-    reviews: live ? (liveReviews ?? []) : demoReviews,
+    reviews: liveReviews ?? [],
     submit,
     moderate,
     feature,
     remove,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveReviews === null),
     error,

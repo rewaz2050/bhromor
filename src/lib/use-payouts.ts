@@ -2,8 +2,7 @@
 
 /**
  * Staff payout data (marketplace phase 2, slice 5) — live only.
- * Settlement money has no demo: without a staff session the page says
- * so instead of inventing balances.
+ * Without a staff session the page says so instead of inventing balances.
  */
 
 import { useCallback, useEffect, useState } from "react";

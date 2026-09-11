@@ -105,23 +105,6 @@ export default function AdminOrdersPage() {
             className="w-full rounded-full border-0 bg-paper py-2.5 pl-10 pr-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/70 focus:outline-none focus:ring-2 focus:ring-forest-600"
           />
         </div>
-        {!live && (
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Reset demo orders to the seeded sample data? Your local changes will be lost.",
-                )
-              ) {
-                reset();
-              }
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset demo data
-          </button>
-        )}
       </div>
 
       {/* Status filter chips */}

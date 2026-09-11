@@ -52,7 +52,7 @@ If the dashboard offers **Import .env**, you can paste the block from `.env.exam
 | `CLOUDINARY_API_SECRET` | Secret | Same (signed uploads) |
 | `NEWSLETTER_SIGNUP_URL` | Config | Optional |
 
-Never put the service-role key in a `NEXT_PUBLIC_` name. Without these keys the site still deploys — it stays in honest **demo** mode (`GET /api/health` → `"mode":"demo"`).
+Never put the service-role key in a `NEXT_PUBLIC_` name. Without these keys the site still deploys — the storefront paints the launch catalog and every backend endpoint answers an honest 503/unavailable (`GET /api/health` → `"live": false` with a checklist of what is missing).
 
 ### After saving — you must redeploy
 
@@ -60,7 +60,7 @@ New values apply only to **new** deployments.
 
 1. [Deployments](https://vercel.com/rewaz2050-8233/bhromor/deployments) → latest Production → ⋯ → **Redeploy**.
 2. **Uncheck** “Use existing Build Cache”.
-3. Confirm. Then open `/api/health` on the live URL: `"mode":"live"` means the Supabase keys were picked up.
+3. Confirm. Then open `/api/health` on the live URL: `"live": true` means the Supabase keys were picked up **and** the database is seeded.
 
 ## If you changed project settings by mistake
 
@@ -89,19 +89,22 @@ Do **not** enable the team security policy **Separate Production Secret Values**
 
 ## Admin login after keys are live
 
-Once `NEXT_PUBLIC_SUPABASE_*` is on the deployment, `/admin/login` switches to **Live mode**. The demo pair `admin@prosanti.store` / `prosanti` **stops working** — that is intentional.
+`/admin/login` is always the real staff login (Supabase Auth + an
+`admin_users` role). There are no demo credentials.
 
-1. Supabase → **Authentication → Users → Add user**. Use a real email + strong password. Tick **Auto Confirm User**.
+1. Supabase → **Authentication → Users → Add user**. Use the owner email `rahatbd2050@gmail.com` + a strong password. Tick **Auto Confirm User**.
 2. Apply `supabase/schema.sql` (and the later migrations) if you have not already — this creates `admin_users`.
-3. SQL editor, with your staff email:
+3. Grant the role — SQL editor, with the staff email:
 
 ```sql
 insert into admin_users (id, role)
 select id, 'admin'
 from auth.users
-where email = 'you@example.com'
+where email = 'rahatbd2050@gmail.com'
 on conflict (id) do update set role = excluded.role;
 ```
+
+Or, from a machine with the repo + keys: `npm run grant-admin -- rahatbd2050@gmail.com super_admin`.
 
 4. Supabase → **Authentication → URL configuration**: Site URL = `https://bhromor-zeta.vercel.app` (and add that origin under Redirect URLs).
 5. Sign in at `/admin/login` with **that** email and password.

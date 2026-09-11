@@ -85,7 +85,7 @@ export interface OrderSnapshot {
   products: Product[];
   zones: DeliveryZone[];
   coupons: import("./coupons").Coupon[];
-  /** Live shop rows (slice 4). Absent in demo-era snapshots → skipped. */
+  /** Live shop rows (slice 4). Absent in older snapshots → skipped. */
   shops?: Shop[];
   /**
    * THIS customer's earlier order count (by normalized phone, cancelled
@@ -176,7 +176,7 @@ const parseVariant = (label: string): { color: string; size: string } => {
 /**
  * A variant label is plausible when its color/size (when present in the
  * catalog) match the product. Products without colours/sizes accept the
- * default label — the demo seeds predate per-variant rows.
+ * default label.
  */
 const variantPlausible = (product: Product, label: string): boolean => {
   if (label === "" || label.length > 120) return false;
@@ -348,8 +348,8 @@ export const validateOrderPayload = (
   if (!zone) return { ok: false, errors }; // narrowed above; keeps TS honest
 
   // Single-shop rule (D1, Foodpanda model): one order = one shop. Live
-  // products always carry shopId; demo seeds omit it and skip the check.
-  // The ps_place_order RPC re-enforces this authoritatively.
+  // products always carry shopId. The ps_place_order RPC re-enforces this
+  // authoritatively.
   const shopIds = new Set(
     priced.map((it) => it.product.shopId).filter((s): s is string => !!s),
   );
@@ -368,7 +368,7 @@ export const validateOrderPayload = (
 
   // Shop availability (slice 4): the RPC re-enforces this authoritatively,
   // but field-level errors here read better than a placement failure.
-  // Demo carts (no shopIds, no shops) skip the check entirely.
+  // Carts without shopIds skip the check entirely.
   if (snapshot.shops && shopIds.size === 1) {
     const shopId = [...shopIds][0];
     const shop = snapshot.shops.find((s) => s.id === shopId);

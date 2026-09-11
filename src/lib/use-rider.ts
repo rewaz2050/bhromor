@@ -1,8 +1,7 @@
 /**
  * Rider client layer (marketplace phase 3, slice 7+).
  *
- * Session + jobs hooks for /api/rider/*. Unlike the storefront, the rider
- * app has no demo mode once Supabase is configured: an authenticated linked
+ * Session + jobs hooks for /api/rider/*. Live only: an authenticated linked
  * rider sees real jobs, everyone else is routed to /rider/login by the shell.
  */
 
@@ -10,7 +9,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
-import { isSupabaseConfigured } from "./env";
 import type { Rider } from "./catalog";
 import type { RiderJob, RiderSettlement } from "./db/riders";
 
@@ -60,17 +58,11 @@ export const useRiderSession = () => {
   const [rider, setRider] = useState<Rider | null>(null);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<
-    "demo" | "checking" | "authed" | "guest"
-  >(isSupabaseConfigured() ? "checking" : "demo");
+    "checking" | "authed" | "guest"
+  >("checking");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!isSupabaseConfigured()) {
-      setRider(null);
-      setEmail("");
-      setStatus("demo");
-      return;
-    }
     setStatus((prev) => (prev === "authed" ? prev : "checking"));
     setError(null);
     try {
@@ -91,7 +83,6 @@ export const useRiderSession = () => {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
   }, [refresh]);

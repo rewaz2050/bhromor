@@ -13,15 +13,8 @@ import {
   lineShopIds,
   shopById,
 } from "@/lib/shop-utils";
-import { recordCouponUseInStore } from "@/lib/coupons-store";
-import { ORDER_PREFIX, coverImage } from "@/lib/catalog";
-import {
-  getDeliveryCode,
-  makePlacedOrder,
-  samePhone,
-  type Order,
-} from "@/lib/orders";
-import { addOrderToStore } from "@/lib/order-store";
+import { coverImage } from "@/lib/catalog";
+import { getDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import {
   FIRST_FREE_DELIVERY_LIMIT,
@@ -44,7 +37,6 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { getOrders } from "@/lib/order-store";
 import {
   DISTRICTS,
   PARA_CUSTOM,
@@ -67,7 +59,6 @@ import {
   type SavedAddress,
 } from "@/lib/address-book";
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
-import { addNotificationToStore } from "@/lib/notifications-store";
 import { useCustomer } from "@/lib/use-customer";
 import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 import { useSmartCard } from "@/lib/use-smart-card";
@@ -196,17 +187,24 @@ export default function CheckoutView() {
   }, []);
 
   /* ------------------------------------------------------------------ */
-  /* Per-user first-10-free — this phone's earlier orders (local estimate; */
-  /* the server recounts by phone before granting the promo)               */
+  /* Store-wide LAUNCH OFFER counter — the server owns the real number.  */
+  /* The per-user first-10-free grant is decided by the server at        */
+  /* placement (the client only previews the zone charge).               */
   /* ------------------------------------------------------------------ */
-  const userOrderCount = useMemo(
-    () =>
-      getOrders().filter(
-        (o) => o.status !== "cancelled" && samePhone(o.customer?.phone ?? "", form.phone),
-      ).length,
-    [form.phone],
-  );
-  const userFreeRemaining = Math.max(0, FIRST_FREE_DELIVERY_LIMIT - userOrderCount);
+  const [promoTotal, setPromoTotal] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/promo", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
+      .then((data: { totalOrders?: number }) => {
+        if (cancelled) return;
+        if (typeof data.totalOrders === "number") setPromoTotal(data.totalOrders);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ------------------------------------------------------------------ */
   /* Smart Card — stamps accumulate on the signed-in account only        */
@@ -336,8 +334,8 @@ export default function CheckoutView() {
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
-      totalOrders: userOrderCount,
-      globalOrders: getOrders().length,
+      totalOrders: undefined,
+      globalOrders: promoTotal,
       thresholdEnabled: settings.perZoneFreeThresholdEnabled,
       distanceKm,
       weightKg,
@@ -374,7 +372,7 @@ export default function CheckoutView() {
     detail,
     activeCoupon,
     couponCheck.discount,
-    userOrderCount,
+    promoTotal,
     couponFreeDelivery,
     pinPos,
     settings,
@@ -651,96 +649,6 @@ export default function CheckoutView() {
       ? `Store Pickup — ${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}, ${SUNAMGANJ_DISTRICT}`
       : buildFullAddress();
 
-    const placeLocally = () => {
-      const stamp = new Date();
-      const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
-      const seq = String(Math.floor(1000 + Math.random() * 9000));
-      const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
-      addOrderToStore(
-        makePlacedOrder({
-          id: orderId,
-          createdAt: stamp.getTime(),
-          customer: {
-            name: form.name,
-            phone: form.phone,
-            area: form.isPickup ? "Pickup — " + SUNAMGANJ_HUB : effectivePara,
-            address: fullAddress,
-            note: form.note,
-          },
-          zone: {
-            id: zone.id,
-            name: zone.name,
-            etaLabel: form.isPickup
-              ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
-              : (summary.breakdown?.eta ?? zone.etaLabel),
-            charge: summary.charge,
-          },
-          items: detail.map((l) => ({
-            product: l.product,
-            image: coverImage(l.product).src,
-            variant: l.variantLabel,
-            qty: l.qty,
-          })),
-          coupon: activeCoupon
-            ? { code: activeCoupon.code, discount: summary.discount }
-            : undefined,
-        }),
-      );
-      if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
-      // Smart Card (demo): +1 stamp for the signed-in account's phone
-      let smartCardNote: string | undefined;
-      let cardFull = false;
-      if (cardCustomer && samePhone(cardCustomer.phone, form.phone)) {
-        const target = smartCard?.target ?? 10;
-        const count = getOrders().filter(
-          (o) =>
-            o.status !== "cancelled" &&
-            samePhone(o.customer?.phone ?? "", form.phone),
-        ).length;
-        smartCardNote = `স্মার্ট কার্ড: ${Math.min(count, target)}/${target} স্ট্যাম্প`;
-        if (count > 0 && count % target === 0) {
-          cardFull = true;
-          addNotificationToStore({
-            kind: "order",
-            title: `🎁 স্মার্ট কার্ড পূর্ণ — ${cardCustomer.name}`,
-            body: `${target}টি স্ট্যাম্প সম্পূর্ণ (${form.phone}) — পুরস্কার প্রস্তুত করুন`,
-            href: "/admin/settings",
-          });
-        }
-      }
-      // → Admin notification (same device / demo inbox)
-      addNotificationToStore({
-        kind: "order",
-        title: `নতুন অর্ডার ${orderId} — কনফার্মেশন দরকার`,
-        body: [
-          form.name,
-          form.isPickup
-            ? `Pickup · ${SUNAMGANJ_HUB}`
-            : `${effectivePara} · ${effectiveUpazila} · ${form.district}`,
-          `${formatBdt(summary.total)} COD`,
-          summary.freeDelivery && !form.isPickup ? "ফ্রি ডেলিভারি" : null,
-          summary.tip > 0 ? `টিপ ${formatBdt(summary.tip)}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        href: `/admin/orders/${orderId}`,
-      });
-      setPlaced({
-        orderId,
-        eta: form.isPickup
-          ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
-          : (summary.breakdown?.eta ?? zone.etaLabel),
-        charge: summary.charge,
-        total: summary.total,
-        addressSummary: form.isPickup
-          ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
-          : fullAddress,
-        cardFull,
-        smartCardNote,
-      });
-      clear();
-    };
-
     let res: Response;
     try {
       const scheduledAt =
@@ -795,7 +703,6 @@ export default function CheckoutView() {
       body = await res.json();
     } catch {}
     const data = (body ?? {}) as {
-      demoMode?: boolean;
       order?: Order;
       error?: string;
       errors?: { field: string; message: string }[];
@@ -803,14 +710,8 @@ export default function CheckoutView() {
       smartCard?: { stamps: number; target: number; justCompleted: boolean };
     };
 
-    if (res.ok && data.demoMode) {
-      persistAddress();
-      placeLocally();
-      return;
-    }
     if (res.ok && data.order) {
       persistAddress();
-      addOrderToStore(data.order);
       setPlaced({
         orderId: data.order.id,
         eta: form.isPickup
@@ -878,8 +779,8 @@ export default function CheckoutView() {
                 শুধুমাত্র <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে · এ জোনের বাইরে জোন
                 চার্জ (৳৩০–৳১০০)।{" "}
                 {form.phone.trim() !== ""
-                  ? `আপনার এ জোনে বাকি ফ্রি ডেলিভারি: ${userFreeRemaining} টি।`
-                  : "মোবাইল নম্বর দিলে আপনার বাকি ফ্রি দেখা যাবে।"}
+                  ? "আপনার ফ্রি ডেলিভারির হিসাব সার্ভারেই চূড়ান্ত করা হবে।"
+                  : "অর্ডারের সময় ফ্রি ডেলিভারির হিসাব সার্ভারে চূড়ান্ত হয়।"}
               </p>
             </div>
           </div>
@@ -1667,7 +1568,7 @@ export default function CheckoutView() {
             {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
           </p>
           <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-            🎉 প্রতি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি — আপনার বাকি {userFreeRemaining} টি (এ জোনে)
+            🎉 প্রতি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি (এ জোনে)
           </p>
           <div className="mt-4">
             <BagShopHeader />
@@ -1776,7 +1677,7 @@ export default function CheckoutView() {
             )}
             {summary.promoFree && (
               <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
-                🎉 আপনার প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারের প্রোমো — ডেলিভারি ফ্রি! বাকি {userFreeRemaining} টি।
+                🎉 আপনার প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারের প্রোমো — ডেলিভারি ফ্রি! (এ জোনে)
               </p>
             )}
             {summary.tip > 0 && (

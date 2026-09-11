@@ -1,12 +1,11 @@
 /**
- * Homepage CMS skeleton (§31) — demo, browser-local.
+ * Homepage CMS skeleton (§31) — live only.
  *
  * Holds the announcement bar copy, hero copy and visibility for the deliberately
- * short editorial homepage. Saved settings overlay the shipped defaults;
- * resetting clears the browser overlay.
+ * short editorial homepage. Staff-published settings overlay the shipped
+ * defaults server-side (see /api/homepage and src/lib/use-cms.ts); this module
+ * carries the shared types and defaults only.
  */
-
-export const HOME_CMS_KEY = "prosanti.admin.homepage.v1";
 
 export interface HomeSettings {
   announcement: { enabled: boolean; text: string };
@@ -83,64 +82,4 @@ export const resolveSettings = (partial?: unknown): HomeSettings => {
     {} as Record<SectionKey, boolean>,
   );
   return { announcement: ann, hero, sections };
-};
-
-/* ------------------------------------------------------------------ */
-/* External store                                                      */
-/* ------------------------------------------------------------------ */
-
-type Listener = () => void;
-
-let cache: HomeSettings | null = null;
-let loaded = false;
-const listeners = new Set<Listener>();
-
-const notify = () => {
-  for (const listener of listeners) listener();
-};
-
-const ensureLoaded = (): HomeSettings => {
-  if (cache && loaded) return cache;
-  loaded = true;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(HOME_CMS_KEY);
-      if (raw) cache = resolveSettings(JSON.parse(raw));
-    } catch {
-      // Corrupted storage falls back to the shipped edit.
-    }
-  }
-  cache ??= HOME_DEFAULTS;
-  return cache;
-};
-
-const persist = (next: HomeSettings) => {
-  cache = next;
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(HOME_CMS_KEY, JSON.stringify(next));
-    } catch {
-      // Storage unavailable — the editor continues in memory.
-    }
-  }
-  notify();
-};
-
-export const subscribeCms = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-/** Server-safe initial snapshot = shipped defaults. */
-export const getCmsServer = (): HomeSettings => HOME_DEFAULTS;
-
-export const getCms = (): HomeSettings => ensureLoaded();
-
-export const saveCms = (settings: HomeSettings) => persist(settings);
-
-export const resetCms = () => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(HOME_CMS_KEY);
-  }
-  persist(HOME_DEFAULTS);
 };

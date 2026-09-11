@@ -5,7 +5,6 @@ import Link from "next/link";
 import { IconCheck, IconShield } from "@/components/ui/icons";
 
 interface HealthResponse {
-  mode: "live" | "demo";
   live: boolean;
   checks?: Record<string, boolean>;
   counts?: Record<string, number>;
@@ -64,14 +63,14 @@ export default function LiveSetupBanner() {
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold text-amber-900">
-            ⚠️ এখন DEMO মোড চলছে — live করতে নিচের ধাপগুলো (মাত্র ~১০ মিনিট)
+            ⚠️ ব্যাকএন্ড এখনো পুরোপুরি লাইভ নয় — লাইভ করতে নিচের ধাপগুলো (মাত্র ~১০ মিনিট)
           </h3>
           <ol className="mt-2.5 space-y-1.5 text-sm leading-6 text-amber-900/90">
             <li>
               <strong>১.</strong> <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="underline">supabase.com</a>-এ ফ্রি project খুলুন
             </li>
             <li>
-              <strong>২.</strong> SQL Editor-এ চালান: <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">supabase/schema.sql</code>, তারপর <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">supabase/migrations/202609100003_per_user_first10_free.sql</code>
+              <strong>২.</strong> SQL Editor-এ চালান: <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">supabase/schema.sql</code>, তারপর <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">supabase/migrations/*</code> (সবগুলো, ক্রমে)
             </li>
             <li>
               <strong>৩.</strong> লোকালে <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">.env.local</code>-এ ৩টা key দিয়ে <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">npm run seed</code> + <code className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-mono">npm run grant-admin</code>
@@ -93,7 +92,7 @@ export default function LiveSetupBanner() {
           <p className="mt-2 text-[11px] text-amber-800/80">
             Key বসামাত্র সাইট নিজে নিজেই live হয়ে যাবে — কোড বদলাতে হবে না। বিস্তারিত:{" "}
             <Link href="/api/health" target="_blank" className="underline font-medium">/api/health</Link> ·{" "}
-            <a href="https://github.com/rewaz2050/bhromor/blob/arena/01a08d0c-bhromor/docs/go-live.md" target="_blank" rel="noopener noreferrer" className="underline font-medium">docs/go-live.md</a>
+            <a href="https://github.com/rewaz2050/bhromor/blob/main/docs/go-live.md" target="_blank" rel="noopener noreferrer" className="underline font-medium">docs/go-live.md</a>
           </p>
         </div>
       </div>

@@ -23,12 +23,12 @@ export async function GET(request: Request) {
     return res;
   }
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Could not update the signup — please try again.", 503);
   }
   const token = new URL(request.url).searchParams.get("token") ?? "";
   try {
     const db = getSupabaseService();
-    if (!db) return apiJson({ demoMode: true as const });
+    if (!db) return apiError("Could not update the signup — please try again.", 503);
     const ok = await unsubscribeNewsletter(db, token);
     if (!ok) return apiError("That signup link is unknown.", 404);
     return apiJson({ unsubscribed: true as const });

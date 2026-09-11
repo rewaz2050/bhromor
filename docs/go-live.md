@@ -1,4 +1,4 @@
-# Go-live playbook — demo to real (owner-run)
+# Go-live playbook — from launch catalog to fully seeded (owner-run)
 
 Production (`bhromor-zeta.vercel.app`) already talks to Supabase, but on
 2026-09-09 the database had **no catalog seed**, so every live checkout
@@ -6,8 +6,9 @@ failed. This doc takes the shop from there to fully real: database →
 seed → staff → verify. Every step is run by the deployment owner (you);
 nothing here needs the sandbox.
 
-> Local `npm run dev` without keys deliberately stays in demo mode
-> (browser-local stores). That is the offline fallback, not a bug.
+> Local `npm run dev` without keys paints the launch catalog, and every
+> backend endpoint answers an honest 503/unavailable. There is no
+> browser-local fallback store.
 
 ## 0. What “real” now covers
 
@@ -20,8 +21,8 @@ nothing here needs the sandbox.
 | Media library “added” shelf | This-browser-only | `media_library` table shared by all staff |
 | Notifications bell + inbox | Seeded samples | Per-staff rows written by order/review/application/message/signup events |
 | Low-stock threshold | This-browser-only | `site_settings['ops']`; dashboard + inventory use it live |
-| Track page | Demo-order nudges everywhere | Nudges only in demo; live orders tracked from the DB |
-| Admin “Reset demo” buttons | Visible in live too | Demo-mode only; live data is never reset |
+| Track page | No order lookup | Live orders tracked from the DB by id + phone |
+| Admin “Reset demo” buttons | (removed) | No demo-reset controls exist; live data is never reset |
 | Image upload | Add-by-URL only | Still add-by-URL until Cloudinary keys are set (step 6, optional) |
 
 ## 1. Apply the SQL (Supabase Dashboard → SQL editor)
@@ -97,35 +98,36 @@ orders or fake reviews — those arrive from real customers.
 
 > **Checkout self-heals (2026-09-11).** If this step is skipped and a customer
 > checks out, `POST /api/orders` upserts the same launch catalog in place
-> (`src/lib/db/auto-seed.ts`) and places a real order — the old 503
-> "Online ordering is not set up yet" wall is gone. If the database refuses
-> even the seed (missing schema/outage), the storefront completes the order
-> through its browser-local flow (`{ demoMode: true }`) instead of failing
-> the customer. The script remains the recommended path: run it BEFORE launch
-> so the very first order prices against seeded rows.
+> (`src/lib/db/auto-seed.ts`) and places a real order. If the database refuses
+> even the seed (missing schema/outage), the route answers an honest 503 —
+> the storefront never invents a browser-local order. The script remains the
+> recommended path: run it BEFORE launch so the very first order prices
+> against seeded rows.
 
 Verify: `GET https://<your-app>/api/products` must return products, not
 `{"code":"NOT_SEEDED"}`.
 
 ## 4. First staff account
 
-1. Supabase Dashboard → Authentication → Users → **Add user** (strong
-   password; confirm the email there if confirmation mails are off).
+1. Supabase Dashboard → Authentication → Users → **Add user** with the
+   owner email `rahatbd2050@gmail.com` (strong password; confirm the email
+   there if confirmation mails are off).
 2. Grant the role from a machine with the repo + keys:
 
 ```bash
-npm run grant-admin -- <email> super_admin
+npm run grant-admin -- rahatbd2050@gmail.com super_admin
 ```
 
-3. Open `/admin/login` — it shows **Live mode** — and sign in. The demo
-   credentials are off here; only Supabase Auth + `admin_users` works.
+3. Open `/admin/login` — it is the real staff login — and sign in with the
+   granted account. Only Supabase Auth + an `admin_users` row works; there
+   are no demo credentials.
 
 ## 5. Verify everything is real (checklist)
 
 Do these on the deployed site, in order:
 
-- [ ] `GET /api/health` → `"mode":"live"`, all `checks` true (probe now also
-      verifies seed counts + the `ps_place_order` RPC; `/admin` home shows a
+- [ ] `GET /api/health` → `"live": true`, all `checks` true (probe verifies
+      seed counts + the `ps_place_order` RPC; `/admin` home shows a
       green **LIVE** banner once every check passes, an amber checklist while
       anything is missing)
 - [ ] `/checkout` has no global counter anywhere — first-10-free is per phone
@@ -142,7 +144,7 @@ Do these on the deployed site, in order:
 - [ ] `/admin/media` → add an image URL → it persists across reloads and
       browsers (proves the shared table, not localStorage)
 - [ ] `/admin/settings` → set the low-stock threshold → dashboard and
-      inventory alerts follow it; no “Reset demo” buttons anywhere in live
+      inventory alerts follow it; no demo-reset buttons anywhere
 - [ ] `/checkout` → place a real test order (COD) → confirmation shows the
       4-digit delivery PIN → `/track` finds it by ID + phone →
       `/admin/orders` shows it → advance it → bell notice
@@ -167,9 +169,8 @@ Without Cloudinary keys the media page keeps add-by-URL and
 direct file-picker upload, add the four Cloudinary variables from
 `.env.example` in Vercel and redeploy (see `docs/backend.md` §2).
 
-## 7. What stays deliberately demo
+## 7. What is not automated yet
 
-- Local dev without keys: full demo (all stores browser-local).
 - SMS/WhatsApp: order updates live in the staff inbox + track timeline;
   carrier delivery needs a gateway account (blueprint §35, future phase).
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the
@@ -181,7 +182,7 @@ direct file-picker upload, add the four Cloudinary variables from
 |---|---|
 | `/api/products` → `NOT_SEEDED` | Step 3 not run → `npm run seed` |
 | Homepage publish “works” but `/` unchanged | Migration 006 not applied → public read policy missing; apply step 1.7 |
-| `/rider` shows only login in live mode | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
+| `/rider` shows only login | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |
 | Admin sign-in → “not a staff member” | Auth user exists but no `admin_users` row → step 4.2 |
 | Admin API → 401 right after sign-in | Session cookie lost (private window / clock skew) → sign in again |

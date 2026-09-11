@@ -25,7 +25,7 @@ export function approvedStories(reviews: Review[], products: Product[] = PRODUCT
 }
 
 export default function CustomerStories() {
-  const { reviews, live } = usePublicReviews({ featured: true });
+  const { reviews } = usePublicReviews({ featured: true });
   const { products } = useLiveCatalog();
   const approved = approvedStories(reviews, products);
   return (
@@ -42,13 +42,6 @@ export default function CustomerStories() {
           >
             Comfort, in their words.
           </h2>
-          {!live && (
-            <p className="mt-4 max-w-xl border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
-              Preview content: these reviews come from the demo review store,
-              including sample entries and browser-local submissions. They are not
-              verified customer proof.
-            </p>
-          )}
         </div>
         {approved.length > 0 && (
           <div className="text-forest-900">
@@ -57,7 +50,7 @@ export default function CustomerStories() {
               <span className="text-xl text-ink-soft">/ 5</span>
             </p>
             <p className="mt-2 text-xs text-ink-soft">
-              Across {approved.length} approved{live ? "" : " demo"} reviews
+              Across {approved.length} approved reviews
             </p>
           </div>
         )}
@@ -90,7 +83,7 @@ export default function CustomerStories() {
                 <p className="mt-6 text-xs font-medium text-ink">
                   {review.author}{" "}
                   <span className="font-normal text-ink-soft">
-                    {live ? (review.verified ? "· Verified purchase" : "") : "· Demo review"}
+                    {review.verified ? "· Verified purchase" : ""}
                   </span>
                 </p>
                 <Link

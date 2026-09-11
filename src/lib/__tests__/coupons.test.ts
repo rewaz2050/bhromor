@@ -9,7 +9,7 @@ import {
   upsertCoupon,
   type Coupon,
 } from "../coupons";
-import { seedCoupons } from "../coupons-store";
+import { launchCoupons } from "./coupon-fixtures";
 import { bdt } from "../format";
 
 const coupon = (over: Partial<Coupon> = {}): Coupon => ({
@@ -70,7 +70,7 @@ describe("coupons (§56)", () => {
   });
 
   it("finds by normalized code and detects duplicates", () => {
-    const list = seedCoupons();
+    const list = launchCoupons();
     expect(findCoupon(list, " welcome100 ")?.id).toBe("c1");
     expect(findCoupon(list, "nope")).toBeUndefined();
     expect(codeTaken(list, "sunamganj15")).toBe(true);

@@ -25,7 +25,6 @@ export default function AdminDeliveriesPage() {
   const {
     deliveries,
     awaitingOrders,
-    live,
     loading,
     error,
     clearError,
@@ -75,19 +74,7 @@ export default function AdminDeliveriesPage() {
             an eligible rider automatically. Use this board to assign manually
             when nobody was free, or cancel a wrong offer.
           </p>
-          {!live && (
-            <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs text-gold-800 ring-1 ring-gold-200">
-              Demo mode: assignments are previewed from the browser order +
-              rider stores. Run the Supabase migration <code>008</code> and link
-              a rider to manage real dispatch.
-            </p>
-          )}
         </div>
-        {!live && (
-          <code className="rounded-lg bg-forest-950 px-3 py-1.5 text-[0.7rem] text-ivory-100">
-            demo · offline
-          </code>
-        )}
       </div>
 
       {error && (
@@ -119,9 +106,9 @@ export default function AdminDeliveriesPage() {
         <h3 className="font-display text-base font-semibold text-forest-900">🗺️ Live Dispatch Map — Sunamganj Sadar (Nearest Rider Auto-Assign) + SLA</h3>
         <AdminSlaAlerts orders={orders} />
         <AdminLiveMap
-          riders={live ? riders : riders}
-          orders={live ? awaitingOrders.concat(deliveries.map(d=>d.order)) : orders}
-          deliveries={deliveries.map(d=>({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
+          riders={riders}
+          orders={awaitingOrders.concat(deliveries.map((d) => d.order))}
+          deliveries={deliveries.map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
           Auto-assign: nearest by haversine from Traffic Point, rating desc, load asc, idle. Max 2 concurrent, cash ৳5000. Rider location 30s via <code>/api/rider/location</code>. Cloudinary proof. Batch assign below for multi-order route optimization.

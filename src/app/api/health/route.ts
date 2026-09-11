@@ -99,20 +99,19 @@ export async function GET() {
     nextSteps.push("Database reach hochhe na — Supabase project pause/keys check koren");
   }
   if (checks.reachable && !checks.productsSeeded) {
-    nextSteps.push("SQL Editor-e chalaben: supabase/schema.sql + supabase/migrations/* (202609100003 soho)");
+    nextSteps.push("SQL schema + migrations chalaben: supabase/schema.sql, tarpor supabase/migrations/* (shob gulo, krome)");
   }
   if (checks.reachable && (!checks.productsSeeded || !checks.couponsSeeded || !checks.shopsSeeded)) {
-    nextSteps.push("Data seed koren: .env.local banie `npm run seed`, tarpor `npm run grant-admin`");
+    nextSteps.push("Launch catalog seed koren: .env.local banie `npm run seed` (products/zones/coupons/shop upsert korbe)");
   }
   if (checks.reachable && !checks.adminUser) {
-    nextSteps.push("Admin login banate `npm run grant-admin` chalaben (ADMIN_EMAILS env)");
+    nextSteps.push("Admin login banate `npm run grant-admin -- rahatbd2050@gmail.com --role super_admin` chalaben");
   }
   if (checks.productsSeeded && !checks.placeOrderRpc) {
-    nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609100003_per_user_first10_free.sql chalaben");
+    nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609080003_place_order_rpc.sql chalaben (free-delivery rule: 202609110005_launch_offer_free.sql)");
   }
 
   return apiJson({
-    mode: live ? "live" : "demo",
     live,
     checks,
     counts,

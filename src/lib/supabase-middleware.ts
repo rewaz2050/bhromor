@@ -40,7 +40,7 @@ export async function updateSupabaseSession(
     // Do not insert logic between createServerClient and getUser().
     await supabase.auth.getUser();
   } catch {
-    // Demo mode / bad env must never 500 the storefront.
+    // Bad env must never 500 the storefront.
     return NextResponse.next({ request });
   }
 

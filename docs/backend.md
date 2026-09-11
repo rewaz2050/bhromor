@@ -1,23 +1,23 @@
 # Backend — Supabase + API routes (full launch backend)
 
-The storefront runs in **two modes** and always says which one:
+The storefront is **live-only**. There is no demo mode: every domain reads
+and writes Postgres through Supabase. The launch catalog in
+`src/lib/catalog.ts` is what `scripts/seed-supabase.mjs` and the checkout
+self-heal upsert into the database, and the storefront swaps those same
+rows in as soon as the backend serves them. An unconfigured or broken
+backend answers an explicit 503/unavailable — never a silent browser-local
+substitution, and especially never for money paths.
 
-| Mode | When | Checkout | Tracking | Catalog reads | Admin reads/writes |
-|---|---|---|---|---|---|
-| `demo` | No Supabase keys (default) | Browser-local order store, as before | Browser-local store | Typed seeds in `src/lib/catalog.ts` | Browser-local stores behind the demo login |
-| `live` | Keys set + SQL applied + seeded + staff signed in | `POST /api/orders` → atomic `ps_place_order` RPC | `GET /api/track` reads real rows by id + phone | Live rows via registry + `/api/products`, `/api/zones` | Authenticated `/api/admin/*` routes (Supabase Auth + `admin_users` roles) |
-
-`GET /api/health` reports the current mode. Every API response carries
-`source` / `demoMode` so callers never guess, and a configured-but-broken
-backend returns an explicit error — never silent demo substitution for
-money paths.
+`GET /api/health` probes each dependency (keys, reachability, seed counts,
+the `ps_place_order` RPC, the admin user) and returns `live: true` only when
+everything is ready, with a step-by-step `nextSteps` checklist otherwise.
 
 ## What lives where
 
 ```txt
 src/app/api/
-├── health/route.ts        # mode probe (no keys leaked — booleans only)
-├── products/route.ts      # published catalog + active shops (live rows or demo seeds)
+├── health/route.ts        # go-live probe (no keys leaked — booleans/counts only)
+├── products/route.ts      # published catalog (live rows; 503 NOT_SEEDED when empty)
 ├── contact/route.ts       # POST public intake → contact_messages + staff notice
 ├── newsletter/subscribe/route.ts    # POST table-based signup
 ├── newsletter/unsubscribe/route.ts  # GET ?token= one-click unsubscribe
@@ -43,7 +43,7 @@ src/app/api/
 ├── admin/_lib.ts          # staffRoute() wrapper: auth + rate limit + errors
 ├── admin/orders/...       # list (filters) / detail / advance (cancel releases stock)
 ├── admin/products/...     # GET full catalog / POST create / PATCH update
-├── admin/categories/route.ts  # POST upsert (slug ids, shared with demo)
+├── admin/categories/route.ts  # POST upsert (slug ids)
 ├── admin/zones/...        # upsert + move + delete (last-zone/order guards)
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
@@ -77,22 +77,21 @@ src/lib/
 ├── staff-auth.ts          # requireStaff(): JWT verify + admin_users role (server-only)
 ├── vendor-auth.ts         # requireVendor(): JWT + vendor_users link + active shop (server-only)
 ├── rider-auth.ts          # requireRider(): JWT + riders link + active rider (server-only)
-├── use-rider.ts           # rider fetch + session/jobs/actions hooks (live; CLI demo fallback in UI)
-├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (no demo mode)
+├── use-rider.ts           # rider fetch + session/jobs/actions hooks (live only)
+├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (live only)
 ├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
 ├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
 ├── use-my-zone.ts         # persisted customer "deliver to" zone for discovery
 ├── use-guarded-add.ts     # single-shop add-to-bag guard (stages conflicts)
 ├── rate-limit.ts          # fixed windows: per-IP public, per-staff admin
 ├── api-response.ts        # JSON envelopes (always no-store)
-├── live-catalog.ts        # client registry: seeds paint, live rows swap in
+├── live-catalog.ts        # client registry: launch catalog paints, live rows swap in
 ├── use-live-catalog.ts / use-live-zones.ts / use-public-reviews.ts
 ├── admin-api.ts           # typed admin fetch (401 → sign out to login)
 ├── use-staff-live.ts      # shared staff probe for the upgraded hooks
-├── riders-store.ts/use-riders.ts  # demo rider queue + staff hook (no storefront)
-├── use-orders/use-catalog/use-zones/use-coupons/use-reviews.ts  # demo ↔ live
+├── use-orders/use-catalog/use-zones/use-coupons/use-reviews.ts  # live hooks
 ├── engagement.ts        # contact/newsletter/CMS/media/notif domain (client-safe)
-├── use-cms/use-settings/use-notifications/use-media/use-messages.ts  # demo ↔ live
+├── use-cms/use-settings/use-notifications/use-media/use-messages.ts  # live hooks
 ├── use-newsletter-admin.ts  # staff subscriber list (live only)
 └── db/
     ├── types.ts           # row types mirroring schema.sql
@@ -104,7 +103,7 @@ src/lib/
     ├── riders.ts          # rider application intake + live rider job/action helpers
     ├── vendor.ts          # vendor-scoped orders/products/shop/earnings (+ pure guards)
     ├── engagement.ts      # contact/newsletter/CMS/media/notif/settings + notifyStaff
-    └── storefront.ts      # server page reads with seed fallback
+    └── storefront.ts      # server page reads (live rows, empty otherwise)
 supabase/
 ├── schema.sql                              # base tables, RLS, §34 machine
 └── migrations/
@@ -207,7 +206,7 @@ login.
 
 ```bash
 npm run dev
-curl localhost:3000/api/health        # "mode":"live", reachable:true
+curl localhost:3000/api/health        # "live":true, reachable:true
 curl localhost:3000/api/products      # "source":"live"
 ```
 
@@ -225,8 +224,9 @@ Then, in the browser:
 - apply a coupon code at checkout and confirm misuse (expired / capped /
   wrong category) is refused with a reason, not a silent discount drop.
 
-Rollback is instant: remove the keys (or unset them on Vercel) and the
-storefront returns to demo mode — no code change, no broken pages.
+If the keys are unset (or the database is empty/broken), the storefront
+keeps painting the launch catalog while every backend endpoint answers an
+honest 503/unavailable — no code change, no broken pages, no invented data.
 
 ## Security boundary (please read before launch)
 
@@ -269,8 +269,8 @@ storefront returns to demo mode — no code change, no broken pages.
   states (the `ps_advance_order` vendor leg), edit only whitelisted shop
   fields (a `trg_shops_guard_vendor_update` trigger stops direct Supabase
   calls from touching status/commission/zones), and cannot self-feature
-  products. The `/vendor` dashboard has no demo mode — without Supabase
-  there are no vendor accounts, and the UI says so.
+  products. Without Supabase there are no vendor accounts, and the UI says
+  so.
 - **Rider intake confirms receipt only.** There is deliberately no anon
   rider policy: the public application inserts a pending row through the
   service role and never returns applicant PII. Staff approve/suspend rows
@@ -291,7 +291,7 @@ storefront returns to demo mode — no code change, no broken pages.
 - **In-memory rate limits** blunt casual abuse only; edge rate-limiting is
   a hardening follow-up.
 
-## Still demo-local / external (not in this phase)
+## Still external / not in this phase
 
 - **SMS/WhatsApp** notifications and **online payment gateways** need third
   party accounts — documented only, no code paths pretend otherwise.

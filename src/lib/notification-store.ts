@@ -1,13 +1,9 @@
 /**
- * Notifications (§35) — demo, browser-local.
+ * Notifications (§35) — types and pure helpers.
  *
- * Seeds mirror live events (new orders, status moves, reviews awaiting
- * approval, low stock); the page also computes a live “needs attention”
- * summary straight from the order/catalog/review stores so it never
- * drifts from the actual admin data.
+ * Live notifications arrive from the database (see use-notifications.ts and
+ * /api/admin/notifications); these helpers render and count them.
  */
-
-export const NOTIFS_STORAGE_KEY = "prosanti.notifications.v1";
 
 export type NotifKind = "order" | "review" | "stock" | "system";
 

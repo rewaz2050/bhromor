@@ -2,8 +2,8 @@
  * Auto-seed safety contract:
  * - writes the launch catalog ONLY into a products table with zero rows
  * - never touches an existing catalog (even all-draft ones — admin intent)
- * - stops on the first DB rejection (the route then degrades to demo mode)
- * - bridges legacy demo ids (p1…) to seeded rows by slug for remapping
+ * - stops on the first DB rejection (the route then answers an honest 503)
+ * - bridges legacy launch-seed ids (p1…) to seeded rows by slug for remapping
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -117,7 +117,7 @@ describe("ensureLaunchCatalog — the empty-catalog guard", () => {
   });
 });
 
-describe("remapSeedItemIds — the demo-cart bridge", () => {
+describe("remapSeedItemIds — the launch-cart bridge", () => {
   const live = PRODUCTS.map((p, i) => ({ id: `u-${i + 1}`, slug: p.slug }));
 
   it("rewrites seed ids to live rows by slug, leaves live/unknown ids alone", () => {

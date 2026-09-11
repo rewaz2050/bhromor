@@ -2,7 +2,7 @@
  * Admin → Staff (admin control center).
  * GET → staff list with roles. POST { email, role } → grant/update.
  * DELETE { email } → revoke. Admin/super_admin only — managers never
- * hand out access. Staff accounts are real: no demo mode here.
+ * hand out access. Staff accounts are real.
  */
 import {
   grantStaffRole,

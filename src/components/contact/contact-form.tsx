@@ -4,7 +4,6 @@ import { useState } from "react";
 import { IconCheck } from "@/components/ui/icons";
 import {
   CONTACT_TOPICS,
-  addDemoMessage,
   validateContact,
 } from "@/lib/engagement";
 
@@ -40,17 +39,11 @@ export default function ContactForm() {
       });
       const data = (await res.json().catch(() => null)) as {
         sent?: boolean;
-        demoMode?: boolean;
         error?: string;
       } | null;
       if (!res.ok) {
         setError(data?.error ?? "Could not send — please try again.");
         return;
-      }
-      if (data?.demoMode) {
-        // Demo mode: no backend — the browser-local demo inbox keeps it so
-        // the admin Messages page still demonstrates the flow.
-        addDemoMessage(checked.value);
       }
       setSent(true);
     } catch {

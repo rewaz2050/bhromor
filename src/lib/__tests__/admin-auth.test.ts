@@ -1,21 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEMO_ADMIN,
-  DEMO_BLOCKED_IN_LIVE,
-  isDemoAdminAttempt,
+  ADMIN_EMAIL,
   mapSupabaseAuthError,
   staffProbeError,
 } from "../admin-auth";
 
 describe("staff login copy", () => {
-  it("recognises the demo credentials even with extra case/space", () => {
-    expect(isDemoAdminAttempt(DEMO_ADMIN.email, DEMO_ADMIN.password)).toBe(true);
-    expect(
-      isDemoAdminAttempt(`  ${DEMO_ADMIN.email.toUpperCase()}  `, DEMO_ADMIN.password),
-    ).toBe(true);
-    expect(isDemoAdminAttempt("other@prosanti.store", DEMO_ADMIN.password)).toBe(
-      false,
-    );
+  it("pins the single wired admin email", () => {
+    expect(ADMIN_EMAIL).toBe("rahatbd2050@gmail.com");
   });
 
   it("explains unconfirmed email instead of a generic password error", () => {
@@ -29,6 +21,5 @@ describe("staff login copy", () => {
   it("separates missing session from missing staff role", () => {
     expect(staffProbeError({ staff: false, status: 403 })).toMatch(/admin_users/);
     expect(staffProbeError({ staff: false, status: 401 })).toMatch(/session/);
-    expect(DEMO_BLOCKED_IN_LIVE).toMatch(/Demo login is off/);
   });
 });

@@ -1,14 +1,11 @@
 /**
- * POST /api/orders — place a cash-on-delivery order.
+ * POST /api/orders — place a cash-on-delivery order (live only).
  *
- * - Demo mode (no service role): `{ demoMode: true }` — the client keeps
- *   the existing browser-local flow. The server never fakes persistence.
- * - Live mode: validates the payload against server-loaded prices/zones/
- *   coupons, reserves stock, writes orders + snapshots + history, and
- *   returns the stored order (with its trigger-assigned order_no).
- * - Live mode with an unseeded catalog: seeds the launch catalog in place
- *   and places a real order; if the database refuses, the customer still
- *   gets the browser-local flow (`{ demoMode: true }`) — never a dead end.
+ * Validates the payload against server-loaded prices/zones/coupons, reserves
+ * stock, writes orders + snapshots + history, and returns the stored order
+ * (with its trigger-assigned order_no). With an unseeded catalog it seeds the
+ * launch catalog in place and places a real order; if the database refuses,
+ * the customer gets an honest 503 — never a fake success.
  *
  * Rate-limited per IP; validation failures are 422 with field errors.
  */
@@ -44,7 +41,7 @@ export async function POST(request: Request) {
   }
 
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Online ordering is not set up yet.", 503);
   }
 
   let payload: unknown;
@@ -55,14 +52,14 @@ export async function POST(request: Request) {
   }
 
   // True between "the catalog was empty" and "we just seeded it" — the
-  // window in which any failure degrades to the local demo flow instead of
+  // window in which any failure degrades to an honest 503 instead of
   // dead-ending the customer.
   let seededNow = false;
   try {
     // ── Self-heal: configured-but-empty catalog (never seeded) ──────────
     // Upsert the launch catalog once and keep the customer's order flowing
     // as a REAL database order (docs/go-live.md). If the database itself
-    // refuses (missing schema, outage), answer `{ demoMode: true }` so the
+    // refuses (missing schema, outage), answer an honest 503 so the
     // storefront's browser-local flow completes the order instead of the
     // old dead-end "call us to order" 503.
     let snapshot = await loadOrderSnapshotSafely();
@@ -70,13 +67,11 @@ export async function POST(request: Request) {
       seededNow = await seedLaunchCatalog();
       snapshot = seededNow ? await loadOrderSnapshotSafely() : null;
       if (!snapshot || snapshot.products.length === 0) {
-        // Still nothing to order against — the client's browser-local flow
-        // completes the order (confirmation, order list, staff inbox).
-        return apiJson({ demoMode: true as const });
+        return apiError("Online ordering is not set up yet.", 503);
       }
     }
 
-    // Carts built against the demo seeds carry ids like `p1`; live rows are
+    // Carts built against the launch seeds carry ids like `p1`; live rows are
     // uuids. Bridge them through slug once, right after auto-seeding.
     let payloadForValidation = payload;
     if (seededNow && isRecord(payload)) {
@@ -92,18 +87,12 @@ export async function POST(request: Request) {
     );
     const validation = validateOrderPayload(payloadForValidation, snapshot);
     if (!validation.ok) {
-      if (seededNow) {
-        // Freshly-seeded store and the payload still doesn't line up (e.g. a
-        // cart holding a product the admin removed) — never lose the order.
-        return apiJson({ demoMode: true as const });
-      }
       return apiError("Please fix the highlighted fields.", 422, {
         errors: validation.errors,
       });
     }
     const order = await placeLiveOrder(validation.draft, snapshot);
     if (!order) {
-      if (seededNow) return apiJson({ demoMode: true as const });
       return apiError("Could not place the order — please try again.", 503);
     }
     const staffDb = getSupabaseService();
@@ -150,10 +139,7 @@ export async function POST(request: Request) {
     }
     return apiJson({ order, smartCard }, 201);
   } catch (err) {
-    // We just seeded the store on this request and the write path still
-    // failed (e.g. place-order RPC missing): the customer must not pay for
-    // that — complete the order through the local flow instead.
-    if (seededNow) return apiJson({ demoMode: true as const });
+    if (seededNow) return apiError("Could not place the order — please try again.", 503);
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });
     }
@@ -161,7 +147,7 @@ export async function POST(request: Request) {
   }
 }
 
-/** Snapshot read that never throws — a failing read degrades to demo mode. */
+/** Snapshot read that never throws — a failing read degrades to 503. */
 async function loadOrderSnapshotSafely(): Promise<Awaited<
   ReturnType<typeof loadOrderSnapshot>
 > | null> {

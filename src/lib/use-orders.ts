@@ -1,34 +1,16 @@
 "use client";
 
 /**
- * Admin order data with live cutover. Staff sessions read/write through
- * /api/admin/orders (database §34 machine); everything else keeps the
- * browser-local demo store. `useLocalOrders` is the demo store alone —
- * the public Track page must never touch staff endpoints.
+ * Admin order data — live only. Staff sessions read/write through
+ * /api/admin/orders (database §34 machine).
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  advanceOrderInStore,
-  getOrders,
-  resetOrderStore,
-  subscribeOrders,
-} from "./order-store";
+import { useCallback, useEffect, useState } from "react";
 import type { Order, OrderStatus } from "./orders";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
-export function useLocalOrders() {
-  const orders = useSyncExternalStore(subscribeOrders, getOrders, getOrders);
-  return { orders };
-}
-
 export function useOrders() {
-  const demoOrders = useSyncExternalStore(
-    subscribeOrders,
-    getOrders,
-    getOrders,
-  );
   const { live, checked } = useStaffLive();
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +28,8 @@ export function useOrders() {
   }, []);
 
   useEffect(() => {
-    if (!live) {
-      setLiveOrders(null);
-      setError(null);
-      return;
-    }
+    if (!live) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
     // Free real-time polling every 10s — admin sees new orders instantly without cost
     const id = window.setInterval(() => {
@@ -65,7 +44,7 @@ export function useOrders() {
       to: OrderStatus,
       note?: string,
     ): Promise<boolean> => {
-      if (!live) return advanceOrderInStore(id, to, note);
+      if (!live) return false;
       try {
         await apiSend<{ order: Order }>(
           `/api/admin/orders/${encodeURIComponent(id)}/advance`,
@@ -88,16 +67,11 @@ export function useOrders() {
     [advance],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetOrderStore();
-  }, [live, refresh]);
-
   return {
-    orders: live ? (liveOrders ?? []) : demoOrders,
+    orders: live ? (liveOrders ?? []) : [],
     advance,
     cancel,
-    reset,
+    reset: refresh,
     /** Live/staff mode, stored API error, and first-load state. */
     live,
     loading: live && (!checked || liveOrders === null),

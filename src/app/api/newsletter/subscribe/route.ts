@@ -2,8 +2,8 @@
  * POST /api/newsletter/subscribe — table-based signup (no third party).
  *
  * Live: { email } → newsletter_subscribers row (re-subscribing a known
- * address just flips it back to subscribed). Demo mode answers
- * { demoMode: true } after validating — the footer never pretends a
+ * address just flips it back to subscribed). An unconfigured backend
+ * answers 503 — the footer never pretends a
  * local click subscribes anyone.
  */
 
@@ -35,11 +35,11 @@ export async function POST(request: Request) {
     return apiError("Enter a valid email address.", 422);
   }
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Newsletter signup is not available right now.", 503);
   }
   try {
     const db = getSupabaseService();
-    if (!db) return apiJson({ demoMode: true as const });
+    if (!db) return apiError("Newsletter signup is not available right now.", 503);
     const { created } = await subscribeNewsletter(db, email);
     if (created) {
       await notifyStaff(db, {

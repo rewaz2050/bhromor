@@ -29,8 +29,7 @@ export function generateStaticParams() {
 }
 
 /**
- * Rendered on demand for the same reason as /shop: seed-prerendered pages
- * would show stale demo ids/prices once the backend goes live.
+ * Rendered on demand so pages always carry the live ids/prices.
  */
 export const dynamic = "force-dynamic";
 

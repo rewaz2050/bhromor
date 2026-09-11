@@ -1,34 +1,34 @@
 /**
- * Admin session (§47) — demo gate + real staff auth.
+ * Admin session (§47) — real staff auth only.
  *
- * - Demo mode (Supabase unconfigured): the local credential check shapes
- *   the UI only and is NOT a security boundary.
- * - Live mode: staff sign in with Supabase Auth (email/password); the
- *   session lives in cookies and every /api/admin/* route re-verifies the
- *   JWT + admin_users role. This store only mirrors the outcome for gating.
+ * Staff sign in with Supabase Auth (email/password); the session lives in
+ * cookies and every /api/admin/* route re-verifies the JWT + admin_users
+ * role. This store only mirrors the outcome for gating the admin UI.
+ *
+ * The admin channel is 100% real. A staffer must exist in Supabase
+ * Authentication AND have an `admin_users` row (see scripts/grant-admin.mjs).
  */
 
 "use client";
 
 import { getSupabaseBrowser } from "./supabase-browser";
-import { isSupabaseConfigured } from "./env";
+
+/**
+ * The single real admin (owner) email. Shown as a prefill on the admin
+ * login screen; access itself is still granted by the `admin_users` row
+ * in Supabase, never by hard-coding credentials.
+ */
+export const ADMIN_EMAIL = "rahatbd2050@gmail.com";
 
 export const ADMIN_SESSION_KEY = "prosanti.admin.session.v1";
-export const ADMIN_MODE_KEY = "prosanti.admin.mode.v1";
 
-/** Demo credentials — used ONLY when Supabase is unconfigured. */
-export const DEMO_ADMIN = {
-  email: "admin@prosanti.store",
-  password: "prosanti",
-};
-
-export type AdminMode = "demo" | "live";
+export type AdminMode = "live";
 
 /* External store so components can read auth with useSyncExternalStore
  * (hydration-safe, no setState-in-effect lint issues). */
 type Listener = () => void;
 let authed: boolean | null = null;
-let mode: AdminMode | null = null;
+let mode: AdminMode = "live";
 const listeners = new Set<Listener>();
 
 const notify = () => {
@@ -41,16 +41,9 @@ export const subscribeAdminAuth = (listener: Listener): (() => void) => {
 };
 
 const readStored = (): { authed: boolean; mode: AdminMode } => {
-  if (typeof window === "undefined") return { authed: false, mode: "demo" };
+  if (typeof window === "undefined") return { authed: false, mode: "live" };
   const flag = window.localStorage.getItem(ADMIN_SESSION_KEY) === "1";
-  const storedMode =
-    window.localStorage.getItem(ADMIN_MODE_KEY) === "live" ? "live" : "demo";
-  // A stored live flag without Supabase config is stale (keys removed) —
-  // never honour it; the backend is demonstrably in demo mode.
-  if (storedMode === "live" && !isSupabaseConfigured()) {
-    return { authed: false, mode: "demo" };
-  }
-  return { authed: flag, mode: storedMode };
+  return { authed: flag, mode: "live" };
 };
 
 export const getAdminAuthed = (): boolean => {
@@ -64,7 +57,7 @@ export const getAdminAuthed = (): boolean => {
 
 export const getAdminMode = (): AdminMode => {
   getAdminAuthed();
-  return mode ?? "demo";
+  return mode;
 };
 
 export const isAdminAuthed = (): boolean => getAdminAuthed();
@@ -94,13 +87,6 @@ export const mapSupabaseAuthError = (message: string): string => {
   }
   return "Incorrect email or password.";
 };
-
-export const isDemoAdminAttempt = (email: string, password: string): boolean =>
-  email.trim().toLowerCase() === DEMO_ADMIN.email &&
-  password === DEMO_ADMIN.password;
-
-export const DEMO_BLOCKED_IN_LIVE =
-  "Demo login is off because Supabase is connected. Sign in with a real staff email — create the user in Supabase → Authentication → Users (auto-confirm), then grant admin_users.";
 
 /** Live-mode session probe — the server re-checks role on every call. */
 export const probeStaffSession = async (
@@ -148,7 +134,6 @@ export const staffProbeError = (probe: StaffProbe): string => {
  */
 export const refreshStaffSession = async (): Promise<boolean> => {
   getAdminAuthed();
-  if (mode !== "live") return authed === true;
   const token = await getSupabaseBrowser()
     ?.auth.getSession()
     .then((r) => r.data.session?.access_token)
@@ -157,28 +142,9 @@ export const refreshStaffSession = async (): Promise<boolean> => {
   authed = staff;
   if (!staff && typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);
-    window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
-    mode = "demo";
   }
   notify();
   return staff;
-};
-
-export const signInAdmin = (email: string, password: string): boolean => {
-  if (
-    email.trim().toLowerCase() === DEMO_ADMIN.email &&
-    password === DEMO_ADMIN.password
-  ) {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
-      window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
-    }
-    authed = true;
-    mode = "demo";
-    notify();
-    return true;
-  }
-  return false;
 };
 
 /** Staff sign-in: Supabase Auth + role verification. Never falls back. */
@@ -186,9 +152,6 @@ export const signInStaff = async (
   email: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string }> => {
-  if (isDemoAdminAttempt(email, password)) {
-    return { ok: false, error: DEMO_BLOCKED_IN_LIVE };
-  }
   const client = getSupabaseBrowser();
   if (!client) return { ok: false, error: "Staff sign-in is not configured." };
   const { data, error } = await client.auth.signInWithPassword({
@@ -206,7 +169,6 @@ export const signInStaff = async (
   }
   if (typeof window !== "undefined") {
     window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
-    window.localStorage.setItem(ADMIN_MODE_KEY, "live");
   }
   authed = true;
   mode = "live";
@@ -223,9 +185,8 @@ export const signOutAdmin = (): void => {
   }
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);
-    window.localStorage.setItem(ADMIN_MODE_KEY, "demo");
   }
   authed = false;
-  mode = "demo";
+  mode = "live";
   notify();
 };

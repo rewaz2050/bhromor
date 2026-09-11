@@ -12,7 +12,7 @@ import {
 import { formatPaisa } from "@/lib/format";
 import { IconArrowRight, IconBanknote, IconChart } from "@/components/ui/icons";
 
-/** Sales reports over the demo order store (pure math in lib/reports.ts). */
+/** Sales reports over live orders (pure math in lib/reports.ts). */
 export default function AdminReportsPage() {
   const { orders } = useOrders();
   const [range, setRange] = useState<ReportRange>(REPORT_RANGES[0]);
@@ -117,8 +117,8 @@ export default function AdminReportsPage() {
           <div className="mt-6 rounded-xl bg-ivory-100/70 px-5 py-10 text-center">
             <p className="text-sm font-medium text-ink">No orders in this period</p>
             <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-ink-soft">
-              Place a checkout order on the storefront, or reset the demo
-              orders in Settings to re-seed today&apos;s sample data.
+              Place a checkout order on the storefront — sales appear here as
+              orders are confirmed.
             </p>
           </div>
         ) : (

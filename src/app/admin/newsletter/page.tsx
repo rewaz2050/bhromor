@@ -73,7 +73,7 @@ export default function AdminNewsletterPage() {
           Newsletter lives in the database
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          Subscriber emails are real customer data, so there is no demo list.
+          Subscriber emails are real customer data.
           Connect Supabase and sign in as staff to see signups here.
         </p>
       </div>

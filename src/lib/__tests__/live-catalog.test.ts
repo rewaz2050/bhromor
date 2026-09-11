@@ -21,10 +21,11 @@ afterEach(() => {
 });
 
 describe("live-catalog registry", () => {
-  it("serves seeds before any fetch", () => {
+  it("serves the launch catalog before any fetch", () => {
     expect(getProductsSnapshot()).toBe(PRODUCTS);
     expect(getCategoriesSnapshot()).toBe(CATEGORIES);
-    expect(getZonesSnapshot()).toBeNull();
+    expect(getZonesSnapshot()).toEqual([]);
+    expect(getShopsSnapshot()).toEqual([]);
     expect(isCatalogSettled()).toBe(false);
     expect(isZonesSettled()).toBe(false);
     expect(resolveCatalogProduct("p1")).toBe(PRODUCTS[0]);
@@ -46,19 +47,29 @@ describe("live-catalog registry", () => {
     await expect(ensureLiveCatalog()).resolves.toBe(true);
     expect(getProductsSnapshot()).toEqual([liveProduct]);
     expect(isCatalogSettled()).toBe(true);
-    // Post-cutover, legacy demo ids bridge through slug to the LIVE row
+    // Post-cutover, legacy launch ids bridge through slug to the LIVE row
     // (live prices, not stale seed prices) so carts survive seeding.
     expect(resolveCatalogProduct("p1")).toBe(liveProduct);
     expect(resolveCatalogProduct("p2")).toBeUndefined(); // no live row
     expect(resolveCatalogProduct("uuid-live-1")).toEqual(liveProduct);
   });
 
-  it("serves stripped demo shops, then live shops on cutover (slice 4)", async () => {
-    const demo = getShopsSnapshot();
-    expect(demo.length).toBeGreaterThan(0);
-    for (const s of demo) expect(s.contactEmail).toBeUndefined();
+  it("keeps shops live-only: empty until the backend answers, then swaps in live rows", async () => {
+    expect(getShopsSnapshot()).toEqual([]);
 
-    const liveShop = { ...demo[0], id: "uuid-shop-1" };
+    const liveShop = {
+      id: "uuid-shop-1",
+      slug: "prosanti-direct",
+      name: "PROSANTI Direct",
+      phone: "01700000000",
+      zoneIds: DELIVERY_ZONES.map((z) => z.id),
+      prepMinutes: 15,
+      commissionPct: 15,
+      status: "active" as const,
+      isOpen: true,
+      ratingAvg: 0,
+      ratingCount: 0,
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -75,7 +86,7 @@ describe("live-catalog registry", () => {
     expect(getShopsSnapshot()).toEqual([liveShop]);
   });
 
-  it("keeps seeds when the backend is unreachable", async () => {
+  it("keeps the launch catalog when the backend is unreachable", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -91,13 +102,13 @@ describe("live-catalog registry", () => {
   it("ignores non-live payloads without crashing", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => ({ source: "demo" }) })),
+      vi.fn(async () => ({ ok: true, json: async () => ({ source: "seeds" }) })),
     );
     await expect(ensureLiveCatalog()).resolves.toBe(false);
     expect(getProductsSnapshot()).toBe(PRODUCTS);
   });
 
-  it("fetches zones once and falls back to seed zones", async () => {
+  it("fetches zones once", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ source: "live", zones: [DELIVERY_ZONES[0]] }),

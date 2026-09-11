@@ -5,36 +5,19 @@ import {
   useEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
 } from "react";
-import {
-  getMedia,
-  getMediaServer,
-  scanMedia,
-  subscribeMedia,
-  addMediaInStore,
-  removeMediaInStore,
-  resetMediaStore,
-  type MediaItem,
-} from "./media-store";
+import { scanMedia, type MediaItem } from "./media-store";
 import type { Category, Product } from "./catalog";
 import type { LibraryMediaItem } from "./engagement";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /**
- * Media library (§49) with live cutover.
- * The in-use scan (products · categories · hero · brand) always comes from
- * the catalog; the "added" shelf is the browser store in demo and the
- * media_library table for staff sessions. Live rows carry `lib:<uuid>` ids.
+ * Media library (§49) — live only. The in-use scan (products · categories ·
+ * hero · brand) always comes from the catalog; the "added" shelf is the
+ * media_library table. Live rows carry `lib:<uuid>` ids.
  */
 export function useMedia(products: Product[], categories: Category[]) {
-  // Snapshot for SSR stays empty-safe; client hydrates from the real scan.
-  const demoItems = useSyncExternalStore(
-    subscribeMedia,
-    () => getMedia(products, categories),
-    getMediaServer,
-  );
   const { live, checked } = useStaffLive();
   const [library, setLibrary] = useState<LibraryMediaItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +38,7 @@ export function useMedia(products: Product[], categories: Category[]) {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLibrary(null);
       setError(null);
       return;
@@ -64,7 +47,6 @@ export function useMedia(products: Product[], categories: Category[]) {
   }, [live, refresh]);
 
   const items: MediaItem[] = useMemo(() => {
-    if (!live) return demoItems;
     const base = scanMedia(products, categories).filter(
       (m) => m.kind !== "custom",
     );
@@ -77,7 +59,7 @@ export function useMedia(products: Product[], categories: Category[]) {
       mediaType: row.mediaType,
     }));
     return [...base, ...added];
-  }, [live, demoItems, library, products, categories]);
+  }, [library, products, categories]);
 
   const add = useCallback(
     async (item: {
@@ -86,10 +68,7 @@ export function useMedia(products: Product[], categories: Category[]) {
       label: string;
       mediaType?: MediaItem["mediaType"];
     }): Promise<boolean> => {
-      if (!live) {
-        addMediaInStore(products, categories, item);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/media", "POST", item);
         setError(null);
@@ -100,15 +79,12 @@ export function useMedia(products: Product[], categories: Category[]) {
         return false;
       }
     },
-    [live, refresh, products, categories],
+    [live, refresh],
   );
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      if (!live || !id.startsWith("lib:")) {
-        if (!live) removeMediaInStore(id);
-        return;
-      }
+      if (!live || !id.startsWith("lib:")) return;
       try {
         await apiSend(
           `/api/admin/media?id=${encodeURIComponent(id.slice(4))}`,
@@ -123,16 +99,11 @@ export function useMedia(products: Product[], categories: Category[]) {
     [live, refresh],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetMediaStore();
-  }, [live, refresh]);
-
   return {
     items,
     add,
     remove,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || library === null),
     error,

@@ -282,11 +282,6 @@ function RiderCard({
                 </button>
               </div>
             )}
-            {!live && (
-              <p className="mt-1 text-xs text-ink-soft">
-                Rider linking needs live mode — demo riders have no accounts.
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -343,7 +338,7 @@ export default function AdminRidersPage() {
       return;
     }
     const ok = await saveRider({
-      id: live ? "" : `rider-demo-${Date.now()}`,
+      id: "",
       name,
       phone,
       contactEmail: email,
@@ -394,17 +389,6 @@ export default function AdminRidersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset riders to the seeded demo queue?")) reset();
-              }}
-              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-            >
-              Reset demo riders
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}

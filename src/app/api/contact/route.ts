@@ -2,8 +2,8 @@
  * POST /api/contact — public contact-message intake.
  *
  * Live: validates → stores a row in contact_messages → fans a notice to
- * the staff inbox. Demo mode answers { demoMode: true } after validating
- * so the form behaves identically and the browser-local demo inbox keeps
+ * the staff inbox. Unconfigured backends answer 503 after validating
+ * so the form behaves identically.
  * the message instead.
  */
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   } catch {
     return apiError("Invalid message.", 400);
   }
-  // Validate honestly even in demo so both modes behave identically.
+  // Validate honestly before the backend check.
   const checked = validateContact(body);
   if (!checked.ok) {
     const first =
@@ -43,11 +43,11 @@ export async function POST(request: Request) {
     });
   }
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Could not send the message — please try again.", 503);
   }
   try {
     const db = getSupabaseService();
-    if (!db) return apiJson({ demoMode: true as const });
+    if (!db) return apiError("Could not send the message — please try again.", 503);
     const message = await createContactMessage(db, body);
     await notifyStaff(db, {
       kind: "system",

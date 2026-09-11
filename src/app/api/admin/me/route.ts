@@ -1,8 +1,8 @@
 /**
  * GET /api/admin/me — staff session probe.
  * 200 { staff: true, role, email } for signed-in staff; 401 without a
- * session (demo browsers land here); 403 for signed-in non-staff.
- * The admin UI uses this to pick live vs demo data — and the data routes
+ * session; 403 for signed-in non-staff.
+ * The admin UI uses this to confirm the staff session — and the data routes
  * re-verify on every call, so this answer is never trusted for access.
  */
 

@@ -1,31 +1,17 @@
 "use client";
 
 /**
- * Admin delivery-zone data with live cutover (see use-orders.ts).
- * Public surfaces (checkout, delivery checker) use useLiveZones() instead —
- * staff endpoints must never serve the storefront.
+ * Admin delivery-zone data — live only. Zones read/write through
+ * /api/admin/zones. Public surfaces (checkout, delivery checker) use
+ * useLiveZones() instead — staff endpoints never serve the storefront.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getZones,
-  getZonesServer,
-  moveZoneInStore,
-  removeZoneInStore,
-  resetZoneStore,
-  saveZoneInStore,
-  subscribeZones,
-} from "./zone-store";
+import { useCallback, useEffect, useState } from "react";
 import type { DeliveryZone } from "./catalog";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export function useZones() {
-  const demoZones = useSyncExternalStore(
-    subscribeZones,
-    getZones,
-    getZonesServer,
-  );
   const { live, checked } = useStaffLive();
   const [liveZones, setLiveZones] = useState<DeliveryZone[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +30,7 @@ export function useZones() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveZones(null);
       setError(null);
       return;
@@ -54,10 +40,7 @@ export function useZones() {
 
   const saveZone = useCallback(
     async (z: DeliveryZone): Promise<boolean> => {
-      if (!live) {
-        saveZoneInStore(z);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/zones", "POST", z);
         setError(null);
@@ -73,7 +56,7 @@ export function useZones() {
 
   const removeZone = useCallback(
     async (id: string): Promise<boolean> => {
-      if (!live) return removeZoneInStore(id);
+      if (!live) return false;
       try {
         await apiSend(
           `/api/admin/zones/${encodeURIComponent(id)}`,
@@ -92,10 +75,7 @@ export function useZones() {
 
   const moveZone = useCallback(
     async (id: string, dir: -1 | 1): Promise<void> => {
-      if (!live) {
-        moveZoneInStore(id, dir);
-        return;
-      }
+      if (!live) return;
       try {
         const data = await apiSend<{ zones: DeliveryZone[] }>(
           "/api/admin/zones",
@@ -111,19 +91,14 @@ export function useZones() {
     [live],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetZoneStore();
-  }, [live, refresh]);
-
-  const zones = live ? (liveZones ?? []) : demoZones;
+  const zones = liveZones ?? [];
   return {
     activeZones: zones.filter((z) => z.active !== false),
     zones,
     saveZone,
     removeZone,
     moveZone,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveZones === null),
     error,

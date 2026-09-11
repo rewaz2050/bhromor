@@ -281,11 +281,6 @@ export default function AdminDashboard() {
             </p>
           </section>
 
-          <p className="rounded-xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
-            Demo mode — figures come from seeded sample orders and are stored
-            in this browser only. They become live Supabase data in the
-            backend phase.
-          </p>
         </div>
       </div>
     </div>

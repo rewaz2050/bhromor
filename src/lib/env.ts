@@ -7,7 +7,7 @@
  * - Service-role / API secrets are SERVER-ONLY. They must never be read
  *   from client components; route handlers and server code only.
  * - Missing keys never throw at import time — every API route degrades to
- *   an honest demo-mode response so the storefront keeps working.
+ *   an honest 503 response.
  */
 
 const nonEmpty = (value: string | undefined): string | null => {

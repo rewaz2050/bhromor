@@ -1,6 +1,6 @@
 /**
  * Shared JSON envelopes for the storefront API routes.
- * Every response is `no-store` — demo/live status and order data must never
+ * Every response is `no-store` — order data must never
  * be served stale from an edge cache.
  */
 

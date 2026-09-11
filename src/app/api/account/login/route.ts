@@ -1,6 +1,5 @@
 /**
  * POST /api/account/login — phone + password, session cookie on success.
- * Demo mode returns `{ demoMode: true }` (browser-local store handles it).
  */
 
 import { loginCustomer, createSession, sessionCookie, CustomerAuthError } from "@/lib/customer-auth";
@@ -20,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("লগ ইন করা যাচ্ছে না — পরে আবার চেষ্টা করুন।", 503);
   }
 
   let body: Record<string, unknown>;
@@ -40,7 +39,7 @@ export async function POST(request: Request) {
     if (err instanceof CustomerAuthError) {
       if (err.storeMissing) {
         console.error("[account/login]", err.message);
-        return apiJson({ demoMode: true as const });
+        return apiError("লগ ইন করা যাচ্ছে না — accounts store এখনো সেটআপ হয়নি।", 503);
       }
       return apiError(err.message, err.status);
     }

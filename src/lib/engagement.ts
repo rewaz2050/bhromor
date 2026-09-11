@@ -1,7 +1,7 @@
 /**
  * Engagement domain (contact inbox · newsletter · CMS/media/notif clients).
  *
- * Client-safe: pure types, validators, row mappers and the demo-mode
+ * Client-safe: pure types, validators, row mappers.
  * message store. Server data-access lives in `./db/engagement.ts`.
  */
 
@@ -249,103 +249,3 @@ export const mapLibraryMedia = (row: DbMediaLibrary): LibraryMediaItem => ({
   mediaType: asLibraryMediaType(row.media_type),
   at: Date.parse(row.created_at) || 0,
 });
-
-/* ------------------------------------------------------------------ */
-/* Demo-mode contact inbox (browser-local, like the order store)       */
-/* ------------------------------------------------------------------ */
-
-export const CONTACT_DEMO_KEY = "prosanti.demo.contact.v1";
-
-type Listener = () => void;
-
-let contactCache: ContactMessage[] | null = null;
-let contactLoaded = false;
-const contactListeners = new Set<Listener>();
-
-const notifyContact = () => {
-  for (const l of contactListeners) l();
-};
-
-const sanitizeDemoMessage = (raw: unknown): ContactMessage | null => {
-  if (!raw || typeof raw !== "object") return null;
-  const m = raw as Partial<ContactMessage>;
-  if (typeof m.id !== "string" || typeof m.message !== "string") return null;
-  return {
-    id: m.id,
-    name: typeof m.name === "string" ? m.name : "",
-    phone: typeof m.phone === "string" ? m.phone : "",
-    topic: typeof m.topic === "string" ? m.topic : CONTACT_TOPICS[0],
-    message: m.message,
-    status:
-      m.status === "read" || m.status === "replied" ? m.status : "new",
-    at: typeof m.at === "number" ? m.at : Date.now(),
-  };
-};
-
-const ensureContactLoaded = (): ContactMessage[] => {
-  if (contactCache && contactLoaded) return contactCache;
-  contactLoaded = true;
-  contactCache = [];
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(CONTACT_DEMO_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown;
-        if (Array.isArray(parsed)) {
-          contactCache = parsed
-            .map(sanitizeDemoMessage)
-            .filter((m): m is ContactMessage => m !== null);
-        }
-      }
-    } catch {
-      contactCache = [];
-    }
-  }
-  return contactCache;
-};
-
-const persistContact = (next: ContactMessage[]) => {
-  contactCache = next;
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(CONTACT_DEMO_KEY, JSON.stringify(next));
-    } catch {
-      // Storage unavailable — demo continues in memory.
-    }
-  }
-  notifyContact();
-};
-
-export const subscribeDemoMessages = (listener: Listener): (() => void) => {
-  contactListeners.add(listener);
-  return () => contactListeners.delete(listener);
-};
-
-export const getDemoMessages = (): ContactMessage[] => ensureContactLoaded();
-
-export const addDemoMessage = (input: ContactInput): ContactMessage => {
-  const message: ContactMessage = {
-    ...input,
-    id: `demo-${Date.now().toString(36)}`,
-    status: "new",
-    at: Date.now(),
-  };
-  persistContact([message, ...ensureContactLoaded()].slice(0, 100));
-  return message;
-};
-
-export const setDemoMessageStatus = (
-  id: string,
-  status: ContactStatus,
-): void => {
-  persistContact(
-    ensureContactLoaded().map((m) => (m.id === id ? { ...m, status } : m)),
-  );
-};
-
-export const resetDemoMessages = (): void => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(CONTACT_DEMO_KEY);
-  }
-  persistContact([]);
-};

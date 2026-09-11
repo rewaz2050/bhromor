@@ -12,7 +12,7 @@
  *   mismatch so callers cannot probe which half of (id, phone) was wrong.
  *
  * All functions return null when the service role is unconfigured; routes
- * answer with demo-mode responses in that case.
+ * answer with an honest 503 in that case.
  */
 
 import "server-only";

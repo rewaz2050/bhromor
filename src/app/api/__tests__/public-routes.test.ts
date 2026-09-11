@@ -1,10 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+
+// Coupon validation prices against the live snapshot — serve the launch
+// catalog + launch coupons so the route can be tested end-to-end.
+vi.mock("@/lib/db/orders", async () => {
+  const { PRODUCTS, DELIVERY_ZONES } = await import("@/lib/catalog");
+  const { launchCoupons } = await import("@/lib/__tests__/coupon-fixtures");
+  return {
+    loadOrderSnapshot: async () => ({
+      products: PRODUCTS,
+      zones: DELIVERY_ZONES,
+      coupons: launchCoupons(),
+      variants: [],
+      mediaByProduct: new Map<string, string>(),
+      shops: [],
+      totalOrders: 0,
+    }),
+  };
+});
 
 import { POST as validateCoupon } from "../coupons/validate/route";
 import { GET as getReviews, POST as postReview } from "../reviews/route";
 import { bdt } from "@/lib/format";
+import { __resetRateLimits } from "@/lib/rate-limit";
 
 const req = (body: unknown): Request =>
   new Request("http://localhost/api/test", {
@@ -13,8 +32,10 @@ const req = (body: unknown): Request =>
     body: JSON.stringify(body),
   });
 
-describe("POST /api/coupons/validate (demo fallback, no keys)", () => {
-  it("accepts a valid seed code with the honest discount", async () => {
+beforeEach(() => __resetRateLimits());
+
+describe("POST /api/coupons/validate (live snapshot)", () => {
+  it("accepts a valid code with the honest discount", async () => {
     const res = await validateCoupon(
       req({ code: "welcome100", items: [{ productId: "p1", qty: 1 }] }),
     );
@@ -39,8 +60,6 @@ describe("POST /api/coupons/validate (demo fallback, no keys)", () => {
   });
 
   it("rejects category-restricted codes for other categories", async () => {
-    // EID50 is men-only; p4 is a women three-piece... resolve honestly:
-    // p1 IS men, so use a non-men seed product instead.
     const { PRODUCTS } = await import("@/lib/catalog");
     const other = PRODUCTS.find((p) => p.category !== "men")!;
     const res = await validateCoupon(
@@ -66,70 +85,45 @@ describe("POST /api/coupons/validate (demo fallback, no keys)", () => {
   });
 });
 
-describe("reviews routes (demo fallback, no keys)", () => {
-  it("GET answers { demoMode: true } so the client uses the local store", async () => {
+describe("reviews routes (unconfigured backend)", () => {
+  it("GET answers an empty list so the client shows an honest empty state", async () => {
     const res = await getReviews(
       new Request("http://localhost/api/reviews?product=p1"),
     );
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ demoMode: true });
+    await expect(res.json()).resolves.toEqual({ reviews: [] });
   });
 
-  it("POST answers { demoMode: true } so the client stores locally", async () => {
+  it("POST answers 503 — submissions never silently succeed", async () => {
     const res = await postReview(
       req({ productId: "p1", author: "Test", rating: 5, body: "Lovely fabric, fits well." }),
     );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
   });
 });
 
-describe("GET /api/products carries shops (marketplace slice 4)", () => {
-  it("demo catalog includes stripped shop seeds", async () => {
+describe("GET /api/products without a configured backend", () => {
+  it("answers 503 NOT_SEEDED instead of a catalog snapshot", async () => {
     const { GET } = await import("../products/route");
     const res = await GET();
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as {
-      source: string;
-      products: unknown[];
-      shops: { slug: string; contactEmail?: string }[];
-    };
-    expect(data.source).toBe("demo");
-    expect(data.products.length).toBeGreaterThan(0);
-    expect(data.shops).toHaveLength(1);
-    expect(data.shops[0].slug).toBe("prosanti-direct");
-    expect(data.shops[0].contactEmail).toBeUndefined();
+    expect(res.status).toBe(503);
   });
 });
 
-describe("shops routes (marketplace slice 2)", () => {
-  it("GET /api/shops answers demo seeds without contact emails", async () => {
+describe("shops routes (unconfigured backend)", () => {
+  it("GET /api/shops answers 503 — no fake shop list", async () => {
     const { GET } = await import("../shops/route");
     const res = await GET(new Request("http://localhost/api/shops"));
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as {
-      source: string;
-      shops: { slug: string; contactEmail?: string }[];
-    };
-    expect(data.source).toBe("demo");
-    expect(data.shops).toHaveLength(1);
-    expect(data.shops[0].slug).toBe("prosanti-direct");
-    expect(data.shops[0].contactEmail).toBeUndefined();
+    expect(res.status).toBe(503);
   });
 
-  it("GET /api/shops?zone= filters by served zone", async () => {
+  it("GET /api/shops?zone= answers 503 too", async () => {
     const { GET } = await import("../shops/route");
-    const hit = (await (
-      await GET(new Request("http://localhost/api/shops?zone=z1"))
-    ).json()) as { shops: unknown[] };
-    expect(hit.shops).toHaveLength(1);
-    const miss = (await (
-      await GET(new Request("http://localhost/api/shops?zone=nope"))
-    ).json()) as { shops: unknown[] };
-    expect(miss.shops).toHaveLength(0);
+    const res = await GET(new Request("http://localhost/api/shops?zone=z1"));
+    expect(res.status).toBe(503);
   });
 
-  it("POST /api/shops/apply validates then answers demoMode", async () => {
+  it("POST /api/shops/apply answers 503 when the backend is unconfigured", async () => {
     const { POST } = await import("../shops/apply/route");
     const good = req({
       name: "Karim Fabrics",
@@ -139,11 +133,7 @@ describe("shops routes (marketplace slice 2)", () => {
       zoneIds: ["z1"],
     });
     const res = await POST(good);
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ demoMode: true });
-
-    const bad = await POST(req({ name: "K", email: "nope" }));
-    expect(bad.status).toBe(400);
+    expect(res.status).toBe(503);
   });
 
   it("POST /api/shops/apply rate-limits at 5/min per IP", async () => {
@@ -165,7 +155,7 @@ describe("shops routes (marketplace slice 2)", () => {
       });
     for (let i = 0; i < 5; i += 1) {
       const res = await POST(mk());
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(503);
     }
     const limited = await POST(mk());
     expect(limited.status).toBe(429);

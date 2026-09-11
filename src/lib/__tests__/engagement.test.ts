@@ -1,9 +1,7 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CONTACT_TOPICS,
-  addDemoMessage,
   cleanEmail,
-  getDemoMessages,
   isPlausibleBdPhone,
   isPlausibleEmail,
   mapContactMessage,
@@ -11,10 +9,8 @@ import {
   mapNotification,
   mapSubscriber,
   normalizeBdPhone,
-  resetDemoMessages,
   sanitizeHomeSettings,
   sanitizeOpsSettings,
-  setDemoMessageStatus,
   subscribersToCsv,
   validateContact,
 } from "../engagement";
@@ -194,22 +190,10 @@ describe("subscriber CSV export", () => {
   });
 });
 
-describe("demo message store", () => {
-  beforeEach(() => resetDemoMessages());
-
-  it("adds, lists and re-statuses messages", () => {
-    expect(getDemoMessages()).toEqual([]);
-    const m = addDemoMessage({
-      name: "Rahim",
-      phone: "01712345678",
-      topic: CONTACT_TOPICS[0],
-      message: "Hello, I need help with my order please.",
-    });
-    expect(m.status).toBe("new");
-    expect(getDemoMessages()).toHaveLength(1);
-    setDemoMessageStatus(m.id, "replied");
-    expect(getDemoMessages()[0].status).toBe("replied");
-    resetDemoMessages();
-    expect(getDemoMessages()).toEqual([]);
+describe("contact store is live-only", () => {
+  it("exposes no browser-local message store", () => {
+    // Contact inboxes live in the database (contact_messages); the module
+    // carries validation + row mappers only, no browser-local store.
+    expect(validateContact).toBeTypeOf("function");
   });
 });

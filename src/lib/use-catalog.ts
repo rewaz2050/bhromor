@@ -1,23 +1,11 @@
 "use client";
 
 /**
- * Admin catalog data with live cutover (see use-orders.ts for the pattern).
- * Live writes go through /api/admin/products + /api/admin/categories;
- * the demo store stays untouched for demo browsers.
+ * Admin catalog data — live only. Writes go through
+ * /api/admin/products + /api/admin/categories.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getCatalog,
-  moveCategoryInStore,
-  resetCatalogStore,
-  saveCategoryInStore,
-  saveProductInStore,
-  setCategoryActiveInStore,
-  setProductActiveInStore,
-  toggleProductFlagInStore,
-  subscribeCatalog,
-} from "./catalog-store";
+import { useCallback, useEffect, useState } from "react";
 import type { Category, Product } from "./catalog";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
@@ -56,7 +44,6 @@ const toProductInput = (p: Product): Record<string, unknown> => ({
 });
 
 export function useCatalog() {
-  const demo = useSyncExternalStore(subscribeCatalog, getCatalog, getCatalog);
   const { live, checked } = useStaffLive();
   const [liveProducts, setLiveProducts] = useState<Product[] | null>(null);
   const [liveCategories, setLiveCategories] = useState<Category[] | null>(null);
@@ -79,7 +66,7 @@ export function useCatalog() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveProducts(null);
       setLiveCategories(null);
       setError(null);
@@ -90,12 +77,9 @@ export function useCatalog() {
 
   const saveProduct = useCallback(
     async (p: Product): Promise<boolean> => {
-      if (!live) {
-        saveProductInStore(p);
-        return true;
-      }
+      if (!live) return false;
       try {
-        // Database ids are uuids; anything else is a new demo-id row.
+        // Database ids are uuids; anything else is a new row.
         if (UUID_RE.test(p.id)) {
           await apiSend(
             `/api/admin/products/${encodeURIComponent(p.id)}`,
@@ -118,10 +102,7 @@ export function useCatalog() {
 
   const toggleFlag = useCallback(
     async (id: string, flag: "featured" | "isNew", value: boolean): Promise<void> => {
-      if (!live) {
-        toggleProductFlagInStore(id, flag, value);
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend(`/api/admin/products/${encodeURIComponent(id)}`, "PATCH", {
           [flag]: value,
@@ -137,10 +118,7 @@ export function useCatalog() {
 
   const setProductActive = useCallback(
     async (id: string, active: boolean): Promise<void> => {
-      if (!live) {
-        setProductActiveInStore(id, active);
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend(`/api/admin/products/${encodeURIComponent(id)}`, "PATCH", {
           active,
@@ -156,10 +134,7 @@ export function useCatalog() {
 
   const saveCategory = useCallback(
     async (c: Category): Promise<boolean> => {
-      if (!live) {
-        saveCategoryInStore(c);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/categories", "POST", c);
         setError(null);
@@ -175,10 +150,7 @@ export function useCatalog() {
 
   const setCategoryActive = useCallback(
     async (id: string, active: boolean): Promise<void> => {
-      if (!live) {
-        setCategoryActiveInStore(id, active);
-        return;
-      }
+      if (!live) return;
       const current = liveCategories?.find((c) => c.id === id);
       if (!current) return;
       try {
@@ -194,10 +166,7 @@ export function useCatalog() {
 
   const moveCategory = useCallback(
     async (id: string, dir: -1 | 1): Promise<void> => {
-      if (!live) {
-        moveCategoryInStore(id, dir);
-        return;
-      }
+      if (!live) return;
       try {
         const data = await apiSend<{ categories: Category[] }>(
           "/api/admin/categories",
@@ -213,21 +182,16 @@ export function useCatalog() {
     [live],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetCatalogStore();
-  }, [live, refresh]);
-
   return {
-    products: live ? (liveProducts ?? []) : demo.products,
-    categories: live ? (liveCategories ?? []) : demo.categories,
+    products: liveProducts ?? [],
+    categories: liveCategories ?? [],
     saveProduct,
     toggleFlag,
     setProductActive,
     saveCategory,
     setCategoryActive,
     moveCategory,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveProducts === null),
     error,

@@ -1,12 +1,61 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import Home from "../page";
 import { CartProvider } from "@/components/cart/cart-provider";
-import { HOME_DEFAULTS, resetCms, saveCms } from "@/lib/home-cms";
+import { HOME_DEFAULTS } from "@/lib/home-cms";
+import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status });
+
+/** Launch shop #1 — the owner's own catalog, serving every zone. */
+const launchShop = (): Shop => ({
+  id: "shop-1",
+  slug: "prosanti-direct",
+  name: "PROSANTI Direct",
+  phone: "01700000000",
+  zoneIds: DELIVERY_ZONES.map((z) => z.id),
+  prepMinutes: 15,
+  commissionPct: 15,
+  status: "active",
+  isOpen: true,
+  ratingAvg: 0,
+  ratingCount: 0,
+});
+
+const originalFetch = globalThis.fetch;
+
+let homepageSettings: unknown = HOME_DEFAULTS;
+
+const mockFetch = (input: RequestInfo | URL) => {
+  const url = String(input);
+  if (url.includes("/api/products")) {
+    return Promise.resolve(
+      jsonResponse({
+        source: "live",
+        products: PRODUCTS,
+        categories: CATEGORIES,
+        shops: [launchShop()],
+      }),
+    );
+  }
+  if (url.includes("/api/zones")) {
+    return Promise.resolve(jsonResponse({ source: "live", zones: DELIVERY_ZONES }));
+  }
+  if (url.includes("/api/homepage")) {
+    return Promise.resolve(jsonResponse({ settings: homepageSettings }));
+  }
+  return Promise.resolve(jsonResponse({}));
+};
+
+beforeEach(() => {
+  homepageSettings = HOME_DEFAULTS;
+  globalThis.fetch = mockFetch as unknown as typeof fetch;
+});
 
 afterEach(() => {
   cleanup();
-  resetCms();
+  globalThis.fetch = originalFetch;
 });
 
 async function renderHome() {
@@ -15,7 +64,7 @@ async function renderHome() {
       <Home />
     </CartProvider>,
   );
-  // Flush the client live-catalog / zone probes so state updates stay
+  // Flush the client live-catalog / zone / CMS probes so state updates stay
   // inside act and the test does not end with pending setState work.
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -43,7 +92,7 @@ describe("Homepage editorial journey", () => {
     await renderHome();
 
     expect(
-      screen.getByRole("heading", {
+      await screen.findByRole("heading", {
         level: 2,
         name: "A wardrobe, thoughtfully composed.",
       }),
@@ -70,6 +119,7 @@ describe("Homepage editorial journey", () => {
 
   it("follows hero → collections → featured → trust", async () => {
     const { container } = await renderHome();
+    await screen.findByRole("link", { name: "Heritage Green Panjabi" });
     const selectors = [
       ".cinematic-hero",
       "#collections",
@@ -87,21 +137,20 @@ describe("Homepage editorial journey", () => {
   });
 
   it("retains CMS hero copy and visibility controls in the shorter layout", async () => {
+    homepageSettings = {
+      ...HOME_DEFAULTS,
+      hero: {
+        ...HOME_DEFAULTS.hero,
+        title1: "Thoughtfully made",
+        title2: "for you.",
+      },
+      sections: { ...HOME_DEFAULTS.sections, collections: false },
+    };
+
     await renderHome();
-    act(() =>
-      saveCms({
-        ...HOME_DEFAULTS,
-        hero: {
-          ...HOME_DEFAULTS.hero,
-          title1: "Thoughtfully made",
-          title2: "for you.",
-        },
-        sections: { ...HOME_DEFAULTS.sections, collections: false },
-      }),
-    );
 
     expect(
-      screen.getByRole("heading", {
+      await screen.findByRole("heading", {
         level: 1,
         name: "Thoughtfully made for you.",
       }),
@@ -111,7 +160,9 @@ describe("Homepage editorial journey", () => {
         name: "A wardrobe, thoughtfully composed.",
       }),
     ).toBeNull();
-    expect(screen.getByRole("heading", { name: "Featured." })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Featured." }),
+    ).toBeVisible();
   });
 
   it("links service promises to real pages", async () => {

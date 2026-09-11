@@ -296,10 +296,8 @@ export default function AdminProductsPage() {
       )}
 
       <p className="text-xs leading-5 text-ink-soft">
-        Demo catalog store — changes persist in this browser and preview in
-        this panel. Public storefront pages still read{" "}
-        <code className="rounded bg-ivory-100 px-1 py-0.5">src/lib/catalog.ts</code>{" "}
-        until the Supabase data layer gates all reads.
+        Live catalog — changes persist to the database and are served to the
+        storefront immediately.
       </p>
     </div>
   );

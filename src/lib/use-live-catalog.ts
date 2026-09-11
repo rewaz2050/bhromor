@@ -13,8 +13,8 @@ import {
 } from "./live-catalog";
 
 /**
- * Storefront catalog with live cutover. Seeds paint instantly (SSR-safe);
- * when the backend serves live rows the hook swaps them in once.
+ * Storefront catalog. The launch catalog paints instantly (SSR-safe); when
+ * the backend serves live rows the hook swaps them in once.
  */
 export function useLiveCatalog() {
   const products = useSyncExternalStore(

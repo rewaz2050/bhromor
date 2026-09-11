@@ -2,7 +2,7 @@
 
 /**
  * Product editor (§71–73) — shared by /admin/products/new and
- * /admin/products/[id]. One calm sectioned form; data lands in the demo
+ * /admin/products/[id]. One calm sectioned form; data lands in the catalog
  * catalog store (Supabase phase replaces only the persistence layer).
  */
 

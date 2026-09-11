@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetCustomerProbe,
   __resetLiveAuthForTests,
-  demoLogout,
   getAuthSnapshot,
   probeCustomerSession,
   subscribeCustomerAuth,
@@ -23,8 +22,6 @@ const fetchMock = vi.fn();
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  window.localStorage.clear();
-  demoLogout();
   __resetLiveAuthForTests();
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -79,12 +76,13 @@ describe("shared live session store", () => {
     expect(getAuthSnapshot().customer?.name).toBe("করিম");
   });
 
-  it("snapshot identity is stable between real changes (no re-render loop)", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ demoMode: true }));
+  it("a non-401 body without a customer reads as signed-out (mode stays live)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ strayField: true }));
     await probeCustomerSession();
     const first = getAuthSnapshot();
     expect(getAuthSnapshot()).toBe(first);
-    expect(first.mode).toBe("demo");
+    expect(first.mode).toBe("live");
+    expect(first.customer).toBeNull();
   });
 
   it("server snapshot shape matches the un-probed client state (hydration)", async () => {

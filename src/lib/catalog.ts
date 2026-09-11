@@ -44,14 +44,14 @@ export interface Product {
   reviewCount: number;
   badge?: "new" | "sale" | "featured";
   /* Admin-phase fields (§73–74) — optional so existing seeds stay valid.
-     Drafts/archived products simply never leave the demo admin catalog
-     until the Supabase data layer gates the public reads. */
+     Drafts/archived products are never served to the storefront — the
+     Supabase data layer gates the public reads. */
   status?: "draft" | "published";
   active?: boolean;
   stock?: number;
   seo?: { title?: string; description?: string };
   /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
-      implicitly belong to shop #1, so demo rows omit it. */
+      implicitly belong to shop #1, so rows may omit it. */
   shopId?: string;
 }
 

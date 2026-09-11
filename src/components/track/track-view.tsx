@@ -2,11 +2,8 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { useLocalOrders } from "@/lib/use-orders";
-import { isSupabaseConfigured } from "@/lib/env";
 import {
   flowIndex,
-  samePhone,
   type Order,
   type OrderStatus,
 } from "@/lib/orders";
@@ -86,13 +83,11 @@ const stepTime = (order: Order, step: number): string | undefined => {
 };
 
 type Result =
-  | { found: true; order: Order; via: "device" | "live" }
+  | { found: true; order: Order; via: "live" }
   | { found: false }
   | null;
 
 export default function TrackView() {
-  const { orders } = useLocalOrders();
-  const demoMode = !isSupabaseConfigured();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
@@ -102,18 +97,6 @@ export default function TrackView() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const id = orderId.trim().toUpperCase();
-    // Local first: instant in demo mode and for this device's orders.
-    const local = orders.find(
-      (o) => o.id.toUpperCase() === id && samePhone(o.customer.phone, phone),
-    );
-    if (local) {
-      setLookupFailed(false);
-      setResult({ found: true, order: local, via: "device" });
-      return;
-    }
-    // Otherwise ask the backend — cross-device orders live there.
-    // Demo mode answers { demoMode: true }; anything unreachable shows an
-    // honest “lookup failed” instead of a wrong “not found”.
     setChecking(true);
     setLookupFailed(false);
     try {
@@ -121,12 +104,11 @@ export default function TrackView() {
         `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone.trim())}`,
       );
       const data = (await res.json().catch(() => null)) as {
-        demoMode?: boolean;
         order?: Order;
       } | null;
       if (res.ok && data?.order) {
         setResult({ found: true, order: data.order, via: "live" });
-      } else if (res.status === 404 || data?.demoMode) {
+      } else if (res.status === 404) {
         setResult({ found: false });
       } else {
         setLookupFailed(true);
@@ -138,19 +120,7 @@ export default function TrackView() {
     }
   };
 
-  const tryDemo = () => {
-    const sample =
-      [...orders]
-        .filter((o) => o.status !== "cancelled")
-        .sort((a, b) => b.createdAt - a.createdAt)[0] ?? orders[0];
-    if (!sample) return;
-    setOrderId(sample.id);
-    setPhone(sample.customer.phone);
-    setResult({ found: true, order: sample, via: "device" });
-  };
-
   const order = result?.found ? result.order : null;
-  const via = result?.found ? result.via : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[420px_1fr]">
@@ -213,15 +183,6 @@ export default function TrackView() {
             Could not reach the shop — check your connection and try again.
           </p>
         )}
-        {demoMode && (
-          <button
-            type="button"
-            onClick={tryDemo}
-            className="mt-3 w-full text-center text-xs text-ink-soft underline underline-offset-4 hover:text-forest-700"
-          >
-            View the newest demo order instead
-          </button>
-        )}
       </form>
 
       {/* Result */}
@@ -249,15 +210,7 @@ export default function TrackView() {
             </h2>
             <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
               Double-check the order ID and the phone number you ordered with.
-              Orders placed on this device appear here straight away.
             </p>
-            <button
-              type="button"
-              onClick={tryDemo}
-              className="mt-6 text-xs font-medium text-forest-700 underline underline-offset-4 hover:text-forest-900"
-            >
-              Try the demo order
-            </button>
           </div>
         ) : (
           <div className="space-y-6">
@@ -438,14 +391,6 @@ export default function TrackView() {
                 {order.customer.note && (
                   <p className="mt-3 text-xs leading-5 text-ink-soft">
                     <strong className="text-ink">Note:</strong> {order.customer.note}
-                  </p>
-                )}
-                {(demoMode || via === "device") && (
-                  <p className="mt-6 rounded-2xl bg-ivory-100 px-4 py-3 text-xs leading-5 text-ink-soft">
-                    <strong className="text-ink">Demo data.</strong>{" "}
-                    {demoMode
-                      ? "This device is your browser's demo warehouse: the order status moves when the PROSANTI admin panel advances it."
-                      : "This order lives in this browser only — orders placed on PROSANTI are tracked live from our system instead."}
                   </p>
                 )}
               </div>

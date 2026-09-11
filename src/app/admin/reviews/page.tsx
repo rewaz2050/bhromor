@@ -68,17 +68,6 @@ export default function AdminReviewsPage() {
         <h2 className="font-display text-lg font-medium text-forest-900">
           Reviews
         </h2>
-        {!live && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Reset reviews to the seeded sample data?")) reset();
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset demo reviews
-          </button>
-        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -29,4 +29,4 @@
 - Wishlist empty-state copy now matches the brand voice.
 
 ### Still requires production services/content
-Real sales aggregates for Best Sellers, approved real testimonials, official social accounts/feed permissions, verified garment measurements, and account/login wishlist synchronization. These are not represented as complete by the demo UI.
+Real sales aggregates for Best Sellers, approved real testimonials, official social accounts/feed permissions, verified garment measurements, and account/login wishlist synchronization. These are not represented as complete in the current UI.

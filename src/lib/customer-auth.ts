@@ -7,8 +7,7 @@
  * `customer_sessions`; the httpOnly cookie never exposes the customer id.
  * Passwords are scrypt-hashed (salted, timing-safe compare).
  *
- * Demo mode never touches this module — the browser-local store in
- * customer-session.ts handles it client-side.
+ * Sessions are verified server-side on every protected read.
  */
 
 import {
@@ -35,8 +34,7 @@ export interface CustomerInfo {
 export class CustomerAuthError extends Error {
   status: number;
   /** True when the accounts tables themselves are missing (42P01): callers
-   *  should answer `{ demoMode: true }` so the storefront's browser-local
-   *  store takes over instead of failing the customer. */
+   *  should answer 503 instead of failing the customer. */
   storeMissing: boolean;
   constructor(message: string, status = 400, storeMissing = false) {
     super(message);

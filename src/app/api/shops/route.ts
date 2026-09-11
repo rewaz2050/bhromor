@@ -3,12 +3,10 @@
  *
  * Active shops only, optionally scoped to one delivery zone (area-scoped
  * discovery, D3). Contact emails are stripped before responding — the anon
- * key has no shop policies on purpose. Demo mode answers from seeds with
- * an explicit `source` label, like /api/products.
+ * key has no shop policies on purpose. An unconfigured backend answers 503.
  */
 
-import { listPublicShops, toPublicShop } from "@/lib/db/marketplace";
-import { seedShops } from "@/lib/shops-store";
+import { listPublicShops } from "@/lib/db/marketplace";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -28,11 +26,7 @@ export async function GET(request: Request) {
   try {
     const shops = await listPublicShops(zone);
     if (!shops) {
-      const seeds = seedShops().map(toPublicShop);
-      return apiJson({
-        source: "demo" as const,
-        shops: zone ? seeds.filter((s) => s.zoneIds.includes(zone)) : seeds,
-      });
+      return apiError("Shops are temporarily unavailable.", 503);
     }
     return apiJson({ source: "live" as const, shops });
   } catch {

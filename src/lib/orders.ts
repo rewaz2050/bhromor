@@ -1,5 +1,5 @@
 /**
- * PROSANTI admin order domain — mock data + order state machine (§33–34, §75).
+ * PROSANTI order domain — order state machine (§33–34, §75).
  *
  * Pure, UI-agnostic module so the state machine and money math can be unit
  * tested. Shapes follow the blueprint's generic commerce model; in the
@@ -11,8 +11,7 @@
  * changes never rewrite old orders.
  */
 
-import { bdt, type Bdt } from "./format";
-import { PRODUCTS } from "./catalog";
+import type { Bdt } from "./format";
 
 /* ------------------------------------------------------------------ */
 /* Status model (§34)                                                  */
@@ -129,7 +128,7 @@ export interface Order {
   coupon?: { code: string; discount: number };
   /** Owning shop (marketplace slice 1). Live orders always carry it. */
   shopId?: string;
-  /** Live 4-digit proof code; absent in demo (the UI derives a demo code). */
+  /** Live 4-digit proof code from the server. */
   deliveryCode?: string;
   /** Geo pin from map — exact delivery location */
   lat?: number;
@@ -179,7 +178,7 @@ export interface PlacedOrderInput {
 
 /**
  * Turn a completed checkout into an Order record — one public entry point,
- * so every placed order is shaped exactly like the seeded ones (§70, §75).
+ * so every placed order is shaped consistently (§70, §75).
  * Totals are recomputed in paisa, never trusted from the client beyond qty.
  */
 export const makePlacedOrder = (input: PlacedOrderInput): Order => {
@@ -239,8 +238,8 @@ export const maskPhone = (phone: string): string => {
 
 /**
  * Return a new order advanced to `to`, or null when the transition is not
- * legal for the current status. Timeline entries are appended — this is the
- * `order_status_history` behaviour kept in memory for the demo phase.
+ * legal for the current status. Timeline entries are appended — this mirrors
+ * `order_status_history` for the in-memory client helpers.
  */
 export const advanceOrder = (
   order: Order,
@@ -345,179 +344,6 @@ export const aggregateOrders = (orders: Order[]): OrderAggregates => {
     newOrders: byStatus.pending + byStatus.confirmed,
   };
 };
-
-/* ------------------------------------------------------------------ */
-/* Mock seed orders (Sunamganj Sadar — real paras)                     */
-/* ------------------------------------------------------------------ */
-
-const now = Date.now();
-const min = (n: number) => n * 60_000;
-
-let seq = 0;
-const dayTag = new Date(now).toISOString().slice(0, 10).replace(/-/g, "");
-
-const nextId = () => {
-  seq += 1;
-  return `PS-${dayTag}-${String(1000 + seq * 37).slice(-4)}`;
-};
-
-interface SeedSpec {
-  status: OrderStatus;
-  placedAgoMin: number;
-  productIds: string[];
-  variantOf?: (i: number) => string;
-  qtyOf?: (i: number) => number;
-  /** minutes from placement to each subsequent step (capped by delivery) */
-  cadence?: number[];
-  deliveredInMin?: number;
-  name?: string;
-  areaIdx?: number;
-  note?: string;
-}
-
-const AREAS = [
-  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Boropara", eta: "30–40 min" },
-  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Shologhar", eta: "30–40 min" },
-  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Ukilpara", eta: "30–40 min" },
-  { zoneId: "z1", zoneName: "Zone A — Traffic Point (0-1.5km)", area: "Kalibari", eta: "30–40 min" },
-  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Notunpara", eta: "40–50 min" },
-  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Hasannagar", eta: "40–50 min" },
-  { zoneId: "z2", zoneName: "Zone B — Sadar Core (1.5-2.5km)", area: "Tegharia", eta: "40–50 min" },
-  { zoneId: "z3", zoneName: "Zone C — Sadar Extended (2.5-4km)", area: "Wayesspur", eta: "50–60 min" },
-  { zoneId: "z3", zoneName: "Zone C — Sadar Extended (2.5-4km)", area: "Balaka Para", eta: "50–60 min" },
-  { zoneId: "z4", zoneName: "Zone D — Sunamganj Sadar Bahire", area: "Sunamganj Sadar Other", eta: "60–80 min" },
-];
-
-const CADENCE = {
-  // minutes from placement at which each following step is stamped;
-  // the array covers every step up to and including its key.
-  pending: [],
-  confirmed: [2],
-  preparing: [2, 7],
-  "ready-for-pickup": [2, 7, 12],
-  "courier-assigned": [2, 7, 12, 16],
-  "out-for-delivery": [2, 7, 12, 16, 20],
-} as const;
-
-/** Minutes of the full run-up to delivery (fallback when unspecified). */
-const DEFAULT_DELIVERY_MIN = 41;
-
-const seedTimeline = (
-  status: OrderStatus,
-  createdAt: number,
-  deliveredInMin?: number,
-): { timeline: OrderTimelineEntry[]; deliveredMinutes?: number } => {
-  const timeline: OrderTimelineEntry[] = [
-    { status: "pending", at: createdAt },
-  ];
-  const idx = flowIndex(status);
-  if (idx < 0) {
-    // cancelled shortly after placement
-    timeline.push({
-      status: "cancelled",
-      at: createdAt + min(3),
-      note: "Requested by customer",
-    });
-    return { timeline };
-  }
-  const cadence =
-    status === "delivered"
-      ? CADENCE["out-for-delivery"]
-      : CADENCE[status as keyof typeof CADENCE];
-  for (let i = 1; i <= idx; i++) {
-    const stepMinutes =
-      status === "delivered" && i === idx && deliveredInMin
-        ? deliveredInMin
-        : cadence[i - 1];
-    timeline.push({
-      status: ORDER_FLOW[i],
-      at: createdAt + min(stepMinutes),
-    });
-  }
-  const deliveredMinutes =
-    status === "delivered"
-      ? (deliveredInMin ?? DEFAULT_DELIVERY_MIN)
-      : undefined;
-  return { timeline, deliveredMinutes };
-};
-
-const makeOrder = (spec: SeedSpec): Order => {
-  const createdAt = now - min(spec.placedAgoMin);
-  const { timeline, deliveredMinutes } = seedTimeline(
-    spec.status,
-    createdAt,
-    spec.deliveredInMin,
-  );
-  const zone = AREAS[spec.areaIdx ?? (spec.placedAgoMin % AREAS.length)];
-  const items: OrderItem[] = spec.productIds.map((id, i) => {
-    const p = PRODUCTS.find((x) => x.id === id) ?? PRODUCTS[0];
-    return {
-      productId: p.id,
-      slug: p.slug,
-      name: p.name,
-      sku: p.sku,
-      variant: spec.variantOf?.(i) ?? `${p.colors[0]} · ${p.sizes[0]}`,
-      qty: spec.qtyOf?.(i) ?? (i === 0 ? 1 : 1),
-      unitPrice: p.price,
-      image: p.media[0]?.src ?? "",
-    };
-  });
-  const subtotal = items.reduce((s, it) => s + it.unitPrice * it.qty, 0);
-  // Sunamganj charges: z1=30, z2=50, z3=70, z4=100
-  const chargeMap: Record<string, number> = { z1: 3000, z2: 5000, z3: 7000, z4: 10000 };
-  const deliveryCharge = chargeMap[zone.zoneId] ?? 5000;
-  return {
-    id: nextId(),
-    createdAt,
-    customer: {
-      name: spec.name ?? "Customer",
-      phone: "01700000000",
-      area: zone.area,
-      address: `House 12, ${zone.area}, Sunamganj Sadar`,
-      note: spec.note,
-    },
-    zoneId: zone.zoneId,
-    zoneName: zone.zoneName,
-    etaLabel: zone.eta,
-    items,
-    subtotal,
-    deliveryCharge,
-    total: subtotal + deliveryCharge,
-    payment: "cod",
-    status: spec.status,
-    timeline,
-    deliveredMinutes,
-  };
-};
-
-const NAMES = [
-  "Rahat Ahmed", "Nusrat Jahan", "Tanjim Hasan", "Farhana Islam",
-  "Sabbir Rahman", "Moumita Das", "Arif Chowdhury", "Sumaiya Karim",
-  "Imran Hossain", "Tahmina Akter", "Mehedi Sarker", "Lamia Chowdhury",
-];
-
-export const MOCK_ORDERS: Order[] = [
-  // — today’s operational picture, spread across the day —
-  makeOrder({ status: "pending", placedAgoMin: 6, productIds: ["p1", "p4"], name: NAMES[0], areaIdx: 0 }),
-  makeOrder({ status: "pending", placedAgoMin: 18, productIds: ["p2"], name: NAMES[1], areaIdx: 1, variantOf: () => "Ivory · XL" }),
-  makeOrder({ status: "confirmed", placedAgoMin: 33, productIds: ["p5"], name: NAMES[2], areaIdx: 2 }),
-  makeOrder({ status: "preparing", placedAgoMin: 52, productIds: ["p3", "p7"], name: NAMES[3], areaIdx: 0, qtyOf: (i) => (i === 0 ? 2 : 1) }),
-  makeOrder({ status: "preparing", placedAgoMin: 70, productIds: ["p6"], name: NAMES[4], areaIdx: 4, variantOf: () => "Deep Teal · M" }),
-  makeOrder({ status: "ready-for-pickup", placedAgoMin: 95, productIds: ["p1"], name: NAMES[5], areaIdx: 5, qtyOf: () => 2 }),
-  makeOrder({ status: "courier-assigned", placedAgoMin: 130, productIds: ["p4", "p2"], name: NAMES[6], areaIdx: 6 }),
-  makeOrder({ status: "out-for-delivery", placedAgoMin: 165, productIds: ["p5", "p7"], name: NAMES[7], areaIdx: 7 }),
-  makeOrder({ status: "out-for-delivery", placedAgoMin: 210, productIds: ["p2"], name: NAMES[8], areaIdx: 8 }),
-  makeOrder({ status: "delivered", placedAgoMin: 260, deliveredInMin: 41, productIds: ["p3"], name: NAMES[9], areaIdx: 0, qtyOf: () => 1 }),
-  makeOrder({ status: "delivered", placedAgoMin: 340, deliveredInMin: 47, productIds: ["p1", "p6"], name: NAMES[10], areaIdx: 9, qtyOf: (i) => (i === 0 ? 1 : 2) }),
-  makeOrder({ status: "delivered", placedAgoMin: 430, deliveredInMin: 38, productIds: ["p7"], name: NAMES[11], areaIdx: 1, qtyOf: () => 3 }),
-  // — a few from previous days so “today” stays meaningful —
-  makeOrder({ status: "delivered", placedAgoMin: 60 * 26, deliveredInMin: 44, productIds: ["p4"], name: NAMES[2], areaIdx: 0 }),
-  makeOrder({ status: "cancelled", placedAgoMin: 60 * 30, productIds: ["p5"], name: NAMES[5], areaIdx: 4 }),
-  makeOrder({ status: "delivered", placedAgoMin: 60 * 52, deliveredInMin: 52, productIds: ["p2", "p3"], name: NAMES[7], areaIdx: 5 }),
-];
-
-/* Demo persistence key — replaced by Supabase `orders` later. */
-export const ORDERS_STORAGE_KEY = "prosanti.admin.orders.v1";
 
 /**
  * Deterministically generates a 4-digit verification code from an order ID.

@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getOrders,
-  subscribeOrders,
-} from "@/lib/order-store";
+import { useEffect, useState } from "react";
 import {
   LAUNCH_FREE_DELIVERY_LIMIT,
   FREE_DELIVERY_MIN_SUBTOTAL_PAISA,
@@ -20,26 +16,21 @@ interface PromoInfo {
 
 /**
  * LAUNCH OFFER banner — "প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি!" with the live
- * X/1000 claimed counter. Live mode reads /api/promo; demo mode counts the
- * browser-local orders. Hidden once the offer is exhausted.
+ * X/1000 claimed counter from /api/promo. Hidden once the offer is exhausted.
  */
 export default function LaunchOfferBanner({ className = "" }: { className?: string }) {
-  const [live, setLive] = useState<PromoInfo | null>(null);
-  const demoCount = useSyncExternalStore(
-    subscribeOrders,
-    () => getOrders().length,
-    () => 0,
-  );
+  const [promo, setPromo] = useState<PromoInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/promo", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { demoMode?: boolean; totalOrders?: number; limit?: number; remaining?: number; enabled?: boolean }) => {
-        if (cancelled || data.demoMode) return;
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
+      .then((data: { totalOrders?: number; limit?: number; remaining?: number; enabled?: boolean }) => {
+        if (cancelled) return;
+        if (typeof data.totalOrders !== "number") return;
         const limit = data.limit ?? LAUNCH_FREE_DELIVERY_LIMIT;
-        const total = data.totalOrders ?? 0;
-        setLive({
+        const total = data.totalOrders;
+        setPromo({
           totalOrders: total,
           limit,
           remaining: data.remaining ?? Math.max(0, limit - total),
@@ -52,11 +43,11 @@ export default function LaunchOfferBanner({ className = "" }: { className?: stri
     };
   }, []);
 
-  const isDemo = live === null;
-  const total = isDemo ? demoCount : live.totalOrders;
-  const limit = live?.limit ?? LAUNCH_FREE_DELIVERY_LIMIT;
-  const remaining = Math.max(0, limit - total);
-  if (!isDemo && live && !live.enabled) return null; // offer over
+  // Until the counter resolves, render nothing rather than an invented number.
+  if (!promo || !promo.enabled) return null;
+
+  const total = promo.totalOrders;
+  const limit = promo.limit;
   const percent = Math.min(100, Math.round((total / limit) * 100));
 
   return (
@@ -75,7 +66,7 @@ export default function LaunchOfferBanner({ className = "" }: { className?: stri
             প্রথম {limit} অর্ডারে ডেলিভারি ফ্রি!
           </p>
           <p className="mt-1 text-sm text-gold-200">
-            আর <strong className="text-gold-300">{remaining}</strong> টা বাকি — এখন অর্ডার করলে ফ্রি পাবেন!
+            আর <strong className="text-gold-300">{promo.remaining}</strong> টা বাকি — এখন অর্ডার করলে ফ্রি পাবেন!
           </p>
         </div>
         <div className="text-right">

@@ -1,31 +1,18 @@
 "use client";
 
 /**
- * Admin coupon data with live cutover (see use-orders.ts).
- * Checkout validates codes through POST /api/coupons/validate instead —
- * staff endpoints must never serve the storefront.
+ * Admin coupon data — live only. Coupons read/write through
+ * /api/admin/coupons; checkout validates codes through
+ * POST /api/coupons/validate instead — staff endpoints never serve the
+ * storefront.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  deleteCouponInStore,
-  getCoupons,
-  getCouponsServer,
-  recordCouponUseInStore,
-  resetCoupons,
-  saveCouponInStore,
-  subscribeCoupons,
-} from "./coupons-store";
+import { useCallback, useEffect, useState } from "react";
 import type { Coupon } from "./coupons";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export function useCoupons() {
-  const demoCoupons = useSyncExternalStore(
-    subscribeCoupons,
-    getCoupons,
-    getCouponsServer,
-  );
   const { live, checked } = useStaffLive();
   const [liveCoupons, setLiveCoupons] = useState<Coupon[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +31,7 @@ export function useCoupons() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveCoupons(null);
       setError(null);
       return;
@@ -54,10 +41,7 @@ export function useCoupons() {
 
   const save = useCallback(
     async (c: Coupon): Promise<boolean> => {
-      if (!live) {
-        saveCouponInStore(c);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/coupons", "POST", c);
         setError(null);
@@ -73,10 +57,7 @@ export function useCoupons() {
 
   const remove = useCallback(
     async (id: string): Promise<void> => {
-      if (!live) {
-        deleteCouponInStore(id);
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend(
           `/api/admin/coupons/${encodeURIComponent(id)}`,
@@ -91,25 +72,15 @@ export function useCoupons() {
     [live, refresh],
   );
 
-  /** Usage is recorded by the order RPC in live mode — demo only here. */
-  const recordUse = useCallback(
-    (code: string) => {
-      if (!live) recordCouponUseInStore(code);
-    },
-    [live],
-  );
-
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetCoupons();
-  }, [live, refresh]);
+  /** Usage is recorded by the order RPC in live mode — no client record. */
+  const recordUse = useCallback((_code: string) => {}, []);
 
   return {
-    coupons: live ? (liveCoupons ?? []) : demoCoupons,
+    coupons: liveCoupons ?? [],
     save,
     remove,
     recordUse,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveCoupons === null),
     error,

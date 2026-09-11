@@ -17,7 +17,6 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
-import { isSupabaseConfigured } from "@/lib/env";
 import { useVendorSession, type VendorMe } from "@/lib/use-vendor";
 
 const VendorCtx = createContext<VendorMe | null>(null);
@@ -55,22 +54,6 @@ export default function VendorShell({ children }: { children: ReactNode }) {
   }, [isLogin, status, router]);
 
   if (isLogin) return <>{children}</>;
-
-  if (!isSupabaseConfigured()) {
-    return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center">
-        <LogoMark className="mx-auto h-10 w-10" />
-        <h1 className="mt-4 font-display text-2xl text-forest-900">
-          Vendor dashboard
-        </h1>
-        <p className="mt-2 text-sm text-ink-soft">
-          The vendor dashboard needs Supabase (vendor accounts live there).
-          Connect the project keys to sign in — the storefront and staff
-          admin keep working in demo mode.
-        </p>
-      </div>
-    );
-  }
 
   if (status === "checking") {
     return (

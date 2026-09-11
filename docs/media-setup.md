@@ -10,7 +10,7 @@ Product er **sokol image ar video** ekhon 3 ta source theke cholbe:
 
 Storefront gallery te photo + video + YouTube sob slide akare play hobe.
 Card, cart, search, checkout — sob jaygay cover photo dekhabe (video kokhono
-cover hobe na). Kono demo/placeholder media rakha hoyni — ja add korben tai
+cover hobe na). Kono fake/placeholder media rakha hoyni — ja add korben tai
 live dekhabe.
 
 Code side er setup **100% sesh**. Niche sudhu apnar koronio step gulo dilam —

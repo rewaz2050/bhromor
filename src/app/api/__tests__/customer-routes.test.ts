@@ -234,16 +234,16 @@ describe("customer account routes — no verification, instant session", () => {
     spy0.mockRestore();
   });
 
-  it("no Supabase keys → demoMode contract", async () => {
+  it("no Supabase keys → 503, never a local session", async () => {
     state.serviceConfigured = false;
     const res = await signupPost(send("/api/account/signup", {
       name: "করিম",
       phone: "01712345678",
       password: "secret123",
     }));
-    const body = (await res.json()) as { demoMode?: boolean };
-    expect(body.demoMode).toBe(true);
-    expect((await meGet(get("/api/account/me"))).headers.get("Set-Cookie")).toBeNull();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+    expect((await meGet(get("/api/account/me"))).status).toBe(401);
   });
 });
 
@@ -270,27 +270,27 @@ describe("customer account routes — accounts store never migrated (42P01)", ()
     state.db = brokenDb as unknown as typeof state.db;
   });
 
-  it("signup degrades to demoMode (customer gets a local account, no 500)", async () => {
+  it("signup answers 503 when the accounts store is missing (no 500)", async () => {
     const res = await signupPost(send("/api/account/signup", {
       name: "রহিম",
       phone: "01712345678",
       password: "secret123",
     }));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toHaveProperty("error");
   });
 
-  it("login degrades to demoMode for the same reason", async () => {
+  it("login answers 503 for the same reason", async () => {
     const res = await loginPost(send("/api/account/login", {
       phone: "01712345678",
       password: "secret123",
     }));
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
   });
 
-  it("me answers demoMode, not a live 401 — the panel must leave live mode", async () => {
+  it("me answers signed-out 401 when the store is missing", async () => {
     const res = await meGet(get("/api/account/me"));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ customer: null });
   });
 });

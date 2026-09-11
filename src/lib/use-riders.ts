@@ -1,29 +1,16 @@
 "use client";
 
 /**
- * Admin rider data with live cutover (see use-shops.ts).
- * Staff queue reads/writes through /api/admin/riders when live, else the
- * browser-local demo store. Riders never appear on the storefront.
+ * Admin rider data — live only. Reads/writes go through /api/admin/riders.
+ * Riders never appear on the storefront.
  */
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getRiders,
-  getRidersServer,
-  resetRiderStore,
-  saveRiderInStore,
-  subscribeRiders,
-} from "./riders-store";
+import { useCallback, useEffect, useState } from "react";
 import type { Rider } from "./catalog";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export function useRiders() {
-  const demoRiders = useSyncExternalStore(
-    subscribeRiders,
-    getRiders,
-    getRidersServer,
-  );
   const { live, checked } = useStaffLive();
   const [liveRiders, setLiveRiders] = useState<Rider[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +29,7 @@ export function useRiders() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveRiders(null);
       setError(null);
       return;
@@ -52,10 +39,7 @@ export function useRiders() {
 
   const saveRider = useCallback(
     async (r: Rider): Promise<boolean> => {
-      if (!live) {
-        saveRiderInStore(r);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/riders", "POST", r);
         setError(null);
@@ -71,29 +55,21 @@ export function useRiders() {
 
   const setStatus = useCallback(
     async (id: string, status: Rider["status"]): Promise<boolean> => {
-      const current = (live ? liveRiders : demoRiders)?.find(
-        (r) => r.id === id,
-      );
+      const current = liveRiders?.find((r) => r.id === id);
       if (!current) return false;
       return saveRider({ ...current, status });
     },
-    [live, liveRiders, demoRiders, saveRider],
+    [liveRiders, saveRider],
   );
 
-  /** Staff records a rider cash pay-in and zeroes the balance (live only). */
+  /** Staff records a rider cash pay-in and zeroes the balance. */
   const settleCash = useCallback(
     async (
       id: string,
       method: string,
       reference: string,
     ): Promise<boolean> => {
-      if (!live) {
-        const current = demoRiders.find((r) => r.id === id);
-        if (!current) return false;
-        saveRiderInStore({ ...current, cashInHand: 0 });
-        setError(null);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend(
           `/api/admin/riders/${encodeURIComponent(id)}/settle`,
@@ -108,16 +84,13 @@ export function useRiders() {
         return false;
       }
     },
-    [live, demoRiders, refresh],
+    [live, refresh],
   );
 
-  /** Link an Auth account as this rider's login (live only). */
+  /** Link an Auth account as this rider's login. */
   const linkRider = useCallback(
     async (id: string, email: string): Promise<boolean> => {
-      if (!live) {
-        setError("Rider linking needs live mode — demo riders have no accounts.");
-        return false;
-      }
+      if (!live) return false;
       try {
         await apiSend(
           `/api/admin/riders/${encodeURIComponent(id)}/link-rider`,
@@ -134,12 +107,7 @@ export function useRiders() {
     [live],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetRiderStore();
-  }, [live, refresh]);
-
-  const riders: Rider[] = live ? (liveRiders ?? []) : demoRiders;
+  const riders: Rider[] = liveRiders ?? [];
   return {
     riders,
     pending: riders.filter((r) => r.status === "pending"),
@@ -147,7 +115,7 @@ export function useRiders() {
     setStatus,
     settleCash,
     linkRider,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveRiders === null),
     error,

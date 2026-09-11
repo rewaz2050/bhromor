@@ -3,7 +3,7 @@
 /**
  * Admin shell + auth gate (§47, §101).
  *
- * Route guard is enforced here for the demo UI; the blueprint requires the
+ * Route guard is enforced here for the admin UI; the blueprint requires the
  * real authorization check server-side/database-side once Supabase Auth +
  * admin_users exist. `/admin/login` is exempt from the gate.
  */
@@ -38,7 +38,6 @@ import {
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
-  getAdminMode,
   refreshStaffSession,
   signOutAdmin,
   subscribeAdminAuth,
@@ -128,7 +127,7 @@ export default function AdminGate({
   // with the server before deciding anything, and hold the splash until
   // the verdict lands so a valid session never flash-redirects to login.
   const [sessionReady, setSessionReady] = useState(
-    () => !isSupabaseConfigured() || getAdminMode() !== "live",
+    () => !isSupabaseConfigured(),
   );
   useEffect(() => {
     // The initial state is already `true` for every path except a live-mode
@@ -136,7 +135,7 @@ export default function AdminGate({
     // (Fresh staff sign-ins probe once more here — harmless, since the
     // session was verified seconds ago at sign-in.)
     if (onLogin) return;
-    if (!isSupabaseConfigured() || getAdminMode() !== "live") return;
+    if (!isSupabaseConfigured()) return;
     let cancelled = false;
     void refreshStaffSession().then(() => {
       if (!cancelled) setSessionReady(true);
@@ -272,14 +271,8 @@ export default function AdminGate({
             <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
               {titleFor(pathname)}
             </h1>
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider ${
-                getAdminMode() === "live"
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-gold-100 text-gold-700"
-              }`}
-            >
-              {getAdminMode() === "live" ? "Live data" : "Demo data"}
+            <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-800">
+              Live data
             </span>
           </div>
           <p className="hidden text-sm text-ink-soft sm:block">

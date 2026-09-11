@@ -1,10 +1,8 @@
 /**
  * GET /api/track?id=PS-…&phone=01… — guest order tracking lookup.
  *
- * Demo mode answers `{ demoMode: true }` (the client falls back to its
- * browser-local store). Live mode verifies the phone server-side and
- * returns the order, or a deliberately vague 404 that does not reveal
- * whether the id or the phone was wrong.
+ * Verifies the phone server-side and returns the order, or a deliberately
+ * vague 404 that does not reveal whether the id or the phone was wrong.
  */
 
 import { findLiveOrder } from "@/lib/db/orders";
@@ -27,7 +25,7 @@ export async function GET(request: Request) {
   }
 
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Tracking is temporarily unavailable.", 503);
   }
 
   const url = new URL(request.url);
