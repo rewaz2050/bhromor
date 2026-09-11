@@ -9,6 +9,7 @@
  */
 
 import type { Category, Product } from "./catalog";
+import { extractYoutubeId, youtubeThumbUrl } from "./media";
 
 export const MEDIA_STORAGE_KEY = "prosanti.admin.media.v1";
 
@@ -19,13 +20,28 @@ export type MediaKind =
   | "brand"
   | "custom";
 
+/** What the bytes are (image, playable video, YouTube link). */
+export type MediaContent = "image" | "video" | "youtube";
+
 export interface MediaItem {
   id: string;
   url: string;
   alt: string;
   label: string; // human source, e.g. “Heritage Green Panjabi · image 1”
   kind: MediaKind;
+  /** Older stored rows omit this and read as "image". */
+  mediaType?: MediaContent;
 }
+
+export const contentOf = (m: Pick<MediaItem, "mediaType">): MediaContent =>
+  m.mediaType ?? "image";
+
+/** Small preview URL for non-image content (YouTube thumbs). */
+export const previewThumb = (m: MediaItem): string | null => {
+  if (contentOf(m) !== "youtube") return null;
+  const id = extractYoutubeId(m.url);
+  return id ? youtubeThumbUrl(id) : null;
+};
 
 export const KIND_LABEL: Record<MediaKind, string> = {
   product: "Products",
@@ -48,7 +64,13 @@ export const scanMedia = (
 ): MediaItem[] => {
   const items: MediaItem[] = [];
   const seen = new Set<string>();
-  const push = (url: string, alt: string, label: string, kind: MediaKind) => {
+  const push = (
+    url: string,
+    alt: string,
+    label: string,
+    kind: MediaKind,
+    mediaType: MediaContent = "image",
+  ) => {
     if (!url || seen.has(url)) return;
     seen.add(url);
     items.push({
@@ -57,17 +79,31 @@ export const scanMedia = (
       alt,
       label,
       kind,
+      mediaType,
     });
   };
   for (const p of products) {
-    p.media.forEach((m, i) =>
+    p.media.forEach((m, i) => {
+      const isVideo = (m.kind ?? "image") === "video";
       push(
         m.src,
         m.alt,
-        `${p.name} · image ${i + 1}${i === 0 ? " (card/hero)" : ""}`,
+        isVideo
+          ? `${p.name} · video`
+          : `${p.name} · image ${i + 1}${i === 0 ? " (card/hero)" : ""}`,
         "product",
-      ),
-    );
+        isVideo ? "video" : "image",
+      );
+    });
+    if (p.video) {
+      push(
+        `https://www.youtube.com/watch?v=${p.video.youtubeId}`,
+        p.video.label,
+        `${p.name} · YouTube video`,
+        "product",
+        "youtube",
+      );
+    }
   }
   for (const c of categories) {
     push(c.image, c.name, `${c.name} category`, "category");
@@ -220,7 +256,7 @@ export const getCustomMedia = (): MediaItem[] =>
 export const addMediaInStore = (
   products: Product[],
   categories: Category[],
-  item: { url: string; alt: string; label: string },
+  item: { url: string; alt: string; label: string; mediaType?: MediaContent },
 ) => {
   const { custom } = ensureLoaded(products, categories);
   persist(addCustom(custom, item));

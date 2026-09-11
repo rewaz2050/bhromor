@@ -56,7 +56,7 @@ const distinct = (values: string[]): string[] => {
   return out;
 };
 
-/** YouTube watch/share URLs → the 11-char video id (null when unparseable). */
+/** YouTube watch/share/shorts/embed URLs → the 11-char video id (null when unparseable). */
 export const youtubeIdFromUrl = (url: string): string | null => {
   try {
     const parsed = new URL(url, "https://example.invalid");
@@ -66,8 +66,10 @@ export const youtubeIdFromUrl = (url: string): string | null => {
     }
     const v = parsed.searchParams.get("v");
     if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
-    const embed = parsed.pathname.match(/\/embed\/([A-Za-z0-9_-]{11})/);
-    return embed ? embed[1] : null;
+    const pathId = parsed.pathname.match(
+      /\/(?:embed|shorts|live)\/([A-Za-z0-9_-]{11})/,
+    );
+    return pathId ? pathId[1] : null;
   } catch {
     return null;
   }
@@ -129,9 +131,15 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
   const inStock = p.in_stock && (live.length === 0 || stock > 0);
 
   const ordered = [...media].sort((a, b) => a.sort_order - b.sort_order);
-  const images: ProductMedia[] = ordered
-    .filter((m) => m.type === "image")
-    .map((m) => ({ src: m.url, alt: m.alt_text || p.name }));
+  // Images and videos share one ordered gallery; the first row should be
+  // the cover image (the editor enforces this on save).
+  const gallery: ProductMedia[] = ordered
+    .filter((m) => m.type === "image" || m.type === "video")
+    .map((m) => ({
+      src: m.url,
+      alt: m.alt_text || p.name,
+      kind: m.type === "video" ? ("video" as const) : undefined,
+    }));
   const yt = ordered.find((m) => m.type === "youtube");
   const youtubeId = yt ? youtubeIdFromUrl(yt.url) : null;
 
@@ -159,7 +167,7 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     isNew: p.is_new,
     inStock,
     lowStock: p.low_stock || (inStock && stock > 0 && stock <= 5),
-    media: images,
+    media: gallery,
     video: youtubeId
       ? { youtubeId, label: yt?.alt_text || p.name }
       : undefined,

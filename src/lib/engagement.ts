@@ -227,19 +227,26 @@ export const notifKindLabel = (kind: NotifKind): string =>
 /* Media library rows → MediaItem                                      */
 /* ------------------------------------------------------------------ */
 
+export type LibraryMediaType = "image" | "video" | "youtube";
+
 export interface LibraryMediaItem {
   id: string;
   url: string;
   alt: string;
   label: string;
+  mediaType: LibraryMediaType;
   at: number;
 }
+
+const asLibraryMediaType = (value: unknown): LibraryMediaType =>
+  value === "video" || value === "youtube" ? value : "image";
 
 export const mapLibraryMedia = (row: DbMediaLibrary): LibraryMediaItem => ({
   id: row.id,
   url: row.url,
   alt: row.alt,
   label: row.label,
+  mediaType: asLibraryMediaType(row.media_type),
   at: Date.parse(row.created_at) || 0,
 });
 

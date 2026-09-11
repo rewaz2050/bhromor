@@ -11,6 +11,12 @@ import { bdt } from "./format";
 export interface ProductMedia {
   src: string;
   alt: string;
+  /**
+   * Images render with next/image everywhere; videos (Cloudinary mp4,
+   * Drive preview embeds) play inside the product gallery only.
+   * The cover (media[0]) must always be an image — enforced by the editor.
+   */
+  kind?: "image" | "video";
 }
 
 export interface Product {
@@ -434,6 +440,21 @@ export const NEW_ARRIVALS = PRODUCTS.filter((p) => p.isNew);
 
 export const getProductBySlug = (slug: string) =>
   PRODUCTS.find((p) => p.slug === slug);
+
+/** Card/cart/search cover — always an image, never a video slide. */
+export const coverImage = (product: Product): ProductMedia => {
+  const first = product.media.find((m) => (m.kind ?? "image") === "image");
+  return (
+    first ??
+    product.media[0] ?? { src: "/images/hero.jpg", alt: product.name }
+  );
+};
+
+/** Second image for the card hover swap (skips video slides). */
+export const secondImage = (product: Product): ProductMedia | undefined => {
+  const images = product.media.filter((m) => (m.kind ?? "image") === "image");
+  return images.length > 1 ? images[1] : undefined;
+};
 
 export const getCategory = (id: string): Category | undefined =>
   CATEGORIES.find((c) => c.id === id);

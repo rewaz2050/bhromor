@@ -43,7 +43,11 @@ const toProductInput = (p: Product): Record<string, unknown> => ({
   isNew: p.isNew,
   inStock: p.inStock,
   lowStock: p.lowStock ?? false,
-  media: p.media.map((m) => ({ src: m.src, alt: m.alt })),
+  media: p.media.map((m) => ({
+    src: m.src,
+    alt: m.alt,
+    ...(m.kind === "video" ? { kind: "video" as const } : {}),
+  })),
   video: p.video ? { youtubeId: p.video.youtubeId, label: p.video.label } : undefined,
   status: p.status ?? "published",
   active: p.active ?? true,

@@ -1,6 +1,6 @@
 "use client";
 
-import { PRODUCTS } from "@/lib/catalog";
+import { PRODUCTS, coverImage } from "@/lib/catalog";
 import { completeTheLook } from "@/lib/merchandising";
 import Image from "next/image";
 import Link from "next/link";
@@ -102,7 +102,7 @@ export default function BagDrawer() {
                   className="relative h-32 w-24 shrink-0 bg-ivory-100"
                 >
                   <Image
-                    src={product.media[0]?.src ?? "/images/hero.jpg"}
+                    src={coverImage(product).src}
                     alt={product.name}
                     fill
                     sizes="96px"
@@ -178,7 +178,7 @@ export default function BagDrawer() {
                   >
                     <div className="relative aspect-square overflow-hidden bg-ivory-100">
                       <Image
-                        src={product.media[0]?.src ?? "/images/hero.jpg"}
+                        src={coverImage(product).src}
                         alt={product.name}
                         fill
                         sizes="180px"

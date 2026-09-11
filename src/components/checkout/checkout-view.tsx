@@ -14,7 +14,7 @@ import {
   shopById,
 } from "@/lib/shop-utils";
 import { recordCouponUseInStore } from "@/lib/coupons-store";
-import { ORDER_PREFIX } from "@/lib/catalog";
+import { ORDER_PREFIX, coverImage } from "@/lib/catalog";
 import {
   getDeliveryCode,
   makePlacedOrder,
@@ -677,7 +677,7 @@ export default function CheckoutView() {
           },
           items: detail.map((l) => ({
             product: l.product,
-            image: l.product.media[0]?.src ?? "",
+            image: coverImage(l.product).src,
             variant: l.variantLabel,
             qty: l.qty,
           })),
@@ -1680,7 +1680,7 @@ export default function CheckoutView() {
               >
                 <span className="relative block aspect-[4/5] w-14 shrink-0 overflow-hidden rounded-lg bg-ivory-100 ring-1 ring-line">
                   <Image
-                    src={line.product.media[0].src}
+                    src={coverImage(line.product).src}
                     alt=""
                     fill
                     sizes="56px"

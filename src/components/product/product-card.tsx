@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import type { Product } from "@/lib/catalog";
+import { coverImage, secondImage, type Product } from "@/lib/catalog";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -38,7 +38,8 @@ export default function ProductCard({ product }: { product: Product }) {
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useTransientValue("");
   const wished = has(product.id);
-  const secondImage = product.media[1];
+  const cover = coverImage(product);
+  const hoverImage = secondImage(product);
   const styleName = editorialProductName(product);
   const { shops } = useLiveCatalog();
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
@@ -52,15 +53,15 @@ export default function ProductCard({ product }: { product: Product }) {
           aria-label={`View ${product.name}`}
         >
           <Image
-            src={product.media[0]?.src ?? "/images/hero.jpg"}
-            alt={product.media[0]?.alt ?? product.name}
+            src={cover.src}
+            alt={cover.alt || product.name}
             fill
             sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
             className="product-image-primary object-cover"
           />
-          {secondImage && (
+          {hoverImage && (
             <Image
-              src={secondImage.src}
+              src={hoverImage.src}
               alt=""
               aria-hidden="true"
               fill

@@ -74,12 +74,18 @@ export function useMedia(products: Product[], categories: Category[]) {
       alt: row.alt,
       label: row.label || "Library image",
       kind: "custom",
+      mediaType: row.mediaType,
     }));
     return [...base, ...added];
   }, [live, demoItems, library, products, categories]);
 
   const add = useCallback(
-    async (item: { url: string; alt: string; label: string }): Promise<boolean> => {
+    async (item: {
+      url: string;
+      alt: string;
+      label: string;
+      mediaType?: MediaItem["mediaType"];
+    }): Promise<boolean> => {
       if (!live) {
         addMediaInStore(products, categories, item);
         return true;

@@ -11,8 +11,16 @@ import { useRouter } from "next/navigation";
 import { useCatalog } from "@/lib/use-catalog";
 import { nextProductId, slugify } from "@/lib/catalog-store";
 import { bdt } from "@/lib/format";
-import { extractYoutubeId, isValidImageSrc } from "@/lib/media";
+import {
+  driveThumbnailUrl,
+  extractDriveFileId,
+  extractYoutubeId,
+  isDrivePreviewUrl,
+  normalizeMediaInput,
+  youtubeThumbUrl,
+} from "@/lib/media";
 import { field, hint, label } from "./form-ui";
+import MediaUploader from "./media-uploader";
 import { IconCheck, IconPlus, IconTrash } from "@/components/ui/icons";
 import type { Product } from "@/lib/catalog";
 
@@ -37,9 +45,11 @@ interface Draft {
   colorInput: string;
   sizes: string[];
   sizeInput: string;
-  media: { src: string; alt: string }[];
+  media: { src: string; alt: string; kind: "image" | "video" }[];
   mediaSrc: string;
   mediaAlt: string;
+  driveKind: "image" | "video";
+  mediaNotice: string | null;
   youtube: string;
   youtubeLabel: string;
   seoTitle: string;
@@ -68,9 +78,17 @@ const draftFrom = (p?: Product | null): Draft => ({
   colorInput: "",
   sizes: p ? [...p.sizes] : [],
   sizeInput: "",
-  media: p ? p.media.map((m) => ({ ...m })) : [],
+  media: p
+    ? p.media.map((m) => ({
+        src: m.src,
+        alt: m.alt,
+        kind: (m.kind ?? "image") as "image" | "video",
+      }))
+    : [],
   mediaSrc: "",
   mediaAlt: "",
+  driveKind: "image",
+  mediaNotice: null,
   youtube: p?.video?.youtubeId ?? "",
   youtubeLabel: p?.video?.label ?? "Watch product video",
   seoTitle: p?.seo?.title ?? "",
@@ -128,14 +146,44 @@ export default function ProductEditor({
   };
 
   const addMedia = () => {
-    const src = draft.mediaSrc.trim();
-    if (!isValidImageSrc(src)) {
-      set("error", "Paste a valid image URL — it must start with http(s):// or /");
+    const result = normalizeMediaInput(draft.mediaSrc, {
+      driveKind: draft.driveKind,
+    });
+    if (!result.ok) {
+      set("error", result.error);
       return;
     }
-    set("media", [...draft.media, { src, alt: draft.mediaAlt.trim() }]);
-    set("mediaSrc", "");
-    set("mediaAlt", "");
+    const media = result.media;
+    if (media.kind === "youtube") {
+      set(
+        "error",
+        "That's a YouTube link — paste it in the “YouTube video” field below instead.",
+      );
+      return;
+    }
+    if (draft.media.some((m) => m.src === media.src)) {
+      set("error", "That media is already added.");
+      return;
+    }
+    // YouTube was routed out above — only image/video reach the gallery list.
+    const kind: "image" | "video" = media.kind;
+    setDraft((d) => ({
+      ...d,
+      media: [...d.media, { src: media.src, alt: d.mediaAlt.trim(), kind }],
+      mediaSrc: "",
+      mediaAlt: "",
+      mediaNotice: media.note,
+      error: null,
+    }));
+  };
+
+  const moveMediaFirst = (index: number) => {
+    setDraft((d) => {
+      if (index <= 0 || index >= d.media.length) return d;
+      const next = [...d.media];
+      const [row] = next.splice(index, 1);
+      return { ...d, media: [row, ...next], error: null };
+    });
   };
 
   const validate = (): string | null => {
@@ -154,7 +202,13 @@ export default function ProductEditor({
     if (draft.stock.trim() && !Number.isFinite(Number(draft.stock)))
       return "Stock must be a number.";
     if (!draft.category) return "Pick a category.";
-    if (draft.media.length === 0) return "Add at least one product image URL.";
+    if (draft.media.length === 0) return "Add at least one product image.";
+    if (!draft.media.some((m) => m.kind === "image")) {
+      return "Add at least one photo — videos can't be the card cover.";
+    }
+    if (draft.media[0].kind !== "image") {
+      return "The first media must be a photo — use “Cover” on an image row.";
+    }
     // Duplicate slugs silently broke /product/[slug] (two rows, one URL).
     const slug = slugify(draft.slug || draft.name);
     const clash = products.find((p) => p.slug === slug && p.id !== product?.id);
@@ -482,28 +536,106 @@ export default function ProductEditor({
           4 · Media (§13–15)
         </h3>
         <div className="mt-4 space-y-3">
-          {draft.media.map((m, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-xl bg-ivory-100/70 px-3 py-2.5">
-              <span className="font-mono text-xs text-ink-soft">#{i + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-sm text-ink">{m.src}</span>
-              <button
-                type="button"
-                aria-label={`Remove image ${i + 1}`}
-                onClick={() => set("media", draft.media.filter((_, j) => j !== i))}
-                className="rounded-full p-2 text-ink-soft transition-colors hover:bg-paper hover:text-rose-600"
-              >
-                <IconTrash className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
+          {draft.mediaNotice && (
+            <p role="status" className="rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
+              {draft.mediaNotice}
+            </p>
+          )}
+          {draft.media.map((m, i) => {
+            const driveId =
+              m.kind === "video" && isDrivePreviewUrl(m.src)
+                ? extractDriveFileId(m.src)
+                : null;
+            return (
+              <div key={`${m.src}-${i}`} className="flex items-center gap-3 rounded-xl bg-ivory-100/70 px-3 py-2.5">
+                <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-ivory-100 ring-1 ring-line">
+                  {m.kind === "image" ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={m.src} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : driveId ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={driveThumbnailUrl(driveId, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <video src={m.src} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                  )}
+                  {m.kind === "video" && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-forest-950/30 text-[0.6rem] font-bold text-ivory-50" aria-hidden="true">
+                      ▶
+                    </span>
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="font-mono text-xs text-ink-soft">#{i + 1}</span>
+                    {i === 0 && (
+                      <span className="rounded-full bg-forest-800 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-ivory-50">
+                        Cover
+                      </span>
+                    )}
+                    {m.kind === "video" && (
+                      <span className="rounded-full bg-gold-200/70 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-forest-900">
+                        Video
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-sm text-ink" title={m.src}>{m.src}</span>
+                </span>
+                {m.kind === "image" && i > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => moveMediaFirst(i)}
+                    title="Make this the cover photo"
+                    className="shrink-0 rounded-full px-3 py-1.5 text-[0.7rem] font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50"
+                  >
+                    Cover
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Remove ${m.kind} ${i + 1}`}
+                  onClick={() => set("media", draft.media.filter((_, j) => j !== i))}
+                  className="shrink-0 rounded-full p-2 text-ink-soft transition-colors hover:bg-paper hover:text-rose-600"
+                >
+                  <IconTrash className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-forest-50 px-3.5 py-3 ring-1 ring-forest-100">
+            <MediaUploader
+              compact
+              onUploaded={(urlToAdd, labelToAdd, kindAdded) => {
+                if (kindAdded === "youtube") return;
+                setDraft((d) =>
+                  d.media.some((m) => m.src === urlToAdd)
+                    ? d
+                    : {
+                        ...d,
+                        media: [
+                          ...d.media,
+                          { src: urlToAdd, alt: labelToAdd, kind: kindAdded },
+                        ],
+                        mediaNotice:
+                          kindAdded === "video"
+                            ? "Video uploaded to Cloudinary — it will play in the gallery."
+                            : "Image uploaded to Cloudinary.",
+                        error: null,
+                      },
+                );
+              }}
+            />
+            <p className="text-xs text-ink-soft">
+              …or paste a link below — Cloudinary, Drive or direct file.
+            </p>
+          </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
             <input
               className={field}
               value={draft.mediaSrc}
               onChange={(e) => set("mediaSrc", e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addMedia())}
-              placeholder="Paste image URL (https://… or /images/…)"
-              aria-label="Image URL"
+              placeholder="Paste image/video link (Cloudinary / Drive / https://…)"
+              aria-label="Image or video URL"
             />
             <input
               className={field}
@@ -521,22 +653,59 @@ export default function ProductEditor({
               <IconPlus className="h-4 w-4" /> Add
             </button>
           </div>
+          {extractDriveFileId(draft.mediaSrc) !== null && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="This Drive file is">
+              <span className="text-xs font-medium text-ink-soft">This Drive link is:</span>
+              {(["image", "video"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => set("driveKind", k)}
+                  aria-pressed={draft.driveKind === k}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    draft.driveKind === k
+                      ? "bg-forest-800 text-ivory-50"
+                      : "bg-white text-ink-soft ring-1 ring-line hover:text-forest-800"
+                  }`}
+                >
+                  {k === "image" ? "A photo" : "A video"}
+                </button>
+              ))}
+            </div>
+          )}
           <p className={hint}>
-            Image one is the card/hero image. Direct upload lands with Cloudinary
-            (§13); until then the store accepts hosted URLs and local /images paths.
+            The cover photo (#1) shows on cards, search and checkout. Extra
+            photos and videos play inside the gallery on the product page.
+            Drive files must stay shared as “Anyone with the link”.
           </p>
 
           <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
-            <label className="block">
-              <span className={label}>YouTube video (optional)</span>
-              <input
-                className={field}
-                value={draft.youtube}
-                onChange={(e) => set("youtube", e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=…"
-              />
-              <span className={hint}>The video id is extracted and stored — the player loads only when tapped (§51).</span>
-            </label>
+            <div>
+              <label className="block">
+                <span className={label}>YouTube video (optional)</span>
+                <input
+                  className={field}
+                  value={draft.youtube}
+                  onChange={(e) => set("youtube", e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                />
+              </label>
+              {extractYoutubeId(draft.youtube) && (
+                <span className="mt-2 flex items-center gap-2.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={youtubeThumbUrl(extractYoutubeId(draft.youtube)!)}
+                    alt=""
+                    className="h-10 w-[4.5rem] rounded-lg object-cover ring-1 ring-line"
+                    loading="lazy"
+                  />
+                  <span className="text-xs font-medium text-emerald-700">
+                    Video found — it will play in the gallery.
+                  </span>
+                </span>
+              )}
+              <span className={hint}>Watch, Shorts, share and live links all work — the player loads only when tapped (§51).</span>
+            </div>
             <label className="block">
               <span className={label}>Video label</span>
               <input

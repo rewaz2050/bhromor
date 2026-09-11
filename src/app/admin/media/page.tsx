@@ -5,15 +5,89 @@ import { useMedia } from "@/lib/use-media";
 import { useCatalog } from "@/lib/use-catalog";
 import {
   KIND_LABEL,
-  isImgUrl,
+  contentOf,
+  previewThumb,
+  type MediaContent,
+  type MediaItem,
   type MediaKind,
 } from "@/lib/media-store";
+import {
+  driveThumbnailUrl,
+  extractDriveFileId,
+  isDrivePreviewUrl,
+  normalizeMediaInput,
+} from "@/lib/media";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint } from "@/components/admin/form-ui";
 import MediaUploader from "@/components/admin/media-uploader";
 import { IconCheck, IconCopy, IconPlus, IconSearch, IconTrash } from "@/components/ui/icons";
 
 const KINDS: (MediaKind | "all")[] = ["all", "product", "category", "homepage", "brand", "custom"];
+
+const CONTENT_LABEL: Record<MediaContent, string> = {
+  image: "Image",
+  video: "Video",
+  youtube: "YouTube",
+};
+
+/** Grid preview that understands images, videos and YouTube links. */
+function MediaPreview({ item }: { item: MediaItem }) {
+  const content = contentOf(item);
+  if (content === "image") {
+    return (
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img src={item.url} alt={item.alt || item.label} className="h-full w-full object-cover" loading="lazy" />
+    );
+  }
+  if (content === "youtube") {
+    const thumb = previewThumb(item);
+    return (
+      <span className="relative block h-full w-full bg-forest-950">
+        {thumb ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={thumb} alt="" className="h-full w-full object-cover opacity-90" loading="lazy" />
+        ) : null}
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/95 text-forest-900" aria-hidden="true">
+            ▶
+          </span>
+        </span>
+      </span>
+    );
+  }
+  // Drive videos render their Google thumbnail; file videos render a frame.
+  const driveId = isDrivePreviewUrl(item.url)
+    ? extractDriveFileId(item.url)
+    : null;
+  if (driveId) {
+    return (
+      <span className="relative block h-full w-full bg-forest-950">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={driveThumbnailUrl(driveId)}
+          alt=""
+          className="h-full w-full object-cover opacity-90"
+          loading="lazy"
+        />
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/95 text-forest-900" aria-hidden="true">
+            ▶
+          </span>
+        </span>
+      </span>
+    );
+  }
+  return (
+    <video
+      src={item.url}
+      muted
+      playsInline
+      preload="metadata"
+      className="h-full w-full object-cover"
+      aria-label={item.alt || item.label}
+    />
+  );
+}
 
 /** §49 media library — in-use scan plus the persistent “added” shelf. */
 export default function AdminMediaPage() {
@@ -23,8 +97,12 @@ export default function AdminMediaPage() {
   const [query, setQuery] = useState("");
   const [url, setUrl] = useState("");
   const [alt, setAlt] = useState("");
+  const [driveKind, setDriveKind] = useState<"image" | "video">("image");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useTransientValue<string | null>(null, 1400);
+
+  const pastedIsDrive = extractDriveFileId(url) !== null;
 
   const visible = useMemo(
     () =>
@@ -52,19 +130,31 @@ export default function AdminMediaPage() {
   };
 
   const addOne = () => {
-    const u = url.trim();
-    if (!u || !isImgUrl(u)) {
-      setError("Paste a full image URL — http(s) to a hosted image.");
+    const result = normalizeMediaInput(url, { driveKind });
+    if (!result.ok) {
+      setError(result.error);
+      setNotice(null);
+      return;
+    }
+    const media = result.media;
+    if (media.src.startsWith("/")) {
+      setError("The library shelf holds hosted URLs — local /images paths are scanned automatically.");
+      setNotice(null);
       return;
     }
     setError(null);
-    void add({ url: u, alt: alt.trim(), label: alt.trim() || "Admin added image" }).then(
+    setNotice(media.note);
+    const label =
+      alt.trim() ||
+      (media.kind === "image" ? "Admin added image" : "Admin added video");
+    void add({ url: media.src, alt: alt.trim(), label, mediaType: media.kind }).then(
       (ok) => {
         if (ok) {
           setUrl("");
           setAlt("");
         } else {
-          setError(liveError ?? "Could not save the image — please try again.");
+          setError(liveError ?? "Could not save the media — please try again.");
+          setNotice(null);
         }
       },
     );
@@ -79,8 +169,8 @@ export default function AdminMediaPage() {
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
             {live
-              ? "Every image the storefront uses, plus the shared library shelf (§49)."
-              : "Every image the storefront actually uses, organised the way Cloudinary will store it (§49)."}
+              ? "Every image and video the storefront uses, plus the shared library shelf (§49)."
+              : "Every image and video the storefront actually uses, plus your added shelf (§49)."}
           </p>
         </div>
         {!live && (
@@ -104,19 +194,29 @@ export default function AdminMediaPage() {
 
       {/* Direct upload → Cloudinary (§48), with add-by-URL as fallback */}
       <MediaUploader
-        onUploaded={(urlToAdd, label) =>
-          void add({ url: urlToAdd, alt: label, label })
+        onUploaded={(urlToAdd, label, content) =>
+          void add({
+            url: urlToAdd,
+            alt: label,
+            label,
+            mediaType: content === "youtube" ? "youtube" : content,
+          })
         }
       />
 
-      {/* Add by URL (§50) */}
+      {/* Add by URL (§50) — Cloudinary / Drive / YouTube / direct links */}
       <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
         <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-          Add an external image
+          Add hosted media by link
         </p>
         {error && (
           <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
             {error}
+          </p>
+        )}
+        {notice && !error && (
+          <p role="status" className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
+            {notice}
           </p>
         )}
         <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -125,8 +225,8 @@ export default function AdminMediaPage() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addOne())}
-            placeholder="https://…/image.jpg"
-            aria-label="Image URL"
+            placeholder="Cloudinary / Drive / YouTube / https://…"
+            aria-label="Media URL"
           />
           <input
             className={field}
@@ -144,9 +244,30 @@ export default function AdminMediaPage() {
             <IconPlus className="h-4 w-4" /> Add
           </button>
         </div>
+        {pastedIsDrive && (
+          <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="This Drive file is">
+            <span className="text-xs font-medium text-ink-soft">This Drive link is:</span>
+            {(["image", "video"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setDriveKind(k)}
+                aria-pressed={driveKind === k}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                  driveKind === k
+                    ? "bg-forest-800 text-ivory-50"
+                    : "bg-ivory-100 text-ink-soft ring-1 ring-line hover:text-forest-800"
+                }`}
+              >
+                {k === "image" ? "A photo" : "A video"}
+              </button>
+            ))}
+          </div>
+        )}
         <p className={hint}>
-          Prefer the uploader above — this form is for already-hosted URLs and
-          local /images paths (§13, §50).
+          Paste a Cloudinary URL, a Google Drive share link (file must be
+          “Anyone with the link”), a YouTube link, or any direct image/video
+          URL. Drive links are converted automatically.
         </p>
       </div>
 
@@ -194,7 +315,7 @@ export default function AdminMediaPage() {
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">No media here</p>
           <p className="mt-1 text-sm text-ink-soft">
-            Try another filter, or add an image above.
+            Try another filter, or add media above.
           </p>
         </div>
       ) : (
@@ -202,12 +323,18 @@ export default function AdminMediaPage() {
           {visible.map((m) => (
             <figure key={m.id} className="overflow-hidden rounded-2xl bg-paper ring-1 ring-line">
               <div className="relative aspect-square bg-ivory-100">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={m.url} alt={m.alt || m.label} className="h-full w-full object-cover" loading="lazy" />
+                <MediaPreview item={m} />
               </div>
               <figcaption className="p-3.5">
-                <span className="inline-block rounded-full bg-forest-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-forest-800">
-                  {KIND_LABEL[m.kind]}
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block rounded-full bg-forest-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-forest-800">
+                    {KIND_LABEL[m.kind]}
+                  </span>
+                  {contentOf(m) !== "image" && (
+                    <span className="inline-block rounded-full bg-gold-200/60 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-forest-900">
+                      {CONTENT_LABEL[contentOf(m)]}
+                    </span>
+                  )}
                 </span>
                 <p className="mt-2 line-clamp-2 text-xs font-medium leading-5 text-ink">
                   {m.label}
@@ -244,8 +371,9 @@ export default function AdminMediaPage() {
       )}
 
       <p className="text-xs leading-5 text-ink-soft">
-        {items.length} unique images in use. Paths mirror the planned Cloudinary
-        folders: products/ · categories/ · homepage/ · brand/ (§49).
+        {items.length} unique media in use. Cloudinary uploads land in
+        prosanti/products/ · prosanti/categories/ · prosanti/homepage/ ·
+        prosanti/brand/ (§49).
       </p>
     </div>
   );
