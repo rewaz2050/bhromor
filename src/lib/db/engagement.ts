@@ -364,16 +364,41 @@ export const addMediaLibrary = async (
   const b = (raw ?? {}) as Record<string, unknown>;
   const url = clean(b.url, 2000);
   if (!isHttpUrl(url)) {
-    throw new AdminInputError("Paste a full http(s) image URL.", 422);
+    throw new AdminInputError("Paste a full http(s) media URL.", 422);
   }
+  const mediaType =
+    b.mediaType === "video" || b.mediaType === "youtube"
+      ? (b.mediaType as "video" | "youtube")
+      : "image";
   const alt = clean(b.alt, 200);
-  const { data, error } = await db
+  const labelFallback =
+    mediaType === "image" ? "Library image" : "Library video";
+  const row = {
+    url,
+    alt,
+    label: clean(b.label, 200) || alt || labelFallback,
+  };
+  // Migration 006 adds media_type; older databases keep working by storing
+  // the URL and remembering the kind only in the response.
+  const first = await db
     .from("media_library")
-    .insert({ url, alt, label: clean(b.label, 200) || alt || "Library image" })
+    .insert({ ...row, media_type: mediaType })
     .select("*")
     .single();
-  if (error || !data) throw new Error("Could not add the image.");
-  return mapLibraryMedia(data as DbMediaLibrary);
+  if (!first.error && first.data) {
+    return mapLibraryMedia(first.data as DbMediaLibrary);
+  }
+  if ((first.error as { code?: string } | null)?.code !== "42703") {
+    throw new Error("Could not add the media.");
+  }
+  const fallback = await db.from("media_library").insert(row).select("*").single();
+  if (fallback.error || !fallback.data) {
+    throw new Error("Could not add the media.");
+  }
+  return {
+    ...mapLibraryMedia(fallback.data as DbMediaLibrary),
+    mediaType,
+  };
 };
 
 export const deleteMediaLibrary = async (

@@ -47,9 +47,9 @@ If the dashboard offers **Import .env**, you can paste the block from `.env.exam
 | `NEXT_PUBLIC_SUPABASE_URL` | Config | Yes, for live mode (`https://….supabase.co`) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Config | Yes, for live mode |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Secret** | Yes, for live checkout / admin / seed |
-| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Config | Only for Media → Upload |
-| `CLOUDINARY_API_KEY` | Secret | Only for Media → Upload |
-| `CLOUDINARY_API_SECRET` | Secret | Only for Media → Upload |
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Config | Media → Upload + product image/video upload |
+| `CLOUDINARY_API_KEY` | Secret | Same (signed uploads) |
+| `CLOUDINARY_API_SECRET` | Secret | Same (signed uploads) |
 | `NEWSLETTER_SIGNUP_URL` | Config | Optional |
 
 Never put the service-role key in a `NEXT_PUBLIC_` name. Without these keys the site still deploys — it stays in honest **demo** mode (`GET /api/health` → `"mode":"demo"`).

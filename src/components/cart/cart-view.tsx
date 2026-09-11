@@ -12,7 +12,7 @@ import {
   INSTANT_DELIVERY_TITLE,
   cheapestZoneCharge,
 } from "@/lib/delivery";
-import { FLAT_DELIVERY_NOTE } from "@/lib/catalog";
+import { FLAT_DELIVERY_NOTE, coverImage } from "@/lib/catalog";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { ButtonLink } from "@/components/ui/primitives";
 import {
@@ -75,8 +75,8 @@ export default function CartView() {
                   className="relative block aspect-[4/5] w-24 shrink-0 overflow-hidden rounded-xl bg-ivory-100 ring-1 ring-line sm:w-28"
                 >
                   <Image
-                    src={product.media[0].src}
-                    alt={product.media[0].alt}
+                    src={coverImage(product).src}
+                    alt={coverImage(product).alt || product.name}
                     fill
                     sizes="112px"
                     className="object-cover"

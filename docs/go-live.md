@@ -49,6 +49,11 @@ Run **in this order, in one sequence** (skip files you already applied —
     OFFER: store-wide first 1000 orders ride free (any zone) + ৳1000+
     subtotal always free; keeps the per-user first-10 (Zone A). Supersedes
     202609100003 — run only this one for the pricing rule
+13. **`supabase/migrations/202609110006_media_video.sql`** — product/library
+    videos: adds the `video` media type + `media_library.media_type`.
+    No transaction wrapper by design (run the file as-is). Needed before
+    saving a product with a Cloudinary/Drive video — see
+    [docs/media-setup.md](media-setup.md).
 
 Quick check after step 11 (SQL editor):
 

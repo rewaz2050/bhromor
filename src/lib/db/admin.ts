@@ -288,7 +288,7 @@ export interface ProductInput {
   isNew?: boolean;
   inStock?: boolean;
   lowStock?: boolean;
-  media?: { src: string; alt?: string }[];
+  media?: { src: string; alt?: string; kind?: "image" | "video" }[];
   video?: { youtubeId: string; label?: string };
   status?: "draft" | "published";
   active?: boolean;
@@ -350,10 +350,14 @@ const sanitizeProductInput = (
     lowStock: body.lowStock === true,
     media: Array.isArray(body.media)
       ? body.media
-          .filter((m): m is { src: string; alt?: string } =>
+          .filter((m): m is { src: string; alt?: string; kind?: unknown } =>
             !!m && typeof (m as { src: unknown }).src === "string",
           )
-          .map((m) => ({ src: str(m.src, 500), alt: str(m.alt, 200) }))
+          .map((m) => ({
+            src: str(m.src, 2000),
+            alt: str(m.alt, 200),
+            kind: m.kind === "video" ? ("video" as const) : undefined,
+          }))
           .filter((m) => m.src !== "")
           .slice(0, 12)
       : [],
@@ -528,7 +532,7 @@ const syncMedia = async (
     sort_order: number;
   }[] = (input.media ?? []).map((m, i) => ({
     product_id: productId,
-    type: "image",
+    type: m.kind === "video" ? "video" : "image",
     url: m.src,
     alt_text: m.alt || input.name,
     sort_order: i,
@@ -544,7 +548,19 @@ const syncMedia = async (
   }
   if (rows.length === 0) return;
   const { error } = await db.from("product_media").insert(rows);
-  if (error) throw new Error("media insert failed");
+  if (error) {
+    // 22P02 = unknown enum value: the 'video' type (migration 006) is missing.
+    if (
+      (error as { code?: string }).code === "22P02" &&
+      rows.some((r) => r.type === "video")
+    ) {
+      throw new AdminInputError(
+        "Product videos need migration 202609110006_media_video.sql — run it in the Supabase SQL editor, then save again.",
+        503,
+      );
+    }
+    throw new Error("media insert failed");
+  }
 };
 
 export const readProductBundle = async (

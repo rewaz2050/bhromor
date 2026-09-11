@@ -88,7 +88,7 @@ Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated
 - Login: staff Supabase Auth in live mode; `admin@prosanti.store` / `prosanti` in demo mode only (shown on the login card)
 - Dashboard: today's sales, live status pipeline, §88 delivery performance, low-stock alerts
 - Orders: search + status filters, order details with item snapshots, customer info, journey timeline, and state-machine-driven actions (advance / cancel per §34)
-- Products: catalog list w/ search + visibility filters, quick featured/archive actions, full sectioned editor (basics, pricing, variants/stock, media URLs + YouTube, publishing, SEO)
+- Products: catalog list w/ search + visibility filters, quick featured/archive actions, full sectioned editor (basics, pricing, variants/stock, Cloudinary upload + Drive/YouTube media, publishing, SEO)
 - Categories: data-driven create/edit/reorder/hide with Bengali names & subcategories (§5)
 - Delivery zones: zone CRUD + reorder + active state — saved zones are what the customer checkout uses live (§20–21)
 - Deliveries: §3.2 dispatch board — auto-offer on ready-for-pickup, offer expiry + re-offer, manual assign/cancel, rider cash exposure
@@ -97,7 +97,7 @@ Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated
 - Inventory: per-product stock editor with configurable low-stock threshold that drives the dashboard alert (§57–58)
 - Reports: period presets (7/30/all days) over the live order store — booked vs collected COD revenue, daily revenue chart, top products, zone and coupon breakdowns
 - Homepage: §31 CMS — announcement, hero copy, section visibility; Publish updates the live storefront (demo: this browser only)
-- Media: §49 library — in-use scan plus a shared “added” shelf (live table for staff; direct Cloudinary upload when keys are set)
+- Media: §49 library — in-use scan plus a shared “added” shelf (live table for staff; direct Cloudinary image/video upload when keys are set, plus Google Drive + YouTube links — see [docs/media-setup.md](docs/media-setup.md))
 - Notifications: §35 per-staff inbox fed by real order/review/application/message/signup events, plus a live “needs attention” summary
 - Messages: contact-form inbox — read/reply triage with click-to-call phone links
 - Newsletter: table-based subscriber list with search, CSV export and per-subscriber unsubscribe links (no third party)

@@ -13,7 +13,7 @@ export type DbOrderStatus =
   | "delivered"
   | "cancelled";
 
-export type DbMediaType = "image" | "youtube" | "future_3d";
+export type DbMediaType = "image" | "video" | "youtube" | "future_3d";
 
 export type DbReviewStatus = "pending" | "approved" | "hidden" | "flagged";
 
@@ -298,6 +298,8 @@ export interface DbMediaLibrary {
   url: string;
   alt: string;
   label: string;
+  /** Added by migration 006 — older rows read as "image". */
+  media_type?: string | null;
   created_at: string;
 }
 

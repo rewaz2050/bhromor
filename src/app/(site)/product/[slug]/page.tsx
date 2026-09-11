@@ -2,7 +2,7 @@ import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PRODUCTS } from "@/lib/catalog";
+import { PRODUCTS, coverImage } from "@/lib/catalog";
 import {
   findStorefrontProduct,
   getStorefrontCatalog,
@@ -41,6 +41,7 @@ export async function generateMetadata({
   const { products } = await getStorefrontCatalog();
   const product = findStorefrontProduct(products, slug);
   if (!product) return {};
+  const cover = coverImage(product);
   return {
     title: product.name,
     description: product.shortDescription,
@@ -48,7 +49,7 @@ export async function generateMetadata({
       type: "website",
       title: `${product.name} — PROSANTI`,
       description: product.shortDescription,
-      images: [{ url: product.media[0].src, alt: product.media[0].alt }],
+      images: [{ url: cover.src, alt: cover.alt || product.name }],
     },
   };
 }
@@ -74,7 +75,9 @@ export default async function ProductPage({ params }: PageProps) {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.name,
-    image: product.media.map((m) => m.src),
+    image: product.media
+      .filter((m) => (m.kind ?? "image") === "image")
+      .map((m) => m.src),
     description: product.shortDescription,
     sku: product.sku,
     offers: {

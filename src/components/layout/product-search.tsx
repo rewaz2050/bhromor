@@ -9,6 +9,7 @@ import { IconArrowRight, IconClose, IconSearch } from "@/components/ui/icons";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { formatBdt } from "@/lib/format";
 import { matchesProduct, shopSearchHref } from "@/lib/product-search";
+import { coverImage } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function ProductSearch() {
@@ -180,15 +181,13 @@ export default function ProductSearch() {
                     className="group flex items-center gap-4 rounded-xl py-4 transition-colors hover:bg-ivory-100"
                   >
                     <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl bg-ivory-100">
-                      {product.media[0] && (
-                        <Image
-                          src={product.media[0].src}
-                          alt=""
-                          fill
-                          sizes="80px"
-                          className="object-cover"
-                        />
-                      )}
+                      <Image
+                        src={coverImage(product).src}
+                        alt=""
+                        fill
+                        sizes="80px"
+                        className="object-cover"
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-[0.65rem] uppercase tracking-widest text-ink-soft">
