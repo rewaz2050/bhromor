@@ -45,13 +45,15 @@ export interface OrderSnapshot {
   mediaByProduct: Map<string, string>;
   /** All shops (validator checks active/open/zone itself). */
   shops: Shop[];
+  /** Total orders ever placed — drives the first-10-free promo (Zone A only). */
+  totalOrders: number;
 }
 
 export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes] =
+  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes, ordersCountRes] =
     await Promise.all([
       db
         .from("products")
@@ -63,6 +65,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       db.from("delivery_zones").select("*").eq("active", true),
       db.from("coupons").select("*").eq("active", true),
       db.from("shops").select("*"),
+      db.from("orders").select("id", { count: "exact", head: true }),
     ]);
   if (
     productsRes.error ||
@@ -97,6 +100,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     variants,
     mediaByProduct,
     shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
+    totalOrders: ordersCountRes.count ?? 0,
   };
 }
 
@@ -167,20 +171,28 @@ export async function placeLiveOrder(
     p_order: {
       customer_name: draft.customer.name,
       customer_phone: draft.customer.phone,
-      area: draft.customer.area,
+      area: draft.customer.para || draft.customer.area,
+      district: draft.customer.district,
+      upazila: draft.customer.upazila,
+      para: draft.customer.para,
       address: draft.customer.address,
       note: draft.customer.note,
       zone_id: draft.zone.id,
       lat: draft.geo?.lat ?? null,
       lng: draft.geo?.lng ?? null,
       distance_km: draft.geo?.distanceKm ?? null,
-      scheduled_at: (draft as any).scheduledAt ?? null,
-      delivery_window: (draft as any).deliveryWindow ?? null,
-      is_express: (draft as any).isExpress ?? false,
-      surcharge_night: (draft as any).surchargeNight ?? 0,
-      surcharge_rain: (draft as any).surchargeRain ?? 0,
-      surcharge_distance: (draft as any).surchargeDistance ?? 0,
-      surcharge_express: (draft as any).surchargeExpress ?? 0,
+      scheduled_at: draft.scheduledAt ?? null,
+      delivery_window: draft.deliveryWindow ?? null,
+      is_express: draft.isExpress ?? false,
+      is_pickup: draft.isPickup ?? false,
+      pickup_slot: draft.pickupSlot ?? null,
+      tip_amount: draft.tipAmount ?? 0,
+      weight_kg: draft.weightKg ?? 0,
+      surcharge_night: draft.surchargeNight ?? 0,
+      surcharge_rain: draft.surchargeRain ?? 0,
+      surcharge_distance: draft.surchargeDistance ?? 0,
+      surcharge_express: draft.surchargeExpress ?? 0,
+      surcharge_weight: draft.surchargeWeight ?? 0,
       coupon_code: draft.coupon?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({

@@ -6,6 +6,8 @@
  *
  * Security posture: the client payload is NEVER trusted for money. Prices
  * come from the snapshot, discounts are recomputed, totals are re-derived.
+ * Surcharges (night/rain/express/distance/weight) are computed HERE from
+ * server-side facts — the client only sends the raw inputs (pin, flags).
  * The route persists only what this module approves.
  */
 
@@ -19,9 +21,26 @@ import {
   isFreeDeliveryCoupon,
   normalizeCode,
 } from "./coupons";
-import { deliveryChargeFor, orderTotal } from "./delivery";
+import {
+  distanceExtraCharge,
+  deliveryChargeFor,
+  isNightHour,
+  orderTotal,
+  promoFreeDelivery,
+  weightExtraCharge,
+  NIGHT_SURCHARGE_PAISA,
+  RAIN_SURCHARGE_PAISA,
+  EXPRESS_SURCHARGE_PAISA,
+} from "./delivery";
 import { normalizePhone } from "./orders";
-import { haversineKm, SUNAMGANJ_HUB_COORDS, type LatLng } from "./sunamganj";
+import {
+  deriveZoneChoice,
+  haversineKm,
+  SUNAMGANJ_DISTRICT,
+  SUNAMGANJ_HUB_COORDS,
+  SUNAMGANJ_UPAZILA,
+  type LatLng,
+} from "./sunamganj";
 
 export interface OrderPayloadItem {
   productId: string;
@@ -32,13 +51,31 @@ export interface OrderPayloadItem {
 export interface OrderPayload {
   name: string;
   phone: string;
-  area: string;
+  /** Simple-form fields — district/upazila/para drive the zone server-side. */
+  district?: string;
+  upazila?: string;
+  para?: string;
+  area?: string;
   address: string;
   note?: string;
-  zoneId: string;
-  lat?: number;
-  lng?: number;
-  distance_km?: number;
+  zoneId?: string;
+  /** Exact pin from the map (optional) — sets geo + distance surcharge. */
+  lat?: number | string;
+  lng?: number | string;
+  distance_km?: number | string;
+  /** Scheduled delivery (optional). */
+  scheduled_at?: string;
+  delivery_window?: string;
+  is_express?: boolean;
+  /** Store pickup at Traffic Point (optional). */
+  is_pickup?: boolean;
+  pickup_slot?: string;
+  /** Rider tip in paisa (optional, 0-50000). */
+  tip_amount?: number;
+  /** Package weight hint in kg (optional, 0-50). */
+  weight_kg?: number;
+  /** Rain surcharge flag (admin toggle is client-side). */
+  is_rain?: boolean;
   couponCode?: string;
   items: OrderPayloadItem[];
 }
@@ -49,6 +86,9 @@ export interface OrderSnapshot {
   coupons: import("./coupons").Coupon[];
   /** Live shop rows (slice 4). Absent in demo-era snapshots → skipped. */
   shops?: Shop[];
+  /** Total orders ever placed — drives the first-10-free promo. */
+  totalOrders?: number;
+  /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
   now?: number;
 }
 
@@ -62,16 +102,30 @@ export interface PricedOrderItem {
 }
 
 export interface ValidOrderDraft {
-  customer: { name: string; phone: string; area: string; address: string; note: string };
+  customer: {
+    name: string;
+    phone: string;
+    area: string;
+    district: string;
+    upazila: string;
+    para: string;
+    address: string;
+    note: string;
+  };
   zone: DeliveryZone;
   geo?: { lat: number; lng: number; distanceKm: number } | null;
   scheduledAt?: string | null;
   deliveryWindow?: string | null;
   isExpress?: boolean;
+  isPickup?: boolean;
+  pickupSlot?: string | null;
+  tipAmount?: number;
+  weightKg?: number;
   surchargeNight?: number;
   surchargeRain?: number;
   surchargeDistance?: number;
   surchargeExpress?: number;
+  surchargeWeight?: number;
   items: PricedOrderItem[];
   coupon?: { code: string; discount: number; id: string };
   subtotal: number;
@@ -88,6 +142,15 @@ const BD_PHONE = /^(?:\+?88)?01[0-9]{9}$/;
 
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
+
+const num = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
 
 const parseVariant = (label: string): { color: string; size: string } => {
   const [color = "", size = ""] = label.split("·").map((s) => s.trim());
@@ -121,33 +184,58 @@ export const validateOrderPayload = (
 
   const name = clean(body.name, 120);
   const phone = clean(body.phone, 20).replace(/[\s-]/g, "");
-  const area = clean(body.area, 120);
+  const paraRaw = typeof body.para === "string" && body.para.trim() !== "" ? body.para : body.area;
+  const para = clean(paraRaw, 120);
+  const districtRaw = typeof body.district === "string" && body.district.trim() !== "" ? body.district : SUNAMGANJ_DISTRICT;
+  const district = clean(districtRaw, 80);
+  const upazilaRaw = typeof body.upazila === "string" && body.upazila.trim() !== "" ? body.upazila : SUNAMGANJ_UPAZILA;
+  const upazila = clean(upazilaRaw, 80);
   const address = clean(body.address, 800); // Sunamganj full address with District/Upazila + house/road
   const note = clean(body.note, 500);
-  const zoneId = clean(body.zoneId, 64);
-  const latRaw = (body as any).lat;
-  const lngRaw = (body as any).lng;
-  const lat = typeof latRaw === 'number' ? latRaw : typeof latRaw === 'string' ? parseFloat(latRaw) : undefined;
-  const lng = typeof lngRaw === 'number' ? lngRaw : typeof lngRaw === 'string' ? parseFloat(lngRaw) : undefined;
-  const distRaw = (body as any).distance_km ?? (body as any).distanceKm;
-  const distanceKm = typeof distRaw === 'number' ? distRaw : typeof distRaw === 'string' ? parseFloat(distRaw) : undefined;
-  let geo: ValidOrderDraft['geo'] = null;
-  if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
-    const computed = haversineKm(SUNAMGANJ_HUB_COORDS as LatLng, { lat, lng });
-    const dist = typeof distanceKm === 'number' && Number.isFinite(distanceKm) && distanceKm >= 0 ? distanceKm : computed;
-    geo = { lat, lng, distanceKm: dist };
-  }
-  const scheduledAt = typeof (body as any).scheduled_at === 'string' ? (body as any).scheduled_at : typeof (body as any).scheduledAt === 'string' ? (body as any).scheduledAt : null;
-  const deliveryWindow = typeof (body as any).delivery_window === 'string' ? (body as any).delivery_window : typeof (body as any).deliveryWindow === 'string' ? (body as any).deliveryWindow : null;
-  const isExpress = !!(body as any).is_express || !!(body as any).isExpress;
-  const surchargeNight = Math.max(0, Math.floor(Number((body as any).surcharge_night ?? (body as any).surchargeNight ?? 0) || 0));
-  const surchargeRain = Math.max(0, Math.floor(Number((body as any).surcharge_rain ?? (body as any).surchargeRain ?? 0) || 0));
-  const surchargeDistance = Math.max(0, Math.floor(Number((body as any).surcharge_distance ?? (body as any).surchargeDistance ?? 0) || 0));
-  const surchargeExpress = Math.max(0, Math.floor(Number((body as any).surcharge_express ?? (body as any).surchargeExpress ?? 0) || 0));
   const couponCode =
     typeof body.couponCode === "string" && body.couponCode.trim() !== ""
       ? normalizeCode(body.couponCode)
       : undefined;
+
+  /* ---------------- geo pin (map) ---------------- */
+  const lat = num(body.lat);
+  const lng = num(body.lng);
+  let geo: ValidOrderDraft["geo"] = null;
+  if (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    lat >= -90 && lat <= 90 &&
+    lng >= -180 && lng <= 180
+  ) {
+    // Distance is always recomputed server-side from the pin.
+    geo = { lat, lng, distanceKm: haversineKm(SUNAMGANJ_HUB_COORDS as LatLng, { lat, lng }) };
+  } else {
+    const clientDist = num(body.distance_km);
+    if (typeof clientDist === "number" && clientDist >= 0 && clientDist <= 200) {
+      geo = { distanceKm: clientDist } as ValidOrderDraft["geo"];
+    }
+  }
+
+  /* ---------------- schedule / flags / extras ---------------- */
+  const scheduledAt =
+    typeof body.scheduled_at === "string" && body.scheduled_at.trim() !== ""
+      ? body.scheduled_at.trim().slice(0, 40)
+      : null;
+  const deliveryWindow =
+    typeof body.delivery_window === "string" && body.delivery_window.trim() !== ""
+      ? body.delivery_window.trim().slice(0, 20)
+      : null;
+  const isExpress = body.is_express === true || deliveryWindow === "express";
+  const isPickup = body.is_pickup === true;
+  const pickupSlot =
+    typeof body.pickup_slot === "string" && body.pickup_slot.trim() !== ""
+      ? body.pickup_slot.trim().slice(0, 20)
+      : null;
+  const tipRaw = num(body.tip_amount);
+  const tipAmount = Math.max(0, Math.min(50000, Math.floor(tipRaw ?? 0)));
+  const weightRaw = num(body.weight_kg);
+  const weightKg = Math.max(0, Math.min(50, weightRaw ?? 0));
+  const isRain = body.is_rain === true;
 
   if (name.length < 2) {
     errors.push({ field: "name", message: "Please share your full name." });
@@ -159,8 +247,8 @@ export const validateOrderPayload = (
       message: "A valid Bangladeshi mobile number is required.",
     });
   }
-  if (area.length < 2) {
-    errors.push({ field: "area", message: "Please share your area." });
+  if (para.length < 2) {
+    errors.push({ field: "area", message: "Please pick or type your para / village." });
   }
   if (address.length < 8) {
     errors.push({
@@ -169,8 +257,11 @@ export const validateOrderPayload = (
     });
   }
 
+  // Zone is ALWAYS derived server-side from district/upazila/para — the
+  // client cannot pick a cheaper zone than the address deserves.
+  const derivedZoneId = deriveZoneChoice(district, upazila, para).zoneId;
   const zone = snapshot.zones.find(
-    (z) => z.id === zoneId && z.active !== false,
+    (z) => z.id === derivedZoneId && z.active !== false,
   );
   if (!zone) {
     errors.push({
@@ -287,7 +378,7 @@ export const validateOrderPayload = (
         ],
       };
     }
-    if (!shop.zoneIds.includes(zone.id)) {
+    if (!isPickup && !shop.zoneIds.includes(zone.id)) {
       return {
         ok: false,
         errors: [
@@ -301,22 +392,37 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
-  // Zone D (outside Sadar) requires minimum ৳500
+  // Zone D (outside Sadar / other district) requires minimum ৳500
   if (zone.id === "z4" && subtotal < 50000) {
     return {
       ok: false,
       errors: [
         {
           field: "items",
-          message: `Zone D (Sunamganj Sadar outside) requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
+          message: `Outside Sunamganj Sadar requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
         },
       ],
     };
   }
-  let deliveryCharge = deliveryChargeFor(zone.charge, subtotal);
 
+  /* ---------------- surcharges — computed SERVER-side ---------------- */
+  const night = isNightHour(new Date(now).getHours());
+  const distanceKm = geo?.distanceKm;
+  // Distance extra only inside the city zones; Zone D's flat ৳100 covers it.
+  const distanceExtra =
+    zone.id !== "z4" ? distanceExtraCharge(distanceKm) : 0;
+  const surchargeNight =
+    !isPickup && night ? NIGHT_SURCHARGE_PAISA : 0;
+  const surchargeRain = !isPickup && isRain ? RAIN_SURCHARGE_PAISA : 0;
+  const surchargeExpress =
+    !isPickup && isExpress ? EXPRESS_SURCHARGE_PAISA : 0;
+  const surchargeDistance = !isPickup ? distanceExtra : 0;
+  const surchargeWeight = !isPickup ? weightExtraCharge(weightKg) : 0;
+
+  /* ---------------- coupons ---------------- */
   let coupon: ValidOrderDraft["coupon"];
   let discount = 0;
+  let couponFreeDelivery = false;
   if (couponCode) {
     const found = findCoupon(snapshot.coupons, couponCode);
     if (!found) {
@@ -335,7 +441,7 @@ export const validateOrderPayload = (
       };
     }
     if (isFreeDeliveryCoupon(found)) {
-      deliveryCharge = 0;
+      couponFreeDelivery = true;
       discount = 0;
       coupon = { code: found.code, discount: 0, id: found.id };
     } else {
@@ -362,25 +468,45 @@ export const validateOrderPayload = (
     }
   }
 
+  /* ---------------- delivery charge ----------------
+   * Pickup → free. First-10 promo (Zone A only) or a free-delivery
+   * coupon → free (surcharges waived too). Otherwise the flat zone
+   * charge + surcharges. */
+  const freeDelivery =
+    isPickup || couponFreeDelivery || promoFreeDelivery(snapshot.totalOrders, zone.id);
+  const deliveryCharge = freeDelivery
+    ? 0
+    : deliveryChargeFor(zone.charge, subtotal) +
+      surchargeNight +
+      surchargeRain +
+      surchargeExpress +
+      surchargeDistance +
+      surchargeWeight;
+
   return {
     ok: true,
     draft: {
-      customer: { name, phone, area, address, note },
+      customer: { name, phone, area: para, district, upazila, para, address, note },
       zone,
       geo,
       scheduledAt,
       deliveryWindow,
       isExpress,
+      isPickup,
+      pickupSlot,
+      tipAmount,
+      weightKg,
       surchargeNight,
       surchargeRain,
       surchargeDistance,
       surchargeExpress,
+      surchargeWeight,
       items: priced,
       coupon,
       subtotal,
       deliveryCharge,
       discount,
-      total: orderTotal(subtotal, deliveryCharge, discount),
+      total: orderTotal(subtotal, deliveryCharge, discount) + tipAmount,
     },
   };
 };

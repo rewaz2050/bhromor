@@ -19,7 +19,7 @@ export const SUNAMGANJ_HUB_COORDS = {
 export const SUNAMGANJ_ZONES: DeliveryZone[] = [
   {
     id: "z1",
-    name: "Zone A — Traffic Point (0-1.5km)",
+    name: "Zone A — Sunamganj City (A Zone)",
     areas: ["Boropara", "Shologhar", "Ukilpara", "Courtpara", "Jail Road", "Modhyabazar", "Kalibari", "Arambagh", "Mollapara"],
     charge: 3000,
     etaLabel: "30–40 min",
@@ -43,7 +43,7 @@ export const SUNAMGANJ_ZONES: DeliveryZone[] = [
   },
   {
     id: "z4",
-    name: "Zone D — Sunamganj Sadar Bahire",
+    name: "Zone D — Sadar Bahire / Other district (Courier)",
     areas: ["Sunamganj Sadar Other", "Dolura", "Gouripur", "Surma River Side", "Mollapara Bahire", "Shantiganj Border"],
     charge: 10000,
     etaLabel: "60–80 min",
@@ -122,6 +122,148 @@ export const getRoadSuggestions = (input: string, limit = 6): string[] => {
 };
 
 export const MIN_ORDER_OUTSIDE_PAISA = 50000; // ৳500 minimum for Zone D
+
+/* ------------------------------------------------------------------ */
+/* Simple checkout form data — District / Upazila / Para               */
+/* ------------------------------------------------------------------ */
+
+export interface GeoOption {
+  en: string;
+  bn: string;
+}
+
+/** All 64 districts — Sunamganj first (the serviced home district). */
+export const DISTRICTS: GeoOption[] = [
+  { en: "Sunamganj", bn: "সুনামগঞ্জ" },
+  { en: "Sylhet", bn: "সিলেট" },
+  { en: "Moulvibazar", bn: "মৌলভীবাজার" },
+  { en: "Habiganj", bn: "হবিগঞ্জ" },
+  { en: "Netrokona", bn: "নেত্রকোণা" },
+  { en: "Kishoreganj", bn: "কিশোরগঞ্জ" },
+  { en: "Brahmanbaria", bn: "ব্রাহ্মণবাড়িয়া" },
+  { en: "Cumilla", bn: "কুমিল্লা" },
+  { en: "Chandpur", bn: "চাঁদপুর" },
+  { en: "Noakhali", bn: "নোয়াখালী" },
+  { en: "Feni", bn: "ফেনী" },
+  { en: "Chattogram", bn: "চট্টগ্রাম" },
+  { en: "Cox's Bazar", bn: "কক্সবাজার" },
+  { en: "Rangamati", bn: "রাঙ্গামাটি" },
+  { en: "Khagrachhari", bn: "খাগড়াছড়ি" },
+  { en: "Bandarban", bn: "বান্দরবান" },
+  { en: "Lakshmipur", bn: "লক্ষ্মীপুর" },
+  { en: "Dhaka", bn: "ঢাকা" },
+  { en: "Gazipur", bn: "গাজীপুর" },
+  { en: "Narayanganj", bn: "নারায়ণগঞ্জ" },
+  { en: "Narsingdi", bn: "নরসিংদী" },
+  { en: "Tangail", bn: "টাঙ্গাইল" },
+  { en: "Mymensingh", bn: "ময়মনসিংহ" },
+  { en: "Jamalpur", bn: "জামালপুর" },
+  { en: "Sherpur", bn: "শেরপুর" },
+  { en: "Bogura", bn: "বগুড়া" },
+  { en: "Rajshahi", bn: "রাজশাহী" },
+  { en: "Natore", bn: "নাটোর" },
+  { en: "Naogaon", bn: "নওগাঁ" },
+  { en: "Joypurhat", bn: "জয়পুরহাট" },
+  { en: "Chapainawabganj", bn: "চাঁপাইনবাবগঞ্জ" },
+  { en: "Pabna", bn: "পাবনা" },
+  { en: "Sirajganj", bn: "সিরাজগঞ্জ" },
+  { en: "Rangpur", bn: "রংপুর" },
+  { en: "Dinajpur", bn: "দিনাজপুর" },
+  { en: "Thakurgaon", bn: "ঠাকুরগাঁও" },
+  { en: "Panchagarh", bn: "পঞ্চগড়" },
+  { en: "Nilphamari", bn: "নীলফামারী" },
+  { en: "Lalmonirhat", bn: "লালমনিরহাট" },
+  { en: "Kurigram", bn: "কুড়িগ্রাম" },
+  { en: "Gaibandha", bn: "গাইবান্ধা" },
+  { en: "Khulna", bn: "খুলনা" },
+  { en: "Jashore", bn: "যশোর" },
+  { en: "Satkhira", bn: "সাতক্ষীরা" },
+  { en: "Bagerhat", bn: "বাগেরহাট" },
+  { en: "Jhenaidah", bn: "ঝিনাইদহ" },
+  { en: "Chuadanga", bn: "চুয়াডাঙ্গা" },
+  { en: "Meherpur", bn: "মেহেরপুর" },
+  { en: "Kushtia", bn: "কুষ্টিয়া" },
+  { en: "Magura", bn: "মাগুরা" },
+  { en: "Narail", bn: "নড়াইল" },
+  { en: "Barishal", bn: "বরিশাল" },
+  { en: "Bhola", bn: "ভোলা" },
+  { en: "Patuakhali", bn: "পটুয়াখালী" },
+  { en: "Pirojpur", bn: "পিরোজপুর" },
+  { en: "Barguna", bn: "বরগুনা" },
+  { en: "Jhalokati", bn: "ঝালকাঠি" },
+  { en: "Faridpur", bn: "ফরিদপুর" },
+  { en: "Gopalganj", bn: "গোপালগঞ্জ" },
+  { en: "Madaripur", bn: "মাদারীপুর" },
+  { en: "Shariatpur", bn: "শরীয়তপুর" },
+  { en: "Rajbari", bn: "রাজবাড়ী" },
+  { en: "Manikganj", bn: "মানিকগঞ্জ" },
+  { en: "Munshiganj", bn: "মুন্সিগঞ্জ" },
+];
+
+/**
+ * Upazilas of Sunamganj district (the only fully serviced district).
+ * Sunamganj Sadar first — it has the selectable para list.
+ */
+export const SUNAMGANJ_UPAZILAS: GeoOption[] = [
+  { en: "Sunamganj Sadar", bn: "সুনামগঞ্জ সদর" },
+  { en: "Shantiganj (Dakshin Sunamganj)", bn: "শান্তিগঞ্জ (দক্ষিণ সুনামগঞ্জ)" },
+  { en: "Balaiganj", bn: "বালাগঞ্জ" },
+  { en: "Bishwamvarpur", bn: "বিশ্বম্বরপুর" },
+  { en: "Chhatak", bn: "ছাতক" },
+  { en: "Derai", bn: "দিরাই" },
+  { en: "Dharampasha", bn: "ধর্মপাশা" },
+  { en: "Dowarabazar", bn: "দোয়ারাবাজার" },
+  { en: "Jagannathpur", bn: "জগন্নাথপুর" },
+  { en: "Jamalganj", bn: "জামালগঞ্জ" },
+  { en: "Sullah", bn: "শাল্লা" },
+  { en: "Tahirpur", bn: "তাহিরপুর" },
+];
+
+/** Sentinel option in the para select — "I'll type my para myself". */
+export const PARA_CUSTOM = "__other__";
+
+export interface ParaOption {
+  name: string;
+  zoneId: string;
+}
+
+/**
+ * Selectable paras for the "songlisto" (selected) upazila — Sunamganj Sadar.
+ * Every option knows its zone, so picking a para prices the delivery.
+ */
+export const SADAR_PARA_OPTIONS: ParaOption[] = [
+  ...SUNAMGANJ_ZONES[0].areas.map((name) => ({ name, zoneId: "z1" })),
+  ...SUNAMGANJ_ZONES[1].areas.map((name) => ({ name, zoneId: "z2" })),
+  ...SUNAMGANJ_ZONES[2].areas.map((name) => ({ name, zoneId: "z3" })),
+];
+
+/**
+ * Derive the delivery zone from the simple form picks.
+ *
+ *  • Sunamganj + Sunamganj Sadar + para from the A list → z1 (free-delivery zone)
+ *  • Sadar para from the B / C lists                    → z2 / z3
+ *  • Sunamganj Sadar, unlisted para (typed)             → z3 (Sadar extended)
+ *  • Sunamganj, any other upazila                       → z4 (outside Sadar)
+ *  • Any other district                                 → z4 (courier)
+ */
+export const deriveZoneChoice = (
+  district: string,
+  upazila: string,
+  para: string,
+): { zoneId: string; paraListed: boolean } => {
+  const d = district.trim().toLowerCase();
+  const u = upazila.trim().toLowerCase();
+  const p = para.trim().toLowerCase();
+
+  if (d !== SUNAMGANJ_DISTRICT.toLowerCase() || u !== SUNAMGANJ_UPAZILA.toLowerCase()) {
+    return { zoneId: "z4", paraListed: false };
+  }
+  const exact = SADAR_PARA_OPTIONS.find((o) => o.name.toLowerCase() === p);
+  if (exact) return { zoneId: exact.zoneId, paraListed: true };
+  const loose = findZoneByPara(para);
+  if (loose && loose.id !== "z4") return { zoneId: loose.id, paraListed: true };
+  return { zoneId: "z3", paraListed: false };
+};
 
 /* ------------------------------------------------------------------ */
 /* Geo — Haversine distance from Traffic Point hub                    */

@@ -27,7 +27,7 @@ export default function DeliveryPromoLive() {
           {promo.promoActive ? (
             <>
               <p className="text-sm font-bold text-forest-900">
-                🎉 প্রথম {promo.limit} অর্ডারে ডেলিভারি ফ্রি! {promo.remainingFree} টা বাকি
+                🎉 প্রথম {promo.limit} অর্ডারে ডেলিভারি ফ্রি! {promo.remainingFree} টা বাকি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ
               </p>
               <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-forest-100 ring-1 ring-line">
                 <div
@@ -44,18 +44,18 @@ export default function DeliveryPromoLive() {
           ) : (
             <>
               <p className="text-sm font-bold text-forest-900">
-                🎉 প্রথম {promo.limit} ফ্রি শেষ — এখন ৳1000+ অর্ডারে সবসময় ফ্রি!
+                🎉 প্রথম {promo.limit} ফ্রি অফার শেষ!
               </p>
               <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-forest-100 ring-1 ring-line">
                 <div className="h-2.5 w-full rounded-full bg-forest-800" />
               </div>
               <p className="mt-2 text-[11px] text-ink-soft">
-                {promo.totalOrders} orders completed — thank you Sunamganj! ৳1000+ free delivery continues.
+                {promo.totalOrders} orders completed — thank you Sunamganj!
               </p>
             </>
           )}
           <p className="mt-3 text-xs leading-5 text-ink-soft">
-            Zone A (Traffic Point 0-1.5km) ৳30, Zone B (Sadar Core) ৳50, Zone C (Extended) ৳70, Zone D (Bahire) ৳100 · ৳1000+ always free · Minimum ৳500 for Zone D outside.
+            ফ্রি ডেলিভারি শুধু সুনামগঞ্জ সিটি (এ জোন)-এর প্রথম {promo.limit}টি অর্ডারে। এ জোনের বাইরে: Zone B ৳50, Zone C ৳70, Zone D (সদরের বাইরে / অন্য জেলা) ৳100 · Zone D-তে সর্বনিম্ন ৳৫০০ অর্ডার.
           </p>
         </div>
       </div>

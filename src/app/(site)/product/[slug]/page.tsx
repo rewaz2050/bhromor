@@ -15,8 +15,7 @@ import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
   DELIVERY_ETA,
-  FREE_DELIVERY_THRESHOLD,
-  FIRST_1000_FREE_LIMIT,
+  FIRST_FREE_DELIVERY_LIMIT,
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -188,15 +187,12 @@ export default async function ProductPage({ params }: PageProps) {
               <span className="font-semibold text-white">
                 {formatBdt(3000)}
               </span>{" "}
-              in Zone A (Traffic Point) · orders over{" "}
-              <span className="font-semibold text-white">
-                {formatBdt(FREE_DELIVERY_THRESHOLD)}
-              </span>{" "}
-              free · first{" "}
+              in Zone A (Sunamganj City) ·{" "}
               <span className="font-semibold text-gold-300">
-                {FIRST_1000_FREE_LIMIT}
+                {FIRST_FREE_DELIVERY_LIMIT}
               </span>{" "}
-              orders FREE!
+              টি অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ! এ জোনের
+              বাইরে জোন চার্জ প্রযোজ্য।
             </p>
           </div>
         </aside>

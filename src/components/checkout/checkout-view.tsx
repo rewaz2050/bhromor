@@ -8,12 +8,10 @@ import { useCart } from "@/components/cart/cart-provider";
 import BagShopHeader from "@/components/cart/bag-shop-header";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
-import { useMyZone } from "@/lib/use-my-zone";
 import {
   isShopOrderable,
   lineShopIds,
   shopById,
-  splitEta,
 } from "@/lib/shop-utils";
 import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
@@ -21,20 +19,15 @@ import { getDeliveryCode, makePlacedOrder, type Order } from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
-  FREE_DELIVERY_THRESHOLD,
+  FIRST_FREE_DELIVERY_LIMIT,
   INSTANT_DELIVERY_TITLE,
-  FIRST_1000_FREE_LIMIT,
-  deliveryChargeFor,
-  deliveryChargeWithPromo,
-  deliveryBreakdown,
-  freeThresholdForZone,
-  isNightHour,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
-  EXPRESS_SURCHARGE_PAISA,
+  deliveryBreakdown,
   orderTotal,
 } from "@/lib/delivery";
 import { useSettings } from "@/lib/use-settings";
+import { isNightHour } from "@/lib/delivery";
 import {
   IconArrowRight,
   IconBag,
@@ -48,83 +41,103 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 import { usePromo } from "@/lib/use-promo";
 import {
-  SUNAMGANJ_DISTRICT,
-  SUNAMGANJ_UPAZILA,
-  ALL_PARAS,
+  DISTRICTS,
+  PARA_CUSTOM,
   ROAD_NAMES,
-  findZoneByPara,
-  getParaSuggestions,
-  MIN_ORDER_OUTSIDE_PAISA,
+  SADAR_PARA_OPTIONS,
+  SUNAMGANJ_BOUNDS,
+  SUNAMGANJ_DISTRICT,
+  SUNAMGANJ_HUB,
+  SUNAMGANJ_UPAZILA,
+  SUNAMGANJ_UPAZILAS,
+  deriveZoneChoice,
+  distanceFromHubKm,
+  findZoneByDistance,
+  type LatLng,
 } from "@/lib/sunamganj";
 import {
   getSavedAddresses,
   saveAddress,
   deleteAddress,
-  formatFullAddress,
   type SavedAddress,
 } from "@/lib/address-book";
 import MapPinPicker from "./map-pin-picker";
-import type { LatLng } from "@/lib/sunamganj";
-import { distanceFromHubKm, findZoneByDistance } from "@/lib/sunamganj";
 
-type TimeSlot = "now" | "evening" | "tomorrow_morning" | "scheduled";
+type TimeSlot = "now" | "evening" | "scheduled";
 type DeliveryWindow = "9-11" | "11-1" | "2-4" | "4-6" | "6-8" | "8-10" | "express";
 
 interface FormState {
   name: string;
   phone: string;
-  area: string;
+  district: string;
+  upazila: string;
+  upazilaCustom: string;
+  paraSelected: string;
+  paraCustom: string;
   houseNo: string;
   roadName: string;
   address: string;
   note: string;
   couponCode: string;
-  zoneId: string;
-  lat?: number;
-  lng?: number;
-  payment: "cod";
   timeSlot: TimeSlot;
   deliveryDate: string; // YYYY-MM-DD
   deliveryWindow: DeliveryWindow;
   isPickup: boolean;
   pickupSlot: string;
   tipAmount: number; // taka
-  weightKg: number;
   submitting: boolean;
 }
 
 const initialForm: FormState = {
   name: "",
   phone: "",
-  area: "",
+  district: SUNAMGANJ_DISTRICT,
+  upazila: SUNAMGANJ_UPAZILA,
+  upazilaCustom: "",
+  paraSelected: "",
+  paraCustom: "",
   houseNo: "",
   roadName: "",
   address: "",
   note: "",
   couponCode: "",
-  zoneId: "",
-  lat: undefined,
-  lng: undefined,
-  payment: "cod",
   timeSlot: "now",
-  deliveryDate: new Date().toISOString().slice(0,10),
-  deliveryWindow: "express",
+  deliveryDate: new Date().toISOString().slice(0, 10),
+  deliveryWindow: "2-4",
   isPickup: false,
   pickupSlot: "now",
   tipAmount: 0,
-  weightKg: 0,
   submitting: false,
 };
 
-const DISTRICT = SUNAMGANJ_DISTRICT;
-const UPAZILA = SUNAMGANJ_UPAZILA;
+/** Module-level "today" — bounds the scheduled-date picker (pure in render). */
+const TODAY = new Date();
+const MIN_DELIVERY_DATE = TODAY.toISOString().slice(0, 10);
+const MAX_DELIVERY_DATE = new Date(TODAY.getTime() + 3 * 86400000)
+  .toISOString()
+  .slice(0, 10);
+
+const isSunamganjDistrict = (district: string) =>
+  district.trim().toLowerCase() === SUNAMGANJ_DISTRICT.toLowerCase();
+const isSadarUpazila = (upazila: string) =>
+  upazila.trim().toLowerCase() === SUNAMGANJ_UPAZILA.toLowerCase();
+
+/** "9-11" → "09:00" etc. for the scheduled_at ISO stamp. */
+const WINDOW_START_HOUR: Record<DeliveryWindow, string> = {
+  "9-11": "09",
+  "11-1": "11",
+  "2-4": "14",
+  "4-6": "16",
+  "6-8": "18",
+  "8-10": "20",
+  express: "09",
+};
 
 export default function CheckoutView() {
   const { t } = useLanguage();
   const { detail, subtotal, clear } = useCart();
   const { activeZones: zoneList } = useLiveZones();
   const { shops } = useLiveCatalog();
-  const { zoneId: myZoneId, setZoneId: setMyZoneId } = useMyZone();
   const promo = usePromo();
   const { settings } = useSettings();
   const bagShop =
@@ -157,7 +170,7 @@ export default function CheckoutView() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
-  const areaRef = useRef<HTMLInputElement>(null);
+  const paraRef = useRef<HTMLInputElement>(null);
   const addressRef = useRef<HTMLTextAreaElement>(null);
 
   const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
@@ -167,18 +180,36 @@ export default function CheckoutView() {
   const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setSavedAddrs(getSavedAddresses());
   }, []);
 
-  /** Browse-time zone pre-fills checkout; an explicit pick wins after. */
-  const myZoneValid =
-    myZoneId && zoneList.some((z) => z.id === myZoneId) ? myZoneId : null;
-  const chosenZoneId = zoneList.some((z) => z.id === form.zoneId)
-    ? form.zoneId
-    : (myZoneValid ?? zoneList[0]?.id ?? "");
-  const zone = zoneList.find((z) => z.id === chosenZoneId) ?? zoneList[0];
+  /* ------------------------------------------------------------------ */
+  /* Simple-form derived values                                          */
+  /* ------------------------------------------------------------------ */
 
-  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}|${chosenZoneId}`;
+  const sunamganjDistrict = isSunamganjDistrict(form.district);
+  const effectiveUpazila = sunamganjDistrict
+    ? form.upazila
+    : form.upazilaCustom;
+  const sadarUpazila = sunamganjDistrict && isSadarUpazila(effectiveUpazila);
+  const effectivePara = sadarUpazila
+    ? form.paraSelected === PARA_CUSTOM
+      ? form.paraCustom
+      : form.paraSelected
+    : form.paraCustom;
+
+  const derived = useMemo(
+    () => deriveZoneChoice(form.district, effectiveUpazila, effectivePara),
+    [form.district, effectiveUpazila, effectivePara],
+  );
+  const derivedZoneId = derived.zoneId;
+  const zone = useMemo(
+    () => zoneList.find((z) => z.id === derivedZoneId) ?? zoneList[0],
+    [zoneList, derivedZoneId],
+  );
+
+  const cartKey = `${detail.map((l) => `${l.product.id}|${l.variantLabel}|${l.qty}`).join(",")}|${subtotal}|${derivedZoneId}`;
   const [couponFreeDelivery, setCouponFreeDelivery] = useState(false);
   useEffect(() => {
     if (!appliedCode) return;
@@ -198,7 +229,7 @@ export default function CheckoutView() {
           const res = await fetch("/api/coupons/validate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code: appliedCode, items, zoneId: chosenZoneId }),
+            body: JSON.stringify({ code: appliedCode, items, zoneId: derivedZoneId }),
           });
           data = (await res.json().catch(() => null)) as ValidateResponse | null;
           if (res.ok && data?.valid && data.code) {
@@ -232,30 +263,12 @@ export default function CheckoutView() {
     }, 350);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedCode, cartKey, chosenZoneId]);
+  }, [appliedCode, cartKey, derivedZoneId]);
 
   const activeCoupon = useMemo(
     () => (couponCheck.code ? { code: couponCheck.code } : null),
     [couponCheck.code],
   );
-
-  // Auto-detect zone from para input
-  useEffect(() => {
-    if (!form.area.trim()) return;
-    const matched = findZoneByPara(form.area.trim());
-    if (matched && matched.id !== chosenZoneId) {
-      // Only auto-switch if user hasn't manually picked a zone that already contains this para
-      const currentZone = zoneList.find((z) => z.id === chosenZoneId);
-      const alreadyContains = currentZone?.areas.some(
-        (a) => a.toLowerCase() === form.area.trim().toLowerCase(),
-      );
-      if (!alreadyContains) {
-        setForm((f) => ({ ...f, zoneId: matched.id }));
-        setMyZoneId(matched.id);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.area]);
 
   const summary = useMemo(() => {
     if (!zone) {
@@ -266,30 +279,39 @@ export default function CheckoutView() {
         promoFree: false,
         couponFree: false,
         discount: 0,
+        tip: 0,
         total: subtotal,
         itemCount: detail.reduce((n, l) => n + l.qty, 0),
-        isOutside: false,
-        breakdown: null as any,
-        freeThreshold: FREE_DELIVERY_THRESHOLD,
+        isOutside: derivedZoneId === "z4",
+        breakdown: null as ReturnType<typeof deliveryBreakdown> | null,
+        distanceKm: undefined as number | undefined,
+        isNight: false,
+        isRain: false,
       };
     }
     const distanceKm = pinPos ? distanceFromHubKm(pinPos) : undefined;
-    const isNight = settings.nightSurchargeEnabled ? isNightHour(new Date().getHours()) : false;
+    const isNight = settings.nightSurchargeEnabled
+      ? isNightHour(new Date().getHours())
+      : false;
     const isRain = settings.rainSurchargeEnabled;
-    const isExpress = (form.timeSlot === "now" && form.deliveryWindow === "express") || form.deliveryWindow === "express";
+    const isExpress =
+      form.deliveryWindow === "express" && settings.expressDeliveryEnabled;
+    const weightKg = detail.reduce((s, l) => s + l.qty * 0.5, 0);
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
       totalOrders: promo.totalOrders,
       distanceKm,
+      weightKg,
       isNight,
       isRain,
-      isExpress: isExpress && settings.expressDeliveryEnabled,
+      isExpress,
+      isPickup: form.isPickup,
+      tipAmount: form.tipAmount * 100,
       couponFree: couponFreeDelivery && !!activeCoupon,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
     });
-    // Coupon free overrides already in breakdown
     const charge = breakdown.totalCharge;
     const discount = activeCoupon ? couponCheck.discount : 0;
     return {
@@ -298,19 +320,32 @@ export default function CheckoutView() {
       freeDelivery: breakdown.freeDelivery,
       promoFree: breakdown.promoFree,
       couponFree: breakdown.couponFree,
-      isPickup: breakdown.isPickup,
       discount,
-      tip: (form.tipAmount * 100) as number,
-      total: (orderTotal(subtotal, charge, discount) + form.tipAmount * 100) as number,
+      tip: form.tipAmount * 100,
+      total: orderTotal(subtotal, charge, discount) + form.tipAmount * 100,
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
-      isOutside: zone?.id === "z4",
+      isOutside: derivedZoneId === "z4",
       breakdown,
-      freeThreshold: freeThresholdForZone(zone.id),
       distanceKm,
       isNight,
       isRain,
     };
-  }, [zone, subtotal, detail, activeCoupon, couponCheck.discount, promo, couponFreeDelivery, pinPos, settings, bagShop, form.timeSlot]);
+  }, [
+    zone,
+    subtotal,
+    detail,
+    activeCoupon,
+    couponCheck.discount,
+    promo.totalOrders,
+    couponFreeDelivery,
+    pinPos,
+    settings,
+    bagShop,
+    form.deliveryWindow,
+    form.isPickup,
+    form.tipAmount,
+    derivedZoneId,
+  ]);
 
   const empty = detail.length === 0;
   const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
@@ -359,7 +394,7 @@ export default function CheckoutView() {
             <IconGift className="h-4 w-4" />
           </span>
           <div>
-            <strong className="block font-semibold">১০-অর্ডার রিওয়ার্ড প্রগ্রেস</strong>
+            <strong className="block font-semibold">১০-অর্ডার রিওয়ার্ড প্রগ্রেস</strong>
             <span className="text-ink-soft text-[11px]">
               এই অর্ডার ডেলিভারি রিসিভ করলে আপনার লয়্যালটি কার্ডে +১ স্ট্যাম্প যোগ হবে!
             </span>
@@ -369,7 +404,7 @@ export default function CheckoutView() {
         <div className="mx-auto mt-6 max-w-sm space-y-3 rounded-3xl bg-paper p-6 text-left text-sm ring-1 ring-line">
           <p className="flex items-center gap-3">
             <IconTruck className="h-5 w-5 text-forest-700" />
-            আনুমানিক সময়:{" "}
+            আনুমানিক সময়:{" "}
             <strong className="text-ink">{placed.eta}</strong>
           </p>
           <p className="flex items-center gap-3">
@@ -387,7 +422,7 @@ export default function CheckoutView() {
             href="/track"
             className="inline-flex h-12 items-center gap-2 rounded-full bg-forest-800 px-7 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            লাইভ ম্যাপে ট্র্যাক করুন <IconArrowRight className="h-4 w-4" />
+            অর্ডার ট্র্যাক করুন <IconArrowRight className="h-4 w-4" />
           </Link>
           <Link
             href="/shop"
@@ -444,22 +479,63 @@ export default function CheckoutView() {
     setAppliedCode(code);
   };
 
+  /** Full address string — house/road + para/upazila/district auto-append. */
+  const buildFullAddress = () => {
+    const segs: string[] = [];
+    if (form.houseNo.trim()) segs.push(`House: ${form.houseNo.trim()}`);
+    if (form.roadName.trim()) segs.push(`Road: ${form.roadName.trim()}`);
+    if (form.address.trim()) segs.push(form.address.trim());
+    if (effectivePara.trim()) segs.push(`Para: ${effectivePara.trim()}`);
+    if (effectiveUpazila.trim()) segs.push(effectiveUpazila.trim());
+    segs.push(form.district);
+    if (pinPos) segs.push(`Pin: ${pinPos.lat.toFixed(5)},${pinPos.lng.toFixed(5)}`);
+    return segs.join(", ");
+  };
+
+  const persistAddress = () => {
+    try {
+      saveAddress({
+        label: `${effectivePara || "Address"} - ${form.name.split(" ")[0]}`,
+        name: form.name,
+        phone: form.phone,
+        area: effectivePara,
+        houseNo: form.houseNo,
+        roadName: form.roadName,
+        fullAddress: form.address,
+        note: form.note,
+        zoneId: derivedZoneId,
+        lat: pinPos?.lat,
+        lng: pinPos?.lng,
+      });
+    } catch {
+      // storage unavailable — continue without saving
+    }
+  };
+
   const handleUseSaved = (addr: SavedAddress) => {
+    const savedPara = addr.area;
+    const listed = SADAR_PARA_OPTIONS.some((p) => p.name === savedPara);
+    const savedDistrict = addr.district || SUNAMGANJ_DISTRICT;
+    const savedUpazila = addr.upazila || SUNAMGANJ_UPAZILA;
     setForm((f) => ({
       ...f,
       name: addr.name,
       phone: addr.phone,
-      area: addr.area,
+      district: savedDistrict,
+      upazila: isSunamganjDistrict(savedDistrict)
+        ? SUNAMGANJ_UPAZILAS.some((u) => u.en === savedUpazila)
+          ? savedUpazila
+          : SUNAMGANJ_UPAZILA
+        : f.upazila,
+      upazilaCustom: isSunamganjDistrict(savedDistrict) ? f.upazilaCustom : savedUpazila,
+      paraSelected: listed ? savedPara : PARA_CUSTOM,
+      paraCustom: savedPara,
       houseNo: addr.houseNo,
       roadName: addr.roadName,
       address: addr.fullAddress,
       note: addr.note,
-      zoneId: addr.zoneId,
-      lat: addr.lat,
-      lng: addr.lng,
     }));
     if (addr.lat && addr.lng) setPinPos({ lat: addr.lat, lng: addr.lng });
-    setMyZoneId(addr.zoneId);
     setShowSaved(false);
   };
 
@@ -467,12 +543,15 @@ export default function CheckoutView() {
     if (!navigator.geolocation) return;
     setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
-      () => {
-        // For Sunamganj Sadar, we can't do real distance without map, but we suggest Zone A as nearest to Traffic Point
+      (pos) => {
+        // Clamp into Sunamganj bounds so the map pin stays meaningful.
+        const clamped: LatLng = {
+          lat: Math.min(SUNAMGANJ_BOUNDS.north, Math.max(SUNAMGANJ_BOUNDS.south, pos.coords.latitude)),
+          lng: Math.min(SUNAMGANJ_BOUNDS.east, Math.max(SUNAMGANJ_BOUNDS.west, pos.coords.longitude)),
+        };
+        setPinPos(clamped);
+        setShowMap(true);
         setGeoLoading(false);
-        const nearest = zoneList.find((z) => z.id === "z1") ?? zoneList[0];
-        setForm((f) => ({ ...f, zoneId: nearest.id }));
-        setMyZoneId(nearest.id);
       },
       () => setGeoLoading(false),
       { enableHighAccuracy: false, timeout: 5000 },
@@ -494,59 +573,36 @@ export default function CheckoutView() {
       const firstField = Object.keys(fields ?? {})[0];
       if (firstField === "name") nameRef.current?.focus();
       else if (firstField === "phone") phoneRef.current?.focus();
-      else if (firstField === "area") areaRef.current?.focus();
+      else if (firstField === "area" || firstField === "para") paraRef.current?.focus();
       else if (firstField === "address") addressRef.current?.focus();
     };
 
     const localErrors: Record<string, string> = {};
-    if (form.name.trim().length < 2) localErrors.name = "Please share your full name (at least 2 characters).";
+    if (form.name.trim().length < 2)
+      localErrors.name = "আপনার পুরো নাম লিখুন (কমপক্ষে ২ অক্ষর) — Please share your full name.";
     const phoneClean = form.phone.replace(/[\s\-]/g, "");
-    if (!/^(?:\+?88)?01[0-9]{9}$/.test(phoneClean)) {
-      localErrors.phone = "A valid Bangladeshi mobile number is required — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
-    }
-    if (form.area.trim().length < 2) localErrors.area = "Please share your para / neighbourhood — e.g. Boropara, Shologhar.";
-    if (form.address.trim().length < 8) localErrors.address = "Please share a full delivery address (house, road, landmark).";
-    // Minimum order for outside zone
-    if (zone.id === "z4" && subtotal < MIN_ORDER_OUTSIDE_PAISA) {
-      localErrors.items = `Zone D (outside Sadar) requires minimum ${formatBdt(MIN_ORDER_OUTSIDE_PAISA)} order — add ${formatBdt(MIN_ORDER_OUTSIDE_PAISA - subtotal)} more.`;
-    }
+    if (!/^(?:\+?88)?01[0-9]{9}$/.test(phoneClean))
+      localErrors.phone =
+        "সঠিক মোবাইল নম্বর দিন — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
+    if (effectivePara.trim().length < 2)
+      localErrors.area = "পাড়া / গ্রামের নাম সিলেক্ট বা লিখুন — pick or type your para.";
+    if (!form.isPickup && form.address.trim().length < 6)
+      localErrors.address =
+        "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
     if (Object.keys(localErrors).length > 0) {
-      fail("Please fix the highlighted fields.", localErrors);
+      fail("অনুগ্রহ করে লাল চিহ্নিত ঘরগুলো ঠিক করুন — fix the highlighted fields.", localErrors);
       return;
     }
 
-    const buildFullAddress = () => {
-      return formatFullAddress({
-        houseNo: form.houseNo,
-        roadName: form.roadName,
-        area: form.area,
-        fullAddress: form.address,
-        latLng: pinPos,
-      });
-    };
+    const fullAddress = form.isPickup
+      ? `Store Pickup — ${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}, ${SUNAMGANJ_DISTRICT}`
+      : buildFullAddress();
 
     const placeLocally = () => {
       const stamp = new Date();
       const date = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}`;
       const seq = String(Math.floor(1000 + Math.random() * 9000));
       const orderId = `${ORDER_PREFIX}-${date}-${seq}`;
-      const fullAddress = buildFullAddress();
-      // Save address for next time
-      try {
-        saveAddress({
-          label: `${form.area} - ${form.name.split(" ")[0]}`,
-          name: form.name,
-          phone: form.phone,
-          area: form.area,
-          houseNo: form.houseNo,
-          roadName: form.roadName,
-          fullAddress: form.address,
-          note: form.note,
-          zoneId: zone.id,
-          lat: pinPos?.lat,
-          lng: pinPos?.lng,
-        });
-      } catch {}
       addOrderToStore(
         makePlacedOrder({
           id: orderId,
@@ -554,14 +610,16 @@ export default function CheckoutView() {
           customer: {
             name: form.name,
             phone: form.phone,
-            area: form.area,
+            area: form.isPickup ? "Pickup — " + SUNAMGANJ_HUB : effectivePara,
             address: fullAddress,
-            note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}]`.trim(),
+            note: form.note,
           },
           zone: {
             id: zone.id,
             name: zone.name,
-            etaLabel: zone.etaLabel,
+            etaLabel: form.isPickup
+              ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+              : (summary.breakdown?.eta ?? zone.etaLabel),
             charge: summary.charge,
           },
           items: detail.map((l) => ({
@@ -578,43 +636,52 @@ export default function CheckoutView() {
       if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
       setPlaced({
         orderId,
-        eta: zone.etaLabel,
+        eta: form.isPickup
+          ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+          : (summary.breakdown?.eta ?? zone.etaLabel),
         charge: summary.charge,
         total: summary.total,
-        addressSummary: `${fullAddress}, ${zone.name}`,
+        addressSummary: form.isPickup
+          ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
+          : fullAddress,
       });
       clear();
     };
 
     let res: Response;
     try {
-      const fullAddress = buildFullAddress();
-      const scheduledAt = form.timeSlot === "scheduled" ? new Date(`${form.deliveryDate}T${form.deliveryWindow.split("-")[0].padStart(2,"0")}:00:00`).toISOString() : null;
+      const scheduledAt =
+        form.timeSlot === "scheduled"
+          ? new Date(
+              `${form.deliveryDate}T${WINDOW_START_HOUR[form.deliveryWindow]}:00:00`,
+            ).toISOString()
+          : null;
       res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name,
           phone: form.phone,
-          area: form.area,
+          district: form.district,
+          upazila: effectiveUpazila,
+          para: effectivePara,
+          area: effectivePara,
           address: fullAddress,
-          note: `${form.note} [Slot: ${form.timeSlot}${form.timeSlot === "scheduled" ? ` ${form.deliveryDate} ${form.deliveryWindow}` : ""}${form.isPickup ? " PICKUP" : ""}]`.trim(),
+          note: form.note,
           zoneId: zone.id,
           lat: pinPos?.lat,
           lng: pinPos?.lng,
           distance_km: summary.distanceKm,
           scheduled_at: scheduledAt,
-          delivery_window: form.timeSlot === "scheduled" ? form.deliveryWindow : form.timeSlot,
-          is_express: summary.breakdown?.surcharge.express ? true : false,
+          delivery_window:
+            form.timeSlot === "scheduled" ? form.deliveryWindow : form.timeSlot,
+          is_express:
+            form.deliveryWindow === "express" && settings.expressDeliveryEnabled,
           is_pickup: form.isPickup,
-          pickup_slot: (form as any).pickupSlot || "now",
+          pickup_slot: form.isPickup ? form.pickupSlot : null,
           tip_amount: form.tipAmount * 100,
-          weight_kg: summary.breakdown ? detail.reduce((s,l)=>s+l.qty*0.5,0) : 0,
-          surcharge_night: summary.breakdown?.surcharge.night ?? 0,
-          surcharge_rain: summary.breakdown?.surcharge.rain ?? 0,
-          surcharge_distance: summary.breakdown?.surcharge.distance ?? 0,
-          surcharge_express: summary.breakdown?.surcharge.express ?? 0,
-          surcharge_weight: summary.breakdown?.surcharge.weight ?? 0,
+          weight_kg: detail.reduce((s, l) => s + l.qty * 0.5, 0),
+          is_rain: settings.rainSurchargeEnabled,
           couponCode: activeCoupon?.code,
           items: detail.map((l) => ({
             productId: l.product.id,
@@ -625,7 +692,7 @@ export default function CheckoutView() {
       });
     } catch {
       fail(
-        "Could not reach the shop — check your connection and try again. Your cart is untouched.",
+        "সার্ভারে পৌঁছানো যাচ্ছে না — ইন্টারনেট চেক করে আবার চেষ্টা করুন। Could not reach the shop — check your connection and try again.",
       );
       return;
     }
@@ -643,33 +710,23 @@ export default function CheckoutView() {
     };
 
     if (res.ok && data.demoMode) {
+      persistAddress();
       placeLocally();
       return;
     }
     if (res.ok && data.order) {
-      // Save address for next time
-      try {
-        saveAddress({
-          label: `${form.area} - ${form.name.split(" ")[0]}`,
-          name: form.name,
-          phone: form.phone,
-          area: form.area,
-          houseNo: form.houseNo,
-          roadName: form.roadName,
-          fullAddress: form.address,
-          note: form.note,
-          zoneId: zone.id,
-          lat: pinPos?.lat,
-          lng: pinPos?.lng,
-        });
-      } catch {}
+      persistAddress();
       addOrderToStore(data.order);
       setPlaced({
         orderId: data.order.id,
-        eta: data.order.etaLabel,
+        eta: form.isPickup
+          ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+          : (summary.breakdown?.eta ?? data.order.etaLabel),
         charge: data.order.deliveryCharge,
         total: data.order.total,
-        addressSummary: `${form.address || form.area}, ${data.order.zoneName}`,
+        addressSummary: form.isPickup
+          ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
+          : fullAddress,
         deliveryCode: data.order.deliveryCode,
       });
       clear();
@@ -685,13 +742,17 @@ export default function CheckoutView() {
       data.errors?.map((e) => e.message).join(" ") || data.error;
     fail(
       serverMessage ||
-        "Could not place the order — please try again. Your cart is untouched.",
+        "অর্ডার প্লেস করা যায়নি — আবার চেষ্টা করুন। Could not place the order — please try again.",
       Object.keys(fieldMap).length > 0 ? fieldMap : undefined,
     );
   };
 
-  const areaOptions = getParaSuggestions(form.area, 10);
-  const roadOptions = ROAD_NAMES;
+  const inputClass = (field: string) =>
+    `h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${
+      fieldErrors[field] ? "ring-rose-300 bg-rose-50/50" : "ring-line"
+    }`;
+
+  const paraIsSelect = sadarUpazila;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_400px]">
@@ -702,52 +763,28 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
-        {/* Real-time promo banner */}
-        <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
-          <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
-              <IconGift className="h-4 w-4" />
-            </span>
-            <div className="flex-1">
-              {promo.loading ? (
-                <p className="text-sm font-bold">🎉 প্রথম ১০০০ অর্ডারে ডেলিভারি ফ্রি!</p>
-              ) : promo.promoActive ? (
-                <>
-                  <p className="text-sm font-bold">
-                    🎉 প্রথম {promo.limit} অর্ডারে ডেলিভারি ফ্রি! {promo.remainingFree} টা বাকি
-                  </p>
-                  <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/20">
-                    <div
-                      className="h-1.5 rounded-full bg-gold-400 transition-all"
-                      style={{ width: `${Math.max(5, (promo.totalOrders / promo.limit) * 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-ivory-100/70 mt-1">
-                    {promo.totalOrders}/{promo.limit} claimed — এখন অর্ডার করলে ফ্রি পাবেন!
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm font-bold">🎉 প্রথম {promo.limit} ফ্রি শেষ — এখন ৳1000+ অর্ডারে ফ্রি!</p>
-              )}
-              <p className="text-xs text-ivory-100/80 mt-1">
-                জায়গা অনুযায়ী: Zone A ৳30, Zone B ৳50, Zone C ৳70, বাইরে ৳100 · ৳1000+ অর্ডারে সবসময় ফ্রি
-              </p>
+        {/* First-10-free promo note */}
+        {promo.promoActive && !promo.loading && (
+          <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
+                <IconGift className="h-4 w-4" />
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-bold">
+                  🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} টি অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি! বাকি {promo.remainingFree} টি
+                </p>
+                <p className="mt-0.5 text-xs text-ivory-100/80">
+                  শুধুমাত্র <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। এ জোনের বাইরে
+                  জোন চার্জ (৳৩০–৳১০০) প্রযোজ্য।
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* District / Upazila + Geolocate */}
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-ivory-100 px-4 py-3 ring-1 ring-line">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা (District)</p>
-            <p className="mt-1 text-sm font-semibold text-forest-900">{DISTRICT}</p>
-          </div>
-          <div className="rounded-xl bg-ivory-100 px-4 py-3 ring-1 ring-line">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">উপজেলা (Upazila)</p>
-            <p className="mt-1 text-sm font-semibold text-forest-900">{UPAZILA}</p>
-          </div>
-        </div>
-        <div className="mb-6 flex gap-2">
+        {/* Saved addresses + geolocate */}
+        <div className="mb-6 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={handleGeolocate}
@@ -755,7 +792,7 @@ export default function CheckoutView() {
             className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
           >
             <IconMapPin className="h-3.5 w-3.5" />
-            {geoLoading ? "Locating..." : "Use my location — auto zone"}
+            {geoLoading ? "Locating..." : "Use my location"}
           </button>
           {savedAddrs.length > 0 && (
             <button
@@ -807,10 +844,13 @@ export default function CheckoutView() {
           <h2 className="font-display text-xl font-medium text-forest-900">
             {t("checkout.deliveryDetails")}
           </h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            সহজ ফর্ম — জেলা → উপজেলা → পাড়া সিলেক্ট করুন, বাকিটা অটো হিসাব হবে।
+          </p>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.fullName")} <span className="text-rose-600">*</span>
+                আপনার নাম / Full name <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={nameRef}
@@ -820,10 +860,10 @@ export default function CheckoutView() {
                   update("name", e.target.value);
                   if (fieldErrors.name) setFieldErrors((f) => ({ ...f, name: "" }));
                 }}
-                placeholder="e.g. Rahat Ahmed"
+                placeholder="যেমন: রাহাত আহমেদ / Rahat Ahmed"
                 aria-invalid={!!fieldErrors.name}
                 aria-describedby={fieldErrors.name ? "err-name" : undefined}
-                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.name ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
+                className={inputClass("name")}
               />
               {fieldErrors.name && (
                 <p id="err-name" className="mt-1.5 text-xs text-rose-700">{fieldErrors.name}</p>
@@ -831,7 +871,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.phoneNumber")} <span className="text-rose-600">*</span>
+                মোবাইল নম্বর / Mobile number <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={phoneRef}
@@ -843,77 +883,154 @@ export default function CheckoutView() {
                   update("phone", e.target.value);
                   if (fieldErrors.phone) setFieldErrors((f) => ({ ...f, phone: "" }));
                 }}
-                placeholder="017XXXXXXXX or +88017XXXXXXXX"
+                placeholder="017XXXXXXXX"
                 aria-invalid={!!fieldErrors.phone}
                 aria-describedby={fieldErrors.phone ? "err-phone" : undefined}
-                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.phone ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
+                className={inputClass("phone")}
               />
               {fieldErrors.phone ? (
                 <p id="err-phone" className="mt-1.5 text-xs text-rose-700">{fieldErrors.phone}</p>
               ) : (
-                <p className="mt-1 text-[11px] text-ink-soft">Spaces and dashes are okay — we’ll normalize it.</p>
+                <p className="mt-1 text-[11px] text-ink-soft">
+                  এই নম্বরে রাইডার কল করবে — ১১ ডিজিটের সঠিক নম্বর দিন।
+                </p>
               )}
             </label>
           </div>
 
+          {/* District / Upazila / Para — the simple address ladder */}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                {t("checkout.deliveryArea")} <span className="text-rose-600">*</span>
+                জেলা / District <span className="text-rose-600">*</span>
               </span>
               <select
                 required
-                value={zone.id}
+                value={form.district}
                 onChange={(e) => {
-                  update("zoneId", e.target.value);
-                  setMyZoneId(e.target.value);
-                  if (fieldErrors.zoneId) setFieldErrors((f) => ({ ...f, zoneId: "" }));
+                  update("district", e.target.value);
+                  if (isSunamganjDistrict(e.target.value)) {
+                    update("upazila", SUNAMGANJ_UPAZILA);
+                  }
                 }}
-                aria-invalid={!!fieldErrors.zoneId}
-                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 focus:ring-2 focus:ring-forest-500 ${fieldErrors.zoneId ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
+                className={inputClass("district")}
               >
-                {zoneList.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.name} — {formatBdt(z.charge)} · {z.etaLabel}
+                {DISTRICTS.map((d) => (
+                  <option key={d.en} value={d.en}>
+                    {d.bn} — {d.en}
                   </option>
                 ))}
               </select>
-              {fieldErrors.zoneId && (
-                <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.zoneId}</p>
+              {!sunamganjDistrict && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  এই মুহূর্তে ডেলিভারি সুনামগঞ্জ জেলায় — অন্য জেলায় কুরিয়ার চার্জ (৳১০০) যোগ হবে।
+                </p>
               )}
             </label>
+
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                পাড়া / Area <span className="text-rose-600">*</span>
+                উপজেলা / Upazila <span className="text-rose-600">*</span>
               </span>
-              <input
-                ref={areaRef}
-                required
-                list="prosanti-areas"
-                value={form.area}
-                onChange={(e) => {
-                  update("area", e.target.value);
-                  if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                }}
-                placeholder="e.g. Boropara, Shologhar, Notunpara"
-                aria-invalid={!!fieldErrors.area}
-                aria-describedby={fieldErrors.area ? "err-area" : "hint-area"}
-                className={`h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.area ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
-              />
-              <datalist id="prosanti-areas">
-                {areaOptions.map((a) => (
-                  <option key={a} value={a} />
-                ))}
-                {ALL_PARAS.map((a) => (
-                  <option key={`all-${a}`} value={a} />
-                ))}
-              </datalist>
-              {fieldErrors.area ? (
-                <p id="err-area" className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+              {sunamganjDistrict ? (
+                <select
+                  required
+                  value={form.upazila}
+                  onChange={(e) => {
+                    update("upazila", e.target.value);
+                    update("paraSelected", "");
+                    update("paraCustom", "");
+                  }}
+                  className={inputClass("upazila")}
+                >
+                  {SUNAMGANJ_UPAZILAS.map((u) => (
+                    <option key={u.en} value={u.en}>
+                      {u.bn} — {u.en}
+                    </option>
+                  ))}
+                </select>
               ) : (
-                <p id="hint-area" className="mt-1 text-[11px] text-ink-soft">
-                  Auto zone: {findZoneByPara(form.area)?.name ?? zone.name} · Suggested: {zone.areas.slice(0, 3).join(", ")}
-                </p>
+                <input
+                  required
+                  value={form.upazilaCustom}
+                  onChange={(e) => {
+                    update("upazilaCustom", e.target.value);
+                    update("paraSelected", "");
+                  }}
+                  placeholder="যেমন: ছাতক / Chhatak"
+                  className={inputClass("upazila")}
+                />
+              )}
+            </label>
+          </div>
+
+          <div className="mt-4">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
+              </span>
+              {paraIsSelect ? (
+                <>
+                  <select
+                    required
+                    value={form.paraSelected}
+                    onChange={(e) => {
+                      update("paraSelected", e.target.value);
+                      if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                    }}
+                    aria-invalid={!!fieldErrors.area}
+                    className={inputClass("area")}
+                  >
+                    <option value="" disabled>
+                      — আপনার পাড়া সিলেক্ট করুন —
+                    </option>
+                    <optgroup label="সুনামগঞ্জ সিটি — এ জোন (প্রথম ১০ অর্ডারে ফ্রি)">
+                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z1").map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="সদর কোর — বি জোন (৳৫০)">
+                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z2").map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="সদর এক্সটেন্ডেড — সি জোন (৳৭০)">
+                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z3").map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </optgroup>
+                    <option value={PARA_CUSTOM}>অন্য পাড়া / গ্রাম — নিজে লিখব (Other…)</option>
+                  </select>
+                  {form.paraSelected === PARA_CUSTOM && (
+                    <input
+                      ref={paraRef}
+                      value={form.paraCustom}
+                      onChange={(e) => {
+                        update("paraCustom", e.target.value);
+                        if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                      }}
+                      placeholder="পাড়া / গ্রামের নাম লিখুন"
+                      aria-invalid={!!fieldErrors.area}
+                      className={`mt-2 ${inputClass("area")}`}
+                    />
+                  )}
+                </>
+              ) : (
+                <input
+                  ref={paraRef}
+                  required
+                  value={form.paraCustom}
+                  onChange={(e) => {
+                    update("paraCustom", e.target.value);
+                    if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                  }}
+                  placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
+                  aria-invalid={!!fieldErrors.area}
+                  className={inputClass("area")}
+                />
+              )}
+              {fieldErrors.area && (
+                <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
               )}
             </label>
           </div>
@@ -943,7 +1060,7 @@ export default function CheckoutView() {
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
               />
               <datalist id="prosanti-roads">
-                {roadOptions.map((r) => (
+                {ROAD_NAMES.map((r) => (
                   <option key={r} value={r} />
                 ))}
               </datalist>
@@ -954,200 +1071,194 @@ export default function CheckoutView() {
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <span className="mb-2 block text-sm font-medium text-ink">
-                📍 ম্যাপে বাড়ি সিলেক্ট করুন / Pin your house
+                📍 ম্যাপে বাড়ি সিলেক্ট করুন / Pin your house{" "}
+                <span className="font-normal text-ink-soft">(ঐচ্ছিক — রাইডার সহজে খুঁজে পাবে)</span>
               </span>
               <button
                 type="button"
                 onClick={() => setShowMap((v) => !v)}
                 className="mb-2 rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
               >
-                {showMap ? "Hide Map" : "Show Map — auto zone"}
+                {showMap ? "Hide Map" : "Show Map"}
               </button>
             </div>
             {showMap && (
               <MapPinPicker
                 value={pinPos}
-                onChange={(pos) => {
-                  setPinPos(pos);
-                  setForm((f) => ({ ...f, lat: pos.lat, lng: pos.lng }));
-                  const autoZone = findZoneByDistance(pos);
-                  const dist = distanceFromHubKm(pos);
-                  // Auto switch zone if far from current
-                  if (autoZone.id !== zone.id) {
-                    setForm((f) => ({ ...f, zoneId: autoZone.id }));
-                    setMyZoneId(autoZone.id);
-                  }
-                }}
-                onZoneDetected={(zId, distKm) => {
-                  // Zone detected callback
-                }}
+                onChange={(pos) => setPinPos(pos)}
               />
             )}
             {pinPos && (
               <p className="mt-2 text-xs text-forest-700 font-medium">
-                📌 Pin: {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)} · {distanceFromHubKm(pinPos).toFixed(2)} km from Traffic Point · Zone: {findZoneByDistance(pinPos).name}
+                📌 Pin: {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)} · {distanceFromHubKm(pinPos).toFixed(2)} km from {SUNAMGANJ_HUB} · {findZoneByDistance(pinPos).name}
               </p>
             )}
           </div>
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              বিস্তারিত ঠিকানা / Full Address <span className="text-rose-600">*</span>
+              বিস্তারিত ঠিকানা / Full address <span className="text-rose-600">*</span>
             </span>
             <textarea
               ref={addressRef}
-              required
+              required={!form.isPickup}
               rows={3}
               value={form.address}
               onChange={(e) => {
                 update("address", e.target.value);
                 if (fieldErrors.address) setFieldErrors((f) => ({ ...f, address: "" }));
               }}
-              placeholder="বাড়ির নম্বর, পাড়ার নাম, রোড, ল্যান্ডমার্ক, ফ্লোর — যেমন: House 12, Boropara, College Road, 2nd floor, near Mosque"
+              placeholder="বাসা নম্বর, রোড, ল্যান্ডমার্ক, ফ্লোর — যেমন: House 12, College Road, 2nd floor, Mosque-এর পাশে"
               aria-invalid={!!fieldErrors.address}
               aria-describedby={fieldErrors.address ? "err-address" : "hint-full-address"}
-              className={`w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${fieldErrors.address ? "ring-rose-300 bg-rose-50/50" : "ring-line"}`}
+              className={`w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${
+                fieldErrors.address ? "ring-rose-300 bg-rose-50/50" : "ring-line"
+              }`}
             />
             {fieldErrors.address ? (
               <p id="err-address" className="mt-1.5 text-xs text-rose-700">{fieldErrors.address}</p>
             ) : (
               <p id="hint-full-address" className="mt-1.5 text-[11px] text-ink-soft">
-                পাড়া ({form.area || "Boropara"}) + বাড়ি + রোড + ল্যান্ডমার্ক লিখুন। জেলা: {DISTRICT}, উপজেলা: {UPAZILA} অটো যোগ হবে।
+                জেলা: {form.district} · উপজেলা: {effectiveUpazila || "—"} · পাড়া:{" "}
+                {effectivePara || "—"} — এই তিনটি অটো যোগ হয়ে যাবে।
               </p>
             )}
           </label>
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              {t("checkout.orderNote")}{" "}
-              <span className="font-normal text-ink-soft">{t("checkout.optional")}</span>
+              অর্ডার নোট <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
             </span>
             <input
               value={form.note}
               onChange={(e) => update("note", e.target.value)}
-              placeholder="e.g. Call before arriving, near Mosque"
+              placeholder="যেমন: ডেলিভারির আগে কল করবেন"
               className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
           </label>
-
-          {/* Delivery Time Slot - Scheduled Calendar */}
-          <div className="mt-6 space-y-3">
-            <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot — Scheduled Calendar</span>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: "now" as TimeSlot, label: "এখনই", sub: `${summary.breakdown?.eta ?? "30-50 min"}`, icon: "⚡" },
-                { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: "6-9 PM", icon: "🌙" },
-                { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "Pick date/time", icon: "📅" },
-              ].map((slot) => (
-                <button
-                  key={slot.id}
-                  type="button"
-                  onClick={() => update("timeSlot", slot.id)}
-                  className={`rounded-2xl px-3 py-3 text-left ring-1 transition-colors ${
-                    form.timeSlot === slot.id
-                      ? "bg-forest-800 text-ivory-50 ring-forest-700"
-                      : "bg-paper text-ink ring-line hover:bg-ivory-100"
-                  }`}
-                >
-                  <span className="text-sm">{slot.icon} {slot.label}</span>
-                  <span className={`block text-[11px] mt-0.5 ${form.timeSlot === slot.id ? "text-ivory-100/70" : "text-ink-soft"}`}>{slot.sub}</span>
-                </button>
-              ))}
-            </div>
-            {form.timeSlot === "scheduled" && (
-              <div className="rounded-2xl bg-paper p-4 ring-1 ring-line space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-ink">Delivery Date</span>
-                    <input
-                      type="date"
-                      value={form.deliveryDate}
-                      min={new Date().toISOString().slice(0,10)}
-                      max={new Date(Date.now()+3*86400000).toISOString().slice(0,10)}
-                      onChange={(e) => update("deliveryDate", e.target.value)}
-                      className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-1 block text-xs font-medium text-ink">Time Window</span>
-                    <select
-                      value={form.deliveryWindow}
-                      onChange={(e) => update("deliveryWindow", e.target.value as DeliveryWindow)}
-                      className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
-                    >
-                      <option value="9-11">9 AM - 11 AM</option>
-                      <option value="11-1">11 AM - 1 PM</option>
-                      <option value="2-4">2 PM - 4 PM</option>
-                      <option value="4-6">4 PM - 6 PM</option>
-                      <option value="6-8">6 PM - 8 PM</option>
-                      <option value="8-10">8 PM - 10 PM</option>
-                      <option value="express">⚡ Express 30min (+৳40)</option>
-                    </select>
-                  </label>
-                </div>
-                <p className="text-[11px] text-ink-soft">
-                  Scheduled delivery: {form.deliveryDate} {form.deliveryWindow} · Shop will prepare accordingly. Express adds {formatBdt(4000)}.
-                </p>
-              </div>
-            )}
-          </div>
         </section>
 
-        {/* Delivery estimate - Dynamic ETA + surcharges */}
+        {/* Delivery Time Slot */}
+        <div className="mt-6 space-y-3">
+          <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot</span>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "now" as TimeSlot, label: "এখনই", sub: (summary.breakdown?.eta ?? zone.etaLabel), icon: "⚡" },
+              { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: "6-9 PM", icon: "🌙" },
+              { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "Pick date/time", icon: "📅" },
+            ].map((slot) => (
+              <button
+                key={slot.id}
+                type="button"
+                onClick={() => update("timeSlot", slot.id)}
+                className={`rounded-2xl px-3 py-3 text-left ring-1 transition-colors ${
+                  form.timeSlot === slot.id
+                    ? "bg-forest-800 text-ivory-50 ring-forest-700"
+                    : "bg-paper text-ink ring-line hover:bg-ivory-100"
+                }`}
+              >
+                <span className="text-sm">{slot.icon} {slot.label}</span>
+                <span className={`block text-[11px] mt-0.5 ${form.timeSlot === slot.id ? "text-ivory-100/70" : "text-ink-soft"}`}>{slot.sub}</span>
+              </button>
+            ))}
+          </div>
+          {form.timeSlot === "scheduled" && (
+            <div className="rounded-2xl bg-paper p-4 ring-1 ring-line space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink">Delivery Date</span>
+                  <input
+                    type="date"
+                    value={form.deliveryDate}
+                    min={MIN_DELIVERY_DATE}
+                    max={MAX_DELIVERY_DATE}
+                    onChange={(e) => update("deliveryDate", e.target.value)}
+                    className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink">Time Window</span>
+                  <select
+                    value={form.deliveryWindow}
+                    onChange={(e) => update("deliveryWindow", e.target.value as DeliveryWindow)}
+                    className="h-10 w-full rounded-xl bg-ivory-50 px-3 text-sm ring-1 ring-line"
+                  >
+                    <option value="9-11">9 AM - 11 AM</option>
+                    <option value="11-1">11 AM - 1 PM</option>
+                    <option value="2-4">2 PM - 4 PM</option>
+                    <option value="4-6">4 PM - 6 PM</option>
+                    <option value="6-8">6 PM - 8 PM</option>
+                    <option value="8-10">8 PM - 10 PM</option>
+                    {settings.expressDeliveryEnabled && (
+                      <option value="express">⚡ Express 30min (+৳40)</option>
+                    )}
+                  </select>
+                </label>
+              </div>
+              <p className="text-[11px] text-ink-soft">
+                Scheduled delivery: {form.deliveryDate} {form.deliveryWindow} · Shop will prepare accordingly.
+                {form.deliveryWindow === "express" && ` Express adds ${formatBdt(4000)}.`}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Delivery estimate — dynamic */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
-            {t("checkout.deliveryEstimate")} — Dynamic
+            {t("checkout.deliveryEstimate")}
           </h2>
           <div className="mt-5 flex items-start gap-4 rounded-2xl bg-forest-900 p-5 text-ivory-100">
             <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
             <div className="text-sm leading-6 flex-1">
-              <p className="font-semibold">{zone.name} {summary.distanceKm ? `· ${summary.distanceKm.toFixed(2)}km from hub` : ""}</p>
-              {bagShop && (
-                <p className="mt-1 text-ivory-100/70">
-                  {t("shops.checkoutEta")}: {bagShop.name} · Prep {bagShop.prepMinutes}min + Delivery ·{" "}
-                  <strong className="text-gold-300">
-                    {summary.breakdown?.eta ?? zone.etaLabel}
-                  </strong>
-                  {summary.breakdown && summary.breakdown.etaMinutes !== parseInt(zone.etaLabel) && (
-                    <span className="ml-2 text-[11px] bg-gold-400 text-forest-900 px-2 py-0.5 rounded-full">Dynamic ETA</span>
-                  )}
-                </p>
-              )}
+              <p className="font-semibold">
+                {form.isPickup ? `🏪 Pickup — ${SUNAMGANJ_HUB}` : zone.name}
+                {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
+              </p>
               <p className="mt-1 text-ivory-100/70">
-                {INSTANT_DELIVERY_TITLE} — estimated arrival{" "}
-                <strong className="text-gold-300">{summary.breakdown?.eta ?? zone.etaLabel}</strong> from
-                confirmation · Delivery charge{" "}
+                {INSTANT_DELIVERY_TITLE} — কনফার্মেশনের পর{" "}
+                <strong className="text-gold-300">
+                  {form.isPickup
+                    ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+                    : (summary.breakdown?.eta ?? zone.etaLabel)}
+                </strong>{" "}
+                · ডেলিভারি চার্জ{" "}
                 <strong>
                   {summary.freeDelivery ? (
                     <span className="text-gold-300">
-                      {summary.couponFree ? "FREE — Coupon 🚚" : summary.promoFree ? "FREE (First 1000 promo) 🎉" : "Free"}
+                      {summary.couponFree
+                        ? "FREE — Coupon 🚚"
+                        : summary.promoFree
+                          ? `FREE (প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডার 🎉)`
+                          : form.isPickup
+                            ? "FREE — Pickup"
+                            : "Free"}
                     </span>
                   ) : (
                     formatBdt(summary.charge)
                   )}
                 </strong>
-                {summary.breakdown?.surcharge.total ? (
-                  <span className="block mt-1 text-xs text-amber-200">
+                {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
+                  <span className="mt-1 block text-xs text-amber-200">
                     Base {formatBdt(summary.fullCharge)}
-                    {summary.breakdown.surcharge.distance ? ` + Distance ${formatBdt(summary.breakdown.surcharge.distance)}` : ""}
-                    {summary.breakdown.surcharge.night ? ` + Night ${formatBdt(summary.breakdown.surcharge.night)}` : ""}
-                    {summary.breakdown.surcharge.rain ? ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}` : ""}
+                    {summary.breakdown.surcharge.distance > 0 && ` + Distance ${formatBdt(summary.breakdown.surcharge.distance)}`}
+                    {summary.breakdown.surcharge.night > 0 && ` + Night ${formatBdt(summary.breakdown.surcharge.night)}`}
+                    {summary.breakdown.surcharge.rain > 0 && ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}`}
+                    {summary.breakdown.surcharge.express > 0 && ` + Express ${formatBdt(summary.breakdown.surcharge.express)}`}
+                    {summary.breakdown.surcharge.weight > 0 && ` + Weight ${formatBdt(summary.breakdown.surcharge.weight)}`}
                   </span>
-                ) : null}
-                {summary.isOutside && (
-                  <span className="block mt-1 text-xs text-amber-200">
-                    Zone D: Sunamganj Sadar বাইরে — minimum {formatBdt(MIN_ORDER_OUTSIDE_PAISA)} required
+                )}
+                {summary.isOutside && !summary.freeDelivery && (
+                  <span className="mt-1 block text-xs text-amber-200">
+                    সুনামগঞ্জ সদরের বাইরে — সর্বনিম্ন ৳৫০০ অর্ডার প্রয়োজন, চার্জ ৳১০০।
                   </span>
                 )}
                 {summary.isNight && !summary.freeDelivery && (
-                  <span className="block mt-1 text-xs text-gold-300">🌙 Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
+                  <span className="mt-1 block text-xs text-gold-300">🌙 Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
                 )}
                 {summary.isRain && !summary.freeDelivery && (
-                  <span className="block mt-1 text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
+                  <span className="mt-1 block text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
                 )}
-                <span className="block mt-1 text-xs text-ivory-100/60">
-                  Free delivery at {formatBdt(summary.freeThreshold)} for {zone.name} · {formatBdt(summary.freeThreshold - subtotal > 0 ? summary.freeThreshold - subtotal : 0)} more needed
-                </span>
               </p>
             </div>
           </div>
@@ -1155,23 +1266,28 @@ export default function CheckoutView() {
 
         {/* Pickup + Tips */}
         <section className="mt-10 space-y-4">
-          <h2 className="font-display text-xl font-medium text-forest-900">Pickup & Tips — Cloudinary proof already</h2>
+          <h2 className="font-display text-xl font-medium text-forest-900">Pickup & Tips</h2>
           <div className="flex flex-wrap gap-3">
             <label className="flex items-center gap-2 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line cursor-pointer">
-              <input type="checkbox" checked={form.isPickup} onChange={(e) => update("isPickup", e.target.checked)} className="h-4 w-4" />
-              <span className="text-sm font-medium">🏪 Store Pickup at Traffic Point — Free, no delivery charge</span>
+              <input
+                type="checkbox"
+                checked={form.isPickup}
+                onChange={(e) => update("isPickup", e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span className="text-sm font-medium">🏪 Store Pickup at {SUNAMGANJ_HUB} — Free, no delivery charge</span>
             </label>
           </div>
           {form.isPickup && (
             <div className="mt-2">
-              <p className="text-xs font-medium mb-1">Pickup time slot (Sunamganj Sadar Traffic Point)</p>
+              <p className="text-xs font-medium mb-1">Pickup time slot ({SUNAMGANJ_HUB}, {SUNAMGANJ_UPAZILA})</p>
               <div className="flex flex-wrap gap-2">
-                {["now","9-11","11-1","2-4","4-6","6-8"].map((slot) => (
+                {["now", "9-11", "11-1", "2-4", "4-6", "6-8"].map((slot) => (
                   <button
                     key={slot}
                     type="button"
-                    onClick={() => update("pickupSlot" as any, slot)}
-                    className={`rounded-full px-3 py-1.5 text-xs ring-1 ${((form as any).pickupSlot || "now") === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
+                    onClick={() => update("pickupSlot", slot)}
+                    className={`rounded-full px-3 py-1.5 text-xs ring-1 ${form.pickupSlot === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
                   >
                     {slot === "now" ? "Now (15 min)" : slot}
                   </button>
@@ -1182,7 +1298,7 @@ export default function CheckoutView() {
           <div>
             <p className="text-sm font-medium mb-2">💝 Tip for Rider (optional) — 100% goes to rider</p>
             <div className="flex flex-wrap gap-2">
-              {[0,10,20,30,50].map((tip) => (
+              {[0, 10, 20, 30, 50].map((tip) => (
                 <button
                   key={tip}
                   type="button"
@@ -1193,7 +1309,82 @@ export default function CheckoutView() {
                 </button>
               ))}
             </div>
-            {form.tipAmount > 0 && <p className="mt-2 text-xs text-forest-700">Thank you! ৳{form.tipAmount} will go to your rider via Cloudinary-tracked settlement.</p>}
+            {form.tipAmount > 0 && (
+              <p className="mt-2 text-xs text-forest-700">Thank you! ৳{form.tipAmount} will go to your rider.</p>
+            )}
+          </div>
+        </section>
+
+        {/* Promo / coupon code — lives WITH the order, right before placing */}
+        <section className="mt-10">
+          <h2 className="font-display text-xl font-medium text-forest-900">
+            {t("checkout.haveCoupon")}
+          </h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            কুপন কোড থাকলে এখানে লিখুন — ছাড়টা ডান পাশের মোট টাকা থেকে কাটা যাবে।
+          </p>
+          <div className="mt-5 max-w-md">
+            {activeCoupon ? (
+              <div className="flex items-center justify-between rounded-2xl bg-forest-50 px-4 py-3.5 text-sm ring-1 ring-forest-200">
+                <span className="flex items-center gap-2">
+                  <IconGift className="h-4 w-4 text-forest-700" />
+                  <span className="font-mono font-bold text-forest-800">
+                    {activeCoupon.code}
+                  </span>
+                  <span className="text-xs text-forest-700">প্রয়োগ হয়েছে ✓</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedCode("");
+                    setCouponCheck({ code: null, discount: 0, problem: null });
+                    setCouponFreeDelivery(false);
+                    setCouponMsg(null);
+                    update("couponCode", "");
+                  }}
+                  className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
+                >
+                  {t("checkout.remove")}
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={form.couponCode}
+                  onChange={(e) =>
+                    update("couponCode", e.target.value.toUpperCase())
+                  }
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), applyCoupon())
+                  }
+                  placeholder="e.g. WELCOME100"
+                  aria-label="Coupon code"
+                  className="h-12 w-full min-w-0 rounded-2xl bg-paper px-4 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+                />
+                <button
+                  type="button"
+                  onClick={applyCoupon}
+                  className="shrink-0 rounded-2xl bg-forest-800 px-6 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+                >
+                  {t("checkout.apply")}
+                </button>
+              </div>
+            )}
+            {couponCheck.problem && (
+              <p role="status" className="mt-2 text-xs leading-5 text-rose-700">
+                {couponCheck.problem}
+              </p>
+            )}
+            {couponMsg && !couponCheck.problem && (
+              <p
+                role="status"
+                className={`mt-2 text-xs leading-5 ${
+                  couponMsg.ok ? "text-emerald-700" : "text-rose-700"
+                }`}
+              >
+                {couponMsg.text}
+              </p>
+            )}
           </div>
         </section>
 
@@ -1203,52 +1394,27 @@ export default function CheckoutView() {
             {t("checkout.paymentMethod")}
           </h2>
           <div className="mt-5 space-y-3">
-            <label
-              className={`flex cursor-pointer items-center gap-4 rounded-2xl border p-5 transition-colors ${
-                form.payment === "cod"
-                  ? "border-forest-600 bg-forest-50"
-                  : "border-line bg-paper"
-              }`}
-            >
+            <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-forest-600 bg-forest-50 p-5 transition-colors">
               <input
                 type="radio"
                 name="payment"
                 value="cod"
-                checked={form.payment === "cod"}
-                onChange={() => update("payment", "cod")}
+                checked
+                readOnly
                 className="h-4 w-4 accent-forest-700"
               />
               <span className="flex-1">
                 <span className="block text-sm font-semibold text-ink">
-                  {t("checkout.cashOnDelivery")}
+                  ক্যাশ অন ডেলিভারি / {t("checkout.cashOnDelivery")}
                 </span>
                 <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                  {t("checkout.cashOnDeliveryText")} — Sunamganj Sadar COD
+                  পার্সেল হাতে পেয়ে টাকা পরিশোধ করবেন।
                 </span>
               </span>
               <span className="rounded-full bg-ivory-100 px-3 py-1 text-xs font-semibold text-forest-800 ring-1 ring-line">
                 {t("checkout.primary")}
               </span>
             </label>
-            <div className="flex items-center gap-4 rounded-2xl border border-dashed border-line bg-ivory-100/60 p-5">
-              <input
-                type="radio"
-                aria-label="Online payment — coming soon"
-                disabled
-                className="h-4 w-4 accent-forest-700"
-              />
-              <span className="flex-1">
-                <span className="block text-sm font-medium text-ink">
-                  {t("checkout.onlinePayment")}{" "}
-                  <span className="ml-1 rounded-full bg-gold-200 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-gold-700">
-                    {t("checkout.soon")}
-                  </span>
-                </span>
-                <span className="mt-0.5 block text-xs text-ink-soft">
-                  {t("checkout.onlinePaymentText")}
-                </span>
-              </span>
-            </div>
           </div>
         </section>
 
@@ -1315,11 +1481,11 @@ export default function CheckoutView() {
           </h2>
           <p className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-forest-800">
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-            {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · Traffic Point
+            {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
           </p>
           {promo.promoActive && !promo.loading && (
             <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-              🎉 {promo.remainingFree} free deliveries left of {promo.limit}!
+              🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি — বাকি {promo.remainingFree} টি (শুধু এ জোনে)
             </p>
           )}
           <div className="mt-4">
@@ -1354,69 +1520,27 @@ export default function CheckoutView() {
               </li>
             ))}
           </ul>
-          {/* Coupon */}
-          <div className="mt-6 border-t border-line pt-5">
-            <label className="mb-1.5 block text-xs font-medium text-ink">
-              {t("checkout.haveCoupon")}
-            </label>
-            {activeCoupon ? (
-              <div className="flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
-                <span className="font-mono font-bold text-forest-800">
-                  {activeCoupon.code}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAppliedCode("");
-                    setCouponCheck({ code: null, discount: 0, problem: null });
-                    setCouponFreeDelivery(false);
-                    setCouponMsg(null);
-                    update("couponCode", "");
-                  }}
-                  className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
-                >
-                  {t("checkout.remove")}
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  value={form.couponCode}
-                  onChange={(e) =>
-                    update("couponCode", e.target.value.toUpperCase())
-                  }
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && (e.preventDefault(), applyCoupon())
-                  }
-                  placeholder="e.g. WELCOME100"
-                  aria-label="Coupon code"
-                  className="h-11 w-full min-w-0 rounded-xl bg-ivory-50 px-3.5 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
-                />
-                <button
-                  type="button"
-                  onClick={applyCoupon}
-                  className="shrink-0 rounded-xl bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
-                >
-                  {t("checkout.apply")}
-                </button>
-              </div>
-            )}
-            {couponCheck.problem && (
-              <p role="status" className="mt-2 text-xs leading-5 text-rose-700">
-                {couponCheck.problem}
-              </p>
-            )}
-            {couponMsg && !couponCheck.problem && (
-              <p
-                role="status"
-                className={`mt-2 text-xs leading-5 ${
-                  couponMsg.ok ? "text-emerald-700" : "text-rose-700"
-                }`}
+          {/* Applied coupon note — the full promo section lives in the form */}
+          {activeCoupon && (
+            <div className="mt-6 flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
+              <span className="font-mono font-bold text-forest-800">
+                {activeCoupon.code}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAppliedCode("");
+                  setCouponCheck({ code: null, discount: 0, problem: null });
+                  setCouponFreeDelivery(false);
+                  setCouponMsg(null);
+                  update("couponCode", "");
+                }}
+                className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
               >
-                {couponMsg.text}
-              </p>
-            )}
-          </div>
+                {t("checkout.remove")}
+              </button>
+            </div>
+          )}
 
           <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
             <div className="flex justify-between">
@@ -1432,11 +1556,19 @@ export default function CheckoutView() {
               </div>
             )}
             <div className="flex justify-between">
-              <dt className="text-ink-soft">{t("checkout.delivery")} · {summary.breakdown?.eta ?? zone.etaLabel}</dt>
+              <dt className="text-ink-soft">
+                {t("checkout.delivery")} · {summary.breakdown?.eta ?? zone.etaLabel}
+              </dt>
               <dd className="font-medium text-ink">
                 {summary.freeDelivery ? (
                   <span className="text-forest-700">
-                    {summary.couponFree ? "FREE 🚚 Coupon" : summary.promoFree ? "FREE 🎉" : "Free"}{" "}
+                    {summary.couponFree
+                      ? "FREE 🚚 Coupon"
+                      : summary.promoFree
+                        ? "FREE 🎉"
+                        : form.isPickup
+                          ? "FREE — Pickup"
+                          : "Free"}{" "}
                     <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
@@ -1452,12 +1584,9 @@ export default function CheckoutView() {
                 {summary.breakdown.surcharge.distance > 0 && <div className="flex justify-between"><span>Distance {summary.distanceKm?.toFixed(2)}km</span><span>+{formatBdt(summary.breakdown.surcharge.distance)}</span></div>}
                 {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span>🌙 Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
                 {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
+                {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span>⚡ Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
+                {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ Weight</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
               </div>
-            )}
-            {!summary.freeDelivery && subtotal < summary.freeThreshold && !promo.promoActive && (
-              <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink-soft">
-                {formatBdt(summary.freeThreshold - subtotal)} more unlocks free delivery for {zone.name} (threshold {formatBdt(summary.freeThreshold)}).
-              </p>
             )}
             {summary.couponFree && (
               <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
@@ -1466,26 +1595,28 @@ export default function CheckoutView() {
             )}
             {summary.promoFree && (
               <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
-                🎉 First {FIRST_1000_FREE_LIMIT} promo — delivery free! {promo.remainingFree} left.
+                🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডার প্রোমো — ডেলিভারি ফ্রি! বাকি {promo.remainingFree} টি।
               </p>
             )}
-            {(summary as any).tip > 0 && (
+            {summary.tip > 0 && (
               <div className="flex justify-between">
                 <dt className="text-ink-soft">💝 Tip for Rider</dt>
-                <dd className="font-medium text-forest-700">+{formatBdt((summary as any).tip)}</dd>
+                <dd className="font-medium text-forest-700">+{formatBdt(summary.tip)}</dd>
               </div>
             )}
-            {summary.isPickup && (
-              <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">🏪 Pickup at Traffic Point — no delivery, ready in {bagShop?.prepMinutes ?? 15} min</p>
+            {form.isPickup && (
+              <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">🏪 Pickup at {SUNAMGANJ_HUB} — no delivery, ready in {bagShop?.prepMinutes ?? 15} min</p>
             )}
             <div className="flex justify-between pt-2 text-base">
-              <dt className="font-semibold text-ink">{t("checkout.totalCod")}{summary.isPickup ? " (Pickup)" : ""}</dt>
+              <dt className="font-semibold text-ink">
+                {t("checkout.totalCod")}{form.isPickup ? " (Pickup)" : ""}
+              </dt>
               <dd className="font-bold text-ink">{formatBdt(summary.total)}</dd>
             </div>
           </dl>
           <p className="mt-5 flex items-start gap-2 rounded-xl bg-ivory-100 px-3.5 py-3 text-xs leading-5 text-ink-soft">
             <IconBox className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-            {t("checkout.followOrderHint")} — Sunamganj Sadar COD, PIN required.
+            {t("checkout.followOrderHint")} — COD, PIN required.
           </p>
         </div>
       </aside>

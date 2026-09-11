@@ -9,12 +9,7 @@ import { useCart } from "./cart-provider";
 import BagShopHeader from "./bag-shop-header";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
-import {
-  amountToFreeDelivery,
-  DELIVERY_ETA,
-  FREE_DELIVERY_THRESHOLD,
-  INSTANT_DELIVERY_TITLE,
-} from "@/lib/delivery";
+import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { usePromo } from "@/lib/use-promo";
@@ -41,8 +36,7 @@ export default function BagDrawer() {
         .map((product) => [product.id, product]),
     ).values(),
   ).slice(0, 2);
-  const remaining = amountToFreeDelivery(subtotal);
-  return (
+    return (
     <Drawer
       open={bagOpen}
       onClose={closeBag}
@@ -95,32 +89,9 @@ export default function BagDrawer() {
             )}
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
               {promo.promoActive
-                ? `🎉 First ${promo.limit} FREE — you get free delivery!`
-                : remaining
-                  ? `${formatBdt(remaining)} ${t("bag.moreForFreeDelivery")}`
-                  : t("bag.freeDeliveryUnlocked")}
+                ? `🎉 প্রথম ${promo.limit}টি অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`
+                : "ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে দেখানো হবে।"}
             </p>
-            <div
-              className="free-delivery-track mt-2.5"
-              role="progressbar"
-              aria-label={t("bag.progressTowardsFreeDelivery")}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.min(
-                100,
-                Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100),
-              )}
-            >
-              <div
-                className="free-delivery-fill"
-                style={{
-                  width: `${Math.min(
-                    100,
-                    Math.round((subtotal / FREE_DELIVERY_THRESHOLD) * 100),
-                  )}%`,
-                }}
-              />
-            </div>
           </div>
           <div className="flex-1 overflow-y-auto px-6">
             <div className="pt-4">
@@ -241,10 +212,8 @@ export default function BagDrawer() {
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
               {INSTANT_DELIVERY_TITLE} · Sunamganj Sadar · {DELIVERY_ETA} —{" "}
               {promo.promoActive
-                ? `FREE for first ${promo.limit}!`
-                : remaining
-                  ? "area-based charge shown at checkout."
-                  : t("bag.freeDeliveryUnlocked").toLowerCase()}
+                ? `প্রথম ${promo.limit}টি অর্ডারে ফ্রি (এ জোন)!`
+                : "চার্জ ঠিকানা অনুযায়ী চেকআউটে দেখানো হবে."}
             </p>
             <Link
               href="/checkout"

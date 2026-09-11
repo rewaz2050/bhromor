@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FIRST_1000_FREE_LIMIT } from "./delivery";
+import { FIRST_FREE_DELIVERY_LIMIT } from "./delivery";
 
 export interface PromoStatus {
   totalOrders: number;
@@ -14,9 +14,9 @@ export interface PromoStatus {
 export function usePromo(): PromoStatus {
   const [status, setStatus] = useState<PromoStatus>({
     totalOrders: 0,
-    remainingFree: FIRST_1000_FREE_LIMIT,
+    remainingFree: FIRST_FREE_DELIVERY_LIMIT,
     promoActive: true,
-    limit: FIRST_1000_FREE_LIMIT,
+    limit: FIRST_FREE_DELIVERY_LIMIT,
     loading: true,
   });
 
@@ -30,9 +30,9 @@ export function usePromo(): PromoStatus {
         if (cancelled) return;
         setStatus({
           totalOrders: data.totalOrders ?? 0,
-          remainingFree: data.remainingFree ?? FIRST_1000_FREE_LIMIT,
+          remainingFree: data.remainingFree ?? FIRST_FREE_DELIVERY_LIMIT,
           promoActive: data.promoActive ?? true,
-          limit: data.limit ?? FIRST_1000_FREE_LIMIT,
+          limit: data.limit ?? FIRST_FREE_DELIVERY_LIMIT,
           loading: false,
         });
       } catch {
