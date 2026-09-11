@@ -15,7 +15,12 @@ import {
 } from "@/lib/shop-utils";
 import { recordCouponUseInStore } from "@/lib/coupons-store";
 import { ORDER_PREFIX } from "@/lib/catalog";
-import { getDeliveryCode, makePlacedOrder, type Order } from "@/lib/orders";
+import {
+  getDeliveryCode,
+  makePlacedOrder,
+  samePhone,
+  type Order,
+} from "@/lib/orders";
 import { addOrderToStore } from "@/lib/order-store";
 import { formatBdt } from "@/lib/format";
 import {
@@ -39,7 +44,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { usePromo } from "@/lib/use-promo";
+import { getOrders } from "@/lib/order-store";
 import {
   DISTRICTS,
   PARA_CUSTOM,
@@ -139,7 +144,6 @@ export default function CheckoutView() {
   const { detail, subtotal, clear } = useCart();
   const { activeZones: zoneList } = useLiveZones();
   const { shops } = useLiveCatalog();
-  const promo = usePromo();
   const { settings } = useSettings();
   const bagShop =
     shopById(
@@ -184,6 +188,19 @@ export default function CheckoutView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setSavedAddrs(getSavedAddresses());
   }, []);
+
+  /* ------------------------------------------------------------------ */
+  /* Per-user first-10-free — this phone's earlier orders (local estimate; */
+  /* the server recounts by phone before granting the promo)               */
+  /* ------------------------------------------------------------------ */
+  const userOrderCount = useMemo(
+    () =>
+      getOrders().filter(
+        (o) => o.status !== "cancelled" && samePhone(o.customer?.phone ?? "", form.phone),
+      ).length,
+    [form.phone],
+  );
+  const userFreeRemaining = Math.max(0, FIRST_FREE_DELIVERY_LIMIT - userOrderCount);
 
   /* ------------------------------------------------------------------ */
   /* Simple-form derived values                                          */
@@ -301,7 +318,7 @@ export default function CheckoutView() {
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
-      totalOrders: promo.totalOrders,
+      totalOrders: userOrderCount,
       distanceKm,
       weightKg,
       isNight,
@@ -337,7 +354,7 @@ export default function CheckoutView() {
     detail,
     activeCoupon,
     couponCheck.discount,
-    promo.totalOrders,
+    userOrderCount,
     couponFreeDelivery,
     pinPos,
     settings,
@@ -764,25 +781,26 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
-        {/* First-10-free promo note */}
-        {promo.promoActive && !promo.loading && (
-          <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
-            <div className="flex items-center gap-3">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
-                <IconGift className="h-4 w-4" />
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-bold">
-                  🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} টি অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি! বাকি {promo.remainingFree} টি
-                </p>
-                <p className="mt-0.5 text-xs text-ivory-100/80">
-                  শুধুমাত্র <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। এ জোনের বাইরে
-                  জোন চার্জ (৳৩০–৳১০০) প্রযোজ্য।
-                </p>
-              </div>
+        {/* Per-user first-10-free promo note */}
+        <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
+              <IconGift className="h-4 w-4" />
+            </span>
+            <div className="flex-1">
+              <p className="text-sm font-bold">
+                🎉 প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} টি অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি!
+              </p>
+              <p className="mt-0.5 text-xs text-ivory-100/80">
+                শুধুমাত্র <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে · এ জোনের বাইরে জোন
+                চার্জ (৳৩০–৳১০০)।{" "}
+                {form.phone.trim() !== ""
+                  ? `আপনার এ জোনে বাকি ফ্রি ডেলিভারি: ${userFreeRemaining} টি।`
+                  : "মোবাইল নম্বর দিলে আপনার বাকি ফ্রি দেখা যাবে।"}
+              </p>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Saved addresses + geolocate */}
         <div className="mb-6 flex flex-wrap gap-2">
@@ -1538,11 +1556,9 @@ export default function CheckoutView() {
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
             {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
           </p>
-          {promo.promoActive && !promo.loading && (
-            <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-              🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি — বাকি {promo.remainingFree} টি (শুধু এ জোনে)
-            </p>
-          )}
+          <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
+            🎉 প্রতি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি — আপনার বাকি {userFreeRemaining} টি (এ জোনে)
+          </p>
           <div className="mt-4">
             <BagShopHeader />
           </div>
@@ -1650,7 +1666,7 @@ export default function CheckoutView() {
             )}
             {summary.promoFree && (
               <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
-                🎉 প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডার প্রোমো — ডেলিভারি ফ্রি! বাকি {promo.remainingFree} টি।
+                🎉 আপনার প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারের প্রোমো — ডেলিভারি ফ্রি! বাকি {userFreeRemaining} টি।
               </p>
             )}
             {summary.tip > 0 && (

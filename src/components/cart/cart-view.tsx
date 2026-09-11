@@ -13,7 +13,6 @@ import {
   cheapestZoneCharge,
 } from "@/lib/delivery";
 import { FLAT_DELIVERY_NOTE } from "@/lib/catalog";
-import { usePromo } from "@/lib/use-promo";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { ButtonLink } from "@/components/ui/primitives";
 import {
@@ -31,7 +30,6 @@ export default function CartView() {
   const { detail, updateQty, removeItem, subtotal } = useCart();
   /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
   const { activeZones } = useZones();
-  const promo = usePromo();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
   const empty = detail.length === 0;
 
@@ -56,7 +54,8 @@ export default function CartView() {
 
   const fromCharge = cheapestZoneCharge(activeZones);
   const deliveryFee = fromCharge;
-  const promoFree = promo.promoActive && promo.totalOrders < FIRST_FREE_DELIVERY_LIMIT;
+  // Marketing note — per-user promo; the real check happens at checkout/server.
+  const promoFree = true;
   const total = subtotal;
 
   return (
@@ -174,11 +173,9 @@ export default function CartView() {
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
             {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
           </p>
-          {promo.promoActive && !promo.loading && (
-            <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-              🎉 প্রথম {promo.limit} অর্ডারে ফ্রি! {promo.remainingFree} বাকি
-            </p>
-          )}
+          <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
+            🎉 প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি!
+          </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">
@@ -192,15 +189,11 @@ export default function CartView() {
             </div>
             {promoFree ? (
               <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
-                {promoFree
-                  ? `🎉 প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`
-                  : t("cart.freeDeliveryUnlocked")}
+                {`🎉 প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`}
               </p>
             ) : (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
-                {promoFree
-                  ? "সুনামগঞ্জ সিটির এ জোনে প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — চেকআউটে ঠিকানা দিলেই প্রযোজ্য হবে।"
-                  : "ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে হিসাব হবে (জোন ৳৩০–৳১০০)।"}
+                {"ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে হিসাব হবে (জোন ৳৩০–৳১০০)।"}
               </p>
             )}
             <div className="flex justify-between border-t border-line pt-4 text-base">
@@ -221,8 +214,7 @@ export default function CartView() {
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery
             available.{" "}
-            {promoFree &&
-              `প্রথম ${FIRST_FREE_DELIVERY_LIMIT}টি অর্ডারে ডেলিভারি ফ্রি (সুনামগঞ্জ সিটি এ জোন).`}
+            {`প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT}টি অর্ডারে ডেলিভারি ফ্রি (সুনামগঞ্জ সিটি এ জোন).`}
           </p>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
             {FLAT_DELIVERY_NOTE}

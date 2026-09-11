@@ -12,7 +12,6 @@ import { formatBdt } from "@/lib/format";
 import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { usePromo } from "@/lib/use-promo";
 
 export default function BagDrawer() {
   const { t } = useLanguage();
@@ -25,7 +24,6 @@ export default function BagDrawer() {
     updateQty,
     removeItem,
   } = useCart();
-  const promo = usePromo();
   const recommendations = Array.from(
     new Map(
       detail
@@ -82,15 +80,11 @@ export default function BagDrawer() {
               <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
               {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
             </p>
-            {promo.promoActive && !promo.loading && (
-              <p className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200">
-                🎉 {promo.remainingFree} free deliveries left!
-              </p>
-            )}
+            <p className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200">
+              🎉 প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ফ্রি ডেলিভারি!
+            </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
-              {promo.promoActive
-                ? `🎉 প্রথম ${promo.limit}টি অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`
-                : "ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে দেখানো হবে।"}
+              {`🎉 প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`}
             </p>
           </div>
           <div className="flex-1 overflow-y-auto px-6">
@@ -211,9 +205,7 @@ export default function BagDrawer() {
             </div>
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
               {INSTANT_DELIVERY_TITLE} · Sunamganj Sadar · {DELIVERY_ETA} —{" "}
-              {promo.promoActive
-                ? `প্রথম ${promo.limit}টি অর্ডারে ফ্রি (এ জোন)!`
-                : "চার্জ ঠিকানা অনুযায়ী চেকআউটে দেখানো হবে."}
+              {"প্রতি কাস্টমারের প্রথম ১০টি অর্ডারে ফ্রি (এ জোন)!"}
             </p>
             <Link
               href="/checkout"

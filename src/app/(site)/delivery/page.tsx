@@ -116,9 +116,9 @@ export default async function DeliveryPage() {
         <h2>Good to know</h2>
         <ul>
           <li>
-            <strong>প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি</strong> — শুধুমাত্র{" "}
-            <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। লাইভ কাউন্টার উপরে দেখুন —{" "}
-            <Link href="/api/promo" className="underline">/api/promo</Link> public।
+            <strong>প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি</strong> — শুধুমাত্র{" "}
+            <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। একই মোবাইল নম্বরে ১০টি অর্ডার
+            হয়ে গেলে জোন চার্জ প্রযোজ্য।
           </li>
           <li>
             <strong>এ জোনের বাইরে চার্জ যোগ হবে:</strong> Zone B ৳50, Zone C ৳70,

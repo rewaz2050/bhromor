@@ -86,8 +86,12 @@ export interface OrderSnapshot {
   coupons: import("./coupons").Coupon[];
   /** Live shop rows (slice 4). Absent in demo-era snapshots → skipped. */
   shops?: Shop[];
-  /** Total orders ever placed — drives the first-10-free promo. */
-  totalOrders?: number;
+  /**
+   * THIS customer's earlier order count (by normalized phone, cancelled
+   * excluded) — drives the per-user first-10-free promo. Undefined → the
+   * promo is NOT granted (fail closed).
+   */
+  customerOrderCount?: number;
   /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
   now?: number;
 }
@@ -473,7 +477,7 @@ export const validateOrderPayload = (
    * coupon → free (surcharges waived too). Otherwise the flat zone
    * charge + surcharges. */
   const freeDelivery =
-    isPickup || couponFreeDelivery || promoFreeDelivery(snapshot.totalOrders, zone.id);
+    isPickup || couponFreeDelivery || promoFreeDelivery(snapshot.customerOrderCount, zone.id);
   const deliveryCharge = freeDelivery
     ? 0
     : deliveryChargeFor(zone.charge, subtotal) +

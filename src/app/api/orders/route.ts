@@ -13,9 +13,11 @@
 import { validateOrderPayload } from "@/lib/order-validation";
 import {
   OrderPlacementError,
+  countOrdersForPhone,
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
+import { normalizePhone } from "@/lib/orders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -56,6 +58,12 @@ export async function POST(request: Request) {
         { code: "NOT_SEEDED" },
       );
     }
+    // Per-user first-10-free: count THIS phone's earlier orders (server-side).
+    const payloadPhone = (payload as { phone?: unknown })?.phone;
+    snapshot.customerOrderCount = await countOrdersForPhone(
+      getSupabaseService() as NonNullable<ReturnType<typeof getSupabaseService>>,
+      normalizePhone(typeof payloadPhone === "string" ? payloadPhone : ""),
+    );
     const validation = validateOrderPayload(payload, snapshot);
     if (!validation.ok) {
       return apiError("Please fix the highlighted fields.", 422, {

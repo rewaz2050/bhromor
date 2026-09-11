@@ -514,6 +514,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
 ];
 
 export const FLAT_DELIVERY_NOTE =
-  "সুনামগঞ্জ: জেলা সুনামগঞ্জ, উপজেলা সুনামগঞ্জ সদর, হাব Traffic Point। Zone A (সুনামগঞ্জ সিটি) ৳30, Zone B ৳50, Zone C ৳70, Zone D (সদরের বাইরে/অন্য জেলা) ৳100। প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — শুধু Zone A-তে।";
+  "সুনামগঞ্জ: জেলা সুনামগঞ্জ, উপজেলা সুনামগঞ্জ সদর, হাব Traffic Point। Zone A (সুনামগঞ্জ সিটি) ৳30, Zone B ৳50, Zone C ৳70, Zone D (সদরের বাইরে/অন্য জেলা) ৳100। প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — শুধু Zone A-তে।";
 
 export const ORDER_PREFIX = "PS";

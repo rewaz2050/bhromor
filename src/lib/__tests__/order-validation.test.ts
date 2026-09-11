@@ -12,8 +12,8 @@ const snapshot = (): OrderSnapshot => ({
   products: PRODUCTS,
   zones: DELIVERY_ZONES.map((z) => ({ ...z, active: z.active ?? true })),
   coupons: seedCoupons(),
-  // Promo exhausted by default — tests opt in with totalOrders < 10.
-  totalOrders: 100,
+  // Promo exhausted by default — tests opt in with customerOrderCount < 10.
+  customerOrderCount: 100,
   // Fixed midday clock → deterministic night surcharge (off at 15:00).
   now: new Date("2026-09-11T15:00:00").getTime(),
 });
@@ -50,7 +50,7 @@ describe("validateOrderPayload", () => {
   });
 
   it("first 10 orders ride free — but ONLY inside Zone A", () => {
-    const promoSnap = { ...snapshot(), totalOrders: 5 };
+    const promoSnap = { ...snapshot(), customerOrderCount: 5 };
     const inA = validateOrderPayload(payload(), promoSnap);
     expect(inA.ok).toBe(true);
     if (inA.ok) expect(inA.draft.deliveryCharge).toBe(0);
@@ -78,7 +78,7 @@ describe("validateOrderPayload", () => {
 
   it("prices surcharges server-side: express + rain at midday (no night)", () => {
     // 15:00 local → not night
-    const noonSnap = { ...snapshot(), now: new Date("2026-09-11T15:00:00").getTime(), totalOrders: 100 };
+    const noonSnap = { ...snapshot(), now: new Date("2026-09-11T15:00:00").getTime(), customerOrderCount: 100 };
     const result = validateOrderPayload(
       payload({ is_express: true, is_rain: true }),
       noonSnap,
@@ -93,7 +93,7 @@ describe("validateOrderPayload", () => {
   });
 
   it("adds night surcharge from the server clock and distance from the pin", () => {
-    const nightSnap = { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), totalOrders: 100 };
+    const nightSnap = { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), customerOrderCount: 100 };
     // A point ~2.2km south of the Traffic Point hub (still inside Sadar).
     const result = validateOrderPayload(
       payload({ lat: 25.05, lng: 91.4067 }),
@@ -111,7 +111,7 @@ describe("validateOrderPayload", () => {
   it("pickup orders carry no delivery charge; tip lands in the total", () => {
     const result = validateOrderPayload(
       payload({ is_pickup: true, pickup_slot: "now", tip_amount: 2000 }),
-      { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), totalOrders: 100 },
+      { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), customerOrderCount: 100 },
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -124,7 +124,7 @@ describe("validateOrderPayload", () => {
   it("ignores a client-forced cheaper zone — the address decides", () => {
     const result = validateOrderPayload(
       payload({ zoneId: "z1", para: "Notunpara", area: "Notunpara" }),
-      { ...snapshot(), totalOrders: 5 },
+      { ...snapshot(), customerOrderCount: 5 },
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;

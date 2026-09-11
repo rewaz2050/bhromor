@@ -33,8 +33,7 @@ import type {
   DbVariant,
   DbZone,
 } from "./types";
-import type { Order } from "../orders";
-import { normalizePhone } from "../orders";
+import { normalizePhone, type Order } from "../orders";
 import type { ValidOrderDraft } from "../order-validation";
 
 export interface OrderSnapshot {
@@ -45,8 +44,31 @@ export interface OrderSnapshot {
   mediaByProduct: Map<string, string>;
   /** All shops (validator checks active/open/zone itself). */
   shops: Shop[];
-  /** Total orders ever placed — drives the first-10-free promo (Zone A only). */
+  /** Total orders ever placed (global stat). */
   totalOrders: number;
+  /** THIS customer's earlier order count — set per-request by the route. */
+  customerOrderCount?: number;
+}
+
+/**
+ * How many orders has THIS customer (by normalized phone) already placed?
+ * Drives the per-user first-10-free promo. Cancelled orders do not count.
+ * Counts in JS so the phone normalization matches normalizePhone exactly.
+ */
+export async function countOrdersForPhone(
+  db: SupabaseClient,
+  phone: string,
+): Promise<number> {
+  const digits = normalizePhone(phone);
+  if (digits === "") return 0;
+  const { data, error } = await db
+    .from("orders")
+    .select("customer_phone")
+    .neq("status", "cancelled");
+  if (error) return 0; // fail closed → no free-delivery grant on DB errors
+  return ((data ?? []) as { customer_phone: string }[]).filter(
+    (row) => normalizePhone(row.customer_phone) === digits,
+  ).length;
 }
 
 export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
