@@ -6,6 +6,9 @@
  * - Live mode: validates the payload against server-loaded prices/zones/
  *   coupons, reserves stock, writes orders + snapshots + history, and
  *   returns the stored order (with its trigger-assigned order_no).
+ * - Live mode with an unseeded catalog: seeds the launch catalog in place
+ *   and places a real order; if the database refuses, the customer still
+ *   gets the browser-local flow (`{ demoMode: true }`) — never a dead end.
  *
  * Rate-limited per IP; validation failures are 422 with field errors.
  */
@@ -17,6 +20,7 @@ import {
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
+import { ensureLaunchCatalog, remapSeedItemIds } from "@/lib/db/auto-seed";
 import { normalizePhone, samePhone } from "@/lib/orders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
@@ -50,29 +54,56 @@ export async function POST(request: Request) {
     return apiError("Invalid order data.", 400);
   }
 
+  // True between "the catalog was empty" and "we just seeded it" — the
+  // window in which any failure degrades to the local demo flow instead of
+  // dead-ending the customer.
+  let seededNow = false;
   try {
-    const snapshot = await loadOrderSnapshot();
+    // ── Self-heal: configured-but-empty catalog (never seeded) ──────────
+    // Upsert the launch catalog once and keep the customer's order flowing
+    // as a REAL database order (docs/go-live.md). If the database itself
+    // refuses (missing schema, outage), answer `{ demoMode: true }` so the
+    // storefront's browser-local flow completes the order instead of the
+    // old dead-end "call us to order" 503.
+    let snapshot = await loadOrderSnapshotSafely();
     if (!snapshot || snapshot.products.length === 0) {
-      return apiError(
-        "Online ordering is not set up yet — please call 01700-000000 to order.",
-        503,
-        { code: "NOT_SEEDED" },
-      );
+      seededNow = await seedLaunchCatalog();
+      snapshot = seededNow ? await loadOrderSnapshotSafely() : null;
+      if (!snapshot || snapshot.products.length === 0) {
+        // Still nothing to order against — the client's browser-local flow
+        // completes the order (confirmation, order list, staff inbox).
+        return apiJson({ demoMode: true as const });
+      }
     }
+
+    // Carts built against the demo seeds carry ids like `p1`; live rows are
+    // uuids. Bridge them through slug once, right after auto-seeding.
+    let payloadForValidation = payload;
+    if (seededNow && isRecord(payload)) {
+      const remapped = remapSeedItemIdsForPayload(payload, snapshot.products);
+      if (remapped) payloadForValidation = remapped;
+    }
+
     // Per-user first-10-free: count THIS phone's earlier orders (server-side).
     const payloadPhone = (payload as { phone?: unknown })?.phone;
     snapshot.customerOrderCount = await countOrdersForPhone(
       getSupabaseService() as NonNullable<ReturnType<typeof getSupabaseService>>,
       normalizePhone(typeof payloadPhone === "string" ? payloadPhone : ""),
     );
-    const validation = validateOrderPayload(payload, snapshot);
+    const validation = validateOrderPayload(payloadForValidation, snapshot);
     if (!validation.ok) {
+      if (seededNow) {
+        // Freshly-seeded store and the payload still doesn't line up (e.g. a
+        // cart holding a product the admin removed) — never lose the order.
+        return apiJson({ demoMode: true as const });
+      }
       return apiError("Please fix the highlighted fields.", 422, {
         errors: validation.errors,
       });
     }
     const order = await placeLiveOrder(validation.draft, snapshot);
     if (!order) {
+      if (seededNow) return apiJson({ demoMode: true as const });
       return apiError("Could not place the order — please try again.", 503);
     }
     const staffDb = getSupabaseService();
@@ -119,9 +150,55 @@ export async function POST(request: Request) {
     }
     return apiJson({ order, smartCard }, 201);
   } catch (err) {
+    // We just seeded the store on this request and the write path still
+    // failed (e.g. place-order RPC missing): the customer must not pay for
+    // that — complete the order through the local flow instead.
+    if (seededNow) return apiJson({ demoMode: true as const });
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });
     }
     return apiError("Could not place the order — please try again.", 503);
   }
+}
+
+/** Snapshot read that never throws — a failing read degrades to demo mode. */
+async function loadOrderSnapshotSafely(): Promise<Awaited<
+  ReturnType<typeof loadOrderSnapshot>
+> | null> {
+  try {
+    return await loadOrderSnapshot();
+  } catch {
+    return null;
+  }
+}
+
+/** Upserts the launch catalog into an empty store; false if the DB refuses. */
+async function seedLaunchCatalog(): Promise<boolean> {
+  const db = getSupabaseService();
+  if (!db) return false;
+  try {
+    return await ensureLaunchCatalog(db);
+  } catch {
+    return false;
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+/**
+ * Rewrite `items[].productId` seed ids (p1…) to live row ids via slug.
+ * Returns a shallow-copied payload when something changed, else null.
+ */
+function remapSeedItemIdsForPayload(
+  payload: Record<string, unknown>,
+  liveProducts: { id: string; slug: string }[],
+): Record<string, unknown> | null {
+  const items = payload.items;
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const rows = items as { productId?: unknown }[];
+  if (rows.some((it) => it === null || typeof it !== "object")) return null;
+  const remapped = remapSeedItemIds(rows, liveProducts);
+  if (remapped === rows) return null;
+  return { ...payload, items: remapped };
 }

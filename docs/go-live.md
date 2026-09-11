@@ -90,6 +90,15 @@ npm run seed       # upsert shop #1, categories, zones, coupons, products
 Re-running is safe (upserts on natural keys). The script never seeds fake
 orders or fake reviews — those arrive from real customers.
 
+> **Checkout self-heals (2026-09-11).** If this step is skipped and a customer
+> checks out, `POST /api/orders` upserts the same launch catalog in place
+> (`src/lib/db/auto-seed.ts`) and places a real order — the old 503
+> "Online ordering is not set up yet" wall is gone. If the database refuses
+> even the seed (missing schema/outage), the storefront completes the order
+> through its browser-local flow (`{ demoMode: true }`) instead of failing
+> the customer. The script remains the recommended path: run it BEFORE launch
+> so the very first order prices against seeded rows.
+
 Verify: `GET https://<your-app>/api/products` must return products, not
 `{"code":"NOT_SEEDED"}`.
 

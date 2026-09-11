@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn(async () => {}),
   demoSignup: vi.fn(),
   demoLogin: vi.fn(),
+  authSnapshot: {
+    checked: true,
+    mode: "demo" as "live" | "demo" | null,
+    customer: null as CustomerInfo | null,
+  },
 }));
 
 vi.mock("@/lib/use-customer", () => ({
@@ -31,12 +36,16 @@ vi.mock("@/lib/use-customer", () => ({
 vi.mock("@/lib/customer-session", () => ({
   demoSignup: mocks.demoSignup,
   demoLogin: mocks.demoLogin,
+  getAuthSnapshot: () => mocks.authSnapshot,
 }));
+
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   mocks.customer = null;
   mocks.mode = "demo";
   mocks.checked = true;
+  mocks.authSnapshot = { checked: true, mode: "demo", customer: null };
   mocks.refresh.mockClear();
   mocks.signOut.mockClear();
   mocks.demoSignup.mockReset().mockResolvedValue({ ok: true });
@@ -44,6 +53,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   cleanup();
 });
 
@@ -142,5 +152,31 @@ describe("AccountView — no-verification signup (instant login)", () => {
     expect(
       screen.getByText(/কোনো ভেরিফিকেশন লাগে না/),
     ).toBeInTheDocument();
+  });
+
+  it("live mode: never claims success when the session did not stick", async () => {
+    mocks.mode = "live";
+    mocks.authSnapshot = { checked: true, mode: "live", customer: null };
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ customer: { id: "c1", name: "তারা", phone: "01712345678" } }),
+    ) as unknown as typeof fetch;
+
+    render(<AccountView />);
+    fireEvent.click(screen.getByRole("tab", { name: "লগ ইন" }));
+    fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {
+      target: { value: "01712345678" },
+    });
+    fireEvent.change(screen.getByLabelText("পাসওয়ার্ড"), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "লগ ইন করুন" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "সেশন তৈরি হলো বলে মনে হচ্ছে না",
+      ),
+    );
+    expect(screen.queryByText(/লগ ইন সম্পন্ন/)).not.toBeInTheDocument();
+    expect(mocks.refresh).toHaveBeenCalled();
   });
 });

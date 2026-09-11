@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   __resetCustomerProbe,
+  AUTH_SERVER_SNAPSHOT,
   demoLogout,
-  getCustomerSnapshot,
-  getCustomerServerSnapshot,
+  getAuthSnapshot,
   probeCustomerSession,
   subscribeCustomerAuth,
   type CustomerInfo,
@@ -13,8 +13,11 @@ import {
 
 /**
  * Single shared customer-session hook (the storefront's useStaffLive twin).
- * Probes /api/account/me once per mount cycle; demo mode reads the
- * browser-local store reactively.
+ * Probes /api/account/me once per mount cycle; BOTH stores are observable, so
+ * every consumer — the account panel, the wishlist provider, the smart card,
+ * the header — flips together the moment signup/login succeeds. (Before this
+ * lived in per-hook state, a successful live signup left the form on screen:
+ * the refresh updated one hook instance while the view read another.)
  */
 export function useCustomer(): {
   customer: CustomerInfo | null;
@@ -23,70 +26,30 @@ export function useCustomer(): {
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 } {
-  const demo = useSyncExternalStore(
+  const { customer, mode, checked } = useSyncExternalStore(
     subscribeCustomerAuth,
-    getCustomerSnapshot,
-    getCustomerServerSnapshot,
+    getAuthSnapshot,
+    () => AUTH_SERVER_SNAPSHOT,
   );
-  const [state, setState] = useState<{
-    checked: boolean;
-    mode: "live" | "demo" | null;
-    liveCustomer: CustomerInfo | null;
-  }>({ checked: false, mode: null, liveCustomer: null });
-
-  const probe = useCallback(async () => {
-    __resetCustomerProbe();
-    const result = await probeCustomerSession();
-    setState({
-      checked: true,
-      mode: result.mode,
-      liveCustomer: result.customer,
-    });
-  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void probeCustomerSession().then((result) => {
-      if (!cancelled) {
-        setState({
-          checked: true,
-          mode: result.mode,
-          liveCustomer: result.customer,
-        });
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
+    // Shared promise: concurrent mounts coalesce into one probe.
+    void probeCustomerSession();
   }, []);
 
   const refresh = useCallback(async () => {
-    await probe();
-  }, [probe]);
+    __resetCustomerProbe();
+    await probeCustomerSession();
+  }, []);
 
   const signOut = useCallback(async () => {
-    if (state.mode === "live") {
+    if (getAuthSnapshot().mode === "live") {
       await fetch("/api/account/logout", { method: "POST" }).catch(() => {});
-      await probe();
+      await refresh();
     } else {
       demoLogout();
     }
-  }, [state.mode, probe]);
+  }, [refresh]);
 
-  if (state.mode === "demo") {
-    return {
-      customer: demo.customer,
-      mode: "demo",
-      checked: state.checked,
-      refresh,
-      signOut,
-    };
-  }
-  return {
-    customer: state.mode === "live" ? state.liveCustomer : null,
-    mode: state.mode,
-    checked: state.checked,
-    refresh,
-    signOut,
-  };
+  return { customer, mode, checked, refresh, signOut };
 }

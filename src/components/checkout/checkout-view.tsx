@@ -1009,7 +1009,7 @@ export default function CheckoutView() {
               {!cardCustomer ? (
                 <>
                   🎁 <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
-                  <Link href="/account" className="font-semibold text-forest-800 underline underline-offset-2">
+                  <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
                     ফ্রি অ্যাকাউন্ট খুলুন
                   </Link>{" "}
                   — কোনো ভেরিফিকেশন লাগে না, সাইন আপ করলেই সাথে সাথে লগ ইন।
