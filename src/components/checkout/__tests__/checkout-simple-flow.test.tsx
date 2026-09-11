@@ -12,6 +12,8 @@ import { CartProvider } from "@/components/cart/cart-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import { PRODUCTS } from "@/lib/catalog";
 import { CART_STORAGE_KEY } from "@/lib/cart";
+import { getNotifs } from "@/lib/notifications-store";
+import { NOTIFS_STORAGE_KEY } from "@/lib/notification-store";
 
 afterEach(cleanup);
 
@@ -96,6 +98,72 @@ it("places an order through the simple form (demo mode)", async () => {
 
   const orderCall = fetchCalls.find((c) => c.url.includes("/api/orders"));
   expect(orderCall).toBeTruthy();
+
+  // → The admin inbox must receive a notification for the new order.
+  const notifs = getNotifs();
+  const orderNotif = notifs.find(
+    (n) => n.kind === "order" && n.title.includes("নতুন অর্ডার"),
+  );
+  expect(orderNotif).toBeTruthy();
+  expect(orderNotif!.read).toBe(false);
+  expect(orderNotif!.body).toContain("Test Customer");
+  expect(orderNotif!.href).toContain("/admin/orders/");
+});
+
+it("does not double-notify when the server already stored the order", async () => {
+  // live-style response → server owns the notification; no local push
+  vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/api/orders")) {
+      return Promise.resolve(
+        jsonResponse({
+          order: {
+            id: "PS-LIVE-1",
+            createdAt: Date.now(),
+            customer: { name: "Live Customer", phone: "01712345678", area: "Boropara" },
+            zoneId: "z1",
+            zoneName: "Zone A",
+            etaLabel: "30–40 min",
+            items: [],
+            subtotal: 149000,
+            deliveryCharge: 3000,
+            total: 152000,
+            payment: "cod",
+            status: "pending",
+            timeline: [],
+          },
+        }),
+      );
+    }
+    if (url.includes("/api/promo")) {
+      return Promise.resolve(jsonResponse({ totalOrders: 3, remainingFree: 7, promoActive: true, limit: 10 }));
+    }
+    return Promise.resolve(jsonResponse({}));
+  });
+  window.localStorage.removeItem(NOTIFS_STORAGE_KEY);
+  const before = getNotifs().length;
+
+  render(
+    createElement(
+      LanguageProvider,
+      null,
+      createElement(CartProvider, null, createElement(CheckoutView)),
+    ),
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /Place Order/i })).toBeInTheDocument();
+  });
+  fireEvent.change(screen.getByPlaceholderText(/রাহাত আহমেদ/), { target: { value: "Live Customer" } });
+  fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), { target: { value: "01712345678" } });
+  fireEvent.click(screen.getByRole("button", { name: "Boropara" }));
+  fireEvent.change(screen.getByPlaceholderText(/House 12/), { target: { value: "House 1, College Road" } });
+  fireEvent.click(screen.getByRole("button", { name: /Place Order/i }));
+  await waitFor(() => {
+    expect(screen.getAllByText(/order confirmed/i).length).toBeGreaterThan(0);
+  }, { timeout: 5000 });
+
+  // no NEW local notification (server already did it)
+  expect(getNotifs().length).toBe(before);
 });
 
 it("stays placeable when the para is typed by hand (other para)", async () => {

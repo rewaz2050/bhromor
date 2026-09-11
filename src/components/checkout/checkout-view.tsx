@@ -67,6 +67,7 @@ import {
   type SavedAddress,
 } from "@/lib/address-book";
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
+import { addNotificationToStore } from "@/lib/notifications-store";
 import MapPinPicker from "./map-pin-picker";
 
 type TimeSlot = "now" | "evening" | "scheduled";
@@ -652,6 +653,23 @@ export default function CheckoutView() {
         }),
       );
       if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
+      // → Admin notification (same device / demo inbox)
+      addNotificationToStore({
+        kind: "order",
+        title: `নতুন অর্ডার ${orderId} — কনফার্মেশন দরকার`,
+        body: [
+          form.name,
+          form.isPickup
+            ? `Pickup · ${SUNAMGANJ_HUB}`
+            : `${effectivePara} · ${effectiveUpazila} · ${form.district}`,
+          `${formatBdt(summary.total)} COD`,
+          summary.freeDelivery && !form.isPickup ? "ফ্রি ডেলিভারি" : null,
+          summary.tip > 0 ? `টিপ ${formatBdt(summary.tip)}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/admin/orders/${orderId}`,
+      });
       setPlaced({
         orderId,
         eta: form.isPickup

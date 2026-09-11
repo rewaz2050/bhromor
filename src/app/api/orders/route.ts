@@ -76,10 +76,20 @@ export async function POST(request: Request) {
     }
     const staffDb = getSupabaseService();
     if (staffDb) {
+      // → Admin notification (live inbox): full address ladder + money.
+      const d = validation.draft;
+      const details = [
+        d.customer.name,
+        `${d.customer.para} · ${d.customer.upazila} · ${d.customer.district}`,
+        `${(order.total / 100).toLocaleString("en-IN")} taka COD`,
+      ];
+      if (d.isPickup) details.push("Store Pickup");
+      else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
+      if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
       await notifyStaff(staffDb, {
         kind: "order",
-        title: `New order ${order.id} awaiting confirmation`,
-        body: `${order.customer.name} (${order.customer.area}) — ${(order.total / 100).toLocaleString("en-IN")} taka, cash on delivery.`,
+        title: `নতুন অর্ডার ${order.id} — কনফার্মেশন দরকার`,
+        body: details.join(" · "),
         href: `/admin/orders/${order.id}`,
       });
     }
