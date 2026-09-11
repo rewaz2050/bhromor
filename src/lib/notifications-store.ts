@@ -138,6 +138,29 @@ export const getNotifs = (): Notif[] => ensureLoaded();
 let serverSnapshot: Notif[] | null = null;
 export const getNotifsServer = (): Notif[] => (serverSnapshot ??= seedNotifs());
 
+let notifSeq = 0;
+
+/**
+ * Push a fresh notification to the TOP of the inbox (admin demo/local mode).
+ * The admin bell badge and the beep react through the store subscription.
+ */
+export const addNotificationToStore = (
+  n: { kind: Notif["kind"]; title: string; body?: string; href?: string },
+): Notif => {
+  notifSeq += 1;
+  const entry: Notif = {
+    id: `n-${Date.now()}-${notifSeq}`,
+    kind: n.kind,
+    title: n.title,
+    body: n.body ?? "",
+    at: Date.now(),
+    read: false,
+    href: n.href,
+  };
+  persist([entry, ...ensureLoaded()].slice(0, 60));
+  return entry;
+};
+
 export const readNotif = (id: string) =>
   persist(markRead(ensureLoaded(), id));
 

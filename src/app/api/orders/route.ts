@@ -13,13 +13,16 @@
 import { validateOrderPayload } from "@/lib/order-validation";
 import {
   OrderPlacementError,
+  countOrdersForPhone,
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
+import { normalizePhone, samePhone } from "@/lib/orders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseService } from "@/lib/supabase-server";
+import { loadSmartCardTarget, resolveCustomer } from "@/lib/customer-auth";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +59,12 @@ export async function POST(request: Request) {
         { code: "NOT_SEEDED" },
       );
     }
+    // Per-user first-10-free: count THIS phone's earlier orders (server-side).
+    const payloadPhone = (payload as { phone?: unknown })?.phone;
+    snapshot.customerOrderCount = await countOrdersForPhone(
+      getSupabaseService() as NonNullable<ReturnType<typeof getSupabaseService>>,
+      normalizePhone(typeof payloadPhone === "string" ? payloadPhone : ""),
+    );
     const validation = validateOrderPayload(payload, snapshot);
     if (!validation.ok) {
       return apiError("Please fix the highlighted fields.", 422, {
@@ -68,14 +77,47 @@ export async function POST(request: Request) {
     }
     const staffDb = getSupabaseService();
     if (staffDb) {
+      // → Admin notification (live inbox): full address ladder + money.
+      const d = validation.draft;
+      const details = [
+        d.customer.name,
+        `${d.customer.para} · ${d.customer.upazila} · ${d.customer.district}`,
+        `${(order.total / 100).toLocaleString("en-IN")} taka COD`,
+      ];
+      if (d.isPickup) details.push("Store Pickup");
+      else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
+      if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
       await notifyStaff(staffDb, {
         kind: "order",
-        title: `New order ${order.id} awaiting confirmation`,
-        body: `${order.customer.name} (${order.customer.area}) — ${(order.total / 100).toLocaleString("en-IN")} taka, cash on delivery.`,
+        title: `নতুন অর্ডার ${order.id} — কনফার্মেশন দরকার`,
+        body: details.join(" · "),
         href: `/admin/orders/${order.id}`,
       });
     }
-    return apiJson({ order }, 201);
+    // Smart Card: stamps ride on the signed-in account; when the card fills,
+    // the admin is told to prepare the (admin-controlled) prize.
+    const cardCustomer = await resolveCustomer(request);
+    let smartCard: { stamps: number; target: number; justCompleted: boolean } | undefined;
+    if (cardCustomer && samePhone(cardCustomer.phone, order.customer?.phone ?? "")) {
+      const cfg = await loadSmartCardTarget();
+      const target = Math.max(1, cfg.target);
+      const count = await countOrdersForPhone(
+        staffDb as NonNullable<ReturnType<typeof getSupabaseService>>,
+        cardCustomer.phone,
+      );
+      const stamps = count > 0 && count % target === 0 ? target : count % target;
+      const justCompleted = count > 0 && count % target === 0;
+      smartCard = { stamps, target, justCompleted };
+      if (justCompleted && staffDb) {
+        await notifyStaff(staffDb, {
+          kind: "order",
+          title: `🎁 স্মার্ট কার্ড পূর্ণ — ${cardCustomer.name}`,
+          body: `${target}টি স্ট্যাম্প সম্পূর্ণ (${cardCustomer.phone}) — পুরস্কার প্রস্তুত করুন: ${cfg.rewardTitle}`,
+          href: "/admin/settings",
+        });
+      }
+    }
+    return apiJson({ order, smartCard }, 201);
   } catch (err) {
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });

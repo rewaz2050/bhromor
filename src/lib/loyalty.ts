@@ -8,6 +8,7 @@ export interface LoyaltyProgress {
   currentStamps: number; // 0..targetOrders
   completedCycles: number;
   isUnlocked: boolean; // has unlocked the reward at current milestone
+  prizeRevealed: boolean; // prize name hidden until the first order lands
   remainingOrders: number;
   percent: number;
   rewardTitle: string;
@@ -26,8 +27,10 @@ const normalizePhone = (raw?: string | null): string => {
 };
 
 /**
- * Calculates customer loyalty stamp progress based on delivered orders.
- * Only 'delivered' orders count — cancelled, returned, or pending orders are excluded.
+ * Calculates Smart Card stamp progress. Every non-cancelled order earns
+ * exactly 1 stamp ("proti order e 1 ta kore stamp porbe") — cancelled orders
+ * never count. The admin-controlled prize stays a surprise (prizeRevealed
+ * false) until the customer's first order lands.
  */
 export function calculateLoyaltyProgress(
   orders: readonly Order[],
@@ -41,7 +44,7 @@ export function calculateLoyaltyProgress(
   const filterPhone = normalizePhone(filter?.phone);
 
   const qualifyingOrders = orders.filter((o) => {
-    if (o.status !== "delivered") return false;
+    if (o.status === "cancelled") return false;
     if (minPaisa > 0 && o.total < minPaisa) return false;
 
     // Check optional email if present on customer or metadata
@@ -58,7 +61,7 @@ export function calculateLoyaltyProgress(
       }
     }
 
-    // If no specific email/phone filter was passed, include all qualifying delivered orders
+    // No email/phone filter → count every non-cancelled order (all customers view)
     return !filterEmail && !filterPhone;
   });
 
@@ -83,6 +86,7 @@ export function calculateLoyaltyProgress(
     isUnlocked,
     remainingOrders,
     percent,
+    prizeRevealed: totalDelivered >= 1,
     rewardTitle: settings.loyaltyRewardTitle,
     rewardDescription: settings.loyaltyRewardDescription,
     minOrderTaka: settings.loyaltyMinOrderAmount,

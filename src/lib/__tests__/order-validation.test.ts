@@ -12,13 +12,24 @@ const snapshot = (): OrderSnapshot => ({
   products: PRODUCTS,
   zones: DELIVERY_ZONES.map((z) => ({ ...z, active: z.active ?? true })),
   coupons: seedCoupons(),
+  // Promo exhausted by default — tests opt in with customerOrderCount < 10.
+  customerOrderCount: 100,
+  // Launch offer + ৳1000 threshold OFF by default — the dedicated tests
+  // below opt in, so every zone-charge expectation above stays intact.
+  totalOrders: 1000,
+  freeThresholdEnabled: false,
+  // Fixed midday clock → deterministic night surcharge (off at 15:00).
+  now: new Date("2026-09-11T15:00:00").getTime(),
 });
 
 const payload = (overrides: Partial<OrderPayload> = {}): OrderPayload => ({
   name: "Rahat Ahmed",
   phone: "01712345678",
-  area: "Kandirpar",
-  address: "House 12, Road 5, Kandirpar",
+  district: "Sunamganj",
+  upazila: "Sunamganj Sadar",
+  para: "Boropara",
+  area: "Boropara",
+  address: "House 12, Road 5, Boropara",
   zoneId: "z1",
   items: [{ productId: "p1", variantLabel: "Forest Green · L", qty: 1 }],
   ...overrides,
@@ -29,24 +40,146 @@ describe("validateOrderPayload", () => {
     const result = validateOrderPayload(payload(), snapshot());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // p1 = ৳1,490 → 149000 paisa; threshold now ৳1000, so free delivery.
+    // p1 = ৳1,490 → 149000 paisa; promo exhausted → flat Zone A charge ৳30.
     expect(result.draft.subtotal).toBe(bdt(1490));
-    expect(result.draft.deliveryCharge).toBe(bdt(0));
+    expect(result.draft.deliveryCharge).toBe(bdt(30));
     expect(result.draft.discount).toBe(0);
-    expect(result.draft.total).toBe(bdt(1490));
+    expect(result.draft.total).toBe(bdt(1520));
     expect(result.draft.items[0].unitPrice).toBe(bdt(1490));
+    // Zone is derived server-side from district/upazila/para.
+    expect(result.draft.zone.id).toBe("z1");
+    expect(result.draft.customer.district).toBe("Sunamganj");
+    expect(result.draft.customer.upazila).toBe("Sunamganj Sadar");
+    expect(result.draft.customer.para).toBe("Boropara");
   });
 
-  it("grants free delivery at the threshold and ignores client totals", () => {
+  it("LAUNCH OFFER: under 1000 store-wide orders → free in ANY zone", () => {
+    const launchSnap = { ...snapshot(), totalOrders: 999 };
+    const inB = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2" }),
+      launchSnap,
+    );
+    expect(inB.ok).toBe(true);
+    if (inB.ok) expect(inB.draft.deliveryCharge).toBe(0);
+  });
+
+  it("LAUNCH OFFER: exhausted counter + ৳1000+ subtotal → still free (threshold)", () => {
+    const snap = { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: true };
     const result = validateOrderPayload(
-      payload({ items: [{ productId: "p4", variantLabel: "Emerald · L", qty: 1 }] }),
-      snapshot(),
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2" }),
+      snap,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.draft.deliveryCharge).toBe(0);
+  });
+
+  it("threshold respects the admin toggle; undefined counter fails closed", () => {
+    // Threshold ON + small cart (p6 = ৳540) → zone charge stands.
+    const on = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: true },
+    );
+    expect(on.ok).toBe(true);
+    if (on.ok) expect(on.draft.deliveryCharge).toBe(bdt(50));
+
+    // Threshold OFF + small cart + launch exhausted → charged.
+    const off = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: 1000, freeThresholdEnabled: false },
+    );
+    expect(off.ok).toBe(true);
+    if (off.ok) expect(off.draft.deliveryCharge).toBe(bdt(50));
+
+    // totalOrders undefined → launch offer NOT granted (fail closed).
+    const closed = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2", items: [{ productId: "p6", variantLabel: "Deep Teal Check · Free Size", qty: 1 }] }),
+      { ...snapshot(), totalOrders: undefined, freeThresholdEnabled: false },
+    );
+    expect(closed.ok).toBe(true);
+    if (closed.ok) expect(closed.draft.deliveryCharge).toBe(bdt(50));
+  });
+
+  it("first 10 orders ride free — but ONLY inside Zone A", () => {
+    const promoSnap = { ...snapshot(), customerOrderCount: 5 };
+    const inA = validateOrderPayload(payload(), promoSnap);
+    expect(inA.ok).toBe(true);
+    if (inA.ok) expect(inA.draft.deliveryCharge).toBe(0);
+
+    const inB = validateOrderPayload(
+      payload({ para: "Notunpara", area: "Notunpara", zoneId: "z2" }),
+      promoSnap,
+    );
+    expect(inB.ok).toBe(true);
+    if (inB.ok) {
+      expect(inB.draft.zone.id).toBe("z2");
+      expect(inB.draft.deliveryCharge).toBe(bdt(50));
+    }
+
+    const outside = validateOrderPayload(
+      payload({ district: "Sylhet", upazila: "Sylhet Sadar", para: "Subid Bazar", area: "Subid Bazar" }),
+      promoSnap,
+    );
+    expect(outside.ok).toBe(true);
+    if (outside.ok) {
+      expect(outside.draft.zone.id).toBe("z4");
+      expect(outside.draft.deliveryCharge).toBe(bdt(100));
+    }
+  });
+
+  it("prices surcharges server-side: express + rain at midday (no night)", () => {
+    // 15:00 local → not night
+    const noonSnap = { ...snapshot(), now: new Date("2026-09-11T15:00:00").getTime(), customerOrderCount: 100 };
+    const result = validateOrderPayload(
+      payload({ is_express: true, is_rain: true }),
+      noonSnap,
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.draft.subtotal).toBe(bdt(2290));
+    // Zone A ৳30 + express ৳40 + rain ৳15
+    expect(result.draft.deliveryCharge).toBe(bdt(30 + 40 + 15));
+    expect(result.draft.surchargeNight).toBe(0);
+    expect(result.draft.surchargeExpress).toBe(bdt(40));
+    expect(result.draft.surchargeRain).toBe(bdt(15));
+  });
+
+  it("adds night surcharge from the server clock and distance from the pin", () => {
+    const nightSnap = { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), customerOrderCount: 100 };
+    // A point ~2.2km south of the Traffic Point hub (still inside Sadar).
+    const result = validateOrderPayload(
+      payload({ lat: 25.05, lng: 91.4067 }),
+      nightSnap,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.surchargeNight).toBe(bdt(20));
+    expect(result.draft.geo?.distanceKm).toBeGreaterThan(1);
+    // distance > 4km only beyond 4km; 2.2km → no distance extra
+    expect(result.draft.surchargeDistance).toBe(0);
+    expect(result.draft.deliveryCharge).toBe(bdt(30 + 20));
+  });
+
+  it("pickup orders carry no delivery charge; tip lands in the total", () => {
+    const result = validateOrderPayload(
+      payload({ is_pickup: true, pickup_slot: "now", tip_amount: 2000 }),
+      { ...snapshot(), now: new Date("2026-09-11T23:30:00").getTime(), customerOrderCount: 100 },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.isPickup).toBe(true);
     expect(result.draft.deliveryCharge).toBe(0);
-    expect(result.draft.total).toBe(bdt(2290));
+    expect(result.draft.surchargeNight).toBe(0);
+    expect(result.draft.total).toBe(bdt(1490) + bdt(20));
+  });
+
+  it("ignores a client-forced cheaper zone — the address decides", () => {
+    const result = validateOrderPayload(
+      payload({ zoneId: "z1", para: "Notunpara", area: "Notunpara" }),
+      { ...snapshot(), customerOrderCount: 5 },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.zone.id).toBe("z2");
+    expect(result.draft.deliveryCharge).toBe(bdt(50));
   });
 
   it("applies a fixed coupon and snapshots code + discount", () => {
@@ -56,13 +189,13 @@ describe("validateOrderPayload", () => {
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // WELCOME100 = ৳100 off, min ৳1,000 — p1 qualifies, now free delivery.
+    // WELCOME100 = ৳100 off, min ৳1,000 — p1 qualifies; Zone A charge ৳30.
     expect(result.draft.coupon).toEqual({
       code: "WELCOME100",
       discount: bdt(100),
       id: "c1",
     });
-    expect(result.draft.total).toBe(bdt(1490) - bdt(100) + bdt(0));
+    expect(result.draft.total).toBe(bdt(1490) - bdt(100) + bdt(30));
   });
 
   it("restricts category coupons to eligible lines only", () => {
@@ -122,7 +255,7 @@ describe("validateOrderPayload", () => {
 
   it("rejects bad contact fields with field errors", () => {
     const result = validateOrderPayload(
-      payload({ name: "A", phone: "12345", area: "", address: "short" }),
+      payload({ name: "A", phone: "12345", para: "", area: "", address: "short" }),
       snapshot(),
     );
     expect(result.ok).toBe(false);
@@ -139,11 +272,16 @@ describe("validateOrderPayload", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("rejects unknown/inactive zones and empty carts", () => {
+  it("rejects when the derived zone is missing/inactive and empty carts", () => {
     const snap = snapshot();
-    expect(validateOrderPayload(payload({ zoneId: "zx" }), snap).ok).toBe(false);
     expect(
-      validateOrderPayload(payload({ zoneId: "z1" }), {
+      validateOrderPayload(payload(), {
+        ...snap,
+        zones: snap.zones.filter((z) => z.id !== "z1"),
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateOrderPayload(payload(), {
         ...snap,
         zones: snap.zones.map((z) => ({ ...z, active: false })),
       }).ok,

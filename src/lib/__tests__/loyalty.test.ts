@@ -35,48 +35,55 @@ const mockOrder = (id: string, status: Order["status"], total: number, phone?: s
   timeline: [],
 });
 
-describe("Loyalty Stamp Progress Calculator", () => {
+describe("Smart Card stamp progress (1 stamp per non-cancelled order)", () => {
   const defaultSettings: AdminSettings = {
     ...SETTINGS_DEFAULTS,
     loyaltyEnabled: true,
     loyaltyTargetOrders: 10,
     loyaltyRewardTitle: "এক্সক্লুসিভ গিফট হ্যাম্পার",
-    loyaltyRewardDescription: "১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন!",
+    loyaltyRewardDescription: "১০টি স্ট্যাম্প সম্পূর্ণ করার জন্য অভিনন্দন!",
     loyaltyMinOrderAmount: 0,
   };
 
-  it("calculates 0 progress when there are no delivered orders", () => {
+  it("cancelled orders never earn stamps", () => {
     const orders: Order[] = [
-      mockOrder("o1", "pending", 100000),
-      mockOrder("o2", "preparing", 150000),
-      mockOrder("o3", "cancelled", 120000),
+      mockOrder("o1", "cancelled", 100000),
+      mockOrder("o2", "cancelled", 150000),
     ];
 
     const result = calculateLoyaltyProgress(orders, defaultSettings);
     expect(result.totalDelivered).toBe(0);
     expect(result.currentStamps).toBe(0);
     expect(result.isUnlocked).toBe(false);
+    expect(result.prizeRevealed).toBe(false);
     expect(result.remainingOrders).toBe(10);
     expect(result.percent).toBe(0);
   });
 
-  it("counts only delivered orders towards stamps", () => {
+  it("earns 1 stamp per placed order — any non-cancelled status counts", () => {
     const orders: Order[] = [
-      mockOrder("o1", "delivered", 100000),
-      mockOrder("o2", "delivered", 150000),
+      mockOrder("o1", "pending", 100000),
+      mockOrder("o2", "preparing", 150000),
       mockOrder("o3", "cancelled", 120000),
       mockOrder("o4", "out-for-delivery", 200000),
     ];
 
     const result = calculateLoyaltyProgress(orders, defaultSettings);
-    expect(result.totalDelivered).toBe(2);
-    expect(result.currentStamps).toBe(2);
+    expect(result.totalDelivered).toBe(3); // cancelled excluded
+    expect(result.currentStamps).toBe(3);
+    expect(result.prizeRevealed).toBe(true); // visible after the first order
     expect(result.isUnlocked).toBe(false);
-    expect(result.remainingOrders).toBe(8);
-    expect(result.percent).toBe(20);
+    expect(result.remainingOrders).toBe(7);
+    expect(result.percent).toBe(30);
   });
 
-  it("unlocks reward when reaching 10 delivered orders", () => {
+  it("prize stays hidden (prizeRevealed false) before the first order", () => {
+    const result = calculateLoyaltyProgress([], defaultSettings);
+    expect(result.prizeRevealed).toBe(false);
+    expect(result.currentStamps).toBe(0);
+  });
+
+  it("unlocks the reward at the 10th order and keeps the prize revealed", () => {
     const orders: Order[] = Array.from({ length: 10 }, (_, i) =>
       mockOrder(`o${i + 1}`, "delivered", 100000),
     );
@@ -86,6 +93,7 @@ describe("Loyalty Stamp Progress Calculator", () => {
     expect(result.currentStamps).toBe(10);
     expect(result.isUnlocked).toBe(true);
     expect(result.completedCycles).toBe(1);
+    expect(result.prizeRevealed).toBe(true);
     expect(result.remainingOrders).toBe(0);
     expect(result.percent).toBe(100);
     expect(result.rewardTitle).toBe("এক্সক্লুসিভ গিফট হ্যাম্পার");

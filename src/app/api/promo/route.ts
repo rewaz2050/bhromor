@@ -1,60 +1,50 @@
 /**
- * GET /api/promo — real-time first-1000-free promo status.
- * Returns total orders, remaining free slots, and whether promo is active.
- * Public, no auth, cached 30s.
+ * GET /api/promo — LAUNCH OFFER counter (public).
+ *
+ * "প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি" — returns the store-wide all-time
+ * order count so the banner can show "X/1000 claimed" everywhere.
+ * Demo mode (no service role) returns demoMode + zeroes; the banner falls
+ * back to the browser-local order store.
  */
 
-import { isServiceRoleConfigured } from "@/lib/env";
 import { getSupabaseService } from "@/lib/supabase-server";
+import { isServiceRoleConfigured } from "@/lib/env";
+import { LAUNCH_FREE_DELIVERY_LIMIT, FREE_DELIVERY_MIN_SUBTOTAL_PAISA } from "@/lib/delivery";
 import { apiJson } from "@/lib/api-response";
-import { FIRST_1000_FREE_LIMIT } from "@/lib/delivery";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const limit = LAUNCH_FREE_DELIVERY_LIMIT;
+  const minFreeTaka = FREE_DELIVERY_MIN_SUBTOTAL_PAISA / 100;
+
   if (!isServiceRoleConfigured()) {
-    // Demo mode: pretend 0 orders, promo active
     return apiJson({
+      demoMode: true as const,
       totalOrders: 0,
-      remainingFree: FIRST_1000_FREE_LIMIT,
-      promoActive: true,
-      limit: FIRST_1000_FREE_LIMIT,
-      demoMode: true,
+      limit,
+      remaining: limit,
+      minFreeTaka,
+      enabled: true,
     });
   }
 
-  try {
-    const db = getSupabaseService();
-    if (!db) {
-      return apiJson({
-        totalOrders: 0,
-        remainingFree: FIRST_1000_FREE_LIMIT,
-        promoActive: true,
-        limit: FIRST_1000_FREE_LIMIT,
-      });
-    }
-
-    const { count, error } = await db
+  const db = getSupabaseService();
+  let totalOrders = 0;
+  if (db) {
+    // "Claimed" = orders ever placed (all statuses — a claimed slot is a
+    // placed order, cancelled or not; same count the pricing snapshot uses).
+    const res = await db
       .from("orders")
       .select("id", { count: "exact", head: true });
-
-    if (error) throw error;
-
-    const total = count ?? 0;
-    const remaining = Math.max(0, FIRST_1000_FREE_LIMIT - total);
-    return apiJson({
-      totalOrders: total,
-      remainingFree: remaining,
-      promoActive: total < FIRST_1000_FREE_LIMIT,
-      limit: FIRST_1000_FREE_LIMIT,
-    });
-  } catch {
-    // Fail open: still show promo as active, don't break checkout
-    return apiJson({
-      totalOrders: 0,
-      remainingFree: FIRST_1000_FREE_LIMIT,
-      promoActive: true,
-      limit: FIRST_1000_FREE_LIMIT,
-    });
+    totalOrders = res.count ?? 0;
   }
+
+  return apiJson({
+    totalOrders,
+    limit,
+    remaining: Math.max(0, limit - totalOrders),
+    minFreeTaka,
+    enabled: totalOrders < limit,
+  });
 }

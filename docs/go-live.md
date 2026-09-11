@@ -37,10 +37,20 @@ Run **in this order, in one sequence** (skip files you already applied —
 6. `supabase/migrations/202609090005_riders.sql`
 7. `supabase/migrations/202609090006_engagement.sql`
 8. `supabase/migrations/202609090007_rider_dispatch.sql`
-9. **`supabase/migrations/202609090008_dispatch_auto.sql`** ← new:
+9. **`supabase/migrations/202609090008_dispatch_auto.sql`** —
    auto-offer trigger + admin assign/cancel RPCs (Phase 3 slice 7)
+10. **`supabase/migrations/202609100003_per_user_first10_free.sql`** —
+    per-user first-10-free delivery (by normalized phone; supersedes the
+    202609100001/202609100002 drafts — never apply those two)
+11. **`supabase/migrations/202609110004_customer_accounts.sql`** — Smart Card
+    accounts: `customers` (phone+password, no verification by design) +
+    `customer_sessions`; service-role only via the /api/account/* routes
+12. **`supabase/migrations/202609110005_launch_offer_free.sql`** — LAUNCH
+    OFFER: store-wide first 1000 orders ride free (any zone) + ৳1000+
+    subtotal always free; keeps the per-user first-10 (Zone A). Supersedes
+    202609100003 — run only this one for the pricing rule
 
-Quick check after step 9 (SQL editor):
+Quick check after step 11 (SQL editor):
 
 ```sql
 select key from site_settings where key in ('homepage', 'ops');
@@ -49,6 +59,7 @@ select count(*) from newsletter_subscribers;
 select count(*) from media_library;
 select count(*) from orders where delivery_code is not null;
 select count(*) from delivery_assignments;
+select count(*) from customers;
 ```
 
 All statements must run without “relation does not exist”.
@@ -99,7 +110,12 @@ npm run grant-admin -- <email> super_admin
 
 Do these on the deployed site, in order:
 
-- [ ] `GET /api/health` → `"mode":"live"`, `reachable:true`
+- [ ] `GET /api/health` → `"mode":"live"`, all `checks` true (probe now also
+      verifies seed counts + the `ps_place_order` RPC; `/admin` home shows a
+      green **LIVE** banner once every check passes, an amber checklist while
+      anything is missing)
+- [ ] `/checkout` has no global counter anywhere — first-10-free is per phone
+      (check `snapshot.customerOrderCount` on a placed order in Supabase)
 - [ ] `/shop` shows the seeded catalog with live prices
 - [ ] `/admin/homepage` → change the hero title → **Publish** → public `/`
       shows it (proves the CMS row + public read policy)

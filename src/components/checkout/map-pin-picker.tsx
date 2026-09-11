@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { LeafletMouseEvent, Map as LeafletMap, Marker } from "leaflet";
 import {
   SUNAMGANJ_HUB_COORDS,
   SUNAMGANJ_BOUNDS,
@@ -18,8 +19,8 @@ interface MapPinPickerProps {
 
 export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPinPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMapRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const leafletMapRef = useRef<LeafletMap | null>(null);
+  const markerRef = useRef<Marker | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [leafletReady, setLeafletReady] = useState(false);
@@ -43,7 +44,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
     let cancelled = false;
     import("leaflet").then((L) => {
       if (cancelled) return;
-      (L as any).Icon.Default.mergeOptions({
+      L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
@@ -123,7 +124,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
         updatePos({ lat: ll.lat, lng: ll.lng });
       });
 
-      map.on("click", (e: any) => {
+      map.on("click", (e: LeafletMouseEvent) => {
         const ll = e.latlng;
         marker.setLatLng(ll);
         updatePos({ lat: ll.lat, lng: ll.lng });

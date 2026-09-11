@@ -19,6 +19,7 @@ import {
   DOT,
   friendlyWhen,
 } from "@/components/admin/order-ui";
+import LiveSetupBanner from "@/components/admin/live-setup-banner";
 import {
   IconArrowRight,
   IconBox,
@@ -84,6 +85,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
+      <LiveSetupBanner />
       {/* KPI cards */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c) => (

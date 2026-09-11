@@ -441,14 +441,15 @@ export const getCategory = (id: string): Category | undefined =>
 export const productsByCategory = (id: CategoryId) =>
   PRODUCTS.filter((p) => p.category === id);
 
-/** Sunamganj Sadar delivery zones — Traffic Point centric (10-20 min cycle).
- *  District: Sunamganj, Upazila: Sunamganj Sadar.
- *  First 1000 orders FREE (promo), then zone-based charge + ৳1000 free-delivery threshold.
+/** Sunamganj delivery zones — Traffic Point centric (10-20 min cycle).
+ *  District: Sunamganj, Upazila: Sunamganj Sadar (default).
+ *  SIMPLE rules: FIRST 10 orders free — Zone A (Sunamganj City) only.
+ *  Outside Zone A the flat zone charge always applies.
  */
 export const DELIVERY_ZONES: DeliveryZone[] = [
   {
     id: "z1",
-    name: "Zone A — Traffic Point (0-1.5km)",
+    name: "Zone A — Sunamganj City (A Zone)",
     areas: [
       "Boropara",
       "Shologhar",
@@ -498,7 +499,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
   },
   {
     id: "z4",
-    name: "Zone D — Sunamganj Sadar Bahire",
+    name: "Zone D — Sadar Bahire / Other district (Courier)",
     areas: [
       "Sunamganj Sadar Other",
       "Dolura",
@@ -513,6 +514,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
 ];
 
 export const FLAT_DELIVERY_NOTE =
-  "Sunamganj Sadar launch: District Sunamganj, Upazila Sunamganj Sadar, Hub Traffic Point. Zone A ৳30 (0-1.5km), Zone B ৳50, Zone C ৳70, Zone D (Bahire) ৳100. First 1000 orders FREE, then ৳1000+ free. Zones expand as operations can reliably hold the promise.";
+  "সুনামগঞ্জ: জেলা সুনামগঞ্জ, উপজেলা সুনামগঞ্জ সদর, হাব Traffic Point। Zone A (সুনামগঞ্জ সিটি) ৳30, Zone B ৳50, Zone C ৳70, Zone D (সদরের বাইরে/অন্য জেলা) ৳100। প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — শুধু Zone A-তে।";
 
 export const ORDER_PREFIX = "PS";

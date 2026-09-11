@@ -33,8 +33,7 @@ import type {
   DbVariant,
   DbZone,
 } from "./types";
-import type { Order } from "../orders";
-import { normalizePhone } from "../orders";
+import { normalizePhone, type Order } from "../orders";
 import type { ValidOrderDraft } from "../order-validation";
 
 export interface OrderSnapshot {
@@ -45,13 +44,40 @@ export interface OrderSnapshot {
   mediaByProduct: Map<string, string>;
   /** All shops (validator checks active/open/zone itself). */
   shops: Shop[];
+  /** Total orders ever placed (global stat). */
+  totalOrders: number;
+  /** THIS customer's earlier order count — set per-request by the route. */
+  customerOrderCount?: number;
+  /** ৳1000+-always-free toggle (ops). Absent/false semantics: see validation. */
+  freeThresholdEnabled?: boolean;
+}
+
+/**
+ * How many orders has THIS customer (by normalized phone) already placed?
+ * Drives the per-user first-10-free promo. Cancelled orders do not count.
+ * Counts in JS so the phone normalization matches normalizePhone exactly.
+ */
+export async function countOrdersForPhone(
+  db: SupabaseClient,
+  phone: string,
+): Promise<number> {
+  const digits = normalizePhone(phone);
+  if (digits === "") return 0;
+  const { data, error } = await db
+    .from("orders")
+    .select("customer_phone")
+    .neq("status", "cancelled");
+  if (error) return 0; // fail closed → no free-delivery grant on DB errors
+  return ((data ?? []) as { customer_phone: string }[]).filter(
+    (row) => normalizePhone(row.customer_phone) === digits,
+  ).length;
 }
 
 export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes] =
+  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes, ordersCountRes, opsRes] =
     await Promise.all([
       db
         .from("products")
@@ -63,6 +89,9 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       db.from("delivery_zones").select("*").eq("active", true),
       db.from("coupons").select("*").eq("active", true),
       db.from("shops").select("*"),
+      db.from("orders").select("id", { count: "exact", head: true }),
+      // ৳1000+-always-free toggle; read failure keeps the default (on).
+      db.from("site_settings").select("value").eq("key", "ops").maybeSingle(),
     ]);
   if (
     productsRes.error ||
@@ -90,6 +119,7 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       mediaByProduct.set(m.product_id, m.url);
     }
   }
+  const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
   return {
     products,
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
@@ -97,6 +127,8 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     variants,
     mediaByProduct,
     shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
+    totalOrders: ordersCountRes.count ?? 0,
+    freeThresholdEnabled: ops.perZoneFreeThresholdEnabled !== false,
   };
 }
 
@@ -167,20 +199,28 @@ export async function placeLiveOrder(
     p_order: {
       customer_name: draft.customer.name,
       customer_phone: draft.customer.phone,
-      area: draft.customer.area,
+      area: draft.customer.para || draft.customer.area,
+      district: draft.customer.district,
+      upazila: draft.customer.upazila,
+      para: draft.customer.para,
       address: draft.customer.address,
       note: draft.customer.note,
       zone_id: draft.zone.id,
       lat: draft.geo?.lat ?? null,
       lng: draft.geo?.lng ?? null,
       distance_km: draft.geo?.distanceKm ?? null,
-      scheduled_at: (draft as any).scheduledAt ?? null,
-      delivery_window: (draft as any).deliveryWindow ?? null,
-      is_express: (draft as any).isExpress ?? false,
-      surcharge_night: (draft as any).surchargeNight ?? 0,
-      surcharge_rain: (draft as any).surchargeRain ?? 0,
-      surcharge_distance: (draft as any).surchargeDistance ?? 0,
-      surcharge_express: (draft as any).surchargeExpress ?? 0,
+      scheduled_at: draft.scheduledAt ?? null,
+      delivery_window: draft.deliveryWindow ?? null,
+      is_express: draft.isExpress ?? false,
+      is_pickup: draft.isPickup ?? false,
+      pickup_slot: draft.pickupSlot ?? null,
+      tip_amount: draft.tipAmount ?? 0,
+      weight_kg: draft.weightKg ?? 0,
+      surcharge_night: draft.surchargeNight ?? 0,
+      surcharge_rain: draft.surchargeRain ?? 0,
+      surcharge_distance: draft.surchargeDistance ?? 0,
+      surcharge_express: draft.surchargeExpress ?? 0,
+      surcharge_weight: draft.surchargeWeight ?? 0,
       coupon_code: draft.coupon?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({

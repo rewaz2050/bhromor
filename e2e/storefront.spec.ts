@@ -98,15 +98,15 @@ test("mobile quick add → bag → checkout retains selected options", async ({
   await accessible(page);
   await bag.getByRole("link", { name: "Checkout →" }).click();
   await expect(page).toHaveURL(/\/checkout$/);
-  await expect(page.getByLabel("Full name", { exact: true })).toBeVisible();
-  await page.getByLabel("Full name", { exact: true }).fill("Browser QA");
-  await page.getByLabel("Phone number", { exact: true }).fill("01712345678");
-  await page
-    .getByLabel("Area / neighbourhood", { exact: true })
-    .fill("Kandirpar");
-  await page
-    .getByLabel("Full address", { exact: true })
-    .fill("QA address, do not fulfil");
+  await expect(page.getByLabel(/Full name/)).toBeVisible();
+  await page.getByLabel(/Full name/).fill("Browser QA");
+  await page.getByLabel(/Mobile number/).fill("01712345678");
+  // Simple form: district + upazila default to Sunamganj / Sunamganj Sadar —
+  // paras are direct tappable chips; address = house no (+ optional road).
+  const boropara = page.getByRole("button", { name: "Boropara" });
+  await boropara.click();
+  await expect(boropara).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel(/House No/).fill("12/A");
   await expect(
     page.getByRole("button", { name: "Place Order", exact: true }),
   ).toBeEnabled();

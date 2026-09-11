@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LoyaltyCard } from "../loyalty-card";
 
-describe("LoyaltyCard Component", () => {
-  it("renders the 10-stamp loyalty card", () => {
+describe("LoyaltyCard — Smart Card (signed-out teaser)", () => {
+  it("shows the join card: 10 stamps, free prize, account required, no verification", () => {
     render(<LoyaltyCard />);
 
     expect(screen.getByTestId("loyalty-stamp-card")).toBeInTheDocument();
+    expect(screen.getByText(/১০টা স্ট্যাম্প পূর্ণ করলেই/)).toBeInTheDocument();
+    expect(screen.getByText(/প্রতিটি অর্ডারে/)).toBeInTheDocument();
+    expect(screen.getByText(/অ্যাকাউন্ট খুলতে হবে/)).toBeInTheDocument();
     expect(
-      screen.getByText(/১০-অর্ডার লয়্যালটি স্ট্যাম্প কার্ড|অভিনন্দন/i),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+      screen.getByRole("link", { name: /ফ্রি অ্যাকাউন্ট খুলুন/ }),
+    ).toHaveAttribute("href", "/account");
   });
 });

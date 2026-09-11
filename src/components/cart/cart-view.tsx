@@ -8,17 +8,11 @@ import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
 import {
   DELIVERY_ETA,
-  FREE_DELIVERY_THRESHOLD,
-  FIRST_1000_FREE_LIMIT,
+  FIRST_FREE_DELIVERY_LIMIT,
   INSTANT_DELIVERY_TITLE,
-  amountToFreeDelivery,
   cheapestZoneCharge,
-  deliveryChargeFor,
-  deliveryChargeWithPromo,
-  orderTotal,
 } from "@/lib/delivery";
 import { FLAT_DELIVERY_NOTE } from "@/lib/catalog";
-import { usePromo } from "@/lib/use-promo";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { ButtonLink } from "@/components/ui/primitives";
 import {
@@ -30,14 +24,12 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { DeliveryFeeCalculator } from "@/components/delivery/delivery-fee-calculator";
 
 export default function CartView() {
   const { t } = useLanguage();
   const { detail, updateQty, removeItem, subtotal } = useCart();
   /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
   const { activeZones } = useZones();
-  const promo = usePromo();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
   const empty = detail.length === 0;
 
@@ -61,13 +53,10 @@ export default function CartView() {
   }
 
   const fromCharge = cheapestZoneCharge(activeZones);
-  const deliveryFee = promo.promoActive
-    ? deliveryChargeWithPromo(fromCharge, subtotal, promo.totalOrders)
-    : deliveryChargeFor(fromCharge, subtotal);
-  const freeDelivery = deliveryFee === 0;
-  const promoFree = promo.promoActive && deliveryFee === 0 && promo.totalOrders < FIRST_1000_FREE_LIMIT;
-  const missingForFree = amountToFreeDelivery(subtotal);
-  const total = orderTotal(subtotal, deliveryFee);
+  const deliveryFee = fromCharge;
+  // Marketing note — per-user promo; the real check happens at checkout/server.
+  const promoFree = true;
+  const total = subtotal;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
@@ -184,11 +173,9 @@ export default function CartView() {
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
             {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
           </p>
-          {promo.promoActive && !promo.loading && (
-            <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-              🎉 প্রথম {promo.limit} অর্ডারে ফ্রি! {promo.remainingFree} বাকি
-            </p>
-          )}
+          <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
+            🎉 প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি!
+          </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">
@@ -197,29 +184,21 @@ export default function CartView() {
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-ink-soft">
-                {freeDelivery ? t("cart.delivery") : t("cart.deliveryFrom")}
-              </dt>
-              <dd className="font-medium text-ink">
-                {deliveryFee === 0 ? (
-                  <span className="text-forest-700">{t("cart.free")}</span>
-                ) : (
-                  formatBdt(deliveryFee)
-                )}
-              </dd>
+              <dt className="text-ink-soft">{t("cart.deliveryFrom")}</dt>
+              <dd className="font-medium text-ink">{formatBdt(deliveryFee)}</dd>
             </div>
-            {freeDelivery ? (
+            {promoFree ? (
               <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
-                {promoFree ? `🎉 First ${FIRST_1000_FREE_LIMIT} FREE promo — delivery free!` : t("cart.freeDeliveryUnlocked")}
+                {`🎉 প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`}
               </p>
             ) : (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
-                {t("cart.addMoreForFree")} {formatBdt(missingForFree)} {t("cart.moreForFreeDeliverySuffix")}
+                {"ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে হিসাব হবে (জোন ৳৩০–৳১০০)।"}
               </p>
             )}
             <div className="flex justify-between border-t border-line pt-4 text-base">
               <dt className="font-semibold text-ink">
-                {freeDelivery ? t("cart.total") : t("cart.estimatedTotal")}
+                {t("cart.estimatedTotal")}
               </dt>
               <dd className="font-bold text-ink">{formatBdt(total)}</dd>
             </div>
@@ -235,15 +214,11 @@ export default function CartView() {
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery
             available.{" "}
-            {!freeDelivery &&
-              `Free delivery on orders over ${formatBdt(FREE_DELIVERY_THRESHOLD)}.`}
+            {`প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT}টি অর্ডারে ডেলিভারি ফ্রি (সুনামগঞ্জ সিটি এ জোন).`}
           </p>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
             {FLAT_DELIVERY_NOTE}
           </p>
-          <div className="mt-6">
-            <DeliveryFeeCalculator subtotalTaka={subtotal/100} />
-          </div>
         </div>
       </aside>
     </div>
