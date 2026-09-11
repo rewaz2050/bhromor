@@ -78,12 +78,9 @@ it("places an order through the simple form (demo mode)", async () => {
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
     target: { value: "01712345678" },
   });
-  // District + Upazila default to Sunamganj / Sunamganj Sadar — pick a para.
-  const paraSelect = screen.getAllByRole("combobox").find(
-    (el) => (el as HTMLSelectElement).querySelector('option[value="Boropara"]'),
-  ) as HTMLSelectElement;
-  expect(paraSelect).toBeTruthy();
-  fireEvent.change(paraSelect, { target: { value: "Boropara" } });
+  // District + Upazila default to Sunamganj / Sunamganj Sadar — paras are
+  // direct chips: tap "Boropara".
+  fireEvent.click(screen.getByRole("button", { name: "Boropara" }));
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 12, College Road, Mosque-এর পাশে" },
   });
@@ -120,11 +117,8 @@ it("stays placeable when the para is typed by hand (other para)", async () => {
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
     target: { value: "01812345678" },
   });
-  const paraSelect = screen.getAllByRole("combobox").find(
-    (el) => (el as HTMLSelectElement).querySelector('option[value="Boropara"]'),
-  ) as HTMLSelectElement;
-  // Choose "Other" → free-text input appears.
-  fireEvent.change(paraSelect, { target: { value: "__other__" } });
+  // "Other para" chip → free-text input appears.
+  fireEvent.click(screen.getByRole("button", { name: /অন্য পাড়া/ }));
   const typed = screen.getByPlaceholderText(/পাড়া \/ গ্রামের নাম লিখুন/);
   fireEvent.change(typed, { target: { value: "Notun para" } });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {

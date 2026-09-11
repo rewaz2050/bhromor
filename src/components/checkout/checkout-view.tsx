@@ -61,6 +61,7 @@ import {
   deleteAddress,
   type SavedAddress,
 } from "@/lib/address-book";
+import { getUpazilasForDistrict } from "@/lib/bd-geo";
 import MapPinPicker from "./map-pin-picker";
 
 type TimeSlot = "now" | "evening" | "scheduled";
@@ -932,107 +933,161 @@ export default function CheckoutView() {
               <span className="mb-1.5 block text-sm font-medium text-ink">
                 উপজেলা / Upazila <span className="text-rose-600">*</span>
               </span>
-              {sunamganjDistrict ? (
-                <select
-                  required
-                  value={form.upazila}
-                  onChange={(e) => {
-                    update("upazila", e.target.value);
-                    update("paraSelected", "");
-                    update("paraCustom", "");
-                  }}
-                  className={inputClass("upazila")}
-                >
-                  {SUNAMGANJ_UPAZILAS.map((u) => (
-                    <option key={u.en} value={u.en}>
-                      {u.bn} — {u.en}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  required
-                  value={form.upazilaCustom}
-                  onChange={(e) => {
-                    update("upazilaCustom", e.target.value);
-                    update("paraSelected", "");
-                  }}
-                  placeholder="যেমন: ছাতক / Chhatak"
-                  className={inputClass("upazila")}
-                />
-              )}
+              {(() => {
+                const otherUz = getUpazilasForDistrict(form.district);
+                if (sunamganjDistrict) {
+                  return (
+                    <select
+                      required
+                      value={form.upazila}
+                      onChange={(e) => {
+                        update("upazila", e.target.value);
+                        update("paraSelected", "");
+                        update("paraCustom", "");
+                      }}
+                      className={inputClass("upazila")}
+                    >
+                      {SUNAMGANJ_UPAZILAS.map((u) => (
+                        <option key={u.en} value={u.en}>
+                          {u.bn} — {u.en}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                }
+                if (otherUz.length > 0) {
+                  return (
+                    <select
+                      required
+                      value={form.upazilaCustom}
+                      onChange={(e) => {
+                        update("upazilaCustom", e.target.value);
+                        update("paraSelected", "");
+                        update("paraCustom", "");
+                      }}
+                      className={inputClass("upazila")}
+                    >
+                      <option value="" disabled>
+                        — উপজেলা সিলেক্ট করুন —
+                      </option>
+                      {otherUz.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  );
+                }
+                return (
+                  <input
+                    required
+                    value={form.upazilaCustom}
+                    onChange={(e) => {
+                      update("upazilaCustom", e.target.value);
+                      update("paraSelected", "");
+                    }}
+                    placeholder="উপজেলার নাম লিখুন"
+                    className={inputClass("upazila")}
+                  />
+                );
+              })()}
             </label>
           </div>
 
           <div className="mt-4">
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">
-                পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
-              </span>
-              {paraIsSelect ? (
-                <>
-                  <select
-                    required
-                    value={form.paraSelected}
-                    onChange={(e) => {
-                      update("paraSelected", e.target.value);
-                      if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                    }}
-                    aria-invalid={!!fieldErrors.area}
-                    className={inputClass("area")}
-                  >
-                    <option value="" disabled>
-                      — আপনার পাড়া সিলেক্ট করুন —
-                    </option>
-                    <optgroup label="সুনামগঞ্জ সিটি — এ জোন (প্রথম ১০ অর্ডারে ফ্রি)">
-                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z1").map((p) => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="সদর কোর — বি জোন (৳৫০)">
-                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z2").map((p) => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="সদর এক্সটেন্ডেড — সি জোন (৳৭০)">
-                      {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === "z3").map((p) => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                    <option value={PARA_CUSTOM}>অন্য পাড়া / গ্রাম — নিজে লিখব (Other…)</option>
-                  </select>
-                  {form.paraSelected === PARA_CUSTOM && (
-                    <input
-                      ref={paraRef}
-                      value={form.paraCustom}
-                      onChange={(e) => {
-                        update("paraCustom", e.target.value);
+            <span className="mb-2 block text-sm font-medium text-ink">
+              পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
+            </span>
+            {paraIsSelect ? (
+              <>
+                {/* All paras as direct tappable chips — no dropdown needed */}
+                <div className="space-y-3" role="group" aria-label="আপনার পাড়া সিলেক্ট করুন">
+                  {(
+                    [
+                      { zoneId: "z1", label: "সুনামগঞ্জ সিটি — এ জোন · প্রথম ১০ অর্ডারে ফ্রি", tone: "green" },
+                      { zoneId: "z2", label: "সদর কোর — বি জোন · ৳৫০", tone: "plain" },
+                      { zoneId: "z3", label: "সদর এক্সটেন্ডেড — সি জোন · ৳৭০", tone: "plain" },
+                    ] as const
+                  ).map((group) => (
+                    <div key={group.zoneId}>
+                      <p className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${group.tone === "green" ? "text-forest-700" : "text-ink-soft"}`}>
+                        {group.label}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === group.zoneId).map((p) => {
+                          const selected = form.paraSelected === p.name;
+                          return (
+                            <button
+                              key={p.name}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => {
+                                update("paraSelected", p.name);
+                                update("paraCustom", "");
+                                if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                              }}
+                              className={`rounded-full px-3.5 py-2 text-xs font-medium ring-1 transition-colors ${
+                                selected
+                                  ? "bg-forest-800 text-ivory-50 ring-forest-700"
+                                  : group.tone === "green"
+                                    ? "bg-forest-50 text-forest-900 ring-forest-200 hover:bg-forest-100"
+                                    : "bg-paper text-ink ring-line hover:bg-ivory-100"
+                              }`}
+                            >
+                              {selected && "✓ "}{p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <div>
+                    <button
+                      type="button"
+                      aria-pressed={form.paraSelected === PARA_CUSTOM}
+                      onClick={() => {
+                        update("paraSelected", PARA_CUSTOM);
                         if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
                       }}
-                      placeholder="পাড়া / গ্রামের নাম লিখুন"
-                      aria-invalid={!!fieldErrors.area}
-                      className={`mt-2 ${inputClass("area")}`}
-                    />
-                  )}
-                </>
-              ) : (
-                <input
-                  ref={paraRef}
-                  required
-                  value={form.paraCustom}
-                  onChange={(e) => {
-                    update("paraCustom", e.target.value);
-                    if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                  }}
-                  placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
-                  aria-invalid={!!fieldErrors.area}
-                  className={inputClass("area")}
-                />
-              )}
-              {fieldErrors.area && (
-                <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
-              )}
-            </label>
+                      className={`rounded-full px-3.5 py-2 text-xs font-medium ring-1 transition-colors ${
+                        form.paraSelected === PARA_CUSTOM
+                          ? "bg-forest-800 text-ivory-50 ring-forest-700"
+                          : "bg-paper text-ink ring-line hover:bg-ivory-100"
+                      }`}
+                    >
+                      {form.paraSelected === PARA_CUSTOM && "✓ "}অন্য পাড়া / গ্রাম — নিজে লিখব
+                    </button>
+                    {form.paraSelected === PARA_CUSTOM && (
+                      <input
+                        ref={paraRef}
+                        value={form.paraCustom}
+                        onChange={(e) => {
+                          update("paraCustom", e.target.value);
+                          if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                        }}
+                        placeholder="পাড়া / গ্রামের নাম লিখুন"
+                        aria-invalid={!!fieldErrors.area}
+                        className={`mt-2 ${inputClass("area")}`}
+                      />
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <input
+                ref={paraRef}
+                required
+                value={form.paraCustom}
+                onChange={(e) => {
+                  update("paraCustom", e.target.value);
+                  if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+                }}
+                placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
+                aria-invalid={!!fieldErrors.area}
+                className={inputClass("area")}
+              />
+            )}
+            {fieldErrors.area && (
+              <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+            )}
           </div>
 
           {/* House / Road structured fields */}
