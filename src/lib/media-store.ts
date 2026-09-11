@@ -1,17 +1,14 @@
 /**
- * Media library (§49) — demo, browser-local.
+ * Media library (§49) — pure helpers and the in-use scan.
  *
  * Scans every media reference actually used by the system (products,
- * categories, homepage hero, brand) and overlays admin-added entries.
- * Real uploads move to Cloudinary with the signed-upload flow (§13, §48);
- * this screen already mirrors the organisation the blueprint wants
- * (PROSANTI/products/… categories/ homepage/ brand/).
+ * categories, homepage hero, brand). Admin-added entries live in the
+ * media_library table (see use-media.ts); uploads move to Cloudinary with
+ * the signed-upload flow (§13, §48).
  */
 
 import type { Category, Product } from "./catalog";
 import { extractYoutubeId, youtubeThumbUrl } from "./media";
-
-export const MEDIA_STORAGE_KEY = "prosanti.admin.media.v1";
 
 export type MediaKind =
   | "product"
@@ -138,140 +135,4 @@ export const mergeCustom = (
     if (!byUrl.has(c.url)) byUrl.set(c.url, c);
   }
   return [...byUrl.values()];
-};
-
-/* ------------------------------------------------------------------ */
-/* External store                                                      */
-/* ------------------------------------------------------------------ */
-
-type Listener = () => void;
-
-let baseCache: MediaItem[] | null = null;
-let baseKey: string | null = null;
-let customCache: MediaItem[] | null = null;
-let loaded = false;
-/** Memoised merge — useSyncExternalStore needs a stable snapshot identity. */
-let mergedCache: MediaItem[] | null = null;
-let mergedFrom: { base: MediaItem[]; custom: MediaItem[] } | null = null;
-const listeners = new Set<Listener>();
-
-const notify = () => {
-  for (const l of listeners) l();
-};
-
-export const addCustom = (
-  custom: MediaItem[],
-  item: Omit<MediaItem, "id" | "kind">,
-): MediaItem[] => {
-  if (!item.url || custom.some((c) => c.url === item.url)) return custom;
-  return [...custom, { ...item, kind: "custom", id: `custom:${Date.now()}` }];
-};
-
-export const removeCustom = (custom: MediaItem[], id: string): MediaItem[] =>
-  custom.filter((c) => c.id !== id);
-
-/* ------------------------------------------------------------------ */
-
-/** Cheap identity for the scanned catalog so the base list is rebuilt when
- *  an admin adds/removes a product image (it used to be frozen forever). */
-const catalogKey = (products: Product[], categories: Category[]): string =>
-  `${products.length}:${products
-    .map((p) => `${p.id}#${p.media.map((m) => m.src).join(",")}`)
-    .join("|")}::${categories.map((c) => `${c.id}#${c.image}`).join("|")}`;
-
-const ensureLoaded = (
-  products: Product[],
-  categories: Category[],
-): { base: MediaItem[]; custom: MediaItem[] } => {
-  const key = catalogKey(products, categories);
-  // Store-mutation helpers call this with empty lists; never let that wipe a
-  // base scan that was built from the real catalog.
-  const skipScan = baseCache !== null && products.length === 0 && categories.length === 0;
-  if (!skipScan && (!baseCache || baseKey !== key)) {
-    baseCache = scanMedia(products, categories);
-    baseKey = key;
-    mergedCache = null;
-  }
-  const base = baseCache ?? [];
-  if (customCache && loaded) return { base, custom: customCache };
-  loaded = true;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(MEDIA_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as MediaItem[];
-        if (Array.isArray(parsed)) customCache = parsed;
-      }
-    } catch {
-      // corrupted storage → no custom entries
-    }
-  }
-  customCache ??= [];
-  return { base, custom: customCache };
-};
-
-const persist = (custom: MediaItem[]) => {
-  customCache = custom;
-  mergedCache = null;
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(custom));
-    } catch {
-      // storage unavailable — demo continues in memory
-    }
-  }
-  notify();
-};
-
-export const subscribeMedia = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-/** Stable (empty-ish) server snapshot — a fresh array per call looped React. */
-const SERVER_SNAPSHOT: MediaItem[] = scanMedia([], []);
-export const getMediaServer = (): MediaItem[] => SERVER_SNAPSHOT;
-
-export const getMedia = (
-  products: Product[],
-  categories: Category[],
-): MediaItem[] => {
-  const { base, custom } = ensureLoaded(products, categories);
-  if (
-    mergedCache &&
-    mergedFrom &&
-    mergedFrom.base === base &&
-    mergedFrom.custom === custom
-  ) {
-    return mergedCache;
-  }
-  mergedCache = mergeCustom(base, custom);
-  mergedFrom = { base, custom };
-  return mergedCache;
-};
-
-export const getCustomMedia = (): MediaItem[] =>
-  ensureLoaded([], []).custom;
-
-export const addMediaInStore = (
-  products: Product[],
-  categories: Category[],
-  item: { url: string; alt: string; label: string; mediaType?: MediaContent },
-) => {
-  const { custom } = ensureLoaded(products, categories);
-  persist(addCustom(custom, item));
-};
-
-export const removeMediaInStore = (id: string) => {
-  const { custom } = ensureLoaded([], []);
-  persist(removeCustom(custom, id));
-};
-
-export const resetMediaStore = () => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(MEDIA_STORAGE_KEY);
-  }
-  customCache = [];
-  mergedCache = null;
-  persist([]);
 };

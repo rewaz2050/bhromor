@@ -16,7 +16,7 @@ const STATUS_TONE: Record<ContactStatus, string> = {
 
 /** Staff contact inbox — messages from the public contact form. */
 export default function AdminMessagesPage() {
-  const { messages, setStatus, live, loading, error } = useMessages();
+  const { messages, setStatus, loading, error } = useMessages();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -47,9 +47,7 @@ export default function AdminMessagesPage() {
             Messages
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            {live
-              ? "Contact-form messages from customers, newest first."
-              : "Demo inbox — messages sent on this device land here."}
+            Contact-form messages from customers, newest first.
           </p>
         </div>
         {newCount > 0 && (

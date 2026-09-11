@@ -1,5 +1,5 @@
 /**
- * Wishlist store (§29) — demo, browser-local.
+ * Wishlist store (§29) — guest (local) list, synced to the signed-in account.
  * Pure list helpers on top; external store below feeds useSyncExternalStore.
  */
 
@@ -56,7 +56,7 @@ const persist = (next: string[]) => {
     try {
       window.localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(next));
     } catch {
-      // storage unavailable — demo continues in memory
+      // storage unavailable — list continues in memory
     }
   }
   notify();

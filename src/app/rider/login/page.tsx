@@ -3,14 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { isSupabaseConfigured } from "@/lib/env";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
-import { IconArrowRight, IconShield, IconTruck } from "@/components/ui/icons";
+import { IconTruck } from "@/components/ui/icons";
 
 export default function RiderLoginPage() {
   const router = useRouter();
   const supabase = getSupabaseBrowser();
-  const live = isSupabaseConfigured();
 
   const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
@@ -90,23 +88,7 @@ export default function RiderLoginPage() {
         </p>
       </div>
 
-      {!live ? (
-        <div className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 text-center shadow-sm">
-          <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider text-forest-800">
-            <IconShield className="h-4 w-4 text-gold-600" /> ডেমো মোড সক্রিয়
-          </div>
-          <p className="text-xs leading-relaxed text-ink-soft">
-            বর্তমানে সিস্টেমটি অফলাইন/ডেমো মোডে কাজ করছে। আপনি কোনো লগইন তথ্য ছাড়াই সরাসরি রাইডার ড্যাশবোর্ড টেস্ট করতে পারবেন।
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/rider")}
-            className="w-full h-12 inline-flex items-center justify-center gap-2 rounded-full bg-forest-800 font-semibold text-xs text-ivory-50 transition-colors hover:bg-forest-900"
-          >
-            রাইডার ড্যাশবোর্ডে প্রবেশ করুন <IconArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
+      
         <form
           onSubmit={handleSubmit}
           className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
@@ -189,8 +171,7 @@ export default function RiderLoginPage() {
           >
             {busy ? "যাচাই হচ্ছে…" : mode === "in" ? "লগইন করুন" : "অ্যাকাউন্ট খুলুন"}
           </button>
-        </form>
-      )}
+      </form>
 
       <div className="mt-8 text-center space-y-2 text-xs text-ink-soft">
         <p>

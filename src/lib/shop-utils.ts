@@ -2,8 +2,8 @@
  * Marketplace shop helpers (phase 2, slice 4) — pure + client-safe.
  *
  * Both the server catalog and the storefront UI resolve "which shop sells
- * this product" through here, so demo seeds (no shopId → shop #1) and live
- * rows (always tagged) behave identically.
+ * this product" through here, so rows without a shopId fall back to the
+ * owner's shop and live rows (always tagged) behave identically.
  */
 
 import type { Product, Shop } from "./catalog";
@@ -15,7 +15,7 @@ export const toPublicShop = (shop: Shop): Shop => {
   return pub;
 };
 
-/** Demo seeds omit shopId; they implicitly belong to the fallback shop. */
+/** Rows without shopId implicitly belong to the fallback shop. */
 export const productShopId = (
   product: Pick<Product, "shopId">,
   fallbackShopId: string,

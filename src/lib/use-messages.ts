@@ -1,28 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getDemoMessages,
-  resetDemoMessages,
-  setDemoMessageStatus,
-  subscribeDemoMessages,
-  type ContactMessage,
-  type ContactStatus,
-} from "./engagement";
+import { useCallback, useEffect, useState } from "react";
+import type { ContactMessage, ContactStatus } from "./engagement";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /**
- * Staff contact inbox with live cutover (see use-coupons.ts).
- * Staff sessions read/mark the contact_messages table; demo keeps the
- * browser-local inbox the demo contact form writes to.
+ * Staff contact inbox — live only. Reads/marks the contact_messages table.
  */
 export function useMessages() {
-  const demo = useSyncExternalStore(
-    subscribeDemoMessages,
-    getDemoMessages,
-    getDemoMessages,
-  );
   const { live, checked } = useStaffLive();
   const [liveMessages, setLiveMessages] = useState<ContactMessage[] | null>(
     null,
@@ -45,7 +31,7 @@ export function useMessages() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveMessages(null);
       setError(null);
       return;
@@ -55,10 +41,7 @@ export function useMessages() {
 
   const setStatus = useCallback(
     async (id: string, status: ContactStatus): Promise<boolean> => {
-      if (!live) {
-        setDemoMessageStatus(id, status);
-        return true;
-      }
+      if (!live) return false;
       try {
         await apiSend("/api/admin/messages", "PATCH", { id, status });
         setError(null);
@@ -74,15 +57,10 @@ export function useMessages() {
     [live],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetDemoMessages();
-  }, [live, refresh]);
-
   return {
-    messages: live ? (liveMessages ?? []) : demo,
+    messages: liveMessages ?? [],
     setStatus,
-    reset,
+    reset: refresh,
     refresh,
     live,
     loading: live && (!checked || liveMessages === null),

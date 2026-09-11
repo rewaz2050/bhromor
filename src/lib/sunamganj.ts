@@ -1,7 +1,7 @@
 /**
  * Sunamganj Sadar real data — single source of truth for paras, zones, roads.
  * District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
- * No demo, all real. Now with real lat/lng + distance-based zone.
+ * Real lat/lng + distance-based zones.
  */
 
 import type { DeliveryZone } from "./catalog";

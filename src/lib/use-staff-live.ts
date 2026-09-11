@@ -3,15 +3,14 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   getAdminAuthed,
-  getAdminMode,
   probeStaffSession,
   subscribeAdminAuth,
 } from "./admin-auth";
 
 /**
  * Single shared staff-session probe for the admin data hooks.
- * Demo mode resolves instantly without any fetch; live mode probes
- * /api/admin/me once per mount cycle (module-cached promise).
+ * Staff sessions are always live (Supabase): the probe verifies the
+ * session against /api/admin/me once per mount cycle (module-cached).
  */
 
 let probePromise: Promise<boolean> | null = null;
@@ -35,12 +34,11 @@ export function useStaffLive(): { live: boolean; checked: boolean } {
     getAdminAuthed,
     () => false,
   );
-  const staffMode = authed && getAdminMode() === "live";
-  const [state, setState] = useState({ live: false, checked: !staffMode });
+  const [state, setState] = useState({ live: false, checked: !authed });
 
   useEffect(() => {
-    if (!staffMode) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets probe state
+    if (!authed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets probe state
       setState({ live: false, checked: true });
       return;
     }
@@ -51,7 +49,7 @@ export function useStaffLive(): { live: boolean; checked: boolean } {
     return () => {
       cancelled = true;
     };
-  }, [staffMode]);
+  }, [authed]);
 
-  return staffMode ? state : { live: false, checked: true };
+  return state;
 }

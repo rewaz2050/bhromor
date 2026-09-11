@@ -1,25 +1,19 @@
 /**
- * Admin catalog store — products & categories (demo, browser-local).
+ * Catalog helpers — products & categories (pure, client-safe).
  *
- * Pure helpers at the top (unit-testable); the external store below feeds
- * useSyncExternalStore so admin pages hydrate safely. Seed data comes from
- * src/lib/catalog.ts; edits persist under one localStorage key and are
- * overlaid on top of the seeds. The Supabase phase replaces persistence,
- * not the store API the UI already speaks.
+ * Pure list helpers shared by the admin editors; catalog rows themselves
+ * live in the database (see use-catalog.ts and /api/admin/products).
  */
 
-import { CATEGORIES, PRODUCTS, type Category, type Product } from "./catalog";
-
-export const CATALOG_STORAGE_KEY = "prosanti.admin.catalog.v1";
+import type { Category, Product } from "./catalog";
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-/** Clean URL/emoji-safe slug (§52) — keeps Bengali letters. */
 /**
  * Display stock for catalog rows that predate explicit counts
- * (seeds carry inStock/lowStock flags but not always a number).
+ * (rows carry inStock/lowStock flags but not always a number).
  */
 export const displayStock = (p: {
   stock?: number;
@@ -111,135 +105,4 @@ export const moveCategory = (
   const next = [...list];
   [next[i], next[j]] = [next[j], next[i]];
   return next;
-};
-
-/* ------------------------------------------------------------------ */
-/* External store                                                      */
-/* ------------------------------------------------------------------ */
-
-type Listener = () => void;
-
-let productsCache: Product[] | null = null;
-let categoriesCache: Category[] | null = null;
-let loaded = false;
-const listeners = new Set<Listener>();
-
-const notify = () => {
-  for (const l of listeners) l();
-};
-
-const seedProducts = (): Product[] => PRODUCTS.map(cloneProduct);
-const seedCategories = (): Category[] => CATEGORIES.map(cloneCategory);
-
-type CatalogSnapshot = { products: Product[]; categories: Category[] };
-
-/**
- * Cached snapshot wrapper — useSyncExternalStore needs a stable identity.
- * Returning a fresh object per call makes React re-render forever until it
- * throws "Maximum update depth exceeded", which surfaces as the Next.js
- * "This page couldn't load" error page (the same bug class as #58/getMedia
- * and live-catalog.getProductsSnapshot).
- */
-let snapshotCache: CatalogSnapshot | null = null;
-
-const makeSnapshot = (): CatalogSnapshot => ({
-  products: productsCache ?? seedProducts(),
-  categories: categoriesCache ?? seedCategories(),
-});
-
-const ensureLoaded = (): CatalogSnapshot => {
-  if (loaded && snapshotCache) return snapshotCache;
-  loaded = true;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(CATALOG_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as {
-          products?: Product[];
-          categories?: Category[];
-        };
-        if (Array.isArray(parsed.products) && parsed.products.length > 0) {
-          productsCache = parsed.products;
-        }
-        if (Array.isArray(parsed.categories) && parsed.categories.length > 0) {
-          categoriesCache = parsed.categories;
-        }
-      }
-    } catch {
-      // corrupted storage → fall back to seeds
-    }
-  }
-  productsCache ??= seedProducts();
-  categoriesCache ??= seedCategories();
-  snapshotCache = makeSnapshot();
-  return snapshotCache;
-};
-
-const persist = (products: Product[], categories: Category[]) => {
-  productsCache = products;
-  categoriesCache = categories;
-  // New wrapper per mutation so subscribers see a changed snapshot.
-  snapshotCache = makeSnapshot();
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(
-        CATALOG_STORAGE_KEY,
-        JSON.stringify({ products, categories }),
-      );
-    } catch {
-      // storage unavailable — demo continues in memory
-    }
-  }
-  notify();
-};
-
-/* Public store API — components never touch cache directly. */
-
-export const subscribeCatalog = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-export const getCatalog = (): { products: Product[]; categories: Category[] } =>
-  ensureLoaded();
-
-export const saveProductInStore = (product: Product) => {
-  const { products, categories } = ensureLoaded();
-  persist(upsertProduct(products, product), categories);
-};
-
-export const toggleProductFlagInStore = (
-  id: string,
-  flag: "featured" | "isNew",
-  value: boolean,
-) => {
-  const { products, categories } = ensureLoaded();
-  persist(setProductFlag(products, id, flag, value), categories);
-};
-
-export const setProductActiveInStore = (id: string, active: boolean) => {
-  const { products, categories } = ensureLoaded();
-  persist(setProductActive(products, id, active), categories);
-};
-
-export const saveCategoryInStore = (category: Category) => {
-  const { products, categories } = ensureLoaded();
-  persist(products, upsertCategory(categories, category));
-};
-
-export const setCategoryActiveInStore = (id: string, active: boolean) => {
-  const { products, categories } = ensureLoaded();
-  persist(products, setCategoryActive(categories, id, active));
-};
-
-export const moveCategoryInStore = (id: string, dir: -1 | 1) => {
-  const { products, categories } = ensureLoaded();
-  persist(products, moveCategory(categories, id, dir));
-};
-
-export const resetCatalogStore = () => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(CATALOG_STORAGE_KEY);
-  }
-  persist(seedProducts(), seedCategories());
 };

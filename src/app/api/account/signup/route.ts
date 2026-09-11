@@ -1,9 +1,7 @@
 /**
  * POST /api/account/signup — create a customer account, instantly signed in.
  * No email/OTP verification by design: response sets the session cookie.
- * Demo mode returns `{ demoMode: true }` and the browser-local store takes over.
- * An unseeded accounts store (migration not applied yet) also degrades to
- * demo mode — the customer still gets a working account, the owner gets a
+ * An unseeded accounts store (migration not applied yet) answers 503 with a
  * clear pointer in the server log instead of a silent 500.
  */
 
@@ -29,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("অ্যাকাউন্ট খোলা যাচ্ছে না — পরে আবার চেষ্টা করুন।", 503);
   }
 
   let body: Record<string, unknown>;
@@ -49,7 +47,7 @@ export async function POST(request: Request) {
     if (err instanceof CustomerAuthError) {
       if (err.storeMissing) {
         console.error("[account/signup]", err.message);
-        return apiJson({ demoMode: true as const });
+        return apiError("অ্যাকাউন্ট খোলা যাচ্ছে না — accounts store এখনো সেটআপ হয়নি।", 503);
       }
       return apiError(err.message, err.status);
     }

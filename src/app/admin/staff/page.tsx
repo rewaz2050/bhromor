@@ -75,7 +75,7 @@ export default function AdminStaffPage() {
     return (
       <div className="rounded-2xl bg-paper p-8 text-center ring-1 ring-line">
         <h2 className="font-display text-xl text-forest-900">
-          Staff needs live mode
+          Sign in as staff
         </h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
           Staff accounts are real — sign in with an admin account to see the

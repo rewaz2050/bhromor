@@ -10,14 +10,14 @@ import {
 } from "@/lib/home-cms";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, hint, label } from "@/components/admin/form-ui";
-import { IconCheck, IconReset } from "@/components/ui/icons";
+import { IconCheck } from "@/components/ui/icons";
 
 const clone = (s: HomeSettings): HomeSettings =>
   JSON.parse(JSON.stringify(s)) as HomeSettings;
 
 /** §31 homepage CMS — announcement, hero copy, section visibility. */
 export default function AdminHomepagePage() {
-  const { settings, save, reset, live, loading, error } = useCms();
+  const { settings, save, loading, error } = useCms();
   const [draft, setDraft] = useState<HomeSettings | null>(null);
   const [savedFlash, setSavedFlash] = useTransientValue(false, 1800);
   const [saving, setSaving] = useState(false);
@@ -71,26 +71,10 @@ export default function AdminHomepagePage() {
             Homepage
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            {live
-              ? "Edit the storefront landing copy — Publish updates the live homepage for every visitor."
-              : "Edit the storefront landing copy — changes appear on the homepage immediately (demo store, saved in this browser)."}
+            Edit the storefront landing copy — Publish updates the live homepage for every visitor.
           </p>
         </div>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Restore the shipped homepage copy?")) {
-                  reset();
-                  setDraft(clone(settings));
-                }
-              }}
-              className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-            >
-              <IconReset className="h-4 w-4" /> Reset
-            </button>
-          )}
           <button
             type="button"
             onClick={() => void persist()}

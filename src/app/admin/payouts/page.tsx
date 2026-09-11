@@ -72,11 +72,10 @@ export default function AdminPayoutsPage() {
     return (
       <div className="rounded-2xl bg-paper p-8 text-center ring-1 ring-line">
         <h2 className="font-display text-xl text-forest-900">
-          Payouts need live mode
+          Payouts need a staff session
         </h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
-          Settlement money has no demo — sign in with a staff account to see
-          balances and record payouts.
+          Sign in with a staff account to see balances and record payouts.
         </p>
       </div>
     );

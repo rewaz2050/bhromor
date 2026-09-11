@@ -9,7 +9,7 @@
 
 ## Setup (deployment owner)
 1. Create/use a Supabase project. Enable Email authentication and new-user signup if desired.
-2. Apply `supabase/migrations/202609080001_storefront_saved_items.sql` in the project's SQL editor or your migration pipeline. This standalone migration does not require applying the legacy demo schema. Do not blindly reapply `schema.sql` to an existing database.
+2. Apply `supabase/migrations/202609080001_storefront_saved_items.sql` in the project's SQL editor or your migration pipeline. This standalone migration does not require applying the base schema. Do not blindly reapply `schema.sql` to an existing database.
 3. Set `NEXT_PUBLIC_SUPABASE_URL` to the HTTPS project URL and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to its anon or publishable client key in the deployment's environment settings. Restart/rebuild Next.js after changing public variables. Never put a service-role key in a `NEXT_PUBLIC_` variable or chat.
 4. Configure the Supabase **Magic Link** email template to display `{{ .Token }}` as the sign-in code. This UI uses `signInWithOtp` + `verifyOtp(type: "email")`, not magic-link redirects. Leave URL auto-session detection disabled. The code input accepts the provider's 6–10 digit OTP length.
 5. Set a production SMTP sender, appropriate OTP expiry and Supabase Auth rate limits. The 60-second UI resend countdown is convenience only; server-side rate limiting must stay enabled. Supabase's development email sender may restrict recipients.
@@ -22,7 +22,7 @@ Without valid configuration, `/account` displays an honest unavailable state and
 - Slugs bridge the current typed storefront catalogue (`p1` etc.) and future UUID product rows. There is deliberately no foreign key into the not-yet-migrated product catalogue. Unknown/removed slugs do not render in the storefront; they are not automatically deleted from a customer's account.
 - Anonymous access is revoked. Authenticated clients only get SELECT, INSERT and DELETE, protected by `auth.uid() = customer_id` RLS. No UPDATE or public-read policy is installed.
 - All adapter queries also filter by customer ID. Client-side filters are not a replacement for the database policies.
-- Customer auth does not grant admin privileges. The existing `/admin` demo gate remains a demo and must not be exposed as production administration.
+- Customer auth does not grant admin privileges. The `/admin` staff gate is the production administration boundary and is never exposed to customers.
 - Sessions use the Supabase browser SDK's persisted session. Protect the site against XSS and sign out on shared devices. Guest and account wishlist data remain separate; cart and guest checkout have not been migrated by this change.
 
 ## Verification before launch

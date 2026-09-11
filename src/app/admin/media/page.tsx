@@ -92,7 +92,7 @@ function MediaPreview({ item }: { item: MediaItem }) {
 /** §49 media library — in-use scan plus the persistent “added” shelf. */
 export default function AdminMediaPage() {
   const { products, categories } = useCatalog();
-  const { items, add, remove, reset, live, loading, error: liveError } = useMedia(products, categories);
+  const { items, add, remove, loading, error: liveError } = useMedia(products, categories);
   const [kind, setKind] = useState<MediaKind | "all">("all");
   const [query, setQuery] = useState("");
   const [url, setUrl] = useState("");
@@ -168,22 +168,10 @@ export default function AdminMediaPage() {
             Media library
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            {live
-              ? "Every image and video the storefront uses, plus the shared library shelf (§49)."
-              : "Every image and video the storefront actually uses, plus your added shelf (§49)."}
+            Every image and video the storefront uses, plus the shared library
+            shelf (§49).
           </p>
         </div>
-        {!live && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm("Remove admin-added entries? In-use media stays.")) reset();
-            }}
-            className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-          >
-            Reset additions
-          </button>
-        )}
       </div>
 
       {liveError && (

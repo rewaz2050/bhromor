@@ -2,11 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useOrders } from "@/lib/use-orders";
-import { useRiders } from "@/lib/use-riders";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
-import { getDeliveryCode, type Order } from "@/lib/orders";
+import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
   IconBox,
@@ -18,42 +16,19 @@ import {
 } from "@/components/ui/icons";
 
 interface RiderTask {
-  /** Identifier of the action target — assignment id live, order id in demo. */
+  /** Identifier of the action target — the live assignment id. */
   id: string;
   order: Order;
   state: "offered" | "accepted" | "picked_up" | "delivered";
 }
 
-const DEMO_RIDER = {
-  id: "rider-default",
-  name: "তানভীর আহমেদ (Tanvir)",
-  phone: "01811111111",
-  vehicle: "bike",
-  zoneIds: [] as string[],
-  status: "active" as const,
-  isOnline: true,
-  cashInHand: 156000,
-  ratingAvg: 4.9,
-  ratingCount: 18,
-};
-
 export default function RiderPage() {
   const session = useRiderSession();
   const isLive = session.status === "authed";
-  const { orders: demoOrders, advance } = useOrders();
-  const { riders, saveRider } = useRiders();
   const riderJobsApi = useRiderJobs(isLive);
+  const activeRider = session.rider;
 
-  const activeRider = useMemo(() => {
-    if (isLive && session.rider) return session.rider;
-    return (
-      riders.find((r) => r.status === "active") ??
-      riders[0] ??
-      DEMO_RIDER
-    );
-  }, [isLive, session.rider, riders]);
-
-  const [isOnline, setIsOnline] = useState(activeRider.isOnline);
+  const [isOnline, setIsOnline] = useState(activeRider?.isOnline ?? false);
   const [selectedPinTask, setSelectedPinTask] = useState<string | null>(null);
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
@@ -80,11 +55,12 @@ export default function RiderPage() {
   };
 
   const CASH_LIMIT_PAISA = 500000;
-  const isCashLimitReached = activeRider.cashInHand >= CASH_LIMIT_PAISA;
+  const cashInHand = activeRider?.cashInHand ?? 0;
+  const isCashLimitReached = cashInHand >= CASH_LIMIT_PAISA;
 
-  const tasks = useMemo<RiderTask[]>(() => {
-    if (isLive) {
-      return riderJobsApi.jobs
+  const tasks = useMemo<RiderTask[]>(
+    () =>
+      riderJobsApi.jobs
         .filter(
           (job) =>
             job.state !== "delivered" &&
@@ -100,42 +76,23 @@ export default function RiderPage() {
               : job.state === "picked_up"
                 ? "picked_up"
                 : "accepted",
-        }));
-    }
-    return demoOrders
-      .filter(
-        (o) =>
-          o.status === "ready-for-pickup" ||
-          o.status === "courier-assigned" ||
-          o.status === "out-for-delivery",
-      )
-      .map((order) => ({
-        id: order.id,
-        order,
-        state:
-          order.status === "out-for-delivery" ? "picked_up" : "accepted",
-      }));
-  }, [isLive, riderJobsApi.jobs, demoOrders]);
+        })),
+    [riderJobsApi.jobs],
+  );
 
-  const deliveredCount = useMemo(() => {
-    if (isLive) {
-      return riderJobsApi.jobs.filter((j) => j.state === "delivered").length;
-    }
-    return demoOrders.filter((o) => o.status === "delivered").length;
-  }, [isLive, riderJobsApi.jobs, demoOrders]);
+  const deliveredCount = useMemo(
+    () => riderJobsApi.jobs.filter((j) => j.state === "delivered").length,
+    [riderJobsApi.jobs],
+  );
 
   const toggleOnline = async () => {
     const nextState = !isOnline;
-    if (isLive) {
-      const ok = await riderJobsApi.setOnline(nextState);
-      if (!ok) {
-        setActionError(riderJobsApi.error);
-        return;
-      }
-      setActionError(null);
-    } else {
-      void saveRider({ ...activeRider, isOnline: nextState });
+    const ok = await riderJobsApi.setOnline(nextState);
+    if (!ok) {
+      setActionError(riderJobsApi.error);
+      return;
     }
+    setActionError(null);
     setIsOnline(nextState);
     void session.refresh();
     if (nextState && navigator.geolocation) {
@@ -183,7 +140,6 @@ export default function RiderPage() {
   }, [isLive, isOnline]);
 
   const handleAccept = async (task: RiderTask) => {
-    if (!isLive) return;
     const ok = await riderJobsApi.accept(task.id);
     if (!ok) {
       setActionError(riderJobsApi.error);
@@ -194,7 +150,6 @@ export default function RiderPage() {
   };
 
   const handleReject = async (task: RiderTask) => {
-    if (!isLive) return;
     const ok = await riderJobsApi.reject(task.id);
     if (!ok) {
       setActionError(riderJobsApi.error);
@@ -205,28 +160,15 @@ export default function RiderPage() {
   };
 
   const handlePickup = async (task: RiderTask) => {
-    if (isLive) {
-      const ok = await riderJobsApi.pickup(task.id);
-      if (!ok) {
-        setActionError(riderJobsApi.error);
-        return;
-      }
-      setActionError(null);
-      showFlash(
-        `অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`,
-      );
+    const ok = await riderJobsApi.pickup(task.id);
+    if (!ok) {
+      setActionError(riderJobsApi.error);
       return;
     }
-    const ok = await advance(
-      task.order.id,
-      "out-for-delivery",
-      "রাইডার পার্সেল সংগ্রহ করেছেন",
+    setActionError(null);
+    showFlash(
+      `অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`,
     );
-    if (ok) {
-      showFlash(
-        `অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`,
-      );
-    }
   };
 
   const handleProofUpload = async (file: File) => {
@@ -242,10 +184,7 @@ export default function RiderPage() {
       });
       const signData = await signRes.json().catch(() => null) as any;
       if (!signRes.ok || !signData?.cloudName) {
-        // Fallback: if Cloudinary not configured, use local preview (demo)
-        const localUrl = URL.createObjectURL(file);
-        setProofUrl(localUrl);
-        showFlash("Cloudinary not configured - demo preview only. Configure CLOUDINARY_*");
+        setPinError("Photo upload unavailable — Cloudinary is not configured.");
         return;
       }
       const form = new FormData();
@@ -272,68 +211,49 @@ export default function RiderPage() {
   };
 
   const handleVerifyPin = async (task: RiderTask) => {
-    if (isLive) {
-      const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
-      if (!ok) {
-        setPinError(riderJobsApi.error ?? "ভুল কোড!");
-        return;
-      }
-      setActionError(null);
-      setSelectedPinTask(null);
-      setEnteredPin("");
-      setPinError("");
-      setProofUrl(null);
-      showFlash(
-        `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে। Proof: ${proofUrl ? "with photo" : "no photo"}`,
-      );
-      void session.refresh();
+    const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
+    if (!ok) {
+      setPinError(riderJobsApi.error ?? "ভুল কোড!");
       return;
     }
-
-    const order = demoOrders.find((o) => o.id === task.order.id);
-    if (!order) return;
-    const expectedCode = order.deliveryCode ?? getDeliveryCode(order.id);
-    if (enteredPin.trim() !== expectedCode) {
-      setPinError("ভুল কোড! সঠিক ৪-সংখ্যার কোডটি কাস্টমারের কাছ থেকে নিন।");
-      return;
-    }
-    const ok = await advance(order.id, "delivered", "সফল ডেলিভারি সম্পন্ন ও ক্যাশ গ্রহণ");
-    if (!ok) return;
-    void saveRider({
-      ...activeRider,
-      cashInHand: activeRider.cashInHand + order.total,
-    });
+    setActionError(null);
     setSelectedPinTask(null);
     setEnteredPin("");
     setPinError("");
     setProofUrl(null);
     showFlash(
-      `🎉 অভিনন্দন! অর্ডার #${order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে।`,
+      `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে। Proof: ${proofUrl ? "with photo" : "no photo"}`,
     );
+    void session.refresh();
   };
 
   const handleSettleCash = async () => {
     if (
       !window.confirm(
-        `আপনি কি অফিসে/bKash-এ ${formatBdt(activeRider.cashInHand)} টাকা জমা দিয়ে ক্যাশ সেটেল করতে চান?`,
+        `আপনি কি অফিসে/bKash-এ ${formatBdt(cashInHand)} টাকা জমা দিয়ে ক্যাশ সেটেল করতে চান?`,
       )
     )
       return;
-    if (isLive) {
-      const ok = await riderJobsApi.settle("cash", "");
-      if (!ok) {
-        setActionError(riderJobsApi.error);
-        setSettle(false);
-        return;
-      }
-      setActionError(null);
-      void session.refresh();
-    } else {
-      void saveRider({ ...activeRider, cashInHand: 0 });
+    const ok = await riderJobsApi.settle("cash", "");
+    if (!ok) {
+      setActionError(riderJobsApi.error);
+      setSettle(false);
+      return;
     }
+    setActionError(null);
+    void session.refresh();
     setSettle(false);
     showFlash("ক্যাশ সেটেলমেন্ট সম্পন্ন হয়েছে! নতুন ট্রিপ একসেপ্ট করতে পারবেন।");
   };
+
+  if (!activeRider) {
+    return (
+      <div className="mx-auto max-w-md px-6 py-16 text-center" aria-label="Loading">
+        <div className="mx-auto h-16 w-16 animate-pulse rounded-full bg-line/70" />
+        <p className="mt-4 text-sm text-ink-soft">রাইডার অ্যাকাউন্ট যাচাই হচ্ছে…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col pb-12">
@@ -415,9 +335,9 @@ export default function RiderPage() {
 
           <div className="mt-3 flex items-baseline justify-between">
             <p className="font-display text-2xl font-bold text-forest-900">
-              {formatBdt(activeRider.cashInHand)}
+              {formatBdt(cashInHand)}
             </p>
-            {activeRider.cashInHand > 0 && (
+            {cashInHand > 0 && (
               <button
                 type="button"
                 onClick={() => setSettle(true)}
@@ -434,12 +354,12 @@ export default function RiderPage() {
               className={`h-full rounded-full transition-all duration-500 ${
                 isCashLimitReached
                   ? "bg-rose-600"
-                  : activeRider.cashInHand > 300000
+                  : cashInHand > 300000
                     ? "bg-amber-500"
                     : "bg-emerald-600"
               }`}
               style={{
-                width: `${Math.min(100, Math.round((activeRider.cashInHand / CASH_LIMIT_PAISA) * 100))}%`,
+                width: `${Math.min(100, Math.round((cashInHand / CASH_LIMIT_PAISA) * 100))}%`,
               }}
             />
           </div>
@@ -451,8 +371,8 @@ export default function RiderPage() {
           )}
         </section>
 
-        {/* Recent cash pay-ins (live only; demo has no persisted ledger) */}
-        {isLive && riderJobsApi.settlements.length > 0 && (
+        {/* Recent cash pay-ins */}
+        {riderJobsApi.settlements.length > 0 && (
           <section aria-label="Recent settlements">
             <h2 className="font-display mb-3 text-base font-semibold text-forest-900">
               সাম্প্রতিক টাকা জমা (Settlement ইতিহাস)
@@ -666,23 +586,18 @@ export default function RiderPage() {
                             <button
                               type="button"
                               onClick={async () => {
-                                if (isLive) {
-                                  const res = await fetch(`/api/rider/assignments/${task.id}/failed`, {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ reason: failedReason }),
-                                  });
-                                  if (res.ok) {
-                                    showFlash("Failed attempt recorded");
-                                    setShowFailed(null);
-                                    setFailedReason("");
-                                  } else {
-                                    const d = await res.json().catch(() => null) as any;
-                                    setPinError(d?.error || "Failed");
-                                  }
-                                } else {
-                                  showFlash("Demo: failed attempt logged");
+                                const res = await fetch(`/api/rider/assignments/${task.id}/failed`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ reason: failedReason }),
+                                });
+                                if (res.ok) {
+                                  showFlash("Failed attempt recorded");
                                   setShowFailed(null);
+                                  setFailedReason("");
+                                } else {
+                                  const d = await res.json().catch(() => null) as any;
+                                  setPinError(d?.error || "Failed");
                                 }
                               }}
                               className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white"
@@ -740,15 +655,6 @@ export default function RiderPage() {
                 className="h-14 w-full rounded-2xl border border-line bg-ivory-50 text-center font-mono text-2xl font-bold tracking-[0.5em] text-forest-900 focus:outline-none focus:ring-2 focus:ring-forest-800"
                 autoFocus
               />
-              {!isLive && (() => {
-                const demoTask = tasks.find((t) => t.id === selectedPinTask);
-                const code = demoTask ? (demoTask.order.deliveryCode ?? getDeliveryCode(demoTask.order.id)) : getDeliveryCode(selectedPinTask);
-                return (
-                  <p className="mt-2 text-center text-[11px] text-ink-soft">
-                    (ডেমো টেস্ট কোড: {code})
-                  </p>
-                );
-              })()}
             </div>
 
             {/* Cloudinary Proof Photo */}
@@ -814,7 +720,7 @@ export default function RiderPage() {
                 ক্যাশ সেটেলমেন্ট
               </h3>
               <p className="mt-1 text-xs text-ink-soft">
-                {formatBdt(activeRider.cashInHand)} অফিসে বা bKash-এ জমা দিয়ে
+                {formatBdt(cashInHand)} অফিসে বা bKash-এ জমা দিয়ে
                 নিশ্চিত করুন।
               </p>
             </div>

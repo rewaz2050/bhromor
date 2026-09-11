@@ -13,8 +13,7 @@
  * is safe to call repeatedly; it also only ever runs when the catalog is empty.
  *
  * Any DB rejection (missing table, RLS, outage) returns false — the caller
- * then degrades the response to `{ demoMode: true }` so the customer can
- * still place the order through the browser-local flow. Honest fallback.
+ * then answers with an honest 503 instead of a dead-end order.
  */
 
 import "server-only";
@@ -61,7 +60,7 @@ const COUPONS = [
   },
 ];
 
-/** Seeds mirror the demo flags (script: low stock 3, otherwise 12). */
+/** Seeds mirror the launch stock flags (script: low stock 3, otherwise 12). */
 const variantStock = (lowStock: boolean): number => (lowStock ? 3 : 12);
 
 /**
@@ -187,7 +186,7 @@ export async function ensureLaunchCatalog(
     (idsRes.data as { id: string; slug: string }[]).map((r) => [r.slug, r.id]),
   );
 
-  // 3. variants (color × size grid; stock mirrors the demo flags)
+  // 3. variants (color × size grid; stock mirrors the launch flags)
   {
     const rows: Record<string, unknown>[] = [];
     for (const p of PRODUCTS) {
@@ -249,7 +248,7 @@ export async function ensureLaunchCatalog(
 }
 
 /**
- * One-time bridge for carts built against the demo seeds (ids `p1…pN`)
+ * One-time bridge for carts built against the launch seed ids (ids `p1…pN`)
  * ordering against live rows (uuid ids). Resolves each unknown id through
  * slug — the same bridge `storefront_saved_items` uses — and only rewrites
  * lines that would otherwise validate as "unknown product".

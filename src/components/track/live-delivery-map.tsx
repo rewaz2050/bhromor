@@ -85,7 +85,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
   const riderPos = getPointOnCurve(transitProgress);
 
-  // Live orders carry the assigned rider; demo/older rows keep the mock so
+  // Live orders carry the assigned rider; older rows keep the mock so
   // the editorial preview still has a rider to show.
   const riderName =
     order.rider?.name ?? "তানভীর আহমেদ (Tanvir)";

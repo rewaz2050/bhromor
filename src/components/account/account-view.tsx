@@ -3,11 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
-import {
-  demoLogin,
-  demoSignup,
-  getAuthSnapshot,
-} from "@/lib/customer-session";
+import { getAuthSnapshot } from "@/lib/customer-session";
 import { useCustomer } from "@/lib/use-customer";
 import {
   getWishlist,
@@ -18,7 +14,7 @@ import { LoyaltyCard } from "./loyalty-card";
 
 /**
  * Account panel — signup/login with NO verification: phone + password and
- * you are in, instantly (live: session cookie; demo: browser-local store).
+ * you are in, instantly (httpOnly session cookie).
  * On success the shared session store flips every consumer to the signed-in
  * dashboard view right here; a `?next=/somewhere` link (e.g. from checkout)
  * carries the customer back to where they were heading.
@@ -42,7 +38,7 @@ const nextFromQuery = (): string | null => {
 };
 
 export default function AccountView() {
-  const { customer, mode, checked, refresh, signOut } = useCustomer();
+  const { customer, checked, refresh, signOut } = useCustomer();
   const guest = useSyncExternalStore(
     subscribeWishlist,
     getWishlist,
@@ -69,15 +65,13 @@ export default function AccountView() {
   const finishAuth = async (signup: boolean) => {
     await refresh();
     setPassword("");
-    if (mode === "live") {
-      // The cookie is set — but if the probe still can't see a session, say
-      // so instead of a fake success that leaves the form on screen.
-      const snap = getAuthSnapshot();
-      if (snap.mode === "live" && !snap.customer) {
-        throw new Error(
-          "সেশন তৈরি হলো বলে মনে হচ্ছে না — ব্রাউজারে third-party/cookie block বন্ধ করে আবার চেষ্টা করুন।",
-        );
-      }
+    // The cookie is set — but if the probe still can't see a session, say
+    // so instead of a fake success that leaves the form on screen.
+    const snap = getAuthSnapshot();
+    if (snap.mode === "live" && !snap.customer) {
+      throw new Error(
+        "সেশন তৈরি হলো বলে মনে হচ্ছে না — ব্রাউজারে third-party/cookie block বন্ধ করে আবার চেষ্টা করুন।",
+      );
     }
     setDone(
       signup
@@ -99,53 +93,27 @@ export default function AccountView() {
     setError("");
     setDone("");
     try {
-      if (mode === "live") {
-        const res = await fetch(
-          tab === "signup" ? "/api/account/signup" : "/api/account/login",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(
-              tab === "signup" ? { name, phone, password } : { phone, password },
-            ),
-          },
-        );
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          demoMode?: boolean;
-        };
-        if (body.demoMode) throw new Error("demo");
-        if (!res.ok) {
-          const message = body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।";
-          maybeSwitchToLogin(message);
-          throw new Error(message);
-        }
-      } else {
-        const result =
-          tab === "signup"
-            ? await demoSignup({ name, phone, password })
-            : await demoLogin({ phone, password });
-        if (!result.ok) {
-          maybeSwitchToLogin(result.error);
-          throw new Error(result.error);
-        }
+      const res = await fetch(
+        tab === "signup" ? "/api/account/signup" : "/api/account/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            tab === "signup" ? { name, phone, password } : { phone, password },
+          ),
+        },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      if (!res.ok) {
+        const message = body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।";
+        maybeSwitchToLogin(message);
+        throw new Error(message);
       }
       await finishAuth(tab === "signup");
     } catch (err) {
-      if (err instanceof Error && err.message === "demo") {
-        const result =
-          tab === "signup"
-            ? await demoSignup({ name, phone, password })
-            : await demoLogin({ phone, password });
-        if (!result.ok) {
-          setError(result.error);
-          maybeSwitchToLogin(result.error);
-        } else {
-          await finishAuth(tab === "signup");
-        }
-      } else {
-        setError(err instanceof Error ? err.message : "সমস্যা হয়েছে।");
-      }
+      setError(err instanceof Error ? err.message : "সমস্যা হয়েছে।");
     } finally {
       setBusy(false);
     }

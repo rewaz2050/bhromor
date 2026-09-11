@@ -41,7 +41,7 @@ describe("toPublicShop", () => {
 });
 
 describe("productShopId / shopById", () => {
-  it("falls back to shop #1 for untagged demo seeds", () => {
+  it("falls back to shop #1 for untagged launch-seed products", () => {
     expect(productShopId(product({ shopId: undefined }), "shop-1")).toBe(
       "shop-1",
     );

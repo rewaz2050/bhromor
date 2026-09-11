@@ -1,5 +1,5 @@
 /**
- * Admin sales reports — pure functions over the order store for the demo
+ * Admin sales reports — pure functions over the order list.
  * Reports screen. Kept free of React/window so the math is unit-testable;
  * the Supabase phase swaps the order source, not these functions.
  *

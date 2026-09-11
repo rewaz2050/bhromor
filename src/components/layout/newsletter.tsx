@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { cleanEmail, isPlausibleEmail } from "@/lib/engagement";
-import { isSupabaseConfigured } from "@/lib/env";
 import { IconCheck } from "@/components/ui/icons";
 
 /** A hosted opt-in form owns consent/unsubscribe; never pretend a local click subscribes. */
@@ -43,18 +41,11 @@ function NewsletterForm() {
       });
       const data = (await res.json().catch(() => null)) as {
         subscribed?: boolean;
-        demoMode?: boolean;
         error?: string;
       } | null;
       if (!res.ok) {
         setState("error");
         setError(data?.error ?? "Could not save — please try again.");
-        return;
-      }
-      if (data?.demoMode) {
-        // No backend behind this browser: say so instead of faking it.
-        setState("error");
-        setError("Email signup isn’t connected yet — please try again later.");
         return;
       }
       setState("done");
@@ -112,15 +103,14 @@ function NewsletterForm() {
 
 export default function Newsletter({ signupUrl }: { signupUrl?: string }) {
   const url = newsletterSignupUrl(signupUrl);
-  const live = isSupabaseConfigured();
   return (
     <div className="w-full border border-white/20 p-6 sm:p-8">
       <p className="font-display text-2xl text-ivory-100">
         A little inspiration in your inbox.
       </p>
       <p className="mt-3 text-sm leading-7 text-ivory-100/70">
-        New collections, exclusive offers and seasonal edits. Join through our
-        email signup page when it opens.
+        New collections, exclusive offers and seasonal edits. Join the list
+        below — one email a month, unsubscribe anytime.
       </p>
       {url ? (
         <>
@@ -137,28 +127,8 @@ export default function Newsletter({ signupUrl }: { signupUrl?: string }) {
             confirm your preferences there.
           </p>
         </>
-      ) : live ? (
-        <NewsletterForm />
       ) : (
-        <>
-          <button
-            type="button"
-            disabled
-            className="editorial-button mt-6 w-full cursor-not-allowed border border-white/25 text-ivory-100/60"
-          >
-            Signup opening soon
-          </button>
-          <p className="mt-3 text-xs leading-6 text-ivory-100/60">
-            Email signup isn’t connected yet. We’re not collecting email
-            addresses here.
-          </p>
-          <Link
-            href="/shop?filter=new"
-            className="mt-4 inline-flex min-h-11 items-center text-xs text-gold-200 underline underline-offset-4"
-          >
-            Explore new arrivals meanwhile →
-          </Link>
-        </>
+        <NewsletterForm />
       )}
     </div>
   );

@@ -4,9 +4,9 @@
  * A configured-but-empty database used to answer the 503
  * "Online ordering is not set up yet — please call …" and no customer could
  * ever order. The route must instead: seed the launch catalog in place and
- * place a REAL order (bridging demo seed ids like `p1` to live uuid rows),
- * and only when the database itself refuses, degrade to `{ demoMode: true }`
- * so the storefront completes the order locally. A seeded store is untouched.
+ * place a REAL order (bridging launch-seed ids like `p1` to live uuid rows),
+ * and when the database itself refuses, answer an honest 503 — never a fake
+ * success. A seeded store is untouched.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -159,46 +159,42 @@ describe("POST /api/orders — unseeded live catalog", () => {
     expect(body.demoMode).toBeUndefined();
   });
 
-  it("bridges demo seed ids (p1…) to live uuid rows via slug", async () => {
+  it("bridges launch-seed ids (p1…) to live uuid rows via slug", async () => {
     const res = await post(payload());
     expect(res.status).toBe(201);
     const items = (state.lastPayload as { items: { productId: string }[] }).items;
     expect(items[0].productId).toBe("u-1"); // PRODUCTS[0] slug → seeded row
   });
 
-  it("database refuses to seed → demoMode so the customer still orders", async () => {
+  it("database refuses to seed → honest 503, never a fake success", async () => {
     state.seedOk = false;
     const res = await post(payload());
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toHaveProperty("error");
   });
 
-  it("snapshot read failure + seed failure → demoMode, never a bare 503", async () => {
+  it("snapshot read failure + seed failure → 503, never a fake success", async () => {
     state.snapshotThrows = true;
     state.seedThrows = true;
     const res = await post(payload());
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.demoMode).toBe(true);
-    expect(JSON.stringify(body)).not.toContain("Online ordering is not set up");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toHaveProperty("error");
   });
 
-  it("freshly-seeded store whose payload still fails → local order, not 422", async () => {
+  it("freshly-seeded store whose payload still fails → 422 field errors", async () => {
     state.validateResult = {
       ok: false,
       errors: [{ field: "items", message: "That product is not available." }],
     };
     const res = await post(payload());
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(422);
   });
 
-  it("placement blowing up right after auto-seed → local order (RPC/schema gap)", async () => {
+  it("placement blowing up right after auto-seed → 503 (RPC/schema gap)", async () => {
     const err = new Error("function ps_place_order does not exist");
     state.placementError = err;
     const res = await post(payload());
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
   });
 });
 
@@ -229,10 +225,10 @@ describe("POST /api/orders — seeded store is untouched", () => {
     });
   });
 
-  it("no service role → demoMode early (unchanged contract)", async () => {
+  it("no service role → 503 early", async () => {
     state.serviceConfigured = false;
     const res = await post(payload());
-    expect(await res.json()).toEqual({ demoMode: true });
+    expect(res.status).toBe(503);
     expect(state.seedCalls).toBe(0);
   });
 });

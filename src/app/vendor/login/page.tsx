@@ -9,7 +9,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
-import { isSupabaseConfigured } from "@/lib/env";
 import { useVendorSession } from "@/lib/use-vendor";
 
 export default function VendorLoginPage() {
@@ -67,12 +66,7 @@ export default function VendorLoginPage() {
         </p>
       </div>
 
-      {!isSupabaseConfigured() ? (
-        <div className="mt-8 rounded-2xl bg-paper p-6 text-center text-sm text-ink-soft ring-1 ring-line">
-          Vendor sign-in needs Supabase to be configured. The storefront
-          keeps working in demo mode.
-        </div>
-      ) : status === "checking" ? (
+      {status === "checking" ? (
         <div className="mt-8 h-64 animate-pulse rounded-2xl bg-line/60" aria-label="Loading" />
       ) : (
         <form

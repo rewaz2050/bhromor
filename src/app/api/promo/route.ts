@@ -3,14 +3,12 @@
  *
  * "প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি" — returns the store-wide all-time
  * order count so the banner can show "X/1000 claimed" everywhere.
- * Demo mode (no service role) returns demoMode + zeroes; the banner falls
- * back to the browser-local order store.
  */
 
 import { getSupabaseService } from "@/lib/supabase-server";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { LAUNCH_FREE_DELIVERY_LIMIT, FREE_DELIVERY_MIN_SUBTOTAL_PAISA } from "@/lib/delivery";
-import { apiJson } from "@/lib/api-response";
+import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +17,7 @@ export async function GET() {
   const minFreeTaka = FREE_DELIVERY_MIN_SUBTOTAL_PAISA / 100;
 
   if (!isServiceRoleConfigured()) {
-    return apiJson({
-      demoMode: true as const,
-      totalOrders: 0,
-      limit,
-      remaining: limit,
-      minFreeTaka,
-      enabled: true,
-    });
+    return apiError("The offer counter is not available yet.", 503);
   }
 
   const db = getSupabaseService();

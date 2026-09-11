@@ -1,38 +1,45 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
-import {
-  ensureLiveZones,
-  getZonesSnapshot,
-  isZonesSettled,
-  subscribeLiveCatalog,
-} from "./live-catalog";
-import { useZones } from "./use-zones";
+import { useEffect, useState } from "react";
+import { DELIVERY_ZONES, type DeliveryZone } from "./catalog";
 
 /**
- * Public delivery zones: live API rows when the backend serves them,
- * otherwise the shared demo store (which the admin zone manager edits).
- * Checkout and the delivery checker read through here.
+ * Public delivery zones — live only. Checkout and the delivery checker read
+ * through here. Until the backend answers, the shipped launch zones serve as
+ * the reference list (they are the same rows the seed script writes); once
+ * GET /api/zones returns live rows, the hook swaps them in.
  */
 export function useLiveZones() {
-  const demo = useZones();
-  const live = useSyncExternalStore(
-    subscribeLiveCatalog,
-    getZonesSnapshot,
-    () => null,
-  );
+  const [liveZones, setLiveZones] = useState<DeliveryZone[] | null>(null);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
-    void ensureLiveZones();
+    let cancelled = false;
+    void fetch("/api/zones", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json()) as { zones?: DeliveryZone[] };
+        return data.zones ?? null;
+      })
+      .then((zones) => {
+        if (cancelled) return;
+        if (zones && zones.length > 0) setLiveZones(zones);
+        setSettled(true);
+      })
+      .catch(() => {
+        if (!cancelled) setSettled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (live) {
-    return {
-      zones: live,
-      activeZones: live.filter((z) => z.active !== false),
-      live: true as const,
-      loading: !isZonesSettled(),
-    };
-  }
-  return { ...demo, live: false as const, loading: false };
+  const zones = liveZones ?? DELIVERY_ZONES;
+  const live = liveZones !== null;
+  return {
+    zones,
+    activeZones: zones.filter((z) => z.active !== false),
+    live,
+    loading: !settled,
+  };
 }

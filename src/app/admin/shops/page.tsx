@@ -253,11 +253,6 @@ function ShopCard({
                 </button>
               </div>
             )}
-            {!live && (
-              <p className="mt-1 text-xs text-ink-soft">
-                Vendor linking needs live mode — demo shops have no accounts.
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -299,8 +294,8 @@ export default function AdminShopsPage() {
       return;
     }
     const ok = await saveShop({
-      id: live ? "" : `shop-demo-${Date.now()}`,
-      slug: live ? "" : name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      id: "",
+      slug: "",
       name,
       phone: newPhone.trim(),
       contactEmail: newEmail.trim().toLowerCase() || undefined,
@@ -350,17 +345,6 @@ export default function AdminShopsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset shops to the seeded demo shop?")) reset();
-              }}
-              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
-            >
-              Reset demo shops
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}

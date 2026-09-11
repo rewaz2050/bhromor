@@ -4,22 +4,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import {
-  DEMO_ADMIN,
+  ADMIN_EMAIL,
   getAdminMode,
   isAdminAuthed,
-  signInAdmin,
   signInStaff,
 } from "@/lib/admin-auth";
-import { isSupabaseConfigured } from "@/lib/env";
 import { IconCheck } from "@/components/ui/icons";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(ADMIN_EMAIL);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const live = isSupabaseConfigured();
 
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
@@ -30,29 +27,17 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError(null);
     setBusy(true);
-    if (live) {
-      // Live mode: real Supabase staff sign-in.
-      void signInStaff(email, password).then(({ ok, error: signInError }) => {
-        setBusy(false);
-        if (ok) {
-          router.replace("/admin");
-        } else {
-          setError(
-            signInError ?? "Sign-in failed — check your email and password.",
-          );
-        }
-      });
-      return;
-    }
-    // Demo mode: browser-local session (§47).
-    window.setTimeout(() => {
-      if (signInAdmin(email, password)) {
+    // Supabase staff sign-in.
+    void signInStaff(email, password).then(({ ok, error: signInError }) => {
+      setBusy(false);
+      if (ok) {
         router.replace("/admin");
       } else {
-        setError("Incorrect email or password. Try the demo credentials below.");
-        setBusy(false);
+        setError(
+          signInError ?? "Sign-in failed — check your email and password.",
+        );
       }
-    }, 450);
+    });
   };
 
   return (
@@ -87,7 +72,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border-0 bg-white px-4 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-forest-600"
-              placeholder={live ? "you@prosanti.store" : "admin@prosanti.store"}
+              placeholder="you@prosanti.store"
             />
           </label>
           <label className="mt-4 block">
@@ -120,33 +105,16 @@ export default function AdminLoginPage() {
           </button>
         </form>
 
-        {live ? (
-          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
-            <p className="flex items-center gap-1.5 font-semibold text-emerald-300">
-              <IconCheck className="h-3.5 w-3.5" /> Live mode
-            </p>
-            <p className="mt-1.5">
-              {getAdminMode() === "live"
-                ? "Signed-in staff session detected — dashboard data comes from the database."
-                : "Demo login (admin@prosanti.store) is off. Sign in with the email you created in Supabase → Authentication → Users. That user also needs a row in admin_users."}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
-            <p className="flex items-center gap-1.5 font-semibold text-gold-300">
-              <IconCheck className="h-3.5 w-3.5" /> Demo mode
-            </p>
-            <p className="mt-1.5">
-              Email: <span className="text-ivory-50">{DEMO_ADMIN.email}</span>
-              <br />
-              Password: <span className="text-ivory-50">{DEMO_ADMIN.password}</span>
-            </p>
-            <p className="mt-2 text-ivory-100/50">
-              Session lives in this browser only — connect Supabase to enable
-              staff sign-in (§47).
-            </p>
-          </div>
-        )}
+        <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-xs leading-5 text-ivory-100/70">
+          <p className="flex items-center gap-1.5 font-semibold text-emerald-300">
+            <IconCheck className="h-3.5 w-3.5" /> Live staff sign-in
+          </p>
+          <p className="mt-1.5">
+            {getAdminMode() === "live" && isAdminAuthed()
+              ? "Signed-in staff session detected — dashboard data comes from the database."
+              : "Sign in with a real staff email created in Supabase → Authentication → Users. That user also needs a row in admin_users."}
+          </p>
+        </div>
       </div>
     </div>
   );

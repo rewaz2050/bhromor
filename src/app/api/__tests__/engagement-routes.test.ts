@@ -29,18 +29,18 @@ const goodContact = {
   message: "My order has not arrived yet, please help.",
 };
 
-describe("engagement public routes in demo mode (no Supabase keys)", () => {
+describe("engagement public routes without a configured backend", () => {
   beforeEach(() => __resetRateLimits());
 
-  it("contact: 422 on invalid input, demoMode on valid", async () => {
+  it("contact: 422 on invalid input, 503 when the backend is unconfigured", async () => {
     const bad = await contactPost(send("/api/contact", "POST", { name: "x" }));
     expect(bad.status).toBe(422);
     const ok = await contactPost(send("/api/contact", "POST", goodContact));
-    expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ demoMode: true });
+    expect(ok.status).toBe(503);
+    expect(await ok.json()).toHaveProperty("error");
   });
 
-  it("newsletter subscribe: 422 on bad email, demoMode on good", async () => {
+  it("newsletter subscribe: 422 on bad email, 503 when unconfigured", async () => {
     const bad = await subscribePost(
       send("/api/newsletter/subscribe", "POST", { email: "nope" }),
     );
@@ -48,16 +48,17 @@ describe("engagement public routes in demo mode (no Supabase keys)", () => {
     const ok = await subscribePost(
       send("/api/newsletter/subscribe", "POST", { email: "a@b.com" }),
     );
-    expect(await ok.json()).toEqual({ demoMode: true });
+    expect(ok.status).toBe(503);
   });
 
-  it("newsletter unsubscribe + homepage answer demoMode", async () => {
+  it("newsletter unsubscribe 503s; homepage falls back to shipped defaults", async () => {
     const unsub = await unsubscribeGet(
       get("/api/newsletter/unsubscribe?token=abc"),
     );
-    expect(await unsub.json()).toEqual({ demoMode: true });
+    expect(unsub.status).toBe(503);
     const home = await homepageGet();
-    expect(await home.json()).toEqual({ demoMode: true });
+    expect(home.status).toBe(200);
+    expect(await home.json()).toHaveProperty("settings");
   });
 });
 

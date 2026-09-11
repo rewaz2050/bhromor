@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiJson({ error: "Not configured." }, 503);
   }
   const customer = await resolveCustomer(request);
   if (!customer) return apiJson({ error: "Sign in first." }, 401);

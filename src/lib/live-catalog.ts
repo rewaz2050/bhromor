@@ -1,29 +1,26 @@
 /**
  * Live catalog registry — the bridge between sync UI code and the async
- * backend. Seeds render instantly; when /api/products answers `live`, the
- * registry swaps in database rows (uuid ids, live prices/stock) and every
- * subscriber re-renders. Demo mode never fetches anything twice and never
- * flashes: seeds simply stay.
+ * backend. The launch catalog paints first (SSR-safe reference — the same
+ * rows scripts/seed-supabase.mjs writes); when /api/products answers `live`,
+ * the registry swaps in database rows (uuid ids, live prices/stock) and every
+ * subscriber re-renders.
  *
  * IMPORTANT: in live mode product ids are database uuids, not p1…p7.
  * Anything stored by id (cart, wishlist) resolves through here — legacy
- * demo ids bridge to their live row via the launch-catalog slug, so a cart
- * built before the database was seeded survives the cutover (and the
- * checkout auto-seed) at LIVE prices. Anything that matches neither simply
- * stops matching — quiet, never a crash.
+ * launch-seed ids bridge to their live row via the launch-catalog slug, so a
+ * cart built before the database was seeded survives the cutover at LIVE
+ * prices. Anything that matches neither simply stops matching — quiet, never
+ * a crash.
  */
 
 import {
   CATEGORIES,
-  DELIVERY_ZONES,
   PRODUCTS,
   type Category,
   type DeliveryZone,
   type Product,
   type Shop,
 } from "./catalog";
-import { seedShops } from "./shops-store";
-import { toPublicShop } from "./shop-utils";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -52,23 +49,28 @@ export const getLiveShops = (): Shop[] | null => liveShops;
 export const isCatalogSettled = (): boolean => catalogSettled;
 export const isZonesSettled = (): boolean => zonesSettled;
 
-/** Snapshot getters with stable references for useSyncExternalStore. */
+/**
+ * Snapshot getters with stable references for useSyncExternalStore. Shops are
+ * live-only (no fake shop seeds): until the database answers, shops are empty
+ * and shop-scoped surfaces show their empty state. Products/categories/zones
+ * keep the launch catalog as the reference list until live rows arrive.
+ */
 export const getProductsSnapshot = (): Product[] => liveProducts ?? PRODUCTS;
 export const getCategoriesSnapshot = (): Category[] => liveCategories ?? CATEGORIES;
-export const getZonesSnapshot = (): DeliveryZone[] | null => liveZones;
+export const getZonesSnapshot = (): DeliveryZone[] => liveZones ?? EMPTY_ZONES;
+/** Stable empty references so useSyncExternalStore never re-renders on a
+ *  fresh `[]` per call while the backend has not answered. */
+const EMPTY_ZONES: DeliveryZone[] = [];
+const EMPTY_SHOPS: Shop[] = [];
 
-/** Demo shops mirror shop #1 (stripped); live rows swap in on cutover. */
-let demoShopsSnapshot: Shop[] | null = null;
-export const getShopsSnapshot = (): Shop[] =>
-  liveShops ?? (demoShopsSnapshot ??= seedShops().map(toPublicShop));
+export const getShopsSnapshot = (): Shop[] => liveShops ?? EMPTY_SHOPS;
 
 /**
  * Id resolution against the SERVING catalog. Once live rows arrive, legacy
- * demo ids (p1…p7) are bridged through their launch-catalog slug to the
- * seeded row's uuid — so carts that were built while the store was
- * unseeded survive the cutover (including the checkout auto-seed moment)
- * instead of silently emptying the cart. Entries that match neither the
- * live rows nor a seed slug stop matching quietly, as before.
+ * launch-seed ids (p1…p7) bridge through their launch-catalog slug to the
+ * seeded row's uuid — so carts that were built while the store was unseeded
+ * survive the cutover (including the checkout auto-seed moment) instead of
+ * silently emptying. Entries that match neither stop matching quietly.
  */
 export const resolveCatalogProduct = (id: string): Product | undefined => {
   const pool = liveProducts ?? PRODUCTS;
@@ -86,7 +88,7 @@ export const resolveCatalogCategory = (id: string): Category | undefined =>
 
 /**
  * Fetch-once live catalog. Returns true when live rows are serving.
- * Failures are silent by design — seeds remain and `live` stays false.
+ * Failures are silent by design — surfaces keep their empty state.
  */
 export const ensureLiveCatalog = (): Promise<boolean> => {
   if (catalogPromise) return catalogPromise;
@@ -131,14 +133,9 @@ export const ensureLiveZones = (): Promise<boolean> => {
       const res = await fetch("/api/zones", { cache: "no-store" });
       if (!res.ok) return false;
       const data = (await res.json()) as {
-        source?: string;
         zones?: DeliveryZone[];
       };
-      if (
-        data.source === "live" &&
-        Array.isArray(data.zones) &&
-        data.zones.length > 0
-      ) {
+      if (Array.isArray(data.zones) && data.zones.length > 0) {
         liveZones = data.zones;
         notify();
         return true;
@@ -152,9 +149,6 @@ export const ensureLiveZones = (): Promise<boolean> => {
   })();
   return zonesPromise;
 };
-
-/** Demo zone seeds (reference for the public fallback path). */
-export const DEMO_ZONES: DeliveryZone[] = DELIVERY_ZONES;
 
 /** Test-only reset. */
 export const __resetLiveCatalog = (): void => {

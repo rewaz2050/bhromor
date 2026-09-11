@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DELIVERY_ZONES, PRODUCTS, type Product, type Shop } from "../catalog";
-import { seedCoupons } from "../coupons-store";
+import { launchCoupons } from "./coupon-fixtures";
 import { bdt } from "../format";
 import {
   validateOrderPayload,
@@ -11,7 +11,7 @@ import {
 const snapshot = (): OrderSnapshot => ({
   products: PRODUCTS,
   zones: DELIVERY_ZONES.map((z) => ({ ...z, active: z.active ?? true })),
-  coupons: seedCoupons(),
+  coupons: launchCoupons(),
   // Promo exhausted by default — tests opt in with customerOrderCount < 10.
   customerOrderCount: 100,
   // Launch offer + ৳1000 threshold OFF by default — the dedicated tests
@@ -232,7 +232,9 @@ describe("validateOrderPayload", () => {
     const expired = {
       ...snap.coupons[0],
       code: "OLD",
-      validUntil: Date.now() - 1000,
+      // Expired relative to the snapshot's pinned clock — deterministic
+      // regardless of the wall-clock time the test happens to run at.
+      validUntil: snap.now! - 1000,
     };
     expect(
       validateOrderPayload(payload({ couponCode: "OLD" }), {
@@ -394,7 +396,7 @@ describe("validateOrderPayload single-shop rule (marketplace slice 1)", () => {
     ]);
   });
 
-  it("skips the check for demo seeds without shopId", () => {
+  it("skips the check for launch-seed items without shopId", () => {
     const result = validateOrderPayload(
       payload({
         items: [

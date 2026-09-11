@@ -1,23 +1,13 @@
 /**
- * Server-side storefront reads with demo fallback. Public pages call these
- * instead of importing seeds directly: live rows when the backend serves
- * them, typed seeds otherwise. Failures always fall back — the shop must
- * never 500 because the database had a bad minute.
+ * Server-side storefront reads — live only. Public pages call these instead
+ * of importing seeds directly: live rows when the backend serves them, empty
+ * otherwise. Failures fall back to empty — the shop must never 500 because
+ * the database had a bad minute, but it also never invents rows.
  */
 
 import "server-only";
 
-import {
-  CATEGORIES,
-  DELIVERY_ZONES,
-  PRODUCTS,
-  type Category,
-  type DeliveryZone,
-  type Product,
-  type Shop,
-} from "../catalog";
-import { seedShops } from "../shops-store";
-import { toPublicShop } from "../shop-utils";
+import type { Category, DeliveryZone, Product, Shop } from "../catalog";
 import { fetchLiveCatalog } from "./catalog";
 
 export interface StorefrontCatalog {
@@ -27,7 +17,12 @@ export interface StorefrontCatalog {
   live: boolean;
 }
 
-const demoShops = (): Shop[] => seedShops().map(toPublicShop);
+const EMPTY: StorefrontCatalog = {
+  products: [],
+  categories: [],
+  shops: [],
+  live: false,
+};
 
 export async function getStorefrontCatalog(): Promise<StorefrontCatalog> {
   try {
@@ -41,14 +36,9 @@ export async function getStorefrontCatalog(): Promise<StorefrontCatalog> {
       };
     }
   } catch {
-    // Fall through to seeds.
+    // Fall through to empty.
   }
-  return {
-    products: PRODUCTS,
-    categories: CATEGORIES,
-    shops: demoShops(),
-    live: false,
-  };
+  return EMPTY;
 }
 
 export async function getStorefrontZones(): Promise<{
@@ -61,12 +51,9 @@ export async function getStorefrontZones(): Promise<{
       return { zones: live.zones, live: true };
     }
   } catch {
-    // Fall through to seeds.
+    // Fall through to empty.
   }
-  return {
-    zones: DELIVERY_ZONES.map((z) => ({ ...z, active: z.active ?? true })),
-    live: false,
-  };
+  return { zones: [], live: false };
 }
 
 export const findStorefrontProduct = (

@@ -17,7 +17,7 @@ interface CustomerRow {
   cancelled: number;
 }
 
-/** §27/§32-style customer view derived from the demo order store. */
+/** Customer view derived from live orders. */
 export default function AdminCustomersPage() {
   const { orders } = useOrders();
   const [query, setQuery] = useState("");
@@ -61,8 +61,8 @@ export default function AdminCustomersPage() {
             Customers
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Built from the demo order store — profiles, accounts and saved
-            addresses arrive with the account phase (§27).
+            Customers are derived from live orders — name, phone, area and
+            spend for every placed order.
           </p>
         </div>
         <div className="relative w-full max-w-xs">

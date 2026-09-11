@@ -345,7 +345,7 @@ const { data: ids, error: idsError } = await db
 if (idsError) fail("products re-read", idsError);
 const idOf = new Map(ids.map((r) => [r.slug, r.id]));
 
-// 3. variants (color × size grid, stock mirrors the demo flags)
+// 3. variants (color × size grid, stock mirrors the launch low-stock flags)
 {
   const rows = [];
   for (const p of PRODUCTS) {

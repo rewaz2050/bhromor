@@ -15,9 +15,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * Live rows when the backend serves them, seeds otherwise. Rendered on
- * demand: a statically prerendered seed page would show stale demo ids
- * and prices in live mode.
+ * Live rows. Rendered on demand so pages always carry live ids and prices.
  */
 export const dynamic = "force-dynamic";
 

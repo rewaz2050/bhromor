@@ -3,7 +3,7 @@
  *
  * The browser holds a Supabase Auth session (cookie client); each admin
  * route calls `requireStaff()` which verifies the JWT server-side and then
- * checks the `admin_users` role table. Demo-mode browsers have no session
+ * checks the `admin_users` role table. Unauthenticated browsers have no
  * and get 401; signed-in non-staff get 403. Roles, not URLs, are the
  * boundary — hiding admin pages in the UI is convenience, this is the lock.
  *

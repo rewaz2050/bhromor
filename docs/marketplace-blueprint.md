@@ -356,7 +356,7 @@ is Phase 4 (needs rider location pipeline + map SDK costs).
 
 ---
 
-## 5. Suggested build order (each slice shippable, demo-safe)
+## 5. Suggested build order (each slice shippable)
 
 Phase 2 slices:
 1. ✅ `004` migration + shop #1 backfill + `ps_place_order` shop guard (no UI).
@@ -372,8 +372,9 @@ Phase 3 slices:
 9. ✅ Delivery-code proof (DB-generated 4-digit code, customer confirmation/track + admin PIN) + Track page rider-leg timeline.
 10. ✅ Cash settlement (rider self-settle + staff records pay-in) + ৳5,000 cap + Admin → Riders cash exposure.
 
-Rule per slice: demo mode keeps working with zero keys (same standard as
-Phase 1 — every slice ships with seeds/fallbacks and gates green).
+Rule per slice: every slice ships live-only and gates green — with zero
+keys the launch catalog still paints and backend endpoints answer an honest
+503/unavailable.
 
 ---
 

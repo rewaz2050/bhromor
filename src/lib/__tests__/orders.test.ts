@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  MOCK_ORDERS,
   ORDER_FLOW,
   TRANSITIONS,
   advanceOrder,
@@ -16,8 +15,82 @@ import {
   nextActions,
   transitionAllowed,
   type Order,
+  type OrderItem,
+  type OrderStatus,
 } from "../orders";
 import { bdt } from "../format";
+
+const item = (n: number): OrderItem => ({
+  productId: `p${n}`,
+  slug: `product-${n}`,
+  name: `Product ${n}`,
+  sku: `PS-${n}`,
+  variant: "Forest Green · L",
+  qty: 1,
+  unitPrice: bdt(1000),
+  image: "/img.jpg",
+});
+
+const FLOW = [
+  "pending",
+  "confirmed",
+  "preparing",
+  "ready-for-pickup",
+  "courier-assigned",
+  "out-for-delivery",
+  "delivered",
+] as const;
+
+const makeOrder = (
+  id: string,
+  status: OrderStatus,
+  createdAt: number,
+  deliveredMinutes?: number,
+): Order => {
+  const items = [item(1)];
+  const subtotal = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const deliveryCharge = bdt(30);
+  const stepCount = (FLOW as readonly string[]).indexOf(status);
+  const timeline =
+    status === "cancelled"
+      ? [
+          { status: "pending" as const, at: createdAt },
+          { status: "cancelled" as const, at: createdAt + 60_000 },
+        ]
+      : FLOW.slice(0, stepCount + 1).map((s, idx) => ({
+          status: s,
+          at: createdAt + idx * 60_000,
+        }));
+  return {
+    id,
+    createdAt,
+    customer: {
+      name: "Rahat Ahmed",
+      phone: "01712345678",
+      area: "Boropara",
+      address: "House 12",
+    },
+    zoneId: "z1",
+    zoneName: "Zone A — City Centre",
+    etaLabel: "40–50 min",
+    items,
+    subtotal,
+    deliveryCharge,
+    total: subtotal + deliveryCharge,
+    payment: "cod",
+    status,
+    timeline,
+    deliveredMinutes,
+  };
+};
+
+const MOCK_ORDERS: Order[] = [
+  makeOrder("PS-20260908-0001", "pending", 1_700_000_000_000),
+  makeOrder("PS-20260908-0002", "confirmed", 1_700_000_100_000),
+  makeOrder("PS-20260908-0003", "out-for-delivery", 1_700_000_200_000),
+  makeOrder("PS-20260908-0004", "delivered", 1_700_000_300_000, 46),
+  makeOrder("PS-20260908-0005", "cancelled", 1_700_000_400_000),
+];
 
 const baseOrder = (): Order => {
   const seed = MOCK_ORDERS[0];

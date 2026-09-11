@@ -8,8 +8,7 @@ import {
 } from "@testing-library/react";
 import ShopBrowser from "@/components/shop/shop-browser";
 import { CartProvider } from "@/components/cart/cart-provider";
-import { CATEGORIES, DELIVERY_ZONES, PRODUCTS } from "@/lib/catalog";
-import { seedShops } from "@/lib/shops-store";
+import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 import { toPublicShop } from "@/lib/shop-utils";
 import { bdt } from "@/lib/format";
 
@@ -17,6 +16,26 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/shop",
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
+
+/** Launch shop #1 — the owner's own catalog, serving every zone. */
+const launchShops = (): Shop[] => [
+  {
+    id: "shop-1",
+    slug: "prosanti-direct",
+    name: "PROSANTI Direct",
+    tagline: "Everyday essentials, delivered in under an hour.",
+    phone: "01700000000",
+    contactEmail: "owner@prosanti.store",
+    address: "House 1, Road 1, Dhaka",
+    zoneIds: DELIVERY_ZONES.map((z) => z.id),
+    prepMinutes: 15,
+    commissionPct: 15,
+    status: "active",
+    isOpen: true,
+    ratingAvg: 0,
+    ratingCount: 0,
+  },
+];
 
 const renderShop = (
   props?: Partial<React.ComponentProps<typeof ShopBrowser>>,
@@ -26,7 +45,7 @@ const renderShop = (
       <ShopBrowser
         products={PRODUCTS}
         categories={CATEGORIES}
-        shops={seedShops().map(toPublicShop)}
+        shops={launchShops().map(toPublicShop)}
         zones={DELIVERY_ZONES}
         initialCategory="all"
         initialNew={false}
@@ -87,7 +106,7 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
-          shops={seedShops().map(toPublicShop)}
+          shops={launchShops().map(toPublicShop)}
           zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew
@@ -168,7 +187,7 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
-          shops={seedShops().map(toPublicShop)}
+          shops={launchShops().map(toPublicShop)}
           zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew={false}
@@ -217,7 +236,7 @@ describe("ShopBrowser", () => {
         <ShopBrowser
           products={PRODUCTS}
           categories={CATEGORIES}
-          shops={seedShops().map(toPublicShop)}
+          shops={launchShops().map(toPublicShop)}
           zones={DELIVERY_ZONES}
           initialCategory="all"
           initialNew={false}
@@ -247,8 +266,8 @@ describe("ShopBrowser", () => {
   });
 
   it("scopes discovery to the chosen delivery zone (slice 4)", () => {
-    const shops = seedShops().map(toPublicShop);
-    // Demo shop #1 serves every seeded zone; narrow it to the first zone.
+    const shops = launchShops().map(toPublicShop);
+    // Launch shop #1 serves every zone; narrow it to the first zone.
     const onlyFirst = [
       { ...shops[0], zoneIds: [DELIVERY_ZONES[0].id] },
     ];
@@ -270,7 +289,7 @@ describe("ShopBrowser", () => {
   });
 
   it("hides closed shops from browse surfaces (slice 4)", () => {
-    const shops = seedShops().map(toPublicShop);
+    const shops = launchShops().map(toPublicShop);
     renderShop({ shops: [{ ...shops[0], isOpen: false }] });
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     // …but the empty state stays the generic one without a zone set.

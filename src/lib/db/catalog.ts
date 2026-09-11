@@ -1,8 +1,7 @@
 /**
  * Server-side catalog reads (blueprint §41–44).
  *
- * Returns null when Supabase is not configured so API routes can fall back
- * to the demo seeds honestly (response carries `source: "demo"`).
+ * Returns null when Supabase is not configured or the catalog is empty.
  * Public reads use the RLS-respecting server client — only published +
  * active rows are visible, enforced by the database, not by trust.
  */
@@ -47,8 +46,7 @@ const toBundle = (
 
 /**
  * Published storefront catalog from Supabase.
- * Null = backend not configured OR reachable-but-empty (routes then serve
- * demo seeds and say so; an empty DB must never render an empty shop).
+ * Null = backend not configured OR reachable-but-empty.
  */
 export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
   const db = await getSupabaseServer();

@@ -1,8 +1,7 @@
 /**
  * Database → domain mappers. The UI already speaks `Product` / `Order` /
  * `DeliveryZone` / `Coupon` (src/lib/*); these pure functions translate
- * Supabase rows into exactly those shapes so no component needs rewriting
- * when reads move from demo seeds to the database.
+ * Supabase rows into exactly those shapes so no component needs rewriting.
  *
  * Kept free of server imports so unit tests can exercise them directly.
  */

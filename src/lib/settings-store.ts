@@ -1,9 +1,8 @@
 /**
- * Operational settings (§58) — configurable low-stock threshold + delivery surcharges
- * + loyalty. Browser-local demo store; Supabase phase moves to site_settings.
+ * Operational settings (§58) — configurable low-stock threshold + delivery
+ * surcharges + loyalty. Shared types and defaults; staff edits persist to
+ * site_settings via /api/admin/settings (see use-settings.ts).
  */
-
-export const SETTINGS_STORAGE_KEY = "prosanti.admin.settings.v1";
 
 export interface AdminSettings {
   lowStockThreshold: number;
@@ -26,24 +25,12 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   loyaltyTargetOrders: 10,
   loyaltyRewardTitle: "এক্সক্লুসিভ গিফট হ্যাম্পার",
   loyaltyRewardDescription:
-    "১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! পরবর্তী অর্ডারের সাথে আপনার বিশেষ উপহার পৌঁছে দেওয়া হবে।",
+    "১০টি সফল ডেলিভারি সম্পন্ন করার জন্য অভিনন্দন! পরবর্তী অর্ডারের সাথে আপনার বিশেষ উপহার পৌঁছে দেওয়া হবে।",
   loyaltyMinOrderAmount: 0,
   rainSurchargeEnabled: false,
   nightSurchargeEnabled: true,
   expressDeliveryEnabled: true,
   perZoneFreeThresholdEnabled: true,
-};
-
-/* ------------------------------------------------------------------ */
-
-type Listener = () => void;
-
-let cache: AdminSettings | null = null;
-let loaded = false;
-const listeners = new Set<Listener>();
-
-const notify = () => {
-  for (const l of listeners) l();
 };
 
 export const sanitizeSettings = (raw: unknown): AdminSettings => {
@@ -112,50 +99,4 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     expressDeliveryEnabled,
     perZoneFreeThresholdEnabled,
   };
-};
-
-const ensureLoaded = (): AdminSettings => {
-  if (cache && loaded) return cache;
-  loaded = true;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (raw) cache = sanitizeSettings(JSON.parse(raw));
-    } catch {
-      // corrupted storage → defaults
-    }
-  }
-  cache ??= SETTINGS_DEFAULTS;
-  return cache;
-};
-
-const persist = (next: AdminSettings) => {
-  cache = next;
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // storage unavailable — demo continues in memory
-    }
-  }
-  notify();
-};
-
-export const subscribeSettings = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-
-export const getSettings = (): AdminSettings => ensureLoaded();
-
-export const getSettingsServer = (): AdminSettings => SETTINGS_DEFAULTS;
-
-export const saveSettings = (settings: AdminSettings) =>
-  persist(sanitizeSettings(settings));
-
-export const resetSettings = () => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(SETTINGS_STORAGE_KEY);
-  }
-  persist(SETTINGS_DEFAULTS);
 };

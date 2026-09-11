@@ -3,16 +3,14 @@
 /**
  * Rider shell + auth gate (marketplace phase 3, slice 7+).
  *
- * Demo mode (no Supabase) keeps the local rider preview available. Live mode
- * only opens /rider/* to the authenticated linked rider account; every
- * /api/rider/* route re-verifies the session server-side.
+ * Live only: /rider/* opens solely for the authenticated linked rider
+ * account; every /api/rider/* route re-verifies the session server-side.
  */
 
 import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
-import { isSupabaseConfigured } from "@/lib/env";
 import { useRiderSession } from "@/lib/use-rider";
 
 export default function RiderShell({ children }: { children: ReactNode }) {
@@ -23,17 +21,10 @@ export default function RiderShell({ children }: { children: ReactNode }) {
   const isApply = pathname === "/rider/apply";
 
   useEffect(() => {
-    if (
-      isSupabaseConfigured() &&
-      !isLogin &&
-      !isApply &&
-      status === "guest"
-    ) {
+    if (!isLogin && !isApply && status === "guest") {
       router.replace("/rider/login");
     }
   }, [isLogin, isApply, status, router]);
-
-  if (!isSupabaseConfigured()) return <>{children}</>;
 
   if (isLogin || isApply) return <>{children}</>;
 

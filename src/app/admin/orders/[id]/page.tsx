@@ -26,7 +26,7 @@ import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { orders, live, loading, error, clearError, advance, cancel } = useOrders();
+  const { orders, loading, error, clearError, advance, cancel } = useOrders();
 
   const order = useMemo(
     () => orders.find((o) => o.id === params.id),
@@ -47,9 +47,7 @@ export default function AdminOrderDetailPage() {
       <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">
         <p className="font-display text-lg text-forest-900">Order not found</p>
         <p className="mt-1 text-sm text-ink-soft">
-          {live
-            ? "It may have been deleted, or belong to a different dataset."
-            : "It may belong to a different demo dataset."}
+          It may have been deleted, or belong to a different dataset.
         </p>
         <Link
           href="/admin/orders"
@@ -68,7 +66,7 @@ export default function AdminOrderDetailPage() {
 
   const doAdvance = (to: OrderStatus) => {
     if (to === "cancelled") {
-      if (!window.confirm(live ? "Cancel this order? Reserved stock is released." : "Cancel this order? This cannot be undone in the demo.")) return;
+      if (!window.confirm("Cancel this order? Reserved stock is released.")) return;
       void cancel(order.id);
       return;
     }

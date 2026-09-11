@@ -4,8 +4,6 @@
  * Pure validation + discount math; money in paisa (§69).
  */
 
-export const COUPONS_STORAGE_KEY = "prosanti.coupons.v1";
-
 export type CouponType = "percent" | "fixed" | "free_delivery";
 
 export interface Coupon {

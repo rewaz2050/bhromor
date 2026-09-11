@@ -2,8 +2,8 @@
  * POST /api/riders/apply — public rider application intake (slice 6).
  *
  * Creates a pending row for the Admin → Riders queue. Tight rate limit:
- * applications are rare and the endpoint writes to the database. Demo mode
- * answers { demoMode: true } after validating.
+ * applications are rare and the endpoint writes to the database. An
+ * unconfigured backend answers 503.
  */
 
 import { RiderInputError, applyRider } from "@/lib/db/riders";
@@ -30,18 +30,7 @@ export async function POST(request: Request) {
     return apiError("Invalid application.", 400);
   }
   if (!isServiceRoleConfigured()) {
-    // Validate honestly even in demo so the form behaves identically.
-    const b = (body ?? {}) as Record<string, unknown>;
-    const name = typeof b.name === "string" ? b.name.trim() : "";
-    const email =
-      typeof (b.email ?? b.contactEmail) === "string"
-        ? String(b.email ?? b.contactEmail).trim()
-        : "";
-    if (name.length < 2) return apiError("Rider name is too short.", 400);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return apiError("A valid email is required.", 400);
-    }
-    return apiJson({ demoMode: true as const });
+    return apiError("Rider applications are not open yet.", 503);
   }
   try {
     // Signed-in applicants link their login to the application:

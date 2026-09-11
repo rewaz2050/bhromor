@@ -2,9 +2,8 @@
  * POST /api/shops/apply — public shop application intake (slice 2).
  *
  * Creates a pending, closed row for the staff queue. Tight rate limit:
- * applications are rare and the endpoint writes to the database. Demo mode
- * answers { demoMode: true } after validating — the storefront form (slice 4)
- * records the draft in the browser-local demo store instead.
+ * applications are rare and the endpoint writes to the database. An
+ * unconfigured backend answers 503.
  */
 
 import { ShopInputError, applyShop } from "@/lib/db/marketplace";
@@ -31,18 +30,7 @@ export async function POST(request: Request) {
     return apiError("Invalid application.", 400);
   }
   if (!isServiceRoleConfigured()) {
-    // Validate honestly even in demo so the form behaves identically.
-    const b = (body ?? {}) as Record<string, unknown>;
-    const name = typeof b.name === "string" ? b.name.trim() : "";
-    const email =
-      typeof (b.email ?? b.contactEmail) === "string"
-        ? String(b.email ?? b.contactEmail).trim()
-        : "";
-    if (name.length < 2) return apiError("Shop name is too short.", 400);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return apiError("A valid contact email is required.", 400);
-    }
-    return apiJson({ demoMode: true as const });
+    return apiError("Shop applications are not open yet.", 503);
   }
   try {
     // Signed-in applicants link their login to the application (slice 3):

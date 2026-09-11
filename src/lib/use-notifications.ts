@@ -1,28 +1,15 @@
 "use client";
 
-import React, { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getNotifs,
-  getNotifsServer,
-  readAllNotifs,
-  readNotif,
-  resetNotifs,
-  subscribeNotifs,
-} from "./notifications-store";
-import {
-  unreadCountOf,
-  type Notif,
-} from "./notification-store";
+import React, { useCallback, useEffect, useState } from "react";
+import { unreadCountOf, type Notif } from "./notification-store";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /**
- * Staff inbox (§35) with live cutover (see use-coupons.ts).
- * Staff sessions read their own notices + mark them read through
- * /api/admin/notifications; demo keeps the seeded browser store.
+ * Staff inbox (§35) — live only. Staff sessions read their own notices +
+ * mark them read through /api/admin/notifications.
  */
 export function useNotifications() {
-  const demo = useSyncExternalStore(subscribeNotifs, getNotifs, getNotifsServer);
   const { live, checked } = useStaffLive();
   const [liveNotifs, setLiveNotifs] = useState<Notif[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +35,14 @@ export function useNotifications() {
   const playBeep = React.useCallback(() => {
     try {
       if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioCtor =
+          window.AudioContext ??
+          (window as Window & { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (AudioCtor) audioContextRef.current = new AudioCtor();
       }
       const ctx = audioContextRef.current;
+      if (!ctx) return;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
@@ -82,7 +74,13 @@ export function useNotifications() {
         }
         // Also vibrate if supported
         if ("vibrate" in navigator) {
-          try { (navigator as any).vibrate([200, 100, 200]); } catch {}
+          try {
+            (
+              navigator as Navigator & {
+                vibrate?: (pattern: number | number[]) => boolean;
+              }
+            ).vibrate?.([200, 100, 200]);
+          } catch {}
         }
       }
     }
@@ -90,11 +88,8 @@ export function useNotifications() {
   }, [playBeep]);
 
   useEffect(() => {
-    if (!live) {
-      setLiveNotifs(null);
-      setError(null);
-      return;
-    }
+    if (!live) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
     // Poll every 15s for new orders — free, no external cost, Sunamganj Sadar live
     const id = window.setInterval(() => {
@@ -115,10 +110,7 @@ export function useNotifications() {
 
   const read = useCallback(
     async (id: string): Promise<void> => {
-      if (!live) {
-        readNotif(id);
-        return;
-      }
+      if (!live) return;
       try {
         await apiSend("/api/admin/notifications", "PATCH", { id });
         setError(null);
@@ -133,10 +125,7 @@ export function useNotifications() {
   );
 
   const readAll = useCallback(async (): Promise<void> => {
-    if (!live) {
-      readAllNotifs();
-      return;
-    }
+    if (!live) return;
     try {
       await apiSend("/api/admin/notifications", "PATCH", { all: true });
       setError(null);
@@ -148,18 +137,13 @@ export function useNotifications() {
     }
   }, [live]);
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetNotifs();
-  }, [live, refresh]);
-
-  const notifs = live ? (liveNotifs ?? []) : demo;
+  const notifs = live ? (liveNotifs ?? []) : [];
   return {
     notifs,
     unread: unreadCountOf(notifs),
     read,
     readAll,
-    reset,
+    reset: refresh,
     refresh,
     live,
     loading: live && (!checked || liveNotifs === null),

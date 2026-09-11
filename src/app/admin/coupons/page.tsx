@@ -33,8 +33,7 @@ const parseOptionalNumber = (
 
 /** §56 promotions — Sunamganj real coupon admin with full controls. */
 export default function AdminCouponsPage() {
-  const { coupons, live, loading, error, clearError, save, remove, reset } =
-    useCoupons();
+  const { coupons, loading, error, clearError, save, remove } = useCoupons();
   const { categories } = useCatalog();
   const { activeZones } = useLiveZones();
   const categoryNameOf = (id: string): string =>
@@ -118,7 +117,7 @@ export default function AdminCouponsPage() {
     
     const ok = await save({
       ...payload,
-      id: live ? "" : `c${Date.now()}`,
+      id: "",
     });
     if (!ok) return;
     setCode("");
@@ -210,21 +209,10 @@ export default function AdminCouponsPage() {
             Promo Codes — Sunamganj Sadar
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Create discount codes: <strong>% percent</strong>, <strong>৳ fixed</strong>, or <strong>free delivery</strong>. Real, no demo — controls min order, category, zone, expiry, usage.
+            Create discount codes: <strong>% percent</strong>, <strong>৳ fixed</strong>, or <strong>free delivery</strong> — controls min order, category, zone, expiry, and usage.
           </p>
         </div>
         <div className="flex gap-2">
-          {!live && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm("Reset coupons to seeded samples?")) reset();
-              }}
-              className="rounded-full px-4 py-2 text-xs font-semibold text-ink-soft ring-1 ring-line hover:bg-paper hover:text-forest-800"
-            >
-              Reset demo
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -488,7 +476,7 @@ export default function AdminCouponsPage() {
         </ul>
       )}
       <p className={hint}>
-        Sunamganj real: percent (e.g. 15% off up to ৳500), fixed (৳100 off), free_delivery. Zone restriction: Boropara etc only. Min order, category, expiry, usage limit all enforced at checkout — both demo and live. No demo codes added, all real.
+        Sunamganj real: percent (e.g. 15% off up to ৳500), fixed (৳100 off), free_delivery. Zone restriction: Boropara etc only. Min order, category, expiry, and usage limit are all enforced at checkout.
       </p>
     </div>
   );

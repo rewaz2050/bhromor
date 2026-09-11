@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  addCustom,
   isHttp,
   isImgUrl,
   mergeCustom,
-  removeCustom,
   scanMedia,
   type MediaItem,
 } from "../media-store";
@@ -83,12 +81,18 @@ describe("media library (§49)", () => {
     expect(isImgUrl("not a url")).toBe(false);
   });
 
-  it("adds/removes custom entries immutably", () => {
-    const list = addCustom([], { url: "/x.jpg", alt: "x", label: "X" });
-    expect(list).toHaveLength(1);
-    expect(list[0].kind).toBe("custom");
-    expect(addCustom(list, { url: "/x.jpg", alt: "", label: "" })).toHaveLength(1); // dup
-    expect(removeCustom(list, list[0].id)).toHaveLength(0);
+  it("keeps custom entries only when their url is not already present", () => {
+    const base: MediaItem[] = [
+      { id: "s1", url: "/img/a.jpg", alt: "", label: "", kind: "product" },
+    ];
+    const merged = mergeCustom(base, [
+      { id: "c1", url: "/img/a.jpg", alt: "", label: "", kind: "custom" },
+      { id: "c2", url: "/img/c.jpg", alt: "", label: "", kind: "custom" },
+    ]);
+    // /img/a.jpg is already in the base → the custom copy is dropped.
+    expect(merged).toHaveLength(2);
+    expect(merged.find((m) => m.url === "/img/a.jpg")?.kind).toBe("product");
+    expect(merged.find((m) => m.url === "/img/c.jpg")?.kind).toBe("custom");
   });
 });
 

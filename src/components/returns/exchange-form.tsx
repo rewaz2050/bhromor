@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { addDemoMessage } from "@/lib/engagement";
-import { isSupabaseConfigured } from "@/lib/env";
 import { field, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield } from "@/components/ui/icons";
 
@@ -44,29 +42,19 @@ export function ExchangeForm() {
     setError(null);
 
     try {
-      if (isSupabaseConfigured()) {
-        const res = await fetch("/api/contact", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: cleanName,
-            phone: cleanPhone,
-            topic: "Return / exchange",
-            message: fullMessage,
-          }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(data?.error ?? "অনুরোধ পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
-        }
-      } else {
-        // Demo mode: record in local messages store
-        addDemoMessage({
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: cleanName,
           phone: cleanPhone,
           topic: "Return / exchange",
           message: fullMessage,
-        });
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? "অনুরোধ পাঠানো যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।");
       }
 
       setSubmitted(true);

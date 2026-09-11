@@ -8,7 +8,7 @@
  *   It bypasses RLS by design and must NEVER be constructed in client code.
  *
  * Both return null when the matching env is unconfigured so routes can
- * answer with an honest demo-mode response instead of throwing.
+ * answer with an honest 503 instead of throwing.
  */
 
 import "server-only";

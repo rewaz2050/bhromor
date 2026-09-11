@@ -44,7 +44,7 @@ function Stars({
 
 /** §30 customer reviews — approved entries + submission form (moderated). */
 export default function ReviewsSection({ product }: { product: Product }) {
-  const { reviews, submit, live } = usePublicReviews({ product: product.id });
+  const { reviews, submit } = usePublicReviews({ product: product.id });
   const [name, setName] = useState("");
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
@@ -113,13 +113,6 @@ export default function ReviewsSection({ product }: { product: Product }) {
             )}
           </div>
 
-          {!live && (
-            <p className="mt-4 border-l-2 border-gold-400 pl-3 text-xs leading-6 text-ink-soft">
-              Demo review preview: includes sample reviews and browser-local
-              submissions. Purchase flags are demo data, not verified customer
-              proof.
-            </p>
-          )}
           {visible.length === 0 ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-14 text-center">
               <p className="font-display text-xl text-forest-900">
@@ -157,7 +150,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                       )}
                       {r.verified && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-emerald-800">
-                          <IconCheck className="h-3 w-3" /> Demo purchase flag
+                          <IconCheck className="h-3 w-3" /> Verified purchase
                         </span>
                       )}
                     </div>

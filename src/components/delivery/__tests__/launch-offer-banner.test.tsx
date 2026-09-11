@@ -29,23 +29,16 @@ describe("LaunchOfferBanner — প্রথম 1000 অর্ডারে ড�
     });
     render(<LaunchOfferBanner />);
 
-    expect(screen.getByTestId("launch-offer-banner")).toHaveTextContent(
-      "প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি!",
-    );
+    const banner = await screen.findByTestId("launch-offer-banner");
+    expect(banner).toHaveTextContent("প্রথম 1000 অর্ডারে ডেলিভারি ফ্রি!");
     await screen.findByText("123/1000");
-    expect(screen.getByTestId("launch-offer-banner")).toHaveTextContent(
-      "877",
-    );
-    expect(screen.getByTestId("launch-offer-banner")).toHaveTextContent(
-      "এখন অর্ডার করলে ফ্রি পাবেন!",
-    );
+    expect(banner).toHaveTextContent("877");
+    expect(banner).toHaveTextContent("এখন অর্ডার করলে ফ্রি পাবেন!");
     // zone prices + the ৳1000+ always-free line
-    expect(screen.getByTestId("launch-offer-banner")).toHaveTextContent(
+    expect(banner).toHaveTextContent(
       "Zone A ৳30 · Zone B ৳50 · Zone C ৳70 · বাইরে ৳100",
     );
-    expect(screen.getByTestId("launch-offer-banner")).toHaveTextContent(
-      "৳1000+ অর্ডারে সবসময় ফ্রি",
-    );
+    expect(banner).toHaveTextContent("৳1000+ অর্ডারে সবসময় ফ্রি");
     expect(screen.getByRole("progressbar")).toHaveAttribute(
       "aria-valuemax",
       "1000",

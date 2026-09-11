@@ -1,13 +1,11 @@
 /**
- * Reviews & ratings (§30) — demo, browser-local.
+ * Reviews & ratings (§30) — types and pure helpers.
  *
  * Customers submit reviews on the product page; the admin queue moderates
  * them (approve / hide / flag / feature / delete). Only approved reviews
  * appear on the storefront. `verified` marks purchases the system can prove
- * from the order store — the blueprint forbids the label otherwise.
+ * from the order records.
  */
-
-export const REVIEWS_STORAGE_KEY = "prosanti.reviews.v1";
 
 export type ReviewStatus = "pending" | "approved" | "hidden" | "flagged";
 

@@ -4,7 +4,7 @@
  * GET ?featured=1&limit= → approved + featured stories across products.
  * POST { productId|slug, author?, rating, title?, body } → pending review.
  *
- * Demo mode answers { demoMode: true } and the client falls back to the
+ * An unconfigured backend answers an empty list / 503 — the client shows
  * browser-local store. Submissions are never auto-approved and never
  * auto-verified — both need a human or a proven order.
  */
@@ -24,7 +24,7 @@ const clean = (value: unknown, max: number): string =>
 
 export async function GET(request: Request) {
   if (!isSupabaseConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiJson({ reviews: [] });
   }
   const url = new URL(request.url);
   const product = clean(url.searchParams.get("product"), 160);
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   try {
     const db = await getSupabaseServer();
-    if (!db) return apiJson({ demoMode: true as const });
+    if (!db) return apiJson({ reviews: [] });
     let productId: string | null = null;
     if (product !== "") {
       // Accept the public slug or the internal id.
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     return res;
   }
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const });
+    return apiError("Reviews are temporarily unavailable.", 503);
   }
   let body: unknown;
   try {
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
   try {
     const db = getSupabaseService();
-    if (!db) return apiJson({ demoMode: true as const });
+    if (!db) return apiError("Reviews are temporarily unavailable.", 503);
     const { data: product } = await db
       .from("products")
       .select("id")

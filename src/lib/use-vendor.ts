@@ -2,9 +2,9 @@
  * Vendor client layer (marketplace phase 2, slice 3).
  *
  * Typed fetch helpers for /api/vendor/* plus session/data hooks for the
- * /vendor dashboard. Unlike the storefront and staff UI, the vendor
- * dashboard has no demo mode: without Supabase there are no vendor
- * accounts, so the UI says so honestly instead of faking a shop.
+ * /vendor dashboard. The vendor dashboard is live-only: without Supabase
+ * there are no vendor accounts, so the UI says so honestly instead of
+ * faking a shop.
  */
 
 "use client";

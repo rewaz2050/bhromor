@@ -1,28 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getSettings,
-  getSettingsServer,
-  resetSettings,
-  saveSettings,
-  subscribeSettings,
-  type AdminSettings,
-} from "./settings-store";
+import { useCallback, useEffect, useState } from "react";
+import { SETTINGS_DEFAULTS, type AdminSettings } from "./settings-store";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /**
- * Ops settings (§58) with live cutover (see use-coupons.ts).
- * Staff sessions read/write site_settings['ops']; demo keeps the browser
- * store. Dashboard + inventory alerts read through here either way.
+ * Ops settings (§58) — live only. Staff sessions read/write
+ * site_settings['ops']; the dashboard + inventory alerts read through here.
  */
 export function useSettings() {
-  const demo = useSyncExternalStore(
-    subscribeSettings,
-    getSettings,
-    getSettingsServer,
-  );
   const { live, checked } = useStaffLive();
   const [liveSettings, setLiveSettings] = useState<AdminSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +30,7 @@ export function useSettings() {
 
   useEffect(() => {
     if (!live) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveSettings(null);
       setError(null);
       return;
@@ -53,10 +40,7 @@ export function useSettings() {
 
   const save = useCallback(
     async (s: AdminSettings): Promise<boolean> => {
-      if (!live) {
-        saveSettings(s);
-        return true;
-      }
+      if (!live) return false;
       try {
         const data = await apiSend<{ settings: AdminSettings }>(
           "/api/admin/settings",
@@ -74,15 +58,10 @@ export function useSettings() {
     [live],
   );
 
-  const reset = useCallback(() => {
-    if (live) void refresh();
-    else resetSettings();
-  }, [live, refresh]);
-
   return {
-    settings: live ? (liveSettings ?? demo) : demo,
+    settings: liveSettings ?? SETTINGS_DEFAULTS,
     save,
-    reset,
+    reset: refresh,
     live,
     loading: live && (!checked || liveSettings === null),
     error,

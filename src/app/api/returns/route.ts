@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!isServiceRoleConfigured()) {
-    return apiJson({ demoMode: true as const, id: `RET-${Date.now()}` });
+    return apiError("Returns are not set up yet.", 503);
   }
 
   let payload: unknown;
