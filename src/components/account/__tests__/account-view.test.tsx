@@ -6,109 +6,141 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import type { CustomerInfo } from "@/lib/customer-session";
 import AccountView from "../account-view";
+
 const mocks = vi.hoisted(() => ({
-  send: vi.fn(),
-  verify: vi.fn(),
-  signOut: vi.fn(),
-  customer: {
-    client: null as SupabaseClient | null,
-    session: null as Session | null,
-    loading: false,
-  },
+  customer: null as CustomerInfo | null,
+  mode: "demo" as "live" | "demo" | null,
+  checked: true,
+  refresh: vi.fn(async () => {}),
+  signOut: vi.fn(async () => {}),
+  demoSignup: vi.fn(),
+  demoLogin: vi.fn(),
 }));
-vi.mock("../customer-provider", () => ({ useCustomer: () => mocks.customer }));
+
+vi.mock("@/lib/use-customer", () => ({
+  useCustomer: () => ({
+    customer: mocks.customer,
+    mode: mocks.mode,
+    checked: mocks.checked,
+    refresh: mocks.refresh,
+    signOut: mocks.signOut,
+  }),
+}));
+vi.mock("@/lib/customer-session", () => ({
+  demoSignup: mocks.demoSignup,
+  demoLogin: mocks.demoLogin,
+}));
+
 beforeEach(() => {
-  mocks.customer = {
-    client: {
-      auth: {
-        signInWithOtp: mocks.send,
-        verifyOtp: mocks.verify,
-        signOut: mocks.signOut,
-      },
-    } as unknown as SupabaseClient,
-    session: null,
-    loading: false,
-  };
-  mocks.send.mockResolvedValue({ error: null });
-  mocks.verify.mockResolvedValue({ error: null });
-  mocks.signOut.mockResolvedValue({ error: null });
-});
-afterEach(() => {
-  cleanup();
-  vi.clearAllMocks();
+  mocks.customer = null;
+  mocks.mode = "demo";
+  mocks.checked = true;
+  mocks.refresh.mockClear();
+  mocks.signOut.mockClear();
+  mocks.demoSignup.mockReset().mockResolvedValue({ ok: true });
+  mocks.demoLogin.mockReset().mockResolvedValue({ ok: true });
 });
 
-describe("Email OTP account", () => {
-  it("keeps guest shopping available without Supabase configuration", () => {
-    mocks.customer.client = null;
+afterEach(() => {
+  cleanup();
+});
+
+describe("AccountView — no-verification signup (instant login)", () => {
+  it("signs up and is logged in immediately — no OTP/email code anywhere", async () => {
     render(<AccountView />);
-    expect(
-      screen.getByText(/No account is created in this preview/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /View guest wishlist/ }),
-    ).toHaveAttribute("href", "/wishlist");
-  });
-  it("sends a code, enforces a resend cooldown and verifies against the sent-to address", async () => {
-    render(<AccountView />);
-    fireEvent.change(screen.getByLabelText("Email address"), {
-      target: { value: "shopper@example.com" },
+    fireEvent.change(screen.getByLabelText("আপনার নাম"), {
+      target: { value: "রহিম উদ্দিন" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send sign-in code" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Email code")).toBeInTheDocument(),
+    fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {
+      target: { value: "01712345678" },
+    });
+    fireEvent.change(screen.getByLabelText("পাসওয়ার্ড"), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "সাইন আপ করুন — সাথে সাথে লগ ইন" }),
     );
-    expect(mocks.send).toHaveBeenCalledWith({
-      email: "shopper@example.com",
-      options: { shouldCreateUser: true },
-    });
-    expect(screen.getByRole("button", { name: /Resend in/ })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Email code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Verify & sign in" }));
     await waitFor(() =>
-      expect(mocks.verify).toHaveBeenCalledWith({
-        email: "shopper@example.com",
-        token: "123456",
-        type: "email",
+      expect(mocks.demoSignup).toHaveBeenCalledWith({
+        name: "রহিম উদ্দিন",
+        phone: "01712345678",
+        password: "secret123",
       }),
     );
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+    expect(
+      await screen.findByText(/অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন/),
+    ).toBeInTheDocument();
+    // No verification UI exists:
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /code/i })).not.toBeInTheDocument();
   });
-  it("shows invalid/expired OTP errors without faking authentication", async () => {
-    mocks.verify.mockResolvedValue({ error: new Error("expired") });
-    render(<AccountView />);
-    fireEvent.change(screen.getByLabelText("Email address"), {
-      target: { value: "shopper@example.com" },
+
+  it("surfaces signup errors without faking a session", async () => {
+    mocks.demoSignup.mockResolvedValue({
+      ok: false,
+      error: "এই নম্বরে অ্যাকাউন্ট আগেই আছে — লগ ইন করুন।",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send sign-in code" }));
-    await waitFor(() =>
-      expect(screen.getByLabelText("Email code")).toBeInTheDocument(),
-    );
-    fireEvent.change(screen.getByLabelText("Email code"), {
-      target: { value: "123456" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Verify & sign in" }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("invalid or expired"),
-    );
-    expect(screen.queryByText("Signed in")).not.toBeInTheDocument();
-  });
-  it("signs out locally and surfaces a sign-out failure", async () => {
-    mocks.customer.session = {
-      user: { id: "a", email: "shopper@example.com" },
-    } as Session;
-    mocks.signOut.mockResolvedValue({ error: new Error("offline") });
     render(<AccountView />);
+    fireEvent.change(screen.getByLabelText("আপনার নাম"), {
+      target: { value: "রহিম উদ্দিন" },
+    });
+    fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {
+      target: { value: "01712345678" },
+    });
+    fireEvent.change(screen.getByLabelText("পাসওয়ার্ড"), {
+      target: { value: "secret123" },
+    });
     fireEvent.click(
-      screen.getByRole("button", { name: "Sign out on this device" }),
+      screen.getByRole("button", { name: "সাইন আপ করুন — সাথে সাথে লগ ইন" }),
     );
     await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent("Sign out failed"),
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "এই নম্বরে অ্যাকাউন্ট আগেই আছে",
+      ),
     );
-    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("logs in with phone + password via the login tab", async () => {
+    render(<AccountView />);
+    fireEvent.click(screen.getByRole("tab", { name: "লগ ইন" }));
+    fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {
+      target: { value: "01712345678" },
+    });
+    fireEvent.change(screen.getByLabelText("পাসওয়ার্ড"), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "লগ ইন করুন" }));
+    await waitFor(() =>
+      expect(mocks.demoLogin).toHaveBeenCalledWith({
+        phone: "01712345678",
+        password: "secret123",
+      }),
+    );
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+  });
+
+  it("signed-in view shows the account and signs out", async () => {
+    mocks.customer = { id: "c1", name: "রহিম উদ্দিন", phone: "01712345678" };
+    render(<AccountView />);
+    expect(screen.getByText("রহিম উদ্দিন")).toBeInTheDocument();
+    expect(screen.getByText(/01712345678/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "এই ডিভাইস থেকে লগ আউট" }),
+    );
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalled());
+  });
+
+  it("join teaser: the smart card explains account requirement without verification", () => {
+    render(<AccountView />);
+    expect(screen.getByTestId("loyalty-stamp-card")).toHaveTextContent(
+      "স্মার্ট কার্ড",
+    );
+    expect(
+      screen.getByText(/কোনো ভেরিফিকেশন লাগে না/),
+    ).toBeInTheDocument();
   });
 });

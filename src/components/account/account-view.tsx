@@ -1,329 +1,280 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
+import {
+  demoLogin,
+  demoSignup,
+} from "@/lib/customer-session";
 import { useCustomer } from "./customer-provider";
-import { useAccountWishlist } from "./account-wishlist-provider";
+import { useCustomer as useCustomerSession } from "@/lib/use-customer";
 import {
   getWishlist,
   getWishlistServer,
   subscribeWishlist,
 } from "@/lib/wishlist-store";
-import { IconShield } from "@/components/ui/icons";
 import { LoyaltyCard } from "./loyalty-card";
 
+/**
+ * Account panel — signup/login with NO verification: phone + password and
+ * you are in, instantly (live: session cookie; demo: browser-local store).
+ */
 export default function AccountView() {
-  const { client, session, loading } = useCustomer();
-  const cloud = useAccountWishlist();
+  const { customer, mode, checked } = useCustomer();
+  const { refresh, signOut } = useCustomerSession();
   const guest = useSyncExternalStore(
     subscribeWishlist,
     getWishlist,
     getWishlistServer,
   );
-  const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [sentTo, setSentTo] = useState("");
+
+  const [tab, setTab] = useState<"signup" | "login">("signup");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const locked = useRef(false);
+  const [done, setDone] = useState("");
 
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = window.setTimeout(() => setCooldown(cooldown - 1), 1000);
-    return () => window.clearTimeout(timer);
-  }, [cooldown]);
-
-  const requestCode = async () => {
-    if (!client || locked.current || cooldown > 0) return;
-    locked.current = true;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const address = email.trim();
-      const { error } = await client.auth.signInWithOtp({
-        email: address,
-        options: { shouldCreateUser: true },
-      });
-      if (error) throw error;
-      setSentTo(address);
-      setCooldown(60);
-      setToken("");
-      setMessage(
-        "Check your inbox for a sign-in code. It may take a moment; check spam too.",
-      );
-    } catch {
-      setError(
-        "We couldn’t send a code. Check your email address, wait a moment and try again.",
-      );
-    } finally {
-      locked.current = false;
-      setBusy(false);
-    }
-  };
-  const verify = async () => {
-    if (!client || locked.current) return;
-    locked.current = true;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const { error } = await client.auth.verifyOtp({
-        email: sentTo,
-        token: token.trim(),
-        type: "email",
-      });
-      if (error) throw error;
-      setToken("");
-    } catch {
-      setError(
-        "That code is invalid or expired. Try again or request a new code.",
-      );
-    } finally {
-      locked.current = false;
-      setBusy(false);
-    }
-  };
-  const signOut = async () => {
-    if (!client || locked.current) return;
-    locked.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const { error } = await client.auth.signOut({ scope: "local" });
-      if (error) throw error;
-    } catch {
-      setError("Sign out failed. Please retry before leaving a shared device.");
-    } finally {
-      locked.current = false;
-      setBusy(false);
-    }
-  };
-
-  if (loading)
+  if (!checked) {
     return (
       <p role="status" className="py-12 text-ink-soft">
-        Checking your session…
+        সেশন চেক করা হচ্ছে…
       </p>
     );
-  if (!client)
-    return (
-      <div className="space-y-8">
-        <div className="border border-line bg-ivory-100 p-8">
-          <h2 className="font-display text-3xl text-forest-900">
-            Your favourites, for now on this device.
-          </h2>
-          <p className="mt-4 text-sm leading-7 text-ink-soft">
-            Account sign-in isn’t connected yet. You can still shop and save
-            favourites as a guest. No account is created in this preview.
-          </p>
-          <Link
-            href="/wishlist"
-            className="editorial-button mt-6 bg-forest-800 text-white"
-          >
-            View guest wishlist →
-          </Link>
-        </div>
-        <LoyaltyCard />
-      </div>
-    );
+  }
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setDone("");
+    try {
+      if (mode === "live") {
+        const res = await fetch(
+          tab === "signup" ? "/api/account/signup" : "/api/account/login",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              tab === "signup" ? { name, phone, password } : { phone, password },
+            ),
+          },
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          demoMode?: boolean;
+        };
+        if (body.demoMode) throw new Error("demo");
+        if (!res.ok) {
+          throw new Error(body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।");
+        }
+      } else {
+        const result =
+          tab === "signup"
+            ? await demoSignup({ name, phone, password })
+            : await demoLogin({ phone, password });
+        if (!result.ok) throw new Error(result.error);
+      }
+      await refresh();
+      setPassword("");
+      setDone(
+        tab === "signup"
+          ? "✅ অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন করা আছেন!"
+          : "✅ লগ ইন সম্পন্ন!",
+      );
+    } catch (err) {
+      if (err instanceof Error && err.message === "demo") {
+        const result =
+          tab === "signup"
+            ? await demoSignup({ name, phone, password })
+            : await demoLogin({ phone, password });
+        if (!result.ok) setError(result.error);
+        else {
+          await refresh();
+          setDone("✅ সাথে সাথে লগ ইন হয়ে গেছে!");
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "সমস্যা হয়েছে।");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
-      {/* Loyalty Stamp Card Banner */}
-      <LoyaltyCard email={session?.user?.email} phone={session?.user?.phone} />
+      <LoyaltyCard />
 
       <div className="border border-line bg-paper p-6 sm:p-10">
-        {session ? (
+        {customer ? (
           <>
             <p className="text-xs uppercase tracking-widest text-gold-600">
-              Signed in
+              লগ ইন করা আছে
             </p>
             <h2 className="mt-3 break-words font-display text-2xl text-forest-900">
-              {session.user.email}
+              {customer.name}
             </h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              মোবাইল: {customer.phone} · স্মার্ট কার্ডের স্ট্যাম্প এই অ্যাকাউন্টেই
+              জমা হচ্ছে
+            </p>
             <p className="mt-4 text-sm leading-7 text-ink-soft">
-              Your account wishlist is stored separately from this browser’s guest
-              favourites. Changes refresh when you return to the tab.
+              অর্ডার করার সময় এই নম্বর ব্যবহার করলেই প্রতিটি অর্ডারে ১টি করে
+              স্ট্যাম্প পড়বে।
             </p>
             <Link
               href="/wishlist"
               className="editorial-button mt-6 bg-forest-800 text-white"
             >
-              Your wishlist ({cloud?.ids.length ?? 0}) →
+              আপনার ওয়ান্টলিস্ট ({guest.length}) →
             </Link>
-            <div className="mt-7 border-y border-line py-6">
-              <h3 className="text-sm font-semibold text-forest-900">
-                Bring your guest favourites along
-              </h3>
-              <p className="mt-2 text-xs leading-6 text-ink-soft">
-                Import {guest.length} saved{" "}
-                {guest.length === 1 ? "item" : "items"} from this browser. This
-                only adds to your account; it never replaces existing saved items.
-                Guest favourites stay on this device.
-              </p>
+            <div className="mt-7 border-t border-line pt-5">
               <button
                 type="button"
-                disabled={!guest.length || !cloud?.ready || cloud.busy}
-                onClick={async () => {
-                  setMessage("");
-                  if (await cloud?.importGuest())
-                    setMessage("Guest favourites added to your account.");
+                disabled={busy}
+                onClick={() => {
+                  setError("");
+                  void signOut().then(() => setDone("লগ আউট হয়েছে।"));
                 }}
-                className="mt-3 min-h-11 text-sm font-medium text-forest-800 underline underline-offset-4 disabled:opacity-40"
+                className="min-h-11 text-sm text-ink-soft underline disabled:opacity-40"
               >
-                {cloud?.busy ? "Syncing…" : "Import guest favourites"}
+                {busy ? "লগ আউট হচ্ছে…" : "এই ডিভাইস থেকে লগ আউট"}
               </button>
             </div>
-            {cloud?.error && (
-              <div role="alert" className="mt-4 text-sm text-red-800">
-                <p>{cloud.error}</p>
-                <button
-                  disabled={cloud.busy}
-                  onClick={() => void cloud.refresh()}
-                  className="min-h-11 underline"
-                >
-                  Retry wishlist sync
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              disabled={busy || cloud?.busy}
-              onClick={() => void signOut()}
-              className="mt-5 min-h-11 text-sm text-ink-soft underline disabled:opacity-40"
-            >
-              {busy ? "Signing out…" : "Sign out on this device"}
-            </button>
           </>
         ) : (
           <>
-            <IconShield className="h-7 w-7 text-gold-600" />
-            <h2 className="mt-5 font-display text-3xl text-forest-900">
-              Make yourself at home.
+            <h2 className="font-display text-3xl text-forest-900">
+              ফ্রি অ্যাকাউন্ট — কোনো ভেরিফিকেশন নেই
             </h2>
             <p className="mt-3 text-sm leading-7 text-ink-soft">
-              Sign in or create an account with an email code. No password to
-              remember.
+              নাম, মোবাইল নম্বর আর পাসওয়ার্ড দিলেই অ্যাকাউন্ট — কোনো OTP বা
+              ইমেইল কোড লাগবে না। সাইন আপ করলেই <strong>সাথে সাথে লগ ইন</strong>{" "}
+              হয়ে যাবেন এবং স্মার্ট কার্ডে স্ট্যাম্প জমা শুরু হবে।
             </p>
-            {!sentTo ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void requestCode();
-                }}
-                className="mt-7"
-              >
-                <label
-                  htmlFor="account-email"
-                  className="text-sm text-forest-900"
+
+            <div className="mt-6 flex gap-2" role="tablist" aria-label="অ্যাকাউন্ট">
+              {(
+                [
+                  ["signup", "নতুন অ্যাকাউন্ট"],
+                  ["login", "লগ ইন"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === key}
+                  onClick={() => {
+                    setTab(key);
+                    setError("");
+                  }}
+                  className={`min-h-11 rounded-full px-5 text-sm font-semibold ring-1 transition-colors ${
+                    tab === key
+                      ? "bg-forest-800 text-white ring-forest-800"
+                      : "bg-ivory-50 text-ink-soft ring-line hover:ring-line-strong"
+                  }`}
                 >
-                  Email address
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+              }}
+              className="mt-6 space-y-4"
+            >
+              {tab === "signup" && (
+                <div>
+                  <label htmlFor="ac-name" className="text-sm text-forest-900">
+                    আপনার নাম
+                  </label>
+                  <input
+                    id="ac-name"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={busy}
+                    className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
+                  />
+                </div>
+              )}
+              <div>
+                <label htmlFor="ac-phone" className="text-sm text-forest-900">
+                  মোবাইল নম্বর
                 </label>
                 <input
-                  id="account-email"
-                  type="email"
+                  id="ac-phone"
                   required
-                  maxLength={254}
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  placeholder="01712345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   disabled={busy}
                   className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
                 />
-                <button
-                  disabled={busy || cooldown > 0}
-                  className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
-                >
-                  {busy
-                    ? "Sending code…"
-                    : cooldown
-                      ? `Try again in ${cooldown}s`
-                      : "Send sign-in code"}
-                </button>
-              </form>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void verify();
-                }}
-                className="mt-7"
-              >
-                <p className="mb-4 break-words text-sm text-ink-soft">
-                  Code sent to {sentTo}
-                </p>
-                <label htmlFor="account-code" className="text-sm text-forest-900">
-                  Email code
+              </div>
+              <div>
+                <label htmlFor="ac-password" className="text-sm text-forest-900">
+                  পাসওয়ার্ড
                 </label>
                 <input
-                  id="account-code"
+                  id="ac-password"
+                  type="password"
                   required
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6,10}"
                   minLength={6}
-                  maxLength={10}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+                  maxLength={72}
+                  autoComplete={tab === "signup" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
-                  className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-xl tracking-widest"
+                  className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
                 />
-                <button
-                  disabled={busy}
-                  className="editorial-button mt-4 w-full bg-forest-800 text-white disabled:opacity-40"
-                >
-                  {busy ? "Verifying…" : "Verify & sign in"}
-                </button>
-                <div className="mt-3 flex flex-wrap justify-between gap-3">
-                  <button
-                    type="button"
-                    disabled={busy || cooldown > 0}
-                    onClick={() => void requestCode()}
-                    className="min-h-11 text-xs underline disabled:opacity-40"
-                  >
-                    {cooldown ? `Resend in ${cooldown}s` : "Resend code"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSentTo("");
-                      setToken("");
-                      setMessage("");
-                      setError("");
-                    }}
-                    className="min-h-11 text-xs underline"
-                  >
-                    Use another email
-                  </button>
-                </div>
-              </form>
+              </div>
+              <button
+                disabled={busy}
+                className="editorial-button w-full bg-forest-800 text-white disabled:opacity-40"
+              >
+                {busy
+                  ? "করা হচ্ছে…"
+                  : tab === "signup"
+                    ? "সাইন আপ করুন — সাথে সাথে লগ ইন"
+                    : "লগ ইন করুন"}
+              </button>
+            </form>
+
+            {error && (
+              <p role="alert" className="mt-4 text-sm text-red-800">
+                {error}
+              </p>
             )}
+            {done && (
+              <p role="status" className="mt-4 text-sm text-forest-800">
+                {done}
+              </p>
+            )}
+
             <p className="mt-5 text-xs leading-6 text-ink-soft">
-              By continuing, you agree to our{" "}
+              গেস্ট হয়ে অর্ডার করাও রইল; তবে স্মার্ট কার্ডের স্ট্যাম্প জমাতে
+              অ্যাকাউন্ট লাগবে। চলমান নিয়ম:{" "}
               <Link href="/terms" className="underline">
-                terms
+                শর্তাবলি
               </Link>{" "}
-              and{" "}
+              ·{" "}
               <Link href="/privacy" className="underline">
-                privacy policy
+                প্রাইভেসি
               </Link>
-              . Guest checkout remains available.
             </p>
           </>
-        )}
-        {error && (
-          <p role="alert" className="mt-5 text-sm text-red-800">
-            {error}
-          </p>
-        )}
-        {message && (
-          <p role="status" className="mt-5 text-sm text-forest-800">
-            {message}
-          </p>
         )}
       </div>
     </div>

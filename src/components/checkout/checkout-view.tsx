@@ -68,6 +68,8 @@ import {
 } from "@/lib/address-book";
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
 import { addNotificationToStore } from "@/lib/notifications-store";
+import { useCustomer } from "@/lib/use-customer";
+import { useSmartCard } from "@/lib/use-smart-card";
 import MapPinPicker from "./map-pin-picker";
 
 type TimeSlot = "now" | "evening" | "scheduled";
@@ -158,6 +160,8 @@ export default function CheckoutView() {
     charge: number;
     total: number;
     addressSummary: string;
+    cardFull?: boolean;
+    smartCardNote?: string;
     deliveryCode?: string;
   } | null>(null);
 
@@ -202,6 +206,18 @@ export default function CheckoutView() {
     [form.phone],
   );
   const userFreeRemaining = Math.max(0, FIRST_FREE_DELIVERY_LIMIT - userOrderCount);
+
+  /* ------------------------------------------------------------------ */
+  /* Smart Card — stamps accumulate on the signed-in account only        */
+  /* ------------------------------------------------------------------ */
+  const { customer: cardCustomer, checked: cardChecked } = useCustomer();
+  const { card: smartCard } = useSmartCard();
+  useEffect(() => {
+    if (cardCustomer?.phone && !form.phone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- prefill once on session resolve
+      setForm((f) => (f.phone ? f : { ...f, phone: cardCustomer.phone }));
+    }
+  }, [cardCustomer?.phone, form.phone]);
 
   /* ------------------------------------------------------------------ */
   /* Simple-form derived values                                          */
@@ -387,6 +403,21 @@ export default function CheckoutView() {
           অর্ডার নম্বর <strong className="text-ink">{placed.orderId}</strong> — ধন্যবাদ
           {form.name ? `, ${form.name.split(" ")[0]}` : ""}। আপনার ডেলিভারি প্রস্তুত করা হচ্ছে।
         </p>
+
+        {placed.cardFull && (
+          <div
+            role="status"
+            className="mx-auto mt-6 max-w-sm rounded-2xl border border-gold-300 bg-gold-50 p-4 text-sm font-medium text-forest-900"
+          >
+            🎉 <strong>স্মার্ট কার্ড পূর্ণ!</strong> আপনি আকর্ষণীয় পুরস্কার
+            জিতেছেন — পরবর্তী অর্ডারের সাথে উপহার পৌঁছে যাবে।
+          </div>
+        )}
+        {placed.smartCardNote && !placed.cardFull && (
+          <p className="mt-4 text-xs text-ink-soft">
+            🎁 {placed.smartCardNote} — প্রতি অর্ডারে ১টি করে পড়বে।
+          </p>
+        )}
 
         <div className="mx-auto mt-6 max-w-sm rounded-2xl bg-gold-50/80 p-5 ring-1 ring-gold-300 shadow-sm text-center">
           <div className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-forest-900">
@@ -653,6 +684,27 @@ export default function CheckoutView() {
         }),
       );
       if (activeCoupon) recordCouponUseInStore(activeCoupon.code);
+      // Smart Card (demo): +1 stamp for the signed-in account's phone
+      let smartCardNote: string | undefined;
+      let cardFull = false;
+      if (cardCustomer && samePhone(cardCustomer.phone, form.phone)) {
+        const target = smartCard?.target ?? 10;
+        const count = getOrders().filter(
+          (o) =>
+            o.status !== "cancelled" &&
+            samePhone(o.customer?.phone ?? "", form.phone),
+        ).length;
+        smartCardNote = `স্মার্ট কার্ড: ${Math.min(count, target)}/${target} স্ট্যাম্প`;
+        if (count > 0 && count % target === 0) {
+          cardFull = true;
+          addNotificationToStore({
+            kind: "order",
+            title: `🎁 স্মার্ট কার্ড পূর্ণ — ${cardCustomer.name}`,
+            body: `${target}টি স্ট্যাম্প সম্পূর্ণ (${form.phone}) — পুরস্কার প্রস্তুত করুন`,
+            href: "/admin/settings",
+          });
+        }
+      }
       // → Admin notification (same device / demo inbox)
       addNotificationToStore({
         kind: "order",
@@ -680,6 +732,8 @@ export default function CheckoutView() {
         addressSummary: form.isPickup
           ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
           : fullAddress,
+        cardFull,
+        smartCardNote,
       });
       clear();
     };
@@ -743,6 +797,7 @@ export default function CheckoutView() {
       error?: string;
       errors?: { field: string; message: string }[];
       field?: string;
+      smartCard?: { stamps: number; target: number; justCompleted: boolean };
     };
 
     if (res.ok && data.demoMode) {
@@ -764,6 +819,10 @@ export default function CheckoutView() {
           ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
           : fullAddress,
         deliveryCode: data.order.deliveryCode,
+        cardFull: data.smartCard?.justCompleted ?? false,
+        smartCardNote: data.smartCard
+          ? `স্মার্ট কার্ড: ${data.smartCard.stamps}/${data.smartCard.target} স্ট্যাম্প`
+          : undefined,
       });
       clear();
       return;
@@ -934,6 +993,33 @@ export default function CheckoutView() {
               )}
             </label>
           </div>
+
+          {/* Smart Card — account-gated stamps (signup needs no verification) */}
+          {cardChecked && (
+            <div
+              className="mt-3 rounded-2xl border border-gold-300 bg-gold-50/70 px-4 py-3 text-xs leading-6 text-ink-soft sm:text-sm"
+              data-testid="smart-card-strip"
+            >
+              {!cardCustomer ? (
+                <>
+                  🎁 <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
+                  <Link href="/account" className="font-semibold text-forest-800 underline underline-offset-2">
+                    ফ্রি অ্যাকাউন্ট খুলুন
+                  </Link>{" "}
+                  — কোনো ভেরিফিকেশন লাগে না, সাইন আপ করলেই সাথে সাথে লগ ইন।
+                </>
+              ) : smartCard ? (
+                <>
+                  🎁 <strong className="text-forest-900">স্মার্ট কার্ড:</strong> {smartCard.stamps}/{smartCard.target} স্ট্যাম্প — এই অর্ডারের পরে {smartCard.afterOrderStamps}/{smartCard.target} হবে।{" "}
+                  {smartCard.revealed
+                    ? `পুরস্কার: ${smartCard.rewardTitle}`
+                    : "পুরস্কার সারপ্রাইজ — প্রথম অর্ডারের পরেই দেখা যাবে!"}
+                </>
+              ) : (
+                <>🎁 স্মার্ট কার্ড লোড হচ্ছে…</>
+              )}
+            </div>
+          )}
 
           {/* District / Upazila / Para — the simple address ladder */}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">

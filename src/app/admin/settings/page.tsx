@@ -259,10 +259,10 @@ export default function AdminSettingsPage() {
             <IconGift className="h-5 w-5 text-gold-600" />
             <div>
               <h3 className="font-display text-base font-medium text-forest-900">
-                লয়্যালটি ও রিওয়ার্ড প্রোগ্রাম (১০-অর্ডার রিওয়ার্ড)
+                স্মার্ট কার্ড পুরস্কার (১০ স্ট্যাম্প রিওয়ার্ড)
               </h3>
               <p className="text-xs text-ink-soft">
-                কাস্টমার সফলভাবে নির্দিষ্ট সংখ্যক ডেলিভারি গ্রহণ করলে বিশেষ উপহার বা রিওয়ার্ড পাবেন।
+                প্রতি অর্ডারে ১টি স্ট্যাম্প; {loyaltyTarget || "১০"}টি পূর্ণ হলে কাস্টমার এই পুরস্কার ফ্রি পাবেন — পুরস্কার কী হবে তা আপনি ঠিক করুন, প্রথম অর্ডারের পরে কার্ডে দেখা যাবে।
               </p>
             </div>
           </div>

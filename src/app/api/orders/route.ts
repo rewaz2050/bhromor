@@ -17,11 +17,12 @@ import {
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
-import { normalizePhone } from "@/lib/orders";
+import { normalizePhone, samePhone } from "@/lib/orders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseService } from "@/lib/supabase-server";
+import { loadSmartCardTarget, resolveCustomer } from "@/lib/customer-auth";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +94,30 @@ export async function POST(request: Request) {
         href: `/admin/orders/${order.id}`,
       });
     }
-    return apiJson({ order }, 201);
+    // Smart Card: stamps ride on the signed-in account; when the card fills,
+    // the admin is told to prepare the (admin-controlled) prize.
+    const cardCustomer = await resolveCustomer(request);
+    let smartCard: { stamps: number; target: number; justCompleted: boolean } | undefined;
+    if (cardCustomer && samePhone(cardCustomer.phone, order.customer?.phone ?? "")) {
+      const cfg = await loadSmartCardTarget();
+      const target = Math.max(1, cfg.target);
+      const count = await countOrdersForPhone(
+        staffDb as NonNullable<ReturnType<typeof getSupabaseService>>,
+        cardCustomer.phone,
+      );
+      const stamps = count > 0 && count % target === 0 ? target : count % target;
+      const justCompleted = count > 0 && count % target === 0;
+      smartCard = { stamps, target, justCompleted };
+      if (justCompleted && staffDb) {
+        await notifyStaff(staffDb, {
+          kind: "order",
+          title: `🎁 স্মার্ট কার্ড পূর্ণ — ${cardCustomer.name}`,
+          body: `${target}টি স্ট্যাম্প সম্পূর্ণ (${cardCustomer.phone}) — পুরস্কার প্রস্তুত করুন: ${cfg.rewardTitle}`,
+          href: "/admin/settings",
+        });
+      }
+    }
+    return apiJson({ order, smartCard }, 201);
   } catch (err) {
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });

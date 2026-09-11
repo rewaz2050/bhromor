@@ -37,10 +37,16 @@ Run **in this order, in one sequence** (skip files you already applied —
 6. `supabase/migrations/202609090005_riders.sql`
 7. `supabase/migrations/202609090006_engagement.sql`
 8. `supabase/migrations/202609090007_rider_dispatch.sql`
-9. **`supabase/migrations/202609090008_dispatch_auto.sql`** ← new:
+9. **`supabase/migrations/202609090008_dispatch_auto.sql`** —
    auto-offer trigger + admin assign/cancel RPCs (Phase 3 slice 7)
+10. **`supabase/migrations/202609100003_per_user_first10_free.sql`** —
+    per-user first-10-free delivery (by normalized phone; supersedes the
+    202609100001/202609100002 drafts — never apply those two)
+11. **`supabase/migrations/202609110004_customer_accounts.sql`** — Smart Card
+    accounts: `customers` (phone+password, no verification by design) +
+    `customer_sessions`; service-role only via the /api/account/* routes
 
-Quick check after step 9 (SQL editor):
+Quick check after step 11 (SQL editor):
 
 ```sql
 select key from site_settings where key in ('homepage', 'ops');
@@ -49,6 +55,7 @@ select count(*) from newsletter_subscribers;
 select count(*) from media_library;
 select count(*) from orders where delivery_code is not null;
 select count(*) from delivery_assignments;
+select count(*) from customers;
 ```
 
 All statements must run without “relation does not exist”.
