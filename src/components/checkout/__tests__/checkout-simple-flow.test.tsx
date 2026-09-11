@@ -28,16 +28,6 @@ const mockFetch = (input: RequestInfo | URL) => {
   if (url.includes("/api/orders")) {
     return Promise.resolve(jsonResponse({ demoMode: true }));
   }
-  if (url.includes("/api/promo")) {
-    return Promise.resolve(
-      jsonResponse({
-        totalOrders: 3,
-        remainingFree: 7,
-        promoActive: true,
-        limit: 10,
-      }),
-    );
-  }
   return Promise.resolve(jsonResponse({}));
 };
 
@@ -134,9 +124,6 @@ it("does not double-notify when the server already stored the order", async () =
           },
         }),
       );
-    }
-    if (url.includes("/api/promo")) {
-      return Promise.resolve(jsonResponse({ totalOrders: 3, remainingFree: 7, promoActive: true, limit: 10 }));
     }
     return Promise.resolve(jsonResponse({}));
   });

@@ -99,7 +99,12 @@ npm run grant-admin -- <email> super_admin
 
 Do these on the deployed site, in order:
 
-- [ ] `GET /api/health` → `"mode":"live"`, `reachable:true`
+- [ ] `GET /api/health` → `"mode":"live"`, all `checks` true (probe now also
+      verifies seed counts + the `ps_place_order` RPC; `/admin` home shows a
+      green **LIVE** banner once every check passes, an amber checklist while
+      anything is missing)
+- [ ] `/checkout` has no global counter anywhere — first-10-free is per phone
+      (check `snapshot.customerOrderCount` on a placed order in Supabase)
 - [ ] `/shop` shows the seeded catalog with live prices
 - [ ] `/admin/homepage` → change the hero title → **Publish** → public `/`
       shows it (proves the CMS row + public read policy)
