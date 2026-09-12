@@ -77,7 +77,7 @@ Product video save korar jonno database e ekta chotto update dorkar:
 
 1. Browser e http://localhost:3000/api/health khulun. Ei line ta dekhun:
    `"cloudinary": { "configured": true }` — `true` mane key thik ache.
-2. http://localhost:3000/admin/login → staff login korun.
+2. Secret admin login path e staff login korun (path ta `ADMIN_LOGIN_PATH` e ache, `src/lib/admin-auth.ts`).
 3. **Admin → Media** jan → **Choose image or video** diye ekta photo upload
    korun. Niche library te asle Cloudinary **OK**.
 4. Ekta choto MP4 video upload kore dekhun — video icon soho asle **OK**.
@@ -106,7 +106,7 @@ Apni ekhono Vercel e deploy koren ni — tai order ta emon:
    Cache” UNCHECK** kore confirm.
 4. Live URL e `/api/health` khulun: `"mode":"live"` + Cloudinary
    `configured:true` — duitai thakte hobe.
-5. Live `/admin/login` e staff login kore Media te ekta upload test korun.
+5. Live site e secret admin path diye staff login kore Media te ekta upload test korun.
 
 > Details: [docs/vercel.md](vercel.md) (Config vs Secret form niye) ar
 > [docs/go-live.md](go-live.md) (full launch checklist).

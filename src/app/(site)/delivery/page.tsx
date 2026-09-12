@@ -5,7 +5,7 @@ import { formatBdt } from "@/lib/format";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
 import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
-import { FIRST_FREE_DELIVERY_LIMIT } from "@/lib/delivery";
+
 
 export const metadata: Metadata = {
   title: "Delivery Information — Sunamganj",
@@ -116,7 +116,7 @@ export default async function DeliveryPage() {
         <h2>Good to know</h2>
         <ul>
           <li>
-            <strong>প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি</strong> — শুধুমাত্র{" "}
+            <strong>প্রতিটি কাস্টমারের প্রথম 60 অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি</strong> — শুধুমাত্র{" "}
             <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। একই মোবাইল নম্বরে ১০টি অর্ডার
             হয়ে গেলে জোন চার্জ প্রযোজ্য।
           </li>

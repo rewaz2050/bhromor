@@ -8,9 +8,7 @@ import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
 import {
   DELIVERY_ETA,
-  FIRST_FREE_DELIVERY_LIMIT,
   INSTANT_DELIVERY_TITLE,
-  cheapestZoneCharge,
 } from "@/lib/delivery";
 import { FLAT_DELIVERY_NOTE, coverImage } from "@/lib/catalog";
 import { MAX_LINE_QTY } from "@/lib/cart";
@@ -52,7 +50,7 @@ export default function CartView() {
     );
   }
 
-  const fromCharge = cheapestZoneCharge(activeZones);
+  const fromCharge = 6000; // ৳60 flat
   const deliveryFee = fromCharge;
   // Marketing note — per-user promo; the real check happens at checkout/server.
   const promoFree = true;
@@ -174,7 +172,7 @@ export default function CartView() {
             {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
           </p>
           <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-            🎉 প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ফ্রি!
+            🎉 ডেলিভারি চার্জ মাত্র ৳৬০!
           </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
@@ -189,7 +187,7 @@ export default function CartView() {
             </div>
             {promoFree ? (
               <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
-                {`🎉 প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`}
+                {"🎉 ডেলিভারি চার্জ মাত্র ৳৬০!"}
               </p>
             ) : (
               <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
@@ -214,7 +212,7 @@ export default function CartView() {
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery
             available.{" "}
-            {`প্রতিটি কাস্টমারের প্রথম ${FIRST_FREE_DELIVERY_LIMIT}টি অর্ডারে ডেলিভারি ফ্রি (সুনামগঞ্জ সিটি এ জোন).`}
+            {"ডেলিভারি চার্জ মাত্র ৳৬০।"}
           </p>
           <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
             {FLAT_DELIVERY_NOTE}

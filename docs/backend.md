@@ -216,7 +216,7 @@ Then, in the browser:
   `orders` + `order_items` + `order_status_history`;
 - `/track` finds it from another browser with id + phone; a wrong phone
   returns the same message as an unknown id (no probing);
-- sign in at `/admin/login` with the staff account: the header badge reads
+- sign in at the secret admin login path (see `ADMIN_LOGIN_PATH` in `src/lib/admin-auth.ts`) with the staff account: the header badge reads
   **Live data**; advance the order to `packed`, then cancel a test order
   and confirm `reserved` stock drops back;
 - submit a product review as a customer: it lands `pending`, invisible on

@@ -133,7 +133,7 @@ counts start at 0 for new shops.
   use `staffRoute()`-style wrapper parameterized by shop ownership.
 - RLS: vendors read/write only rows where `shop_id` matches their shop.
   Platform staff keep full access via existing `ps_is_admin()` policies.
-- Vendor login: `/vendor/login` (separate gate from `/admin/login` so the
+- Vendor login: `/vendor/login` (separate gate from the secret admin login path so the
   two sessions never confuse each other).
 
 ### 2.4 Vendor dashboard scope (lite admin — new route group `/vendor`)
