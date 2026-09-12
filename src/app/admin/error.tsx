@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { signOutAdmin } from "@/lib/admin-auth";
+import { ADMIN_LOGIN_PATH, signOutAdmin } from "@/lib/admin-auth";
 
 /** Keep an admin render failure recoverable instead of falling through to
  * Next's generic "This page couldn't load" screen. */
@@ -40,7 +40,7 @@ export default function AdminError({
             Try again
           </button>
           <Link
-            href="/admin/login"
+            href={ADMIN_LOGIN_PATH}
             onClick={() => signOutAdmin()}
             className="rounded-full px-6 py-2.5 text-sm font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-50"
           >

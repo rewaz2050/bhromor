@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
+  ADMIN_LOGIN_PATH,
   refreshStaffSession,
   signOutAdmin,
   subscribeAdminAuth,
@@ -110,7 +111,7 @@ export default function AdminGate({
     () => false, // server snapshot — never authenticated
   );
 
-  const onLogin = pathname.startsWith("/admin/login");
+  const onLogin = pathname.startsWith(ADMIN_LOGIN_PATH);
   const { unread } = useNotifications();
   /** Phones had no way to reach the admin nav: the sidebar simply stacked its
    *  17 links above every page. It is a drawer below `lg` now. */
@@ -147,7 +148,7 @@ export default function AdminGate({
 
   useEffect(() => {
     if (!sessionReady) return;
-    if (!authed && !onLogin) router.replace("/admin/login");
+    if (!authed && !onLogin) router.replace(ADMIN_LOGIN_PATH);
     if (authed && onLogin) router.replace("/admin");
   }, [authed, onLogin, router, sessionReady]);
 
@@ -225,7 +226,7 @@ export default function AdminGate({
             type="button"
             onClick={() => {
               signOutAdmin();
-              router.replace("/admin/login");
+              router.replace(ADMIN_LOGIN_PATH);
             }}
             className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-ivory-100/60 transition-colors hover:bg-white/5 hover:text-ivory-50"
           >

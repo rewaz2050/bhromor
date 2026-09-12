@@ -89,7 +89,7 @@ Do **not** enable the team security policy **Separate Production Secret Values**
 
 ## Admin login after keys are live
 
-`/admin/login` is always the real staff login (Supabase Auth + an
+`ADMIN_LOGIN_PATH` (the secret staff login route defined in `src/lib/admin-auth.ts`) is always the real staff login (Supabase Auth + an
 `admin_users` role). There are no demo credentials.
 
 1. Supabase → **Authentication → Users → Add user**. Use the owner email `rahatbd2050@gmail.com` + a strong password. Tick **Auto Confirm User**.
@@ -107,7 +107,7 @@ on conflict (id) do update set role = excluded.role;
 Or, from a machine with the repo + keys: `npm run grant-admin -- rahatbd2050@gmail.com super_admin`.
 
 4. Supabase → **Authentication → URL configuration**: Site URL = `https://bhromor-zeta.vercel.app` (and add that origin under Redirect URLs).
-5. Sign in at `/admin/login` with **that** email and password.
+5. Sign in at the secret admin path (see `ADMIN_LOGIN_PATH` in `src/lib/admin-auth.ts`) with **that** email and password.
 
 If the form says the account is not staff, step 3 is missing. If it says the email is not confirmed, open the user and confirm it. If it says the server did not see the session, redeploy with build cache off after saving the env vars.
 

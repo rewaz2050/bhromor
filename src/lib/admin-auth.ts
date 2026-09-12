@@ -20,6 +20,14 @@ import { getSupabaseBrowser } from "./supabase-browser";
  */
 export const ADMIN_EMAIL = "rahatbd2050@gmail.com";
 
+/**
+ * Secret admin login path — security by obscurity layer.
+ * The real route lives under this random-looking segment so /admin/login
+ * is never exposed. Only staff who know this exact URL can reach the form.
+ * Change the suffix here + rename the folder to rotate the path.
+ */
+export const ADMIN_LOGIN_PATH = "/admin/ops-gate-7f3a9c";
+
 export const ADMIN_SESSION_KEY = "prosanti.admin.session.v1";
 
 export type AdminMode = "live";

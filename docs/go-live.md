@@ -118,7 +118,7 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 npm run grant-admin -- rahatbd2050@gmail.com super_admin
 ```
 
-3. Open `/admin/login` — it is the real staff login — and sign in with the
+3. Open the secret admin login path (see `ADMIN_LOGIN_PATH` in `src/lib/admin-auth.ts`) — it is the real staff login — and sign in with the
    granted account. Only Supabase Auth + an `admin_users` row works; there
    are no demo credentials.
 
