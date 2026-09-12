@@ -108,7 +108,7 @@ export async function GET() {
     nextSteps.push("Admin login banate `npm run grant-admin -- rahatbd2050@gmail.com --role super_admin` chalaben");
   }
   if (checks.productsSeeded && !checks.placeOrderRpc) {
-    nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609080003_place_order_rpc.sql chalaben (free-delivery rule: 202609110005_launch_offer_free.sql)");
+    nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609120007_flat_delivery.sql chalaben (flat ৳60 delivery rule)");
   }
 
   return apiJson({

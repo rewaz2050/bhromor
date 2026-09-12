@@ -4,6 +4,8 @@
  * Pure validation + discount math; money in paisa (§69).
  */
 
+import { FLAT_DELIVERY_CHARGE_PAISA } from "./delivery";
+
 export type CouponType = "percent" | "fixed" | "free_delivery";
 
 export interface Coupon {
@@ -105,4 +107,59 @@ export const couponDisplayValue = (coupon: Coupon): string => {
   if (coupon.type === "free_delivery") return "Free Delivery";
   if (coupon.type === "fixed") return `৳${(coupon.value / 100).toLocaleString()} off`;
   return `${coupon.value}% off${coupon.maxDiscount ? ` up to ৳${(coupon.maxDiscount / 100).toLocaleString()}` : ""}`;
+};
+
+/**
+ * The single best redeemable coupon for a cart — the checkout's
+ * "auto-apply best offer" engine. Savings = the discount, or the flat
+ * ৳60 delivery charge for a free-delivery coupon. Returns null when nothing
+ * applies (fail closed). Pure, so it can be unit-tested without a network.
+ */
+export interface BestCoupon {
+  code: string;
+  discount: number; // paisa off the subtotal (0 for free-delivery)
+  freeDelivery: boolean;
+  description?: string;
+  savings: number; // total paisa saved for this cart
+}
+
+export const bestCoupon = (
+  coupons: Coupon[],
+  lines: { productCategory: string; subtotal: number }[],
+  subtotal: number,
+  zoneId?: string,
+  now: number = Date.now(),
+): BestCoupon | null => {
+  let best: BestCoupon | null = null;
+  for (const coupon of coupons) {
+    const redeemable = isCouponRedeemable(coupon, subtotal, zoneId, now);
+    if (!redeemable.ok) continue;
+    if (coupon.type === "free_delivery") {
+      const savings = FLAT_DELIVERY_CHARGE_PAISA;
+      if (!best || savings > best.savings) {
+        best = {
+          code: coupon.code,
+          discount: 0,
+          freeDelivery: true,
+          description: coupon.description,
+          savings,
+        };
+      }
+      continue;
+    }
+    const eligible = eligibleSubtotal(coupon, lines);
+    if (eligible <= 0) continue;
+    const discount = Math.min(discountAmount(coupon, eligible), subtotal);
+    if (discount <= 0) continue;
+    if (!best || discount > best.savings) {
+      best = {
+        code: coupon.code,
+        discount,
+        freeDelivery: false,
+        description: coupon.description,
+        savings: discount,
+      };
+    }
+  }
+  return best;
 };

@@ -17,6 +17,7 @@ import { coverImage } from "@/lib/catalog";
 import { getDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import {
+  FLAT_DELIVERY_CHARGE_PAISA,
   INSTANT_DELIVERY_TITLE,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
@@ -52,14 +53,15 @@ import {
   type LatLng,
 } from "@/lib/sunamganj";
 import {
+  ADDRESS_TAG_EMOJI,
   getSavedAddresses,
   saveAddress,
   deleteAddress,
+  type AddressTag,
   type SavedAddress,
 } from "@/lib/address-book";
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
 import { useCustomer } from "@/lib/use-customer";
-import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 import { useSmartCard } from "@/lib/use-smart-card";
 import MapPinPicker from "./map-pin-picker";
 
@@ -179,6 +181,8 @@ export default function CheckoutView() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [pinPos, setPinPos] = useState<LatLng | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [addrTag, setAddrTag] = useState<AddressTag>("home");
+  const [bestLoading, setBestLoading] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
@@ -330,7 +334,7 @@ export default function CheckoutView() {
     const discount = activeCoupon ? couponCheck.discount : 0;
     return {
       charge,
-      fullCharge: zone.charge,
+      fullCharge: FLAT_DELIVERY_CHARGE_PAISA,
       freeDelivery: breakdown.freeDelivery,
       couponFree: breakdown.couponFree,
       discount,
@@ -506,6 +510,37 @@ export default function CheckoutView() {
     setAppliedCode(code);
   };
 
+  /** Auto-apply the single best redeemable coupon for this cart (server-priced). */
+  const applyBestCoupon = async () => {
+    if (bestLoading || activeCoupon) return;
+    setBestLoading(true);
+    setCouponMsg({ ok: true, text: "✨ সেরা অফার খুঁজছি…" });
+    try {
+      const res = await fetch("/api/coupons/best", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: detail.map((l) => ({ productId: l.product.id, qty: l.qty })),
+          zoneId: derivedZoneId,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        code?: string;
+        freeDelivery?: boolean;
+        description?: string;
+      } | null;
+      if (res.ok && data?.code) {
+        setAppliedCode(data.code);
+      } else {
+        setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
+      }
+    } catch {
+      setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+    } finally {
+      setBestLoading(false);
+    }
+  };
+
   /** Full address string — house/road + para/upazila/district auto-append. */
   const buildFullAddress = () => {
     const segs: string[] = [];
@@ -522,7 +557,7 @@ export default function CheckoutView() {
   const persistAddress = () => {
     try {
       saveAddress({
-        label: `${effectivePara || "Address"} - ${form.name.split(" ")[0]}`,
+        label: `${ADDRESS_TAG_EMOJI[addrTag]} ${effectivePara || "Address"} - ${form.name.split(" ")[0]}`,
         name: form.name,
         phone: form.phone,
         area: effectivePara,
@@ -531,6 +566,7 @@ export default function CheckoutView() {
         fullAddress: form.address,
         note: form.note,
         zoneId: derivedZoneId,
+        tag: addrTag,
         lat: pinPos?.lat,
         lng: pinPos?.lng,
       });
@@ -738,25 +774,19 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
-        {/* LAUNCH OFFER — first 1000 orders ride free, any zone */}
-        <LaunchOfferBanner className="mb-6" />
-
-        {/* Per-user first-10-free promo note */}
+        {/* Flat delivery promise */}
         <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
-              <IconGift className="h-4 w-4" />
+              <IconTruck className="h-4 w-4" />
             </span>
             <div className="flex-1">
               <p className="text-sm font-bold">
-                🎉 প্রতিটি কাস্টমারের ডেলিভারি চার্জ মাত্র ৳৬০!
+                🚚 ফ্ল্যাট ডেলিভারি চার্জ মাত্র ৳৬০ — সব জায়গায়
               </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
-                সব জায়গায় · এ জোনের বাইরে জোন
-                চার্জ (৳৩০–৳১০০)।{" "}
-                {form.phone.trim() !== ""
-                  ? "আপনার ফ্রি ডেলিভারির হিসাব সার্ভারেই চূড়ান্ত করা হবে।"
-                  : "অর্ডারের সময় ফ্রি ডেলিভারির হিসাব সার্ভারে চূড়ান্ত হয়।"}
+                স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ছাড়া বাকি সব অর্ডারে সমান ৳৬০।
+                সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০।
               </p>
             </div>
           </div>
@@ -829,27 +859,6 @@ export default function CheckoutView() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                আপনার নাম / Full name <span className="text-rose-600">*</span>
-              </span>
-              <input
-                ref={nameRef}
-                required
-                value={form.name}
-                onChange={(e) => {
-                  update("name", e.target.value);
-                  if (fieldErrors.name) setFieldErrors((f) => ({ ...f, name: "" }));
-                }}
-                placeholder="যেমন: রাহাত আহমেদ / Rahat Ahmed"
-                aria-invalid={!!fieldErrors.name}
-                aria-describedby={fieldErrors.name ? "err-name" : undefined}
-                className={inputClass("name")}
-              />
-              {fieldErrors.name && (
-                <p id="err-name" className="mt-1.5 text-xs text-rose-700">{fieldErrors.name}</p>
-              )}
-            </label>
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-ink">
                 মোবাইল নম্বর / Mobile number <span className="text-rose-600">*</span>
               </span>
               <input
@@ -873,6 +882,27 @@ export default function CheckoutView() {
                 <p className="mt-1 text-[11px] text-ink-soft">
                   এই নম্বরে রাইডার কল করবে — ১১ ডিজিটের সঠিক নম্বর দিন।
                 </p>
+              )}
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                আপনার নাম / Full name <span className="text-rose-600">*</span>
+              </span>
+              <input
+                ref={nameRef}
+                required
+                value={form.name}
+                onChange={(e) => {
+                  update("name", e.target.value);
+                  if (fieldErrors.name) setFieldErrors((f) => ({ ...f, name: "" }));
+                }}
+                placeholder="যেমন: রাহাত আহমেদ / Rahat Ahmed"
+                aria-invalid={!!fieldErrors.name}
+                aria-describedby={fieldErrors.name ? "err-name" : undefined}
+                className={inputClass("name")}
+              />
+              {fieldErrors.name && (
+                <p id="err-name" className="mt-1.5 text-xs text-rose-700">{fieldErrors.name}</p>
               )}
             </label>
           </div>
@@ -929,7 +959,8 @@ export default function CheckoutView() {
               </select>
               {!sunamganjDistrict && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  এই মুহূর্তে ডেলিভারি সুনামগঞ্জ জেলায় — অন্য জেলায় কুরিয়ার চার্জ (৳১০০) যোগ হবে।
+                  এই মুহূর্তে ডেলিভারি সুনামগঞ্জ জেলায় — অন্য জেলায়ও ফ্ল্যাট ৳৬০,
+                  তবে ন্যূনতম ৳৫০০ অর্ডার প্রয়োজন (কুরিয়ার)।
                 </p>
               )}
             </label>
@@ -1007,9 +1038,9 @@ export default function CheckoutView() {
                 <div className="space-y-3" role="group" aria-label="আপনার পাড়া সিলেক্ট করুন">
                   {(
                     [
-                      { zoneId: "z1", label: "সুনামগঞ্জ সিটি — এ জোন · প্রথম ১০ অর্ডারে ফ্রি", tone: "green" },
-                      { zoneId: "z2", label: "সদর কোর — বি জোন · ৳৫০", tone: "plain" },
-                      { zoneId: "z3", label: "সদর এক্সটেন্ডেড — সি জোন · ৳৭০", tone: "plain" },
+                      { zoneId: "z1", label: "সুনামগঞ্জ সিটি — এ জোন", tone: "green" },
+                      { zoneId: "z2", label: "সদর কোর — বি জোন", tone: "plain" },
+                      { zoneId: "z3", label: "সদর এক্সটেন্ডেড — সি জোন", tone: "plain" },
                     ] as const
                   ).map((group) => (
                     <div key={group.zoneId}>
@@ -1185,6 +1216,36 @@ export default function CheckoutView() {
             )}
           </label>
 
+          {/* Saved-address label (optional) — tagged for one-tap reuse */}
+          <div className="mt-4">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
+              এই ঠিকানার লেবেল <span className="font-normal text-ink-soft">(ঐচ্ছিক — অর্ডারের পর সেভ হয়)</span>
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: "home", label: "🏠 বাসা / Home" },
+                  { id: "office", label: "🏢 অফিস / Office" },
+                  { id: "other", label: "📍 অন্যান্য / Other" },
+                ] as const
+              ).map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={addrTag === tag.id}
+                  onClick={() => setAddrTag(tag.id)}
+                  className={`rounded-full px-4 py-2 text-xs font-medium ring-1 transition-colors ${
+                    addrTag === tag.id
+                      ? "bg-forest-800 text-ivory-50 ring-forest-700"
+                      : "bg-paper text-ink ring-line hover:bg-ivory-100"
+                  }`}
+                >
+                  {tag.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               অর্ডার নোট <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
@@ -1288,11 +1349,9 @@ export default function CheckoutView() {
                     <span className="text-gold-300">
                       {summary.couponFree
                         ? "FREE — Coupon 🚚"
-                        : false
-                          ? `FREE (প্রথম $৬০ অর্ডার 🎉)`
-                          : form.isPickup
-                            ? "FREE — Pickup"
-                            : "Free"}
+                        : form.isPickup
+                          ? "FREE — Pickup"
+                          : "Free"}
                     </span>
                   ) : (
                     formatBdt(summary.charge)
@@ -1300,8 +1359,7 @@ export default function CheckoutView() {
                 </strong>
                 {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
                   <span className="mt-1 block text-xs text-amber-200">
-                    Base {formatBdt(summary.fullCharge)}
-                    {0 > 0 && ` + Distance ${formatBdt(0)}`}
+                    Delivery (flat) {formatBdt(summary.fullCharge)}
                     {summary.breakdown.surcharge.night > 0 && ` + Night ${formatBdt(summary.breakdown.surcharge.night)}`}
                     {summary.breakdown.surcharge.rain > 0 && ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}`}
                     {summary.breakdown.surcharge.express > 0 && ` + Express ${formatBdt(summary.breakdown.surcharge.express)}`}
@@ -1310,7 +1368,7 @@ export default function CheckoutView() {
                 )}
                 {summary.isOutside && !summary.freeDelivery && (
                   <span className="mt-1 block text-xs text-amber-200">
-                    সুনামগঞ্জ সদরের বাইরে — সর্বনিম্ন ৳৫০০ অর্ডার প্রয়োজন, চার্জ ৳১০০।
+                    সুনামগঞ্জ সদরের বাইরে — সর্বনিম্ন ৳৫০০ অর্ডার প্রয়োজন (কুরিয়ার ডেলিভারি)।
                   </span>
                 )}
                 {summary.isNight && !summary.freeDelivery && (
@@ -1408,6 +1466,7 @@ export default function CheckoutView() {
                 </button>
               </div>
             ) : (
+              <>
               <div className="flex gap-2">
                 <input
                   value={form.couponCode}
@@ -1429,6 +1488,15 @@ export default function CheckoutView() {
                   {t("checkout.apply")}
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={applyBestCoupon}
+                disabled={bestLoading}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
+              >
+                ✨ {bestLoading ? "সেরা অফার খুঁজছে…" : "সেরা অফার অটো-অ্যাপ্লাই করুন"}
+              </button>
+              </>
             )}
             {couponCheck.problem && (
               <p role="status" className="mt-2 text-xs leading-5 text-rose-700">
@@ -1622,11 +1690,9 @@ export default function CheckoutView() {
                   <span className="text-forest-700">
                     {summary.couponFree
                       ? "FREE 🚚 Coupon"
-                      : false
-                        ? "FREE 🎉"
-                        : form.isPickup
-                          ? "FREE — Pickup"
-                          : "Free"}{" "}
+                      : form.isPickup
+                        ? "FREE — Pickup"
+                        : "Free"}{" "}
                     <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
@@ -1638,8 +1704,7 @@ export default function CheckoutView() {
             </div>
             {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
               <div className="text-xs space-y-1 pl-1 text-ink-soft">
-                <div className="flex justify-between"><span>Base {zone.name}</span><span>{formatBdt(summary.fullCharge)}</span></div>
-                {0 > 0 && <div className="flex justify-between"><span>Distance {summary.distanceKm?.toFixed(2)}km</span><span>+{formatBdt(0)}</span></div>}
+                <div className="flex justify-between"><span>Delivery (flat)</span><span>{formatBdt(summary.fullCharge)}</span></div>
                 {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span>🌙 Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
                 {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
                 {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span>⚡ Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
@@ -1649,11 +1714,6 @@ export default function CheckoutView() {
             {summary.couponFree && (
               <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
                 🚚 Free delivery coupon applied — {activeCoupon?.code}
-              </p>
-            )}
-            {false && (
-              <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
-                
               </p>
             )}
             {summary.tip > 0 && (

@@ -268,7 +268,7 @@ export default function AdminSettingsPage() {
           <div className="mt-6 rounded-xl bg-forest-900 p-4 text-ivory-100">
             <h4 className="text-sm font-semibold text-gold-300">🚚 Delivery Surcharges — Sunamganj</h4>
             <p className="mt-1 text-xs text-ivory-100/70">
-              Night 9PM-6AM +৳20 · Rain +৳15 · Express 30min +৳40। ফ্রি ডেলিভারি: প্রথম ১০টি অর্ডার (শুধু Zone A)।
+              ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ সব জায়গায়। সারচার্জ: Night 9PM-6AM +৳20 · Rain +৳15 · Express 30min +৳40 · ৫ কেজির পর প্রতি কেজি +৳10। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="flex items-center gap-2 text-sm">

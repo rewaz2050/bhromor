@@ -8,9 +8,17 @@
 import { SUNAMGANJ_DISTRICT, SUNAMGANJ_UPAZILA } from "./sunamganj";
 import type { LatLng } from "./sunamganj";
 
+export type AddressTag = "home" | "office" | "other";
+
+export const ADDRESS_TAG_EMOJI: Record<AddressTag, string> = {
+  home: "🏠",
+  office: "🏢",
+  other: "📍",
+};
+
 export interface SavedAddress {
   id: string;
-  label: string; // e.g. "Home - Boropara"
+  label: string; // e.g. "🏠 Home - Boropara"
   name: string;
   phone: string;
   area: string; // para
@@ -21,6 +29,7 @@ export interface SavedAddress {
   zoneId: string;
   district: string;
   upazila: string;
+  tag: AddressTag;
   lat?: number;
   lng?: number;
   createdAt: number;
@@ -43,13 +52,18 @@ export const getSavedAddresses = (): SavedAddress[] => {
   return safeParse(localStorage.getItem(KEY));
 };
 
-export const saveAddress = (addr: Omit<SavedAddress, "id" | "createdAt" | "district" | "upazila">): SavedAddress => {
+export const saveAddress = (
+  addr: Omit<SavedAddress, "id" | "createdAt" | "district" | "upazila" | "tag"> & {
+    tag?: AddressTag;
+  },
+): SavedAddress => {
   const all = getSavedAddresses();
   const entry: SavedAddress = {
     ...addr,
     id: `addr-${Date.now()}`,
     district: SUNAMGANJ_DISTRICT,
     upazila: SUNAMGANJ_UPAZILA,
+    tag: addr.tag ?? "other",
     createdAt: Date.now(),
   };
   // Keep max 5, newest first

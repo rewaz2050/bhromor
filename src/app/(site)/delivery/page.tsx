@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getStorefrontZones } from "@/lib/db/storefront";
-import { formatBdt } from "@/lib/format";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
-import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 
 
 export const metadata: Metadata = {
   title: "Delivery Information — Sunamganj",
   description:
-    "PROSANTI delivery — সহজ ফর্মে অর্ডার: জেলা → উপজেলা → পাড়া। প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি (শুধু সুনামগঞ্জ সিটি এ জোনে)। বাইরে জোন চার্জ ৳৫০–৳১০০। COD ও ট্র্যাকিং।",
+    "PROSANTI delivery — সহজ ফর্মে অর্ডার: জেলা → উপজেলা → পাড়া। ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ সব জায়গায়। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি। COD ও ট্র্যাকিং।",
 };
 
 export const dynamic = "force-dynamic";
@@ -31,8 +29,10 @@ export default async function DeliveryPage() {
         ডেলিভারি।
       </p>
 
-      {/* Live Promo Counter */}
-      <LaunchOfferBanner />
+      {/* Flat delivery promise */}
+      <div className="mt-8 rounded-2xl bg-gold-50 px-5 py-4 text-sm text-forest-900 ring-1 ring-gold-200">
+        🚚 <strong>ফ্ল্যাট ডেলিভারি চার্জ ৳৬০</strong> — সব জোনে, সারা সুনামগঞ্জ। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
+      </div>
 
       {/* Promise */}
       <div className="mt-8 flex items-start gap-5 rounded-3xl bg-forest-900 p-7 text-ivory-100 sm:p-8">
@@ -61,7 +61,7 @@ export default async function DeliveryPage() {
             <tr className="border-b border-line text-[0.7rem] uppercase tracking-[0.2em] text-ink-soft">
               <th className="px-5 py-4 font-semibold">Zone</th>
               <th className="px-5 py-4 font-semibold">Paras (Sunamganj)</th>
-              <th className="px-5 py-4 font-semibold">Charge</th>
+              <th className="px-5 py-4 font-semibold">Delivery charge</th>
               <th className="px-5 py-4 font-semibold">ETA</th>
             </tr>
           </thead>
@@ -76,7 +76,7 @@ export default async function DeliveryPage() {
                   {zone.areas.join(", ")}
                 </td>
                 <td className="px-5 py-4 font-semibold text-ink">
-                  {formatBdt(zone.charge)}
+                  ৳60 flat
                   {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min ৳500 order</span>}
                 </td>
                 <td className="px-5 py-4 text-ink-soft">{zone.etaLabel}</td>
@@ -116,21 +116,23 @@ export default async function DeliveryPage() {
         <h2>Good to know</h2>
         <ul>
           <li>
-            <strong>প্রতিটি কাস্টমারের প্রথম 60 অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি</strong> — শুধুমাত্র{" "}
-            <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে। একই মোবাইল নম্বরে ১০টি অর্ডার
-            হয়ে গেলে জোন চার্জ প্রযোজ্য।
+            <strong>ফ্ল্যাট ডেলিভারি চার্জ ৳৬০</strong> — সুনামগঞ্জের সব জোনে
+            সমান। কোনো লুকানো জোন-ভেদে চার্জ নেই।
           </li>
           <li>
-            <strong>এ জোনের বাইরে চার্জ যোগ হবে:</strong> Zone B ৳50, Zone C ৳70,
-            Zone D (সদরের বাইরে / অন্য উপজেলা / অন্য জেলা — কুরিয়ার) ৳100।
-            ফ্রি অফার শুধু এ জোনে, সব জায়গায় নয়।
+            <strong>সারচার্জ:</strong> Night (৯টা–সকাল ৬টা) +৳২০ · Rain +৳১৫ ·
+            Express ৩০ মিনিট +৳৪০ · ৫ কেজির বেশি হলে প্রতি কেজি +৳১০।
+          </li>
+          <li>
+            <strong>স্টোর পিকআপ ফ্রি</strong> — Traffic Point হাবে উঠিয়ে নিলে
+            কোনো ডেলিভারি চার্জ লাগে না। ফ্রি-ডেলিভারি কুপনও ডেলিভারি ফ্রি করে।
           </li>
           <li>
             <strong>Zone D-তে সর্বনিম্ন ৳৫০০ অর্ডার</strong> — সুনামগঞ্জ সদরের বাইরের
-            ডেলিভারিতে প্রযোজ্য।
+            (অন্য উপজেলা / অন্য জেলা) ডেলিভারিতে প্রযোজ্য।
           </li>
           <li>
-            <strong>জোন অটো-ডিটেক্ট</strong> — পাড়া সিলেক্ট করলেই চার্জ ও সময় দেখা যাবে,
+            <strong>জোন অটো-ডিটেক্ট</strong> — পাড়া সিলেক্ট করলেই ETA দেখা যাবে,
             কোনো ম্যাপ বা পিন লাগবে না।
           </li>
           <li>

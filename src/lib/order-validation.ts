@@ -85,20 +85,18 @@ export interface OrderSnapshot {
   /** Live shop rows (slice 4). Absent in older snapshots → skipped. */
   shops?: Shop[];
   /**
-   * THIS customer's earlier order count (by normalized phone, cancelled
-   * excluded) — drives the per-user first-10-free promo. Undefined → the
-   * promo is NOT granted (fail closed).
+   * Retained for potential future promos — the flat-delivery model does
+   * NOT apply a per-user free-delivery rule.
    */
   customerOrderCount?: number;
   /**
-   * Store-wide all-time order count — drives the LAUNCH OFFER (first 1000
-   * orders ride free in any zone). Undefined → the launch offer is NOT
-   * granted (fail closed).
+   * Retained for potential future promos — the flat-delivery model does
+   * NOT apply a store-wide launch offer.
    */
   totalOrders?: number;
   /**
-   * ৳1000+-always-free threshold toggle (site_settings ops, admin). Absent
-   * → threshold is ON (the standing offer); false disables it.
+   * Retained for potential future promos — the flat-delivery model does
+   * NOT apply a free-delivery threshold.
    */
   freeThresholdEnabled?: boolean;
   /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
