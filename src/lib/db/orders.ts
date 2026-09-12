@@ -46,15 +46,15 @@ export interface OrderSnapshot {
   shops: Shop[];
   /** Total orders ever placed (global stat). */
   totalOrders: number;
-  /** THIS customer's earlier order count — set per-request by the route. */
+  /** THIS customer's earlier order count — retained for future promos. */
   customerOrderCount?: number;
-  /** ৳1000+-always-free toggle (ops). Absent/false semantics: see validation. */
+  /** ৳1000+-always-free toggle (ops) — retained for future promos. */
   freeThresholdEnabled?: boolean;
 }
 
 /**
  * How many orders has THIS customer (by normalized phone) already placed?
- * Drives the per-user first-10-free promo. Cancelled orders do not count.
+ * Drives the Smart Card stamp count (loyalty). Cancelled orders do not count.
  * Counts in JS so the phone normalization matches normalizePhone exactly.
  */
 export async function countOrdersForPhone(

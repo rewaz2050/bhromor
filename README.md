@@ -62,12 +62,12 @@ A polish pass over the storefront chrome and the buying flow, keeping the same p
 - **Mobile bottom navigation is now actually rendered** (`src/components/layout/bottom-nav.tsx` existed but was never mounted): Home · Shop · Wishlist · Bag · Menu within thumb reach, hidden from `lg` up. The footer reserves space for it.
 - **Product cards** stay quiet but read richer: subcategory + colour line, display title with a hairline hover underline, prices bottom-aligned across a row, struck-through compare-at price, and a calmer “Sold out” band.
 - **Product pages** put the long copy into a native `<details>` accordion (Product details · Fabric & care · Delivery & returns) so phones are not one long scroll, and a **compact sticky buy bar** appears when the main CTA leaves the viewport (desktop keeps the inline panel only).
-- **Bag drawer** shows a real free-delivery progress bar, a rounded close control, tabular-numeral quantity steppers and a display-sized subtotal.
+- **Bag drawer** states the flat ৳60 delivery promise up front, with a rounded close control, tabular-numeral quantity steppers and a display-sized subtotal.
 - **Footer** gained an assurance strip (cash on delivery · 45–50 min · 7-day exchange).
 
-### Delivery promise: instant, with free delivery as the secondary line
+### Delivery promise: instant, flat ৳60 delivery
 
-**Instant delivery (45–50 min) is the headline promise** across the storefront — home trust strip, product page, bag drawer, cart, checkout, delivery page and footer. The existing ৳2,000 free-delivery rule (`src/lib/delivery.ts`) is untouched but demoted to a smaller, secondary line (“৳X more also unlocks free delivery”). Copy lives in `DELIVERY_ETA` / `INSTANT_DELIVERY_TITLE` so the promise is edited in one place.
+**Instant delivery (45–50 min) is the headline promise** across the storefront — home trust strip, product page, bag drawer, cart, checkout, delivery page and footer. Delivery is a flat **৳60 everywhere** (`src/lib/delivery.ts`) with night/rain/express/weight surcharges on top; store pickup and free-delivery coupons ride free. There is no free-delivery threshold and no launch-offer promo. Copy lives in `DELIVERY_ETA` / `INSTANT_DELIVERY_TITLE` so the promise is edited in one place.
 
 All motion stays inside the existing tokens (`--motion-*`, `--ease-refined`) and is neutralised under `prefers-reduced-motion`. Touch targets remain 44px; the sticky bar uses `inert` while hidden so it never traps keyboard focus.
 

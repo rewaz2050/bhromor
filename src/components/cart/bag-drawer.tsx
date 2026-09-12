@@ -81,10 +81,10 @@ export default function BagDrawer() {
               {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
             </p>
             <p className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200">
-              🎉 প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ফ্রি ডেলিভারি!
+              🚚 ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ — সব জায়গায়
             </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
-              {`🎉 প্রতিটি কাস্টমারের প্রথম ১০টি অর্ডারে ডেলিভারি ফ্রি — শুধু সুনামগঞ্জ সিটি (এ জোন)-এ!`}
+              Night +৳20 · Rain +৳15 · Express +৳40 · ৫ কেজির পর প্রতি কেজি +৳10
             </p>
           </div>
           <div className="flex-1 overflow-y-auto px-6">
@@ -205,7 +205,7 @@ export default function BagDrawer() {
             </div>
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
               {INSTANT_DELIVERY_TITLE} · Sunamganj Sadar · {DELIVERY_ETA} —{" "}
-              {"প্রতি কাস্টমারের প্রথম ১০টি অর্ডারে ফ্রি (এ জোন)!"}
+              {"ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ — সব জায়গায়"}
             </p>
             <Link
               href="/checkout"

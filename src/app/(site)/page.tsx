@@ -19,7 +19,6 @@ import { useLanguage } from "@/components/i18n/language-provider";
  * Visual Journal and Our Story have been removed per request — keeping the
  * homepage tight and commerce-focused.
  */
-import LaunchOfferBanner from "@/components/delivery/launch-offer-banner";
 
 export default function Home() {
   const { settings } = useCms();
@@ -28,9 +27,6 @@ export default function Home() {
   return (
     <>
       {sections.hero && <Hero cms={settings} />}
-      <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
-        <LaunchOfferBanner />
-      </div>
       {sections.collections && <CollectionsSection />}
       {sections.featured && <BestSellersSection />}
       {sections.trust && <TrustStrip />}

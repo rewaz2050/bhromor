@@ -41,20 +41,22 @@ Run **in this order, in one sequence** (skip files you already applied —
 9. **`supabase/migrations/202609090008_dispatch_auto.sql`** —
    auto-offer trigger + admin assign/cancel RPCs (Phase 3 slice 7)
 10. **`supabase/migrations/202609100003_per_user_first10_free.sql`** —
-    per-user first-10-free delivery (by normalized phone; supersedes the
-    202609100001/202609100002 drafts — never apply those two)
+    SUPERSEDED by the flat model — skip (kept for history; never apply
+    202609100001/202609100002 either)
 11. **`supabase/migrations/202609110004_customer_accounts.sql`** — Smart Card
     accounts: `customers` (phone+password, no verification by design) +
     `customer_sessions`; service-role only via the /api/account/* routes
-12. **`supabase/migrations/202609110005_launch_offer_free.sql`** — LAUNCH
-    OFFER: store-wide first 1000 orders ride free (any zone) + ৳1000+
-    subtotal always free; keeps the per-user first-10 (Zone A). Supersedes
-    202609100003 — run only this one for the pricing rule
+12. **`supabase/migrations/202609110005_launch_offer_free.sql`** —
+    SUPERSEDED by the flat model — skip (kept for history)
 13. **`supabase/migrations/202609110006_media_video.sql`** — product/library
     videos: adds the `video` media type + `media_library.media_type`.
     No transaction wrapper by design (run the file as-is). Needed before
     saving a product with a Cloudinary/Drive video — see
     [docs/media-setup.md](media-setup.md).
+14. **`supabase/migrations/202609120007_flat_delivery.sql`** — FLAT
+    DELIVERY: ৳60 everywhere, no launch offer / ৳1000+ threshold / per-user
+    first-10-free. Flattens the zone charge column and re-creates
+    `ps_place_order` with the flat rule. Run this one for the pricing rule.
 
 Quick check after step 11 (SQL editor):
 
@@ -130,7 +132,7 @@ Do these on the deployed site, in order:
       seed counts + the `ps_place_order` RPC; `/admin` home shows a
       green **LIVE** banner once every check passes, an amber checklist while
       anything is missing)
-- [ ] `/checkout` has no global counter anywhere — first-10-free is per phone
+- [ ] `/checkout` shows the flat ৳60 promise — no launch-offer counter, no free-delivery threshold, no first-10-free copy anywhere
       (check `snapshot.customerOrderCount` on a placed order in Supabase)
 - [ ] `/shop` shows the seeded catalog with live prices
 - [ ] `/admin/homepage` → change the hero title → **Publish** → public `/`

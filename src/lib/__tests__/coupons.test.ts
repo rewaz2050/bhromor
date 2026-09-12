@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bestCoupon,
   codeTaken,
   discountAmount,
   eligibleSubtotal,
@@ -84,5 +85,60 @@ describe("coupons (§56)", () => {
     const updated = upsertCoupon(list, { ...coupon(), used: 1 });
     expect(updated).toHaveLength(1);
     expect(updated[0].used).toBe(1);
+  });
+});
+
+describe("bestCoupon — auto-apply best offer", () => {
+  it("returns null when nothing applies", () => {
+    expect(bestCoupon([], lines, bdt(500), "z1")).toBeNull();
+    // WELCOME100 needs ৳1,000 — a ৳500 cart doesn't qualify.
+    expect(bestCoupon([coupon()], lines, bdt(500), "z1")).toBeNull();
+  });
+
+  it("picks the biggest discount for the cart", () => {
+    const list = [
+      coupon(), // fixed ৳100
+      coupon({ id: "c2", code: "BIG20", type: "percent", value: 20, minOrder: 0 }),
+    ];
+    const best = bestCoupon(list, lines, bdt(2000), "z1");
+    expect(best?.code).toBe("BIG20");
+    expect(best?.discount).toBe(bdt(400));
+    expect(best?.freeDelivery).toBe(false);
+    expect(best?.savings).toBe(bdt(400));
+  });
+
+  it("values a free-delivery coupon at the flat ৳60 charge", () => {
+    const freeDelivery = coupon({
+      id: "c3",
+      code: "RIDEFREE",
+      type: "free_delivery",
+      value: 0,
+      minOrder: 0,
+    });
+    const best = bestCoupon([freeDelivery], lines, bdt(500), "z1");
+    expect(best?.code).toBe("RIDEFREE");
+    expect(best?.freeDelivery).toBe(true);
+    expect(best?.discount).toBe(0);
+    expect(best?.savings).toBe(bdt(60));
+  });
+
+  it("prefers a ৳100 discount over a ৳60 free-delivery coupon", () => {
+    const freeDelivery = coupon({
+      id: "c3",
+      code: "RIDEFREE",
+      type: "free_delivery",
+      value: 0,
+      minOrder: 0,
+    });
+    const list = [freeDelivery, coupon({ minOrder: 0 })];
+    const best = bestCoupon(list, lines, bdt(2000), "z1");
+    expect(best?.code).toBe("WELCOME100");
+    expect(best?.savings).toBe(bdt(100));
+  });
+
+  it("respects zone restrictions", () => {
+    const zoned = coupon({ id: "c4", code: "Z1ONLY", zoneId: "z1", minOrder: 0 });
+    expect(bestCoupon([zoned], lines, bdt(2000), "z2")).toBeNull();
+    expect(bestCoupon([zoned], lines, bdt(2000), "z1")?.code).toBe("Z1ONLY");
   });
 });
