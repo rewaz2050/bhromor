@@ -15,7 +15,7 @@ import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
   DELIVERY_ETA,
-  FIRST_FREE_DELIVERY_LIMIT,
+
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -191,7 +191,7 @@ export default async function ProductPage({ params }: PageProps) {
               </span>{" "}
               in Zone A (Sunamganj City) ·{" "}
               <span className="font-semibold text-gold-300">
-                {FIRST_FREE_DELIVERY_LIMIT}
+                60
               </span>{" "}
               টি অর্ডারে ডেলিভারি ফ্রি (প্রতিটি কাস্টমারের জন্য) — শুধু সুনামগঞ্জ
               সিটি (এ জোন)-এ! এ জোনের বাইরে জোন চার্জ প্রযোজ্য।

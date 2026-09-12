@@ -17,7 +17,6 @@ import { coverImage } from "@/lib/catalog";
 import { getDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import {
-  FIRST_FREE_DELIVERY_LIMIT,
   INSTANT_DELIVERY_TITLE,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
@@ -187,24 +186,8 @@ export default function CheckoutView() {
   }, []);
 
   /* ------------------------------------------------------------------ */
-  /* Store-wide LAUNCH OFFER counter — the server owns the real number.  */
-  /* The per-user first-10-free grant is decided by the server at        */
-  /* placement (the client only previews the zone charge).               */
+  /* Flat delivery model — no launch offer or promo counter.             */
   /* ------------------------------------------------------------------ */
-  const [promoTotal, setPromoTotal] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/promo", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("unavailable"))))
-      .then((data: { totalOrders?: number }) => {
-        if (cancelled) return;
-        if (typeof data.totalOrders === "number") setPromoTotal(data.totalOrders);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   /* ------------------------------------------------------------------ */
   /* Smart Card — stamps accumulate on the signed-in account only        */
@@ -310,7 +293,6 @@ export default function CheckoutView() {
         charge: 0,
         fullCharge: 0,
         freeDelivery: false,
-        promoFree: false,
         couponFree: false,
         discount: 0,
         tip: 0,
@@ -334,10 +316,6 @@ export default function CheckoutView() {
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
-      totalOrders: undefined,
-      globalOrders: promoTotal,
-      thresholdEnabled: settings.perZoneFreeThresholdEnabled,
-      distanceKm,
       weightKg,
       isNight,
       isRain,
@@ -354,7 +332,6 @@ export default function CheckoutView() {
       charge,
       fullCharge: zone.charge,
       freeDelivery: breakdown.freeDelivery,
-      promoFree: breakdown.promoFree,
       couponFree: breakdown.couponFree,
       discount,
       tip: form.tipAmount * 100,
@@ -372,7 +349,6 @@ export default function CheckoutView() {
     detail,
     activeCoupon,
     couponCheck.discount,
-    promoTotal,
     couponFreeDelivery,
     pinPos,
     settings,
@@ -773,10 +749,10 @@ export default function CheckoutView() {
             </span>
             <div className="flex-1">
               <p className="text-sm font-bold">
-                🎉 প্রতিটি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} টি অর্ডারে ডেলিভারি সম্পূর্ণ ফ্রি!
+                🎉 প্রতিটি কাস্টমারের ডেলিভারি চার্জ মাত্র ৳৬০!
               </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
-                শুধুমাত্র <strong>সুনামগঞ্জ সিটি (এ জোন)</strong>-এর ভেতরে · এ জোনের বাইরে জোন
+                সব জায়গায় · এ জোনের বাইরে জোন
                 চার্জ (৳৩০–৳১০০)।{" "}
                 {form.phone.trim() !== ""
                   ? "আপনার ফ্রি ডেলিভারির হিসাব সার্ভারেই চূড়ান্ত করা হবে।"
@@ -1312,8 +1288,8 @@ export default function CheckoutView() {
                     <span className="text-gold-300">
                       {summary.couponFree
                         ? "FREE — Coupon 🚚"
-                        : summary.promoFree
-                          ? `FREE (প্রথম ${FIRST_FREE_DELIVERY_LIMIT} অর্ডার 🎉)`
+                        : false
+                          ? `FREE (প্রথম $৬০ অর্ডার 🎉)`
                           : form.isPickup
                             ? "FREE — Pickup"
                             : "Free"}
@@ -1325,7 +1301,7 @@ export default function CheckoutView() {
                 {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
                   <span className="mt-1 block text-xs text-amber-200">
                     Base {formatBdt(summary.fullCharge)}
-                    {summary.breakdown.surcharge.distance > 0 && ` + Distance ${formatBdt(summary.breakdown.surcharge.distance)}`}
+                    {0 > 0 && ` + Distance ${formatBdt(0)}`}
                     {summary.breakdown.surcharge.night > 0 && ` + Night ${formatBdt(summary.breakdown.surcharge.night)}`}
                     {summary.breakdown.surcharge.rain > 0 && ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}`}
                     {summary.breakdown.surcharge.express > 0 && ` + Express ${formatBdt(summary.breakdown.surcharge.express)}`}
@@ -1568,7 +1544,7 @@ export default function CheckoutView() {
             {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
           </p>
           <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-            🎉 প্রতি কাস্টমারের প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারে ডেলিভারি ফ্রি (এ জোনে)
+            🎉 ডেলিভারি চার্জ মাত্র ৳৬০
           </p>
           <div className="mt-4">
             <BagShopHeader />
@@ -1646,7 +1622,7 @@ export default function CheckoutView() {
                   <span className="text-forest-700">
                     {summary.couponFree
                       ? "FREE 🚚 Coupon"
-                      : summary.promoFree
+                      : false
                         ? "FREE 🎉"
                         : form.isPickup
                           ? "FREE — Pickup"
@@ -1663,7 +1639,7 @@ export default function CheckoutView() {
             {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
               <div className="text-xs space-y-1 pl-1 text-ink-soft">
                 <div className="flex justify-between"><span>Base {zone.name}</span><span>{formatBdt(summary.fullCharge)}</span></div>
-                {summary.breakdown.surcharge.distance > 0 && <div className="flex justify-between"><span>Distance {summary.distanceKm?.toFixed(2)}km</span><span>+{formatBdt(summary.breakdown.surcharge.distance)}</span></div>}
+                {0 > 0 && <div className="flex justify-between"><span>Distance {summary.distanceKm?.toFixed(2)}km</span><span>+{formatBdt(0)}</span></div>}
                 {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span>🌙 Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
                 {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
                 {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span>⚡ Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
@@ -1675,9 +1651,9 @@ export default function CheckoutView() {
                 🚚 Free delivery coupon applied — {activeCoupon?.code}
               </p>
             )}
-            {summary.promoFree && (
+            {false && (
               <p className="rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200">
-                🎉 আপনার প্রথম {FIRST_FREE_DELIVERY_LIMIT} অর্ডারের প্রোমো — ডেলিভারি ফ্রি! (এ জোনে)
+                
               </p>
             )}
             {summary.tip > 0 && (

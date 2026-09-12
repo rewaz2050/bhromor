@@ -22,16 +22,13 @@ import {
   normalizeCode,
 } from "./coupons";
 import {
-  distanceExtraCharge,
   isNightHour,
   orderTotal,
-  promoFreeDelivery,
-  launchOfferFreeDelivery,
-  subtotalFreeDelivery,
   weightExtraCharge,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
   EXPRESS_SURCHARGE_PAISA,
+  FLAT_DELIVERY_CHARGE_PAISA,
 } from "./delivery";
 import { normalizePhone } from "./orders";
 import {
@@ -423,16 +420,11 @@ export const validateOrderPayload = (
 
   /* ---------------- surcharges — computed SERVER-side ---------------- */
   const night = isNightHour(new Date(now).getHours());
-  const distanceKm = geo?.distanceKm;
-  // Distance extra only inside the city zones; Zone D's flat ৳100 covers it.
-  const distanceExtra =
-    zone.id !== "z4" ? distanceExtraCharge(distanceKm) : 0;
   const surchargeNight =
     !isPickup && night ? NIGHT_SURCHARGE_PAISA : 0;
   const surchargeRain = !isPickup && isRain ? RAIN_SURCHARGE_PAISA : 0;
   const surchargeExpress =
     !isPickup && isExpress ? EXPRESS_SURCHARGE_PAISA : 0;
-  const surchargeDistance = !isPickup ? distanceExtra : 0;
   const surchargeWeight = !isPickup ? weightExtraCharge(weightKg) : 0;
 
   /* ---------------- coupons ---------------- */
@@ -485,23 +477,15 @@ export const validateOrderPayload = (
   }
 
   /* ---------------- delivery charge ----------------
-   * Pickup → free. Launch offer (store-wide first 1000, any zone),
-   * ৳1000+ subtotal (any zone), per-user first-10 promo (Zone A only)
-   * or a free-delivery coupon → free (surcharges waived too). Otherwise
-   * the flat zone charge + surcharges. */
-  const freeDelivery =
-    isPickup ||
-    couponFreeDelivery ||
-    launchOfferFreeDelivery(snapshot.totalOrders) ||
-    (snapshot.freeThresholdEnabled !== false && subtotalFreeDelivery(subtotal)) ||
-    promoFreeDelivery(snapshot.customerOrderCount, zone.id);
+   * Pickup → free. Free-delivery coupon → free (surcharges waived).
+   * Otherwise the flat charge + surcharges. */
+  const freeDelivery = isPickup || couponFreeDelivery;
   const deliveryCharge = freeDelivery
     ? 0
-    : Math.max(0, zone.charge) +
+    : Math.max(0, FLAT_DELIVERY_CHARGE_PAISA) +
       surchargeNight +
       surchargeRain +
       surchargeExpress +
-      surchargeDistance +
       surchargeWeight;
 
   return {
@@ -519,8 +503,7 @@ export const validateOrderPayload = (
       weightKg,
       surchargeNight,
       surchargeRain,
-      surchargeDistance,
-      surchargeExpress,
+      surchargeExpress: surchargeExpress,
       surchargeWeight,
       items: priced,
       coupon,
