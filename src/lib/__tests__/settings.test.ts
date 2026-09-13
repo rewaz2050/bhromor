@@ -33,4 +33,20 @@ describe("operational settings (§58)", () => {
     expect(fallback.loyaltyTargetOrders).toBe(10);
     expect(fallback.loyaltyRewardTitle).toBe(SETTINGS_DEFAULTS.loyaltyRewardTitle);
   });
+
+  it("sanitizes wallet numbers to BD mobile (P1 #8) — blanks hide the method", () => {
+    const ok = sanitizeSettings({
+      wallets: { bkash: "01711-111111", nagad: "+8801822222222" },
+    });
+    expect(ok.wallets.bkash).toBe("01711111111");
+    expect(ok.wallets.nagad).toBe("01822222222");
+
+    // Implausible numbers are dropped, never printed in a checkout.
+    const bad = sanitizeSettings({
+      wallets: { bkash: "123", nagad: "not-a-number" },
+    });
+    expect(bad.wallets).toEqual({ bkash: "", nagad: "" });
+
+    expect(sanitizeSettings({}).wallets).toEqual({ bkash: "", nagad: "" });
+  });
 });

@@ -33,6 +33,22 @@ describe("return action route without a session (P1 #13)", () => {
   });
 });
 
+describe("wallet payment route without a session (P1 #8)", () => {
+  it("401s verified/reject", async () => {
+    const { POST } = await import("../admin/orders/[id]/payment/route");
+    for (const action of ["verified", "rejected"]) {
+      const res = await POST(
+        new Request("http://localhost/api/admin/orders/PS-20260901-0002/payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+});
+
 describe("warranty claim routes without a session (P1 #14)", () => {
   it("401s the claim list", async () => {
     const { GET } = await import("../admin/warranty/route");

@@ -121,7 +121,14 @@ export interface Order {
   subtotal: Bdt;
   deliveryCharge: Bdt;
   total: Bdt;
-  payment: "cod";
+  /** P1 #8 — 'cod' (default) or a wallet method the shop verifies. */
+  payment: "cod" | "bkash" | "nagad";
+  /** P1 #8 — TRXID the customer shared for a wallet payment (null for COD). */
+  paymentRef?: string | null;
+  /** P1 #8 — wallet-payment verification state (always 'verified' for COD). */
+  paymentStatus?: "pending_verification" | "verified" | "rejected";
+  /** P1 #8 — when the shop verified/rejected the wallet payment. */
+  paymentVerifiedAt?: number;
   status: OrderStatus;
   timeline: OrderTimelineEntry[];
   /** For delivered orders: minutes from placement to doorstep (§88 KPI). */

@@ -432,6 +432,95 @@ describe("validateOrderPayload shop availability (marketplace slice 4)", () => {
 });
 
 /**
+ * P1 #8 — wallet payments in the price path. The contract: a wallet method is
+ * only accepted when the snapshot says the shop configured that wallet, and
+ * only with a plausible TRXID. COD is always available and needs no proof.
+ */
+describe("validateOrderPayload — wallet payments (P1 #8)", () => {
+  const withWallets = (w?: { bkash?: string; nagad?: string }): OrderSnapshot => ({
+    ...snapshot(),
+    payments: w,
+  });
+
+  it("defaults to COD — no TRXID required, nothing to verify", () => {
+    const result = validateOrderPayload(payload(), withWallets({ bkash: "01711111111" }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.paymentMethod).toBe("cod");
+    expect(result.draft.paymentRef).toBeUndefined();
+  });
+
+  it("accepts bKash with a configured wallet and a valid TRXID", () => {
+    const result = validateOrderPayload(
+      payload({ payment_method: "bkash", payment_ref: " 9k2l7m4qxz " }),
+      withWallets({ bkash: "01711111111" }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.paymentMethod).toBe("bkash");
+    expect(result.draft.paymentRef).toBe("9K2L7M4QXZ");
+    // Money itself is untouched — the wallet is a method, not a discount.
+    expect(result.draft.total).toBe(bdt(1550));
+  });
+
+  it("accepts Nagad the same way", () => {
+    const result = validateOrderPayload(
+      payload({ payment_method: "nagad", payment_ref: "NAGAD123456" }),
+      withWallets({ nagad: "01822222222" }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.paymentMethod).toBe("nagad");
+    expect(result.draft.paymentRef).toBe("NAGAD123456");
+  });
+
+  it("refuses a wallet the shop never configured", () => {
+    const result = validateOrderPayload(
+      payload({ payment_method: "bkash", payment_ref: "9K2L7M4QXZ" }),
+      withWallets({}),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      {
+        field: "payment",
+        message: "bKash is not available right now — please use cash on delivery.",
+      },
+    ]);
+  });
+
+  it("refuses wallet payments without a TRXID or with an implausible one", () => {
+    const wallets = { bkash: "01711111111" };
+    for (const ref of [undefined, "", "abc", "1 2 3", "A".repeat(40)]) {
+      const result = validateOrderPayload(
+        payload({ payment_method: "bkash", payment_ref: ref }),
+        withWallets(wallets),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors.some((e) => e.field === "paymentRef")).toBe(true);
+      }
+    }
+  });
+
+  it("refuses an unknown payment method instead of guessing", () => {
+    const result = validateOrderPayload(
+      payload({ payment_method: "rocket", payment_ref: "9K2L7M4QXZ" }),
+      withWallets({ bkash: "01711111111" }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      {
+        field: "payment",
+        message:
+          "Unknown payment method — choose cash on delivery, bKash or Nagad.",
+      },
+    ]);
+  });
+});
+
+/**
  * P0 growth levers in the price path. The point of these tests is the CONTRACT:
  * a badge is decoration until the validator turns the same settings document
  * into a number on the order — and it must refuse levers the shop never armed.

@@ -228,6 +228,12 @@ export async function advanceOrderAsStaff(
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Staff role required.", 403);
     }
+    if (msg.includes("payment not verified")) {
+      throw new AdminInputError(
+        "Wallet payment not verified yet — verify or reject it in the payment card first.",
+        422,
+      );
+    }
     if (msg.includes("illegal transition") || msg.includes("cannot cancel")) {
       throw new AdminInputError(
         "That status change is not allowed from here.",
@@ -235,6 +241,47 @@ export async function advanceOrderAsStaff(
       );
     }
     throw new AdminInputError("Could not update the order.", 422);
+  }
+  return getOrderDetail(db, orderNo);
+}
+
+/**
+ * P1 #8 — the shop's decision on a bKash/Nagad payment. 'verified' unlocks
+ * fulfilment; 'rejected' cancels the order (stock released by the trigger).
+ * The RPC owns the rules: wallet orders only, one decision per payment.
+ */
+export async function verifyPaymentAsStaff(
+  db: SupabaseClient,
+  orderNo: string,
+  action: "verified" | "rejected",
+  note?: string,
+): Promise<Order> {
+  const { data, error } = await db
+    .from("orders")
+    .select("id")
+    .eq("order_no", orderNo.trim().toUpperCase())
+    .single();
+  if (error || !data) throw new AdminInputError("Order not found.", 404);
+  const { error: rpcError } = await db.rpc("ps_verify_payment", {
+    p_order_id: (data as { id: string }).id,
+    p_action: action,
+    p_note: note?.trim().slice(0, 300) ?? null,
+  });
+  if (rpcError) {
+    const msg = rpcError.message.toLowerCase();
+    if (msg.includes("forbidden")) {
+      throw new AdminInputError("Staff role required.", 403);
+    }
+    if (msg.includes("not a wallet payment")) {
+      throw new AdminInputError(
+        "This order was paid by cash on delivery — nothing to verify.",
+        422,
+      );
+    }
+    if (msg.includes("already decided")) {
+      throw new AdminInputError("This payment was already decided.", 409);
+    }
+    throw new AdminInputError("Could not record the payment decision.", 422);
   }
   return getOrderDetail(db, orderNo);
 }

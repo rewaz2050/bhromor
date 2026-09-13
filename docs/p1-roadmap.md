@@ -14,7 +14,7 @@ what a finished item must have (code + tests + honest UX).
 | 16 | Stylist chat | ✅ Shipped 2026-09-13 | product-page Q&A drawer: size (from the shopper's own saved body), pairing (in-stock catalog rows), stock (real fields) + real-person WhatsApp handoff |
 | 13 | Exchange at-home pickup | ✅ Code 2026-09-13 (needs go-live step 17) | customer request on track page (7-day window) → shop approve/reject → rider pickup leg reusing normal dispatch |
 | 14 | Warranty claim (accessories) | ✅ Code 2026-09-14 (needs go-live step 18) | per-product `warranty_days`; order-bound claim on track page (window from proven delivery) → shop review/approve/reject with a note; exchange/refund is shop offline, recorded in the claim |
-| 8 | bKash / Nagad / Card | ⛔ Blocked | needs **merchant credentials** (bKash/Nagad merchant portal) — cannot be built honest without them |
+| 8 | bKash / Nagad / Card | ✅ bKash + Nagad code 2026-09-14 (needs go-live step 19) | **no merchant account**: money into the shop's OWN wallet, customer shares TRXID, shop verifies per order before fulfilment; COD stays default; cards/Rocket still need a PSP |
 | 9 | Live shopping session | ⬜ Largest | needs streaming infra; plan after 10/16/13/14 |
 
 ## #10 — Customer photos / UGC (code shipped, awaiting DB migration)
@@ -131,6 +131,37 @@ by default, and the UI says nothing about items without one):
   approval the replacement, repair or refund is the shop's offline
   handling, and the customer sees exactly that ("the shop will contact
   you…"), never a fake refund status.
+
+## #8 — bKash / Nagad payments (code shipped, awaiting DB migration)
+
+The "blocked on merchant credentials" verdict was right for the PSP route —
+so the system does what real Sunamganj shops do: **take the money into the
+shop's own wallet, no merchant account, no API key, no settlement**:
+
+- **Admin → Payments** — the shop saves its own bKash/Nagad numbers
+  (ops settings → `site_settings['ops'].wallets`; sanitized to BD mobile).
+  A method with no configured number is **never offered** at checkout — COD
+  always works.
+- **Checkout** — COD stays the default radio. With a wallet configured,
+  bKash/Nagad appear: the customer sends the exact total to the shop
+  number and enters the TRXID. The validator + `ps_place_order` both
+  refuse an unconfigured wallet or a missing/implausible TRXID.
+- **DB (`202609140004_wallet_payments.sql`)** — `orders.payment` widens to
+  `cod|bkash|nagad`; `payment_ref` (TRXID) + `payment_status`
+  (`pending_verification` → `verified`/`rejected`) + `payment_verified_at`.
+  `ps_verify_payment` is the shop's decision: **verified** unlocks
+  fulfilment; **rejected** cancels the order and the stock-release trigger
+  puts the reservation back on the shelf (refund to the customer is the
+  shop's offline wallet handling).
+- **The gate is in the state machine** — `ps_advance_order` refuses to move
+  an unverified wallet order past `confirmed` (so it can never reach
+  `ready-for-pickup`, and the rider queue can never see it).
+- **Track page** — wallet orders show their payment state (under
+  verification / verified / not accepted), COD orders unchanged.
+- **Honesty:** the system never claims money it hasn't seen — "under
+  verification" until the shop's own wallet check passes, and a rejected
+  payment says exactly what happens (cancelled + offline refund). Cards
+  (and Rocket) still need a PSP merchant account and stay "coming soon".
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

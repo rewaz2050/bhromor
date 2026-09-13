@@ -23,6 +23,7 @@ import { DeliveryRating } from "./delivery-rating";
 import { RescheduleDelivery } from "./reschedule-delivery";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
+import PaymentStatus from "./payment-status";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -216,6 +217,9 @@ export default function TrackView() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* P1 #8: wallet-payment state (COD orders render nothing) */}
+            <PaymentStatus order={order} />
+
             {/* Live Interactive Delivery Map & Security PIN */}
             <LiveDeliveryMap order={order} />
 

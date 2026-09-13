@@ -207,9 +207,28 @@ export default function AdminOrdersPage() {
                       {formatBdt(o.total)}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="rounded-full bg-ivory-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-soft">
-                        COD
-                      </span>
+                      {o.payment && o.payment !== "cod" ? (
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide ${
+                            o.paymentStatus === "pending_verification"
+                              ? "bg-amber-100 text-amber-900"
+                              : o.paymentStatus === "verified"
+                                ? "bg-emerald-100 text-emerald-900"
+                                : "bg-rose-100 text-rose-800"
+                          }`}
+                        >
+                          {o.payment === "bkash" ? "bKash" : "Nagad"}
+                          {o.paymentStatus === "pending_verification"
+                            ? " · verify"
+                            : o.paymentStatus === "verified"
+                              ? " ✓"
+                              : " · rejected"}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-ivory-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-soft">
+                          COD
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <Link href={`/admin/orders/${o.id}`}>

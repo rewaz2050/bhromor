@@ -97,6 +97,10 @@ export interface OrderPayload {
   };
   /** Friend's referral code (P0 #7). */
   referral_code?: string;
+  /** P1 #8 — 'cod' (default) | 'bkash' | 'nagad'. */
+  payment_method?: string;
+  /** P1 #8 — TRXID from the wallet transfer (required for bkash/nagad). */
+  payment_ref?: string;
   items: OrderPayloadItem[];
 }
 
@@ -150,6 +154,11 @@ export interface OrderSnapshot {
    * never a wrong one.
    */
   priorOrderPhones?: string[];
+  /**
+   * P1 #8 — the shop's own wallet numbers from the ops settings. A method
+   * with no number here is not offered at checkout and cannot be placed.
+   */
+  payments?: { bkash?: string; nagad?: string };
 }
 
 export interface PricedOrderItem {
@@ -187,6 +196,10 @@ export interface ValidOrderDraft {
   surchargeExpress?: number;
   surchargeWeight?: number;
   items: PricedOrderItem[];
+  /** P1 #8 — chosen payment method; 'cod' is the no-friction default. */
+  paymentMethod: "cod" | "bkash" | "nagad";
+  /** P1 #8 — TRXID the customer shared for wallet payments. */
+  paymentRef?: string;
   coupon?: { code: string; discount: number; id: string };
   /** The ONE automatic offer this order earns — flash drop or bundle set. */
   promo?: { kind: "flash" | "bundle"; label: string; discount: number };
@@ -634,6 +647,47 @@ export const validateOrderPayload = (
     }
   }
 
+  /* ---------------- payment (P1 #8) ----------------
+   * COD is always allowed. A wallet method is only accepted when the shop has
+   * actually configured that wallet (an empty number must never be printed in
+   * a checkout), and only with a plausible TRXID — ps_place_order re-checks
+   * both against the same ops settings. */
+  const rawMethod =
+    typeof body.payment_method === "string"
+      ? body.payment_method.trim().toLowerCase()
+      : "cod";
+  let paymentMethod: ValidOrderDraft["paymentMethod"] = "cod";
+  let paymentRef: string | undefined;
+  if (rawMethod === "bkash" || rawMethod === "nagad") {
+    const label = rawMethod === "bkash" ? "bKash" : "Nagad";
+    const wallet = snapshot.payments?.[rawMethod];
+    if (!wallet) {
+      errors.push({
+        field: "payment",
+        message: `${label} is not available right now — please use cash on delivery.`,
+      });
+    } else {
+      paymentMethod = rawMethod;
+      const ref =
+        typeof body.payment_ref === "string"
+          ? body.payment_ref.trim().toUpperCase()
+          : "";
+      if (!/^[A-Za-z0-9]{6,32}$/.test(ref)) {
+        errors.push({
+          field: "paymentRef",
+          message: `First send the total to ${label}, then enter the TRXID you received.`,
+        });
+      } else {
+        paymentRef = ref;
+      }
+    }
+  } else if (rawMethod !== "cod") {
+    errors.push({
+      field: "payment",
+      message: "Unknown payment method — choose cash on delivery, bKash or Nagad.",
+    });
+  }
+
   if (errors.length > 0) return { ok: false, errors };
 
   // The rider only ever needs one line of context, and the packing slip for a
@@ -664,6 +718,8 @@ export const validateOrderPayload = (
       surchargeExpress: surchargeExpress,
       surchargeWeight,
       items: priced,
+      paymentMethod,
+      paymentRef,
       coupon,
       promo,
       gift,

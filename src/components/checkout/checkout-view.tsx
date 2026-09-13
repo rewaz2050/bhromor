@@ -96,6 +96,10 @@ interface FormState {
   isPickup: boolean;
   pickupSlot: string;
   tipAmount: number; // taka
+  /** P1 #8 — wallet payment choice; 'cod' is the default. */
+  payMethod: "cod" | "bkash" | "nagad";
+  /** P1 #8 — TRXID from the wallet transfer. */
+  trxid: string;
   submitting: boolean;
 }
 
@@ -118,6 +122,8 @@ const initialForm: FormState = {
   isPickup: false,
   pickupSlot: "now",
   tipAmount: 0,
+  payMethod: "cod",
+  trxid: "",
   submitting: false,
 };
 
@@ -165,6 +171,8 @@ export default function CheckoutView() {
     cardFull?: boolean;
     smartCardNote?: string;
     deliveryCode?: string;
+    /** P1 #8 — wallet orders say so on the receipt, with the honest state. */
+    payment?: "cod" | "bkash" | "nagad";
     /** One line on the receipt: the gift is booked, not just ticked. */
     giftNote?: string;
   } | null>(null);
@@ -184,6 +192,24 @@ export default function CheckoutView() {
     ok: boolean;
     text: string;
   } | null>(null);
+  /* P1 #8 — the shop's OWN wallet numbers (no merchant account). A method
+     with no configured number is simply not offered — COD always works. */
+  const [wallets, setWallets] = useState<{ bkash?: string; nagad?: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/payments")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (live && data && typeof data === "object") {
+          setWallets(data as { bkash?: string; nagad?: string });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const submittingRef = useRef(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -505,10 +531,28 @@ export default function CheckoutView() {
             </p>
           ) : null}
           <p className="flex items-center justify-between border-t border-line pt-3 font-medium text-ink">
-            {t("checkout.totalCod")} — {t("checkout.cashOnDelivery")}
+            {placed.payment && placed.payment !== "cod"
+              ? `Total — ${placed.payment === "bkash" ? "bKash" : "Nagad"}`
+              : `${t("checkout.totalCod")} — ${t("checkout.cashOnDelivery")}`}
             <span>{formatBdt(placed.total)}</span>
           </p>
         </div>
+
+        {placed.payment && placed.payment !== "cod" && (
+          <div
+            role="status"
+            className="mx-auto mt-4 max-w-sm rounded-2xl bg-amber-50 p-4 text-left text-xs leading-6 text-amber-900 ring-1 ring-amber-200"
+          >
+            <strong className="block text-sm font-semibold">
+              {placed.payment === "bkash" ? "bKash" : "Nagad"} payment — under
+              verification
+            </strong>
+            আপনি টাকা পাঠিয়েছেন — দোকান নিজের wallet-এ TRXID যাচাই করে order
+            confirm করবে। Order টি track page-এ “payment under verification”
+            status-এ দেখাবে; verify হলেই prep শুরু হবে। টাকা পাঠানোর আগে ভুল
+            হলে track page থেকে বাতিল করুন।
+          </div>
+        )}
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
@@ -714,6 +758,10 @@ export default function CheckoutView() {
     if (!form.isPickup && form.address.trim().length < 6)
       localErrors.address =
         "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
+    if (form.payMethod !== "cod" && form.trxid.trim().length < 6)
+      localErrors.trxid = `আগে ${formatBdt(summary.total)} ${
+        form.payMethod === "bkash" ? "bKash" : "Nagad"
+      } পাঠান, তারপর যে TRXID পেয়েছেন সেটি লিখুন।`;
     if (Object.keys(localErrors).length > 0) {
       fail("অনুগ্রহ করে লাল চিহ্নিত ঘরগুলো ঠিক করুন — fix the highlighted fields.", localErrors);
       return;
@@ -761,6 +809,11 @@ export default function CheckoutView() {
           gift: giftPayload(giftValue),
           referral_code:
             referralCode.trim() === "" ? undefined : normalizeRefCode(referralCode),
+          // P1 #8 — wallet payment intent; the server re-validates the
+          // method against the configured wallets and requires the TRXID.
+          payment_method: form.payMethod,
+          payment_ref:
+            form.payMethod === "cod" ? undefined : form.trxid.trim().toUpperCase(),
           items: detail.map((l) => ({
             productId: l.product.id,
             variantLabel: l.variantLabel,
@@ -796,10 +849,11 @@ export default function CheckoutView() {
           : (summary.breakdown?.eta ?? data.order.etaLabel),
         charge: data.order.deliveryCharge,
         total: data.order.total,
-        addressSummary: form.isPickup
-          ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
-          : fullAddress,
-        deliveryCode: data.order.deliveryCode,
+          addressSummary: form.isPickup
+            ? `${SUNAMGANJ_HUB}, ${SUNAMGANJ_UPAZILA}`
+            : fullAddress,
+          deliveryCode: data.order.deliveryCode,
+          payment: data.order.payment,
         cardFull: data.smartCard?.justCompleted ?? false,
         giftNote: giftCheck.value.isGift
           ? [
@@ -1621,19 +1675,28 @@ export default function CheckoutView() {
           </div>
         </section>
 
-        {/* Payment */}
+        {/* Payment — P1 #8: COD by default; the shop's own bKash/Nagad
+            wallet only appears once a number is configured (no merchant
+            account: the customer sends the total, shares the TRXID, and the
+            shop verifies it before the order may start fulfilment). */}
         <section className="mt-10">
           <h2 className="font-display text-xl font-medium text-forest-900">
             {t("checkout.paymentMethod")}
           </h2>
           <div className="mt-5 space-y-3">
-            <label className="flex cursor-pointer items-center gap-4 rounded-2xl border border-forest-600 bg-forest-50 p-5 transition-colors">
+            <label
+              className={`flex cursor-pointer items-center gap-4 rounded-2xl p-5 ring-1 transition-colors ${
+                form.payMethod === "cod"
+                  ? "border border-forest-600 bg-forest-50"
+                  : "bg-paper ring-line hover:bg-ivory-50"
+              }`}
+            >
               <input
                 type="radio"
                 name="payment"
                 value="cod"
-                checked
-                readOnly
+                checked={form.payMethod === "cod"}
+                onChange={() => update("payMethod", "cod")}
                 className="h-4 w-4 accent-forest-700"
               />
               <span className="flex-1">
@@ -1648,6 +1711,99 @@ export default function CheckoutView() {
                 {t("checkout.primary")}
               </span>
             </label>
+            {wallets?.bkash ? (
+              <label
+                className={`flex cursor-pointer items-center gap-4 rounded-2xl p-5 ring-1 transition-colors ${
+                  form.payMethod === "bkash"
+                    ? "border border-[#e2136e] bg-[#fdf2f8]"
+                    : "bg-paper ring-line hover:bg-ivory-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment"
+                  value="bkash"
+                  checked={form.payMethod === "bkash"}
+                  onChange={() => update("payMethod", "bkash")}
+                  className="h-4 w-4 accent-[#e2136e]"
+                />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-ink">bKash</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
+                    আমাদের bKash নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {wallets?.nagad ? (
+              <label
+                className={`flex cursor-pointer items-center gap-4 rounded-2xl p-5 ring-1 transition-colors ${
+                  form.payMethod === "nagad"
+                    ? "border border-[#f6921e] bg-[#fff8f0]"
+                    : "bg-paper ring-line hover:bg-ivory-50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment"
+                  value="nagad"
+                  checked={form.payMethod === "nagad"}
+                  onChange={() => update("payMethod", "nagad")}
+                  className="h-4 w-4 accent-[#f6921e]"
+                />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-ink">Nagad</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
+                    আমাদের Nagad নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {form.payMethod !== "cod" && wallets?.[form.payMethod] && (
+              <div className="rounded-2xl bg-ivory-50 p-5 ring-1 ring-line">
+                <p className="text-sm font-semibold text-ink">
+                  {form.payMethod === "bkash" ? "bKash" : "Nagad"} payment steps
+                </p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-6 text-ink-soft">
+                  <li>
+                    {formatBdt(summary.total)} টাকা Send Money করুন এই
+                    নম্বরে: <strong className="font-mono text-ink">{wallets[form.payMethod]}</strong>
+                  </li>
+                  <li>
+                    পাঠানোর পর অ্যাপ একটি <strong className="text-ink">TRXID</strong>{" "}
+                    (transaction ID) দেখাবে — সেটি কপি করুন।
+                  </li>
+                  <li>
+                    নিচে TRXID টি লিখুন। দোকান নিজের wallet-এ যাচাই করে order
+                    confirm করবে।
+                  </li>
+                </ol>
+                <label className="mt-3 block">
+                  <span className="mb-1.5 block text-sm font-medium text-ink">
+                    TRXID (Transaction ID) <span className="text-rose-600">*</span>
+                  </span>
+                  <input
+                    value={form.trxid}
+                    onChange={(e) => {
+                      update("trxid", e.target.value.toUpperCase());
+                      if (fieldErrors.trxid)
+                        setFieldErrors((f) => ({ ...f, trxid: "" }));
+                    }}
+                    placeholder="e.g. 9K2L7M4QXZ"
+                    aria-invalid={!!fieldErrors.trxid}
+                    className={inputClass("trxid")}
+                  />
+                  {fieldErrors.trxid && (
+                    <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.trxid}</p>
+                  )}
+                </label>
+                <p className="mt-2 text-[11px] leading-5 text-ink-soft">
+                  দোকান verify করার আগ পর্যন্ত order “payment under verification”
+                  থাকবে — রাইডার পাঠানো হবে না। ভুল হয়ে গেলে track page থেকে বাতিল
+                  করা যাবে।
+                </p>
+              </div>
+            )}
           </div>
         </section>
 

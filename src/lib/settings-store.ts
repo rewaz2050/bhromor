@@ -31,6 +31,9 @@ export interface AdminSettings {
   nightSurchargeEnabled: boolean;
   expressDeliveryEnabled: boolean;
   perZoneFreeThresholdEnabled: boolean;
+  // P1 #8 — wallet payment numbers (the shop's OWN bKash/Nagad number;
+  // empty string = the method is not offered at checkout).
+  wallets: { bkash: string; nagad: string };
   // P0 growth levers (the "better than foodpanda" list)
   sizeFinderEnabled: boolean;
   priceAlertsEnabled: boolean;
@@ -52,6 +55,9 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   nightSurchargeEnabled: true,
   expressDeliveryEnabled: true,
   perZoneFreeThresholdEnabled: true,
+  // No wallet configured → checkout offers COD only, until the shop adds
+  // its bKash/Nagad number in Admin → Settings.
+  wallets: { bkash: "", nagad: "" },
   sizeFinderEnabled: true,
   priceAlertsEnabled: true,
   // A flash drop moves real margin, so it ships DISARMED: the owner arms it in
@@ -121,6 +127,15 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
   const bool = (value: unknown, fallback: boolean): boolean =>
     typeof value === "boolean" ? value : fallback;
 
+  // P1 #8 — wallet numbers: BD mobile only (01XXXXXXXXX, +880 accepted);
+  // anything else is dropped so the checkout can never print an unsendable
+  // number.
+  const walletNum = (v: unknown): string => {
+    let digits = typeof v === "string" ? v.replace(/\D/g, "") : "";
+    if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
+    return /^01\d{9}$/.test(digits) ? digits : "";
+  };
+
   return {
     lowStockThreshold: threshold,
     loyaltyEnabled,
@@ -134,6 +149,10 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     perZoneFreeThresholdEnabled,
     sizeFinderEnabled: bool(p.sizeFinderEnabled, SETTINGS_DEFAULTS.sizeFinderEnabled),
     priceAlertsEnabled: bool(p.priceAlertsEnabled, SETTINGS_DEFAULTS.priceAlertsEnabled),
+    wallets: {
+      bkash: walletNum((p.wallets as { bkash?: unknown } | undefined)?.bkash),
+      nagad: walletNum((p.wallets as { nagad?: unknown } | undefined)?.nagad),
+    },
     // Each growth lever sanitizes itself — a stored doc is never trusted raw.
     flash: sanitizeFlash(p.flash),
     bundle: sanitizeBundle(p.bundle),

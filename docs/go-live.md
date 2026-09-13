@@ -103,6 +103,16 @@ Run **in this order, in one sequence** (skip files you already applied —
     with a note from the admin order page. After approval, the replacement
     or refund is the shop's offline handling, recorded in the claim's
     resolution.
+19. **`supabase/migrations/202609140004_wallet_payments.sql`** — P1 #8
+    bKash/Nagad **without a merchant account**: `orders.payment` widens to
+    `cod|bkash|nagad`, plus `payment_ref` (the customer's TRXID),
+    `payment_status` and `payment_verified_at`. `ps_place_order` accepts the
+    method + TRXID (wallet must be configured in the ops settings),
+    `ps_advance_order` refuses to start fulfilment on an unverified wallet
+    order, and `ps_verify_payment` is the shop's verify/reject decision
+    (reject = cancel + stock released). The shop saves its own wallet numbers
+    in Admin → Payments; a method with no number is never offered at
+    checkout.
 
 Quick check after step 11 (SQL editor):
 

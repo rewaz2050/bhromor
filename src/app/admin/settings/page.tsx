@@ -113,7 +113,7 @@ export default function AdminSettingsPage() {
   const constants = [
     { k: "Currency", v: "Bangladeshi Taka — integer paisa end to end (§69)" },
     { k: "Order numbers", v: "PS-YYYYMMDD-NNNN, assigned at placement (§70)" },
-    { k: "Payments", v: "Cash on delivery only — see the Payments page (§20–21)" },
+    { k: "Payments", v: "COD + bKash/Nagad into the shop's own wallet (TRXID verified per order) — see the Payments page" },
     { k: "Storage", v: "Supabase Postgres — every change here is live data" },
   ];
 
@@ -320,10 +320,11 @@ export default function AdminSettingsPage() {
               <IconBanknote className="h-5 w-5" />
             </span>
             <div>
-              <h3 className="font-display text-base font-medium">Cash on delivery</h3>
+              <h3 className="font-display text-base font-medium">Payments</h3>
               <p className="mt-1 text-sm leading-6 text-ivory-100/70">
-                Launch runs COD-only. Track the live COD book or browse the
-                roadmap of online methods — they arrive with the gateway phase.
+                COD plus bKash/Nagad into your own wallet — save your wallet
+                numbers there and the checkout offers them immediately. Every
+                wallet order is TRXID-verified before fulfilment.
               </p>
             </div>
           </div>

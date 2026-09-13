@@ -143,6 +143,16 @@ describe("returns route (P1 #13, unconfigured backend)", () => {
   });
 });
 
+describe("payments route (P1 #8, unconfigured backend)", () => {
+  // The storefront contract: without a live ops-settings read, checkout
+  // falls back to COD only — the 503 must never surface as an error page.
+  it("GET /api/payments answers 503 — checkout then offers COD only", async () => {
+    const { GET } = await import("../payments/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
 describe("warranty routes (P1 #14, unconfigured backend)", () => {
   it("POST answers 503 — no fake claim without a live backend", async () => {
     const res = await postWarranty(

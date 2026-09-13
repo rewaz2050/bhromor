@@ -24,6 +24,7 @@ import {
 } from "@/components/admin/order-ui";
 import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
 import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
+import PaymentCard from "@/components/admin/payment-card";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
   requested: "Requested — awaiting decision",
@@ -486,6 +487,17 @@ export default function AdminOrderDetailPage() {
                   <p className="text-xs">Ready in ~{order.etaLabel}</p>
                 </div>
               )}
+              {/* P1 #8: bKash/Nagad wallet payment — verify or reject */}
+              <PaymentCard
+                orderNo={order.id}
+                payment={order.payment}
+                paymentRef={order.paymentRef}
+                paymentStatus={order.paymentStatus}
+                paymentVerifiedAt={order.paymentVerifiedAt}
+                total={order.total}
+                customerPhone={order.customer.phone}
+                onDecided={refresh}
+              />
             </dl>
           </section>
 

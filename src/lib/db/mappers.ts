@@ -303,7 +303,12 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
     subtotal: o.subtotal,
     deliveryCharge: o.delivery_charge,
     total: o.total,
-    payment: "cod",
+    payment: o.payment ?? "cod",
+    paymentRef: o.payment_ref ?? null,
+    paymentStatus: o.payment_status ?? (o.payment === "cod" ? "verified" : "pending_verification"),
+    paymentVerifiedAt: o.payment_verified_at
+      ? new Date(o.payment_verified_at).getTime()
+      : undefined,
     status: o.status as OrderStatus,
     timeline,
     deliveredMinutes,

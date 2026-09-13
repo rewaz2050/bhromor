@@ -229,7 +229,13 @@ export interface DbOrder {
   discount: number;
   coupon_id: string | null;
   total: number;
-  payment: "cod";
+  /** P1 #8 — 'cod' (default) or a wallet method the shop verifies. */
+  payment: "cod" | "bkash" | "nagad";
+  /** P1 #8 — TRXID shared by the customer for wallet payments. */
+  payment_ref?: string | null;
+  /** P1 #8 — wallet verification state ('verified' for COD). */
+  payment_status?: "pending_verification" | "verified" | "rejected";
+  payment_verified_at?: string | null;
   status: DbOrderStatus;
   rider_id: string | null;
   delivery_code: string | null;

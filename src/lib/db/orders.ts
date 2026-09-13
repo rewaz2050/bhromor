@@ -71,6 +71,8 @@ export interface OrderSnapshot {
   referralRewards?: { code: string; refereePhone: string }[];
   /** Phones with an earlier non-cancelled order — first-order proof. */
   priorOrderPhones?: string[];
+  /** P1 #8 — configured wallet numbers (empty/absent = not offered). */
+  payments?: { bkash?: string; nagad?: string };
 }
 
 /**
@@ -159,6 +161,14 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   }
   const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
   const settings = sanitizeSettings(ops);
+  // P1 #8 — wallet numbers the storefront may offer (sanitized to BD mobile;
+  // ps_place_order re-checks against the same ops document at placement).
+  const walletNum = (v: unknown): string | undefined => {
+    let digits = typeof v === "string" ? v.replace(/\D/g, "") : "";
+    if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
+    return /^01\d{9}$/.test(digits) ? digits : undefined;
+  };
+  const opsWallets = (ops.wallets ?? {}) as Record<string, unknown>;
   const codeRows = (codesRes.data ?? []) as {
     code: string;
     customer_id: string | null;
@@ -193,6 +203,10 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       (r) => r.customer_phone,
     ),
     products,
+    payments: {
+      bkash: walletNum(opsWallets.bkash),
+      nagad: walletNum(opsWallets.nagad),
+    },
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
     coupons: ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon),
     variants,
@@ -304,6 +318,10 @@ export async function placeLiveOrder(
       gift_message: draft.gift?.message ?? null,
       bundle_discount: draft.promo?.kind === "bundle" ? draft.promo.discount : 0,
       referral_code: draft.referral?.code ?? null,
+      // P1 #8 — wallet payment intents: the RPC validates the method against
+      // the ops wallets and requires a TRXID for bkash/nagad.
+      payment_method: draft.paymentMethod ?? "cod",
+      payment_ref: draft.paymentRef ?? null,
     },
     p_items: draft.items.map((it, i) => ({
       product_id: it.product.id,
