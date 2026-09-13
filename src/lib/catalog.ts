@@ -190,8 +190,8 @@ export const PRODUCTS: Product[] = [
     isNew: true,
     inStock: true,
     lowStock: false,
-    rating: 4.8,
-    reviewCount: 42,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -233,8 +233,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.7,
-    reviewCount: 28,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -270,8 +270,8 @@ export const PRODUCTS: Product[] = [
     isNew: false,
     inStock: true,
     lowStock: true,
-    rating: 4.6,
-    reviewCount: 61,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "sale",
     media: [
       {
@@ -306,8 +306,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.9,
-    reviewCount: 37,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -349,8 +349,8 @@ export const PRODUCTS: Product[] = [
     featured: false,
     isNew: true,
     inStock: true,
-    rating: 4.7,
-    reviewCount: 19,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -384,8 +384,8 @@ export const PRODUCTS: Product[] = [
     featured: false,
     isNew: false,
     inStock: true,
-    rating: 4.5,
-    reviewCount: 54,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     media: [
       {
         src: "/images/products/lungi.jpg",
@@ -423,8 +423,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.6,
-    reviewCount: 33,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {

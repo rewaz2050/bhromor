@@ -254,13 +254,22 @@ export default function AdminDashboard() {
               <ul className="mt-4 space-y-3">
                 {lowStock.map((p) => (
                   <li key={p.id} className="flex items-center gap-3">
-                    <Image
-                      src={p.media?.[0]?.src || "/file.svg"}
-                      alt=""
-                      width={40}
-                      height={40}
-                      className="h-10 w-10 rounded-lg object-cover"
-                    />
+                    {p.media?.[0]?.src ? (
+                      <Image
+                        src={p.media[0].src}
+                        alt=""
+                        width={40}
+                        height={40}
+                        className="h-10 w-10 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ivory-100 text-[0.55rem] font-bold uppercase tracking-wider text-ink-soft ring-1 ring-line"
+                      >
+                        No img
+                      </span>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-ink">{p.name}</p>
                       <p className="text-xs text-ink-soft">
