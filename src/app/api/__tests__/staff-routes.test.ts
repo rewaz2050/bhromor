@@ -16,6 +16,23 @@ const send = (path: string, method: string, body: unknown): Request =>
     body: JSON.stringify(body),
   });
 
+describe("return action route without a session (P1 #13)", () => {
+  it("401s approve/reject/complete", async () => {
+    const { POST: postReturn } = await import("../admin/orders/[id]/return/route");
+    const path = "/api/admin/orders/PS-20260901-0002/return";
+    for (const action of ["approve", "reject", "complete"]) {
+      const res = await postReturn(
+        new Request(`http://localhost${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+});
+
 describe("staff routes without a session (admin control center)", () => {
   it("401s list, grant and revoke", async () => {
     expect((await staffGet(get("/api/admin/staff"))).status).toBe(401);

@@ -84,6 +84,14 @@ Run **in this order, in one sequence** (skip files you already applied —
     URL or a compressed JPEG data URL). Public reads see photos of approved
     reviews only — a pending review's photos are hidden by RLS, exactly like
     the review itself.
+17. **`supabase/migrations/202609140002_return_pickups.sql`** — P1 #13
+    exchange at-home pickup: `ps_return_eligible` (7 days from the proven
+    'delivered' history entry, one live return per parent),
+    `ps_create_return_request` (the zero-charge reverse order via
+    `ps_place_order`), `ps_return_action` (approve → ready-for-pickup so
+    the normal rider dispatch carries the pickup leg; reject → cancelled;
+    complete → refunded), and a trigger that mirrors the rider's
+    pickup/drop events onto `return_status`.
 
 Quick check after step 11 (SQL editor):
 

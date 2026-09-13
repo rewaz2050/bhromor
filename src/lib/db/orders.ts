@@ -377,6 +377,39 @@ export const toDomain = async (
   if (!domain) return null;
   if (order.delivery_code) domain.deliveryCode = order.delivery_code;
 
+  // P1 #13: a delivered parent carries its linked return/exchange pickup,
+  // so the customer's tracking page can show the reverse leg's progress.
+  if (!order.is_return) {
+    const { data: child } = await db
+      .from("orders")
+      .select("order_no,status,return_status")
+      .eq("return_parent_id", order.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const c = child as
+      | { order_no: string; status: string; return_status: string }
+      | null;
+    if (c && c.return_status && c.return_status !== "rejected") {
+      domain.returnChild = {
+        orderNo: c.order_no,
+        status: c.status as Order["status"],
+        returnStatus: c.return_status,
+      };
+    }
+  }
+
+  // A return pickup shows the public number of the order it returns.
+  if (order.is_return && order.return_parent_id) {
+    const { data: parent } = await db
+      .from("orders")
+      .select("order_no")
+      .eq("id", order.return_parent_id)
+      .maybeSingle();
+    const p = parent as { order_no: string } | null;
+    if (p) domain.returnParentOrderNo = p.order_no;
+  }
+
   // Slice 9 rider-leg: attach the assigned rider when dispatch has started.
   if (["courier-assigned", "out-for-delivery", "delivered"].includes(domain.status)) {
     const { data: assignment } = await db

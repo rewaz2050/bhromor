@@ -1,54 +1,97 @@
-/** POST /api/returns — request return/exchange pickup (Sunamganj Sadar) */
-import { validateOrderPayload } from "@/lib/order-validation";
-import { OrderPlacementError, loadOrderSnapshot, placeLiveOrder } from "@/lib/db/orders";
+/**
+ * POST /api/returns — customer starts an exchange/return pickup (P1 #13).
+ *
+ * Body: { id: "PS-…", phone: "01…", reason: "…", details: "…" }
+ *
+ * Ownership is the same proof as /api/track (order number + phone), the
+ * 7-day window and one-return-per-parent are enforced in the database
+ * (ps_return_eligible), and the pickup leg becomes a real zero-charge
+ * return order (ps_create_return_request → ps_place_order) that the shop
+ * approves, dispatches to a rider, and rides back to the shop.
+ */
+
+import { getSupabaseService } from "@/lib/supabase-server";
 import { isServiceRoleConfigured } from "@/lib/env";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
+import {
+  createReturnRequest,
+  ReturnRequestError,
+} from "@/lib/db/returns";
+import { notifyStaff } from "@/lib/db/engagement";
 
 export const dynamic = "force-dynamic";
 
+const REASONS = new Set([
+  "size",
+  "color",
+  "defective",
+  "other",
+]);
+
 export async function POST(request: Request) {
+  const ip = clientIpFromHeaders(request.headers);
+  const bucket = checkRateLimit(`returns:${ip}`, 10, 60_000);
+  if (!bucket.allowed) {
+    const res = apiError("Too many attempts — please wait a moment.", 429);
+    res.headers.set("Retry-After", String(bucket.retryAfterSec));
+    return res;
+  }
   if (!isServiceRoleConfigured()) {
-    return apiError("Returns are not set up yet.", 503);
+    return apiError("Returns are temporarily unavailable.", 503);
   }
 
-  let payload: unknown;
+  let body: unknown;
   try {
-    payload = await request.json();
+    body = await request.json();
   } catch {
-    return apiError("Invalid return data.", 400);
+    return apiError("Invalid request.", 400);
+  }
+  const b = (body ?? {}) as Record<string, unknown>;
+  const id = typeof b.id === "string" ? b.id.trim().toUpperCase().slice(0, 32) : "";
+  const phone = typeof b.phone === "string" ? b.phone.trim().slice(0, 24) : "";
+  const reason = typeof b.reason === "string" ? b.reason.trim() : "";
+  const details = typeof b.details === "string" ? b.details.trim() : "";
+
+  if (id === "" || phone === "") {
+    return apiError("Order ID and phone number are required.", 400);
+  }
+  if (!REASONS.has(reason)) {
+    return apiError("Pick a return reason.", 422);
+  }
+  if (details.length < 5 || details.length > 400) {
+    return apiError(
+      "Tell the shop a little more — a sentence is enough.",
+      422,
+    );
   }
 
-  const body = payload as Record<string, unknown>;
-  const parentId = (body.return_parent_id || body.returnParentId || "").toString().trim();
-  const reason = (body.return_reason || body.returnReason || "").toString().trim();
-  if (!parentId) return apiError("return_parent_id required", 422);
-  if (!reason) return apiError("return_reason required", 422);
+  const db = getSupabaseService();
+  if (!db) return apiError("Returns are temporarily unavailable.", 503);
 
   try {
-    const snapshot = await loadOrderSnapshot();
-    if (!snapshot) return apiError("Ordering not set up", 503);
-
-    // Inject return flags into payload so validateOrderPayload picks them up
-    (body as any).is_return = true;
-    (body as any).return_parent_id = parentId;
-    (body as any).return_reason = reason;
-
-    const validation = validateOrderPayload(payload, snapshot);
-    if (!validation.ok) {
-      return apiError("Please fix fields", 422, { errors: validation.errors });
-    }
-    // Ensure return flags in draft
-    (validation.draft as any).isReturn = true;
-    (validation.draft as any).returnParentId = parentId;
-    (validation.draft as any).returnReason = reason;
-
-    const order = await placeLiveOrder(validation.draft, snapshot);
-    if (!order) return apiError("Could not request return", 503);
-    return apiJson({ id: order.id }, 201);
+    const created = await createReturnRequest(db, {
+      orderNo: id,
+      phone,
+      reason,
+      details,
+    });
+    await notifyStaff(db, {
+      kind: "order",
+      title: "Return / exchange requested",
+      body: `Order ${id} — pickup request for ${reason}. Approve or reject it in Admin → Orders.`,
+      href: "/admin/orders",
+    });
+    return apiJson(
+      {
+        order: { id: created.orderNo, status: "pending", isReturn: true },
+      },
+      201,
+    );
   } catch (err) {
-    if (err instanceof OrderPlacementError) {
-      return apiError(err.message, err.status, { field: err.field });
+    if (err instanceof ReturnRequestError) {
+      return apiError(err.message, err.status, { code: err.reason });
     }
-    return apiError((err as any)?.message || "return failed", 500);
+    return apiError("Returns are temporarily unavailable.", 503);
   }
 }

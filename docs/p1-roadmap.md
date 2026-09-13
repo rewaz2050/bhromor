@@ -12,7 +12,7 @@ what a finished item must have (code + tests + honest UX).
 | 12 | Scheduled delivery slot | ✅ Already in | checkout "now / evening / scheduled" + window + date, `scheduled_at` in `ps_place_order` |
 | 10 | Customer photos (UGC) | ✅ Code 2026-09-13 (needs go-live step 16) | photo reviews + moderation queue + "real buyer photos" strip — no points: loyalty is the stamp card, no points concept exists |
 | 16 | Stylist chat | ✅ Shipped 2026-09-13 | product-page Q&A drawer: size (from the shopper's own saved body), pairing (in-stock catalog rows), stock (real fields) + real-person WhatsApp handoff |
-| 13 | Exchange at-home pickup | ⬜ | rider reverse-logistics leg on the 7-day exchange |
+| 13 | Exchange at-home pickup | ✅ Code 2026-09-13 (needs go-live step 17) | customer request on track page (7-day window) → shop approve/reject → rider pickup leg reusing normal dispatch |
 | 14 | Warranty claim (accessories) | ⬜ | claim form + status on accessory products |
 | 8 | bKash / Nagad / Card | ⛔ Blocked | needs **merchant credentials** (bKash/Nagad merchant portal) — cannot be built honest without them |
 | 9 | Live shopping session | ⬜ Largest | needs streaming infra; plan after 10/16/13/14 |
@@ -68,6 +68,37 @@ page (next to the size row) where all three questions live.
 
 Honesty rules: no canned replies, no invented persona, no "typing…" theatre —
 every bubble is computed from live catalog data, and the subtitle says so.
+
+## #13 — Exchange at-home pickup (code shipped, awaiting DB migration)
+
+"7-day exchange" was only true if the customer could get the item back to
+the shop. Now the reverse leg is real logistics, not a contact form:
+
+- **Customer (track page, `return-panel.tsx`)** — a delivered order shows
+  the exchange window (7 days from the proven 'delivered' history entry).
+  Request = reason + a sentence, verified with order ID + phone (same
+  ownership proof as tracking). Inside the window: form. Outside: an
+  honest "window ended on {date}". A live return shows its status and
+  one tap tracks the pickup leg.
+- **DB (`202609140002_return_pickups.sql`)** — `ps_return_eligible`
+  (delivered + window + one live return per parent),
+  `ps_create_return_request` (a zero-charge return order via the existing
+  `ps_place_order` return mechanics — items/address/zone/geo copied from
+  the parent, so the pickup is exactly the doorstep the order was
+  delivered to), `ps_return_action` (approve → `ready-for-pickup`, reject
+  → cancelled, complete → refunded), and a trigger mirroring the rider's
+  pickup/drop onto `return_status`.
+- **Shop (admin order detail)** — requested returns get Approve / Reject
+  (with a reason for the customer). Approving moves the return order to
+  `ready-for-pickup`, the state the normal dispatch offers to riders —
+  the existing offer → accept → pickup → deliver leg IS the reverse
+  logistics. Return orders can't be moved through the normal "Mark …"
+  flow.
+- **Rider app** — the job card labels return pickups: "collect from the
+  customer, drop at the shop. No cash to collect."
+- **Honesty:** nothing is paid for by the system — the pickup leg is
+  ৳0 in the order, and when the item reaches the shop the status says
+  exactly what happens next: "exchange/refund handled by the shop."
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

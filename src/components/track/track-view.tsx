@@ -21,6 +21,7 @@ import { LiveDeliveryMap } from "./live-delivery-map";
 import { SignatureCanvas } from "./signature-canvas";
 import { DeliveryRating } from "./delivery-rating";
 import { RescheduleDelivery } from "./reschedule-delivery";
+import ReturnPanel from "@/components/returns/return-panel";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -216,6 +217,15 @@ export default function TrackView() {
           <div className="space-y-6">
             {/* Live Interactive Delivery Map & Security PIN */}
             <LiveDeliveryMap order={order} />
+
+            {/* P1 #13: return/exchange — status, or the home-pickup request */}
+            <ReturnPanel
+              order={order}
+              onTrack={(orderNo, phone) => {
+                setOrderId(orderNo);
+                setPhone(phone);
+              }}
+            />
 
             {/* Timeline */}
             {order.status === "cancelled" && (

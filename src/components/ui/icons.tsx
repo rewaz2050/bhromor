@@ -303,6 +303,13 @@ export const IconChat = (p: IconProps) => (
   </Svg>
 );
 
+export const IconRefresh = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 11.5A8 8 0 1 0 12 20" />
+    <path d="M20 5v6.5h-6.5" />
+  </Svg>
+);
+
 export const IconTrendDown = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 6.5 10 14l3.5-3.5L21 18" />

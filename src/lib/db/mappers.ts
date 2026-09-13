@@ -324,6 +324,10 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
     deliveryProofUploadedAt: (o as any).delivery_proof_uploaded_at ? new Date((o as any).delivery_proof_uploaded_at).getTime() : undefined,
     deliveryAttempts: (o as any).delivery_attempts ?? undefined,
     deliveryFailedReason: (o as any).delivery_failed_reason ?? undefined,
+    isReturn: o.is_return ?? undefined,
+    returnReason: o.return_reason ?? undefined,
+    returnParentId: o.return_parent_id ?? undefined,
+    returnStatus: (o.return_status as Order["returnStatus"]) ?? undefined,
   };
 };
 

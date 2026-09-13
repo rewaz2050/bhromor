@@ -184,6 +184,11 @@ export default function AdminOrdersPage() {
                       </Link>
                       <p className="mt-0.5 text-xs text-ink-soft">
                         {friendlyWhen(o.createdAt)}
+                        {o.isReturn && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-amber-900">
+                            Return · {o.returnStatus ?? "requested"}
+                          </span>
+                        )}
                       </p>
                     </td>
                     <td className="px-5 py-3.5">

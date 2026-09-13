@@ -22,6 +22,7 @@ vi.mock("@/lib/db/orders", async () => {
 
 import { POST as validateCoupon } from "../coupons/validate/route";
 import { GET as getReviews, POST as postReview } from "../reviews/route";
+import { POST as postReturn } from "../returns/route";
 import { bdt } from "@/lib/format";
 import { __resetRateLimits } from "@/lib/rate-limit";
 
@@ -119,6 +120,24 @@ describe("GET /api/products without a configured backend", () => {
   it("answers 503 NOT_SEEDED instead of a catalog snapshot", async () => {
     const { GET } = await import("../products/route");
     const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("returns route (P1 #13, unconfigured backend)", () => {
+  it("POST answers 503 — no fake pickup without a live backend", async () => {
+    const res = await postReturn(
+      new Request("http://localhost/api/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "PS-20260901-0001",
+          phone: "01712345678",
+          reason: "size",
+          details: "A bit tight across the chest.",
+        }),
+      }),
+    );
     expect(res.status).toBe(503);
   });
 });

@@ -146,6 +146,15 @@ export interface Order {
   deliveryProofUploadedAt?: number;
   deliveryAttempts?: number;
   deliveryFailedReason?: string;
+  /** P1 #13 — reverse logistics: this order IS an exchange/return pickup. */
+  isReturn?: boolean;
+  returnReason?: string;
+  returnParentId?: string;
+  /** Public order number of the parent order a return pickup belongs to. */
+  returnParentOrderNo?: string;
+  returnStatus?: "requested" | "approved" | "picked_up" | "refunded" | "rejected";
+  /** Linked return/exchange for a delivered parent (one live at a time). */
+  returnChild?: { orderNo: string; status: OrderStatus; returnStatus: string };
   /** Assigned rider when dispatch has moved the order (slice 9 tracking). */
   rider?: {
     id: string;
