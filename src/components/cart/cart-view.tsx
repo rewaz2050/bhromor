@@ -22,10 +22,13 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import BagOffers from "@/components/promo/bag-offers";
+import { useBagOffer } from "@/lib/use-bag-offer";
 
 export default function CartView() {
   const { t } = useLanguage();
   const { detail, updateQty, removeItem, subtotal } = useCart();
+  const offer = useBagOffer(detail);
   /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
   const { activeZones } = useZones();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
@@ -54,7 +57,9 @@ export default function CartView() {
   const deliveryFee = fromCharge;
   // Marketing note — per-user promo; the real check happens at checkout/server.
   const promoFree = true;
-  const total = subtotal;
+  // The automatic offer (flash drop or a complete set) is shown and subtracted
+  // here; checkout and the server re-derive the same number.
+  const total = Math.max(0, subtotal - (offer?.discount ?? 0));
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
@@ -194,6 +199,21 @@ export default function CartView() {
                 {"ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে হিসাব হবে (জোন ৳৩০–৳১০০)।"}
               </p>
             )}
+            {offer ? (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">
+                  {offer.kind === "flash"
+                    ? t("promo.pctOff").replace("{pct}", String(offer.pct))
+                    : offer.label}
+                </dt>
+                <dd className="font-medium text-forest-800">
+                  −{formatBdt(offer.discount)}
+                </dd>
+              </div>
+            ) : null}
+            <div className="empty:hidden">
+              <BagOffers lines={detail} />
+            </div>
             <div className="flex justify-between border-t border-line pt-4 text-base">
               <dt className="font-semibold text-ink">
                 {t("cart.estimatedTotal")}

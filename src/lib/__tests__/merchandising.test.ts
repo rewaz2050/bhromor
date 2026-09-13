@@ -34,17 +34,15 @@ describe("Editorial merchandising", () => {
       ]),
     ).toEqual([cheap]);
   });
-  it("pairs lungi and gamcha, not arbitrary featured products", () => {
+  it("pairs by garment, not by whatever is featured", () => {
     const lungi = PRODUCTS.find((p) => p.subCategory === "Lungi")!;
     const gamcha = PRODUCTS.find((p) => p.subCategory === "Gamcha")!;
+    const panjabi = PRODUCTS.find((p) => p.subCategory === "Panjabi")!;
     expect(completeTheLook(lungi, PRODUCTS)).toEqual([gamcha]);
-    expect(completeTheLook(gamcha, PRODUCTS)).toEqual([lungi]);
-    expect(
-      completeTheLook(
-        PRODUCTS.find((p) => p.subCategory === "Panjabi")!,
-        PRODUCTS,
-      ),
-    ).toEqual([]);
+    // A gamcha is a gift for the panjabi shopper as much as a partner to a lungi.
+    expect(completeTheLook(gamcha, PRODUCTS)).toEqual([panjabi, lungi]);
+    // The Eid Set: a panjabi is completed by the pieces worn with it.
+    expect(completeTheLook(panjabi, PRODUCTS)).toEqual([gamcha]);
     expect(
       completeTheLook(lungi, [
         { ...gamcha, inStock: false },

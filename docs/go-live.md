@@ -57,6 +57,15 @@ Run **in this order, in one sequence** (skip files you already applied —
     DELIVERY: ৳60 everywhere, no launch offer / ৳1000+ threshold / per-user
     first-10-free. Flattens the zone charge column and re-creates
     `ps_place_order` with the flat rule. Run this one for the pricing rule.
+15. **`supabase/migrations/202609130008_growth_promos_gift_referral.sql`** —
+    P0 growth levers: `price_watches`, `referral_codes`, `referral_rewards`,
+    the gift + automatic-offer columns on `orders`, and a new
+    `ps_place_order` that recomputes the flash discount from
+    `site_settings['ops']`, bounds a bundle claim, prices gift wrap from
+    settings and credits a referral only for a proven first order. Also adds
+    `ps_credit_referrer(order_id)`, which mints the referrer's ৳50 as a real
+    single-use coupon when the friend's order is delivered. Requires 14 (it
+    rewrites the same function). See [docs/growth-levers.md](growth-levers.md).
 
 Quick check after step 11 (SQL editor):
 

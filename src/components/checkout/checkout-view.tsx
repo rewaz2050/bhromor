@@ -1,6 +1,15 @@
 "use client";
 
 import CheckoutAssurance from "./checkout-assurance";
+import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
+import BagOffers from "@/components/promo/bag-offers";
+import { useBagOffer } from "@/lib/use-bag-offer";
+import { validateGift } from "@/lib/gift";
+import {
+  clearStoredRef,
+  normalizeRefCode,
+  referralLink,
+} from "@/lib/referral";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -156,7 +165,14 @@ export default function CheckoutView() {
     cardFull?: boolean;
     smartCardNote?: string;
     deliveryCode?: string;
+    /** One line on the receipt: the gift is booked, not just ticked. */
+    giftNote?: string;
   } | null>(null);
+
+  /* P0 gift mode + referral code — local state, sent as intents. The server
+     prices the wrap fee and proves the code; this form only estimates. */
+  const [giftValue, setGiftValue] = useState<GiftFormValue>(GIFT_OFF);
+  const [referralCode, setReferralCode] = useState("");
 
   const [appliedCode, setAppliedCode] = useState("");
   const [couponCheck, setCouponCheck] = useState<{
@@ -291,6 +307,26 @@ export default function CheckoutView() {
     [couponCheck.code],
   );
 
+  /** The one automatic offer this bag earns (flash drop or a complete set). */
+  const bagOffer = useBagOffer(detail);
+  const giftCheck = useMemo(
+    () => validateGift(giftPayload(giftValue), settings.gift),
+    [giftValue, settings.gift],
+  );
+  const giftFee = giftFeeFor(giftValue, settings.gift);
+  const referralCredit =
+    referralCode.trim() === ""
+      ? 0
+      : Math.min(
+          settings.referral.friendRewardPaisa,
+          Math.max(
+            0,
+            subtotal -
+              (activeCoupon ? couponCheck.discount : 0) -
+              (bagOffer?.discount ?? 0),
+          ),
+        );
+
   const summary = useMemo(() => {
     if (!zone) {
       return {
@@ -299,6 +335,10 @@ export default function CheckoutView() {
         freeDelivery: false,
         couponFree: false,
         discount: 0,
+        promo: 0,
+        promoKind: bagOffer?.kind ?? null,
+        giftFee: 0,
+        referral: 0,
         tip: 0,
         total: subtotal,
         itemCount: detail.reduce((n, l) => n + l.qty, 0),
@@ -332,14 +372,25 @@ export default function CheckoutView() {
     });
     const charge = breakdown.totalCharge;
     const discount = activeCoupon ? couponCheck.discount : 0;
+    // Everything the shop can honour is re-derived from the same settings the
+    // badges use; the RPC recomputes it again at placement.
+    const promo = bagOffer?.discount ?? 0;
+    const capped = Math.min(promo + referralCredit, Math.max(0, subtotal - discount));
     return {
       charge,
       fullCharge: FLAT_DELIVERY_CHARGE_PAISA,
       freeDelivery: breakdown.freeDelivery,
       couponFree: breakdown.couponFree,
       discount,
+      promo: capped,
+      promoKind: bagOffer?.kind ?? null,
+      giftFee,
+      referral: referralCredit,
       tip: form.tipAmount * 100,
-      total: orderTotal(subtotal, charge, discount) + form.tipAmount * 100,
+      total:
+        orderTotal(subtotal, charge, discount + capped) +
+        form.tipAmount * 100 +
+        giftFee,
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
       isOutside: derivedZoneId === "z4",
       breakdown,
@@ -348,6 +399,9 @@ export default function CheckoutView() {
       isRain,
     };
   }, [
+    bagOffer,
+    giftFee,
+    referralCredit,
     zone,
     subtotal,
     detail,
@@ -442,6 +496,14 @@ export default function CheckoutView() {
             <IconMapPin className="h-5 w-5 text-forest-700" />
             <span className="text-ink-soft">{placed.addressSummary}</span>
           </p>
+          {placed.giftNote ? (
+            <p className="flex items-center gap-3 rounded-2xl bg-gold-50 px-4 py-3 text-forest-900 ring-1 ring-gold-200">
+              <IconGift className="h-5 w-5 shrink-0 text-gold-600" />
+              <span>
+                🎁 {placed.giftNote} — {t("gift.riderNote")}
+              </span>
+            </p>
+          ) : null}
           <p className="flex items-center justify-between border-t border-line pt-3 font-medium text-ink">
             {t("checkout.totalCod")} — {t("checkout.cashOnDelivery")}
             <span>{formatBdt(placed.total)}</span>
@@ -696,6 +758,9 @@ export default function CheckoutView() {
           weight_kg: detail.reduce((s, l) => s + l.qty * 0.5, 0),
           is_rain: settings.rainSurchargeEnabled,
           couponCode: activeCoupon?.code,
+          gift: giftPayload(giftValue),
+          referral_code:
+            referralCode.trim() === "" ? undefined : normalizeRefCode(referralCode),
           items: detail.map((l) => ({
             productId: l.product.id,
             variantLabel: l.variantLabel,
@@ -736,10 +801,22 @@ export default function CheckoutView() {
           : fullAddress,
         deliveryCode: data.order.deliveryCode,
         cardFull: data.smartCard?.justCompleted ?? false,
+        giftNote: giftCheck.value.isGift
+          ? [
+              t("gift.badge"),
+              giftCheck.value.recipientName
+                ? `for ${giftCheck.value.recipientName}`
+                : null,
+              giftCheck.value.wrap !== "none" ? `${giftCheck.value.wrap} wrap` : null,
+            ]
+              .filter((part): part is string => part !== null)
+              .join(" · ")
+          : undefined,
         smartCardNote: data.smartCard
           ? `স্মার্ট কার্ড: ${data.smartCard.stamps}/${data.smartCard.target} স্ট্যাম্প`
           : undefined,
       });
+      clearStoredRef();
       clear();
       return;
     }
@@ -1259,6 +1336,34 @@ export default function CheckoutView() {
           </label>
         </section>
 
+        {/* P0 #6 + #7 — two extra fields, not a new flow. */}
+        <div className="mt-6 space-y-4">
+          <GiftStep
+            value={giftValue}
+            onChange={setGiftValue}
+            errors={giftCheck.ok
+              ? undefined
+              : (giftCheck.errors as Record<string, string>)}
+          />
+          {settings.referral.enabled ? (
+            <div className="rounded-2xl border border-line bg-paper p-5">
+              <ReferralField
+                value={referralCode}
+                onChange={setReferralCode}
+                error={fieldErrors.referralCode}
+              />
+              {referralCode.trim() === "" ? (
+                <p className="mt-2 text-xs text-ink-soft">
+                  {t("referral.yourCode")} ·{" "}
+                  <Link href="/account" className="underline underline-offset-2">
+                    {referralLink("", "PS-XXXXXX")}
+                  </Link>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
         {/* Delivery Time Slot */}
         <div className="mt-6 space-y-3">
           <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery Slot</span>
@@ -1646,6 +1751,9 @@ export default function CheckoutView() {
               </li>
             ))}
           </ul>
+          <div className="mt-4 empty:hidden">
+            <BagOffers lines={detail} />
+          </div>
           {/* Applied coupon note — the full promo section lives in the form */}
           {activeCoupon && (
             <div className="mt-6 flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
@@ -1679,6 +1787,34 @@ export default function CheckoutView() {
                 <dd className="font-medium text-emerald-700">
                   −{formatBdt(summary.discount)}
                 </dd>
+              </div>
+            )}
+            {summary.promo > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">
+                  {summary.promoKind === "bundle"
+                    ? (bagOffer?.label ?? t("bundle.title"))
+                    : t("promo.pctOff").replace("{pct}", String(bagOffer?.pct ?? 0))}
+                </dt>
+                <dd className="font-medium text-emerald-700">
+                  −{formatBdt(summary.promo)}
+                </dd>
+              </div>
+            )}
+            {summary.referral > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">{t("referral.credit")}</dt>
+                <dd className="font-medium text-emerald-700">
+                  −{formatBdt(summary.referral)}
+                </dd>
+              </div>
+            )}
+            {summary.giftFee > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-ink-soft">
+                  🎁 {t("gift.wrap")} · {giftValue.wrap}
+                </dt>
+                <dd className="font-medium text-ink">+{formatBdt(summary.giftFee)}</dd>
               </div>
             )}
             <div className="flex justify-between">

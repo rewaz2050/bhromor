@@ -735,6 +735,21 @@ export async function updateProduct(
     }
     throw new Error("product update failed");
   }
+  if (merged.price < row.price) {
+    // A price drop is a promise kept: everyone who asked to be told gets a
+    // line in the staff inbox with their numbers. Never fatal to the save.
+    try {
+      const { flagPriceDropForStaff } = await import("./growth");
+      await flagPriceDropForStaff(db, {
+        productId: id,
+        productName: merged.name,
+        fromPaisa: row.price,
+        toPaisa: merged.price,
+      });
+    } catch {
+      // the product is saved; the alert can wait for the next price change
+    }
+  }
   if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sku !== undefined) {
     // Variant grid inputs fall back to the CURRENT grid (not blank).
     const { data: current } = await db

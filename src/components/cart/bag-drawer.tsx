@@ -12,6 +12,7 @@ import { formatBdt } from "@/lib/format";
 import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import BagOffers from "@/components/promo/bag-offers";
 
 export default function BagDrawer() {
   const { t } = useLanguage();
@@ -197,6 +198,10 @@ export default function BagDrawer() {
             </section>
           )}
           <div className="border-t border-line bg-ivory-100/70 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            {/* The saving is quoted here so the bag cannot surprise anyone at payment. */}
+            <div className="mb-3 empty:hidden">
+              <BagOffers lines={detail} />
+            </div>
             <div className="flex items-baseline justify-between">
               <span className="text-sm text-ink-soft">{t("bag.subtotal")}</span>
               <strong className="font-display text-2xl text-forest-900">

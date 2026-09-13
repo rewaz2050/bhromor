@@ -11,6 +11,7 @@ import {
   subscribeWishlist,
 } from "@/lib/wishlist-store";
 import { LoyaltyCard } from "./loyalty-card";
+import { ReferralCard } from "./referral-card";
 
 /**
  * Account panel — signup/login with NO verification: phone + password and
@@ -122,6 +123,7 @@ export default function AccountView() {
   return (
     <div className="space-y-8">
       <LoyaltyCard />
+      <ReferralCard />
 
       <div className="border border-line bg-paper p-6 sm:p-10">
         {customer ? (

@@ -43,15 +43,20 @@ export const under500 = (products: Product[]): Product[] =>
   products.filter((p) => isDiscoverable(p) && p.inStock && p.price < bdt(500));
 
 const COMPLEMENTS: Record<string, string[]> = {
-  Panjabi: ["Pajama", "Pajamas"],
-  Shirts: ["Trouser", "Trousers"],
+  // A panjabi is sold as an occasion, not a shirt: the gamcha (and a cap, once
+  // the catalog carries one) belongs with it — that pairing is what turns
+  // "Complete the look" into a bundle a customer can actually buy (P0 #2).
+  Panjabi: ["Pajama", "Pajamas", "Gamcha", "Cap", "Topi"],
+  Shirts: ["Trouser", "Trousers", "Cap"],
   "T-Shirts": ["Trouser", "Trousers"],
+  "Three-Piece": ["Dupatta", "Shawl", "Scarf"],
+  Dresses: ["Dupatta", "Shawl", "Scarf"],
   Lungi: ["Gamcha"],
-  Gamcha: ["Lungi"],
+  Gamcha: ["Lungi", "Panjabi"],
   Pajama: ["Panjabi"],
   Pajamas: ["Panjabi"],
-  Trouser: ["Shirts", "T-Shirts"],
-  Trousers: ["Shirts", "T-Shirts"],
+  Trouser: ["Shirts", "T-Shirts", "Panjabi"],
+  Trousers: ["Shirts", "T-Shirts", "Panjabi"],
 };
 /** Never fill a styling recommendation with unrelated stock just to fill a grid. */
 export const completeTheLook = (

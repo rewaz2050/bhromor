@@ -32,6 +32,18 @@ import {
 } from "./delivery";
 import { normalizePhone } from "./orders";
 import {
+  BUNDLE_DEFAULTS,
+  FLASH_DEFAULTS,
+  flashDiscountForCart,
+  flashState,
+  matchBundle,
+  pickBestOffer,
+  sanitizeBundle,
+  sanitizeFlash,
+} from "./promos";
+import { GIFT_DEFAULTS, giftRiderNote, sanitizeGift, validateGift } from "./gift";
+import { REFERRAL_DEFAULTS, redeemReferral, sanitizeReferral } from "./referral";
+import {
   deriveZoneChoice,
   haversineKm,
   SUNAMGANJ_DISTRICT,
@@ -75,6 +87,16 @@ export interface OrderPayload {
   /** Rain surcharge flag (admin toggle is client-side). */
   is_rain?: boolean;
   couponCode?: string;
+  /** Gift mode (P0 #6) — snake_case, straight from the checkout step. */
+  gift?: {
+    is_gift?: boolean;
+    gift_recipient_name?: string;
+    gift_recipient_phone?: string;
+    gift_message?: string;
+    gift_wrap?: string;
+  };
+  /** Friend's referral code (P0 #7). */
+  referral_code?: string;
   items: OrderPayloadItem[];
 }
 
@@ -101,6 +123,33 @@ export interface OrderSnapshot {
   freeThresholdEnabled?: boolean;
   /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
   now?: number;
+  /**
+   * The P0 growth levers, straight from the ops settings document. ABSENT means
+   * "the server did not arm anything": every lever prices at zero, so an old
+   * snapshot (or a test that never opted in) behaves exactly as before. The
+   * storefront badges read the same document, which is what keeps a promise and
+   * the money from disagreeing.
+   */
+  promos?: {
+    flash?: unknown;
+    bundle?: unknown;
+    gift?: unknown;
+    referral?: unknown;
+  };
+  /** Issued referral codes (service-role read; never exposed to clients). */
+  referralRecords?: import("./referral").ReferralRecord[];
+  /**
+   * The referral ledger (service-role read). The validator filters it by the
+   * buyer's phone: one credit per (code, phone), and no self-referrals.
+   */
+  referralRewards?: { code: string; refereePhone: string }[];
+  /**
+   * Phones with at least one earlier non-cancelled order — the first-order
+   * proof. Truncated at a few thousand rows on purpose: if this ever misses,
+   * ps_place_order still refuses the credit, so the worst case is no discount,
+   * never a wrong one.
+   */
+  priorOrderPhones?: string[];
 }
 
 export interface PricedOrderItem {
@@ -139,6 +188,10 @@ export interface ValidOrderDraft {
   surchargeWeight?: number;
   items: PricedOrderItem[];
   coupon?: { code: string; discount: number; id: string };
+  /** The ONE automatic offer this order earns — flash drop or bundle set. */
+  promo?: { kind: "flash" | "bundle"; label: string; discount: number };
+  gift?: import("./gift").GiftDraft;
+  referral?: { code: string; credit: number };
   subtotal: number;
   deliveryCharge: number;
   discount: number;
@@ -486,10 +539,117 @@ export const validateOrderPayload = (
       surchargeExpress +
       surchargeWeight;
 
+  /* ---------------- P0 growth levers ----------------
+   * One automatic offer per order (flash drop OR bundle set — the better one
+   * wins, ties favour the time-boxed drop), a coupon stacks on top, gift wrap
+   * adds a fee, and a referral code credits a first order. The same sanitized
+   * settings the storefront badges read, so what is promised is what is
+   * priced. ps_place_order re-derives all of it from live rows and drops any
+   * discount this layer could not prove. */
+  const src = snapshot.promos;
+  const flashCfg = src ? sanitizeFlash(src.flash) : { ...FLASH_DEFAULTS, enabled: false };
+  const bundleCfg = src ? sanitizeBundle(src.bundle) : { ...BUNDLE_DEFAULTS, enabled: false };
+  const giftCfg = src ? sanitizeGift(src.gift) : { ...GIFT_DEFAULTS, enabled: false };
+  const refCfg = src ? sanitizeReferral(src.referral) : { ...REFERRAL_DEFAULTS, enabled: false };
+
+  const cartLines = priced.map((it) => ({
+    product: it.product,
+    qty: it.qty,
+    lineTotal: it.lineTotal,
+  }));
+  const flashOffer = flashDiscountForCart(
+    flashCfg,
+    flashState(flashCfg, now),
+    cartLines,
+  );
+  const bundleOffer = matchBundle(
+    priced.map((it) => ({ product: it.product, qty: it.qty })),
+    snapshot.products,
+    bundleCfg,
+  );
+  const bestOffer = pickBestOffer([
+    {
+      kind: "flash",
+      label: `Flash drop — ${flashOffer.pct}% off`,
+      discount: flashOffer.discount,
+    },
+    {
+      kind: "bundle",
+      label: `${bundleOffer?.name ?? "Complete the look"} — ${bundleOffer?.discountPct ?? 0}% off the set`,
+      discount: bundleOffer?.discount ?? 0,
+    },
+  ]);
+  const promoHeadroom = Math.max(0, subtotal - discount);
+  const promo =
+    bestOffer && bestOffer.kind !== "coupon"
+      ? {
+          kind: bestOffer.kind as "flash" | "bundle",
+          label: bestOffer.label,
+          discount: Math.min(bestOffer.discount, promoHeadroom),
+        }
+      : undefined;
+  const promoDiscount = promo?.discount ?? 0;
+
+  /* ---------------- gift mode ---------------- */
+  const giftCheck = validateGift(body.gift, giftCfg);
+  for (const [field, message] of Object.entries(giftCheck.errors)) {
+    if (message) errors.push({ field: `gift.${field}`, message });
+  }
+  const gift = giftCheck.value;
+  const giftFee = gift.isGift ? gift.feePaisa : 0;
+
+  /* ---------------- referral ---------------- */
+  let referral: ValidOrderDraft["referral"];
+  const rawRef =
+    typeof body.referral_code === "string" ? body.referral_code : undefined;
+  if (rawRef && rawRef.trim() !== "") {
+    const verdict = redeemReferral({
+      rawCode: rawRef,
+      records: snapshot.referralRecords ?? [],
+      buyerOrderCount:
+        snapshot.customerOrderCount ??
+        (snapshot.priorOrderPhones ?? []).filter(
+          (raw) => normalizePhone(raw) === phoneDigits,
+        ).length,
+      buyerPhone: phoneDigits,
+      subtotal,
+      cfg: refCfg,
+      alreadyRedeemedBy: (snapshot.referralRewards ?? [])
+        .filter((r) => normalizePhone(r.refereePhone) === phoneDigits)
+        .map((r) => r.code),
+    });
+    if (!verdict.ok) {
+      errors.push({
+        field: "referralCode",
+        message: verdict.reason ?? "That referral code cannot be used here.",
+      });
+    } else {
+      referral = {
+        code: verdict.code,
+        credit: Math.min(
+          verdict.discount,
+          Math.max(0, subtotal - discount - promoDiscount),
+        ),
+      };
+    }
+  }
+
+  if (errors.length > 0) return { ok: false, errors };
+
+  // The rider only ever needs one line of context, and the packing slip for a
+  // gift must not quote prices — both ride the existing note field, no new
+  // column is needed for the handoff.
+  const riderNote = giftRiderNote(gift);
+  const finalNote = riderNote
+    ? `${note ? `${note}\n` : ""}${riderNote}`.slice(0, 500)
+    : note;
+
+  const totalDiscount = discount + promoDiscount + (referral?.credit ?? 0);
+
   return {
     ok: true,
     draft: {
-      customer: { name, phone, area: para, district, upazila, para, address, note },
+      customer: { name, phone, area: para, district, upazila, para, address, note: finalNote },
       zone,
       geo,
       scheduledAt,
@@ -505,10 +665,13 @@ export const validateOrderPayload = (
       surchargeWeight,
       items: priced,
       coupon,
+      promo,
+      gift,
+      referral,
       subtotal,
       deliveryCharge,
-      discount,
-      total: orderTotal(subtotal, deliveryCharge, discount) + tipAmount,
+      discount: totalDiscount,
+      total: orderTotal(subtotal, deliveryCharge, totalDiscount) + tipAmount + giftFee,
     },
   };
 };

@@ -1,8 +1,22 @@
 /**
  * Operational settings (§58) — configurable low-stock threshold + delivery
- * surcharges + loyalty. Shared types and defaults; staff edits persist to
- * site_settings via /api/admin/settings (see use-settings.ts).
+ * surcharges + loyalty + the P0 growth levers (flash drop, bundle sets,
+ * gift mode, referral, size finder, price alerts).
+ *
+ * One document, one save button, one source of truth: the storefront reads the
+ * same sanitized object the checkout prices with (see order-validation.ts), so
+ * a badge and the money can never disagree.
  */
+
+import {
+  FLASH_DEFAULTS,
+  sanitizeBundle,
+  sanitizeFlash,
+  type BundleConfig,
+  type FlashConfig,
+} from "./promos";
+import { GIFT_DEFAULTS, sanitizeGift, type GiftConfig } from "./gift";
+import { REFERRAL_DEFAULTS, sanitizeReferral, type ReferralConfig } from "./referral";
 
 export interface AdminSettings {
   lowStockThreshold: number;
@@ -17,6 +31,13 @@ export interface AdminSettings {
   nightSurchargeEnabled: boolean;
   expressDeliveryEnabled: boolean;
   perZoneFreeThresholdEnabled: boolean;
+  // P0 growth levers (the "better than foodpanda" list)
+  sizeFinderEnabled: boolean;
+  priceAlertsEnabled: boolean;
+  flash: FlashConfig;
+  bundle: BundleConfig;
+  gift: GiftConfig;
+  referral: ReferralConfig;
 }
 
 export const SETTINGS_DEFAULTS: AdminSettings = {
@@ -31,6 +52,16 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   nightSurchargeEnabled: true,
   expressDeliveryEnabled: true,
   perZoneFreeThresholdEnabled: true,
+  sizeFinderEnabled: true,
+  priceAlertsEnabled: true,
+  // A flash drop moves real margin, so it ships DISARMED: the owner arms it in
+  // Admin → Growth ("arm tonight's drop" is one button). The countdown rail
+  // simply does not render until then.
+  flash: FLASH_DEFAULTS,
+  // Bundles are the differentiator the brief asks for — on from day one.
+  bundle: { enabled: true, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
+  gift: GIFT_DEFAULTS,
+  referral: REFERRAL_DEFAULTS,
 };
 
 export const sanitizeSettings = (raw: unknown): AdminSettings => {
@@ -87,6 +118,9 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
       ? p.perZoneFreeThresholdEnabled
       : SETTINGS_DEFAULTS.perZoneFreeThresholdEnabled;
 
+  const bool = (value: unknown, fallback: boolean): boolean =>
+    typeof value === "boolean" ? value : fallback;
+
   return {
     lowStockThreshold: threshold,
     loyaltyEnabled,
@@ -98,5 +132,12 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     nightSurchargeEnabled,
     expressDeliveryEnabled,
     perZoneFreeThresholdEnabled,
+    sizeFinderEnabled: bool(p.sizeFinderEnabled, SETTINGS_DEFAULTS.sizeFinderEnabled),
+    priceAlertsEnabled: bool(p.priceAlertsEnabled, SETTINGS_DEFAULTS.priceAlertsEnabled),
+    // Each growth lever sanitizes itself — a stored doc is never trusted raw.
+    flash: sanitizeFlash(p.flash),
+    bundle: sanitizeBundle(p.bundle),
+    gift: sanitizeGift(p.gift),
+    referral: sanitizeReferral(p.referral),
   };
 };

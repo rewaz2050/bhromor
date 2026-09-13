@@ -34,6 +34,10 @@ import type {
   DbZone,
 } from "./types";
 import { normalizePhone, type Order } from "../orders";
+import { sanitizeBundle, sanitizeFlash } from "../promos";
+import { sanitizeGift } from "../gift";
+import { sanitizeReferral, type ReferralRecord } from "../referral";
+import { sanitizeSettings } from "../settings-store";
 import type { ValidOrderDraft } from "../order-validation";
 
 export interface OrderSnapshot {
@@ -50,6 +54,23 @@ export interface OrderSnapshot {
   customerOrderCount?: number;
   /** ৳1000+-always-free toggle (ops) — retained for future promos. */
   freeThresholdEnabled?: boolean;
+  /**
+   * The P0 growth levers, sanitized from site_settings['ops'] — the SAME
+   * document the storefront badges read. A client cannot invent a discount:
+   * only what the shop armed here (and ps_place_order re-derives) is priced.
+   */
+  promos?: {
+    flash: ReturnType<typeof sanitizeFlash>;
+    bundle: ReturnType<typeof sanitizeBundle>;
+    gift: ReturnType<typeof sanitizeGift>;
+    referral: ReturnType<typeof sanitizeReferral>;
+  };
+  /** Issued referral codes with their reward counts (ledger). */
+  referralRecords?: ReferralRecord[];
+  /** Referee phones that already took a credit, per code. */
+  referralRewards?: { code: string; refereePhone: string }[];
+  /** Phones with an earlier non-cancelled order — first-order proof. */
+  priorOrderPhones?: string[];
 }
 
 /**
@@ -77,7 +98,19 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, zonesRes, couponsRes, shopsRes, ordersCountRes, opsRes] =
+  const [
+    productsRes,
+    variantsRes,
+    mediaRes,
+    zonesRes,
+    couponsRes,
+    shopsRes,
+    ordersCountRes,
+    opsRes,
+    codesRes,
+    rewardsRes,
+    phonesRes,
+  ] =
     await Promise.all([
       db
         .from("products")
@@ -92,6 +125,11 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       db.from("orders").select("id", { count: "exact", head: true }),
       // ৳1000+-always-free toggle; read failure keeps the default (on).
       db.from("site_settings").select("value").eq("key", "ops").maybeSingle(),
+      // P0 growth reads. Missing tables (pre-migration) answer an error object,
+      // never a throw — every lever simply prices at zero until they exist.
+      db.from("referral_codes").select("code,customer_id,customer_phone,customer_name"),
+      db.from("referral_rewards").select("code,referee_phone,referrer_coupon_id"),
+      db.from("orders").select("customer_phone").neq("status", "cancelled").limit(5000),
     ]);
   if (
     productsRes.error ||
@@ -120,7 +158,40 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     }
   }
   const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
+  const settings = sanitizeSettings(ops);
+  const codeRows = (codesRes.data ?? []) as {
+    code: string;
+    customer_id: string | null;
+    customer_phone: string | null;
+    customer_name: string | null;
+  }[];
+  const rewardRows = (rewardsRes.data ?? []) as {
+    code: string;
+    referee_phone: string;
+    referrer_coupon_id: string | null;
+  }[];
   return {
+    promos: {
+      flash: settings.flash,
+      bundle: settings.bundle,
+      gift: settings.gift,
+      referral: settings.referral,
+    },
+    referralRecords: codeRows.map((row) => ({
+      code: row.code,
+      customerId: row.customer_id,
+      referrerName: row.customer_name ?? "",
+      referrerPhone: normalizePhone(row.customer_phone ?? ""),
+      rewardsGranted: rewardRows.filter((r) => r.code === row.code).length,
+      createdAt: 0,
+    })),
+    referralRewards: rewardRows.map((r) => ({
+      code: r.code,
+      refereePhone: r.referee_phone,
+    })),
+    priorOrderPhones: ((phonesRes.data ?? []) as { customer_phone: string }[]).map(
+      (r) => r.customer_phone,
+    ),
     products,
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
     coupons: ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon),
@@ -222,6 +293,17 @@ export async function placeLiveOrder(
       surcharge_express: draft.surchargeExpress ?? 0,
       surcharge_weight: draft.surchargeWeight ?? 0,
       coupon_code: draft.coupon?.code ?? null,
+      // P0 intents only — ps_place_order turns them into money (it computes the
+      // flash discount itself, bounds a bundle claim by the settings percentage,
+      // prices the wrap fee from settings and proves the referral is a first
+      // order before crediting anything).
+      is_gift: draft.gift?.isGift ?? false,
+      gift_wrap: draft.gift?.wrap ?? "none",
+      gift_recipient_name: draft.gift?.recipientName ?? null,
+      gift_recipient_phone: draft.gift?.recipientPhone ?? null,
+      gift_message: draft.gift?.message ?? null,
+      bundle_discount: draft.promo?.kind === "bundle" ? draft.promo.discount : 0,
+      referral_code: draft.referral?.code ?? null,
     },
     p_items: draft.items.map((it, i) => ({
       product_id: it.product.id,
