@@ -85,15 +85,21 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
   const riderPos = getPointOnCurve(transitProgress);
 
-  // Live orders carry the assigned rider; older rows keep the mock so
-  // the editorial preview still has a rider to show.
-  const riderName =
-    order.rider?.name ?? "তানভীর আহমেদ (Tanvir)";
-  const riderPhone = order.rider?.phone ?? "01811111111";
+  // A real rider comes from the dispatch data — nothing is invented here:
+  // no fake name, no invented phone, no made-up rating.
+  const rider = order.rider;
   const riderRating =
-    order.rider?.ratingCount != null && order.rider.ratingCount > 0
-      ? `${order.rider.ratingAvg.toFixed(1)} ★`
-      : "4.9 ★";
+    rider?.ratingCount != null && rider.ratingCount > 0
+      ? `${rider.ratingAvg.toFixed(1)} ★`
+      : null;
+
+  // P1 #8 — the payment row must say what this order actually pays.
+  const paymentLabel =
+    order.payment === "bkash"
+      ? "bKash (ওয়ালেট)"
+      : order.payment === "nagad"
+        ? "Nagad (ওয়ালেট)"
+        : "ক্যাশ অন ডেলিভারি (COD)";
 
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-paper shadow-sm" data-testid="live-delivery-map">
@@ -251,17 +257,23 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                     অ্যাসাইন্ড রাইডার
                   </p>
                   <p className="text-sm font-bold text-forest-900">
-                    {isPreparing ? "রাইডার খোঁজা হচ্ছে…" : riderName}
+                    {isPreparing || !rider
+                      ? "রাইডার খোঁজা হচ্ছে…"
+                      : rider.name}
                   </p>
                   <p className="text-xs text-ink-soft">
-                    {isPreparing ? "দোকান প্যাক করছে" : `বাইক • রেটিং ${riderRating}`}
+                    {isPreparing
+                      ? "দোকান প্যাক করছে"
+                      : rider
+                        ? `বাইক${riderRating ? ` • রেটিং ${riderRating}` : ""}`
+                        : "অ্যাসাইন হলে নাম ও নম্বর এখানে দেখা যাবে"}
                   </p>
                 </div>
               </div>
 
-              {!isPreparing && !isDelivered && !isCancelled && (
+              {!isPreparing && !!rider && !!rider.phone && !isDelivered && !isCancelled && (
                 <a
-                  href={`tel:${riderPhone}`}
+                  href={`tel:${rider.phone}`}
                   className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
                 >
                   <IconPhone className="h-3.5 w-3.5" /> কল দিন
@@ -271,7 +283,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
             <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2 text-[11px] text-ink-soft">
               <span>ডেলিভারি জোন: <strong>{order.zoneName}</strong></span>
-              <span>পেমেন্ট: <strong>ক্যাশ অন ডেলিভারি (COD)</strong></span>
+              <span>পেমেন্ট: <strong>{paymentLabel}</strong></span>
             </div>
           </div>
         </div>

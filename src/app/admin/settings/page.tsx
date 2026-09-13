@@ -32,6 +32,9 @@ export default function AdminSettingsPage() {
   const [rainEnabled, setRainEnabled] = useState(settings.rainSurchargeEnabled);
   const [nightEnabled, setNightEnabled] = useState(settings.nightSurchargeEnabled);
   const [expressEnabled, setExpressEnabled] = useState(settings.expressDeliveryEnabled);
+  const [contactPhone, setContactPhone] = useState(settings.contact.phone);
+  const [contactWhatsapp, setContactWhatsapp] = useState(settings.contact.whatsapp);
+  const [contactEmail, setContactEmail] = useState(settings.contact.email);
 
   const [flash, setFlash] = useTransientValue<string | null>(null, 2200);
 
@@ -47,6 +50,9 @@ export default function AdminSettingsPage() {
     setRainEnabled(settings.rainSurchargeEnabled);
     setNightEnabled(settings.nightSurchargeEnabled);
     setExpressEnabled(settings.expressDeliveryEnabled);
+    setContactPhone(settings.contact.phone);
+    setContactWhatsapp(settings.contact.whatsapp);
+    setContactEmail(settings.contact.email);
   }, [
     settings.lowStockThreshold,
     settings.loyaltyEnabled,
@@ -57,6 +63,9 @@ export default function AdminSettingsPage() {
     settings.rainSurchargeEnabled,
     settings.nightSurchargeEnabled,
     settings.expressDeliveryEnabled,
+    settings.contact.phone,
+    settings.contact.whatsapp,
+    settings.contact.email,
   ]);
 
   const thresholdValue = Math.max(0, Math.floor(Number(threshold) || 0));
@@ -74,6 +83,23 @@ export default function AdminSettingsPage() {
       notify(
         ok
           ? "Low-stock threshold saved — alerts use it immediately"
+          : "Could not save — please try again",
+      ),
+    );
+  };
+
+  const commitContact = () => {
+    void saveSettings({
+      ...settings,
+      contact: {
+        phone: contactPhone,
+        whatsapp: contactWhatsapp,
+        email: contactEmail,
+      },
+    }).then((ok) =>
+      notify(
+        ok
+          ? "Contact channels saved — blank channels are hidden from the site"
           : "Could not save — please try again",
       ),
     );
@@ -177,6 +203,55 @@ export default function AdminSettingsPage() {
               Save
             </button>
           </div>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-ivory-100/60 p-5 ring-1 ring-line">
+          <p className="text-sm font-semibold text-ink">Contact channels</p>
+          <p className="mt-0.5 text-xs text-ink-soft">
+            Shown on the Contact page and the track page&rsquo;s WhatsApp
+            button. Leave a field blank to hide that channel — a blank is
+            never replaced by a placeholder number. BD mobile format
+            (01XXXXXXXXX) or +880.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label className="block">
+              <span className={label}>Phone</span>
+              <input
+                className={`${field} w-full`}
+                inputMode="tel"
+                placeholder="01XXXXXXXXX"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className={label}>WhatsApp (optional)</span>
+              <input
+                className={`${field} w-full`}
+                inputMode="tel"
+                placeholder="blank = same as phone"
+                value={contactWhatsapp}
+                onChange={(e) => setContactWhatsapp(e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className={label}>Email (optional)</span>
+              <input
+                className={`${field} w-full`}
+                type="email"
+                placeholder="you@shop.com"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={commitContact}
+            className="mt-4 rounded-xl bg-forest-800 px-4 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+          >
+            Save contact channels
+          </button>
         </div>
       </section>
 

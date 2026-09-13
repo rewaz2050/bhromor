@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   flowIndex,
@@ -96,6 +96,22 @@ export default function TrackView() {
   const [result, setResult] = useState<Result>(null);
   const [checking, setChecking] = useState(false);
   const [lookupFailed, setLookupFailed] = useState(false);
+  // The shop's real WhatsApp number (ops settings) — the support button
+  // renders only when it is configured, never a placeholder.
+  const [contactNumber, setContactNumber] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/contact", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { whatsapp?: string | null } | null) => {
+        if (!cancelled && d?.whatsapp) setContactNumber(d.whatsapp);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,7 +420,16 @@ export default function TrackView() {
                   {(order as any).isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <a href={`https://wa.me/8801700000000?text=${encodeURIComponent(`PROSANTI order ${order.id} track: https://prosanti.com/track/${order.id}`)}`} target="_blank" className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white">WhatsApp Support</a>
+                  {contactNumber && (
+                    <a
+                      href={`https://wa.me/88${contactNumber}?text=${encodeURIComponent(`PROSANTI order ${order.id} track: ${typeof window !== "undefined" ? window.location.origin : ""}/track`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
+                    >
+                      WhatsApp Support
+                    </a>
+                  )}
                   {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
                 </div>
                 {order.customer.note && (

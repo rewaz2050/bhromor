@@ -66,9 +66,9 @@ export default function AdminPaymentsPage() {
       note: `${ledger.summary.orders} live orders`,
     },
     {
-      label: "Collected at delivery",
+      label: "Collected (wallet + COD)",
       value: formatPaisa(ledger.summary.collected),
-      note: `${formatPaisa(ledger.summary.outstanding)} outstanding`,
+      note: `${formatPaisa(ledger.summary.outstanding)} still to arrive`,
     },
     {
       label: "Last 7 days",

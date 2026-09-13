@@ -153,6 +153,16 @@ describe("live shopping route (P1 #9, unconfigured backend)", () => {
   });
 });
 
+describe("contact route (unconfigured backend)", () => {
+  // No backend → no contact details at all; the pages then show only what
+  // can be real (the message form), never a placeholder number.
+  it("GET /api/contact answers 503", async () => {
+    const { GET } = await import("../contact/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
 describe("payments route (P1 #8, unconfigured backend)", () => {
   // The storefront contract: without a live ops-settings read, checkout
   // falls back to COD only — the 503 must never surface as an error page.

@@ -18,6 +18,8 @@ const makeOrder = (spec: {
   zone?: string;
   coupon?: { code: string; discount: number };
   items?: { productId: string; name: string; qty: number; price: number }[];
+  payment?: Order["payment"];
+  paymentStatus?: Order["paymentStatus"];
 }): Order => {
   const createdAt = startOfDay(Date.now()) - spec.daysAgo * 86_400_000;
   const items = spec.items ?? [
@@ -52,8 +54,60 @@ const makeOrder = (spec: {
       qty: it.qty,
     })),
   });
-  return { ...order, status: spec.status ?? "delivered" };
+  return {
+    ...order,
+    status: spec.status ?? "delivered",
+    payment: spec.payment ?? "cod",
+    paymentStatus: spec.paymentStatus ?? "verified",
+  };
 };
+
+describe("salesReport — wallet collection (P1 #8)", () => {
+  it("a verified wallet order counts as collected before delivery", () => {
+    const orders = [
+      // bKash, verified at checkout, still out for delivery — money is in
+      // the shop's wallet, so it is collected already.
+      makeOrder({
+        id: "PS-W1",
+        daysAgo: 0,
+        total: 1000,
+        status: "out-for-delivery",
+        payment: "bkash",
+        paymentStatus: "verified",
+      }),
+    ];
+    const r = salesReport(orders, { days: null, label: "All time" });
+    expect(r.summary.booked).toBe(bdt(1000));
+    expect(r.summary.collected).toBe(bdt(1000));
+    expect(r.summary.outstanding).toBe(0);
+  });
+
+  it("an unverified wallet order is booked but NOT collected", () => {
+    const orders = [
+      makeOrder({
+        id: "PS-W2",
+        daysAgo: 0,
+        total: 500,
+        status: "confirmed",
+        payment: "nagad",
+        paymentStatus: "pending_verification",
+      }),
+    ];
+    const r = salesReport(orders, { days: null, label: "All time" });
+    expect(r.summary.booked).toBe(bdt(500));
+    expect(r.summary.collected).toBe(0);
+    expect(r.summary.outstanding).toBe(bdt(500));
+  });
+
+  it("COD is unchanged — collected only when delivered", () => {
+    const orders = [
+      makeOrder({ id: "PS-C1", daysAgo: 0, total: 300, status: "out-for-delivery" }),
+      makeOrder({ id: "PS-C2", daysAgo: 0, total: 400 }),
+    ];
+    const r = salesReport(orders, { days: null, label: "All time" });
+    expect(r.summary.collected).toBe(bdt(400));
+  });
+});
 
 describe("salesReport", () => {
   it("books live orders and collects only delivered ones", () => {

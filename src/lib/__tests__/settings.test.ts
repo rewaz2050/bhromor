@@ -34,6 +34,31 @@ describe("operational settings (§58)", () => {
     expect(fallback.loyaltyRewardTitle).toBe(SETTINGS_DEFAULTS.loyaltyRewardTitle);
   });
 
+  it("sanitizes contact channels — blank hides, never a placeholder", () => {
+    const ok = sanitizeSettings({
+      contact: {
+        phone: "01711-111111",
+        whatsapp: "+8801822222222",
+        email: "  Care@Prosanti.Store ",
+      },
+    });
+    expect(ok.contact.phone).toBe("01711111111");
+    expect(ok.contact.whatsapp).toBe("01822222222");
+    expect(ok.contact.email).toBe("care@prosanti.store");
+
+    // Implausible values are dropped, so the site shows nothing fake.
+    const bad = sanitizeSettings({
+      contact: { phone: "123", whatsapp: "x", email: "not-an-email" },
+    });
+    expect(bad.contact).toEqual({ phone: "", whatsapp: "", email: "" });
+
+    expect(sanitizeSettings({}).contact).toEqual({
+      phone: "",
+      whatsapp: "",
+      email: "",
+    });
+  });
+
   it("sanitizes wallet numbers to BD mobile (P1 #8) — blanks hide the method", () => {
     const ok = sanitizeSettings({
       wallets: { bkash: "01711-111111", nagad: "+8801822222222" },

@@ -29,9 +29,9 @@ export default function AdminReportsPage() {
       icon: IconChart,
     },
     {
-      label: "Collected (delivered)",
+      label: "Collected",
       value: formatPaisa(report.summary.collected),
-      note: "cash at the doorstep — COD",
+      note: "COD at the doorstep · wallet on verification",
       icon: IconBanknote,
     },
     {
@@ -59,8 +59,9 @@ export default function AdminReportsPage() {
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
             Sales figures computed live from the order store (§32). Every
-            amount is integer paisa (§69); booked ≠ collected until COD cash
-            arrives at delivery.
+            amount is integer paisa (§69); booked ≠ collected until the money
+            arrives — COD at delivery, bKash/Nagad when the payment is
+            verified.
           </p>
         </div>
         <div className="flex rounded-full bg-paper p-1 ring-1 ring-line" role="group" aria-label="Report period">

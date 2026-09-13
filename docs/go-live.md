@@ -122,6 +122,12 @@ Run **in this order, in one sequence** (skip files you already applied —
     in place, anything else is a "watch live" link. No video is stored or
     generated, and "LIVE" only shows between the shop's own Start and End
     taps.
+21. **`supabase/migrations/202609140006_wallet_delivery_cash.sql`** — P1 #8
+    follow-up: `ps_rider_deliver` is re-created wallet-aware. A COD order
+    still credits the rider's cash_in_hand with the full total at delivery;
+    a bKash/Nagad order credits **zero** (the customer already paid the
+    shop's own wallet at checkout) and the history note says so. Run it
+    AFTER step 19 — it re-creates the delivery-proof function from step 13.
 
 Quick check after step 11 (SQL editor):
 

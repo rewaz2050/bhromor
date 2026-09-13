@@ -199,7 +199,15 @@ export default function AdminOrderDetailPage() {
         <button
           type="button"
           onClick={() => {
-            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} Total ${order.total/100} taka COD. Track: https://prosanti.com/track/${order.id}`;
+            const payNote =
+              order.payment === "bkash"
+                ? "Total " + order.total / 100 + " taka (bKash)"
+                : order.payment === "nagad"
+                  ? "Total " + order.total / 100 + " taka (Nagad)"
+                  : "Total " + order.total / 100 + " taka COD";
+            const origin =
+              typeof window !== "undefined" ? window.location.origin : "";
+            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} ${payNote}. Track: ${origin}/track`;
             const url = `https://wa.me/88${order.customer.phone.replace(/[^0-9]/g,"").slice(-11)}?text=${encodeURIComponent(text)}`;
             window.open(url, "_blank");
           }}
@@ -327,7 +335,7 @@ export default function AdminOrderDetailPage() {
                     {order.customer.phone}
                   </a>
                   <a
-                    href={`https://wa.me/88${normalizePhone(order.customer.phone)}?text=${encodeURIComponent(`Assalamualaikum! PROSANTI order ${order.id} — ${order.status}. Traffic Point, Sunamganj Sadar. Track: https://prosanti.com/track/${order.id}`)}`}
+                    href={`https://wa.me/88${normalizePhone(order.customer.phone)}?text=${encodeURIComponent(`Assalamualaikum! PROSANTI order ${order.id} — ${order.status}. Traffic Point, Sunamganj Sadar. Track: ${typeof window !== "undefined" ? window.location.origin : ""}/track`)}`}
                     target="_blank"
                     className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
                   >

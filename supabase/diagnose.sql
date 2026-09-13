@@ -50,7 +50,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('25',  'P1 payments: wallet columns',          '202609140004_wallet_payments.sql',             'column', 'orders.payment_status'),
   ('25b', 'P1 payments: verify RPC',              '202609140004_wallet_payments.sql',             'function', 'ps_verify_payment'),
   ('26',  'P1 live shopping: sessions table',     '202609140005_live_shopping.sql',               'table', 'live_sessions'),
-  ('26b', 'P1 live shopping: session pieces',     '202609140005_live_shopping.sql',               'table', 'live_session_products')
+  ('26b', 'P1 live shopping: session pieces',     '202609140005_live_shopping.sql',               'table', 'live_session_products'),
+  ('27',  'P1 wallet cash: wallet-aware deliver', '202609140006_wallet_delivery_cash.sql',        'function_src', 'ps_rider_deliver|paid via bKash at checkout')
 )
 select step as ord,
        label,
@@ -65,6 +66,15 @@ select step as ord,
            select 1 from pg_proc p
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public' and p.proname = obj
+         )
+         -- function_src: obj = 'name|marker-in-body' — detects RE-created
+         -- versions of a function (plain existence can't).
+         when 'function_src' then exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public'
+             and p.proname = split_part(obj, '|', 1)
+             and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
          when 'column' then exists (
            select 1 from information_schema.columns c
