@@ -113,6 +113,15 @@ Run **in this order, in one sequence** (skip files you already applied —
     (reject = cancel + stock released). The shop saves its own wallet numbers
     in Admin → Payments; a method with no number is never offered at
     checkout.
+20. **`supabase/migrations/202609140005_live_shopping.sql`** — P1 #9
+    live shopping: `live_sessions` (title, when, the shop's own live URL,
+    scheduled→live→ended state, the one "on air" piece) +
+    `live_session_products` (the pieces, in the order shown). The shop
+    streams on its own platform (YouTube Live, Facebook Live, …) — the site
+    is the shopping surface around that real stream: a YouTube link embeds
+    in place, anything else is a "watch live" link. No video is stored or
+    generated, and "LIVE" only shows between the shop's own Start and End
+    taps.
 
 Quick check after step 11 (SQL editor):
 

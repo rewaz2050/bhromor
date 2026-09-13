@@ -143,6 +143,16 @@ describe("returns route (P1 #13, unconfigured backend)", () => {
   });
 });
 
+describe("live shopping route (P1 #9, unconfigured backend)", () => {
+  // No backend → no live UI at all. The storefront treats 503 as
+  // "nothing to show" — it must never become a fake LIVE badge.
+  it("GET /api/live answers 503", async () => {
+    const { GET } = await import("../live/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
 describe("payments route (P1 #8, unconfigured backend)", () => {
   // The storefront contract: without a live ops-settings read, checkout
   // falls back to COD only — the 503 must never surface as an error page.

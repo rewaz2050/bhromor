@@ -13,6 +13,7 @@ import { useCms } from "@/lib/use-cms";
 import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
 import FlashRail from "@/components/promo/flash-rail";
+import LiveBanner from "@/components/live/live-banner";
 
 /**
  * The storefront deliberately follows one short editorial journey:
@@ -27,6 +28,8 @@ export default function Home() {
 
   return (
     <>
+      {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
+      <LiveBanner />
       {sections.hero && <Hero cms={settings} />}
       {/* A running drop goes above the browsing, not under it — that is the
           one place a countdown actually changes what someone does next. */}

@@ -316,3 +316,10 @@ export const IconTrendDown = (p: IconProps) => (
     <path d="M21 13v5h-5" />
   </Svg>
 );
+
+export const IconVideo = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+    <path d="m15.5 10.5 5-3v9l-5-3" />
+  </Svg>
+);

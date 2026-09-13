@@ -15,7 +15,7 @@ what a finished item must have (code + tests + honest UX).
 | 13 | Exchange at-home pickup | ✅ Code 2026-09-13 (needs go-live step 17) | customer request on track page (7-day window) → shop approve/reject → rider pickup leg reusing normal dispatch |
 | 14 | Warranty claim (accessories) | ✅ Code 2026-09-14 (needs go-live step 18) | per-product `warranty_days`; order-bound claim on track page (window from proven delivery) → shop review/approve/reject with a note; exchange/refund is shop offline, recorded in the claim |
 | 8 | bKash / Nagad / Card | ✅ bKash + Nagad code 2026-09-14 (needs go-live step 19) | **no merchant account**: money into the shop's OWN wallet, customer shares TRXID, shop verifies per order before fulfilment; COD stays default; cards/Rocket still need a PSP |
-| 9 | Live shopping session | ⬜ Largest | needs streaming infra; plan after 10/16/13/14 |
+| 9 | Live shopping session | ✅ Code 2026-09-14 (needs go-live step 20) | shop streams on its OWN platform; site = shopping surface around that real stream (YouTube embeds in place, other links get a watch button); on-air piece + session pieces; honest LIVE between the shop's Start/End taps |
 
 ## #10 — Customer photos / UGC (code shipped, awaiting DB migration)
 
@@ -162,6 +162,37 @@ shop's own wallet, no merchant account, no API key, no settlement**:
   verification" until the shop's own wallet check passes, and a rejected
   payment says exactly what happens (cancelled + offline refund). Cards
   (and Rocket) still need a PSP merchant account and stay "coming soon".
+
+## #9 — Live shopping session (code shipped, awaiting DB migration)
+
+The "needs streaming infra" verdict was right — for a site-built stream
+(RTMP/WebRTC). So the system does what real Sunamganj shops actually do:
+**the shop streams on its OWN platform** (YouTube Live, Facebook Live, …)
+the way it already does, and the site becomes the **shopping surface**
+around that real stream — no video stored, generated or faked:
+
+- **`202609140005_live_shopping.sql`** — `live_sessions` (title, description,
+  the shop's live URL, `scheduled_start`, honest `live_at`/`ended_at`,
+  `scheduled→live→ended` state with a consistency check, the one
+  "on-air" piece) + `live_session_products` (the pieces, in the order the
+  shop shows them).
+- **Admin → Live** — schedule a session (title, when, live link, the
+  pieces in on-air order with reorder); **Start** when the stream is
+  actually live (a session with no link can't start — there'd be nothing to
+  watch); tap a piece to put it "on air"; **End** when it's over; history
+  kept.
+- **Storefront** — `/live`: a YouTube link **embeds in place** (real
+  player); any other platform becomes a prominent "Watch the live" link
+  that opens in a new tab. The on-air piece leads, the rest of the session
+  is one tap from the bag at real prices. Home page shows a LIVE/coming-up
+  banner only when something is actually scheduled or live.
+- **State machine, not a timer** — the site shows "LIVE" only between the
+  shop's own Start and End taps (`status`), so it can never claim a stream
+  that isn't running; a scheduled session that goes past its time stays
+  "coming up — waiting to start", never a fake live.
+- **Honesty:** nothing is simulated — the player is the shop's own stream,
+  the pieces are real catalog rows, and with no session the page says
+  plainly "check back" instead of faking a show.
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

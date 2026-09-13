@@ -36,6 +36,7 @@ import {
   IconTag,
   IconTruck,
   IconUser,
+  IconVideo,
 } from "@/components/ui/icons";
 import {
   getAdminAuthed,
@@ -69,6 +70,7 @@ const NAV = [
   { href: "/admin/media", label: "Media", icon: IconImage, match: (p: string) => p === "/admin/media" },
   { href: "/admin/notifications", label: "Notifications", icon: IconBell, match: (p: string) => p.startsWith("/admin/notifications") },
   { href: "/admin/payments", label: "Payments", icon: IconCard, match: (p: string) => p === "/admin/payments" },
+  { href: "/admin/live", label: "Live", icon: IconVideo, match: (p: string) => p.startsWith("/admin/live") },
   { href: "/admin/settings", label: "Settings", icon: IconSettings, match: (p: string) => p === "/admin/settings" },
 ];
 
@@ -93,6 +95,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/media$/, "Media"],
   [/^\/admin\/notifications$/, "Notifications"],
   [/^\/admin\/payments$/, "Payments"],
+  [/^\/admin\/live$/, "Live shopping"],
   [/^\/admin\/settings$/, "Settings"],
   [/^\/admin\/staff$/, "Staff"],
   [/^\/admin$/, "Dashboard"],

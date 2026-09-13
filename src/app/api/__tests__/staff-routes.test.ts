@@ -33,6 +33,34 @@ describe("return action route without a session (P1 #13)", () => {
   });
 });
 
+describe("live shopping routes without a session (P1 #9)", () => {
+  it("401s create / start / end", async () => {
+    const { POST: createSession } = await import("../admin/live/sessions/route");
+    const { POST: start } = await import("../admin/live/sessions/[id]/start/route");
+    const { POST: end } = await import("../admin/live/sessions/[id]/end/route");
+    const body = JSON.stringify({
+      title: "Test session",
+      streamUrl: "",
+      startsAt: 1,
+      productIds: ["p1"],
+    });
+    for (const [name, handler] of [
+      ["create", createSession],
+      ["start", start],
+      ["end", end],
+    ] as const) {
+      const res = await handler(
+        new Request(`http://localhost/api/admin/live/sessions/x${name}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+});
+
 describe("wallet payment route without a session (P1 #8)", () => {
   it("401s verified/reject", async () => {
     const { POST } = await import("../admin/orders/[id]/payment/route");

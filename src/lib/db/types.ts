@@ -326,3 +326,27 @@ export interface DbSiteSetting {
   key: string;
   value: unknown;
 }
+
+/* ------------------------------------------------------------------ */
+/* Live shopping sessions (P1 #9)                                      */
+/* ------------------------------------------------------------------ */
+
+export interface DbLiveSession {
+  id: string;
+  title: string;
+  description: string;
+  stream_url: string;
+  scheduled_start: string;
+  live_at: string | null;
+  ended_at: string | null;
+  status: "scheduled" | "live" | "ended";
+  showing_product_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbLiveSessionProduct {
+  session_id: string;
+  product_id: string;
+  position: number;
+}
