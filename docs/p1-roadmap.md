@@ -99,6 +99,15 @@ the shop. Now the reverse leg is real logistics, not a contact form:
 - **Honesty:** nothing is paid for by the system — the pickup leg is
   ৳0 in the order, and when the item reaches the shop the status says
   exactly what happens next: "exchange/refund handled by the shop."
+- **`202609140008_return_order_restore.sql` (audit fix)** — the
+  flat/growth/wallet re-creations of `ps_place_order` (steps after this
+  feature) silently dropped the `is_return` handling, so return requests
+  were landing as full-price COD orders that `ps_return_action` refused
+  ("not a return order") and that `ps_return_eligible` could not see
+  (unlimited re-requests, double stock reservation). The migration
+  re-creates `ps_place_order` with the zero-charge return mechanics
+  restored (parent delivered, no re-reservation, no minimum, total ৳0,
+  `is_return`/`return_parent_id`/`return_status='requested'` written).
 
 ## #14 — Warranty claim on accessories (code shipped, awaiting DB migration)
 

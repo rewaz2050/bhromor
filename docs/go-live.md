@@ -137,6 +137,20 @@ Run **in this order, in one sequence** (skip files you already applied —
     order, and `ps_verify_payment` refuses to decide on a cancelled order
     (also covers rows created before this file). Run it AFTER step 19 —
     it re-creates the two functions from step 19 with these additions.
+23. **`supabase/migrations/202609140008_return_order_restore.sql`** —
+    P1 #13 follow-up: `ps_place_order` re-created with the return-order
+    handling restored. The flat/growth/wallet re-creations (steps 14/15/19)
+    silently dropped the `is_return` mechanics, so customer return requests
+    landed as full-price COD orders that could not be approved and could be
+    requested without limit. This re-creates `ps_place_order` (the step-19
+    wallet version) with zero-charge return orders again: parent must be
+    delivered, no stock re-reservation, no ৳500 minimum, total ৳0, and
+    `is_return`/`return_parent_id`/`return_status='requested'` written so
+    `ps_return_eligible` and `ps_return_action` work. Run it AFTER step 19 —
+    it is the newest version of the same function. If a return request was
+    made before this step, cancel the stray full-price "Return pickup (…)"
+    order from Admin → Orders (its note says so) and ask the customer to
+    request the return again.
 
 Quick check after step 11 (SQL editor):
 
