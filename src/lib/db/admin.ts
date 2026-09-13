@@ -580,6 +580,20 @@ export const readProductBundle = async (
   });
 };
 
+/** P1 #14 — parse a warranty period (days) from raw product input.
+ *  null/absent → no warranty. Out-of-range or non-integer → input error. */
+const parseWarrantyDays = (
+  raw: Record<string, unknown>,
+): { days: number | null } => {
+  const v = raw.warrantyDays;
+  if (v === undefined || v === null || v === "") return { days: null };
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 365) {
+    throw new AdminInputError("Warranty must be a whole number of days, 1–365.", 422);
+  }
+  return { days: n };
+};
+
 export async function createProduct(
   db: SupabaseClient,
   raw: unknown,
@@ -634,6 +648,7 @@ export async function createProduct(
       active: input.active ?? true,
       seo_title: input.seo?.title ?? null,
       seo_description: input.seo?.description ?? null,
+      warranty_days: parseWarrantyDays((raw ?? {}) as Record<string, unknown>).days,
     })
     .select("id")
     .single();
@@ -709,6 +724,10 @@ export async function updateProduct(
     low_stock: (raw as { lowStock?: boolean })?.lowStock ?? row.low_stock,
   };
   const rawRec = (raw ?? {}) as Record<string, unknown>;
+  // P1 #14 — warranty period: null clears it, a number sets it.
+  if (rawRec.warrantyDays !== undefined) {
+    patch.warranty_days = parseWarrantyDays(rawRec).days;
+  }
   if (rawRec.nameBn !== undefined) {
     patch.name_bn = typeof rawRec.nameBn === "string" ? rawRec.nameBn.trim().slice(0, 160) : "";
   }

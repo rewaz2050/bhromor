@@ -23,6 +23,7 @@ import {
   friendlyWhen,
 } from "@/components/admin/order-ui";
 import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
+import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
   requested: "Requested — awaiting decision",
@@ -562,6 +563,9 @@ export default function AdminOrderDetailPage() {
               </p>
             )}
           </section>
+
+          {/* P1 #14: warranty claims on this order (only when there are any) */}
+          <WarrantyClaimsCard orderNo={order.id} />
         </div>
       </div>
     </div>

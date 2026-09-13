@@ -159,6 +159,14 @@ export default async function ProductPage({ params }: PageProps) {
             <div className="info-body">
               <ul className="space-y-3 text-sm leading-7 text-ink-soft">
                 <li>· 7-day easy return &amp; exchange on unworn items</li>
+                {product.warrantyDays ? (
+                  <li>
+                    · {product.warrantyDays}-day warranty on this item —{" "}
+                    <span className="text-ink">
+                      claim it from the track page within {product.warrantyDays} days of delivery
+                    </span>
+                  </li>
+                ) : null}
                 <li>· Quality checked before every dispatch</li>
                 <li>· Cash on delivery across Sunamganj Sadar</li>
                 <li>

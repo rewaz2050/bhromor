@@ -33,6 +33,29 @@ describe("return action route without a session (P1 #13)", () => {
   });
 });
 
+describe("warranty claim routes without a session (P1 #14)", () => {
+  it("401s the claim list", async () => {
+    const { GET } = await import("../admin/warranty/route");
+    expect(
+      (await GET(new Request("http://localhost/api/admin/warranty"))).status,
+    ).toBe(401);
+  });
+
+  it("401s review/approve/reject", async () => {
+    const { POST } = await import("../admin/warranty/[id]/route");
+    for (const action of ["review", "approve", "reject"]) {
+      const res = await POST(
+        new Request("http://localhost/api/admin/warranty/claim-1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+});
+
 describe("staff routes without a session (admin control center)", () => {
   it("401s list, grant and revoke", async () => {
     expect((await staffGet(get("/api/admin/staff"))).status).toBe(401);

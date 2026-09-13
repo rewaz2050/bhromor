@@ -134,6 +134,8 @@ export interface DbProduct {
   active: boolean;
   seo_title: string | null;
   seo_description: string | null;
+  /** P1 #14 — warranty period in days; null = no warranty on this item. */
+  warranty_days?: number | null;
 }
 
 export interface DbVariant {

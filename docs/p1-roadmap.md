@@ -13,7 +13,7 @@ what a finished item must have (code + tests + honest UX).
 | 10 | Customer photos (UGC) | ✅ Code 2026-09-13 (needs go-live step 16) | photo reviews + moderation queue + "real buyer photos" strip — no points: loyalty is the stamp card, no points concept exists |
 | 16 | Stylist chat | ✅ Shipped 2026-09-13 | product-page Q&A drawer: size (from the shopper's own saved body), pairing (in-stock catalog rows), stock (real fields) + real-person WhatsApp handoff |
 | 13 | Exchange at-home pickup | ✅ Code 2026-09-13 (needs go-live step 17) | customer request on track page (7-day window) → shop approve/reject → rider pickup leg reusing normal dispatch |
-| 14 | Warranty claim (accessories) | ⬜ | claim form + status on accessory products |
+| 14 | Warranty claim (accessories) | ✅ Code 2026-09-14 (needs go-live step 18) | per-product `warranty_days`; order-bound claim on track page (window from proven delivery) → shop review/approve/reject with a note; exchange/refund is shop offline, recorded in the claim |
 | 8 | bKash / Nagad / Card | ⛔ Blocked | needs **merchant credentials** (bKash/Nagad merchant portal) — cannot be built honest without them |
 | 9 | Live shopping session | ⬜ Largest | needs streaming infra; plan after 10/16/13/14 |
 
@@ -99,6 +99,38 @@ the shop. Now the reverse leg is real logistics, not a contact form:
 - **Honesty:** nothing is paid for by the system — the pickup leg is
   ৳0 in the order, and when the item reaches the shop the status says
   exactly what happens next: "exchange/refund handled by the shop."
+
+## #14 — Warranty claim on accessories (code shipped, awaiting DB migration)
+
+"30-day warranty" means nothing the customer can't actually use. Warranty is
+a shop-managed **product attribute** (`products.warranty_days`, set in the
+product editor on the accessories the shop warrants — nothing is warranted
+by default, and the UI says nothing about items without one):
+
+- **Product editor** — a "Warranty (days)" field (1–365, blank = none);
+  a product page with a warranty shows the period in "Delivery & returns".
+- **Customer (track page, `warranty-panel.tsx`)** — a delivered order shows
+  one row per warranted item: the period, the window end date (computed from
+  the same proven 'delivered' history entry as the 7-day exchange), and
+  "Report a problem". Verified with order ID + phone — the same ownership
+  proof as tracking. The server re-checks everything in
+  `ps_warranty_eligible` (delivered · in-order · has warranty · delivery
+  recorded · window open · not already claimed); one live claim per
+  order+item. The decision appears back on this page: submitted → under
+  review → approved/rejected, with the shop's note.
+- **DB (`202609140003_warranty_claims.sql`)** — `products.warranty_days`
+  (check 1–365, null = none), `warranty_claims` (admin-only RLS; the
+  customer's status view reads through the service-role lookup, same as
+  /api/track), and `ps_warranty_eligible(order_id, product_id)` returning
+  NULL when eligible or a reason code the UI maps to an honest message.
+- **Shop (admin order detail)** — a warranty-claims card (only when the
+  order has claims) with the customer's problem text and
+  Mark-as-reviewing / Approve / Reject (reject needs a visible reason).
+  A new claim pings the staff notification bell linking to the order.
+- **Honesty:** the system records the decision, not the cash — after
+  approval the replacement, repair or refund is the shop's offline
+  handling, and the customer sees exactly that ("the shop will contact
+  you…"), never a fake refund status.
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

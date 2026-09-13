@@ -43,7 +43,10 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('21c', 'P0 growth: orders.promo_kind column',  '202609130008_growth_promos_gift_referral.sql', 'column', 'orders.promo_kind'),
   ('22',  'P1 UGC: review photos',                '202609140001_review_photos.sql',               'table', 'review_photos'),
   ('23',  'P1 returns: eligibility + request',    '202609140002_return_pickups.sql',              'function', 'ps_create_return_request'),
-  ('23b', 'P1 returns: shop action RPC',          '202609140002_return_pickups.sql',              'function', 'ps_return_action')
+  ('23b', 'P1 returns: shop action RPC',          '202609140002_return_pickups.sql',              'function', 'ps_return_action'),
+  ('24',  'P1 warranty: claims table',            '202609140003_warranty_claims.sql',             'table', 'warranty_claims'),
+  ('24b', 'P1 warranty: products.warranty_days',  '202609140003_warranty_claims.sql',             'column', 'products.warranty_days'),
+  ('24c', 'P1 warranty: eligibility RPC',         '202609140003_warranty_claims.sql',             'function', 'ps_warranty_eligible')
 )
 select step as ord,
        label,

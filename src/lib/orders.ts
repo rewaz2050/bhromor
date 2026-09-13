@@ -91,6 +91,8 @@ export interface OrderItem {
   qty: number;
   unitPrice: Bdt; // paisa at time of purchase
   image: string;
+  /** P1 #14 — the product's warranty period, when the shop warrants it. */
+  warrantyDays?: number;
 }
 
 export interface OrderTimelineEntry {

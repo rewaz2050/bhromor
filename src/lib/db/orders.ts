@@ -342,10 +342,10 @@ export const toDomain = async (
   if (itemsRes.error || historyRes.error) return null;
   const items = (itemsRes.data ?? []) as DbOrderItem[];
   const productIds = [...new Set(items.map((it) => it.product_id).filter(Boolean))] as string[];
-  let products = new Map<string, { slug: string; image: string }>();
+  let products = new Map<string, { slug: string; image: string; warrantyDays?: number }>();
   if (productIds.length > 0) {
     const [pRes, mRes] = await Promise.all([
-      db.from("products").select("id,slug").in("id", productIds),
+      db.from("products").select("id,slug,warranty_days").in("id", productIds),
       db
         .from("product_media")
         .select("product_id,url")
@@ -356,12 +356,24 @@ export const toDomain = async (
     const slugs = new Map<string, string>(
       ((pRes.data ?? []) as { id: string; slug: string }[]).map((p) => [p.id, p.slug]),
     );
+    const warranties = new Map<string, number | undefined>(
+      ((pRes.data ?? []) as { id: string; warranty_days: number | null }[]).map(
+        (p) => [p.id, p.warranty_days ?? undefined],
+      ),
+    );
     const images = new Map<string, string>();
     for (const m of ((mRes.data ?? []) as { product_id: string; url: string }[])) {
       if (!images.has(m.product_id)) images.set(m.product_id, m.url);
     }
     products = new Map(
-      productIds.map((id) => [id, { slug: slugs.get(id) ?? "", image: images.get(id) ?? "" }]),
+      productIds.map((id) => [
+        id,
+        {
+          slug: slugs.get(id) ?? "",
+          image: images.get(id) ?? "",
+          warrantyDays: warranties.get(id),
+        },
+      ]),
     );
   }
   const zone = (zoneRes.data ?? {}) as { name?: string; eta_label?: string };

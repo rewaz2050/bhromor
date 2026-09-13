@@ -183,6 +183,7 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     status: p.status,
     active: p.active,
     stock,
+    warrantyDays: p.warranty_days ?? undefined,
     seo:
       p.seo_title || p.seo_description
         ? {
@@ -240,8 +241,8 @@ export interface OrderRowBundle {
   zoneName: string;
   etaLabel: string;
   couponCode?: string;
-  /** Product lookup for snapshot enrichment (slug + image). */
-  products?: Map<string, { slug: string; image: string }>;
+  /** Product lookup for snapshot enrichment (slug + image + warranty). */
+  products?: Map<string, { slug: string; image: string; warrantyDays?: number }>;
 }
 
 /** Order + items + history rows → the admin/track `Order` shape. */
@@ -281,6 +282,7 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       qty: it.qty,
       unitPrice: it.unit_price,
       image: extra?.image ?? "",
+      warrantyDays: extra?.warrantyDays,
     };
   });
 

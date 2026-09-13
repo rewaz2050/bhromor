@@ -22,6 +22,7 @@ import { SignatureCanvas } from "./signature-canvas";
 import { DeliveryRating } from "./delivery-rating";
 import { RescheduleDelivery } from "./reschedule-delivery";
 import ReturnPanel from "@/components/returns/return-panel";
+import WarrantyPanel from "@/components/warranty/warranty-panel";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -226,6 +227,10 @@ export default function TrackView() {
                 setPhone(phone);
               }}
             />
+
+            {/* P1 #14: warranty claims on delivered, warranted items
+                (keyed by order — a new lookup remounts with fresh state) */}
+            <WarrantyPanel key={order.id} order={order} />
 
             {/* Timeline */}
             {order.status === "cancelled" && (

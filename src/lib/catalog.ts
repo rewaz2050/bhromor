@@ -49,6 +49,11 @@ export interface Product {
   status?: "draft" | "published";
   active?: boolean;
   stock?: number;
+  /**
+   * P1 #14 — warranty period in days (shop-managed, set on accessories).
+   * Absent/null = no warranty on this item; nothing is warranted by default.
+   */
+  warrantyDays?: number;
   seo?: { title?: string; description?: string };
   /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
       implicitly belong to shop #1, so rows may omit it. */

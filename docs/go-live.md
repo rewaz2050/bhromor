@@ -92,6 +92,17 @@ Run **in this order, in one sequence** (skip files you already applied —
     the normal rider dispatch carries the pickup leg; reject → cancelled;
     complete → refunded), and a trigger that mirrors the rider's
     pickup/drop events onto `return_status`.
+18. **`supabase/migrations/202609140003_warranty_claims.sql`** — P1 #14
+    warranty claims on accessories: `products.warranty_days` (the shop sets
+    it per product in the product editor — null = nothing warranted), the
+    `warranty_claims` table (admin-only RLS), and `ps_warranty_eligible`
+    (order-bound: the item must be on the order, delivered, inside the
+    warranty window from the proven 'delivered' history entry, and not
+    already claimed). Customers claim from the track page (order number +
+    phone, same proof as tracking); the shop reviews and approves/rejects
+    with a note from the admin order page. After approval, the replacement
+    or refund is the shop's offline handling, recorded in the claim's
+    resolution.
 
 Quick check after step 11 (SQL editor):
 
