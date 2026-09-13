@@ -1192,6 +1192,8 @@ export async function deleteCoupon(
 export interface AdminReview extends Review {
   productName: string;
   productSlug: string;
+  /** Customer photos — always present in the moderation queue (all statuses). */
+  photos?: string[];
 }
 
 export async function listReviewsFull(
@@ -1219,10 +1221,28 @@ export async function listReviewsFull(
       names.set(p.id, { name: p.name, slug: p.slug });
     }
   }
+  const reviewIds = rows.map((r) => r.id);
+  const photosByReview = new Map<string, string[]>();
+  if (reviewIds.length > 0) {
+    // Service-role client: pending/flagged photos are exactly what the
+    // moderator needs to see before approving.
+    const { data: photoRows } = await db
+      .from("review_photos")
+      .select("review_id,url")
+      .in("review_id", reviewIds);
+    if (photoRows) {
+      for (const p of photoRows as { review_id: string; url: string }[]) {
+        const list = photosByReview.get(p.review_id) ?? [];
+        list.push(p.url);
+        photosByReview.set(p.review_id, list);
+      }
+    }
+  }
   return rows.map((r) => ({
     ...mapReview(r),
     productName: names.get(r.product_id)?.name ?? "Removed product",
     productSlug: names.get(r.product_id)?.slug ?? "",
+    photos: photosByReview.get(r.id) ?? [],
   }));
 }
 

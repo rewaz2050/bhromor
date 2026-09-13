@@ -40,7 +40,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('20',  'flat delivery ps_place_order',         '202609120007_flat_delivery.sql',               'function', 'ps_place_order'),
   ('21',  'P0 growth: price watches',             '202609130008_growth_promos_gift_referral.sql', 'table', 'price_watches'),
   ('21b', 'P0 growth: referral credit RPC',       '202609130008_growth_promos_gift_referral.sql', 'function', 'ps_credit_referrer'),
-  ('21c', 'P0 growth: orders.promo_kind column',  '202609130008_growth_promos_gift_referral.sql', 'column', 'orders.promo_kind')
+  ('21c', 'P0 growth: orders.promo_kind column',  '202609130008_growth_promos_gift_referral.sql', 'column', 'orders.promo_kind'),
+  ('22',  'P1 UGC: review photos',                '202609140001_review_photos.sql',               'table', 'review_photos')
 )
 select step as ord,
        label,

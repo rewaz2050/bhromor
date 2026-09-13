@@ -54,6 +54,8 @@ export function usePublicReviews(opts: { product?: string; featured?: boolean } 
       rating: number;
       title?: string;
       body: string;
+      /** At most 3 browser-compressed JPEG data URLs (P1 #10 UGC). */
+      photos?: string[];
     }): Promise<{ ok: boolean; error?: string }> => {
       try {
         const res = await fetch("/api/reviews", {

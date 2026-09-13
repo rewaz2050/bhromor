@@ -1,6 +1,6 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
--- Generated from schema.sql + the 21 in-order migrations.
+-- Generated from schema.sql + the 22 in-order migrations.
 --
 -- WHEN TO USE THIS FILE:
 --   Only on a FRESH Supabase project (no PROSANTI tables yet).
@@ -506,7 +506,7 @@ create trigger trg_profiles_on_signup
   for each row execute function ps_handle_new_user();
 
 -- ============================================================================
--- MIGRATION 1/21 — storefront saved items  (source: supabase/migrations/202609080001_storefront_saved_items.sql)
+-- MIGRATION 1/22 — storefront saved items  (source: supabase/migrations/202609080001_storefront_saved_items.sql)
 -- ============================================================================
 
 -- Standalone migration: works with or without the legacy schema.sql catalogue.
@@ -534,7 +534,7 @@ create policy "saved items owner delete" on public.storefront_saved_items for de
 commit;
 
 -- ============================================================================
--- MIGRATION 2/21 — order guards (4-digit delivery PIN)  (source: supabase/migrations/202609080002_order_guards.sql)
+-- MIGRATION 2/22 — order guards (4-digit delivery PIN)  (source: supabase/migrations/202609080002_order_guards.sql)
 -- ============================================================================
 
 -- Backend phase 1: order hardening on top of supabase/schema.sql.
@@ -608,7 +608,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 3/21 — ps_place_order v1 + ps_setting_int  (source: supabase/migrations/202609080003_place_order_rpc.sql)
+-- MIGRATION 3/22 — ps_place_order v1 + ps_setting_int  (source: supabase/migrations/202609080003_place_order_rpc.sql)
 -- ============================================================================
 
 -- Backend phase 2: atomic checkout + stock release on cancel.
@@ -801,7 +801,7 @@ create trigger trg_orders_release_on_cancel
 commit;
 
 -- ============================================================================
--- MIGRATION 4/21 — marketplace shops  (source: supabase/migrations/202609090004_marketplace_shops.sql)
+-- MIGRATION 4/22 — marketplace shops  (source: supabase/migrations/202609090004_marketplace_shops.sql)
 -- ============================================================================
 
 -- Marketplace phase 2, slice 1: shops + vendor roles + ledger skeleton.
@@ -1350,7 +1350,7 @@ create trigger trg_payouts_check_balance
 commit;
 
 -- ============================================================================
--- MIGRATION 5/21 — riders  (source: supabase/migrations/202609090005_riders.sql)
+-- MIGRATION 5/22 — riders  (source: supabase/migrations/202609090005_riders.sql)
 -- ============================================================================
 
 -- Phase 3 slice 6: rider network foundation.
@@ -1474,7 +1474,7 @@ create policy "settlements rider read own" on rider_settlements
 commit;
 
 -- ============================================================================
--- MIGRATION 6/21 — engagement (contact, newsletter, media, notifications, site_settings policies)  (source: supabase/migrations/202609090006_engagement.sql)
+-- MIGRATION 6/22 — engagement (contact, newsletter, media, notifications, site_settings policies)  (source: supabase/migrations/202609090006_engagement.sql)
 -- ============================================================================
 
 -- Demo-to-live engagement tables (contact inbox, newsletter, media
@@ -1550,7 +1550,7 @@ create policy "homepage public read" on site_settings
 commit;
 
 -- ============================================================================
--- MIGRATION 7/21 — rider dispatch  (source: supabase/migrations/202609090007_rider_dispatch.sql)
+-- MIGRATION 7/22 — rider dispatch  (source: supabase/migrations/202609090007_rider_dispatch.sql)
 -- ============================================================================
 
 -- Phase 3 slice 7–10 completion: live rider dispatch actions.
@@ -1744,7 +1744,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 8/21 — dispatch auto-offer  (source: supabase/migrations/202609090008_dispatch_auto.sql)
+-- MIGRATION 8/22 — dispatch auto-offer  (source: supabase/migrations/202609090008_dispatch_auto.sql)
 -- ============================================================================
 
 -- Phase 3 slice 7: dispatch engine + admin deliveries board.
@@ -2003,7 +2003,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 9/21 — sunamganj zones  (source: supabase/migrations/202609090009_sunamganj_zones.sql)
+-- MIGRATION 9/22 — sunamganj zones  (source: supabase/migrations/202609090009_sunamganj_zones.sql)
 -- ============================================================================
 
 -- Sunamganj Sadar delivery zones — Traffic Point centric.
@@ -2210,7 +2210,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 10/21 — min order outside (harmless upsert; flat model ignores it)  (source: supabase/migrations/202609090010_min_order_outside.sql)
+-- MIGRATION 10/22 — min order outside (harmless upsert; flat model ignores it)  (source: supabase/migrations/202609090010_min_order_outside.sql)
 -- ============================================================================
 
 -- Enforce minimum order for Zone D (outside Sadar) — ৳500.
@@ -2400,7 +2400,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 11/21 — coupon enhancements (zone/category scope, max discount)  (source: supabase/migrations/202609090011_coupon_enhancements.sql)
+-- MIGRATION 11/22 — coupon enhancements (zone/category scope, max discount)  (source: supabase/migrations/202609090011_coupon_enhancements.sql)
 -- ============================================================================
 
 -- Coupon enhancements — Sunamganj promo codes with percent, fixed, free_delivery,
@@ -2611,7 +2611,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 12/21 — geo + delivery proof (lat/lng/distance on orders)  (source: supabase/migrations/202609090012_geo_and_proof.sql)
+-- MIGRATION 12/22 — geo + delivery proof (lat/lng/distance on orders)  (source: supabase/migrations/202609090012_geo_and_proof.sql)
 -- ============================================================================
 
 -- Geo pin + delivery proof via Cloudinary
@@ -2827,7 +2827,7 @@ create index if not exists idx_orders_proof on orders (delivery_proof_url) where
 commit;
 
 -- ============================================================================
--- MIGRATION 13/21 — delivery proof via Cloudinary  (source: supabase/migrations/202609090013_delivery_proof_cloudinary.sql)
+-- MIGRATION 13/22 — delivery proof via Cloudinary  (source: supabase/migrations/202609090013_delivery_proof_cloudinary.sql)
 -- ============================================================================
 
 -- Delivery proof via Cloudinary + failed attempts + dynamic ETA prep
@@ -2966,7 +2966,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 14/21 — nearest rider geo  (source: supabase/migrations/202609090014_rider_geo_nearest.sql)
+-- MIGRATION 14/22 — nearest rider geo  (source: supabase/migrations/202609090014_rider_geo_nearest.sql)
 -- ============================================================================
 
 -- Rider geo tracking + nearest auto-assign + load balancing
@@ -3122,7 +3122,7 @@ create index if not exists idx_riders_load on riders (current_load) where status
 commit;
 
 -- ============================================================================
--- MIGRATION 15/21 — scheduled delivery (scheduled_at/delivery_window on orders)  (source: supabase/migrations/202609090015_scheduled_delivery.sql)
+-- MIGRATION 15/22 — scheduled delivery (scheduled_at/delivery_window on orders)  (source: supabase/migrations/202609090015_scheduled_delivery.sql)
 -- ============================================================================
 
 -- Scheduled delivery calendar + express + per-zone threshold
@@ -3288,7 +3288,7 @@ create index if not exists idx_orders_scheduled on orders (scheduled_at) where s
 commit;
 
 -- ============================================================================
--- MIGRATION 16/21 — tips + store pickup + weight surcharge on orders  (source: supabase/migrations/202609090016_tips_pickup_weight.sql)
+-- MIGRATION 16/22 — tips + store pickup + weight surcharge on orders  (source: supabase/migrations/202609090016_tips_pickup_weight.sql)
 -- ============================================================================
 
 -- Tips for rider + store pickup + weight/bulk surcharge
@@ -3462,7 +3462,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 17/21 — delivery remaining  (source: supabase/migrations/202609090017_delivery_remaining.sql)
+-- MIGRATION 17/22 — delivery remaining  (source: supabase/migrations/202609090017_delivery_remaining.sql)
 -- ============================================================================
 
 -- Remaining delivery features: return/exchange, SLA, batch route, vendor earnings with tip/surcharge, pickup time, slot capacity
@@ -3817,7 +3817,7 @@ end $$;
 commit;
 
 -- ============================================================================
--- MIGRATION 18/21 — customer accounts (phone+password smart card)  (source: supabase/migrations/202609110004_customer_accounts.sql)
+-- MIGRATION 18/22 — customer accounts (phone+password smart card)  (source: supabase/migrations/202609110004_customer_accounts.sql)
 -- ============================================================================
 
 -- 202609110004 — Customer accounts (no-verification) + sessions
@@ -3858,7 +3858,7 @@ returns void language sql as $$
 $$;
 
 -- ============================================================================
--- MIGRATION 19/21 — media videos  (source: supabase/migrations/202609110006_media_video.sql)
+-- MIGRATION 19/22 — media videos  (source: supabase/migrations/202609110006_media_video.sql)
 -- ============================================================================
 
 -- Product + library videos (Cloudinary mp4, Google Drive embeds).
@@ -3881,7 +3881,7 @@ alter table media_library
   check (media_type in ('image', 'video', 'youtube'));
 
 -- ============================================================================
--- MIGRATION 20/21 — FLAT DELIVERY 60 (recreates ps_place_order)  (source: supabase/migrations/202609120007_flat_delivery.sql)
+-- MIGRATION 20/22 — FLAT DELIVERY 60 (recreates ps_place_order)  (source: supabase/migrations/202609120007_flat_delivery.sql)
 -- ============================================================================
 
 -- ============================================================================
@@ -4177,7 +4177,7 @@ create trigger trg_orders_release_on_cancel
 commit;
 
 -- ============================================================================
--- MIGRATION 21/21 — P0 GROWTH: flash, bundle, gift, referral, price watches (recreates ps_place_order — FINAL)  (source: supabase/migrations/202609130008_growth_promos_gift_referral.sql)
+-- MIGRATION 21/22 — P0 GROWTH: flash, bundle, gift, referral, price watches (recreates ps_place_order — FINAL)  (source: supabase/migrations/202609130008_growth_promos_gift_referral.sql)
 -- ============================================================================
 
 -- ============================================================================
@@ -4718,5 +4718,54 @@ begin
   return jsonb_build_object('granted', true, 'code', v_coupon_code,
                             'reward', v_reward, 'name', v_rc.customer_name);
 end $$;
+
+commit;
+
+
+-- ============================================================================
+-- MIGRATION 22/22 — customer photos on reviews  (source: supabase/migrations/202609140001_review_photos.sql)
+-- ============================================================================
+
+-- ============================================================================
+-- P1 UGC (2026-09-14): customer photos on reviews.
+--
+-- Clothes fit is a trust problem, and a photo of the garment on a real body
+-- answers it better than any description. Photos ride their review's
+-- moderation state — a pending review's photos are invisible to the public
+-- read policy, exactly like the review itself.
+--
+-- url holds either a Cloudinary URL (when the image service is configured —
+-- the review API uploads there server-side) or a compressed JPEG data URL
+-- (launch scale: the shop's own Postgres carries them until Cloudinary keys
+-- are set; see docs/go-live.md step 6). One review, at most 3 photos.
+-- ============================================================================
+
+begin;
+
+create table if not exists review_photos (
+  id         uuid primary key default gen_random_uuid(),
+  review_id  uuid not null references reviews (id) on delete cascade,
+  url        text not null check (char_length(url) between 8 and 1_500_000),
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_review_photos_review on review_photos (review_id);
+
+-- RLS: the storefront anon client may read photos of APPROVED reviews only
+-- (same posture as the reviews table); staff see everything (moderation);
+-- there is no public insert — the review API writes with the service role.
+alter table review_photos enable row level security;
+
+drop policy if exists "review photos public read" on review_photos;
+create policy "review photos public read" on review_photos
+  for select using (
+    exists (
+      select 1 from reviews r
+      where r.id = review_photos.review_id and r.status = 'approved'
+    )
+  );
+
+drop policy if exists "admin all review photos" on review_photos;
+create policy "admin all review photos" on review_photos
+  for all using (ps_is_admin()) with check (ps_is_admin());
 
 commit;

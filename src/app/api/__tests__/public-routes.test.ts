@@ -100,6 +100,19 @@ describe("reviews routes (unconfigured backend)", () => {
     );
     expect(res.status).toBe(503);
   });
+
+  it("POST with customer photos also answers 503, not a fake success", async () => {
+    const res = await postReview(
+      req({
+        productId: "p1",
+        author: "Test",
+        rating: 5,
+        body: "Lovely fabric, fits well on me.",
+        photos: ["data:image/jpeg;base64," + "A".repeat(500)],
+      }),
+    );
+    expect(res.status).toBe(503);
+  });
 });
 
 describe("GET /api/products without a configured backend", () => {

@@ -79,6 +79,11 @@ Run **in this order, in one sequence** (skip files you already applied —
     `ps_credit_referrer(order_id)`, which mints the referrer's ৳50 as a real
     single-use coupon when the friend's order is delivered. Requires 14 (it
     rewrites the same function). See [docs/growth-levers.md](growth-levers.md).
+16. **`supabase/migrations/202609140001_review_photos.sql`** — P1 #10 UGC:
+    the `review_photos` table (up to 3 photos per review, each a Cloudinary
+    URL or a compressed JPEG data URL). Public reads see photos of approved
+    reviews only — a pending review's photos are hidden by RLS, exactly like
+    the review itself.
 
 Quick check after step 11 (SQL editor):
 

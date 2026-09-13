@@ -10,12 +10,38 @@ what a finished item must have (code + tests + honest UX).
 | 15 | **WhatsApp Order Assistant** | ✅ Shipped 2026-09-13 | `src/lib/whatsapp-order.ts` + purchase panel / bag drawer / cart / shop page |
 | 11 | Video on product | ✅ Already in | `video` media type + YouTube embed + admin media library |
 | 12 | Scheduled delivery slot | ✅ Already in | checkout "now / evening / scheduled" + window + date, `scheduled_at` in `ps_place_order` |
-| 10 | Customer photos (UGC) | ⬜ Next | photo reviews + 10 loyalty points, moderation queue, "real buyer photos" |
+| 10 | Customer photos (UGC) | ✅ Code 2026-09-13 (needs go-live step 16) | photo reviews + moderation queue + "real buyer photos" strip — no points: loyalty is the stamp card, no points concept exists |
 | 16 | Stylist chat | ⬜ | structured size/pairing Q&A + human handoff |
 | 13 | Exchange at-home pickup | ⬜ | rider reverse-logistics leg on the 7-day exchange |
 | 14 | Warranty claim (accessories) | ⬜ | claim form + status on accessory products |
 | 8 | bKash / Nagad / Card | ⛔ Blocked | needs **merchant credentials** (bKash/Nagad merchant portal) — cannot be built honest without them |
 | 9 | Live shopping session | ⬜ Largest | needs streaming infra; plan after 10/16/13/14 |
+
+## #10 — Customer photos / UGC (code shipped, awaiting DB migration)
+
+"A photo of the garment on a real body answers 'will it fit me?' better than
+any description" — the strongest fit signal a cloth shop can show, and the
+differentiator versus a food app.
+
+- **Form** (`src/components/reviews/reviews-section.tsx`) — up to 3 photos;
+  each is compressed in the browser (canvas → JPEG, ≤1080px, q0.78) before it
+  ever leaves the device; honest errors when a file can't be read.
+- **API** (`src/app/api/reviews/route.ts` + `src/lib/review-photos.ts`) —
+  server re-validates shape/count/size, re-hosts to Cloudinary
+  (`prosanti/reviews`) when configured, otherwise stores the compressed data
+  URL (launch scale). A photo hiccup never loses the review.
+- **Storefront** — "Real buyer photos" strip on the product page + thumbnails
+  on each approved review card; clicks open the full photo.
+- **Moderation** (`src/app/admin/reviews/page.tsx`) — the queue shows each
+  review's photos (plain `<img>` — data URLs can't go through next/image);
+  photos ride the review's pending state, RLS keeps them hidden until
+  approval.
+- **DB** — `supabase/migrations/202609140001_review_photos.sql` (go-live
+  step 16). Until it runs, photo submissions still save the review but drop
+  the photos gracefully.
+- **Not done on purpose:** the brief said "+10 loyalty points", but PROSANTI
+  loyalty is the order **stamp** card (`src/lib/loyalty.ts`) — there is no
+  points concept to credit. Inventing one would split the loyalty model.
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

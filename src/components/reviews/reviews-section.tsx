@@ -9,6 +9,7 @@ import {
 } from "@/lib/review-store";
 import type { Product } from "@/lib/catalog";
 import { IconCheck, IconStar } from "@/components/ui/icons";
+import { compressReviewPhoto, MAX_PHOTOS } from "@/lib/review-photos";
 
 const dayLabel = (ms: number): string =>
   new Date(ms).toLocaleDateString("en-GB", {
@@ -16,6 +17,36 @@ const dayLabel = (ms: number): string =>
     month: "short",
     year: "numeric",
   });
+
+/** Plain <img>: next/image can't take data URLs, and buyer photos at launch
+ *  scale are compressed JPEGs — either a data URL or a Cloudinary URL. */
+function BuyerPhoto({
+  src,
+  alt,
+  className = "h-24 w-24",
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className="group block shrink-0"
+      aria-label={`Open buyer photo: ${alt}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- next/image can't take data URLs */}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        className={`${className} rounded-2xl object-cover ring-1 ring-line transition-transform group-hover:scale-[1.03]`}
+      />
+    </a>
+  );
+}
 
 function Stars({
   value,
@@ -51,10 +82,45 @@ export default function ReviewsSection({ product }: { product: Product }) {
   const [body, setBody] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // P1 #10 UGC: picked photos, compressed to the review JPEG budget in the
+  // browser before submit.
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   const visible = visibleReviews(reviews, product.id);
   const count = visibleCount(reviews, product.id);
   const avg = averageOf(visible);
+  /** All photos across this product's approved reviews, review order kept. */
+  const buyerPhotos = visible.flatMap((r) => r.photos ?? []);
+
+  const addPhotoFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const room = MAX_PHOTOS - photos.length;
+    if (room <= 0) {
+      setPhotoError(`Up to ${MAX_PHOTOS} photos per review.`);
+      return;
+    }
+    const chosen = Array.from(files).slice(0, room);
+    setPhotoBusy(true);
+    setPhotoError(null);
+    const added: string[] = [];
+    let failed = 0;
+    for (const file of chosen) {
+      const compressed = await compressReviewPhoto(file);
+      if (compressed) added.push(compressed.dataUrl);
+      else failed += 1;
+    }
+    setPhotos((prev) => [...prev, ...added].slice(0, MAX_PHOTOS));
+    setPhotoBusy(false);
+    if (added.length === 0 && failed > 0) {
+      setPhotoError("Couldn't read that photo — try a JPG or PNG.");
+    } else if (files.length > room && added.length + photos.length >= MAX_PHOTOS) {
+      setPhotoError(`Only the first ${MAX_PHOTOS} photos were kept.`);
+    }
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
 
   const sentTimer = useRef<number | null>(null);
   useEffect(
@@ -75,6 +141,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       rating,
       title: title.trim() || undefined,
       body: body.trim(),
+      photos: photos.length > 0 ? photos : undefined,
     }).then(({ ok, error: submitError }) => {
       if (!ok) {
         setError(submitError ?? "Could not save the review.");
@@ -83,6 +150,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       setRating(0);
       setTitle("");
       setBody("");
+      setPhotos([]);
       setSent(true);
       setError(null);
       if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
@@ -112,6 +180,19 @@ export default function ReviewsSection({ product }: { product: Product }) {
               </p>
             )}
           </div>
+
+          {buyerPhotos.length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">
+                Real buyer photos
+              </p>
+              <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+                {buyerPhotos.map((src, i) => (
+                  <BuyerPhoto key={`${src.slice(0, 48)}-${i}`} src={src} alt={`Photo from a customer review`} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {visible.length === 0 ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-14 text-center">
@@ -166,6 +247,18 @@ export default function ReviewsSection({ product }: { product: Product }) {
                   <p className="mt-2 text-sm leading-7 text-ink-soft">
                     {r.body}
                   </p>
+                  {(r.photos ?? []).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(r.photos ?? []).map((src, i) => (
+                        <BuyerPhoto
+                          key={`${r.id}-${i}`}
+                          src={src}
+                          alt={`Photo by ${r.author}`}
+                          className="h-20 w-20"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -253,6 +346,65 @@ export default function ReviewsSection({ product }: { product: Product }) {
                 className="w-full resize-y rounded-xl border-0 bg-ivory-50 px-3.5 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-forest-600"
               />
             </label>
+
+            <div className="mt-3">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                Your photos (optional)
+              </span>
+              <p className="mb-2 text-[0.68rem] leading-4 text-ink-soft">
+                Up to {MAX_PHOTOS} photos of the garment on you — the best fit
+                guide there is. Photos are compressed on your phone before
+                upload.
+              </p>
+              {photos.length < MAX_PHOTOS && (
+                <button
+                  type="button"
+                  disabled={photoBusy}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-ivory-100 px-4 py-2 text-xs font-semibold text-ink ring-1 ring-line transition-colors hover:bg-ivory-200 disabled:opacity-60"
+                >
+                  {photoBusy ? "Reading photo…" : "+ Add photo"}
+                </button>
+              )}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="sr-only"
+                aria-label="Add review photos"
+                onChange={(e) => void addPhotoFiles(e.target.files)}
+              />
+              {photos.length > 0 && (
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {photos.map((src, i) => (
+                    <li key={`${i}-${src.length}`} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- next/image can't take data URLs */}
+                      <img
+                        src={src}
+                        alt={`Review photo ${i + 1}`}
+                        className="h-16 w-16 rounded-xl object-cover ring-1 ring-line"
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove photo ${i + 1}`}
+                        onClick={() =>
+                          setPhotos((prev) => prev.filter((_, j) => j !== i))
+                        }
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-forest-800 text-[0.6rem] font-bold text-white"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {photoError && (
+                <p role="alert" className="mt-2 text-xs font-medium text-rose-800">
+                  {photoError}
+                </p>
+              )}
+            </div>
 
             {error && (
               <p
