@@ -18,21 +18,48 @@ import {
   IconBag,
   IconMinus,
   IconPlus,
+  IconSend,
   IconTrash,
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
 import { useBagOffer } from "@/lib/use-bag-offer";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { lineShopIds, shopById } from "@/lib/shop-utils";
+import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 
 export default function CartView() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { detail, updateQty, removeItem, subtotal } = useCart();
   const offer = useBagOffer(detail);
   /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
   const { activeZones } = useZones();
+  /** Hook BEFORE the empty early-return — hook order must not change. */
+  const { shops } = useLiveCatalog();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
   const empty = detail.length === 0;
+
+  /** WhatsApp order for the whole bag (P1 #15) — single-shop cart, so one
+   *  shop's phone. A mixed bag (legacy) has no single chat to offer. */
+  const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
+  const bagShop =
+    bagShopIds.length === 1 ? shopById(shops, bagShopIds[0]) : undefined;
+  const bagWaHref = bagShop
+    ? waLink(
+        bagShop.phone,
+        bagWaMessage(
+          detail.map((l) => ({
+            product: l.product,
+            variantLabel: l.variantLabel,
+            qty: l.qty,
+          })),
+          subtotal,
+          bagShop,
+          lang,
+        ),
+      )
+    : null;
 
   if (empty) {
     return (
@@ -229,6 +256,17 @@ export default function CartView() {
           >
             {t("cart.proceedToCheckout")} <IconArrowRight className="h-4 w-4" />
           </ButtonLink>
+          {bagWaHref ? (
+            <a
+              href={bagWaHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="whatsapp-bag-order"
+              className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 border border-line text-xs font-medium uppercase tracking-widest text-ink-soft transition-colors hover:border-forest-400 hover:text-forest-800"
+            >
+              <IconSend className="h-3.5 w-3.5" /> {t("bag.orderBagWhatsApp")}
+            </a>
+          ) : null}
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
             {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery
             available.{" "}

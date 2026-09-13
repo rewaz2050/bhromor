@@ -2,11 +2,14 @@
 
 import type { Shop } from "@/lib/catalog";
 import { isShopOrderable } from "@/lib/shop-utils";
+import { shopChatMessage, waLink } from "@/lib/whatsapp-order";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { IconSend } from "@/components/ui/icons";
 
 /**
  * Shop storefront header (marketplace slice 4): open state, prep time,
  * rating, served zones and contact — plus an honest closed notice.
+ * "Chat on WhatsApp" (P1 #15) appears only when the shop has a real BD mobile.
  */
 export default function ShopHero({
   shop,
@@ -15,8 +18,9 @@ export default function ShopHero({
   shop: Shop;
   zoneNames: string[];
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const open = isShopOrderable(shop);
+  const waChatHref = waLink(shop.phone, shopChatMessage(shop, lang));
   return (
     <header className="mt-8 rounded-3xl bg-forest-900 p-8 text-ivory-100 sm:p-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -72,6 +76,17 @@ export default function ShopHero({
           </div>
         )}
       </dl>
+      {waChatHref ? (
+        <a
+          href={waChatHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="whatsapp-shop-chat"
+          className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-sm bg-ivory-50 px-5 text-sm font-semibold text-forest-900 transition-colors hover:bg-white"
+        >
+          <IconSend className="h-4 w-4" /> {t("shops.chatWhatsApp")}
+        </a>
+      ) : null}
       {!open && (
         <p className="mt-6 rounded-2xl bg-ivory-100/10 px-4 py-3 text-sm text-ivory-100/85 ring-1 ring-ivory-100/20">
           <span className="font-semibold">{t("shops.shopClosed")}</span> —{" "}

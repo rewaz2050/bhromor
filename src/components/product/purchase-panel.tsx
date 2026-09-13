@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
+import { waLink, productWaMessage } from "@/lib/whatsapp-order";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -31,13 +32,14 @@ import {
   IconMapPin,
   IconMinus,
   IconPlus,
+  IconSend,
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function PurchasePanel({ product }: { product: Product }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { openBag } = useCart();
   const { shops } = useLiveCatalog();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
@@ -72,6 +74,13 @@ export default function PurchasePanel({ product }: { product: Product }) {
    *  a label like " · L" with a dangling separator. */
   const variantLabel =
     [color, hasSizes ? size : ""].filter(Boolean).join(" · ") || "Default";
+
+  /** WhatsApp order (P1 #15): a pre-filled chat for this exact pick. The link
+   *  only exists when the shop has a real BD mobile — a chat to nowhere is
+   *  worse than none. The shop confirms size/stock; COD stays the payment. */
+  const waOrderHref = shop
+    ? waLink(shop.phone, productWaMessage({ product, variantLabel, qty }, shop, lang))
+    : null;
 
   /**
    * Pre-select the size this body wears when we already know it — after mount,
@@ -413,6 +422,24 @@ export default function PurchasePanel({ product }: { product: Product }) {
           {t("purchase.buyNow")}
         </button>
       </div>
+
+      {/* WhatsApp order — pre-filled chat, shop confirms, COD unchanged */}
+      {waOrderHref ? (
+        <div className="mt-3">
+          <a
+            href={waOrderHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="whatsapp-order"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-sm bg-paper text-sm font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
+          >
+            <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
+          </a>
+          <p className="mt-1.5 text-center text-xs text-ink-soft">
+            {t("purchase.whatsAppHint")}
+          </p>
+        </div>
+      ) : null}
 
       {feedback && (
         <p

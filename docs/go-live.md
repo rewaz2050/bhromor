@@ -30,6 +30,19 @@ nothing here needs the sandbox.
 Run **in this order, in one sequence** (skip files you already applied —
 `schema.sql` must NOT be re-run on a database that has these tables):
 
+> **First, find out what is missing.** Run
+> `supabase/diagnose.sql` in the SQL editor — it lists every object with
+> `present = true/false`. A **mix** of true/false means the database is
+> partially applied: apply only the missing files, top to bottom.
+> A fresh project (all false) can instead paste the single pre-ordered
+> `supabase/bootstrap-fresh.sql` — one paste, the whole chain, in-order.
+>
+> **Why a paste can "run" yet save nothing:** each file is wrapped in its own
+> `begin; … commit;`. If any one statement fails (almost always
+> `relation X does not exist` — a file that needs an earlier file's tables),
+> the whole file rolls back, so nothing appears saved. Read the red error —
+> it names the missing relation, and that tells you which file to apply first.
+
 1. `supabase/schema.sql` — only if the project is fresh
 2. `supabase/migrations/202609080001_storefront_saved_items.sql`
 3. `supabase/migrations/202609080002_order_guards.sql`
