@@ -11,6 +11,9 @@ import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import ProductCard from "@/components/product/product-card";
+import BundleOffer from "@/components/promo/bundle-offer";
+import FlashRail from "@/components/promo/flash-rail";
+import PriceAlertRow from "@/components/promo/price-alert-row";
 import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
@@ -173,6 +176,7 @@ export default async function ProductPage({ params }: PageProps) {
         </div>
 
         <aside className="space-y-6">
+          <PriceAlertRow product={product} />
           <div className="assurance-pill rounded-md bg-forest-900 p-8 text-ivory-100">
             <IconLeaf className="h-6 w-6 text-gold-300" />
             <h2 className="font-display mt-4 text-xl font-medium">
@@ -201,29 +205,33 @@ export default async function ProductPage({ params }: PageProps) {
       </div>
 
 
+      {/* P0 #2 — the rail and the one-click set are the same idea: the set is
+          offered when the pairing is real, and the pieces stay individually
+          purchasable when it is not. */}
+      <BundleOffer product={product} />
+
       {complements.length > 0 && (
         <section
           aria-labelledby="complete-look-heading"
-          className="mt-20 border-y border-line bg-ivory-100/60 p-6 sm:p-10"
+          className="mt-10 px-1"
         >
-          <Eyebrow>Better together</Eyebrow>
           <h2
             id="complete-look-heading"
-            className="mt-3 font-display text-3xl text-forest-900 sm:text-4xl"
+            className="font-display text-2xl text-forest-900"
           >
-            Complete the look
+            Or pick the pieces yourself
           </h2>
-          <p className="mt-3 max-w-lg text-sm leading-7 text-ink-soft">
-            A thoughtful pairing for your {product.subCategory.toLowerCase()}.
-            Choose each piece in the size and colour that feels right.
-          </p>
-          <div className="mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
             {complements.map((item) => (
               <ProductCard key={item.id} product={item} />
             ))}
           </div>
         </section>
       )}
+
+      <div className="mt-10">
+        <FlashRail excludeId={product.id} limit={4} />
+      </div>
       {/* Related */}
       {related.length > 0 && (
         <section className="mt-20">

@@ -1,6 +1,14 @@
 "use client";
 
 import SizeGuide from "./size-guide";
+import SizeFinder, { useSizeSuggestion } from "./size-finder";
+import { useFlashPrice } from "@/lib/use-promos";
+import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
+
+import { FlashPrice, FlashTimer } from "@/components/promo/flash-timer";
+import { IconBolt, IconTrendDown } from "@/components/ui/icons";
+import { getSizeProfile, suggestSize } from "@/lib/size-finder";
+import { markPriceSeen } from "@/lib/price-drop";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,6 +44,16 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const router = useRouter();
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
 
+  /* P0 surfaces: the live flash price, the shopper's saved body, and the price
+     this device last saw. All three are read-only overlays on the catalog — the
+     cart and the checkout recompute the money themselves, so a badge here can
+     never disagree with what is charged. */
+  const flash = useFlashPrice(product);
+  const { suggestion } = useSizeSuggestion(product);
+  const drop = usePriceDropFor(product);
+  usePriceMemory(product);
+  const onSale = flash.was !== null;
+
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
   const shopClosed = shop !== undefined && !isShopOrderable(shop);
 
@@ -54,6 +72,22 @@ export default function PurchasePanel({ product }: { product: Product }) {
    *  a label like " · L" with a dangling separator. */
   const variantLabel =
     [color, hasSizes ? size : ""].filter(Boolean).join(" · ") || "Default";
+
+  /**
+   * Pre-select the size this body wears when we already know it — after mount,
+   * so the server render and the first client render agree (a saved body is
+   * localStorage, and hydration must not disagree about what is selected).
+   */
+  const sizeTouched = useRef(false);
+  useEffect(() => {
+    if (product.sizes.length <= 1) return;
+    const saved = getSizeProfile();
+    if (!saved) return;
+    setSize((current) => {
+      if (current !== "" || sizeTouched.current) return current;
+      return suggestSize(product, saved).recommended ?? "";
+    });
+  }, [product]);
 
   const feedbackTimer = useRef<number | null>(null);
   useEffect(
@@ -167,19 +201,51 @@ export default function PurchasePanel({ product }: { product: Product }) {
       )}
 
       <div className="mt-6">
-        <Price
-          value={product.price}
-          compareAt={product.compareAtPrice}
-          size="lg"
-        />
-        {product.compareAtPrice && product.compareAtPrice > product.price && (
+        {onSale ? (
+          <FlashPrice price={flash.price} was={flash.was!} pct={flash.pct} size="lg" />
+        ) : (
+          <Price value={product.price} compareAt={product.compareAtPrice} size="lg" />
+        )}
+        {onSale ? (
+          <p className="mt-1 text-xs text-ink-soft">
+            {t("promo.was").replace("{price}", formatBdt(product.price))}
+            {product.compareAtPrice && product.compareAtPrice > product.price ? (
+              <> · {t("purchase.save")} {formatBdt(product.compareAtPrice - flash.price)}</>
+            ) : null}
+          </p>
+        ) : null}
+        {onSale ? (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-gold-700">
+            <IconBolt className="h-3.5 w-3.5" /> {t("promo.checkoutNote")}
+            {flash.state.endsAtMs ? (
+              <>
+                {" · "}
+                <FlashTimer endsAtMs={flash.state.endsAtMs} />
+              </>
+            ) : null}
+          </p>
+        ) : product.compareAtPrice && product.compareAtPrice > product.price ? (
           <p className="mt-2 text-sm font-medium text-forest-700">
             {t("purchase.save")} {formatBdt(product.compareAtPrice - product.price)}
           </p>
-        )}
-        <p className="mt-1 text-xs text-ink-soft">
-          {t("purchase.priceInclusive")}
-        </p>
+        ) : null}
+        <p className="mt-1 text-xs text-ink-soft">{t("purchase.priceInclusive")}</p>
+        {drop ? (
+          <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-forest-100 px-3 py-1.5 text-xs font-medium text-forest-900">
+            <IconTrendDown className="h-3.5 w-3.5 text-forest-700" />
+            {t("priceDrop.dropped").replace("{amount}", formatBdt(drop.down))}
+            <span className="font-normal text-ink-soft">
+              · {t("priceDrop.savedAt").replace("{price}", formatBdt(drop.was))}
+            </span>
+            <button
+              type="button"
+              onClick={() => markPriceSeen(product.id, product.price)}
+              className="rounded-full bg-forest-800 px-2.5 py-0.5 text-[0.65rem] font-semibold text-ivory-50"
+            >
+              {t("priceDrop.noted")}
+            </button>
+          </p>
+        ) : null}
       </div>
 
       <p className="mt-6 max-w-lg leading-7 text-ink-soft">
@@ -236,25 +302,71 @@ export default function PurchasePanel({ product }: { product: Product }) {
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
             {t("purchase.size")}
           </p>
-          <SizeGuide product={product} />
+          <div className="flex items-center gap-3">
+            <SizeFinder product={product} onPick={(picked) => setSize(picked)} />
+            <SizeGuide product={product} />
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {product.sizes.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSize(s)}
-              aria-pressed={size === s}
-              className={`h-11 min-w-11 rounded-sm px-4 text-sm transition-colors ${
-                size === s
-                  ? "bg-forest-800 font-semibold text-ivory-50"
-                  : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+          {product.sizes.map((s) => {
+            const verdict = suggestion.scores.find((x) => x.size === s);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSize(s)}
+                aria-pressed={size === s}
+                data-size-fit={verdict?.verdict ?? "unknown"}
+                className={`relative h-11 min-w-11 rounded-sm px-4 text-sm transition-colors ${
+                  size === s
+                    ? "bg-forest-800 font-semibold text-ivory-50"
+                    : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
+                }`}
+              >
+                {s}
+                {verdict && verdict.verdict !== "skip" ? (
+                  <span
+                    aria-hidden="true"
+                    className={`absolute -top-1.5 right-0 h-2 w-2 rounded-full ${
+                      verdict.verdict === "best"
+                        ? "bg-gold-500"
+                        : verdict.verdict === "snug"
+                          ? "bg-amber-400"
+                          : "bg-sky-400"
+                    }`}
+                  />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
+        {suggestion.recommended ? (
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-forest-800">
+            <span>
+              {t("sizeFinder.recommended").replace("{size}", suggestion.recommended)} ·{" "}
+              {t("sizeFinder.match").replace(
+                "{confidence}",
+                String(suggestion.confidence),
+              )}
+            </span>
+            {suggestion.recommended !== size ? (
+              <button
+                type="button"
+                onClick={() => {
+                  sizeTouched.current = true;
+                  setSize(suggestion.recommended!);
+                }}
+                className="rounded-full bg-forest-800 px-3 py-1 text-[0.68rem] font-semibold text-ivory-50"
+              >
+                {t("sizeFinder.useIt")}
+              </button>
+            ) : null}
+          </p>
+        ) : suggestion.closest ? (
+          <p className="mt-2 text-xs text-ink-soft">
+            {t("sizeFinder.closest").replace("{size}", suggestion.closest)}
+          </p>
+        ) : null}
       </div>
 
       {/* Quantity + CTAs */}

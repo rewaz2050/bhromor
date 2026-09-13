@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DELIVERY_ZONES, PRODUCTS, type Product, type Shop } from "../catalog";
 import { launchCoupons } from "./coupon-fixtures";
 import { bdt } from "../format";
+import { defaultVariant } from "../cart";
+import { dhakaDaySeconds, formatClock } from "../promos";
 import {
   validateOrderPayload,
   type OrderPayload,
@@ -426,5 +428,244 @@ describe("validateOrderPayload shop availability (marketplace slice 4)", () => {
   it("skips the check when the snapshot carries no shops", () => {
     const legacy: OrderSnapshot = { ...snapshot(), products: tagged() };
     expect(validateOrderPayload(payload(), legacy).ok).toBe(true);
+  });
+});
+
+/**
+ * P0 growth levers in the price path. The point of these tests is the CONTRACT:
+ * a badge is decoration until the validator turns the same settings document
+ * into a number on the order — and it must refuse levers the shop never armed.
+ */
+describe("validateOrderPayload — growth levers", () => {
+  const AT = new Date("2026-09-11T15:00:00").getTime();
+  const DAY = 86400;
+  const wrap = (sec: number) => ((sec % DAY) + DAY) % DAY;
+  const liveWindow = () => {
+    const nowSec = dhakaDaySeconds(AT);
+    return {
+      start: formatClock(wrap(nowSec - 600)),
+      end: formatClock(wrap(nowSec + 600)),
+    };
+  };
+
+  const growthSnapshot = (
+    promos: Record<string, unknown> = {},
+    extra: Partial<OrderSnapshot> = {},
+  ): OrderSnapshot => ({
+    ...snapshot(),
+    now: AT,
+    promos: {
+      flash: { enabled: false, discountPct: 0, slots: [], scope: "all", productIds: [], maxDiscountPaisa: 0 },
+      bundle: { enabled: false, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
+      gift: { enabled: false },
+      referral: { enabled: false },
+      ...promos,
+    },
+    ...extra,
+  });
+
+  const panjabi = PRODUCTS.find((p) => p.id === "p1")!;
+  const gamcha = PRODUCTS.find((p) => p.subCategory === "Gamcha")!;
+
+  it("prices nothing when the shop has armed no lever", () => {
+    const result = validateOrderPayload(
+      payload({
+        items: [
+          { productId: "p1", variantLabel: "Forest Green · L", qty: 1 },
+          { productId: gamcha.id, variantLabel: defaultVariant(gamcha), qty: 1 },
+        ],
+        gift: { is_gift: true, gift_recipient_name: "Karim Bhai" },
+      }),
+      growthSnapshot(),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.promo).toBeUndefined();
+    expect(result.draft.gift?.isGift).toBe(false);
+    expect(result.draft.discount).toBe(0);
+  });
+
+  it("honours the snapshot's own clock for the flash window and caps per piece", () => {
+    const flash = {
+      enabled: true,
+      title: "Eid Drop",
+      discountPct: 25,
+      slots: [liveWindow()],
+      scope: "all",
+      productIds: [],
+      maxDiscountPaisa: 0,
+    };
+    const uncapped = validateOrderPayload(payload(), growthSnapshot({ flash }));
+    expect(uncapped.ok).toBe(true);
+    if (!uncapped.ok) return;
+    const want = Math.floor((panjabi.price * 25) / 100);
+    expect(uncapped.draft.promo).toEqual({
+      kind: "flash",
+      label: expect.stringContaining("25"),
+      discount: want,
+    });
+    expect(uncapped.draft.discount).toBe(want);
+    expect(uncapped.draft.total).toBe(panjabi.price - want + bdt(60));
+
+    const capped = validateOrderPayload(
+      payload(),
+      growthSnapshot({ flash: { ...flash, maxDiscountPaisa: bdt(100) } }),
+    );
+    expect(capped.ok).toBe(true);
+    if (!capped.ok) return;
+    expect(capped.draft.promo?.discount).toBe(bdt(100));
+  });
+
+  it("gives the better of the drop and the set, never both", () => {
+    const lines = [
+      { productId: "p1", variantLabel: "Forest Green · L", qty: 1 },
+      { productId: gamcha.id, variantLabel: defaultVariant(gamcha), qty: 1 },
+    ];
+    const listPrice = panjabi.price + gamcha.price;
+    const setDiscount = Math.floor((listPrice * 10) / 100);
+
+    const onlyBundle = validateOrderPayload(
+      payload({ items: lines }),
+      growthSnapshot({
+        bundle: { enabled: true, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
+      }),
+    );
+    expect(onlyBundle.ok).toBe(true);
+    if (!onlyBundle.ok) return;
+    expect(onlyBundle.draft.promo?.kind).toBe("bundle");
+    expect(onlyBundle.draft.promo?.discount).toBe(setDiscount);
+
+    // A tiny drop must not beat the set; a big one must.
+    const smallFlash = {
+      enabled: true,
+      title: "Drop",
+      discountPct: 1,
+      slots: [liveWindow()],
+      scope: "all" as const,
+      productIds: [],
+      maxDiscountPaisa: 0,
+    };
+    const bundleStillWins = validateOrderPayload(
+      payload({ items: lines }),
+      growthSnapshot({
+        flash: smallFlash,
+        bundle: { enabled: true, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
+      }),
+    );
+    expect(bundleStillWins.ok && bundleStillWins.draft.promo?.kind).toBe("bundle");
+
+    const bigFlash = { ...smallFlash, discountPct: 40 };
+    const dropWins = validateOrderPayload(
+      payload({ items: lines }),
+      growthSnapshot({
+        flash: bigFlash,
+        bundle: { enabled: true, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
+      }),
+    );
+    expect(dropWins.ok && dropWins.draft.promo?.kind).toBe("flash");
+  });
+
+  it("adds the wrap fee by wrap id and tells the rider who to hand it to", () => {
+    const result = validateOrderPayload(
+      payload({
+        gift: {
+          is_gift: true,
+          gift_recipient_name: "Karim Bhai",
+          gift_message: "Eid Mubarak",
+          gift_wrap: "premium",
+        },
+      }),
+      growthSnapshot({
+        gift: {
+          enabled: true,
+          standardWrapFeePaisa: bdt(50),
+          premiumWrapFeePaisa: bdt(150),
+          maxMessageChars: 240,
+          maxRecipientChars: 60,
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.gift?.wrap).toBe("premium");
+    expect(result.draft.gift?.feePaisa).toBe(bdt(150));
+    expect(result.draft.total).toBe(panjabi.price + bdt(60) + bdt(150));
+    expect(result.draft.customer.note).toContain("GIFT — hand to Karim Bhai");
+  });
+
+  it("rejects a gift with no receiver — a present with no name cannot be handed over", () => {
+    const result = validateOrderPayload(
+      payload({ gift: { is_gift: true, gift_recipient_name: "" } }),
+      growthSnapshot({ gift: { enabled: true } }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.field === "gift.recipientName")).toBe(true);
+  });
+
+  it("credits a friend's first order and refuses everyone else's", () => {
+    const promos = {
+      referral: {
+        enabled: true,
+        friendRewardPaisa: bdt(50),
+        referrerRewardPaisa: bdt(50),
+        minOrderPaisa: bdt(300),
+        maxRewardsPerReferrer: 10,
+      },
+    };
+    const records = [
+      {
+        code: "ABCDEF",
+        customerId: "c1",
+        referrerName: "Rahim",
+        referrerPhone: "01812345678",
+        rewardsGranted: 1,
+        createdAt: 0,
+      },
+    ];
+
+    const firstOrder = validateOrderPayload(
+      payload({ referral_code: "PS-ABCDEF" }),
+      growthSnapshot(promos, { referralRecords: records, priorOrderPhones: ["01812345678"] }),
+    );
+    expect(firstOrder.ok).toBe(true);
+    if (!firstOrder.ok) return;
+    expect(firstOrder.draft.referral).toEqual({ code: "ABCDEF", credit: bdt(50) });
+    expect(firstOrder.draft.total).toBe(panjabi.price - bdt(50) + bdt(60));
+
+    const returning = validateOrderPayload(
+      payload({ referral_code: "PS-ABCDEF" }),
+      growthSnapshot(promos, {
+        referralRecords: records,
+        priorOrderPhones: ["01712345678"],
+      }),
+    );
+    expect(returning.ok).toBe(false);
+    if (returning.ok) return;
+    expect(returning.errors.some((e) => e.field === "referralCode")).toBe(true);
+  });
+
+  it("never lets the offers eat the delivery charge", () => {
+    const cheap = PRODUCTS.find((p) => p.inStock && p.price <= bdt(350))!;
+    const result = validateOrderPayload(
+      payload({
+        items: [{ productId: cheap.id, variantLabel: defaultVariant(cheap), qty: 1 }],
+      }),
+      growthSnapshot({
+        flash: {
+          enabled: true,
+          title: "Drop",
+          discountPct: 90,
+          slots: [liveWindow()],
+          scope: "all",
+          productIds: [],
+          maxDiscountPaisa: 0,
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.total).toBeGreaterThanOrEqual(bdt(60));
+    expect(result.draft.promo!.discount).toBeLessThanOrEqual(cheap.price);
   });
 });

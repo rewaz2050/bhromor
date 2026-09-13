@@ -6,6 +6,7 @@ import { useLiveCatalog } from "@/lib/use-live-catalog";
 import ProductCard from "@/components/product/product-card";
 import { IconHeart, IconTrash } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import PriceWatchStrip from "@/components/promo/watch-strip";
 
 /** §29 wishlist — grid of saved products with an elegant empty state (§96). */
 export default function WishlistView() {
@@ -83,6 +84,7 @@ export default function WishlistView() {
           <IconTrash className="h-3.5 w-3.5" /> {t("wishlist.clearAll")}
         </button>
       </div>
+      <PriceWatchStrip products={saved} />
       <div className="grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-3 xl:grid-cols-4">
         {saved.map((p) => (
           <ProductCard key={p.id} product={p} />

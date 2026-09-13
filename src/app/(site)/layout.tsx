@@ -7,6 +7,8 @@ import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
+import FlashStrip from "@/components/promo/flash-strip";
+import RefCapture from "@/components/promo/ref-capture";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -59,6 +61,10 @@ export default function SiteLayout({
             Skip to content
           </a>
           <Header />
+          {/* P0 growth chrome: the flash bar only exists while a drop runs, and
+              ?ref= is captured on whatever page a share link lands on. */}
+          <FlashStrip />
+          <RefCapture />
           <main id="main" className="storefront-main flex-1">
             {children}
           </main>

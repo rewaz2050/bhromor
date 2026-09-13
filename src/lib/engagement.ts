@@ -15,6 +15,7 @@ import {
   SETTINGS_DEFAULTS,
   type AdminSettings,
 } from "./settings-store";
+import { isPlausibleBdPhone } from "./phone";
 import {
   KIND_LABEL as NOTIF_KIND_LABEL,
   type Notif,
@@ -71,14 +72,9 @@ export interface ContactValidation {
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
-export const normalizeBdPhone = (phone: string): string => {
-  const digits = phone.replace(/\D/g, "");
-  const local = digits.startsWith("880") ? digits.slice(3) : digits;
-  return local.startsWith("0") ? local : `0${local}`;
-};
-
-export const isPlausibleBdPhone = (phone: string): boolean =>
-  /^01[3-9]\d{8}$/.test(normalizeBdPhone(phone));
+// Kept exported here for existing importers; the helpers live in ./phone.ts so
+// the P0 modules can use them without an import cycle back into settings-store.
+export { isPlausibleBdPhone, normalizeBdPhone } from "./phone";
 
 export const validateContact = (raw: unknown): ContactValidation => {
   const b = (raw ?? {}) as Record<string, unknown>;

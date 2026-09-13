@@ -282,3 +282,23 @@ export const IconGift = (p: IconProps) => (
   </Svg>
 );
 
+
+export const IconBolt = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" />
+  </Svg>
+);
+
+export const IconRuler = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3.5 14.5 14.5 3.5l6 6-11 11-6-6Z" />
+    <path d="m8 10 1.8 1.8M11 7l1.8 1.8M14 4l1.8 1.8M5 13l1.8 1.8" />
+  </Svg>
+);
+
+export const IconTrendDown = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 6.5 10 14l3.5-3.5L21 18" />
+    <path d="M21 13v5h-5" />
+  </Svg>
+);

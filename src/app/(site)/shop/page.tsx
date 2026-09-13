@@ -7,6 +7,7 @@ import {
 import ShopBrowser from "@/components/shop/shop-browser";
 import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
+import FlashRail from "@/components/promo/flash-rail";
 
 export const metadata: Metadata = {
   title: "Shop",
@@ -46,6 +47,8 @@ export default async function ShopPage({
   return (
     <>
       <ShopHeroHeader categories={categories} />
+      {/* Renders nothing unless a drop window is actually open. */}
+      <FlashRail limit={4} />
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
         <ShopBrowser
           products={products}

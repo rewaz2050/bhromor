@@ -12,6 +12,11 @@ import { Price } from "@/components/ui/primitives";
 import { IconArrowRight, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useFlashPrice } from "@/lib/use-promos";
+import { usePriceDropFor } from "@/lib/use-price-watch";
+import { FlashRibbon } from "@/components/promo/flash-timer";
+import { IconTrendDown } from "@/components/ui/icons";
+import { formatBdt } from "@/lib/format";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -34,6 +39,11 @@ export function editorialProductName(product: Product): string {
 
 export default function ProductCard({ product }: { product: Product }) {
   const { t } = useLanguage();
+  /* Flash price + the price this device last saw — a quiet overlay; the cart
+     and checkout decide the money. */
+  const flash = useFlashPrice(product);
+  const drop = usePriceDropFor(product);
+  const shown = flash.was === null ? product.price : flash.price;
   const { has, toggle, ready, busy } = useWishlist();
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useTransientValue("");
@@ -69,6 +79,7 @@ export default function ProductCard({ product }: { product: Product }) {
               className="product-image-secondary absolute inset-0 h-full w-full object-cover opacity-0"
             />
           )}
+          {flash.was !== null && <FlashRibbon pct={flash.pct} />}
           {!product.inStock && (
             <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
               {t("product.soldOut")}
@@ -162,10 +173,16 @@ export default function ProductCard({ product }: { product: Product }) {
         </h3>
         <div className="mt-auto pt-2.5">
           <Price
-            value={product.price}
-            compareAt={product.compareAtPrice}
+            value={shown}
+            compareAt={flash.was ?? product.compareAtPrice}
             size="sm"
           />
+          {drop ? (
+            <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
+              <IconTrendDown className="h-3 w-3" />
+              {t("priceDrop.dropped").replace("{amount}", formatBdt(drop.down))}
+            </p>
+          ) : null}
           {shop && (
             <p className="mt-1 truncate text-xs text-ink-soft">
               {t("shops.soldBy")}{" "}

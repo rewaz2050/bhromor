@@ -12,6 +12,7 @@ import { filterProductsForZone } from "@/lib/shop-utils";
 import { useCms } from "@/lib/use-cms";
 import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
+import FlashRail from "@/components/promo/flash-rail";
 
 /**
  * The storefront deliberately follows one short editorial journey:
@@ -27,6 +28,9 @@ export default function Home() {
   return (
     <>
       {sections.hero && <Hero cms={settings} />}
+      {/* A running drop goes above the browsing, not under it — that is the
+          one place a countdown actually changes what someone does next. */}
+      <FlashRail limit={4} />
       {sections.collections && <CollectionsSection />}
       {sections.featured && <BestSellersSection />}
       {sections.trust && <TrustStrip />}
