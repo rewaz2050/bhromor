@@ -296,6 +296,13 @@ export const IconRuler = (p: IconProps) => (
   </Svg>
 );
 
+export const IconChat = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.6 0-3.1-.4-4.4-1.2L3 21l1.7-5.1A8.5 8.5 0 1 1 21 12Z" />
+    <path d="M8.5 11h7M8.5 14h4.5" />
+  </Svg>
+);
+
 export const IconTrendDown = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 6.5 10 14l3.5-3.5L21 18" />

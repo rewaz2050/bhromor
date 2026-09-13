@@ -18,6 +18,7 @@ import { MAX_LINE_QTY } from "@/lib/cart";
 import { waLink, productWaMessage } from "@/lib/whatsapp-order";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import StylistChat from "@/components/stylist/stylist-chat";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useGuardedAdd } from "@/lib/use-guarded-add";
 import {
@@ -41,10 +42,14 @@ import { useLanguage } from "@/components/i18n/language-provider";
 export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
   const { openBag } = useCart();
-  const { shops } = useLiveCatalog();
+  const { products, shops } = useLiveCatalog();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
   const router = useRouter();
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
+  /* P1 #16: the stylist chat hands off to these drawers — one at a time,
+     never stacked (the chat closes itself before bumping the key). */
+  const [stylistSignal, setStylistSignal] = useState(0);
+  const [stylistTarget, setStylistTarget] = useState<"finder" | "guide" | null>(null);
 
   /* P0 surfaces: the live flash price, the shopper's saved body, and the price
      this device last saw. All three are read-only overlays on the catalog — the
@@ -312,8 +317,29 @@ export default function PurchasePanel({ product }: { product: Product }) {
             {t("purchase.size")}
           </p>
           <div className="flex items-center gap-3">
-            <SizeFinder product={product} onPick={(picked) => setSize(picked)} />
-            <SizeGuide product={product} />
+            <SizeFinder
+              product={product}
+              onPick={(picked) => setSize(picked)}
+              autoOpenKey={stylistTarget === "finder" ? stylistSignal : 0}
+            />
+            <SizeGuide
+              product={product}
+              autoOpenKey={stylistTarget === "guide" ? stylistSignal : 0}
+            />
+            <StylistChat
+              product={product}
+              catalog={products}
+              shop={shop ?? null}
+              onUseSize={(picked) => setSize(picked)}
+              onOpenSizeFinder={() => {
+                setStylistTarget("finder");
+                setStylistSignal((k) => k + 1);
+              }}
+              onOpenSizeGuide={() => {
+                setStylistTarget("guide");
+                setStylistSignal((k) => k + 1);
+              }}
+            />
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">

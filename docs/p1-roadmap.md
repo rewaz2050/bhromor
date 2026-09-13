@@ -11,7 +11,7 @@ what a finished item must have (code + tests + honest UX).
 | 11 | Video on product | ✅ Already in | `video` media type + YouTube embed + admin media library |
 | 12 | Scheduled delivery slot | ✅ Already in | checkout "now / evening / scheduled" + window + date, `scheduled_at` in `ps_place_order` |
 | 10 | Customer photos (UGC) | ✅ Code 2026-09-13 (needs go-live step 16) | photo reviews + moderation queue + "real buyer photos" strip — no points: loyalty is the stamp card, no points concept exists |
-| 16 | Stylist chat | ⬜ | structured size/pairing Q&A + human handoff |
+| 16 | Stylist chat | ✅ Shipped 2026-09-13 | product-page Q&A drawer: size (from the shopper's own saved body), pairing (in-stock catalog rows), stock (real fields) + real-person WhatsApp handoff |
 | 13 | Exchange at-home pickup | ⬜ | rider reverse-logistics leg on the 7-day exchange |
 | 14 | Warranty claim (accessories) | ⬜ | claim form + status on accessory products |
 | 8 | bKash / Nagad / Card | ⛔ Blocked | needs **merchant credentials** (bKash/Nagad merchant portal) — cannot be built honest without them |
@@ -42,6 +42,32 @@ differentiator versus a food app.
 - **Not done on purpose:** the brief said "+10 loyalty points", but PROSANTI
   loyalty is the order **stamp** card (`src/lib/loyalty.ts`) — there is no
   points concept to credit. Inventing one would split the loyalty model.
+
+## #16 — Stylist chat (shipped)
+
+Clothes need advice — "which size?", "what goes with this?", "is it actually
+in stock?" — and a food-app-style store can't answer any of them. The stylist
+chat (`src/components/stylist/stylist-chat.tsx`) is one drawer on the product
+page (next to the size row) where all three questions live.
+
+- **Size** — answered by the same `suggestSize` math as the size finder: the
+  shopper's own saved height/weight (or measured chest) against the sizes this
+  item actually sells. "Use this size" selects it in the purchase panel. No
+  saved body → it points to the size finder instead of inventing a size.
+- **Pairing** — `completeTheLook` on the live catalog: only discoverable,
+  in-stock rows from a curated complement table. When nothing pairs, it says
+  so — it never fills a grid with unrelated stock.
+- **Stock** — the product's real `inStock` / `lowStock` / `colors` fields.
+- **Human handoff** — the only "person" in the chat is a real person: the
+  shop team on WhatsApp. The pre-filled message (`src/lib/stylist.ts`)
+  carries the product, the catalog price at the tap, and the topic asked
+  about; the link exists only when the shop has a plausible BD mobile (same
+  rule as #15) — otherwise it falls back to the contact page.
+- **Dialog discipline** — handoffs to the size finder / guide close the chat
+  first (a bumped `autoOpenKey` prop), so focus-trapping drawers never stack.
+
+Honesty rules: no canned replies, no invented persona, no "typing…" theatre —
+every bubble is computed from live catalog data, and the subtitle says so.
 
 ## #15 — WhatsApp Order Assistant (shipped)
 

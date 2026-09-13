@@ -384,6 +384,35 @@ export const translations = {
       yourSize: "Your size: {size}",
       useIt: "Use this size",
     },
+    stylist: {
+      title: "Stylist",
+      subtitle:
+        "Every answer here is computed from our live catalog. For anything deeper, a real person on WhatsApp.",
+      cta: "Ask the stylist",
+      qSize: "Which size fits me?",
+      qPairing: "What pairs with this?",
+      qStock: "Is it in stock?",
+      qHuman: "Ask a real stylist",
+      aSizeRec: "From your saved height & weight: {size} — {conf}% match.",
+      aSizeClosest:
+        "Closest we have to your numbers: {size}. The size finder can confirm.",
+      aSizeNoProfile:
+        "Tell the size finder your height & weight — it answers from the sizes we actually sell.",
+      aSizeUseIt: "Use this size",
+      aSizeOpenFinder: "Open size finder",
+      aSizeGuide: "Size & fit guide",
+      aPairingNone:
+        "Nothing in the collection pairs with this one yet — a stylist can suggest from what we're making next.",
+      aStockIn: "Yes — in stock right now.",
+      aStockLow: "Only a few left — in stock now.",
+      aStockOut: "Out of stock at the moment.",
+      aStockColors: "Colours you can order:",
+      aHuman:
+        "A real person — the shop team — replies on WhatsApp. Your question and this product go with it.",
+      aHumanCta: "Chat on WhatsApp",
+      aHumanNoPhone:
+        "WhatsApp is not set up for this shop yet — the contact page reaches the same team.",
+    },
     gift: {
       title: "Send it as a gift",
       hint: "Gift box, a card in their name, and no prices on the packing slip.",
@@ -813,6 +842,35 @@ export const translations = {
       yourSize: "আপনার সাইজ: {size}",
       useIt: "এই সাইজ নিন",
     },
+    stylist: {
+      title: "স্টাইলিস্ট",
+      subtitle:
+        "এখানকার প্রতিটি উত্তর আসছে আমাদের লাইভ ক্যাটালগ থেকে। আরও গভীর জিজ্ঞেস হলে — WhatsApp-এ একজন বাস্তব মানুষ।",
+      cta: "স্টাইলিস্টকে জিজ্ঞেস করুন",
+      qSize: "আমার কোন সাইজ বসবে?",
+      qPairing: "এটার সাথে কী যায়?",
+      qStock: "স্টকে আছে?",
+      qHuman: "বাস্তব স্টাইলিস্টকে জিজ্ঞেস করুন",
+      aSizeRec: "আপনার সংরক্ষিত লম্বাই ও ওজন অনুযায়ী: {size} — {conf}% মিল।",
+      aSizeClosest:
+        "আপনার মাপে সবচেয়ে কাছেরটা: {size}। সাইজ ফাইন্ডারে নিশ্চিত হতে পারবেন।",
+      aSizeNoProfile:
+        "সাইজ ফাইন্ডারে আপনার লম্বাই ও ওজন বলুন — আমরা যে সাইজ বিক্রি করি, তার ভেতর থেকেই উত্তর দেবে।",
+      aSizeUseIt: "এই সাইজ নিন",
+      aSizeOpenFinder: "সাইজ ফাইন্ডার খুলুন",
+      aSizeGuide: "সাইজ ও ফিট গাইড",
+      aPairingNone:
+        "এখন কালেকশনে এটার সাথে যেত এমন কিছু নেই — স্টাইলিস্ট নতুন সংস্করণ নিয়ে সাজেশন দিতে পারবেন।",
+      aStockIn: "হ্যাঁ — এখনই স্টকে আছে।",
+      aStockLow: "খুব কম বাকি — এখন স্টকে আছে।",
+      aStockOut: "এই মুহূর্তে স্টকে নেই।",
+      aStockColors: "যে রঙগুলো অর্ডার করা যায়:",
+      aHuman:
+        "একজন বাস্তব মানুষ — দোকানের টিম — WhatsApp-এ উত্তর দেবে। আপনার প্রশ্ন আর এই প্রোডাক্টসহ যাবে।",
+      aHumanCta: "WhatsApp-এ চ্যাট করুন",
+      aHumanNoPhone:
+        "এই দোকানের জন্য এখনো WhatsApp সেট আপ নেই — contact পেজে একই টিমকে পাবেন।",
+    },
     gift: {
       title: "উপহার হিসেবে পাঠান",
       hint: "গিফট বক্স, নামের কার্ড, আর প্যাকিং স্লিপে দাম থাকবে না।",
@@ -884,6 +942,7 @@ export type TranslationKey =
   | `promo.${keyof typeof translations.en.promo}`
   | `bundle.${keyof typeof translations.en.bundle}`
   | `sizeFinder.${keyof typeof translations.en.sizeFinder}`
+  | `stylist.${keyof typeof translations.en.stylist}`
   | `gift.${keyof typeof translations.en.gift}`
   | `referral.${keyof typeof translations.en.referral}`
   | `priceDrop.${keyof typeof translations.en.priceDrop}`;
