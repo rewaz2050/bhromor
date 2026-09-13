@@ -504,6 +504,7 @@ export default function AdminOrderDetailPage() {
                 paymentVerifiedAt={order.paymentVerifiedAt}
                 total={order.total}
                 customerPhone={order.customer.phone}
+                orderStatus={order.status}
                 onDecided={refresh}
               />
             </dl>

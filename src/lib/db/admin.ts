@@ -281,6 +281,12 @@ export async function verifyPaymentAsStaff(
     if (msg.includes("already decided")) {
       throw new AdminInputError("This payment was already decided.", 409);
     }
+    if (msg.includes("order already cancelled")) {
+      throw new AdminInputError(
+        "This order was cancelled — its wallet payment is settled as rejected; nothing to decide.",
+        422,
+      );
+    }
     throw new AdminInputError("Could not record the payment decision.", 422);
   }
   return getOrderDetail(db, orderNo);

@@ -121,7 +121,9 @@ export default function AdminMediaPage() {
   const copy = async (urlToCopy: string, id: string) => {
     try {
       await navigator.clipboard.writeText(
-        urlToCopy.startsWith("/") ? `https://prosanti.store${urlToCopy}` : urlToCopy,
+        urlToCopy.startsWith("/")
+          ? `${window.location.origin}${urlToCopy}`
+          : urlToCopy,
       );
       setCopied(id);
     } catch {

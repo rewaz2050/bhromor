@@ -128,6 +128,15 @@ Run **in this order, in one sequence** (skip files you already applied —
     a bKash/Nagad order credits **zero** (the customer already paid the
     shop's own wallet at checkout) and the history note says so. Run it
     AFTER step 19 — it re-creates the delivery-proof function from step 13.
+22. **`supabase/migrations/202609140007_wallet_cancel_payment_settle.sql`** —
+    P1 #8 follow-up: cancelling a wallet order settles its payment. Before
+    this, a bKash/Nagad order cancelled while still `pending_verification`
+    stayed "under verification" on the customer's track page, and the shop
+    could still tap Verify on a cancelled order. Now `ps_advance_order`
+    records the payment as **rejected** when it cancels a pending wallet
+    order, and `ps_verify_payment` refuses to decide on a cancelled order
+    (also covers rows created before this file). Run it AFTER step 19 —
+    it re-creates the two functions from step 19 with these additions.
 
 Quick check after step 11 (SQL editor):
 

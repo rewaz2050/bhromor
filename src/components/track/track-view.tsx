@@ -258,8 +258,17 @@ export default function TrackView() {
                 role="status"
                 className="rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
               >
-                This order was cancelled. If that looks wrong, call us on
-                01700-000000 with the order ID and we will check it for you.
+                This order was cancelled. If that looks wrong, {contactNumber ? (
+                  <>
+                    call/WhatsApp us on <span className="font-semibold">{contactNumber}</span>{" "}
+                    with the order ID and we will check it for you.
+                  </>
+                ) : (
+                  <>
+                    contact the shop with the order ID and we will check it
+                    for you.
+                  </>
+                )}
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">

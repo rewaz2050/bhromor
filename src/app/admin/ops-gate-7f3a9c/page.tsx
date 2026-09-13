@@ -72,7 +72,7 @@ export default function AdminLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border-0 bg-white px-4 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-forest-600"
-              placeholder="you@prosanti.store"
+              placeholder="you@example.com"
             />
           </label>
           <label className="mt-4 block">

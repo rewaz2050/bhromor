@@ -51,7 +51,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('25b', 'P1 payments: verify RPC',              '202609140004_wallet_payments.sql',             'function', 'ps_verify_payment'),
   ('26',  'P1 live shopping: sessions table',     '202609140005_live_shopping.sql',               'table', 'live_sessions'),
   ('26b', 'P1 live shopping: session pieces',     '202609140005_live_shopping.sql',               'table', 'live_session_products'),
-  ('27',  'P1 wallet cash: wallet-aware deliver', '202609140006_wallet_delivery_cash.sql',        'function_src', 'ps_rider_deliver|paid via bKash at checkout')
+  ('27',  'P1 wallet cash: wallet-aware deliver', '202609140006_wallet_delivery_cash.sql',        'function_src', 'ps_rider_deliver|paid via bKash at checkout'),
+  ('28',  'P1 wallet cash: cancel settles payment', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_advance_order|v_payment_rejected'),
+  ('28b', 'P1 wallet cash: verify refuses cancelled', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_verify_payment|order already cancelled')
 )
 select step as ord,
        label,

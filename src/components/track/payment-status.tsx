@@ -17,7 +17,15 @@ export default function PaymentStatus({ order }: { order: Order }) {
 
   const method = order.payment === "bkash" ? "bKash" : "Nagad";
 
-  if (order.paymentStatus === "verified") {
+  // A cancelled order can never be "under verification" — legacy rows that
+  // predate the auto-reject-on-cancel rule show as not accepted, which is
+  // what actually happened (the order is over, the wallet money is not in).
+  const paymentStatus =
+    order.status === "cancelled" && order.paymentStatus === "pending_verification"
+      ? "rejected"
+      : order.paymentStatus;
+
+  if (paymentStatus === "verified") {
     return (
       <section
         aria-label="Payment status"
@@ -31,15 +39,26 @@ export default function PaymentStatus({ order }: { order: Order }) {
             {method} payment verified
           </p>
           <p className="mt-0.5 text-xs leading-5 text-emerald-800">
-            The shop has confirmed your payment in its wallet — the order
-            continues normally from here.
+            {order.status === "cancelled" ? (
+              <>
+                The shop has confirmed your payment in its wallet. The order
+                was cancelled afterwards, so the refund comes from the
+                shop&apos;s wallet — if you do not receive it, call the shop
+                with the order ID.
+              </>
+            ) : (
+              <>
+                The shop has confirmed your payment in its wallet — the order
+                continues normally from here.
+              </>
+            )}
           </p>
         </div>
       </section>
     );
   }
 
-  if (order.paymentStatus === "rejected") {
+  if (paymentStatus === "rejected") {
     return (
       <section
         aria-label="Payment status"

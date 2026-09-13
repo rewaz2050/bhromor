@@ -156,6 +156,13 @@ shop's own wallet, no merchant account, no API key, no settlement**:
 - **The gate is in the state machine** — `ps_advance_order` refuses to move
   an unverified wallet order past `confirmed` (so it can never reach
   `ready-for-pickup`, and the rider queue can never see it).
+- **Cancelling settles the payment** (`202609140007_wallet_cancel_payment_settle.sql`)
+  — cancelling a still-pending wallet order records the payment as
+  **rejected** (the money did not clear; refund is the shop's offline
+  handling), and `ps_verify_payment` refuses to VERIFY a cancelled order.
+  A cancelled order can therefore never sit "under verification", and a
+  verified-then-cancelled order says so (refund copy, not "continues
+  normally").
 - **Track page** — wallet orders show their payment state (under
   verification / verified / not accepted), COD orders unchanged.
 - **Honesty:** the system never claims money it hasn't seen — "under

@@ -23,6 +23,13 @@ interface PaymentCardProps {
   paymentVerifiedAt?: number;
   total: number;
   customerPhone: string;
+  /**
+   * The order's status. A CANCELLED order can only settle its wallet payment
+   * as rejected (verify is refused by the server too) — for legacy rows that
+   * still say pending on a cancelled order we hide the Verify button so the
+   * staff UI never offers a decision that cannot succeed.
+   */
+  orderStatus?: string;
   /** Re-read the order after a decision. */
   onDecided: () => Promise<unknown> | void;
 }
@@ -46,6 +53,7 @@ export default function PaymentCard({
   paymentVerifiedAt,
   total,
   customerPhone,
+  orderStatus,
   onDecided,
 }: PaymentCardProps) {
   const [busy, setBusy] = useState<"verified" | "rejected" | null>(null);
@@ -105,20 +113,32 @@ export default function PaymentCard({
       {paymentStatus === "pending_verification" && (
         <>
           <p className="mt-2 text-xs leading-5">
-            Check your {method} wallet: money of {formatBdt(total)} from the
-            customer with the TRXID above? Then verify. No match? Reject — the
-            order is cancelled and the refund is handled from your wallet.
+            {orderStatus === "cancelled" ? (
+              <>
+                This order was cancelled while the payment was still pending —
+                record it as rejected.
+              </>
+            ) : (
+              <>
+                Check your {method} wallet: money of {formatBdt(total)} from
+                the customer with the TRXID above? Then verify. No match?
+                Reject — the order is cancelled and the refund is handled from
+                your wallet.
+              </>
+            )}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void decide("verified")}
-              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-60"
-            >
-              <IconCheck className="h-3.5 w-3.5" />
-              {busy === "verified" ? "Verifying…" : "Payment verified"}
-            </button>
+            {orderStatus !== "cancelled" && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void decide("verified")}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-60"
+              >
+                <IconCheck className="h-3.5 w-3.5" />
+                {busy === "verified" ? "Verifying…" : "Payment verified"}
+              </button>
+            )}
             <button
               type="button"
               disabled={busy !== null}
@@ -133,7 +153,10 @@ export default function PaymentCard({
       )}
       {paymentStatus === "verified" && (
         <p className="mt-2 text-xs font-medium text-emerald-800">
-          ✓ Verified {fmt(paymentVerifiedAt)} — the order may start fulfilment.
+          ✓ Verified {fmt(paymentVerifiedAt)} —{" "}
+          {orderStatus === "cancelled"
+            ? "the order was cancelled afterwards; refund from the shop wallet (offline)."
+            : "the order may start fulfilment."}
         </p>
       )}
       {paymentStatus === "rejected" && (

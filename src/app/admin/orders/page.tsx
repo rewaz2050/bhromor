@@ -210,7 +210,7 @@ export default function AdminOrdersPage() {
                       {o.payment && o.payment !== "cod" ? (
                         <span
                           className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide ${
-                            o.paymentStatus === "pending_verification"
+                            o.paymentStatus === "pending_verification" && o.status !== "cancelled"
                               ? "bg-amber-100 text-amber-900"
                               : o.paymentStatus === "verified"
                                 ? "bg-emerald-100 text-emerald-900"
@@ -218,7 +218,7 @@ export default function AdminOrdersPage() {
                           }`}
                         >
                           {o.payment === "bkash" ? "bKash" : "Nagad"}
-                          {o.paymentStatus === "pending_verification"
+                          {o.paymentStatus === "pending_verification" && o.status !== "cancelled"
                             ? " · verify"
                             : o.paymentStatus === "verified"
                               ? " ✓"
