@@ -38,6 +38,13 @@ export interface Product {
   isNew: boolean;
   inStock: boolean;
   lowStock?: boolean;
+  /**
+   * P2 #1 — eligible units sold from the live orders table
+   * (v_product_sales: non-cancelled order units minus refunded returns).
+   * Present on live catalog rows only; the static launch catalog has no
+   * sales history, so the badge must stay hidden when it is absent.
+   */
+  unitsSold?: number;
   media: ProductMedia[];
   video?: { youtubeId: string; label: string }; // future: YouTube preview UI
   rating: number;

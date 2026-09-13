@@ -1,6 +1,6 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
--- Generated from schema.sql + the 29 in-order migrations.
+-- Generated from schema.sql + the 30 in-order migrations.
 --
 -- WHEN TO USE THIS FILE:
 --   Only on a FRESH Supabase project (no PROSANTI tables yet).
@@ -6375,4 +6375,28 @@ begin
 
   return v_order_id;
 end $$;
+commit;
+
+begin;
+
+create or replace view v_product_sales as
+select oi.product_id,
+       greatest(
+         0,
+         coalesce(sum(oi.qty) filter (where o.is_return is distinct from true), 0)
+           - coalesce(sum(oi.qty) filter (where o.is_return = true
+                                          and o.return_status = 'refunded'), 0)
+       ) as units_sold
+from order_items oi
+join orders o on o.id = oi.order_id
+where o.status <> 'cancelled'
+group by oi.product_id;
+
+comment on view v_product_sales is
+  'Eligible units sold per product: non-cancelled order units minus refunded return units. P2 #1 best-sellers source.';
+
+-- The storefront reads it through the service-role API only; there is no
+-- public read policy (same convention as every other table in this schema).
+grant select on v_product_sales to service_role;
+
 commit;

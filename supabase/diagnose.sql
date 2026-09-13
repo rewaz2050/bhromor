@@ -54,7 +54,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('27',  'P1 wallet cash: wallet-aware deliver', '202609140006_wallet_delivery_cash.sql',        'function_src', 'ps_rider_deliver|paid via bKash at checkout'),
   ('28',  'P1 wallet cash: cancel settles payment', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_advance_order|v_payment_rejected'),
   ('28b', 'P1 wallet cash: verify refuses cancelled', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_verify_payment|order already cancelled'),
-  ('29',  'P1 returns: zero-charge return orders restored', '202609140008_return_order_restore.sql', 'function_src', 'ps_place_order|return_parent_id required')
+  ('29',  'P1 returns: zero-charge return orders restored', '202609140008_return_order_restore.sql', 'function_src', 'ps_place_order|return_parent_id required'),
+  ('30',  'P2 best sellers: real sales view', '202609140009_product_sales_view.sql', 'view', 'v_product_sales')
 )
 select step as ord,
        label,
@@ -64,6 +65,10 @@ select step as ord,
          when 'table' then exists (
            select 1 from information_schema.tables t
            where t.table_schema = 'public' and t.table_name = obj
+         )
+         when 'view' then exists (
+           select 1 from information_schema.views v
+           where v.table_schema = 'public' and v.table_name = obj
          )
          when 'function' then exists (
            select 1 from pg_proc p

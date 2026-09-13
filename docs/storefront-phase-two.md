@@ -7,7 +7,11 @@
 - Accessible Size Guide drawer on the PDP and an inline fit disclosure in Quick Add (no stacked modal traps). Displays catalog fit/dimensions and measurement instructions, explicitly noting unavailable verified charts.
 
 ## Data dependencies intentionally not faked
-- **Best Sellers:** `order-store.ts` is seeded from `MOCK_ORDERS` and browser-local; it is not a production sales source. Do not import customer orders into public merchandising. Connect a server-side aggregate of eligible sales by product ID, excluding cancelled/refunded units, before displaying a sales ranking.
+- **Best Sellers:** ~~deferred~~ — **connected 2026-09-14 (P2 #1):** the
+  `v_product_sales` view (non-cancelled order units minus refunded return
+  units) is the storefront's only sales source. The shop page's "Best
+  sellers" sort and the cards' "N sold" line read it; products without a
+  real figure show nothing. See [p2-roadmap.md](p2-roadmap.md) #1.
 - **Verified size chart:** obtain product-specific measurements, units and measurement method before adding a size-to-measurement table. Generic S/M/L measurements can cause incorrect purchases.
 - **Social proof / Instagram:** needs approved reviews, customer-photo consent and the official social URLs. Existing product photography is used for editorial cards, not presented as customer photos or an Instagram feed.
 - **Account sync:** remains dependent on customer authentication and a persistent backend.

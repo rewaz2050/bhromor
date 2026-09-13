@@ -52,7 +52,7 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
   const db = await getSupabaseServer();
   if (!db) return null;
 
-  const [productsRes, variantsRes, mediaRes, categoriesRes, zonesRes, shopsRes] =
+  const [productsRes, variantsRes, mediaRes, categoriesRes, zonesRes, shopsRes, salesRes] =
     await Promise.all([
       db
         .from("products")
@@ -71,6 +71,9 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
       // Public read policy exposes active shops only; the strip below is
       // defence-in-depth so contact emails can never leak.
       db.from("shops").select("*").eq("status", "active").order("name"),
+      // P2 #1 — real sales per product (v_product_sales). A hiccup here must
+      // not kill the catalog: sales are a badge, not the store.
+      db.from("v_product_sales").select("product_id, units_sold"),
     ]);
 
   if (
@@ -84,9 +87,16 @@ export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
     throw new Error("catalog read failed");
   }
 
-  const products = ((productsRes.data ?? []) as DbProduct[]).map((p) =>
-    mapProduct(toBundle(p, (variantsRes.data ?? []) as DbVariant[], (mediaRes.data ?? []) as DbMedia[])),
+  const unitsSoldByProduct = new Map<string, number>(
+    ((salesRes.data ?? []) as { product_id: string; units_sold: number }[]).map(
+      (r) => [r.product_id, r.units_sold],
+    ),
   );
+  const products = ((productsRes.data ?? []) as DbProduct[]).map((p) => {
+    const mapped = mapProduct(toBundle(p, (variantsRes.data ?? []) as DbVariant[], (mediaRes.data ?? []) as DbMedia[]));
+    const units = unitsSoldByProduct.get(p.id);
+    return units === undefined ? mapped : { ...mapped, unitsSold: units };
+  });
   if (products.length === 0) return null;
 
   return {

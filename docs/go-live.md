@@ -151,6 +151,13 @@ Run **in this order, in one sequence** (skip files you already applied —
     made before this step, cancel the stray full-price "Return pickup (…)"
     order from Admin → Orders (its note says so) and ask the customer to
     request the return again.
+24. **`supabase/migrations/202609140009_product_sales_view.sql`** —
+    P2 #1 best sellers: the `v_product_sales` view — eligible units sold per
+    product (non-cancelled order units minus refunded return units), the
+    only data source the storefront's "Best sellers" sort and "N sold" card
+    badges may use. Read-only (granted to the service role for the catalog
+    API); no order of application relative to the others, but it needs the
+    base `orders`/`order_items`/return columns, so run it after the P1 files.
 
 Quick check after step 11 (SQL editor):
 

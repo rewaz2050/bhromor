@@ -56,6 +56,24 @@ describe("Editorial product cards", () => {
     expect(screen.queryByText(`(${product.reviewCount})`)).toBeNull();
   });
 
+  it("shows a sold count only when real units were sold (P2 #1)", () => {
+    // No sales figure → no line; the card never invents a ranking.
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.queryByText(/sold/i)).toBeNull();
+
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, unitsSold: 23 }} />
+      </CartProvider>,
+    );
+    expect(screen.getByText("23 sold")).toBeVisible();
+  });
+
   it("adds to the real cart and announces success", () => {
     render(
       <CartProvider>
