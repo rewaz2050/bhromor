@@ -251,6 +251,10 @@ your real rows until then.
 Verify: `GET https://<your-app>/api/products` must return products, not
 `{"code":"NOT_SEEDED"}` — i.e. after you added real items in the admin.
 
+> **দ্রুততম পথ (এই মুহূর্তে):** বাকি ৪টে (steps 27–30) একসাথে
+> `supabase/pending-p2-final.sql` — ~31KB, **এক পেস্টে** Run → তারপর
+> `supabase/verify-p2.sql` চালালে ৬টা check-ই `OK` দেখাবে।
+
 ### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
 
 `supabase/bootstrap-fresh.sql` ≈৩০০KB — পুরোটা SQL Editor-এ পেস্ট করবেন **না**।
