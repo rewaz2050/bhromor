@@ -12,7 +12,7 @@ external dependency that doesn't exist yet.
 | 1 | **Best sellers from real orders** | ✅ Shipped 2026-09-14 | `v_product_sales` view + "Best sellers" sort + "N sold" card badges; the sales ranking storefront-phase-two.md deferred on purpose |
 | 2 | Back-in-stock alerts | ✅ Shipped 2026-09-14 | price-watch's sibling: watch an OUT-OF-STOCK piece, staff gets the number when stock is restocked (same honest "shop calls" mechanism — no SMS sender in this stack) |
 | 3 | Shop ratings from approved reviews | ✅ Shipped 2026-09-14 | blueprint §2 "reviews extend to shop ratings": the trigger maintains `shops.rating_avg/rating_count` from APPROVED reviews only; the storefront (already wired) shows stars on shop card / shop page / PDP chip; 0 reviews = no stars, never a seed |
-| 4 | Admin best-sellers in Reports | ⏳ Queued | the same view, server-side top list on Admin → Reports (units, revenue, trend) so the shop sees what the storefront shows |
+| 4 | Admin best-sellers in Reports | ✅ Shipped 2026-09-14 | the same `v_product_sales` view, server-side top list on Admin → Reports (units, last-30-days, orders, revenue) so the shop sees exactly what the storefront shows |
 
 **Deliberately NOT in P2** (they need things that don't exist yet — listed
 so they aren't half-built):
@@ -126,3 +126,31 @@ updated the columns, so every shop sat at 0 forever.
 - **Tests** — PDP chip (rating shown for a rated shop; no stars for a
   zero-review shop). The trigger itself is database-side and is verified
   by `diagnose.sql` step 32 + the first real moderation in the admin.
+
+---
+
+## #4 — Admin best-sellers in Reports (shipped)
+
+The Reports page already had a "Top products" table — but it was computed
+**client-side from the staff order queue**, which is capped at 100 orders
+and cannot apply the refunded-return correction. Once the store outgrew
+100 orders, that table would silently disagree with the storefront.
+
+- **Server-side, same source as the storefront** —
+  `GET /api/admin/reports/best-sellers` (staff-only) reads
+  `v_product_sales` for the units column — the *exact* figure behind the
+  "N sold" badge and the "Best sellers" sort — and joins `order_items` for
+  the money: revenue on eligible non-return lines, distinct customer
+  orders, and the last-30-days unit count for a trend at a glance.
+- **Eligibility mirrors the view** — non-cancelled orders count; a return
+  subtracts only once `refunded`; an in-flight return does not move the
+  numbers yet. The two surfaces cannot disagree.
+- **UI** — a "Best sellers — what the storefront shows" section on
+  Admin → Reports (rank, product link, units sold, last 30 days, orders,
+  revenue), with an honest empty state before the first sale and an
+  honest error line if the read fails.
+- **No new migration** — it rides on `202609140009` (the view) and the
+  base tables; nothing new to apply.
+- **Tests** — db (view ranking + name join, refunded vs in-flight return
+  handling, cancelled exclusion, 30-day window, empty + broken-read
+  non-fatal), route 401 without a staff session.

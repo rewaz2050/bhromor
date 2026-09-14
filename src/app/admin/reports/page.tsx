@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
 import {
@@ -10,12 +10,37 @@ import {
   type ReportRange,
 } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
+import { apiErrorMessage, apiGet } from "@/lib/admin-api";
+import type { BestSellerRow } from "@/lib/db/reports";
 import { IconArrowRight, IconBanknote, IconChart } from "@/components/ui/icons";
 
 /** Sales reports over live orders (pure math in lib/reports.ts). */
 export default function AdminReportsPage() {
   const { orders } = useOrders();
   const [range, setRange] = useState<ReportRange>(REPORT_RANGES[0]);
+
+  /* P2 #4 — the all-time best-seller list from the server: the exact
+     numbers the storefront shows (v_product_sales), beyond the 100-row
+     order queue the client-side table works from. */
+  const [best, setBest] = useState<BestSellerRow[] | null>(null);
+  const [bestError, setBestError] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiGet<{ bestSellers: BestSellerRow[] }>("/api/admin/reports/best-sellers")
+      .then((data) => {
+        if (!alive) return;
+        setBest(data.bestSellers);
+        setBestError(null);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setBest(null);
+        setBestError(apiErrorMessage(err));
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const report = useMemo(() => salesReport(orders, range), [orders, range]);
   const max = seriesMax(report.series);
@@ -169,6 +194,68 @@ export default function AdminReportsPage() {
             </div>
           </>
         )}
+      </section>
+
+      {/* Best sellers — the storefront's numbers, server-side (P2 #4) */}
+      <section aria-label="Best sellers" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-display text-base font-medium text-forest-900">
+            Best sellers — what the storefront shows
+          </h3>
+          <p className="text-xs text-ink-soft">
+            All-time, from <code>v_product_sales</code> — the same view behind
+            the shop page&rsquo;s &ldquo;N sold&rdquo; badges and &ldquo;Best
+            sellers&rdquo; sort.
+          </p>
+        </div>
+        {bestError ? (
+          <p className="mt-4 text-sm text-rose-700">{bestError}</p>
+        ) : best === null ? (
+          <p className="mt-4 text-sm text-ink-soft">Loading…</p>
+        ) : best.length === 0 ? (
+          <p className="mt-4 text-sm text-ink-soft">
+            No eligible sales yet — the storefront keeps showing no badges and
+            no ranking until the first order lands.
+          </p>
+        ) : (
+          <table className="mt-4 w-full text-sm">
+            <thead>
+              <tr className="text-left text-[0.65rem] uppercase tracking-[0.16em] text-ink-soft">
+                <th scope="col" className="pb-2 font-semibold">Product</th>
+                <th scope="col" className="pb-2 text-right font-semibold">Units sold</th>
+                <th scope="col" className="pb-2 text-right font-semibold">Last 30 days</th>
+                <th scope="col" className="pb-2 text-right font-semibold">Orders</th>
+                <th scope="col" className="pb-2 text-right font-semibold">Revenue</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {best.map((p, i) => (
+                <tr key={p.productId}>
+                  <td className="py-2.5 pr-3">
+                    <span className="mr-2 text-xs font-semibold text-gold-600">{i + 1}</span>
+                    <Link
+                      href={`/product/${p.slug}`}
+                      className="font-medium text-ink underline-offset-2 hover:underline"
+                    >
+                      {p.name}
+                    </Link>
+                  </td>
+                  <td className="py-2.5 text-right tabular-nums text-ink">{p.units}</td>
+                  <td className="py-2.5 text-right tabular-nums text-ink-soft">{p.last30Units}</td>
+                  <td className="py-2.5 text-right tabular-nums text-ink-soft">{p.orderCount}</td>
+                  <td className="py-2.5 text-right font-semibold tabular-nums text-forest-800">
+                    {formatPaisa(p.revenue)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="mt-3 text-xs text-ink-soft">
+          Eligible units = non-cancelled orders minus returns the shop has
+          completed (refunded). Revenue counts the same lines; return lines
+          price at zero.
+        </p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-5">
