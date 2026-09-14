@@ -14,6 +14,7 @@ import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
+import RestockAlertRow from "@/components/product/restock-alert-row";
 import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
@@ -185,6 +186,7 @@ export default async function ProductPage({ params }: PageProps) {
 
         <aside className="space-y-6">
           <PriceAlertRow product={product} />
+          <RestockAlertRow product={product} />
           <div className="assurance-pill rounded-md bg-forest-900 p-8 text-ivory-100">
             <IconLeaf className="h-6 w-6 text-gold-300" />
             <h2 className="font-display mt-4 text-xl font-medium">

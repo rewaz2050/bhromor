@@ -10,7 +10,7 @@ external dependency that doesn't exist yet.
 | # | Feature | State | Notes |
 |---|---------|-------|-------|
 | 1 | **Best sellers from real orders** | ✅ Shipped 2026-09-14 | `v_product_sales` view + "Best sellers" sort + "N sold" card badges; the sales ranking storefront-phase-two.md deferred on purpose |
-| 2 | Back-in-stock alerts | ⏳ Next | price-watch's sibling: watch an OUT-OF-STOCK piece, staff gets the number when stock is restocked (same honest "shop calls" mechanism — no SMS sender in this stack) |
+| 2 | Back-in-stock alerts | ✅ Shipped 2026-09-14 | price-watch's sibling: watch an OUT-OF-STOCK piece, staff gets the number when stock is restocked (same honest "shop calls" mechanism — no SMS sender in this stack) |
 | 3 | Shop ratings from approved reviews | ⏳ Queued | blueprint §2 "reviews extend to shop ratings": per-shop average over APPROVED reviews only, shown on shop page + PDP; 0 reviews = no stars, never a seed |
 | 4 | Admin best-sellers in Reports | ⏳ Queued | the same view, server-side top list on Admin → Reports (units, revenue, trend) so the shop sees what the storefront shows |
 
@@ -63,3 +63,35 @@ exists — and only it can power a ranking.
   is (the shop's choice), not a sales claim.
 - **Tests** — catalog join (attached + degraded), shop sort order, card
   badge (absent vs present).
+
+---
+
+## #2 — Back-in-stock alerts (shipped)
+
+The other reason a shopper leaves a piece is not the price — it was the
+exact one, and it sold out. The mechanism is the sibling of P0 #5's
+price-drop watch, and the promise is equally honest: **there is no SMS or
+email sender in this stack, so the alert is a call from the shop** — the
+same way PROSANTI already confirms orders.
+
+- **DB (`202609140010_stock_watches.sql`)** — `stock_watches`: one row per
+  (product, phone), written only through `/api/stock-watch` (service role),
+  staff-readable in Admin → Growth. `last_notified_at` is informational;
+  the dedupe is the event itself, so a value in the row can never swallow
+  a real restock.
+- **The event is a transition, not a level.** `updateProduct` fires
+  `flagRestockForStaff` only when the saved product flips
+  **out-of-stock → in-stock**. One restock = one inbox note; re-saving the
+  same stock is a no-op; a piece that sells out again later earns a new
+  note — a real new event, not a nag.
+- **Storefront** — the PDP shows a "Call me when it's back" card **only
+  while the product is actually out of stock** (a "notify me" on something
+  you can buy right now is a lie, so there is no such state). Number is
+  normalized + format-checked server-side; rate-limited per IP.
+- **Staff side** — the one-line inbox note carries the product and the
+  numbers to dial; Admin → Growth lists every waiting shopper with a
+  `tel:` link and when they were last notified.
+- **Tests** — db (upsert/delete targeting, restock fan-out per staff
+  inbox, no-watchers no-op, broken-read non-fatal), route (201/422/503/
+  429 + delete targeting), component (absent when in stock, form records
+  the number, failure is shown).

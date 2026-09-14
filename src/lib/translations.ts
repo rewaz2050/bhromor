@@ -460,6 +460,17 @@ export const translations = {
       failed: "Could not save that — try once more.",
       noted: "Got it",
     },
+    restock: {
+      title: "Out of stock",
+      watch: "Call me when it's back",
+      watching: "We'll call you when it's back",
+      phoneLabel: "Your mobile number",
+      channel:
+        "No texts from a robot — the shop calls the number you gave, the same way it confirms orders.",
+      stop: "Remove me",
+      logged: "You're on the list for {name} — we'll call when it's back.",
+      failed: "Could not save that — try once more.",
+    },
   },
   bn: {
     nav: {
@@ -920,6 +931,17 @@ export const translations = {
       failed: "সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।",
       noted: "ঠিক আছে",
     },
+    restock: {
+      title: "স্টক শেষ",
+      watch: "ফিরলে ফোন করবেন",
+      watching: "ফিরলে ফোন করব",
+      phoneLabel: "আপনার মোবাইল নম্বর",
+      channel:
+        "রোবটের কোনো এসএমএস নয় — যেমন অর্ডার কনফার্ম করে, দোকান আপনার দেওয়া নম্বরে ফোন করবে।",
+      stop: "নেম সরান",
+      logged: "{name}-এর তালিকায় থাকলেন — ফিরলে ফোন করা হবে।",
+      failed: "সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।",
+    },
   },
 } as const;
 
@@ -949,4 +971,5 @@ export type TranslationKey =
   | `stylist.${keyof typeof translations.en.stylist}`
   | `gift.${keyof typeof translations.en.gift}`
   | `referral.${keyof typeof translations.en.referral}`
-  | `priceDrop.${keyof typeof translations.en.priceDrop}`;
+  | `priceDrop.${keyof typeof translations.en.priceDrop}`
+  | `restock.${keyof typeof translations.en.restock}`;

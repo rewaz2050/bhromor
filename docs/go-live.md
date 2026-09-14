@@ -158,6 +158,13 @@ Run **in this order, in one sequence** (skip files you already applied —
     badges may use. Read-only (granted to the service role for the catalog
     API); no order of application relative to the others, but it needs the
     base `orders`/`order_items`/return columns, so run it after the P1 files.
+25. **`supabase/migrations/202609140010_stock_watches.sql`** —
+    P2 #2 back-in-stock alerts: the `stock_watches` table (one row per
+    product + phone). Written by the product-page form through
+    `/api/stock-watch`; staff read it in Admin → Growth, and the moment a
+    product is flipped back in stock the call list lands in the staff
+    inbox once. Needs the base `products` table, so run it after the P1
+    files.
 
 Quick check after step 11 (SQL editor):
 

@@ -822,6 +822,19 @@ export async function updateProduct(
       // the product is saved; the alert can wait for the next price change
     }
   }
+  if (!row.in_stock && patch.in_stock) {
+    // A restock is a promise kept, too: everyone who asked to be told gets a
+    // line in the staff inbox with their numbers. Fires only on a real
+    // out-of-stock → in-stock transition, so one restock = one note (a piece
+    // that sells out again later earns a new one — a real new event). Never
+    // fatal to the save.
+    try {
+      const { flagRestockForStaff } = await import("./growth");
+      await flagRestockForStaff(db, { productId: id, productName: merged.name });
+    } catch {
+      // the product is saved; the alert can wait for the next restock
+    }
+  }
   if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sku !== undefined) {
     // Variant grid inputs fall back to the CURRENT grid (not blank).
     const { data: current } = await db
