@@ -1,21 +1,14 @@
 /**
  * Live catalog registry — the bridge between sync UI code and the async
- * backend. The launch catalog paints first (SSR-safe reference — the same
- * rows scripts/seed-supabase.mjs writes); when /api/products answers `live`,
- * the registry swaps in database rows (uuid ids, live prices/stock) and every
- * subscriber re-renders.
- *
- * IMPORTANT: in live mode product ids are database uuids, not p1…p7.
- * Anything stored by id (cart, wishlist) resolves through here — legacy
- * launch-seed ids bridge to their live row via the launch-catalog slug, so a
- * cart built before the database was seeded survives the cutover at LIVE
- * prices. Anything that matches neither simply stops matching — quiet, never
- * a crash.
+ * backend. NOTHING paints until the database answers: the demo launch
+ * catalog is gone from every live surface (storefront, search, bag,
+ * stories). Before /api/products serves `live`, the registry is an honest
+ * empty state; after, it swaps in database rows and every subscriber
+ * re-renders. Surfaces show `loading` until settled, so empty is never
+ * mistaken for "no stock".
  */
 
 import {
-  CATEGORIES,
-  PRODUCTS,
   type Category,
   type DeliveryZone,
   type Product,
@@ -50,13 +43,15 @@ export const isCatalogSettled = (): boolean => catalogSettled;
 export const isZonesSettled = (): boolean => zonesSettled;
 
 /**
- * Snapshot getters with stable references for useSyncExternalStore. Shops are
- * live-only (no fake shop seeds): until the database answers, shops are empty
- * and shop-scoped surfaces show their empty state. Products/categories/zones
- * keep the launch catalog as the reference list until live rows arrive.
+ * Snapshot getters with stable references for useSyncExternalStore.
+ * Everything is live-only: until the database answers, each snapshot is a
+ * stable EMPTY array — no seeds, no demo rows, never an invented catalog.
  */
-export const getProductsSnapshot = (): Product[] => liveProducts ?? PRODUCTS;
-export const getCategoriesSnapshot = (): Category[] => liveCategories ?? CATEGORIES;
+const EMPTY_PRODUCTS: Product[] = [];
+const EMPTY_CATEGORIES: Category[] = [];
+
+export const getProductsSnapshot = (): Product[] => liveProducts ?? EMPTY_PRODUCTS;
+export const getCategoriesSnapshot = (): Category[] => liveCategories ?? EMPTY_CATEGORIES;
 export const getZonesSnapshot = (): DeliveryZone[] => liveZones ?? EMPTY_ZONES;
 /** Stable empty references so useSyncExternalStore never re-renders on a
  *  fresh `[]` per call while the backend has not answered. */
@@ -66,25 +61,16 @@ const EMPTY_SHOPS: Shop[] = [];
 export const getShopsSnapshot = (): Shop[] => liveShops ?? EMPTY_SHOPS;
 
 /**
- * Id resolution against the SERVING catalog. Once live rows arrive, legacy
- * launch-seed ids (p1…p7) bridge through their launch-catalog slug to the
- * seeded row's uuid — so carts that were built while the store was unseeded
- * survive the cutover (including the checkout auto-seed moment) instead of
- * silently emptying. Entries that match neither stop matching quietly.
+ * Id resolution against the SERVING catalog only. A cart carrying an id the
+ * live rows do not know (e.g. a stale demo `p1` from before this change)
+ * simply stops matching — quiet, never a crash, and never a demo row served
+ * in place of a real one.
  */
-export const resolveCatalogProduct = (id: string): Product | undefined => {
-  const pool = liveProducts ?? PRODUCTS;
-  const direct = pool.find((p) => p.id === id);
-  if (direct) return direct;
-  if (liveProducts) {
-    const seed = PRODUCTS.find((p) => p.id === id);
-    if (seed) return liveProducts.find((p) => p.slug === seed.slug);
-  }
-  return undefined;
-};
+export const resolveCatalogProduct = (id: string): Product | undefined =>
+  (liveProducts ?? EMPTY_PRODUCTS).find((p) => p.id === id);
 
 export const resolveCatalogCategory = (id: string): Category | undefined =>
-  (liveCategories ?? CATEGORIES).find((c) => c.id === id);
+  (liveCategories ?? EMPTY_CATEGORIES).find((c) => c.id === id);
 
 /**
  * Fetch-once live catalog. Returns true when live rows are serving.
@@ -110,7 +96,7 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
         liveProducts = data.products;
         liveCategories = Array.isArray(data.categories)
           ? data.categories
-          : CATEGORIES;
+          : [];
         liveShops = Array.isArray(data.shops) ? data.shops : [];
         notify();
         return true;
@@ -148,6 +134,24 @@ export const ensureLiveZones = (): Promise<boolean> => {
     }
   })();
   return zonesPromise;
+};
+
+/**
+ * Test-only: serve the given rows as though /api/products had just answered
+ * `live`. Tests that need a stocked catalog inject it here instead of
+ * relying on demo fallbacks — production never imports this.
+ */
+export const __serveLiveCatalogForTests = (
+  products: Product[] | null,
+  categories: Category[] = [],
+  shops: Shop[] = [],
+): void => {
+  liveProducts = products;
+  liveCategories = products ? categories : null;
+  liveShops = products ? shops : null;
+  catalogSettled = products !== null;
+  catalogPromise = products === null ? null : Promise.resolve(true);
+  if (products) notify();
 };
 
 /** Test-only reset. */

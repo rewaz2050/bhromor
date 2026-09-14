@@ -264,7 +264,6 @@ export default function CheckoutView() {
       return;
     }
     const t = setTimeout(async () => {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- tiny status fetch
       setPlusState("checking");
       try {
         const res = await fetch(`/api/membership?phone=${encodeURIComponent(phone)}`, {
@@ -483,6 +482,7 @@ export default function CheckoutView() {
     bagShop,
     form.deliveryWindow,
     form.isPickup,
+    plusActive,
     form.tipAmount,
     derivedZoneId,
   ]);

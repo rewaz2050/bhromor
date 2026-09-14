@@ -36,18 +36,19 @@ export default function PlusCard() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const acctPhone = customer?.phone ?? "";
   const load = useCallback(async () => {
-    if (!customer?.phone) return;
+    if (!acctPhone) return;
     try {
       const res = await fetch(
-        `/api/membership?phone=${encodeURIComponent(customer.phone)}`,
+        `/api/membership?phone=${encodeURIComponent(acctPhone)}`,
         { cache: "no-store" },
       );
       if (res.ok) setStatus((await res.json()) as MembershipStatus);
     } catch {
       /* offline: the card just keeps the last truth */
     }
-  }, [customer?.phone]);
+  }, [acctPhone]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- card boot

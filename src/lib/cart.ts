@@ -20,7 +20,7 @@ export const MAX_LINE_QTY = 10;
 const clampQty = (qty: number): number =>
   Math.max(1, Math.min(MAX_LINE_QTY, Math.floor(qty)));
 
-/** Resolves through the live registry first, then the seeds. */
+/** Resolves through the live registry only — no demo seeds to fall back on. */
 export const resolveProduct = (productId: string): Product | undefined =>
   resolveCatalogProduct(productId);
 

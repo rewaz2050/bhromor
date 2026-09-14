@@ -2,8 +2,9 @@ import type { Coupon } from "../coupons";
 import { bdt } from "../format";
 
 /**
- * The launch coupon set (mirrors scripts/seed-supabase.mjs and
- * src/lib/db/auto-seed.ts) — shared by the coupon and order-validation
+ * The launch coupon set — TEST FIXTURE ONLY (the demo seeding that once
+ * mirrored these into real databases was removed 2026-09-14) — shared by
+ * the coupon and order-validation
  * tests so they price against the same rows the live order route uses.
  */
 export const launchCoupons = (): Coupon[] => {

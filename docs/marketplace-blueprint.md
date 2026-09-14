@@ -373,8 +373,9 @@ Phase 3 slices:
 10. ✅ Cash settlement (rider self-settle + staff records pay-in) + ৳5,000 cap + Admin → Riders cash exposure.
 
 Rule per slice: every slice ships live-only and gates green — with zero
-keys the launch catalog still paints and backend endpoints answer an honest
-503/unavailable.
+keys the storefront paints its honest empty state and backend endpoints
+answer an explicit 503/unavailable. (Historic note: the launch-catalog
+fallback was removed 2026-09-14 — see docs/backend.md.)
 
 ---
 

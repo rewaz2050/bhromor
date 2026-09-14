@@ -6,6 +6,7 @@ import { CartProvider } from "@/components/cart/cart-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS } from "@/lib/catalog";
 import { CART_STORAGE_KEY } from "@/lib/cart";
+import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { REFERRAL_STORAGE_KEY } from "@/lib/referral";
 
 /**
@@ -48,6 +49,8 @@ const product = PRODUCTS.find((p) => p.inStock)!;
 beforeEach(() => {
   localStorage.clear();
   calls.length = 0;
+  // stock the registry synchronously — no demo fallback exists anymore
+  __serveLiveCatalogForTests(PRODUCTS, CATEGORIES);
   localStorage.setItem(
     CART_STORAGE_KEY,
     JSON.stringify([{ productId: product.id, variantLabel: `${product.colors[0]} Free`, qty: 1 }]),
@@ -68,6 +71,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  __resetLiveCatalog();
 });
 
 const fillAndSubmit = async () => {

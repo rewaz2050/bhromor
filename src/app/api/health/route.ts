@@ -102,7 +102,7 @@ export async function GET() {
     nextSteps.push("SQL schema + migrations chalaben: supabase/schema.sql, tarpor supabase/migrations/* (shob gulo, krome)");
   }
   if (checks.reachable && (!checks.productsSeeded || !checks.couponsSeeded || !checks.shopsSeeded)) {
-    nextSteps.push("Launch catalog seed koren: .env.local banie `npm run seed` (products/zones/coupons/shop upsert korbe)");
+    nextSteps.push("Catalog empty — add real products in Admin → Catalog & Products (demo seeding was removed; `npm run seed` now only seeds the store skeleton: shop, categories, zones)");
   }
   if (checks.reachable && !checks.adminUser) {
     nextSteps.push("Admin login banate `npm run grant-admin -- rahatbd2050@gmail.com --role super_admin` chalaben");

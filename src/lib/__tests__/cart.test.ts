@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
+import { __serveLiveCatalogForTests } from "@/lib/live-catalog";
+
+// The registry no longer falls back to demo rows — stock it for resolution.
+__serveLiveCatalogForTests(PRODUCTS, CATEGORIES);
+
 import {
   MAX_LINE_QTY,
   addLine,

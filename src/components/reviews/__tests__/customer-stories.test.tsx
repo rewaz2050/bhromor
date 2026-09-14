@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import CustomerStories, { approvedStories } from "../customer-stories";
+import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
+import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import type { Review } from "@/lib/review-store";
-import { PRODUCTS } from "@/lib/catalog";
 
 const { state } = vi.hoisted(() => ({ state: { reviews: [] as Review[] } }));
+
+beforeEach(() => {
+  // stories resolve review → product against the LIVE registry
+  __serveLiveCatalogForTests(PRODUCTS, CATEGORIES);
+});
+afterEach(() => __resetLiveCatalog());
 
 vi.mock("@/lib/use-public-reviews", () => ({
   usePublicReviews: () => ({
@@ -35,14 +42,17 @@ const review: Review = {
 describe("Customer stories preview", () => {
   it("only includes approved valid reviews of discoverable products", () => {
     expect(
-      approvedStories([
-        review,
-        { ...review, status: "pending" },
-        { ...review, status: "hidden" },
-        { ...review, status: "flagged" },
-        { ...review, rating: NaN },
-        { ...review, productId: "missing" },
-      ]),
+      approvedStories(
+        [
+          review,
+          { ...review, status: "pending" },
+          { ...review, status: "hidden" },
+          { ...review, status: "flagged" },
+          { ...review, rating: NaN },
+          { ...review, productId: "missing" },
+        ],
+        PRODUCTS,
+      ),
     ).toEqual([review]);
   });
 

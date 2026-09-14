@@ -18,7 +18,6 @@ import {
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
-import { ensureLaunchCatalog, remapSeedItemIds } from "@/lib/db/auto-seed";
 import { samePhone } from "@/lib/orders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
@@ -52,33 +51,19 @@ export async function POST(request: Request) {
     return apiError("Invalid order data.", 400);
   }
 
-  // True between "the catalog was empty" and "we just seeded it" — the
-  // window in which any failure degrades to an honest 503 instead of
-  // dead-ending the customer.
-  let seededNow = false;
   try {
-    // ── Self-heal: configured-but-empty catalog (never seeded) ──────────
-    // Upsert the launch catalog once and keep the customer's order flowing
-    // as a REAL database order (docs/go-live.md). If the database itself
-    // refuses (missing schema, outage), answer an honest 503 so the
-    // storefront's browser-local flow completes the order instead of the
-    // old dead-end "call us to order" 503.
-    let snapshot = await loadOrderSnapshotSafely();
+    // The catalog is whatever the shop has PUBLISHED — nothing else. An
+    // empty store answers an honest 503; we never seed demo rows into a
+    // real database to make an order "work".
+    const snapshot = await loadOrderSnapshotSafely();
     if (!snapshot || snapshot.products.length === 0) {
-      seededNow = await seedLaunchCatalog();
-      snapshot = seededNow ? await loadOrderSnapshotSafely() : null;
-      if (!snapshot || snapshot.products.length === 0) {
-        return apiError("Online ordering is not set up yet.", 503);
-      }
+      return apiError(
+        "Online ordering is not set up yet — this shop has no published products.",
+        503,
+      );
     }
 
-    // Carts built against the launch seeds carry ids like `p1`; live rows are
-    // uuids. Bridge them through slug once, right after auto-seeding.
-    let payloadForValidation = payload;
-    if (seededNow && isRecord(payload)) {
-      const remapped = remapSeedItemIdsForPayload(payload, snapshot.products);
-      if (remapped) payloadForValidation = remapped;
-    }
+    const payloadForValidation = payload;
 
     // P2 #17 — PROSANTI+ waiver, looked up from the memberships table by the
     // phone ON THIS PAYLOAD (not a session, not a client claim). The
@@ -148,7 +133,6 @@ export async function POST(request: Request) {
     }
     return apiJson({ order, smartCard }, 201);
   } catch (err) {
-    if (seededNow) return apiError("Could not place the order — please try again.", 503);
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });
     }
@@ -167,33 +151,5 @@ async function loadOrderSnapshotSafely(): Promise<Awaited<
   }
 }
 
-/** Upserts the launch catalog into an empty store; false if the DB refuses. */
-async function seedLaunchCatalog(): Promise<boolean> {
-  const db = getSupabaseService();
-  if (!db) return false;
-  try {
-    return await ensureLaunchCatalog(db);
-  } catch {
-    return false;
-  }
-}
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-/**
- * Rewrite `items[].productId` seed ids (p1…) to live row ids via slug.
- * Returns a shallow-copied payload when something changed, else null.
- */
-function remapSeedItemIdsForPayload(
-  payload: Record<string, unknown>,
-  liveProducts: { id: string; slug: string }[],
-): Record<string, unknown> | null {
-  const items = payload.items;
-  if (!Array.isArray(items) || items.length === 0) return null;
-  const rows = items as { productId?: unknown }[];
-  if (rows.some((it) => it === null || typeof it !== "object")) return null;
-  const remapped = remapSeedItemIds(rows, liveProducts);
-  if (remapped === rows) return null;
-  return { ...payload, items: remapped };
-}

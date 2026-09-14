@@ -2,7 +2,7 @@ import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PRODUCTS, coverImage } from "@/lib/catalog";
+import { coverImage } from "@/lib/catalog";
 import {
   findStorefrontProduct,
   getStorefrontCatalog,
@@ -30,7 +30,9 @@ interface PageProps {
 }
 
 export function generateStaticParams() {
-  return PRODUCTS.map((p) => ({ slug: p.slug }));
+  // Live slugs only the database knows — nothing pre-rendered from a demo
+  // catalog (the old launch seeds). Each product page renders on demand.
+  return [];
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
-import { PRODUCTS, coverImage } from "@/lib/catalog";
+import { coverImage } from "@/lib/catalog";
+import { getLiveProducts } from "@/lib/live-catalog";
 import { completeTheLook } from "@/lib/merchandising";
 import Image from "next/image";
 import Link from "next/link";
@@ -52,7 +53,7 @@ export default function BagDrawer() {
   const recommendations = Array.from(
     new Map(
       detail
-        .flatMap((line) => completeTheLook(line.product, PRODUCTS))
+        .flatMap((line) => completeTheLook(line.product, getLiveProducts() ?? []))
         .filter(
           (product) => !detail.some((line) => line.productId === product.id),
         )

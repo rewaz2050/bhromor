@@ -611,7 +611,10 @@ export default function AdminGrowthPage() {
             textOff="Disarmed — the landing is honest about there being no campaign"
           />
           {(() => {
-            const st = campaignStateFor(campaign, now ?? Date.now());
+            if (now === null) {
+              return <p className="mt-2 text-xs text-ink-soft">Checking the clock…</p>;
+            }
+            const st = campaignStateFor(campaign, now);
             const line =
               st === "live" && campaign.endDate
                 ? "LIVE NOW — closes at the end of the last day (Asia/Dhaka)."
