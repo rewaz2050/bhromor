@@ -1681,7 +1681,7 @@ export default function CheckoutView() {
                   onKeyDown={(e) =>
                     e.key === "Enter" && (e.preventDefault(), applyCoupon())
                   }
-                  placeholder="e.g. WELCOME100"
+                  placeholder="Coupon code"
                   aria-label="Coupon code"
                   className="h-12 w-full min-w-0 rounded-2xl bg-paper px-4 text-sm uppercase tracking-wide text-ink ring-1 ring-line placeholder:normal-case placeholder:tracking-normal placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
                 />

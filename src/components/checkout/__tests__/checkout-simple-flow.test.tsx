@@ -95,7 +95,7 @@ it("places an order through the simple form (live)", async () => {
   const formEl = screen.getByRole("button", { name: /Place Order/i }).closest("form")!;
   expect(formEl).toBeTruthy();
   expect(Array.from(formEl.querySelectorAll("input,button")).some((el) =>
-    (el as HTMLInputElement).placeholder === "e.g. WELCOME100",
+    (el as HTMLInputElement).placeholder === "Coupon code",
   )).toBe(true);
 
   fireEvent.change(screen.getByPlaceholderText(/রাহাত আহমেদ/), {
