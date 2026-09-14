@@ -228,6 +228,12 @@ export async function advanceOrderAsStaff(
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Staff role required.", 403);
     }
+    if (msg.includes("payment not verified")) {
+      throw new AdminInputError(
+        "Wallet payment not verified yet — verify or reject it in the payment card first.",
+        422,
+      );
+    }
     if (msg.includes("illegal transition") || msg.includes("cannot cancel")) {
       throw new AdminInputError(
         "That status change is not allowed from here.",
@@ -235,6 +241,53 @@ export async function advanceOrderAsStaff(
       );
     }
     throw new AdminInputError("Could not update the order.", 422);
+  }
+  return getOrderDetail(db, orderNo);
+}
+
+/**
+ * P1 #8 — the shop's decision on a bKash/Nagad payment. 'verified' unlocks
+ * fulfilment; 'rejected' cancels the order (stock released by the trigger).
+ * The RPC owns the rules: wallet orders only, one decision per payment.
+ */
+export async function verifyPaymentAsStaff(
+  db: SupabaseClient,
+  orderNo: string,
+  action: "verified" | "rejected",
+  note?: string,
+): Promise<Order> {
+  const { data, error } = await db
+    .from("orders")
+    .select("id")
+    .eq("order_no", orderNo.trim().toUpperCase())
+    .single();
+  if (error || !data) throw new AdminInputError("Order not found.", 404);
+  const { error: rpcError } = await db.rpc("ps_verify_payment", {
+    p_order_id: (data as { id: string }).id,
+    p_action: action,
+    p_note: note?.trim().slice(0, 300) ?? null,
+  });
+  if (rpcError) {
+    const msg = rpcError.message.toLowerCase();
+    if (msg.includes("forbidden")) {
+      throw new AdminInputError("Staff role required.", 403);
+    }
+    if (msg.includes("not a wallet payment")) {
+      throw new AdminInputError(
+        "This order was paid by cash on delivery — nothing to verify.",
+        422,
+      );
+    }
+    if (msg.includes("already decided")) {
+      throw new AdminInputError("This payment was already decided.", 409);
+    }
+    if (msg.includes("order already cancelled")) {
+      throw new AdminInputError(
+        "This order was cancelled — its wallet payment is settled as rejected; nothing to decide.",
+        422,
+      );
+    }
+    throw new AdminInputError("Could not record the payment decision.", 422);
   }
   return getOrderDetail(db, orderNo);
 }
@@ -580,6 +633,20 @@ export const readProductBundle = async (
   });
 };
 
+/** P1 #14 — parse a warranty period (days) from raw product input.
+ *  null/absent → no warranty. Out-of-range or non-integer → input error. */
+const parseWarrantyDays = (
+  raw: Record<string, unknown>,
+): { days: number | null } => {
+  const v = raw.warrantyDays;
+  if (v === undefined || v === null || v === "") return { days: null };
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 365) {
+    throw new AdminInputError("Warranty must be a whole number of days, 1–365.", 422);
+  }
+  return { days: n };
+};
+
 export async function createProduct(
   db: SupabaseClient,
   raw: unknown,
@@ -634,6 +701,7 @@ export async function createProduct(
       active: input.active ?? true,
       seo_title: input.seo?.title ?? null,
       seo_description: input.seo?.description ?? null,
+      warranty_days: parseWarrantyDays((raw ?? {}) as Record<string, unknown>).days,
     })
     .select("id")
     .single();
@@ -709,6 +777,10 @@ export async function updateProduct(
     low_stock: (raw as { lowStock?: boolean })?.lowStock ?? row.low_stock,
   };
   const rawRec = (raw ?? {}) as Record<string, unknown>;
+  // P1 #14 — warranty period: null clears it, a number sets it.
+  if (rawRec.warrantyDays !== undefined) {
+    patch.warranty_days = parseWarrantyDays(rawRec).days;
+  }
   if (rawRec.nameBn !== undefined) {
     patch.name_bn = typeof rawRec.nameBn === "string" ? rawRec.nameBn.trim().slice(0, 160) : "";
   }
@@ -748,6 +820,19 @@ export async function updateProduct(
       });
     } catch {
       // the product is saved; the alert can wait for the next price change
+    }
+  }
+  if (!row.in_stock && patch.in_stock) {
+    // A restock is a promise kept, too: everyone who asked to be told gets a
+    // line in the staff inbox with their numbers. Fires only on a real
+    // out-of-stock → in-stock transition, so one restock = one note (a piece
+    // that sells out again later earns a new one — a real new event). Never
+    // fatal to the save.
+    try {
+      const { flagRestockForStaff } = await import("./growth");
+      await flagRestockForStaff(db, { productId: id, productName: merged.name });
+    } catch {
+      // the product is saved; the alert can wait for the next restock
     }
   }
   if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sku !== undefined) {
@@ -1192,6 +1277,8 @@ export async function deleteCoupon(
 export interface AdminReview extends Review {
   productName: string;
   productSlug: string;
+  /** Customer photos — always present in the moderation queue (all statuses). */
+  photos?: string[];
 }
 
 export async function listReviewsFull(
@@ -1219,10 +1306,28 @@ export async function listReviewsFull(
       names.set(p.id, { name: p.name, slug: p.slug });
     }
   }
+  const reviewIds = rows.map((r) => r.id);
+  const photosByReview = new Map<string, string[]>();
+  if (reviewIds.length > 0) {
+    // Service-role client: pending/flagged photos are exactly what the
+    // moderator needs to see before approving.
+    const { data: photoRows } = await db
+      .from("review_photos")
+      .select("review_id,url")
+      .in("review_id", reviewIds);
+    if (photoRows) {
+      for (const p of photoRows as { review_id: string; url: string }[]) {
+        const list = photosByReview.get(p.review_id) ?? [];
+        list.push(p.url);
+        photosByReview.set(p.review_id, list);
+      }
+    }
+  }
   return rows.map((r) => ({
     ...mapReview(r),
     productName: names.get(r.product_id)?.name ?? "Removed product",
     productSlug: names.get(r.product_id)?.slug ?? "",
+    photos: photosByReview.get(r.id) ?? [],
   }));
 }
 

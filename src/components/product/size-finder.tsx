@@ -11,7 +11,7 @@
  * can wear.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TranslationKey } from "@/lib/translations";
 import type { Product } from "@/lib/catalog";
 import { suggestSize, type SizeProfile, type SizeVerdict } from "@/lib/size-finder";
@@ -48,14 +48,27 @@ export function useSizeSuggestion(product: Product) {
 export default function SizeFinder({
   product,
   onPick,
+  autoOpenKey,
 }: {
   product: Product;
   /** Called with the recommended size so the picker can select it. */
   onPick?: (size: string) => void;
+  /**
+   * Bump this number (from the parent) to open the drawer — used by the
+   * stylist chat, which closes itself first so dialogs never stack.
+   */
+  autoOpenKey?: number;
 }) {
   const { t } = useLanguage();
   const { profile, save, clear } = useSizeProfile();
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenKey && autoOpenKey > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate signal from the stylist chat (its dialog is already closed)
+      setOpen(true);
+    }
+  }, [autoOpenKey]);
   const [height, setHeight] = useState(profile ? String(profile.heightCm) : "");
   const [weight, setWeight] = useState(profile ? String(profile.weightKg) : "");
   const [fit, setFit] = useState<SizeProfile["fit"]>(profile?.fit ?? "regular");

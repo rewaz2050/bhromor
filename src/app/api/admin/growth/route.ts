@@ -8,7 +8,7 @@
  * source of truth for a number that moves money.
  */
 import { staffRoute } from "../_lib";
-import { listPriceWatches } from "@/lib/db/growth";
+import { listPriceWatches, listStockWatches } from "@/lib/db/growth";
 import { readOpsSettings } from "@/lib/db/engagement";
 import { promoView } from "@/lib/promos";
 import { apiJson } from "@/lib/api-response";
@@ -16,8 +16,9 @@ import { apiJson } from "@/lib/api-response";
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("growth", async ({ db }) => {
-  const [watches, settings] = await Promise.all([
+  const [watches, stockWatches, settings] = await Promise.all([
     listPriceWatches(db),
+    listStockWatches(db),
     readOpsSettings(db),
   ]);
   const [codesRes, rewardsRes] = await Promise.all([
@@ -42,6 +43,7 @@ export const GET = staffRoute("growth", async ({ db }) => {
   }[];
   return apiJson({
     watches,
+    stockWatches,
     codes: ((codesRes.data ?? []) as {
       code: string;
       customer_name: string;

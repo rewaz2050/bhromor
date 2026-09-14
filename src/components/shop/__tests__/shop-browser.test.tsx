@@ -97,6 +97,31 @@ describe("ShopBrowser", () => {
     for (const name of firstFew) expect(newNames).toContain(name);
   });
 
+  it("sorts 'Best sellers' by real units sold; products without sales stay last", () => {
+    const sold: Record<string, number> = {
+      [PRODUCTS[1].id]: 12,
+      [PRODUCTS[3].id]: 40,
+      [PRODUCTS[5].id]: 7,
+    };
+    renderShop({
+      products: PRODUCTS.map((p) =>
+        p.id in sold ? { ...p, unitsSold: sold[p.id] } : p,
+      ),
+    });
+    fireEvent.change(screen.getByLabelText(/sort products/i), {
+      target: { value: "best" },
+    });
+
+    // Descending units sold, real figures only — and nothing invented:
+    // the three sold pieces lead, in rank order.
+    const names = gridNames();
+    expect(names.slice(0, 3)).toEqual([
+      PRODUCTS[3].name,
+      PRODUCTS[1].name,
+      PRODUCTS[5].name,
+    ]);
+  });
+
   it("re-applies filters when the URL changes (header 'New Arrivals' link)", () => {
     const { rerender } = renderShop({ initialCategory: "men" });
     expect(screen.getByText(/products in men/i)).toBeInTheDocument();

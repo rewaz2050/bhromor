@@ -514,6 +514,11 @@ export default function RiderPage() {
                         </div>
                       )}
                       {(order as any).isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
+                      {(order as any).isReturn && (
+                        <p className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-1 rounded-full">
+                          ↩️ Return pickup — collect from the customer, drop at the shop. No cash to collect.
+                        </p>
+                      )}
                       {(order as any).scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</p>}
                     </div>
 

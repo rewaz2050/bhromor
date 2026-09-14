@@ -10,12 +10,15 @@ import BagShopHeader from "./bag-shop-header";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
 import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
-import { IconBag, IconClose, IconTruck } from "@/components/ui/icons";
+import { IconBag, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { lineShopIds, shopById } from "@/lib/shop-utils";
+import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 
 export default function BagDrawer() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const {
     bagOpen,
     closeBag,
@@ -25,6 +28,27 @@ export default function BagDrawer() {
     updateQty,
     removeItem,
   } = useCart();
+  /** Hook unconditionally — the bag content below is a conditional render. */
+  const { shops } = useLiveCatalog();
+  /** WhatsApp order for the whole bag (P1 #15) — one shop per cart. */
+  const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
+  const bagShop =
+    bagShopIds.length === 1 ? shopById(shops, bagShopIds[0]) : undefined;
+  const bagWaHref = bagShop
+    ? waLink(
+        bagShop.phone,
+        bagWaMessage(
+          detail.map((l) => ({
+            product: l.product,
+            variantLabel: l.variantLabel,
+            qty: l.qty,
+          })),
+          subtotal,
+          bagShop,
+          lang,
+        ),
+      )
+    : null;
   const recommendations = Array.from(
     new Map(
       detail
@@ -226,6 +250,17 @@ export default function BagDrawer() {
             >
               {t("bag.viewBag")}
             </Link>
+            {bagWaHref ? (
+              <a
+                href={bagWaHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="whatsapp-bag-order"
+                className="mt-3 flex min-h-11 items-center justify-center gap-2 border border-forest-300 bg-forest-50 text-xs font-semibold uppercase tracking-widest text-forest-800 transition-colors hover:bg-forest-100"
+              >
+                <IconSend className="h-3.5 w-3.5" /> {t("bag.orderBagWhatsApp")}
+              </a>
+            ) : null}
             <p className="mt-4 text-center text-xs text-ink-soft">
               {t("bag.cashQuality")} — Sunamganj Sadar COD
             </p>

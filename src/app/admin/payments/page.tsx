@@ -1,44 +1,40 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
+import { useSettings } from "@/lib/use-settings";
 import { salesReport } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
-import { IconBanknote, IconCard, IconCheck } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/admin/order-ui";
+import { IconBanknote, IconCard, IconCheck } from "@/components/ui/icons";
 
 /**
- * Payments — launch policy: Cash on Delivery only (§20–21, §26).
- * Online gateways (bKash/Nagad/cards) are planned next; the blueprint wires
- * real PSP keys server-side, so this screen shows the COD book + the
- * roadmap, never fake credentials.
+ * Payments — P1 #8: Cash on delivery + bKash/Nagad into the shop's OWN
+ * wallet (no merchant account, no PSP keys, no settlement).
+ *
+ * A wallet method goes live the moment the shop saves a plausible BD mobile
+ * number here (ops settings → site_settings['ops'].wallets); the checkout
+ * offers it, the customer sends the total and shares the TRXID, and the shop
+ * verifies the payment from the order page. This page never holds secrets —
+ * a wallet number is something the shop would print on a shop board anyway.
  */
-
-interface MethodRow {
-  id: string;
-  name: string;
-  note: string;
-  state: "active" | "soon";
-  chip?: string;
-}
-
-const METHODS: MethodRow[] = [
-  {
-    id: "cod",
-    name: "Cash on delivery",
-    note: "Customer pays the courier at the doorstep — the only method taking orders today.",
-    state: "active",
-    chip: "Active",
-  },
-  { id: "bkash", name: "bKash", note: "Merchant number + payment-request flow.", state: "soon", chip: "Coming soon" },
-  { id: "nagad", name: "Nagad", note: "Merchant number + payment-request flow.", state: "soon", chip: "Coming soon" },
-  { id: "rocket", name: "Rocket (DBBL)", note: "Merchant number + payment-request flow.", state: "soon", chip: "Coming soon" },
-  { id: "cards", name: "Visa · Mastercard · AmEx", note: "Via a gateway (SSLCommerz/Stripe) — card on delivery stays available.", state: "soon", chip: "Coming soon" },
-];
 
 export default function AdminPaymentsPage() {
   const { orders } = useOrders();
+  const { settings, save: saveSettings } = useSettings();
+
+  const [bkash, setBkash] = useState(settings.wallets.bkash);
+  const [nagad, setNagad] = useState(settings.wallets.nagad);
+  const [saving, setSaving] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+
+  // Live settings arrive async — adopt them once.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption
+    setBkash(settings.wallets.bkash);
+    setNagad(settings.wallets.nagad);
+  }, [settings.wallets.bkash, settings.wallets.nagad]);
 
   const ledger = useMemo(() => salesReport(orders, { days: null, label: "All time" }), [orders]);
   const today = useMemo(() => salesReport(orders, { days: 7, label: "7 days" }), [orders]);
@@ -52,16 +48,27 @@ export default function AdminPaymentsPage() {
     [orders],
   );
 
+  const pendingWallets = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.payment && o.payment !== "cod" &&
+          o.paymentStatus === "pending_verification" &&
+          o.status !== "cancelled",
+      ).length,
+    [orders],
+  );
+
   const kpis = [
     {
-      label: "COD booked (all time)",
+      label: "Booked (all time)",
       value: formatPaisa(ledger.summary.booked),
       note: `${ledger.summary.orders} live orders`,
     },
     {
-      label: "Collected at delivery",
+      label: "Collected (wallet + COD)",
       value: formatPaisa(ledger.summary.collected),
-      note: `${formatPaisa(ledger.summary.outstanding)} outstanding`,
+      note: `${formatPaisa(ledger.summary.outstanding)} still to arrive`,
     },
     {
       label: "Last 7 days",
@@ -69,27 +76,126 @@ export default function AdminPaymentsPage() {
       note: `${today.summary.orders} orders · ${today.summary.cancelled} cancelled`,
     },
     {
-      label: "All orders are COD",
-      value: "100%",
-      note: "payment field is locked to “cod” (§26)",
+      label: "Wallet payments to verify",
+      value: String(pendingWallets),
+      note: pendingWallets > 0
+        ? "Open the order — verify or reject the TRXID"
+        : "All wallet payments verified or rejected",
     },
   ];
+
+  const saveWallets = () => {
+    setSaving(true);
+    void saveSettings({ ...settings, wallets: { bkash, nagad } }).then((ok) => {
+      setSaving(false);
+      setFlash(
+        ok
+          ? "Wallet number(s) saved — checkout offers the method immediately. Blank = method hidden."
+          : "Could not save — please try again",
+      );
+    });
+  };
+
+  const walletRow = (id: "bkash" | "nagad", name: string) => {
+    const value = id === "bkash" ? bkash : nagad;
+    const digits = value.replace(/\D/g, "");
+    const configured = /^01\d{9}$/.test(digits);
+    const set = id === "bkash" ? setBkash : setNagad;
+    return (
+      <li
+        key={id}
+        className={`flex flex-wrap items-center gap-4 rounded-xl px-4 py-3.5 ring-1 ${
+          configured ? "bg-forest-50/60 ring-forest-200" : "bg-white ring-line"
+        }`}
+      >
+        <span
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
+            configured ? "bg-forest-800 text-ivory-50" : "bg-ivory-100 text-ink-soft"
+          }`}
+        >
+          <IconCard className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+            {name}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wider ${
+                configured
+                  ? "bg-emerald-100 text-emerald-800"
+                  : "bg-gold-100 text-gold-700"
+              }`}
+            >
+              {configured ? "Active" : "Add your number"}
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-ink-soft">
+            Customer sends the total to your {name} number, shares the TRXID;
+            you verify it from the order page. No merchant account needed.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={value}
+            onChange={(e) => set(e.target.value)}
+            placeholder="01XXXXXXXXX"
+            inputMode="tel"
+            aria-label={`${name} wallet number`}
+            className="h-10 w-40 rounded-xl bg-ivory-50 px-3 font-mono text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-500"
+          />
+          {configured && <IconCheck className="h-5 w-5 shrink-0 text-emerald-600" />}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="font-display text-lg font-medium text-forest-900">Payments</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-soft">
-          Launch accepts <strong className="font-semibold text-ink">Cash on delivery only</strong> — the
-          safest start for a rapid-delivery market. Online methods arrive in the
-          next phase; their keys belong in <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">.env</code>{" "}
-          (see <code className="rounded bg-ivory-100 px-1 py-0.5 text-xs">.env.example</code>) and are wired
-          server-side — this page never holds credentials.
+          <strong className="font-semibold text-ink">Cash on delivery</strong> is
+          the default; <strong className="font-semibold text-ink">bKash and
+          Nagad</strong> take money into the shop&apos;s OWN wallet — no merchant
+          account, no PSP keys. Save your wallet numbers below and checkout
+          offers the method immediately; the customer shares the TRXID and you
+          verify it before the order starts.
         </p>
       </div>
 
-      {/* COD book KPIs */}
-      <section aria-label="COD book" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {flash && (
+        <p
+          role="status"
+          className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-200"
+        >
+          <IconCheck className="h-4 w-4" /> {flash}
+        </p>
+      )}
+
+      {/* Wallet numbers */}
+      <section aria-label="Wallet payments" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
+        <h3 className="font-display text-base font-medium text-forest-900">
+          Your wallet numbers (bKash / Nagad)
+        </h3>
+        <p className="mt-1 text-xs leading-5 text-ink-soft">
+          The number customers send money to — the one printed on your shop
+          board. Leave blank to hide the method.
+        </p>
+        <ul className="mt-4 space-y-3">
+          {walletRow("bkash", "bKash")}
+          {walletRow("nagad", "Nagad")}
+        </ul>
+        <button
+          type="button"
+          onClick={saveWallets}
+          disabled={saving}
+          className="mt-4 rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save wallet numbers"}
+        </button>
+      </section>
+
+      {/* Book KPIs */}
+      <section aria-label="Book" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <div key={k.label} className="rounded-2xl bg-paper p-5 ring-1 ring-line">
             <div className="flex items-center justify-between">
@@ -107,40 +213,59 @@ export default function AdminPaymentsPage() {
         <section aria-label="Payment methods" className="rounded-2xl bg-paper p-6 ring-1 ring-line lg:col-span-3">
           <h3 className="font-display text-base font-medium text-forest-900">Methods</h3>
           <ul className="mt-4 space-y-3">
-            {METHODS.map((m) => (
-              <li
-                key={m.id}
-                className={`flex items-center gap-4 rounded-xl px-4 py-3.5 ring-1 ${
-                  m.state === "active"
-                    ? "bg-forest-50/60 ring-forest-200"
-                    : "bg-white ring-line"
-                }`}
-              >
-                <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-                    m.state === "active" ? "bg-forest-800 text-ivory-50" : "bg-ivory-100 text-ink-soft"
-                  }`}
-                >
-                  <IconCard className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-                    {m.name}
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wider ${
-                        m.state === "active"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-gold-100 text-gold-700"
-                      }`}
-                    >
-                      {m.chip}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-xs leading-5 text-ink-soft">{m.note}</p>
-                </div>
-                {m.state === "active" && <IconCheck className="h-5 w-5 shrink-0 text-emerald-600" />}
-              </li>
-            ))}
+            <li className="flex items-center gap-4 rounded-xl bg-forest-50/60 px-4 py-3.5 ring-1 ring-forest-200">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-forest-800 text-ivory-50">
+                <IconBanknote className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                  Cash on delivery
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wider text-emerald-800">
+                    Active
+                  </span>
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-ink-soft">
+                  Customer pays the courier at the doorstep — no verification
+                  step, collected on delivery.
+                </p>
+              </div>
+              <IconCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+            </li>
+            <li className="flex items-center gap-4 rounded-xl bg-white px-4 py-3.5 ring-1 ring-line">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ivory-100 text-ink-soft">
+                <IconCard className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                  Rocket (DBBL)
+                  <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wider text-gold-700">
+                    Coming soon
+                  </span>
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-ink-soft">
+                  Same wallet-TRXID flow as bKash/Nagad — one more row in the
+                  settings when the shop keeps a Rocket number.
+                </p>
+              </div>
+            </li>
+            <li className="flex items-center gap-4 rounded-xl bg-white px-4 py-3.5 ring-1 ring-line">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ivory-100 text-ink-soft">
+                <IconCard className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                  Cards (Visa · Mastercard · AmEx)
+                  <span className="rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wider text-gold-700">
+                    Coming soon
+                  </span>
+                </p>
+                <p className="mt-0.5 text-xs leading-5 text-ink-soft">
+                  Needs a PSP (SSLCommerz/Stripe) merchant account — wired
+                  server-side when the keys exist; COD stays available either
+                  way.
+                </p>
+              </div>
+            </li>
           </ul>
         </section>
 
@@ -170,6 +295,11 @@ export default function AdminPaymentsPage() {
                     </Link>
                     <p className="truncate text-xs text-ink-soft">
                       {o.customer.name} · {o.zoneName}
+                      {o.payment && o.payment !== "cod" && (
+                        <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[0.6rem] font-bold uppercase text-amber-900">
+                          {o.payment === "bkash" ? "bKash" : "Nagad"}
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
@@ -181,8 +311,9 @@ export default function AdminPaymentsPage() {
             </ul>
           )}
           <p className="mt-4 border-t border-line pt-3 text-xs leading-5 text-ink-soft">
-            COD value is collected only when a courier marks the order delivered
-            (§34) — the KPI cards above already respect that rule.
+            COD value is collected only when a courier marks the order
+            delivered (§34). Wallet orders count as booked the moment the
+            customer places them, and are verified order by order.
           </p>
         </section>
       </div>

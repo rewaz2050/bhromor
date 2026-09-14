@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -23,10 +23,25 @@ import {
   friendlyWhen,
 } from "@/components/admin/order-ui";
 import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
+import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
+import PaymentCard from "@/components/admin/payment-card";
+
+const RETURN_STATUS_LABEL: Record<string, string> = {
+  requested: "Requested — awaiting decision",
+  approved: "Approved — awaiting rider dispatch",
+  picked_up: "Picked up from the customer",
+  refunded: "Received by the shop (leg complete)",
+  rejected: "Rejected by the shop",
+};
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { orders, loading, error, clearError, advance, cancel } = useOrders();
+  const { orders, loading, error, clearError, advance, cancel, refresh } = useOrders();
+  // Hooks first, before any early return below.
+  const [returnBusy, setReturnBusy] = useState<
+    null | "approve" | "reject" | "complete"
+  >(null);
+  const [returnError, setReturnError] = useState<string | null>(null);
 
   const order = useMemo(
     () => orders.find((o) => o.id === params.id),
@@ -58,6 +73,48 @@ export default function AdminOrderDetailPage() {
       </div>
     );
   }
+
+  const doReturnAction = async (
+    action: "approve" | "reject" | "complete",
+  ) => {
+    let note = "";
+    if (action === "reject") {
+      const prompted = window.prompt(
+        "Reason for the customer (optional but kind):",
+      );
+      if (prompted === null) return; // dismissed
+      note = prompted.trim();
+    }
+    if (
+      action === "approve" &&
+      !window.confirm(
+        "Approve this return? It becomes ready for rider dispatch (Admin → Deliveries).",
+      )
+    ) {
+      return;
+    }
+    setReturnBusy(action);
+    setReturnError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/orders/${encodeURIComponent(order.id)}/return`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, note }),
+        },
+      );
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!res.ok) throw new Error(data?.error ?? "Action failed");
+      await refresh();
+    } catch (err) {
+      setReturnError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setReturnBusy(null);
+    }
+  };
 
   const steps = nextActions(order.status);
   const cancellable = canCancel(order.status);
@@ -104,9 +161,11 @@ export default function AdminOrderDetailPage() {
         </span>
       </div>
 
-      {/* Actions — only legal transitions are offered (§34) + free print invoice */}
+      {/* Actions — only legal transitions are offered (§34) + free print invoice.
+          Return orders move only through the return actions below — approving
+          one IS its dispatch hand-off, so the normal flow stays out. */}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
-        {(steps.length > 0 || cancellable) && (
+        {!order.isReturn && (steps.length > 0 || cancellable) && (
           <>
             {steps.map((to) => (
               <button
@@ -140,7 +199,15 @@ export default function AdminOrderDetailPage() {
         <button
           type="button"
           onClick={() => {
-            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} Total ${order.total/100} taka COD. Track: https://prosanti.com/track/${order.id}`;
+            const payNote =
+              order.payment === "bkash"
+                ? "Total " + order.total / 100 + " taka (bKash)"
+                : order.payment === "nagad"
+                  ? "Total " + order.total / 100 + " taka (Nagad)"
+                  : "Total " + order.total / 100 + " taka COD";
+            const origin =
+              typeof window !== "undefined" ? window.location.origin : "";
+            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} ${payNote}. Track: ${origin}/track`;
             const url = `https://wa.me/88${order.customer.phone.replace(/[^0-9]/g,"").slice(-11)}?text=${encodeURIComponent(text)}`;
             window.open(url, "_blank");
           }}
@@ -268,7 +335,7 @@ export default function AdminOrderDetailPage() {
                     {order.customer.phone}
                   </a>
                   <a
-                    href={`https://wa.me/88${normalizePhone(order.customer.phone)}?text=${encodeURIComponent(`Assalamualaikum! PROSANTI order ${order.id} — ${order.status}. Traffic Point, Sunamganj Sadar. Track: https://prosanti.com/track/${order.id}`)}`}
+                    href={`https://wa.me/88${normalizePhone(order.customer.phone)}?text=${encodeURIComponent(`Assalamualaikum! PROSANTI order ${order.id} — ${order.status}. Traffic Point, Sunamganj Sadar. Track: ${typeof window !== "undefined" ? window.location.origin : ""}/track`)}`}
                     target="_blank"
                     className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
                   >
@@ -330,16 +397,95 @@ export default function AdminOrderDetailPage() {
                   <p className="text-xs">Attempts: {order.deliveryAttempts}</p>
                 </div>
               )}
-              {(order as any).isReturn && (
+              {order.isReturn && (
                 <div className="mt-3 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
-                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-amber-900">Return / Exchange — Pickup</p>
-                  <p className="text-xs">Parent: {(order as any).returnParentId}</p>
-                  <p className="text-xs">Reason: {(order as any).returnReason}</p>
-                  <p className="text-xs">Status: {(order as any).returnStatus}</p>
-                  {(order as any).pickupSlot && <p className="text-xs">Pickup Slot: {(order as any).pickupSlot}</p>}
-                  <div className="mt-2 flex gap-2">
-                    <a href={`/admin/orders/${(order as any).returnParentId}`} className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Parent</a>
-                  </div>
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-amber-900">
+                    Return / Exchange — home pickup
+                  </p>
+                  {order.returnParentOrderNo && (
+                    <p className="mt-1 text-xs">
+                      Parent:{" "}
+                      <Link
+                        href={`/admin/orders/${order.returnParentOrderNo}`}
+                        className="font-mono font-semibold text-forest-800 underline underline-offset-2"
+                      >
+                        {order.returnParentOrderNo}
+                      </Link>
+                    </p>
+                  )}
+                  {order.returnReason && (
+                    <p className="mt-1 text-xs leading-5">
+                      <span className="font-semibold">Reason:</span>{" "}
+                      {order.returnReason}
+                    </p>
+                  )}
+                  {order.returnStatus && (
+                    <p className="mt-1 text-xs">
+                      <span className="font-semibold">Return status:</span>{" "}
+                      {RETURN_STATUS_LABEL[order.returnStatus] ?? order.returnStatus}
+                    </p>
+                  )}
+                  {(order.returnStatus === "requested" ||
+                    order.returnStatus === "approved" ||
+                    order.returnStatus === "picked_up") && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {order.returnStatus === "requested" && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={returnBusy !== null}
+                            onClick={() => void doReturnAction("approve")}
+                            className="rounded-full bg-emerald-700 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-60"
+                          >
+                            {returnBusy === "approve" ? "Approving…" : "Approve pickup"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={returnBusy !== null}
+                            onClick={() => void doReturnAction("reject")}
+                            className="rounded-full bg-paper px-3.5 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50 disabled:opacity-60"
+                          >
+                            {returnBusy === "reject" ? "Rejecting…" : "Reject"}
+                          </button>
+                        </>
+                      )}
+                      {order.returnStatus !== "requested" && (
+                        <button
+                          type="button"
+                          disabled={returnBusy !== null}
+                          onClick={() => void doReturnAction("complete")}
+                          className="rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
+                        >
+                          {returnBusy === "complete"
+                            ? "Completing…"
+                            : "Mark received & complete"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {returnError && (
+                    <p role="alert" className="mt-2 text-xs font-medium text-rose-800">
+                      {returnError}
+                    </p>
+                  )}
+                </div>
+              )}
+              {!order.isReturn && order.returnChild && (
+                <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">
+                    Return / exchange on this order
+                  </p>
+                  <p className="mt-1 text-xs leading-5">
+                    {RETURN_STATUS_LABEL[order.returnChild.returnStatus] ??
+                      order.returnChild.returnStatus}{" "}
+                    · leg order{" "}
+                    <Link
+                      href={`/admin/orders/${order.returnChild.orderNo}`}
+                      className="font-mono font-semibold text-forest-800 underline underline-offset-2"
+                    >
+                      {order.returnChild.orderNo}
+                    </Link>
+                  </p>
                 </div>
               )}
               {(order as any).isPickup && (
@@ -349,6 +495,18 @@ export default function AdminOrderDetailPage() {
                   <p className="text-xs">Ready in ~{order.etaLabel}</p>
                 </div>
               )}
+              {/* P1 #8: bKash/Nagad wallet payment — verify or reject */}
+              <PaymentCard
+                orderNo={order.id}
+                payment={order.payment}
+                paymentRef={order.paymentRef}
+                paymentStatus={order.paymentStatus}
+                paymentVerifiedAt={order.paymentVerifiedAt}
+                total={order.total}
+                customerPhone={order.customer.phone}
+                orderStatus={order.status}
+                onDecided={refresh}
+              />
             </dl>
           </section>
 
@@ -426,6 +584,9 @@ export default function AdminOrderDetailPage() {
               </p>
             )}
           </section>
+
+          {/* P1 #14: warranty claims on this order (only when there are any) */}
+          <WarrantyClaimsCard orderNo={order.id} />
         </div>
       </div>
     </div>

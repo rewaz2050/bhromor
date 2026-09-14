@@ -22,6 +22,13 @@ export interface Review {
   featured?: boolean;
   /** Owning shop, denormalized for shop ratings (marketplace slice 1). */
   shopId?: string;
+  /**
+   * Customer photos (P1 #10 UGC), at most 3 — a garment on a real body is
+   * the strongest fit signal in the whole shop. Cloudinary URLs when the
+   * image service is configured, compressed JPEG data URLs at launch scale.
+   * Absent/empty for reviews without photos.
+   */
+  photos?: string[];
 }
 
 export const STATUS_LABEL: Record<ReviewStatus, string> = {

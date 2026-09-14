@@ -164,6 +164,16 @@ export default function AdminReviewsPage() {
                       {r.title && <p className="text-sm font-semibold text-ink">{r.title}</p>}
                     </div>
                     <p className="mt-1.5 text-sm leading-6 text-ink-soft">{r.body}</p>
+                    {(r.photos ?? []).length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        {(r.photos ?? []).map((src, i) => (
+                          <a key={`${r.id}-p${i}`} href={src} target="_blank" rel="noreferrer" aria-label={`Open customer photo ${i + 1}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- data URLs can't go through next/image */}
+                            <img src={src} alt={`Customer photo ${i + 1}`} loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-line" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

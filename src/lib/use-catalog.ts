@@ -41,6 +41,8 @@ const toProductInput = (p: Product): Record<string, unknown> => ({
   active: p.active ?? true,
   stock: p.stock,
   seo: p.seo,
+  // null clears the warranty — the editor round-trips the full field.
+  warrantyDays: p.warrantyDays ?? null,
 });
 
 export function useCatalog() {

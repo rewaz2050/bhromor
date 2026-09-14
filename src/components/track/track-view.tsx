@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   flowIndex,
@@ -20,7 +20,9 @@ import {
 import { LiveDeliveryMap } from "./live-delivery-map";
 import { SignatureCanvas } from "./signature-canvas";
 import { DeliveryRating } from "./delivery-rating";
-import { RescheduleDelivery } from "./reschedule-delivery";
+import ReturnPanel from "@/components/returns/return-panel";
+import WarrantyPanel from "@/components/warranty/warranty-panel";
+import PaymentStatus from "./payment-status";
 
 /** Public-facing steps — “ready for pickup” folds into courier assignment. */
 const STEPS: {
@@ -93,6 +95,22 @@ export default function TrackView() {
   const [result, setResult] = useState<Result>(null);
   const [checking, setChecking] = useState(false);
   const [lookupFailed, setLookupFailed] = useState(false);
+  // The shop's real WhatsApp number (ops settings) — the support button
+  // renders only when it is configured, never a placeholder.
+  const [contactNumber, setContactNumber] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/contact", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { whatsapp?: string | null } | null) => {
+        if (!cancelled && d?.whatsapp) setContactNumber(d.whatsapp);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,8 +232,24 @@ export default function TrackView() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* P1 #8: wallet-payment state (COD orders render nothing) */}
+            <PaymentStatus order={order} />
+
             {/* Live Interactive Delivery Map & Security PIN */}
             <LiveDeliveryMap order={order} />
+
+            {/* P1 #13: return/exchange — status, or the home-pickup request */}
+            <ReturnPanel
+              order={order}
+              onTrack={(orderNo, phone) => {
+                setOrderId(orderNo);
+                setPhone(phone);
+              }}
+            />
+
+            {/* P1 #14: warranty claims on delivered, warranted items
+                (keyed by order — a new lookup remounts with fresh state) */}
+            <WarrantyPanel key={order.id} order={order} />
 
             {/* Timeline */}
             {order.status === "cancelled" && (
@@ -223,8 +257,17 @@ export default function TrackView() {
                 role="status"
                 className="rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
               >
-                This order was cancelled. If that looks wrong, call us on
-                01700-000000 with the order ID and we will check it for you.
+                This order was cancelled. If that looks wrong, {contactNumber ? (
+                  <>
+                    call/WhatsApp us on <span className="font-semibold">{contactNumber}</span>{" "}
+                    with the order ID and we will check it for you.
+                  </>
+                ) : (
+                  <>
+                    contact the shop with the order ID and we will check it
+                    for you.
+                  </>
+                )}
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
@@ -385,7 +428,16 @@ export default function TrackView() {
                   {(order as any).isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <a href={`https://wa.me/8801700000000?text=${encodeURIComponent(`PROSANTI order ${order.id} track: https://prosanti.com/track/${order.id}`)}`} target="_blank" className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white">WhatsApp Support</a>
+                  {contactNumber && (
+                    <a
+                      href={`https://wa.me/88${contactNumber}?text=${encodeURIComponent(`PROSANTI order ${order.id} track: ${typeof window !== "undefined" ? window.location.origin : ""}/track`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
+                    >
+                      WhatsApp Support
+                    </a>
+                  )}
                   {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
                 </div>
                 {order.customer.note && (

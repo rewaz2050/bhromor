@@ -71,6 +71,8 @@ export interface OrderSnapshot {
   referralRewards?: { code: string; refereePhone: string }[];
   /** Phones with an earlier non-cancelled order — first-order proof. */
   priorOrderPhones?: string[];
+  /** P1 #8 — configured wallet numbers (empty/absent = not offered). */
+  payments?: { bkash?: string; nagad?: string };
 }
 
 /**
@@ -159,6 +161,14 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
   }
   const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
   const settings = sanitizeSettings(ops);
+  // P1 #8 — wallet numbers the storefront may offer (sanitized to BD mobile;
+  // ps_place_order re-checks against the same ops document at placement).
+  const walletNum = (v: unknown): string | undefined => {
+    let digits = typeof v === "string" ? v.replace(/\D/g, "") : "";
+    if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
+    return /^01\d{9}$/.test(digits) ? digits : undefined;
+  };
+  const opsWallets = (ops.wallets ?? {}) as Record<string, unknown>;
   const codeRows = (codesRes.data ?? []) as {
     code: string;
     customer_id: string | null;
@@ -193,6 +203,10 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       (r) => r.customer_phone,
     ),
     products,
+    payments: {
+      bkash: walletNum(opsWallets.bkash),
+      nagad: walletNum(opsWallets.nagad),
+    },
     zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
     coupons: ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon),
     variants,
@@ -304,6 +318,10 @@ export async function placeLiveOrder(
       gift_message: draft.gift?.message ?? null,
       bundle_discount: draft.promo?.kind === "bundle" ? draft.promo.discount : 0,
       referral_code: draft.referral?.code ?? null,
+      // P1 #8 — wallet payment intents: the RPC validates the method against
+      // the ops wallets and requires a TRXID for bkash/nagad.
+      payment_method: draft.paymentMethod ?? "cod",
+      payment_ref: draft.paymentRef ?? null,
     },
     p_items: draft.items.map((it, i) => ({
       product_id: it.product.id,
@@ -342,10 +360,10 @@ export const toDomain = async (
   if (itemsRes.error || historyRes.error) return null;
   const items = (itemsRes.data ?? []) as DbOrderItem[];
   const productIds = [...new Set(items.map((it) => it.product_id).filter(Boolean))] as string[];
-  let products = new Map<string, { slug: string; image: string }>();
+  let products = new Map<string, { slug: string; image: string; warrantyDays?: number }>();
   if (productIds.length > 0) {
     const [pRes, mRes] = await Promise.all([
-      db.from("products").select("id,slug").in("id", productIds),
+      db.from("products").select("id,slug,warranty_days").in("id", productIds),
       db
         .from("product_media")
         .select("product_id,url")
@@ -356,12 +374,24 @@ export const toDomain = async (
     const slugs = new Map<string, string>(
       ((pRes.data ?? []) as { id: string; slug: string }[]).map((p) => [p.id, p.slug]),
     );
+    const warranties = new Map<string, number | undefined>(
+      ((pRes.data ?? []) as { id: string; warranty_days: number | null }[]).map(
+        (p) => [p.id, p.warranty_days ?? undefined],
+      ),
+    );
     const images = new Map<string, string>();
     for (const m of ((mRes.data ?? []) as { product_id: string; url: string }[])) {
       if (!images.has(m.product_id)) images.set(m.product_id, m.url);
     }
     products = new Map(
-      productIds.map((id) => [id, { slug: slugs.get(id) ?? "", image: images.get(id) ?? "" }]),
+      productIds.map((id) => [
+        id,
+        {
+          slug: slugs.get(id) ?? "",
+          image: images.get(id) ?? "",
+          warrantyDays: warranties.get(id),
+        },
+      ]),
     );
   }
   const zone = (zoneRes.data ?? {}) as { name?: string; eta_label?: string };
@@ -376,6 +406,39 @@ export const toDomain = async (
   });
   if (!domain) return null;
   if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+
+  // P1 #13: a delivered parent carries its linked return/exchange pickup,
+  // so the customer's tracking page can show the reverse leg's progress.
+  if (!order.is_return) {
+    const { data: child } = await db
+      .from("orders")
+      .select("order_no,status,return_status")
+      .eq("return_parent_id", order.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const c = child as
+      | { order_no: string; status: string; return_status: string }
+      | null;
+    if (c && c.return_status && c.return_status !== "rejected") {
+      domain.returnChild = {
+        orderNo: c.order_no,
+        status: c.status as Order["status"],
+        returnStatus: c.return_status,
+      };
+    }
+  }
+
+  // A return pickup shows the public number of the order it returns.
+  if (order.is_return && order.return_parent_id) {
+    const { data: parent } = await db
+      .from("orders")
+      .select("order_no")
+      .eq("id", order.return_parent_id)
+      .maybeSingle();
+    const p = parent as { order_no: string } | null;
+    if (p) domain.returnParentOrderNo = p.order_no;
+  }
 
   // Slice 9 rider-leg: attach the assigned rider when dispatch has started.
   if (["courier-assigned", "out-for-delivery", "delivered"].includes(domain.status)) {

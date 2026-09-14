@@ -78,7 +78,9 @@ export default function PrivacyPage() {
 
         <h2>Contact</h2>
         <p>
-          Questions about this policy: care@prosanti.store or 01700-000000.
+          Questions about this policy: use the{" "}
+          <Link href="/contact">Contact page</Link> — it shows the shop&apos;s
+          current phone, WhatsApp and email.
         </p>
       </div>
     </div>

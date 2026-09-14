@@ -134,6 +134,8 @@ export interface DbProduct {
   active: boolean;
   seo_title: string | null;
   seo_description: string | null;
+  /** P1 #14 — warranty period in days; null = no warranty on this item. */
+  warranty_days?: number | null;
 }
 
 export interface DbVariant {
@@ -227,7 +229,13 @@ export interface DbOrder {
   discount: number;
   coupon_id: string | null;
   total: number;
-  payment: "cod";
+  /** P1 #8 — 'cod' (default) or a wallet method the shop verifies. */
+  payment: "cod" | "bkash" | "nagad";
+  /** P1 #8 — TRXID shared by the customer for wallet payments. */
+  payment_ref?: string | null;
+  /** P1 #8 — wallet verification state ('verified' for COD). */
+  payment_status?: "pending_verification" | "verified" | "rejected";
+  payment_verified_at?: string | null;
   status: DbOrderStatus;
   rider_id: string | null;
   delivery_code: string | null;
@@ -317,4 +325,28 @@ export interface DbNotification {
 export interface DbSiteSetting {
   key: string;
   value: unknown;
+}
+
+/* ------------------------------------------------------------------ */
+/* Live shopping sessions (P1 #9)                                      */
+/* ------------------------------------------------------------------ */
+
+export interface DbLiveSession {
+  id: string;
+  title: string;
+  description: string;
+  stream_url: string;
+  scheduled_start: string;
+  live_at: string | null;
+  ended_at: string | null;
+  status: "scheduled" | "live" | "ended";
+  showing_product_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbLiveSessionProduct {
+  session_id: string;
+  product_id: string;
+  position: number;
 }

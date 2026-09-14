@@ -1,8 +1,12 @@
 /**
- * Public reviews (§30).
- * GET ?product=<id|slug> → approved reviews for one product.
+ * Public reviews (§30) + customer photos (P1 #10 UGC).
+ * GET ?product=<id|slug> → approved reviews for one product, with photos.
  * GET ?featured=1&limit= → approved + featured stories across products.
- * POST { productId|slug, author?, rating, title?, body } → pending review.
+ * POST { productId|slug, author?, rating, title?, body, photos? } → pending
+ * review. `photos` is at most 3 browser-compressed JPEG data URLs; when
+ * Cloudinary is configured the server re-hosts them (prosanti/reviews),
+ * otherwise the compressed data URL is stored — either way the photos ride
+ * the review's pending state (RLS keeps them hidden until approved).
  *
  * An unconfigured backend answers an empty list / 503 — the client shows
  * browser-local store. Submissions are never auto-approved and never
@@ -16,6 +20,41 @@ import type { DbReview } from "@/lib/db/types";
 import { isServiceRoleConfigured, isSupabaseConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
+import {
+  attachReviewPhotos,
+  sanitizeReviewPhotos,
+  storeReviewPhotos,
+} from "@/lib/review-photos";
+
+/**
+ * Fetch photo URLs for the given review ids with the ANON client: the
+ * review_photos read policy returns photos of approved reviews only, and
+ * this route only ever lists approved reviews — so the RLS policy is the
+ * gate, not code. Photos failing never sinks the review list itself.
+ */
+async function photosForReviews(
+  db: Awaited<ReturnType<typeof getSupabaseServer>>,
+  reviews: { id: string }[],
+): Promise<Map<string, string[]>> {
+  const empty = new Map<string, string[]>();
+  if (!db || reviews.length === 0) return empty;
+  try {
+    const { data, error } = await db
+      .from("review_photos")
+      .select("review_id,url")
+      .in("review_id", reviews.map((r) => r.id));
+    if (error || !data) return empty;
+    const byReview = new Map<string, string[]>();
+    for (const p of data as { review_id: string; url: string }[]) {
+      const list = byReview.get(p.review_id) ?? [];
+      list.push(p.url);
+      byReview.set(p.review_id, list);
+    }
+    return byReview;
+  } catch {
+    return empty;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +95,9 @@ export async function GET(request: Request) {
     if (featuredOnly) query = query.eq("featured", true);
     const { data, error } = await query;
     if (error) return apiError("Reviews are temporarily unavailable.", 503);
-    return apiJson({ reviews: ((data ?? []) as DbReview[]).map(mapReview) });
+    const reviews = ((data ?? []) as DbReview[]).map(mapReview);
+    const photos = await photosForReviews(db, reviews);
+    return apiJson({ reviews: attachReviewPhotos(reviews, photos) });
   } catch {
     return apiError("Reviews are temporarily unavailable.", 503);
   }
@@ -101,6 +142,10 @@ export async function POST(request: Request) {
       .single();
     const productId = (product as { id: string } | null)?.id;
     if (!productId) return apiError("That product is not available.", 422);
+    // Customer photos: at most 3, already server-sanitized (shape, count,
+    // size). Re-hosted to Cloudinary when configured; stored as the
+    // compressed data URL otherwise. Photo problems never lose the review.
+    const photos = sanitizeReviewPhotos(b.photos).dataUrls;
     const { data, error } = await db
       .from("reviews")
       .insert({
@@ -116,13 +161,26 @@ export async function POST(request: Request) {
       .select("*")
       .single();
     if (error || !data) return apiError("Could not save the review.", 503);
+    let storedPhotos: string[] = [];
+    if (photos.length > 0) {
+      const stored = await storeReviewPhotos(photos);
+      const { error: photoError } = await db
+        .from("review_photos")
+        .insert(stored.map((url) => ({ review_id: (data as DbReview).id, url })));
+      if (!photoError) storedPhotos = stored;
+    }
     await notifyStaff(db, {
       kind: "review",
       title: "Review awaiting moderation",
-      body: `“${(data as DbReview).title || "Untitled"}” — ${rating}★ from ${(data as DbReview).author}.`,
+      body: `“${(data as DbReview).title || "Untitled"}” — ${rating}★ from ${(data as DbReview).author}${
+        storedPhotos.length > 0 ? ` · ${storedPhotos.length} photo${storedPhotos.length === 1 ? "" : "s"}` : ""
+      }.`,
       href: "/admin/reviews",
     });
-    return apiJson({ review: mapReview(data as DbReview) }, 201);
+    return apiJson(
+      { review: { ...mapReview(data as DbReview), photos: storedPhotos } },
+      201,
+    );
   } catch {
     return apiError("Could not save the review.", 503);
   }

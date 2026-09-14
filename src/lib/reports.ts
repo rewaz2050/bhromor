@@ -4,8 +4,9 @@
  * the Supabase phase swaps the order source, not these functions.
  *
  * Money stays integer paisa (§69). "Booked" revenue counts every live order
- * (not cancelled); "collected" counts only delivered orders — meaningful for
- * COD, where cash arrives at the doorstep (§20–21).
+ * (not cancelled). "Collected" counts money the shop has actually received:
+ * COD arrives at the doorstep (delivered), a bKash/Nagad wallet order arrives
+ * the moment the shop verifies the TRXID (paymentStatus = 'verified').
  */
 
 import type { Order } from "./orders";
@@ -50,9 +51,9 @@ export interface ReportSummary {
   orders: number;
   /** booked revenue — totals of live orders. */
   booked: Bdt;
-  /** collected — totals of delivered orders only (COD reality). */
+  /** collected — money received: COD delivered, or wallet payment verified. */
   collected: Bdt;
-  /** cash still to arrive: booked minus collected. */
+  /** money still to arrive: booked minus collected. */
   outstanding: Bdt;
   averageOrder: Bdt;
   cancelled: number;
@@ -129,8 +130,14 @@ export const salesReport = (
   const live = windowed.filter(isLive);
 
   const booked = live.reduce((sum, o) => sum + o.total, 0);
+  // The shop has the money when: a COD order is delivered (cash at the door),
+  // or a wallet order's payment has been verified (it is in the shop's wallet).
   const collected = live
-    .filter((o) => o.status === "delivered")
+    .filter(
+      (o) =>
+        o.status === "delivered" ||
+        (o.payment !== "cod" && o.paymentStatus === "verified"),
+    )
     .reduce((sum, o) => sum + o.total, 0);
   const couponDiscount = live.reduce(
     (sum, o) => sum + (o.coupon?.discount ?? 0),

@@ -37,8 +37,18 @@ export interface GrowthReward {
   created_at: string;
 }
 
+export interface GrowthStockWatch {
+  id: string;
+  productId: string;
+  productName: string;
+  phone: string;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+}
+
 export interface GrowthData {
   watches: GrowthWatch[];
+  stockWatches: GrowthStockWatch[];
   codes: GrowthCode[];
   rewards: GrowthReward[];
   promos: PromoView;
@@ -46,6 +56,7 @@ export interface GrowthData {
 
 const EMPTY: GrowthData = {
   watches: [],
+  stockWatches: [],
   codes: [],
   rewards: [],
   promos: {

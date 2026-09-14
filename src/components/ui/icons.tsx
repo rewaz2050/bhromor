@@ -296,9 +296,30 @@ export const IconRuler = (p: IconProps) => (
   </Svg>
 );
 
+export const IconChat = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.6 0-3.1-.4-4.4-1.2L3 21l1.7-5.1A8.5 8.5 0 1 1 21 12Z" />
+    <path d="M8.5 11h7M8.5 14h4.5" />
+  </Svg>
+);
+
+export const IconRefresh = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 11.5A8 8 0 1 0 12 20" />
+    <path d="M20 5v6.5h-6.5" />
+  </Svg>
+);
+
 export const IconTrendDown = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3 6.5 10 14l3.5-3.5L21 18" />
     <path d="M21 13v5h-5" />
+  </Svg>
+);
+
+export const IconVideo = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+    <path d="m15.5 10.5 5-3v9l-5-3" />
   </Svg>
 );

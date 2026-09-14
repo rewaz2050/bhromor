@@ -183,6 +183,7 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     status: p.status,
     active: p.active,
     stock,
+    warrantyDays: p.warranty_days ?? undefined,
     seo:
       p.seo_title || p.seo_description
         ? {
@@ -240,8 +241,8 @@ export interface OrderRowBundle {
   zoneName: string;
   etaLabel: string;
   couponCode?: string;
-  /** Product lookup for snapshot enrichment (slug + image). */
-  products?: Map<string, { slug: string; image: string }>;
+  /** Product lookup for snapshot enrichment (slug + image + warranty). */
+  products?: Map<string, { slug: string; image: string; warrantyDays?: number }>;
 }
 
 /** Order + items + history rows → the admin/track `Order` shape. */
@@ -281,6 +282,7 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       qty: it.qty,
       unitPrice: it.unit_price,
       image: extra?.image ?? "",
+      warrantyDays: extra?.warrantyDays,
     };
   });
 
@@ -301,7 +303,12 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
     subtotal: o.subtotal,
     deliveryCharge: o.delivery_charge,
     total: o.total,
-    payment: "cod",
+    payment: o.payment ?? "cod",
+    paymentRef: o.payment_ref ?? null,
+    paymentStatus: o.payment_status ?? (o.payment === "cod" ? "verified" : "pending_verification"),
+    paymentVerifiedAt: o.payment_verified_at
+      ? new Date(o.payment_verified_at).getTime()
+      : undefined,
     status: o.status as OrderStatus,
     timeline,
     deliveredMinutes,
@@ -324,6 +331,10 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
     deliveryProofUploadedAt: (o as any).delivery_proof_uploaded_at ? new Date((o as any).delivery_proof_uploaded_at).getTime() : undefined,
     deliveryAttempts: (o as any).delivery_attempts ?? undefined,
     deliveryFailedReason: (o as any).delivery_failed_reason ?? undefined,
+    isReturn: o.is_return ?? undefined,
+    returnReason: o.return_reason ?? undefined,
+    returnParentId: o.return_parent_id ?? undefined,
+    returnStatus: (o.return_status as Order["returnStatus"]) ?? undefined,
   };
 };
 

@@ -15,8 +15,10 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
+import { waLink, productWaMessage } from "@/lib/whatsapp-order";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import StylistChat from "@/components/stylist/stylist-chat";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useGuardedAdd } from "@/lib/use-guarded-add";
 import {
@@ -31,18 +33,23 @@ import {
   IconMapPin,
   IconMinus,
   IconPlus,
+  IconSend,
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function PurchasePanel({ product }: { product: Product }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { openBag } = useCart();
-  const { shops } = useLiveCatalog();
+  const { products, shops } = useLiveCatalog();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
   const router = useRouter();
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
+  /* P1 #16: the stylist chat hands off to these drawers — one at a time,
+     never stacked (the chat closes itself before bumping the key). */
+  const [stylistSignal, setStylistSignal] = useState(0);
+  const [stylistTarget, setStylistTarget] = useState<"finder" | "guide" | null>(null);
 
   /* P0 surfaces: the live flash price, the shopper's saved body, and the price
      this device last saw. All three are read-only overlays on the catalog — the
@@ -72,6 +79,13 @@ export default function PurchasePanel({ product }: { product: Product }) {
    *  a label like " · L" with a dangling separator. */
   const variantLabel =
     [color, hasSizes ? size : ""].filter(Boolean).join(" · ") || "Default";
+
+  /** WhatsApp order (P1 #15): a pre-filled chat for this exact pick. The link
+   *  only exists when the shop has a real BD mobile — a chat to nowhere is
+   *  worse than none. The shop confirms size/stock; COD stays the payment. */
+  const waOrderHref = shop
+    ? waLink(shop.phone, productWaMessage({ product, variantLabel, qty }, shop, lang))
+    : null;
 
   /**
    * Pre-select the size this body wears when we already know it — after mount,
@@ -178,20 +192,32 @@ export default function PurchasePanel({ product }: { product: Product }) {
       </h1>
 
       {shop && (
-        <p className="mt-3 text-sm text-ink-soft">
-          {t("shops.soldBy")}{" "}
-          <Link
-            href={`/shops/${shop.slug}`}
-            className="font-medium text-forest-700 underline-offset-2 hover:underline"
-          >
-            {shop.name}
-          </Link>
-          {!isShopOrderable(shop) && (
-            <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
-              {t("shops.closed")}
-            </span>
-          )}
-        </p>
+        <div className="mt-3 text-sm">
+          <p className="text-ink-soft">
+            {t("shops.soldBy")}{" "}
+            <Link
+              href={`/shops/${shop.slug}`}
+              className="font-medium text-forest-700 underline-offset-2 hover:underline"
+            >
+              {shop.name}
+            </Link>
+            {!isShopOrderable(shop) && (
+              <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
+                {t("shops.closed")}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
+            <span>{t("shops.prepIn").replace("{min}", String(shop.prepMinutes))}</span>
+            {/* P2 #3: the shop's real rating — approved reviews only. Zero
+                reviews means no stars, never a seed. */}
+            {shop.ratingCount > 0 && (
+              <span aria-label={`Rated ${shop.ratingAvg.toFixed(1)} out of 5 from ${shop.ratingCount} reviews`}>
+                ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})
+              </span>
+            )}
+          </p>
+        </div>
       )}
       {shopClosed && (
         <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
@@ -303,8 +329,29 @@ export default function PurchasePanel({ product }: { product: Product }) {
             {t("purchase.size")}
           </p>
           <div className="flex items-center gap-3">
-            <SizeFinder product={product} onPick={(picked) => setSize(picked)} />
-            <SizeGuide product={product} />
+            <SizeFinder
+              product={product}
+              onPick={(picked) => setSize(picked)}
+              autoOpenKey={stylistTarget === "finder" ? stylistSignal : 0}
+            />
+            <SizeGuide
+              product={product}
+              autoOpenKey={stylistTarget === "guide" ? stylistSignal : 0}
+            />
+            <StylistChat
+              product={product}
+              catalog={products}
+              shop={shop ?? null}
+              onUseSize={(picked) => setSize(picked)}
+              onOpenSizeFinder={() => {
+                setStylistTarget("finder");
+                setStylistSignal((k) => k + 1);
+              }}
+              onOpenSizeGuide={() => {
+                setStylistTarget("guide");
+                setStylistSignal((k) => k + 1);
+              }}
+            />
           </div>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -413,6 +460,24 @@ export default function PurchasePanel({ product }: { product: Product }) {
           {t("purchase.buyNow")}
         </button>
       </div>
+
+      {/* WhatsApp order — pre-filled chat, shop confirms, COD unchanged */}
+      {waOrderHref ? (
+        <div className="mt-3">
+          <a
+            href={waOrderHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="whatsapp-order"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-sm bg-paper text-sm font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
+          >
+            <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
+          </a>
+          <p className="mt-1.5 text-center text-xs text-ink-soft">
+            {t("purchase.whatsAppHint")}
+          </p>
+        </div>
+      ) : null}
 
       {feedback && (
         <p

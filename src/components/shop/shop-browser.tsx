@@ -29,7 +29,7 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 type CategoryFilter = "all" | CategoryId;
-type SortKey = "featured" | "newest" | "price-asc" | "price-desc";
+type SortKey = "featured" | "newest" | "best" | "price-asc" | "price-desc";
 
 /** Static price band bounds — labels come from translations so BN shows pure Bangla. */
 const PRICE_BAND_DEFS: {
@@ -125,6 +125,7 @@ export default function ShopBrowser({
   const SORTS: { key: SortKey; label: string }[] = [
     { key: "featured", label: t("shopBrowser.featured") },
     { key: "newest", label: t("shopBrowser.newest") },
+    { key: "best", label: t("shopBrowser.bestSellers") },
     { key: "price-asc", label: t("shopBrowser.priceLowHigh") },
     { key: "price-desc", label: t("shopBrowser.priceHighLow") },
   ];
@@ -217,6 +218,14 @@ export default function ShopBrowser({
       case "newest":
         sorted.sort(
           (a, b) => Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
+        );
+        break;
+      case "best":
+        // P2 #1 — real sales from v_product_sales; rows without a live sales
+        // figure (launch catalog) sort after every product that has one.
+        sorted.sort(
+          (a, b) =>
+            (b.p.unitsSold ?? -1) - (a.p.unitsSold ?? -1) || a.index - b.index,
         );
         break;
       case "price-asc":

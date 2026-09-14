@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Product } from "@/lib/catalog";
 import Drawer from "@/components/ui/drawer";
@@ -83,8 +83,23 @@ export function InlineSizeGuide({ product }: { product: Product }) {
   );
 }
 
-export default function SizeGuide({ product }: { product: Product }) {
+export default function SizeGuide({
+  product,
+  autoOpenKey,
+}: {
+  product: Product;
+  /** Bump to open the drawer (stylist chat handoff). */
+  autoOpenKey?: number;
+}) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenKey && autoOpenKey > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate signal from the stylist chat (its dialog is already closed)
+      setOpen(true);
+    }
+  }, [autoOpenKey]);
+
   return (
     <>
       <button

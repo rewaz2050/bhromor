@@ -37,6 +37,7 @@ interface Draft {
   priceTaka: string;
   compareTaka: string;
   stock: string;
+  warrantyDays: string;
   featured: boolean;
   isNew: boolean;
   status: "draft" | "published";
@@ -70,6 +71,7 @@ const draftFrom = (p?: Product | null): Draft => ({
   priceTaka: p ? String(p.price / 100) : "",
   compareTaka: p?.compareAtPrice ? String(p.compareAtPrice / 100) : "",
   stock: p?.stock != null ? String(p.stock) : p ? (p.inStock ? (p.lowStock ? "3" : "12") : "0") : "",
+  warrantyDays: p?.warrantyDays != null ? String(p.warrantyDays) : "",
   featured: p?.featured ?? false,
   isNew: p?.isNew ?? true,
   status: p?.status ?? "draft",
@@ -201,6 +203,11 @@ export default function ProductEditor({
     }
     if (draft.stock.trim() && !Number.isFinite(Number(draft.stock)))
       return "Stock must be a number.";
+    if (draft.warrantyDays.trim()) {
+      const w = Number(draft.warrantyDays);
+      if (!Number.isInteger(w) || w < 1 || w > 365)
+        return "Warranty must be a whole number of days, 1–365 (or leave blank).";
+    }
     if (!draft.category) return "Pick a category.";
     if (draft.media.length === 0) return "Add at least one product image.";
     if (!draft.media.some((m) => m.kind === "image")) {
@@ -261,6 +268,10 @@ export default function ProductEditor({
       inStock: stock > 0,
       lowStock: stock > 0 && stock <= 5,
       stock,
+      warrantyDays:
+        draft.warrantyDays.trim() === ""
+          ? undefined
+          : Number(draft.warrantyDays),
       media: draft.media.filter((m) => m.src.trim()),
       video: extractYoutubeId(draft.youtube)
         ? { youtubeId: extractYoutubeId(draft.youtube)!, label: draft.youtubeLabel.trim() || "Watch product video" }
@@ -526,6 +537,22 @@ export default function ProductEditor({
               onChange={(e) => set("stock", e.target.value)}
             />
             <span className={hint}>0 = out of stock; 1–5 triggers the low-stock badge (§58).</span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Warranty (days)</span>
+            <input
+              className={`${field} max-w-40`}
+              type="number"
+              min="1"
+              max="365"
+              step="1"
+              value={draft.warrantyDays}
+              onChange={(e) => set("warrantyDays", e.target.value)}
+            />
+            <span className={hint}>
+              Leave blank for no warranty. Set on accessories the shop warrants (e.g. 30) —
+              claimants get that many days from delivery (§14).
+            </span>
           </label>
         </div>
       </section>

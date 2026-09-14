@@ -44,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 342 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 446 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -81,7 +81,7 @@ All motion stays inside the existing tokens (`--motion-*`, `--ease-refined`) and
 
 ## Pages
 
-Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Wishlist · About · Contact · FAQ · Delivery info · Returns · Privacy · Terms · 404.
+Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Live shopping (`/live` — the shop's own stream with the on-air pieces one tap from the bag) · Wishlist · About · Contact (channels render only when the shop configured them) · FAQ · Delivery info · Returns · Privacy · Terms · 404.
 
 **Admin** (`/admin` — always real, gated by Supabase staff auth):
 
@@ -101,8 +101,9 @@ Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated
 - Notifications: §35 per-staff inbox fed by real order/review/application/message/signup events, plus a live “needs attention” summary
 - Messages: contact-form inbox — read/reply triage with click-to-call phone links
 - Newsletter: table-based subscriber list with search, CSV export and per-subscriber unsubscribe links (no third party)
-- Settings: low-stock threshold (§58) saved live; platform constants (§68–70). There are no demo-data reset controls — live data is never reset.
-- Payments: launch is **Cash on Delivery only** (§20–21, §26) with a live COD book; bKash/Nagad/cards listed as next-phase methods — no fake gateway wiring
+- Payments: COD stays the default; **bKash/Nagad into the shop's OWN wallet** — no merchant account, no API key: the customer sends the total and shares the TRXID, the shop verifies/rejects per order (fulfilment is gated until verified), with a live COD book on the same page. Cards still need a PSP.
+- Live shopping: schedule a session (title, when, the shop's live link, pieces in on-air order), Start/End, tap the on-air piece — the storefront embeds a YouTube link in place or links out to any other platform. "LIVE" only shows between the shop's own taps.
+- Settings: low-stock threshold (§58) + contact channels (phone/WhatsApp/email — blank = hidden, never a placeholder) saved live; platform constants (§68–70). There are no demo-data reset controls — live data is never reset.
 
 Every admin domain reads and writes Postgres through Supabase — see **[docs/go-live.md](docs/go-live.md)** for the owner-run setup checklist (SQL → seed → staff grant → verify).
 
@@ -139,7 +140,8 @@ src/
 │   │   ├── notifications/    # §35 inbox + bell + live attention
 │   │   ├── reports/          # sales reports over the order store
 │   │   ├── settings/         # ops settings (§58)
-│   │   └── payments/         # COD-only policy + method roadmap
+│   │   ├── live/             # live shopping control room (P1 #9)
+│   │   └── payments/         # wallet numbers + COD book + pending verifications
 │   └── rider/                # mobile rider surface (login/apply/shell)
 │       ├── page.tsx          # live jobs, PIN proof, COD settlement
 │       ├── login/            # rider Auth sign-in / sign-up

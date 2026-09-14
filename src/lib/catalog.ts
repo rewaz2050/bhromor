@@ -38,6 +38,13 @@ export interface Product {
   isNew: boolean;
   inStock: boolean;
   lowStock?: boolean;
+  /**
+   * P2 #1 — eligible units sold from the live orders table
+   * (v_product_sales: non-cancelled order units minus refunded returns).
+   * Present on live catalog rows only; the static launch catalog has no
+   * sales history, so the badge must stay hidden when it is absent.
+   */
+  unitsSold?: number;
   media: ProductMedia[];
   video?: { youtubeId: string; label: string }; // future: YouTube preview UI
   rating: number;
@@ -49,6 +56,11 @@ export interface Product {
   status?: "draft" | "published";
   active?: boolean;
   stock?: number;
+  /**
+   * P1 #14 — warranty period in days (shop-managed, set on accessories).
+   * Absent/null = no warranty on this item; nothing is warranted by default.
+   */
+  warrantyDays?: number;
   seo?: { title?: string; description?: string };
   /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
       implicitly belong to shop #1, so rows may omit it. */
@@ -190,8 +202,8 @@ export const PRODUCTS: Product[] = [
     isNew: true,
     inStock: true,
     lowStock: false,
-    rating: 4.8,
-    reviewCount: 42,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -233,8 +245,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.7,
-    reviewCount: 28,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -270,8 +282,8 @@ export const PRODUCTS: Product[] = [
     isNew: false,
     inStock: true,
     lowStock: true,
-    rating: 4.6,
-    reviewCount: 61,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "sale",
     media: [
       {
@@ -306,8 +318,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.9,
-    reviewCount: 37,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -349,8 +361,8 @@ export const PRODUCTS: Product[] = [
     featured: false,
     isNew: true,
     inStock: true,
-    rating: 4.7,
-    reviewCount: 19,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {
@@ -384,8 +396,8 @@ export const PRODUCTS: Product[] = [
     featured: false,
     isNew: false,
     inStock: true,
-    rating: 4.5,
-    reviewCount: 54,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     media: [
       {
         src: "/images/products/lungi.jpg",
@@ -423,8 +435,8 @@ export const PRODUCTS: Product[] = [
     featured: true,
     isNew: true,
     inStock: true,
-    rating: 4.6,
-    reviewCount: 33,
+    rating: 0, // 0 until genuine reviews exist (see db/mappers.ts)
+    reviewCount: 0, // never seeded
     badge: "new",
     media: [
       {

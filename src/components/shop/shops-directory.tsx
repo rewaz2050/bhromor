@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { useMemo } from "react";
 import type { DeliveryZone, Shop } from "@/lib/catalog";
@@ -8,9 +10,13 @@ import { IconTruck } from "@/components/ui/icons";
 import ShopCard from "./shop-card";
 
 /**
- * Shops directory grid (marketplace slice 4). With a zone picked, serving
- * shops float to the top; the rest stay visible with an honest badge —
- * hiding them would look like the platform has one shop.
+ * Shops directory grid (marketplace slice 4). Client component: it reads
+ * the visitor's language and picked delivery zone (both client state), so
+ * the /shops page passes it plain serializable data as props.
+ *
+ * With a zone picked, serving shops float to the top; the rest stay
+ * visible with an honest badge — hiding them would look like the
+ * platform has one shop.
  */
 export default function ShopsDirectory({
   shops,

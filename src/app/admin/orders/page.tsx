@@ -184,6 +184,11 @@ export default function AdminOrdersPage() {
                       </Link>
                       <p className="mt-0.5 text-xs text-ink-soft">
                         {friendlyWhen(o.createdAt)}
+                        {o.isReturn && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-amber-900">
+                            Return · {o.returnStatus ?? "requested"}
+                          </span>
+                        )}
                       </p>
                     </td>
                     <td className="px-5 py-3.5">
@@ -202,9 +207,28 @@ export default function AdminOrdersPage() {
                       {formatBdt(o.total)}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className="rounded-full bg-ivory-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-soft">
-                        COD
-                      </span>
+                      {o.payment && o.payment !== "cod" ? (
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide ${
+                            o.paymentStatus === "pending_verification" && o.status !== "cancelled"
+                              ? "bg-amber-100 text-amber-900"
+                              : o.paymentStatus === "verified"
+                                ? "bg-emerald-100 text-emerald-900"
+                                : "bg-rose-100 text-rose-800"
+                          }`}
+                        >
+                          {o.payment === "bkash" ? "bKash" : "Nagad"}
+                          {o.paymentStatus === "pending_verification" && o.status !== "cancelled"
+                            ? " · verify"
+                            : o.paymentStatus === "verified"
+                              ? " ✓"
+                              : " · rejected"}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-ivory-100 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-soft">
+                          COD
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <Link href={`/admin/orders/${o.id}`}>

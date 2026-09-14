@@ -30,7 +30,7 @@ import type { BundleConfig, FlashConfig, FlashScope } from "@/lib/promos";
 import type { GiftConfig } from "@/lib/gift";
 import type { ReferralConfig } from "@/lib/referral";
 import { field, hint, label } from "@/components/admin/form-ui";
-import { IconBolt, IconCheck, IconGift, IconTag, IconTrendDown, IconUser } from "@/components/ui/icons";
+import { IconBell, IconBolt, IconCheck, IconGift, IconTag, IconTrendDown, IconUser } from "@/components/ui/icons";
 
 const taka = (paisa: number): string => String(paisa / 100);
 const toPaisa = (raw: string, fallback: number): number => {
@@ -600,6 +600,47 @@ export default function AdminGrowthPage() {
         <p className={hint}>
           When a price is saved lower than before, this list also arrives in the staff inbox once —
           no duplicate nagging for the same price.
+        </p>
+      </Card>
+
+      {/* ---------------- Waiting for a restock ---------------- */}
+      <Card
+        title="Waiting for a restock"
+        sub="Pieces that sold out with a call list attached. The inbox note arrives the moment one of these is flipped back in stock."
+        icon={<IconBell className="h-5 w-5" />}
+      >
+        {growth.loading ? (
+          <p className="text-sm text-ink-soft">Loading…</p>
+        ) : growth.stockWatches.length === 0 ? (
+          <p className="text-sm text-ink-soft">
+            Nobody is waiting on an out-of-stock piece right now.
+          </p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {growth.stockWatches.map((w) => (
+              <li key={w.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                <span className="min-w-0 flex-1 truncate">{w.productName || w.productId}</span>
+                <a
+                  href={`tel:${w.phone}`}
+                  className="font-mono text-xs text-forest-800 underline underline-offset-2"
+                >
+                  {w.phone}
+                </a>
+                <span className="text-xs text-ink-soft">
+                  since {new Date(w.createdAt).toISOString().slice(0, 10)}
+                </span>
+                {w.lastNotifiedAt ? (
+                  <span className="text-xs text-ink-soft">
+                    · notified {new Date(w.lastNotifiedAt).toISOString().slice(0, 10)}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className={hint}>
+          Same rule as price drops: a restock note goes to the staff inbox once per
+          out-of-stock → in-stock flip — a piece that sells out again later earns a new one.
         </p>
       </Card>
     </div>

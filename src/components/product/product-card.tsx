@@ -177,6 +177,13 @@ export default function ProductCard({ product }: { product: Product }) {
             compareAt={flash.was ?? product.compareAtPrice}
             size="sm"
           />
+          {/* P2 #1 — real sales only: the count comes from the orders table
+              (v_product_sales). No figure, no line — never an invented rank. */}
+          {product.unitsSold != null && product.unitsSold > 0 && (
+            <p className="mt-1 text-[0.68rem] font-medium text-ink-soft">
+              {t("product.sold").replace("{count}", String(product.unitsSold))}
+            </p>
+          )}
           {drop ? (
             <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
               <IconTrendDown className="h-3 w-3" />

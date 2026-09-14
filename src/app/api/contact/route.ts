@@ -1,10 +1,15 @@
 /**
- * POST /api/contact — public contact-message intake.
+ * /api/contact — the shop's contact surface.
  *
- * Live: validates → stores a row in contact_messages → fans a notice to
- * the staff inbox. Unconfigured backends answer 503 after validating
- * so the form behaves identically.
- * the message instead.
+ * POST — public contact-message intake: validates → stores a row in
+ * contact_messages → fans a notice to the staff inbox. Unconfigured
+ * backends answer 503 after validating so the form behaves identically.
+ *
+ * GET — the shop's real contact channels (phone / WhatsApp / email) from
+ * the ops settings. Every value is either a number the shop actually saved
+ * or null — the storefront renders a channel only when it is configured, so
+ * a visitor never sees a placeholder phone or a made-up inbox. 503 when the
+ * backend is unconfigured; the pages then show only what can be real.
  */
 
 import {
@@ -18,6 +23,42 @@ import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const db = getSupabaseService();
+  if (!db) return apiError("Contact details are temporarily unavailable.", 503);
+  try {
+    const { data, error } = await db
+      .from("site_settings")
+      .select("value")
+      .eq("key", "ops")
+      .maybeSingle();
+    if (error) return apiError("Contact details are temporarily unavailable.", 503);
+    const ops = (data?.value ?? {}) as Record<string, unknown>;
+    const contact = (ops.contact ?? {}) as Record<string, unknown>;
+    const mobile = (v: unknown): string | null => {
+      let digits = typeof v === "string" ? v.replace(/\D/g, "") : "";
+      if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
+      return BD_MOBILE.test(digits) ? digits : null;
+    };
+    const emailRaw =
+      typeof contact.email === "string" ? contact.email.trim().toLowerCase() : "";
+    return apiJson({
+      phone: mobile(contact.phone),
+      whatsapp: mobile(contact.whatsapp) ?? mobile(contact.phone),
+      email:
+        emailRaw.length >= 5 &&
+        emailRaw.length <= 254 &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)
+          ? emailRaw
+          : null,
+    });
+  } catch {
+    return apiError("Contact details are temporarily unavailable.", 503);
+  }
+}
+
+const BD_MOBILE = /^01\d{9}$/;
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
@@ -37,7 +78,9 @@ export async function POST(request: Request) {
   const checked = validateContact(body);
   if (!checked.ok) {
     const first =
-      checked.errors.name ?? checked.errors.phone ?? checked.errors.message;
+      checked.errors.name ??
+      checked.errors.phone ??
+      checked.errors.message;
     return apiError(first ?? "Invalid message.", 422, {
       fields: checked.errors,
     });

@@ -30,6 +30,19 @@ nothing here needs the sandbox.
 Run **in this order, in one sequence** (skip files you already applied —
 `schema.sql` must NOT be re-run on a database that has these tables):
 
+> **First, find out what is missing.** Run
+> `supabase/diagnose.sql` in the SQL editor — it lists every object with
+> `present = true/false`. A **mix** of true/false means the database is
+> partially applied: apply only the missing files, top to bottom.
+> A fresh project (all false) can instead paste the single pre-ordered
+> `supabase/bootstrap-fresh.sql` — one paste, the whole chain, in-order.
+>
+> **Why a paste can "run" yet save nothing:** each file is wrapped in its own
+> `begin; … commit;`. If any one statement fails (almost always
+> `relation X does not exist` — a file that needs an earlier file's tables),
+> the whole file rolls back, so nothing appears saved. Read the red error —
+> it names the missing relation, and that tells you which file to apply first.
+
 1. `supabase/schema.sql` — only if the project is fresh
 2. `supabase/migrations/202609080001_storefront_saved_items.sql`
 3. `supabase/migrations/202609080002_order_guards.sql`
@@ -66,6 +79,100 @@ Run **in this order, in one sequence** (skip files you already applied —
     `ps_credit_referrer(order_id)`, which mints the referrer's ৳50 as a real
     single-use coupon when the friend's order is delivered. Requires 14 (it
     rewrites the same function). See [docs/growth-levers.md](growth-levers.md).
+16. **`supabase/migrations/202609140001_review_photos.sql`** — P1 #10 UGC:
+    the `review_photos` table (up to 3 photos per review, each a Cloudinary
+    URL or a compressed JPEG data URL). Public reads see photos of approved
+    reviews only — a pending review's photos are hidden by RLS, exactly like
+    the review itself.
+17. **`supabase/migrations/202609140002_return_pickups.sql`** — P1 #13
+    exchange at-home pickup: `ps_return_eligible` (7 days from the proven
+    'delivered' history entry, one live return per parent),
+    `ps_create_return_request` (the zero-charge reverse order via
+    `ps_place_order`), `ps_return_action` (approve → ready-for-pickup so
+    the normal rider dispatch carries the pickup leg; reject → cancelled;
+    complete → refunded), and a trigger that mirrors the rider's
+    pickup/drop events onto `return_status`.
+18. **`supabase/migrations/202609140003_warranty_claims.sql`** — P1 #14
+    warranty claims on accessories: `products.warranty_days` (the shop sets
+    it per product in the product editor — null = nothing warranted), the
+    `warranty_claims` table (admin-only RLS), and `ps_warranty_eligible`
+    (order-bound: the item must be on the order, delivered, inside the
+    warranty window from the proven 'delivered' history entry, and not
+    already claimed). Customers claim from the track page (order number +
+    phone, same proof as tracking); the shop reviews and approves/rejects
+    with a note from the admin order page. After approval, the replacement
+    or refund is the shop's offline handling, recorded in the claim's
+    resolution.
+19. **`supabase/migrations/202609140004_wallet_payments.sql`** — P1 #8
+    bKash/Nagad **without a merchant account**: `orders.payment` widens to
+    `cod|bkash|nagad`, plus `payment_ref` (the customer's TRXID),
+    `payment_status` and `payment_verified_at`. `ps_place_order` accepts the
+    method + TRXID (wallet must be configured in the ops settings),
+    `ps_advance_order` refuses to start fulfilment on an unverified wallet
+    order, and `ps_verify_payment` is the shop's verify/reject decision
+    (reject = cancel + stock released). The shop saves its own wallet numbers
+    in Admin → Payments; a method with no number is never offered at
+    checkout.
+20. **`supabase/migrations/202609140005_live_shopping.sql`** — P1 #9
+    live shopping: `live_sessions` (title, when, the shop's own live URL,
+    scheduled→live→ended state, the one "on air" piece) +
+    `live_session_products` (the pieces, in the order shown). The shop
+    streams on its own platform (YouTube Live, Facebook Live, …) — the site
+    is the shopping surface around that real stream: a YouTube link embeds
+    in place, anything else is a "watch live" link. No video is stored or
+    generated, and "LIVE" only shows between the shop's own Start and End
+    taps.
+21. **`supabase/migrations/202609140006_wallet_delivery_cash.sql`** — P1 #8
+    follow-up: `ps_rider_deliver` is re-created wallet-aware. A COD order
+    still credits the rider's cash_in_hand with the full total at delivery;
+    a bKash/Nagad order credits **zero** (the customer already paid the
+    shop's own wallet at checkout) and the history note says so. Run it
+    AFTER step 19 — it re-creates the delivery-proof function from step 13.
+22. **`supabase/migrations/202609140007_wallet_cancel_payment_settle.sql`** —
+    P1 #8 follow-up: cancelling a wallet order settles its payment. Before
+    this, a bKash/Nagad order cancelled while still `pending_verification`
+    stayed "under verification" on the customer's track page, and the shop
+    could still tap Verify on a cancelled order. Now `ps_advance_order`
+    records the payment as **rejected** when it cancels a pending wallet
+    order, and `ps_verify_payment` refuses to decide on a cancelled order
+    (also covers rows created before this file). Run it AFTER step 19 —
+    it re-creates the two functions from step 19 with these additions.
+23. **`supabase/migrations/202609140008_return_order_restore.sql`** —
+    P1 #13 follow-up: `ps_place_order` re-created with the return-order
+    handling restored. The flat/growth/wallet re-creations (steps 14/15/19)
+    silently dropped the `is_return` mechanics, so customer return requests
+    landed as full-price COD orders that could not be approved and could be
+    requested without limit. This re-creates `ps_place_order` (the step-19
+    wallet version) with zero-charge return orders again: parent must be
+    delivered, no stock re-reservation, no ৳500 minimum, total ৳0, and
+    `is_return`/`return_parent_id`/`return_status='requested'` written so
+    `ps_return_eligible` and `ps_return_action` work. Run it AFTER step 19 —
+    it is the newest version of the same function. If a return request was
+    made before this step, cancel the stray full-price "Return pickup (…)"
+    order from Admin → Orders (its note says so) and ask the customer to
+    request the return again.
+24. **`supabase/migrations/202609140009_product_sales_view.sql`** —
+    P2 #1 best sellers: the `v_product_sales` view — eligible units sold per
+    product (non-cancelled order units minus refunded return units), the
+    only data source the storefront's "Best sellers" sort and "N sold" card
+    badges may use. Read-only (granted to the service role for the catalog
+    API); no order of application relative to the others, but it needs the
+    base `orders`/`order_items`/return columns, so run it after the P1 files.
+25. **`supabase/migrations/202609140010_stock_watches.sql`** —
+    P2 #2 back-in-stock alerts: the `stock_watches` table (one row per
+    product + phone). Written by the product-page form through
+    `/api/stock-watch`; staff read it in Admin → Growth, and the moment a
+    product is flipped back in stock the call list lands in the staff
+    inbox once. Needs the base `products` table, so run it after the P1
+    files.
+26. **`supabase/migrations/202609140011_shop_rating_trigger.sql`** —
+    P2 #3 shop ratings: the `ps_shop_rating_recompute` function + the
+    trigger that keeps `shops.rating_avg`/`rating_count` equal to the
+    average over APPROVED reviews. The storefront already renders the
+    stars (shop card, shop page, PDP chip) — this is what finally feeds
+    them. Needs `reviews.shop_id` (step 4), so run it after the
+    marketplace migration. It also backfills the numbers for reviews
+    that pre-date the trigger.
 
 Quick check after step 11 (SQL editor):
 

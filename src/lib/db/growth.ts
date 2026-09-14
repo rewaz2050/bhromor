@@ -35,7 +35,9 @@ type DbWatch = {
   products?: { name: string } | { name: string }[] | null;
 };
 
-const productNameOf = (row: DbWatch): string => {
+const productNameOf = (row: {
+  products?: { name: string } | { name: string }[] | null;
+}): string => {
   const joined = row.products;
   if (!joined) return "";
   const first = Array.isArray(joined) ? joined[0] : joined;
@@ -130,6 +132,111 @@ export async function flagPriceDropForStaff(
   await db
     .from("price_watches")
     .update({ last_notified_paisa: input.toPaisa })
+    .in("id", rows.map((r) => r.id));
+  return rows.length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Back-in-stock watches (P2 #2)                                       */
+/* ------------------------------------------------------------------ */
+
+export interface StockWatchRow {
+  id: string;
+  productId: string;
+  productName: string;
+  phone: string;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+}
+
+type DbStockWatch = {
+  id: string;
+  product_id: string;
+  phone: string;
+  last_notified_at: string | null;
+  created_at: string;
+  products?: { name: string } | { name: string }[] | null;
+};
+
+/** One row per (product, phone) — asking twice refreshes, never duplicates. */
+export async function createStockWatch(
+  db: SupabaseClient,
+  input: { productId: string; phone: string },
+): Promise<void> {
+  const phone = normalizePhone(input.phone);
+  const { error } = await db
+    .from("stock_watches")
+    .upsert(
+      { product_id: input.productId, phone },
+      { onConflict: "product_id,phone" },
+    );
+  if (error) throw new Error("stock watch write failed");
+}
+
+export async function deleteStockWatch(
+  db: SupabaseClient,
+  input: { productId: string; phone: string },
+): Promise<void> {
+  const phone = normalizePhone(input.phone);
+  const { error } = await db
+    .from("stock_watches")
+    .delete()
+    .eq("product_id", input.productId)
+    .eq("phone", phone);
+  if (error) throw new Error("stock watch delete failed");
+}
+
+export async function listStockWatches(
+  db: SupabaseClient,
+  productId?: string,
+): Promise<StockWatchRow[]> {
+  let query = db
+    .from("stock_watches")
+    .select("id,product_id,phone,last_notified_at,created_at,products(name)")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (productId) query = query.eq("product_id", productId);
+  const { data, error } = await query;
+  if (error) return [];
+  return ((data ?? []) as DbStockWatch[]).map((row) => ({
+    id: row.id,
+    productId: row.product_id,
+    productName: productNameOf(row),
+    phone: row.phone,
+    lastNotifiedAt: row.last_notified_at,
+    createdAt: row.created_at,
+  }));
+}
+
+/**
+ * A product came back in stock: hand staff the list to call. The caller only
+ * fires this on a real out-of-stock → in-stock transition (admin.ts), so one
+ * restock = one inbox note; a product that sells out again later earns a new
+ * note — that is a real new event, not a nag. Never throws.
+ */
+export async function flagRestockForStaff(
+  db: SupabaseClient,
+  input: { productId: string; productName: string },
+): Promise<number> {
+  const { data, error } = await db
+    .from("stock_watches")
+    .select("id,phone")
+    .eq("product_id", input.productId);
+  if (error) return 0;
+  const rows = (data ?? []) as { id: string; phone: string }[];
+  if (rows.length === 0) return 0;
+  await notifyStaff(db, {
+    kind: "system",
+    title: `স্টক ফিরেছে — ${input.productName}`,
+    body: `${rows.length} জন কাস্টমার অপেক্ষা করছেন — ফোন করুন: ${rows
+      .slice(0, 8)
+      .map((r) => r.phone)
+      .join(", ")}`,
+    href: "/admin/growth",
+  });
+  await db
+    .from("stock_watches")
+    .update({ last_notified_at: new Date().toISOString() })
     .in("id", rows.map((r) => r.id));
   return rows.length;
 }

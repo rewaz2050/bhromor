@@ -133,7 +133,7 @@ export function ReferralCard({ className = "" }: { className?: string }) {
         {t("referral.intro")}
       </h3>
       <p className="mt-2 text-sm leading-7 text-ink-soft">
-        {t("referral.rewarded")
+        {t("referral.rewardDetail")
           .replace("{you}", formatBdt(data.referrerRewardPaisa))
           .replace("{them}", formatBdt(data.friendRewardPaisa))}
         {data.minOrderPaisa > 0 ? (

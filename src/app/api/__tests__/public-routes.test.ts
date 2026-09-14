@@ -22,6 +22,8 @@ vi.mock("@/lib/db/orders", async () => {
 
 import { POST as validateCoupon } from "../coupons/validate/route";
 import { GET as getReviews, POST as postReview } from "../reviews/route";
+import { POST as postReturn } from "../returns/route";
+import { GET as getWarranty, POST as postWarranty } from "../warranty/route";
 import { bdt } from "@/lib/format";
 import { __resetRateLimits } from "@/lib/rate-limit";
 
@@ -100,6 +102,19 @@ describe("reviews routes (unconfigured backend)", () => {
     );
     expect(res.status).toBe(503);
   });
+
+  it("POST with customer photos also answers 503, not a fake success", async () => {
+    const res = await postReview(
+      req({
+        productId: "p1",
+        author: "Test",
+        rating: 5,
+        body: "Lovely fabric, fits well on me.",
+        photos: ["data:image/jpeg;base64," + "A".repeat(500)],
+      }),
+    );
+    expect(res.status).toBe(503);
+  });
 });
 
 describe("GET /api/products without a configured backend", () => {
@@ -107,6 +122,107 @@ describe("GET /api/products without a configured backend", () => {
     const { GET } = await import("../products/route");
     const res = await GET();
     expect(res.status).toBe(503);
+  });
+});
+
+describe("returns route (P1 #13, unconfigured backend)", () => {
+  it("POST answers 503 — no fake pickup without a live backend", async () => {
+    const res = await postReturn(
+      new Request("http://localhost/api/returns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "PS-20260901-0001",
+          phone: "01712345678",
+          reason: "size",
+          details: "A bit tight across the chest.",
+        }),
+      }),
+    );
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("live shopping route (P1 #9, unconfigured backend)", () => {
+  // No backend → no live UI at all. The storefront treats 503 as
+  // "nothing to show" — it must never become a fake LIVE badge.
+  it("GET /api/live answers 503", async () => {
+    const { GET } = await import("../live/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("contact route (unconfigured backend)", () => {
+  // No backend → no contact details at all; the pages then show only what
+  // can be real (the message form), never a placeholder number.
+  it("GET /api/contact answers 503", async () => {
+    const { GET } = await import("../contact/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("payments route (P1 #8, unconfigured backend)", () => {
+  // The storefront contract: without a live ops-settings read, checkout
+  // falls back to COD only — the 503 must never surface as an error page.
+  it("GET /api/payments answers 503 — checkout then offers COD only", async () => {
+    const { GET } = await import("../payments/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("warranty routes (P1 #14, unconfigured backend)", () => {
+  it("POST answers 503 — no fake claim without a live backend", async () => {
+    const res = await postWarranty(
+      new Request("http://localhost/api/warranty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "PS-20260901-0001",
+          phone: "01712345678",
+          productId: "0e0f1c2a-1111-4aaa-8bbb-000000000001",
+          problem: "The zipper stopped closing after two days.",
+        }),
+      }),
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it("GET answers an empty claim list — the status view is honest, not fake", async () => {
+    const res = await getWarranty(
+      new Request(
+        "http://localhost/api/warranty?id=PS-20260901-0001&phone=01712345678",
+      ),
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { claims: unknown[] };
+    expect(data.claims).toEqual([]);
+  });
+
+  it("POST rate-limits at 10/min per IP", async () => {
+    const body = {
+      id: "PS-20260901-0001",
+      phone: "01712345678",
+      productId: "0e0f1c2a-1111-4aaa-8bbb-000000000001",
+      problem: "The zipper stopped closing after two days.",
+    };
+    const mk = () =>
+      new Request("http://localhost/api/warranty", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-forwarded-for": "10.8.8.8",
+        },
+        body: JSON.stringify(body),
+      });
+    for (let i = 0; i < 10; i += 1) {
+      const res = await postWarranty(mk());
+      expect(res.status).toBe(503);
+    }
+    const limited = await postWarranty(mk());
+    expect(limited.status).toBe(429);
   });
 });
 
