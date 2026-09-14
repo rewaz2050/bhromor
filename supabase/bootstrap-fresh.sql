@@ -1,6 +1,6 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
--- Generated from schema.sql + the 31 in-order migrations.
+-- Generated from schema.sql + the 32 in-order migrations.
 --
 -- WHEN TO USE THIS FILE:
 --   Only on a FRESH Supabase project (no PROSANTI tables yet).
@@ -6429,5 +6429,59 @@ create policy "stock watch public insert" on stock_watches
 drop policy if exists "admin all stock watches" on stock_watches;
 create policy "admin all stock watches" on stock_watches
   for all using (ps_is_admin()) with check (ps_is_admin());
+
+commit;
+
+begin;
+
+-- Full recompute for one shop. Cheap: reviews per shop are small, and this
+-- only runs when a review is written, changes status, or is deleted.
+create or replace function ps_shop_rating_recompute(p_shop_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  update shops
+  set rating_avg = coalesce(
+        (select round(avg(r.rating)::numeric, 2)
+           from reviews r
+          where r.shop_id = p_shop_id and r.status = 'approved'), 0),
+      rating_count = coalesce(
+        (select count(*)
+           from reviews r
+          where r.shop_id = p_shop_id and r.status = 'approved'), 0)
+  where id = p_shop_id;
+end;
+$$;
+
+create or replace function ps_reviews_shop_rating()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if coalesce(new.shop_id, old.shop_id) is not null then
+    perform ps_shop_rating_recompute(coalesce(new.shop_id, old.shop_id));
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_reviews_shop_rating on reviews;
+create trigger trg_reviews_shop_rating
+after insert or update of status, rating, shop_id or delete
+on reviews
+for each row
+execute function ps_reviews_shop_rating();
+
+-- Backfill: any approved review written before the trigger existed.
+do $$
+declare
+  s record;
+begin
+  for s in select id from shops loop
+    perform ps_shop_rating_recompute(s.id);
+  end loop;
+end;
+$$;
 
 commit;

@@ -165,6 +165,14 @@ Run **in this order, in one sequence** (skip files you already applied —
     product is flipped back in stock the call list lands in the staff
     inbox once. Needs the base `products` table, so run it after the P1
     files.
+26. **`supabase/migrations/202609140011_shop_rating_trigger.sql`** —
+    P2 #3 shop ratings: the `ps_shop_rating_recompute` function + the
+    trigger that keeps `shops.rating_avg`/`rating_count` equal to the
+    average over APPROVED reviews. The storefront already renders the
+    stars (shop card, shop page, PDP chip) — this is what finally feeds
+    them. Needs `reviews.shop_id` (step 4), so run it after the
+    marketplace migration. It also backfills the numbers for reviews
+    that pre-date the trigger.
 
 Quick check after step 11 (SQL editor):
 

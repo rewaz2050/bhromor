@@ -56,7 +56,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('28b', 'P1 wallet cash: verify refuses cancelled', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_verify_payment|order already cancelled'),
   ('29',  'P1 returns: zero-charge return orders restored', '202609140008_return_order_restore.sql', 'function_src', 'ps_place_order|return_parent_id required'),
   ('30',  'P2 best sellers: real sales view', '202609140009_product_sales_view.sql', 'view', 'v_product_sales'),
-  ('31',  'P2 restock alerts: stock watches', '202609140010_stock_watches.sql', 'table', 'stock_watches')
+  ('31',  'P2 restock alerts: stock watches', '202609140010_stock_watches.sql', 'table', 'stock_watches'),
+  ('32',  'P2 shop ratings: rating recompute', '202609140011_shop_rating_trigger.sql', 'function', 'ps_shop_rating_recompute')
 )
 select step as ord,
        label,

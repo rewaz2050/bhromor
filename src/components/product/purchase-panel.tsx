@@ -192,20 +192,32 @@ export default function PurchasePanel({ product }: { product: Product }) {
       </h1>
 
       {shop && (
-        <p className="mt-3 text-sm text-ink-soft">
-          {t("shops.soldBy")}{" "}
-          <Link
-            href={`/shops/${shop.slug}`}
-            className="font-medium text-forest-700 underline-offset-2 hover:underline"
-          >
-            {shop.name}
-          </Link>
-          {!isShopOrderable(shop) && (
-            <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
-              {t("shops.closed")}
-            </span>
-          )}
-        </p>
+        <div className="mt-3 text-sm">
+          <p className="text-ink-soft">
+            {t("shops.soldBy")}{" "}
+            <Link
+              href={`/shops/${shop.slug}`}
+              className="font-medium text-forest-700 underline-offset-2 hover:underline"
+            >
+              {shop.name}
+            </Link>
+            {!isShopOrderable(shop) && (
+              <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
+                {t("shops.closed")}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-ink-soft">
+            <span>{t("shops.prepIn").replace("{min}", String(shop.prepMinutes))}</span>
+            {/* P2 #3: the shop's real rating — approved reviews only. Zero
+                reviews means no stars, never a seed. */}
+            {shop.ratingCount > 0 && (
+              <span aria-label={`Rated ${shop.ratingAvg.toFixed(1)} out of 5 from ${shop.ratingCount} reviews`}>
+                ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})
+              </span>
+            )}
+          </p>
+        </div>
       )}
       {shopClosed && (
         <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">

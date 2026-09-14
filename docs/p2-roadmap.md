@@ -11,7 +11,7 @@ external dependency that doesn't exist yet.
 |---|---------|-------|-------|
 | 1 | **Best sellers from real orders** | ✅ Shipped 2026-09-14 | `v_product_sales` view + "Best sellers" sort + "N sold" card badges; the sales ranking storefront-phase-two.md deferred on purpose |
 | 2 | Back-in-stock alerts | ✅ Shipped 2026-09-14 | price-watch's sibling: watch an OUT-OF-STOCK piece, staff gets the number when stock is restocked (same honest "shop calls" mechanism — no SMS sender in this stack) |
-| 3 | Shop ratings from approved reviews | ⏳ Queued | blueprint §2 "reviews extend to shop ratings": per-shop average over APPROVED reviews only, shown on shop page + PDP; 0 reviews = no stars, never a seed |
+| 3 | Shop ratings from approved reviews | ✅ Shipped 2026-09-14 | blueprint §2 "reviews extend to shop ratings": the trigger maintains `shops.rating_avg/rating_count` from APPROVED reviews only; the storefront (already wired) shows stars on shop card / shop page / PDP chip; 0 reviews = no stars, never a seed |
 | 4 | Admin best-sellers in Reports | ⏳ Queued | the same view, server-side top list on Admin → Reports (units, revenue, trend) so the shop sees what the storefront shows |
 
 **Deliberately NOT in P2** (they need things that don't exist yet — listed
@@ -95,3 +95,34 @@ same way PROSANTI already confirms orders.
   inbox, no-watchers no-op, broken-read non-fatal), route (201/422/503/
   429 + delete targeting), component (absent when in stock, form records
   the number, failure is shown).
+
+---
+
+## #3 — Shop ratings from approved reviews (shipped)
+
+Blueprint §2 said reviews "extend to shop ratings": `shops.rating_avg` /
+`rating_count` were built in `202609090004` (with `reviews.shop_id`
+denormalized + backfilled), the `Shop` mapper already carried
+`ratingAvg/ratingCount`, and the storefront already rendered stars on the
+shop card, the shop-page hero and (now) the PDP shop chip — **all gated on
+`ratingCount > 0`**. The only missing half was the writer: nothing ever
+updated the columns, so every shop sat at 0 forever.
+
+- **DB (`202609140011_shop_rating_trigger.sql`)** —
+  `ps_shop_rating_recompute(shop_id)` sets `rating_avg` (round(avg, 2))
+  and `rating_count` over **`status = 'approved'` reviews only**; a
+  per-row trigger on `reviews` (insert / update of status, rating,
+  shop_id / delete) runs it, plus a backfill loop for reviews that
+  pre-date the trigger.
+- **What counts:** approve a review → the shop's number moves; hide or
+  re-approve later → it moves again, so moderation stays the single
+  switch. Pending/hidden/flagged reviews never count.
+- **Honesty:** a shop with zero approved reviews stays at 0 → no stars
+  anywhere (the storefront gate). There is no seed, no default 5.0, no
+  "first review is 5" — a new shop is simply unrated until the first
+  approved review exists.
+- **PDP chip** — the "Sold by" line now also carries prep time + the
+  rating (★ 4.6 (12)) per blueprint §2.5.
+- **Tests** — PDP chip (rating shown for a rated shop; no stars for a
+  zero-review shop). The trigger itself is database-side and is verified
+  by `diagnose.sql` step 32 + the first real moderation in the admin.
