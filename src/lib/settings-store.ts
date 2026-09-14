@@ -17,6 +17,12 @@ import {
 } from "./promos";
 import { GIFT_DEFAULTS, sanitizeGift, type GiftConfig } from "./gift";
 import { REFERRAL_DEFAULTS, sanitizeReferral, type ReferralConfig } from "./referral";
+import {
+  CAMPAIGN_DEFAULTS,
+  sanitizeCampaign,
+  type CampaignConfig,
+} from "./campaign";
+import { PLUS_DEFAULTS, sanitizePlus, type PlusConfig } from "./membership";
 
 export interface AdminSettings {
   lowStockThreshold: number;
@@ -44,6 +50,10 @@ export interface AdminSettings {
   bundle: BundleConfig;
   gift: GiftConfig;
   referral: ReferralConfig;
+  /** P2 #20 — the seasonal campaign landing (/campaign). Armed off by default. */
+  campaign: CampaignConfig;
+  /** P2 #17 — PROSANTI+ membership program. */
+  plus: PlusConfig;
 }
 
 export const SETTINGS_DEFAULTS: AdminSettings = {
@@ -73,6 +83,10 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   bundle: { enabled: true, name: "Eid Set", discountPct: 10, maxItems: 4, minComplements: 1 },
   gift: GIFT_DEFAULTS,
   referral: REFERRAL_DEFAULTS,
+  // No dates, no copy, off — the /campaign page honestly says "nothing
+  // running" until the owner arms a real window in Admin → Growth.
+  campaign: CAMPAIGN_DEFAULTS,
+  plus: PLUS_DEFAULTS,
 };
 
 export const sanitizeSettings = (raw: unknown): AdminSettings => {
@@ -180,5 +194,7 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     bundle: sanitizeBundle(p.bundle),
     gift: sanitizeGift(p.gift),
     referral: sanitizeReferral(p.referral),
+    campaign: sanitizeCampaign(p.campaign),
+    plus: sanitizePlus(p.plus),
   };
 };

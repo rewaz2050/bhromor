@@ -26,6 +26,10 @@ import type {
   DbRiderSettlement,
 } from "./types";
 import type { Order } from "../orders";
+import {
+  sanitizeAvailability,
+  type RiderAvailability,
+} from "../rider-hours";
 
 export interface RiderJob {
   id: string;
@@ -368,6 +372,26 @@ export async function listAwaitingDispatchOrders(
     if (order) pending.push(order);
   }
   return pending;
+}
+
+/** P2 #22 — the rider sets their own shift; dispatch honours it. */
+export async function setRiderAvailability(
+  service: SupabaseClient,
+  riderId: string,
+  raw: unknown,
+): Promise<RiderAvailability> {
+  const { value, error: inputError } = sanitizeAvailability(raw);
+  if (inputError) throw new RiderInputError(inputError, 422);
+  const { error } = await service
+    .from("riders")
+    .update({
+      avail_from_hour: value.fromHour,
+      avail_to_hour: value.toHour === 24 ? 24 : value.toHour,
+      avail_days: value.days && value.days.length > 0 ? value.days : null,
+    })
+    .eq("id", riderId);
+  if (error) throw new Error("rider availability update failed");
+  return value;
 }
 
 export async function setRiderOnline(

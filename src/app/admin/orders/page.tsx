@@ -229,6 +229,14 @@ export default function AdminOrdersPage() {
                           COD
                         </span>
                       )}
+                      {o.isPlus ? (
+                        <span
+                          className="ml-1 rounded-full bg-forest-50 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-forest-900 ring-1 ring-forest-200"
+                          title="PROSANTI+ member — delivery waived by the database at placement"
+                        >
+                          👑 PROSANTI+
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3.5">
                       <Link href={`/admin/orders/${o.id}`}>

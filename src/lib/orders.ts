@@ -129,6 +129,8 @@ export interface Order {
   paymentStatus?: "pending_verification" | "verified" | "rejected";
   /** P1 #8 — when the shop verified/rejected the wallet payment. */
   paymentVerifiedAt?: number;
+  /** P2 #17 — free-delivery waiver applied by an ACTIVE PROSANTI+ term. */
+  isPlus?: boolean;
   status: OrderStatus;
   timeline: OrderTimelineEntry[];
   /** For delivered orders: minutes from placement to doorstep (§88 KPI). */

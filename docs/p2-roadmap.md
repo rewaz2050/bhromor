@@ -13,6 +13,14 @@ external dependency that doesn't exist yet.
 | 2 | Back-in-stock alerts | ✅ Shipped 2026-09-14 | price-watch's sibling: watch an OUT-OF-STOCK piece, staff gets the number when stock is restocked (same honest "shop calls" mechanism — no SMS sender in this stack) |
 | 3 | Shop ratings from approved reviews | ✅ Shipped 2026-09-14 | blueprint §2 "reviews extend to shop ratings": the trigger maintains `shops.rating_avg/rating_count` from APPROVED reviews only; the storefront (already wired) shows stars on shop card / shop page / PDP chip; 0 reviews = no stars, never a seed |
 | 4 | Admin best-sellers in Reports | ✅ Shipped 2026-09-14 | the same `v_product_sales` view, server-side top list on Admin → Reports (units, last-30-days, orders, revenue) so the shop sees exactly what the storefront shows |
+| 5 | **PROSANTI+ membership** *(brief #17)* | ✅ Shipped 2026-09-14 | ৳99/month, manual bKash/Nagad TRXID activation by the shop (P1 #8 trust model, no PSP) — free delivery + surcharges waived by `ps_place_order` itself, one answer in three surfaces (RPC, checkout mirror, account card). No auto-renew anywhere: the term just ends on its date |
+| 6 | **Multi-shop cart** *(brief #18)* | ⏸ Deferred — documented below | checkout is single-shop by architecture (zone per order, coupons per order, one `ps_place_order` call per order); a split-bag cart would silently break all three — see the section at the end for the safe path when it is built |
+| 7 | **Style Match** *(brief #19)* | ✅ Shipped 2026-09-14 | rules-based recommender at `/style` — occasion → real subcategories, budget/size/colour scored with every reason shown; hard gates never “low-score a wrong item”; **no AI claim anywhere** (there is no model here — and honesty is the feature) |
+| 8 | **Campaign landing** *(brief #20)* | ✅ Shipped 2026-09-14 | admin-configured festive campaign (`/campaign` + site strip): real date window, real countdown, early-access newsletter tag with backfill + CSV; disarmed = the page honestly says “nothing running” |
+| 9 | **Fabric transparency card** *(brief #21)* | ✅ Shipped 2026-09-14 | GSM / composition / test-report link declared per product in the vendor & admin editors — renders only what the shop ticked; seeded catalog carries zero claims |
+| 10 | **Rider shifts** *(brief #22)* | ✅ Shipped 2026-09-14 | riders set day/hour windows in Dhaka time (night wraps allowed); auto-dispatch is the only enforcer and treats a rider with no shift as always-available; admin sees the live on/off-shift chip |
+| 11 | **Vendor insights** *(brief #23)* | ✅ Shipped 2026-09-14 | vendor dashboard: weekday demand, price-band mix, top products — computed server-side from the loaded orders, labelled “recent loaded orders, not a forecast” |
+| 12 | **Zone demand** *(brief #24)* | ✅ Shipped 2026-09-14 | admin reports: orders/revenue share per zone (Dhaka-time buckets, cancelled never counted), busiest-day honesty, zero-order zones shown at zero |
 
 **Deliberately NOT in P2** (they need things that don't exist yet — listed
 so they aren't half-built):
@@ -154,3 +162,84 @@ and cannot apply the refunded-return correction. Once the store outgrew
 - **Tests** — db (view ranking + name join, refunded vs in-flight return
   handling, cancelled exclusion, 30-day window, empty + broken-read
   non-fatal), route 401 without a staff session.
+
+---
+
+## #5 — PROSANTI+ membership (brief #17, shipped)
+
+The retention lever: a ৳99/month term that makes delivery (and every
+surcharge) free on every order. Two rules held the whole build honest:
+
+- **The money is checked by the shop, the way it already works.** There is no
+  PSP in this stack, so membership follows the P1 #8 trust model exactly:
+  the customer sends the amount to the shop's own bKash/Nagad number, submits
+  the TRXID from their account card, and staff approve or reject in
+  Admin → Growth after matching it in the wallet. A row activates nothing by
+  itself; `rejected` rows carry a readable reason the customer sees.
+- **The perk is database truth, never a client claim.**
+  `ps_place_order` (patched in `202609140015_plus_membership.sql`) re-checks
+  `memberships` by the order's normalized phone — status `active` AND
+  `expires_at > now()` — and zeroes the charge + all five surcharges inside
+  the RPC. The server-side checkout mirror receives the same answer via
+  `snapshot.plusActive` (looked up by the orders route, from the same table),
+  so the quote shown and the row inserted cannot disagree; the client can
+  only ever under-quote itself, never over-claim.
+
+Mechanics worth keeping: one month = 30 days flat (no calendar maths to
+argue with); approval EXTENDS the phone's furthest expiry, so renewing early
+stacks months and losing days is impossible; one pending application per
+phone (DB partial unique index + app-level dedupe); price and on/off live in
+ops settings (`plus.enabled/plus.pricePaisa`, clamped) and the apply API
+honestly 503s while disarmed. The account card and the checkout strip only
+report state — and there is **no auto-renew language anywhere**: when the
+term ends, it ends, and the card offers to renew.
+
+Tests: 22 pure-lib (`membership.test.ts` — the state gate incl. the
+pending-beats-expired precedence, phone-key normalization, price clamp band,
+month clamp, `plusActiveOf`) + 1 validation-mirror case (waiver zeroes
+delivery AND surcharges while a non-member pays the same full quote).
+
+## #6 — Multi-shop cart (brief #18) — deferred, deliberately
+
+One checkout bag spanning several shops is NOT built here, because three
+launch-critical mechanisms are per-order-per-shop by design: the delivery
+zone is resolved from the shop's own zone map, coupons validate against one
+shop's catalog, and `ps_place_order` prices and inserts exactly one shop's
+order. A naive grouped cart would split those silently — the customer would
+see one total the database cannot reproduce. The safe shape (when it is
+worth the design pass) is: grouped bags per shop, one `ps_place_order` call
+per shop on submit, per-shop zone/coupon validation each, and an honest
+"2 orders, 2 deliveries" confirmation. Until that exists, the storefront
+keeps the shop-scoped bag — one shop at a time is boring and correct.
+
+## #7 — Style Match (brief #19, shipped)
+
+`/style`: occasion → budget → size, answered by transparent scoring, not a
+model. Each live product is hard-gated (in stock, size present, within
+budget, occasion mapped to REAL subcategories) and then ranked by additive,
+human-listed reasons (budget headroom, size fit, occasion, colour,
+featured, real units sold) — an item with zero reasons is not offered at
+all, and over-budget or wrong-size never appears "as a compromise". The
+panel shows the reasons beside every match; empty results link to /shop and
+/contact instead of padding the list. The word "AI" is never used because
+the honest version — a rulebook you can read — is also the version the shop
+can defend.
+
+## #8–#12 — Campaign, fabric, shifts, vendor insights, zone demand (shipped)
+
+- **#8 Campaign** (`202609140013_campaign_early_access.sql` + `src/lib/campaign.ts`) —
+  one settings document decides `/campaign`, the site strip and the express
+  slot banner; states off/teaser/live/ended, inverted dates force off.
+- **#9 Fabric transparency** (`202609140012_fabric_transparency.sql`) —
+  `fabric_gsm`/`fabric_composition`/`test_report_url`/`quality_checked`
+  columns; the PDP card renders only non-null declarations, the editors are
+  the only writers; nothing is seeded.
+- **#10 Rider shifts** (`202609140014_rider_availability.sql`) —
+  `avail_days/avail_from_hour/avail_to_hour` on riders, one shared semantics
+  (Dhaka hours, wrap-over nights, empty = anytime) implemented identically in
+  TS (`rider-hours.ts`) and inside `ps_next_eligible_rider`; enforced ONLY
+  at auto-dispatch, manual assignment always allowed.
+- **#11+#12 Insights** (no migration) — `src/lib/insights.ts` buckets by
+  Dhaka weekday over the loaded order window, cancelled excluded, shares of
+  zero stay zero; vendor dashboard and admin reports show the same computed
+  numbers with the scope label they deserve.

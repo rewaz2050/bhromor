@@ -11,6 +11,7 @@
  */
 
 import { validateOrderPayload } from "@/lib/order-validation";
+import { isPlusMember } from "@/lib/db/membership";
 import {
   OrderPlacementError,
   countOrdersForPhone,
@@ -79,7 +80,20 @@ export async function POST(request: Request) {
       if (remapped) payloadForValidation = remapped;
     }
 
-    const validation = validateOrderPayload(payloadForValidation, snapshot);
+    // P2 #17 — PROSANTI+ waiver, looked up from the memberships table by the
+    // phone ON THIS PAYLOAD (not a session, not a client claim). The
+    // place-order RPC asks the same question again independently — the value
+    // here only makes the quoted total honest before payment.
+    const phoneRaw = isRecord(payload) ? (payload as { phone?: unknown }).phone : undefined;
+    const plusActive =
+      typeof phoneRaw === "string" && phoneRaw.trim() !== ""
+        ? await isPlusMember(getSupabaseService()!, phoneRaw).catch(() => false)
+        : false;
+
+    const validation = validateOrderPayload(payloadForValidation, {
+      ...snapshot,
+      plusActive,
+    });
     if (!validation.ok) {
       return apiError("Please fix the highlighted fields.", 422, {
         errors: validation.errors,
@@ -99,6 +113,7 @@ export async function POST(request: Request) {
         `${(order.total / 100).toLocaleString("en-IN")} taka COD`,
       ];
       if (d.isPickup) details.push("Store Pickup");
+      else if (plusActive) details.push("PROSANTI+ — delivery + surcharges free");
       else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
       if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
       await notifyStaff(staffDb, {

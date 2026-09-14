@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { PromoView } from "./promos";
-import { apiErrorMessage, apiGet } from "./admin-api";
+import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export interface GrowthWatch {
   id: string;
@@ -46,7 +46,25 @@ export interface GrowthStockWatch {
   createdAt: string;
 }
 
+/** One PROSANTI+ application row (P2 #17) — mirrors db/membership. */
+export interface GrowthMembership {
+  id: string;
+  phone: string;
+  name: string;
+  status: "pending" | "active" | "rejected";
+  months: number;
+  amountPaisa: number;
+  payMethod: string | null;
+  trxid: string | null;
+  note: string;
+  createdAt: number;
+  decidedAt: number | null;
+  startedAt: number | null;
+  expiresAt: number | null;
+}
+
 export interface GrowthData {
+  memberships: GrowthMembership[];
   watches: GrowthWatch[];
   stockWatches: GrowthStockWatch[];
   codes: GrowthCode[];
@@ -55,6 +73,7 @@ export interface GrowthData {
 }
 
 const EMPTY: GrowthData = {
+  memberships: [],
   watches: [],
   stockWatches: [],
   codes: [],
@@ -101,5 +120,19 @@ export function useGrowth() {
     void refresh();
   }, [refresh]);
 
-  return { ...data, loading, error, refresh };
+  const decide = useCallback(
+    async (action: "plus-approve" | "plus-reject", id: string, note = ""): Promise<boolean> => {
+      try {
+        await apiSend("/api/admin/growth", "POST", { action, id, note });
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [refresh],
+  );
+
+  return { ...data, loading, error, refresh, decide };
 }

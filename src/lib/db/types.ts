@@ -31,6 +31,10 @@ export interface DbRider {
   rating_avg: number;
   rating_count: number;
   created_at: string;
+  /** P2 #22 — self-declared availability (Dhaka clock); null = always on. */
+  avail_from_hour?: number | null;
+  avail_to_hour?: number | null;
+  avail_days?: number[] | null;
 }
 
 export interface DbDeliveryAssignment {
@@ -136,6 +140,11 @@ export interface DbProduct {
   seo_description: string | null;
   /** P1 #14 — warranty period in days; null = no warranty on this item. */
   warranty_days?: number | null;
+  /** P2 #21 — fabric transparency card fields (shop-declared; null = unset). */
+  fabric_gsm?: number | null;
+  manufacturer?: string | null;
+  test_report_url?: string | null;
+  quality_checked?: boolean;
 }
 
 export interface DbVariant {
@@ -236,6 +245,8 @@ export interface DbOrder {
   /** P1 #8 — wallet verification state ('verified' for COD). */
   payment_status?: "pending_verification" | "verified" | "rejected";
   payment_verified_at?: string | null;
+  /** P2 #17 — true when a PROSANTI+ term waived delivery on this order. */
+  is_plus?: boolean;
   status: DbOrderStatus;
   rider_id: string | null;
   delivery_code: string | null;
@@ -299,6 +310,8 @@ export interface DbNewsletterSubscriber {
   status: DbSubscriberStatus;
   token: string;
   created_at: string;
+  /** P2 #20 — campaign list tag (null = plain footer signup). */
+  campaign?: string | null;
 }
 
 export interface DbMediaLibrary {

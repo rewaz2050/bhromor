@@ -1,6 +1,7 @@
 "use client";
 
 import CheckoutAssurance from "./checkout-assurance";
+import { isPlausibleBdPhone } from "@/lib/phone";
 import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
 import BagOffers from "@/components/promo/bag-offers";
 import { useBagOffer } from "@/lib/use-bag-offer";
@@ -195,6 +196,13 @@ export default function CheckoutView() {
   /* P1 #8 — the shop's OWN wallet numbers (no merchant account). A method
      with no configured number is simply not offered — COD always works. */
   const [wallets, setWallets] = useState<{ bkash?: string; nagad?: string } | null>(null);
+  // P2 #17 — is the phone typed here an ACTIVE PROSANTI+ member? The server
+  // answers (the client cannot claim it) and the same question is re-asked by
+  // the place-order RPC at confirmation; this only makes the quote honest.
+  const [plusState, setPlusState] = useState<
+    "idle" | "checking" | "none" | "pending" | "active" | "expired" | "rejected"
+  >("idle");
+  const plusActive = plusState === "active";
   useEffect(() => {
     let live = true;
     fetch("/api/payments")
@@ -246,6 +254,40 @@ export default function CheckoutView() {
       setForm((f) => (f.phone ? f : { ...f, phone: cardCustomer.phone }));
     }
   }, [cardCustomer?.phone, form.phone]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const phone = (form.phone ?? "").trim();
+    if (!isPlausibleBdPhone(phone)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset path only
+      setPlusState("idle");
+      return;
+    }
+    const t = setTimeout(async () => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tiny status fetch
+      setPlusState("checking");
+      try {
+        const res = await fetch(`/api/membership?phone=${encodeURIComponent(phone)}`, {
+          cache: "no-store",
+        });
+        const data = res.ok ? ((await res.json()) as { state?: string }) : null;
+        if (!cancelled) {
+          const st = data?.state;
+          setPlusState(
+            st === "none" || st === "pending" || st === "active" || st === "expired" || st === "rejected"
+              ? st
+              : "idle",
+          );
+        }
+      } catch {
+        if (!cancelled) setPlusState("idle");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [form.phone]);
 
   /* ------------------------------------------------------------------ */
   /* Simple-form derived values                                          */
@@ -360,6 +402,7 @@ export default function CheckoutView() {
         fullCharge: 0,
         freeDelivery: false,
         couponFree: false,
+        plusFree: false,
         discount: 0,
         promo: 0,
         promoKind: bagOffer?.kind ?? null,
@@ -392,7 +435,7 @@ export default function CheckoutView() {
       isExpress,
       isPickup: form.isPickup,
       tipAmount: form.tipAmount * 100,
-      couponFree: couponFreeDelivery && !!activeCoupon,
+      couponFree: (couponFreeDelivery && !!activeCoupon) || plusActive,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
     });
@@ -406,7 +449,8 @@ export default function CheckoutView() {
       charge,
       fullCharge: FLAT_DELIVERY_CHARGE_PAISA,
       freeDelivery: breakdown.freeDelivery,
-      couponFree: breakdown.couponFree,
+      couponFree: couponFreeDelivery && !!activeCoupon,
+      plusFree: plusActive && !form.isPickup,
       discount,
       promo: capped,
       promoKind: bagOffer?.kind ?? null,
@@ -1508,9 +1552,11 @@ export default function CheckoutView() {
                     <span className="text-gold-300">
                       {summary.couponFree
                         ? "FREE — Coupon 🚚"
-                        : form.isPickup
-                          ? "FREE — Pickup"
-                          : "Free"}
+                        : summary.plusFree
+                          ? "FREE — PROSANTI+ 🚚"
+                          : form.isPickup
+                            ? "FREE — Pickup"
+                            : "Free"}
                     </span>
                   ) : (
                     formatBdt(summary.charge)
@@ -1982,9 +2028,11 @@ export default function CheckoutView() {
                   <span className="text-forest-700">
                     {summary.couponFree
                       ? "FREE 🚚 Coupon"
-                      : form.isPickup
-                        ? "FREE — Pickup"
-                        : "Free"}{" "}
+                      : summary.plusFree
+                        ? "FREE 👑 PROSANTI+"
+                        : form.isPickup
+                          ? "FREE — Pickup"
+                          : "Free"}{" "}
                     <span className="text-ink-soft line-through">
                       {formatBdt(summary.fullCharge)}
                     </span>
@@ -2007,6 +2055,25 @@ export default function CheckoutView() {
               <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
                 🚚 Free delivery coupon applied — {activeCoupon?.code}
               </p>
+            )}
+            {summary.plusFree && !summary.couponFree && (
+              <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
+                👑 PROSANTI+ member — delivery &amp; all surcharges waived on this order.
+              </p>
+            )}
+            {(plusState === "none" || plusState === "expired" || plusState === "rejected") &&
+              !summary.couponFree &&
+              !form.isPickup && (
+                <p className="text-xs leading-5 text-ink-soft">
+                  👑 {plusState === "none" ? "Not a member yet" : "Membership ended"} — PROSANTI+ (৳99/মাস)
+                  gets free delivery on every order.{" "}
+                  <Link href="/account" className="font-semibold text-forest-800 underline underline-offset-2">
+                    Join from your account
+                  </Link>
+                </p>
+              )}
+            {plusState === "pending" && (
+              <p className="text-xs text-ink-soft">🕓 Your PROSANTI+ application is with the shop — it activates after the wallet check.</p>
             )}
             {summary.tip > 0 && (
               <div className="flex justify-between">

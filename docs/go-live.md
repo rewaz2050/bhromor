@@ -173,6 +173,32 @@ Run **in this order, in one sequence** (skip files you already applied —
     them. Needs `reviews.shop_id` (step 4), so run it after the
     marketplace migration. It also backfills the numbers for reviews
     that pre-date the trigger.
+27. **`supabase/migrations/202609140012_fabric_transparency.sql`** —
+    P2 #9 (brief #21) fabric columns on `products`
+    (`fabric_gsm`, `fabric_composition`, `test_report_url`,
+    `quality_checked`). Purely additive; until a shop declares a value in
+    the editor, nothing renders on any product page.
+28. **`supabase/migrations/202609140013_campaign_early_access.sql`** —
+    P2 #8 (brief #20) campaign: adds the `campaign` tag column to
+    `newsletter_subscribers` (early-access list + CSV export). The
+    campaign document itself lives in `site_settings` (key `ops`) — no
+    table to seed; Admin → Growth arms it with real dates.
+29. **`supabase/migrations/202609140014_rider_availability.sql`** —
+    P2 #10 (brief #22) rider shifts: `avail_days` (int[] 0–6, Sunday=0),
+    `avail_from_hour`/`avail_to_hour` (0–23, wrap-over allowed) on `riders`
+    + patched `ps_next_eligible_rider` which refuses to auto-dispatch to an
+    on-duty rider outside her window. NULL/NULL = anytime — existing riders
+    behave exactly as before this migration.
+30. **`supabase/migrations/202609140015_plus_membership.sql`** —
+    P2 #5 (brief #17) PROSANTI+: `memberships` ledger (pending/active/
+    rejected, one pending per phone, admin-only RLS), `orders.is_plus`
+    stamp, and `ps_place_order` patched to zero delivery + surcharges when
+    the order's phone holds an ACTIVE unexpired term. After applying: set
+    the price/wallet path in Admin → Growth (PROSANTI+ card), approve the
+    first test application, and place one order with that phone — the
+    confirmation must show FREE 👑 and the inserted order row must carry
+    `is_plus = true`. There is no auto-renew by design: the term ends on
+    `expires_at` and the customer renews from their account page.
 
 Quick check after step 11 (SQL editor):
 

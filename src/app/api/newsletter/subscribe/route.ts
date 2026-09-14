@@ -8,7 +8,7 @@
  */
 
 import { notifyStaff, subscribeNewsletter } from "@/lib/db/engagement";
-import { cleanEmail, isPlausibleEmail } from "@/lib/engagement";
+import { cleanCampaignTag, cleanEmail, isPlausibleEmail } from "@/lib/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseService } from "@/lib/supabase-server";
@@ -40,12 +40,18 @@ export async function POST(request: Request) {
   try {
     const db = getSupabaseService();
     if (!db) return apiError("Newsletter signup is not available right now.", 503);
-    const { created } = await subscribeNewsletter(db, email);
+    // P2 #20 — the campaign early-access box sends a tag; the footer box does
+    // not. The tag rides along so the owner can export just that list.
+    const campaign = cleanCampaignTag((body as Record<string, unknown> | null)?.campaign);
+    const { created } = await subscribeNewsletter(db, email, campaign);
     if (created) {
       await notifyStaff(db, {
         kind: "system",
         title: "New newsletter signup",
-        body: `${email} joined the list.`,
+        body:
+          campaign === ""
+            ? `${email} joined the list.`
+            : `${email} joined the list (campaign: ${campaign}).`,
         href: "/admin/newsletter",
       });
     }

@@ -21,13 +21,16 @@ import {
   type FlashState,
   type PromoView,
 } from "./promos";
+import { CAMPAIGN_DEFAULTS, campaignView, type CampaignView } from "./campaign";
 
 type Listener = () => void;
 
 /** Nothing is running until the backend says otherwise. */
 export const OFFLINE_PROMOS: PromoView = promoView(PROMO_DEFAULTS, 0);
+export const OFFLINE_CAMPAIGN: CampaignView = campaignView(CAMPAIGN_DEFAULTS, 0);
 
 let view: PromoView = OFFLINE_PROMOS;
+let campaign: CampaignView = OFFLINE_CAMPAIGN;
 let checked = false;
 let live = false;
 let promise: Promise<void> | null = null;
@@ -45,6 +48,10 @@ const scheduleRefresh = () => {
   const when: number[] = [];
   if (view.flash.active && view.flash.endsAtMs) when.push(view.flash.endsAtMs + 800);
   if (view.flash.nextStartsAtMs) when.push(view.flash.nextStartsAtMs + 400);
+  // P2 #20 — the campaign strip must also flip on its own, at the minute
+  // the window opens (teaser→live) and the minute the last day ends.
+  if (campaign.startsAtMs && campaign.startsAtMs > now) when.push(campaign.startsAtMs + 400);
+  if (campaign.state === "live" && campaign.endsAtMs) when.push(campaign.endsAtMs + 800);
   if (when.length === 0) return;
   const delay = Math.max(1000, Math.min(...when) - now);
   timer = setTimeout(() => {
@@ -59,11 +66,16 @@ const load = async (): Promise<void> => {
     try {
       const res = await fetch("/api/promo", { cache: "no-store" });
       if (!res.ok) return;
-      const data = (await res.json()) as { source?: string; promos?: PromoView };
+      const data = (await res.json()) as {
+        source?: string;
+        promos?: PromoView;
+        campaign?: CampaignView;
+      };
       if (data.promos) {
         view = data.promos;
         live = data.source === "live";
       }
+      if (data.campaign) campaign = data.campaign;
     } catch {
       // Fail closed: no badge, no flash price, catalog prices everywhere.
     } finally {
@@ -77,6 +89,8 @@ const load = async (): Promise<void> => {
 
 export const getPromoSnapshot = (): PromoView => view;
 export const getPromoSnapshotServer = (): PromoView => OFFLINE_PROMOS;
+export const getCampaignSnapshot = (): CampaignView => campaign;
+export const getCampaignSnapshotServer = (): CampaignView => OFFLINE_CAMPAIGN;
 export const isPromoChecked = (): boolean => checked;
 
 export const subscribePromos = (listener: Listener): (() => void) => {
@@ -152,9 +166,28 @@ export function useFlashPrice(
   return { ...priced, state: flash };
 }
 
+/**
+ * P2 #20 — the campaign landing state, shared through the same store so the
+ * site strip, the /campaign page and the schedule-refresh all agree, and all
+ * of them flip at the same moment the backend's clock does.
+ */
+export function useCampaign() {
+  const snap = useSyncExternalStore(
+    subscribePromos,
+    getCampaignSnapshot,
+    getCampaignSnapshotServer,
+  );
+  const now = useTicker();
+  useEffect(() => {
+    void load();
+  }, []);
+  return { campaign: snap, now, ready: checked, live };
+}
+
 /** Test-only: drop the shared cache. */
 export const __resetPromos = (): void => {
   view = OFFLINE_PROMOS;
+  campaign = OFFLINE_CAMPAIGN;
   checked = false;
   live = false;
   promise = null;

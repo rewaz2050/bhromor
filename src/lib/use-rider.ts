@@ -124,7 +124,25 @@ export const useRiderSession = () => {
     setStatus("guest");
   }, []);
 
-  return { rider, email, status, error, refresh, signIn, signUp, signOut };
+  /** P2 #22 — save the rider's own shift; auto-dispatch honours it. */
+  const setAvailability = useCallback(
+    async (payload: {
+      fromHour: number | null;
+      toHour: number | null;
+      days: number[];
+    }): Promise<string | null> => {
+      try {
+        await riderFetch("/api/rider/availability", "PATCH", payload);
+        await refresh();
+        return null;
+      } catch (err) {
+        return riderErrorMessage(err);
+      }
+    },
+    [refresh],
+  );
+
+  return { rider, email, status, error, refresh, signIn, signUp, signOut, setAvailability };
 };
 
 export const useRiderJobs = (enabled: boolean) => {

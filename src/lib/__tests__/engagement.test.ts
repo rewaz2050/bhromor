@@ -174,19 +174,29 @@ describe("row mappers", () => {
 describe("subscriber CSV export", () => {
   it("writes a header plus quoted rows", () => {
     const csv = subscribersToCsv([
-      { id: "1", email: "a@b.com", status: "subscribed", token: "t", at: 0 },
+      {
+        id: "1",
+        email: "a@b.com",
+        status: "subscribed",
+        token: "t",
+        at: 0,
+        campaign: "campaign", // P2 #20 — early-access signups carry a tag…
+      },
       {
         id: "2",
         email: 'we,"ird@c.com',
         status: "unsubscribed",
         token: "t",
         at: 0,
+        campaign: "", // …footer signups don't.
       },
     ]);
     const lines = csv.trim().split("\n");
-    expect(lines[0]).toBe("email,status,subscribed_at");
+    expect(lines[0]).toBe("email,status,subscribed_at,campaign");
     expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain(",campaign");
     expect(lines[2]).toContain('"we,""ird@c.com"');
+    expect(lines[2].endsWith(",")).toBe(true);
   });
 });
 

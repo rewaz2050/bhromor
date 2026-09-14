@@ -74,6 +74,24 @@ describe("Editorial product cards", () => {
     expect(screen.getByText("23 sold")).toBeVisible();
   });
 
+  it("shows the Quality Checked chip only when the shop ticked it (P2 #21)", () => {
+    // No declaration → no chip; the badge is never assumed for a product.
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.queryByText(/quality checked/i)).toBeNull();
+
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, qualityChecked: true }} />
+      </CartProvider>,
+    );
+    expect(screen.getByText("Quality checked")).toBeVisible();
+  });
+
   it("adds to the real cart and announces success", () => {
     render(
       <CartProvider>

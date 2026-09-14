@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { availabilityLabel, isOnShift } from "@/lib/rider-hours";
 import { useRiders } from "@/lib/use-riders";
 import { useZones } from "@/lib/use-zones";
 import type { Rider } from "@/lib/catalog";
@@ -111,6 +112,13 @@ function RiderCard({
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
               <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
+            )}
+            {/* P2 #22 — a rider can be "Online" yet outside their own shift;
+                auto-dispatch will skip them until the shift window opens. */}
+            {rider.status === "active" && (rider.availability?.fromHour ?? null) !== null && (
+              <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${isOnShift(rider.availability, Date.now()) ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
+                {isOnShift(rider.availability, Date.now()) ? "On shift" : `Off shift · ${availabilityLabel(rider.availability)}`}
+              </span>
             )}
             {rider.ratingCount > 0 && (
               <> · ★ {rider.ratingAvg.toFixed(1)} ({rider.ratingCount})</>

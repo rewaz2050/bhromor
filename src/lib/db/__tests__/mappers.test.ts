@@ -359,7 +359,31 @@ describe("mapRider (marketplace slice 6)", () => {
       lastLocationAt: undefined,
       currentLoad: 0,
       totalDeliveries: 0,
+      // P2 #22 — no shift on the row means ALWAYS available (explicit, not undefined)
+      availability: { days: null, fromHour: null, toHour: null },
     });
     expect(rider.zoneIds).not.toBe(row.zone_ids);
+  });
+
+  it("maps a saved night shift onto the rider (P2 #22)", () => {
+    const rider = mapRider({
+      id: "r-2",
+      user_id: null,
+      name: "Shohag",
+      phone: "01522222222",
+      contact_email: "a@b.co",
+      vehicle: "bike",
+      zone_ids: [],
+      status: "active",
+      is_online: true,
+      cash_in_hand: 0,
+      rating_avg: 5,
+      rating_count: 2,
+      created_at: "2026-09-09T00:00:00.000Z",
+      avail_days: [5, 6],
+      avail_from_hour: 19,
+      avail_to_hour: 2,
+    });
+    expect(rider.availability).toEqual({ days: [5, 6], fromHour: 19, toHour: 2 });
   });
 });

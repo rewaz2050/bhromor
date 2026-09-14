@@ -122,10 +122,19 @@ export interface Subscriber {
   /** Unsubscribe token — staff-only, never rendered publicly. */
   token: string;
   at: number;
+  /** P2 #20 — which campaign list this signup came from ("" = the plain
+   *  footer box). Lowercase [a-z0-9-], max 40 chars; never free text. */
+  campaign: string;
 }
 
 export const cleanEmail = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase().slice(0, 254) : "";
+
+/** Campaign tags are machine keys, not copy: "eid-2026", "early-access". */
+export const cleanCampaignTag = (value: unknown): string =>
+  typeof value === "string"
+    ? value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40)
+    : "";
 
 export const isPlausibleEmail = (email: string): boolean =>
   email.length >= 5 &&
@@ -138,6 +147,7 @@ export const mapSubscriber = (row: DbNewsletterSubscriber): Subscriber => ({
   status: row.status,
   token: row.token,
   at: Date.parse(row.created_at) || 0,
+  campaign: typeof row.campaign === "string" ? row.campaign : "",
 });
 
 const csvCell = (value: string): string =>
@@ -145,10 +155,15 @@ const csvCell = (value: string): string =>
 
 /** Staff export: subscribed emails as CSV (header + one row each). */
 export const subscribersToCsv = (subs: Subscriber[]): string => {
-  const lines = ["email,status,subscribed_at"];
+  const lines = ["email,status,subscribed_at,campaign"];
   for (const s of subs) {
     lines.push(
-      [csvCell(s.email), s.status, new Date(s.at).toISOString()].join(","),
+      [
+        csvCell(s.email),
+        s.status,
+        new Date(s.at).toISOString(),
+        csvCell(s.campaign || ""),
+      ].join(","),
     );
   }
   return `${lines.join("\n")}\n`;

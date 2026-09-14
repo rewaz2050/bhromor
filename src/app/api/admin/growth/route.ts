@@ -9,9 +9,15 @@
  */
 import { staffRoute } from "../_lib";
 import { listPriceWatches, listStockWatches } from "@/lib/db/growth";
+import {
+  approveMembership,
+  listMembershipRequests,
+  rejectMembership,
+} from "@/lib/db/membership";
+import { AdminInputError } from "@/lib/db/admin";
 import { readOpsSettings } from "@/lib/db/engagement";
 import { promoView } from "@/lib/promos";
-import { apiJson } from "@/lib/api-response";
+import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
 
@@ -59,5 +65,38 @@ export const GET = staffRoute("growth", async ({ db }) => {
     })),
     rewards,
     promos: promoView({ flash: settings.flash, bundle: settings.bundle }, Date.now()),
+    memberships: await listMembershipRequests(db),
   });
 });
+
+/**
+ * POST /api/admin/growth { action: "plus-approve" | "plus-reject", id, note? }
+ * — the PROSANTI+ decision after the human checked the wallet. Approving with
+ * money verified is the only way a term starts; nothing self-activates.
+ */
+export const POST = staffRoute(
+  "growth-plus",
+  async ({ db }, request) => {
+    const body = (await request.json().catch(() => null)) as {
+      action?: unknown;
+      id?: unknown;
+      note?: unknown;
+    } | null;
+    const action = typeof body?.action === "string" ? body.action : "";
+    const id = typeof body?.id === "string" ? body.id.trim().slice(0, 64) : "";
+    if (id === "" || (action !== "plus-approve" && action !== "plus-reject")) {
+      return apiError("Send action (plus-approve | plus-reject) and the row id.", 422);
+    }
+    try {
+      const row =
+        action === "plus-approve"
+          ? await approveMembership(db, id, typeof body?.note === "string" ? body.note : "")
+          : await rejectMembership(db, id, typeof body?.note === "string" ? body.note : "");
+      return apiJson({ membership: row });
+    } catch (err) {
+      if (err instanceof AdminInputError) return apiError(err.message, err.status);
+      return apiError("Could not update the application — please retry.", 503);
+    }
+  },
+  { limit: 30 },
+);

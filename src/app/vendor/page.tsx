@@ -21,14 +21,24 @@ import {
   patchVendorShop,
   useVendorEarnings,
   useVendorOrders,
+  useVendorProducts,
   vendorErrorMessage,
 } from "@/lib/use-vendor";
+import {
+  WEEKDAY_LABELS,
+  hourLabel,
+  hourProfile,
+  unitsByProduct,
+  weekdayProfile,
+  zoneDemand,
+} from "@/lib/insights";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
   const authed = me !== null;
   const orders = useVendorOrders(authed);
   const earnings = useVendorEarnings(authed);
+  const prods = useVendorProducts(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -39,6 +49,15 @@ export default function VendorDashboardPage() {
     (o) => o.status === "pending" || o.status === "confirmed",
   );
   const inKitchen = list.filter((o) => o.status === "preparing").length;
+  // P2 #23 — real demand analytics over the shop's most recent ≤100 orders
+  // (the same list this page already shows — cancellations never count).
+  const weekday = weekdayProfile(list);
+  const hours = hourProfile(list);
+  const topProds = unitsByProduct(list).slice(0, 3);
+  const zones = zoneDemand(list);
+  const maxDay = Math.max(1, ...weekday.orders);
+  const lowStock = prods.products.filter((pp) => pp.lowStock || (!pp.inStock && pp.active !== false));
+
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   const todayRevenue = list
@@ -201,6 +220,120 @@ export default function VendorDashboardPage() {
           )}
         </section>
       </div>
+
+      {/* P2 #23 — what the shop's own orders say: when, what, where. */}
+      <section
+        aria-label="Demand insights"
+        className="mt-6 rounded-2xl bg-paper p-5 ring-1 ring-line"
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-display text-lg text-forest-900">
+            Demand insights
+          </h3>
+          <p className="text-xs text-ink-soft">
+            Counted from your most recent {list.length} loaded orders — cancelled
+            ones never count. This is history, not a forecast.
+          </p>
+        </div>
+        {orders.error ? (
+          <ErrorBox message={orders.error} onRetry={orders.refresh} />
+        ) : list.length === 0 ? (
+          <EmptyState
+            title="Nothing to analyse yet"
+            sub="The first real order flips this panel on — the shop refuses to draw bars from an empty table."
+          />
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Busiest day
+              </p>
+              <p className="mt-1 font-display text-2xl text-forest-900">
+                {weekday.busiest === null
+                  ? "—"
+                  : WEEKDAY_LABELS[weekday.busiest]}
+              </p>
+              <div className="mt-3 space-y-1" role="img" aria-label="orders per weekday">
+                {WEEKDAY_LABELS.map((d, i) => (
+                  <div key={d} className="flex items-center gap-2 text-[0.65rem] text-ink-soft">
+                    <span className="w-7">{d}</span>
+                    <span
+                      className="h-1.5 rounded-full bg-forest-700"
+                      style={{ width: `${(weekday.orders[i] / maxDay) * 100}%`, minWidth: weekday.orders[i] ? 4 : 0 }}
+                    />
+                    <span className="tabular-nums">{weekday.orders[i]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Best hours
+              </p>
+              {hours.best ? (
+                <p className="mt-1 font-display text-2xl text-forest-900">
+                  {hours.top.map((h) => hourLabel(h.hour)).join(" · ")}
+                </p>
+              ) : (
+                <p className="mt-1 font-display text-2xl text-ink-soft">—</p>
+              )}
+              <p className="mt-2 text-xs leading-5 text-ink-soft">
+                Order times in Bangladesh clock — prep extra hands before the
+                rush instead of hoping.
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Top movers (units)
+              </p>
+              {topProds.length === 0 ? (
+                <p className="mt-1 text-sm text-ink-soft">—</p>
+              ) : (
+                <ul className="mt-1 space-y-1.5">
+                  {topProds.map((tp, i) => (
+                    <li key={tp.productId} className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-ink">
+                        {i + 1}. {tp.name}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-ink-soft">
+                        {tp.units} · {formatBdt(tp.revenue)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Zones &amp; stock
+              </p>
+              {zones[0] ? (
+                <p className="mt-1 text-sm text-ink">
+                  <span className="font-display text-2xl text-forest-900">
+                    {Math.round(zones[0].share * 100)}%
+                  </span>{" "}
+                  of orders come from {zones[0].zoneName}
+                </p>
+              ) : null}
+              <p className="mt-2 text-xs text-ink-soft">
+                {zones.length > 1
+                  ? `${zones.length} zones have bought from you — restock the loudest first.`
+                  : "One zone so far — the rest will follow the courier map."}
+              </p>
+              <Link
+                href="/vendor/products"
+                className={`mt-2 inline-block text-xs font-semibold underline underline-offset-2 ${
+                  lowStock.length > 0 ? "text-amber-800" : "text-forest-800"
+                }`}
+              >
+                {lowStock.length > 0
+                  ? `⚠ ${lowStock.length} piece${lowStock.length > 1 ? "s" : ""} low/out of stock — restock →`
+                  : "Stock levels healthy →"}
+              </Link>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
