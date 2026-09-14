@@ -101,8 +101,8 @@ export async function GET() {
   if (checks.reachable && !checks.productsSeeded) {
     nextSteps.push("SQL schema + migrations chalaben: supabase/schema.sql, tarpor supabase/migrations/* (shob gulo, krome)");
   }
-  if (checks.reachable && (!checks.productsSeeded || !checks.couponsSeeded || !checks.shopsSeeded)) {
-    nextSteps.push("Catalog empty — add real products in Admin → Catalog & Products (demo seeding was removed; `npm run seed` now only seeds the store skeleton: shop, categories, zones)");
+  if (checks.reachable && (!checks.productsSeeded || !checks.shopsSeeded)) {
+    nextSteps.push("Catalog empty — add real products in Admin → Catalog & Products (products & coupons are never seeded — demo seeding was removed 2026-09-14; `npm run seed` only lays the store skeleton: shop, categories, zones). Zero coupons is fine — coupons are an optional lever.");
   }
   if (checks.reachable && !checks.adminUser) {
     nextSteps.push("Admin login banate `npm run grant-admin -- rahatbd2050@gmail.com --role super_admin` chalaben");
