@@ -94,6 +94,9 @@ export async function bestSellers(
       .in("product_id", ids),
   ]);
   if (productsRes.error) return [];
+  // A failed line read means the money columns are unknown — an empty list
+  // is the honest answer, never a table of zeroed revenue.
+  if (itemsRes.error) return [];
 
   const productById = new Map(
     ((productsRes.data ?? []) as ProductRow[]).map((p) => [p.id, p]),

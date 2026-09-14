@@ -10,6 +10,7 @@ import {
   type ReportRange,
 } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
+import { useStaffLive } from "@/lib/use-staff-live";
 import { apiErrorMessage, apiGet } from "@/lib/admin-api";
 import type { BestSellerRow } from "@/lib/db/reports";
 import { IconArrowRight, IconBanknote, IconChart } from "@/components/ui/icons";
@@ -21,10 +22,13 @@ export default function AdminReportsPage() {
 
   /* P2 #4 — the all-time best-seller list from the server: the exact
      numbers the storefront shows (v_product_sales), beyond the 100-row
-     order queue the client-side table works from. */
+     order queue the client-side table works from. Staff-only data, so it
+     stays quiet (not an error) for a signed-out read-only view. */
+  const { live } = useStaffLive();
   const [best, setBest] = useState<BestSellerRow[] | null>(null);
   const [bestError, setBestError] = useState<string | null>(null);
   useEffect(() => {
+    if (!live) return;
     let alive = true;
     apiGet<{ bestSellers: BestSellerRow[] }>("/api/admin/reports/best-sellers")
       .then((data) => {
@@ -40,7 +44,7 @@ export default function AdminReportsPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [live]);
 
   const report = useMemo(() => salesReport(orders, range), [orders, range]);
   const max = seriesMax(report.series);
@@ -208,7 +212,11 @@ export default function AdminReportsPage() {
             sellers&rdquo; sort.
           </p>
         </div>
-        {bestError ? (
+        {!live ? (
+          <p className="mt-4 text-sm text-ink-soft">
+            Sign in as staff to load the all-time best-seller list.
+          </p>
+        ) : bestError ? (
           <p className="mt-4 text-sm text-rose-700">{bestError}</p>
         ) : best === null ? (
           <p className="mt-4 text-sm text-ink-soft">Loading…</p>

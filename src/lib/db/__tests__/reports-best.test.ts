@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   itemRows: [] as Record<string, unknown>[],
   viewError: null as { message: string } | null,
   productsError: null as { message: string } | null,
+  itemsError: null as { message: string } | null,
 }));
 
 const chain = (data: unknown, error: unknown = null) => {
@@ -47,7 +48,7 @@ const fakeDb = (): SupabaseClient => ({
             ),
         };
       case "order_items":
-        return { select: () => chain(state.itemRows) };
+        return { select: () => chain(state.itemsError ? null : state.itemRows, state.itemsError) };
       default:
         return { select: () => chain([]) };
     }
@@ -159,9 +160,17 @@ describe("bestSellers (P2 #4)", () => {
     state.viewError = { message: "boom" };
     expect(await bestSellers(fakeDb())).toEqual([]);
     state.viewError = null;
-    state.productsError = { message: "boom" };
     state.viewRows = [{ product_id: "p1", units_sold: 1 }];
+    state.productsError = { message: "boom" };
     expect(await bestSellers(fakeDb())).toEqual([]);
     state.productsError = null;
+  });
+
+  it("a failed line read never shows zeroed revenue", async () => {
+    state.viewRows = [{ product_id: "p1", units_sold: 5 }];
+    state.productRows = [{ id: "p1", name: "Black Panjabi", slug: "black-panjabi" }];
+    state.itemsError = { message: "boom" };
+    expect(await bestSellers(fakeDb())).toEqual([]);
+    state.itemsError = null;
   });
 });
