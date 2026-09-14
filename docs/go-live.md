@@ -251,6 +251,29 @@ your real rows until then.
 Verify: `GET https://<your-app>/api/products` must return products, not
 `{"code":"NOT_SEEDED"}` — i.e. after you added real items in the admin.
 
+### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
+
+`supabase/bootstrap-fresh.sql` ≈৩০০KB — পুরোটা SQL Editor-এ পেস্ট করবেন **না**।
+তিনটা পথ, যেকোনো একটা:
+
+1. **Migration ধরে ধরে চালান (recommended — এই ডক-এর উপরের ধাপগুলো)।**
+   প্রতিটা ফাইল ছোট (≤~25KB), Editor সহ্য করে। নতুন দোকানের জন্য 0001 →
+   0015 পর্যন্ত একবারে একটা করে Run; মাঝখানের কোনোটা বাদ যাবে না।
+2. **Parts paste করুন:** `npm run split:bootstrap` চালালে
+   `supabase/bootstrap-parts/01…09_*.sql` তৈরি হয় (repo-তে committed-ও আছে) —
+   এগুলো ক্রমানুসারে, একবারে একটা করে Editor-এ পেস্ট করলেই চলবে; প্রতিটা part
+   নিজের মধ্যে committed transaction-এ থাকে।
+3. **psql (fastest for one shot):** Supabase Dashboard → Settings → Database →
+   **Connection string (Session pooler, port 5432)** —
+
+   ```bash
+   psql "postgresql://postgres.<PROJECT_REF>:<DB_PASSWORD>@aws-<region>.pooler.supabase.com:5432/postgres" \
+     -v ON_ERROR_STOP=1 -f supabase/bootstrap-fresh.sql
+   ```
+
+   Windows-এ `psql` লাগলে: `winget install PostgreSQL.PostgreSQL` (client tools
+   যথেষ্ট)। ফাইল idempotent, তাই মাঝপথে থামলে পুরোটা আবার চালানো নিরাপদ।
+
 ## 4. First staff account
 
 1. Supabase Dashboard → Authentication → Users → **Add user** with the
