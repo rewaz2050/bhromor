@@ -42,6 +42,17 @@ Run **in this order, in one sequence** (skip files you already applied —
 > `relation X does not exist` — a file that needs an earlier file's tables),
 > the whole file rolls back, so nothing appears saved. Read the red error —
 > it names the missing relation, and that tells you which file to apply first.
+>
+> **A file too big to paste?** The SQL Editor is a browser text field and the
+> biggest migrations do not survive the paste (the text is cut, and a cut
+> `$$`-quoted function reports a nonsense syntax error). Steps **15, 19 and 30**
+> are pre-split into 11 small pastes in
+> [`supabase/paste-parts/`](../supabase/paste-parts/README.md) — regenerate with
+> `node scripts/split-paste.mjs`. That set also **skips step 23 entirely** and
+> skips the `ps_place_order` bodies inside steps 15 and 19: all four are
+> re-creations of the same function and step 30's version contains every line
+> they add, so only the last one is worth pasting. Read the paste-parts README
+> before running them — it explains the order and the guards.
 
 1. `supabase/schema.sql` — only if the project is fresh
 2. `supabase/migrations/202609080001_storefront_saved_items.sql`
@@ -71,7 +82,8 @@ Run **in this order, in one sequence** (skip files you already applied —
     first-10-free. Flattens the zone charge column and re-creates
     `ps_place_order` with the flat rule. Run this one for the pricing rule.
 15. **`supabase/migrations/202609130008_growth_promos_gift_referral.sql`** —
-    P0 growth levers: `price_watches`, `referral_codes`, `referral_rewards`,
+    *(540 lines — do not paste whole; use `supabase/paste-parts/` 01–02, which
+    skip its superseded `ps_place_order`)* P0 growth levers: `price_watches`, `referral_codes`, `referral_rewards`,
     the gift + automatic-offer columns on `orders`, and a new
     `ps_place_order` that recomputes the flash discount from
     `site_settings['ops']`, bounds a bundle claim, prices gift wrap from
@@ -103,7 +115,9 @@ Run **in this order, in one sequence** (skip files you already applied —
     with a note from the admin order page. After approval, the replacement
     or refund is the shop's offline handling, recorded in the claim's
     resolution.
-19. **`supabase/migrations/202609140004_wallet_payments.sql`** — P1 #8
+19. **`supabase/migrations/202609140004_wallet_payments.sql`** —
+    *(571 lines — use `supabase/paste-parts/` 03 for the columns; its three
+    functions are superseded by steps 22 and 30)* P1 #8
     bKash/Nagad **without a merchant account**: `orders.payment` widens to
     `cod|bkash|nagad`, plus `payment_ref` (the customer's TRXID),
     `payment_status` and `payment_verified_at`. `ps_place_order` accepts the
@@ -138,7 +152,10 @@ Run **in this order, in one sequence** (skip files you already applied —
     (also covers rows created before this file). Run it AFTER step 19 —
     it re-creates the two functions from step 19 with these additions.
 23. **`supabase/migrations/202609140008_return_order_restore.sql`** —
-    P1 #13 follow-up: `ps_place_order` re-created with the return-order
+    *(474 lines that are ONE statement — never paste this file. Step 30's
+    `ps_place_order` is this exact body plus the PROSANTI+ waiver, so
+    `supabase/paste-parts/` 05–09 installs it and this step needs no separate
+    run.)* P1 #13 follow-up: `ps_place_order` re-created with the return-order
     handling restored. The flat/growth/wallet re-creations (steps 14/15/19)
     silently dropped the `is_return` mechanics, so customer return requests
     landed as full-price COD orders that could not be approved and could be
@@ -190,6 +207,8 @@ Run **in this order, in one sequence** (skip files you already applied —
     on-duty rider outside her window. NULL/NULL = anytime — existing riders
     behave exactly as before this migration.
 30. **`supabase/migrations/202609140015_plus_membership.sql`** —
+    *(516 lines — use `supabase/paste-parts/` 04 + 05–09; paste 09 is what
+    finally swaps in the FINAL `ps_place_order` for steps 15/19/23/30)* 
     P2 #5 (brief #17) PROSANTI+: `memberships` ledger (pending/active/
     rejected, one pending per phone, admin-only RLS), `orders.is_plus`
     stamp, and `ps_place_order` patched to zero delivery + surcharges when
