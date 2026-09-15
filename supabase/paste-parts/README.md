@@ -25,7 +25,7 @@ unless the re-assembled function text is **character-identical** to its source.
 | 4 | `02_step15b_ps-credit-referrer.sql` | 77 lines | step 15: `ps_credit_referrer(order_id)` — mints the referrer's coupon on delivery |
 | 5 | `03_step19_wallet-payment-columns.sql` | 29 lines | step 19: `orders.payment` widened to `cod\|bkash\|nagad` + `payment_ref` / `payment_status` / `payment_verified_at` |
 | 6 | `04_step30a_plus-memberships-table.sql` | 42 lines | step 30: `memberships` ledger, `orders.is_plus`, admin-only RLS |
-| 7 | `05_step30b_fn-chunk-1of4.sql` | 107 lines | helper table + function **text** chunk 1 |
+| 7 | `05_step30b_fn-chunk-1of4.sql` | 107 lines | helper table + **base64** chunk 1 |
 | 8 | `06_step30b_fn-chunk-2of4.sql` | 87 lines | base64 chunk 2 |
 | 9 | `07_step30b_fn-chunk-3of4.sql` | 87 lines | base64 chunk 3 |
 | 10 | `08_step30b_fn-chunk-4of4.sql` | 88 lines | base64 chunk 4 |
@@ -117,5 +117,35 @@ it decodes to the migration text with the right md5.
 
 ## After paste 11
 
-Paste 11 ends with its own 6-row verify (`OK` × 6). Then, for the P2 batch:
+Paste 11 ends with its own 7-row verify (`OK` × 7), the first of which is the
+`md5(prosrc)` of the body PostgreSQL stored. Then, for the P2 batch:
 `supabase/verify-p2.sql`. For the whole database: `supabase/diagnose.sql`.
+
+## Is it all applied? `99a` and `99b` — read-only
+
+"Did everything land?" should not be a memory question, and for a function that
+more than one migration defines, existence proves nothing. Two probes answer it
+from the catalog. Both are a single read-only statement; run them any time, in
+any order, as often as you like.
+
+* **`99a_whats-applied-probe.sql`** — one row per signature object of each of the
+  30 go-live steps, plus a verdict per step: `APPLIED`, `PARTIAL`, `NOT APPLIED`,
+  or `nothing to check` (the step only redefines functions or seeds data). Each
+  object is credited to the **first** step that creates it, so step 22
+  redefining `ps_advance_order` cannot make step 19 look applied. Up to 6
+  objects per step are sampled, behaviour-bearing kinds first (table, function,
+  view, trigger, column, policy, index); the rows under a verdict name the exact
+  object that is missing.
+* **`99b_function-versions-probe.sql`** — 6 functions are defined by more than
+  one migration, and `ps_place_order` alone has **9 generations** (steps 4, 5,
+  10, 12, 14, 15, 19, 23, 30). This compares `md5(prosrc)` of what is installed
+  against the newest definition in `supabase/migrations/` and answers `latest`,
+  `OUTDATED — installed body is from step NN`, or `MISSING`. That is the only
+  reliable way to know which generation is running.
+
+`scripts/probe-applied.mjs` regenerates both from `docs/go-live.md` and the
+migration files — it parses every statement with the same lexer, credits objects
+to their first author, checksums each function body, and refuses to write if a
+part is unbalanced, if a comment still holds a `;` or a quote, or if the two
+statement splitters disagree. It also asserts that the `ps_place_order` checksum
+it embeds is the one `split-paste.mjs` proves, so the two tools cannot drift.

@@ -143,6 +143,13 @@ Run **in this order, in one sequence** (skip files you already applied —
     shop's own wallet at checkout) and the history note says so. Run it
     AFTER step 19 — it re-creates the delivery-proof function from step 13.
 22. **`supabase/migrations/202609140007_wallet_cancel_payment_settle.sql`** —
+    *(172 lines — paste the whole file. This is the CURRENT `ps_advance_order`
+    and `ps_verify_payment`. `supabase/paste-parts/` 03 carried step 19's
+    columns but deliberately skipped its two older function bodies, so if this
+    step never ran, `ps_verify_payment` does not exist at all and
+    `ps_advance_order` is still the `schema.sql` one — wallet verification
+    cannot work. `supabase/paste-parts/99b_function-versions-probe.sql` says
+    which generation is installed.)*
     P1 #8 follow-up: cancelling a wallet order settles its payment. Before
     this, a bKash/Nagad order cancelled while still `pending_verification`
     stayed "under verification" on the customer's track page, and the shop
@@ -296,6 +303,19 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 
    Windows-এ `psql` লাগলে: `winget install PostgreSQL.PostgreSQL` (client tools
    যথেষ্ট)। ফাইল idempotent, তাই মাঝপথে থামলে পুরোটা আবার চালানো নিরাপদ।
+4. **একটা migration-ই যদি Editor-এ না ঢোকে (৩০০+ লাইন, বা একটাই বিশাল
+   statement):** `supabase/paste-parts/` — ওই ফাইলগুলো ছোট পেস্টে ভাগ করা,
+   ক্রম আর কারণ ফোল্ডারের `README.md`-তে। একটা `CREATE FUNCTION` SQL হিসেবে
+   কাটা যায় না, তাই সেটা base64-এর চার ভাগে গিয়ে শেষ part-এ md5 যাচাই হয়ে
+   তৈরি হয় — Editor পেস্ট নিজে statement-এ কাটে বলে readable SQL ভেঙে যেত।
+   নতুন করে ভাগ করতে: `node scripts/split-paste.mjs`।
+5. **কোন ধাপটা আসলেই লেগেছে, আর কোন ফাংশনের কোন ভার্সন বসে আছে?**
+   `supabase/paste-parts/99a_whats-applied-probe.sql` (প্রতিটা ধাপের অবজেক্ট
+   ধরে ধরে `APPLIED` / `PARTIAL` / `NOT APPLIED`) আর
+   `99b_function-versions-probe.sql` (যে ফাংশনগুলো একাধিক migration-এ আছে
+   তাদের `md5(prosrc)` মিলিয়ে `latest` / `OUTDATED — step NN` / `MISSING`)।
+   দুটোই read-only, যতবার খুশি চালানো যাবে। তৈরি করে
+   `node scripts/probe-applied.mjs`।
 
 ## 4. First staff account
 
