@@ -9,6 +9,13 @@
 --   OUTDATED   an older generation is in, and it names the step it came from
 --   MISSING    the function does not exist at all
 --
+-- A signature change leaves the OLD overload behind, because CREATE OR REPLACE
+-- matches on argument types — ps_rider_deliver gained p_proof_url in step 21,
+-- so a database can legitimately hold two of them. That is why overloads and
+-- stale_overloads are printed: the newest body must be in (verdict latest), and
+-- a stale overload only matters if something still calls it with the old
+-- argument list.
+--
 -- ps_place_order alone has 9 generations (steps 4, 5, 10, 12, 14, 15, 19, 23, 30)
 -- and only the newest is current — that is the one the paste-parts installed, and
 -- its body md5 is a2ef2cc2ae969020c1f519858e168564.
@@ -41,22 +48,36 @@ with defs (fname, step, body_md5, body_chars) as (
 ),
 latest as (select fname, max(step) as step from defs group by fname),
 installed as (
-  select p.proname as fname, md5(p.prosrc) as body_md5, length(p.prosrc) as body_chars
+  select p.proname as fname,
+         pg_get_function_identity_arguments(p.oid) as args,
+         md5(p.prosrc)    as body_md5,
+         length(p.prosrc) as body_chars
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
 )
 select l.fname,
-       d.step                                     as newest_step,
-       d.body_chars                               as expected_chars,
-       i.body_chars                               as installed_chars,
+       d.step                                             as newest_step,
+       d.body_chars                                       as expected_chars,
+       (select count(*) from installed i where i.fname = l.fname)
+                                                          as overloads,
+       (select string_agg(i.body_chars::text, ', ' order by i.body_chars)
+          from installed i where i.fname = l.fname)        as installed_chars,
+       (select count(*) from installed i
+         where i.fname = l.fname and i.body_md5 <> d.body_md5)
+                                                          as stale_overloads,
        case
-         when i.fname is null then 'MISSING'
-         when i.body_md5 = d.body_md5 then 'latest'
-         else 'OUTDATED — installed body is from step ' ||
-              lpad(coalesce((select d2.step::text from defs d2
-                             where d2.fname = l.fname and d2.body_md5 = i.body_md5), '?'), 2, '0')
-       end                                        as verdict
+         when not exists (select 1 from installed i where i.fname = l.fname)
+           then 'MISSING'
+         when exists (select 1 from installed i
+                       where i.fname = l.fname and i.body_md5 = d.body_md5)
+           then 'latest'
+         else 'OUTDATED — installed: ' || coalesce(
+                (select string_agg(distinct 'step ' || lpad(d2.step::text, 2, '0'), ', ')
+                   from defs d2 join installed i2
+                     on i2.fname = l.fname and i2.body_md5 = d2.body_md5),
+                'a body no migration contains')
+       end                                                as verdict
 from latest l
 join defs d on d.fname = l.fname and d.step = l.step
-left join installed i on i.fname = l.fname
-order by (i.body_md5 is distinct from d.body_md5) desc, l.fname;
+order by (exists (select 1 from installed i
+                   where i.fname = l.fname and i.body_md5 = d.body_md5)), l.fname;
