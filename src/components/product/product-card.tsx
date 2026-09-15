@@ -9,7 +9,7 @@ import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { productShopId, shopById } from "@/lib/shop-utils";
 import { Price } from "@/components/ui/primitives";
-import { IconArrowRight, IconHeart, IconPlus } from "@/components/ui/icons";
+import { IconArrowRight, IconCheck, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useFlashPrice } from "@/lib/use-promos";
@@ -184,6 +184,13 @@ export default function ProductCard({ product }: { product: Product }) {
               {t("product.sold").replace("{count}", String(product.unitsSold))}
             </p>
           )}
+          {/* P2 #21 — the shop ticks this per product; no tick, no chip. */}
+          {product.qualityChecked === true ? (
+            <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
+              <IconCheck className="h-3 w-3" />
+              {t("product.qualityChecked")}
+            </p>
+          ) : null}
           {drop ? (
             <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
               <IconTrendDown className="h-3 w-3" />

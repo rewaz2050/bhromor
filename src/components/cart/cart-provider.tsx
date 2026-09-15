@@ -8,7 +8,9 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
+import { getProductsSnapshot, subscribeLiveCatalog } from "@/lib/live-catalog";
 import {
   addLine,
   CART_STORAGE_KEY,
@@ -101,7 +103,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clear = useCallback(() => setLines([]), []);
 
-  const summary = useMemo(() => summarize(lines), [lines]);
+  // Recompute whenever the live catalog swaps in — a cart restored before
+  // /api/products answered must fill itself when the rows arrive, without
+  // waiting for the next user action (P: registry is empty until live).
+  const catalogPool = useSyncExternalStore(
+    subscribeLiveCatalog,
+    getProductsSnapshot,
+    getProductsSnapshot,
+  );
+  const summary = useMemo(() => summarize(lines), [lines, catalogPool]);
 
   const value = useMemo(
     () => ({

@@ -38,6 +38,11 @@ interface Draft {
   compareTaka: string;
   stock: string;
   warrantyDays: string;
+  /* P2 #21 — fabric transparency card (shop-declared; blank = not declared) */
+  fabricGsm: string;
+  manufacturer: string;
+  testReportUrl: string;
+  qualityChecked: boolean;
   featured: boolean;
   isNew: boolean;
   status: "draft" | "published";
@@ -72,6 +77,10 @@ const draftFrom = (p?: Product | null): Draft => ({
   compareTaka: p?.compareAtPrice ? String(p.compareAtPrice / 100) : "",
   stock: p?.stock != null ? String(p.stock) : p ? (p.inStock ? (p.lowStock ? "3" : "12") : "0") : "",
   warrantyDays: p?.warrantyDays != null ? String(p.warrantyDays) : "",
+  fabricGsm: p?.fabricGsm != null ? String(p.fabricGsm) : "",
+  manufacturer: p?.manufacturer ?? "",
+  testReportUrl: p?.testReportUrl ?? "",
+  qualityChecked: p?.qualityChecked === true,
   featured: p?.featured ?? false,
   isNew: p?.isNew ?? true,
   status: p?.status ?? "draft",
@@ -208,6 +217,11 @@ export default function ProductEditor({
       if (!Number.isInteger(w) || w < 1 || w > 365)
         return "Warranty must be a whole number of days, 1–365 (or leave blank).";
     }
+    if (draft.fabricGsm.trim()) {
+      const g = Number(draft.fabricGsm);
+      if (!Number.isInteger(g) || g < 30 || g > 1000)
+        return "Fabric weight (GSM) must be a whole number, 30–1000 (or leave blank).";
+    }
     if (!draft.category) return "Pick a category.";
     if (draft.media.length === 0) return "Add at least one product image.";
     if (!draft.media.some((m) => m.kind === "image")) {
@@ -272,6 +286,11 @@ export default function ProductEditor({
         draft.warrantyDays.trim() === ""
           ? undefined
           : Number(draft.warrantyDays),
+      fabricGsm:
+        draft.fabricGsm.trim() === "" ? undefined : Number(draft.fabricGsm),
+      manufacturer: draft.manufacturer.trim(),
+      testReportUrl: draft.testReportUrl.trim(),
+      qualityChecked: draft.qualityChecked,
       media: draft.media.filter((m) => m.src.trim()),
       video: extractYoutubeId(draft.youtube)
         ? { youtubeId: extractYoutubeId(draft.youtube)!, label: draft.youtubeLabel.trim() || "Watch product video" }
@@ -552,6 +571,60 @@ export default function ProductEditor({
             <span className={hint}>
               Leave blank for no warranty. Set on accessories the shop warrants (e.g. 30) —
               claimants get that many days from delivery (§14).
+            </span>
+          </label>
+          {/* P2 #21 — fabric transparency card. Everything here is a shop
+              declaration shown on the product page; blank = not shown. */}
+          <label className="block sm:col-span-2">
+            <span className={label}>Fabric weight (GSM)</span>
+            <input
+              className={`${field} max-w-40`}
+              type="number"
+              min="30"
+              max="1000"
+              step="1"
+              value={draft.fabricGsm}
+              onChange={(e) => set("fabricGsm", e.target.value)}
+            />
+            <span className={hint}>
+              Grams per m², as declared by the mill — e.g. 160 for a panjabi cotton. Shown on the product page as a mid-weight/premium cue. Blank = not declared.
+            </span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Manufacturer / weaving mill</span>
+            <input
+              className={`${field}`}
+              type="text"
+              maxLength={120}
+              value={draft.manufacturer}
+              onChange={(e) => set("manufacturer", e.target.value)}
+              placeholder="e.g. Nizam Textiles, Ranirbazar"
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Fabric test report link</span>
+            <input
+              className={`${field}`}
+              type="url"
+              maxLength={300}
+              value={draft.testReportUrl}
+              onChange={(e) => set("testReportUrl", e.target.value)}
+              placeholder="https://… (optional — Google Drive / lab PDF)"
+            />
+            <span className={hint}>Optional public link to the test document. Only a full http(s) URL works.</span>
+          </label>
+          <label className="flex items-start gap-3 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={draft.qualityChecked}
+              onChange={(e) => set("qualityChecked", e.target.checked)}
+              className="mt-1 h-4 w-4 accent-forest-800"
+            />
+            <span>
+              <span className={label}>Quality checked</span>
+              <span className={hint}>
+                Shows the “Quality Checked” badge on this product’s card and page. Tick only for pieces this shop actually inspects before dispatch.
+              </span>
             </span>
           </label>
         </div>

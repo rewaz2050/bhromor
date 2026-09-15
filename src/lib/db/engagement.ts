@@ -17,6 +17,7 @@ import type { AdminSettings } from "../settings-store";
 import { SETTINGS_DEFAULTS } from "../settings-store";
 import type { Notif, NotifKind } from "../notification-store";
 import {
+  cleanCampaignTag,
   cleanEmail,
   HOMEPAGE_SETTING_KEY,
   isPlausibleEmail,
@@ -216,8 +217,11 @@ export const setContactMessageStatus = async (
 export const subscribeNewsletter = async (
   db: SupabaseClient,
   rawEmail: unknown,
+  /** P2 #20 — optional campaign tag from the /campaign early-access box. */
+  rawCampaign?: unknown,
 ): Promise<{ subscriber: Subscriber; created: boolean }> => {
   const email = cleanEmail(rawEmail);
+  const campaign = cleanCampaignTag(rawCampaign);
   if (!isPlausibleEmail(email)) {
     throw new AdminInputError("Enter a valid email address.", 422);
   }
@@ -229,6 +233,18 @@ export const subscribeNewsletter = async (
   if (existing) {
     const row = existing as DbNewsletterSubscriber;
     if (row.status === "subscribed") {
+      // A campaign signup from a known address backfills its tag once —
+      // never overwrites an existing list label.
+      if (campaign !== "" && (row.campaign ?? "") === "") {
+        const { data: tagged } = await db
+          .from("newsletter_subscribers")
+          .update({ campaign })
+          .eq("id", row.id)
+          .select("*")
+          .maybeSingle();
+        if (tagged)
+          return { subscriber: mapSubscriber(tagged as DbNewsletterSubscriber), created: false };
+      }
       return { subscriber: mapSubscriber(row), created: false };
     }
     const { data, error } = await db
@@ -242,7 +258,7 @@ export const subscribeNewsletter = async (
   }
   const { data, error } = await db
     .from("newsletter_subscribers")
-    .insert({ email, status: "subscribed" })
+    .insert({ email, status: "subscribed", campaign: campaign === "" ? null : campaign })
     .select("*")
     .single();
   if (error || !data) {

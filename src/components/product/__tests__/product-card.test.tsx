@@ -9,7 +9,8 @@ import {
 import BagDrawer from "@/components/cart/bag-drawer";
 import ProductCard from "@/components/product/product-card";
 import { CartProvider, useCart } from "@/components/cart/cart-provider";
-import { PRODUCTS } from "@/lib/catalog";
+import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
+import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
 
 vi.mock("@/lib/use-live-catalog", async () => {
@@ -36,7 +37,10 @@ function CartCount() {
 beforeEach(() => {
   localStorage.clear();
   clearWishlistStore();
+  // cart + bag resolve through the live registry — serve the rows there too
+  __serveLiveCatalogForTests(PRODUCTS, CATEGORIES);
 });
+afterEach(() => __resetLiveCatalog());
 afterEach(cleanup);
 
 describe("Editorial product cards", () => {
@@ -72,6 +76,24 @@ describe("Editorial product cards", () => {
       </CartProvider>,
     );
     expect(screen.getByText("23 sold")).toBeVisible();
+  });
+
+  it("shows the Quality Checked chip only when the shop ticked it (P2 #21)", () => {
+    // No declaration → no chip; the badge is never assumed for a product.
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.queryByText(/quality checked/i)).toBeNull();
+
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, qualityChecked: true }} />
+      </CartProvider>,
+    );
+    expect(screen.getByText("Quality checked")).toBeVisible();
   });
 
   it("adds to the real cart and announces success", () => {

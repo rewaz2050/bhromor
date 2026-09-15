@@ -61,6 +61,15 @@ export interface Product {
    * Absent/null = no warranty on this item; nothing is warranted by default.
    */
   warrantyDays?: number;
+  /**
+   * P2 #21 — fabric transparency card, all shop-declared per product:
+   * GSM weight, the maker, an optional test-report link, and the shop's
+   * own "quality checked" tick. Absent = the row simply isn't rendered.
+   */
+  fabricGsm?: number;
+  manufacturer?: string;
+  testReportUrl?: string;
+  qualityChecked?: boolean;
   seo?: { title?: string; description?: string };
   /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
       implicitly belong to shop #1, so rows may omit it. */
@@ -113,6 +122,8 @@ export interface Rider {
   lastLocationAt?: number;
   currentLoad?: number;
   totalDeliveries?: number;
+  /** P2 #22 — the rider's own shift; drives auto-dispatch (see lib/rider-hours.ts). */
+  availability?: import("./rider-hours").RiderAvailability;
 }
 
 /**

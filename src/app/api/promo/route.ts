@@ -12,6 +12,7 @@
  */
 
 import { PROMO_DEFAULTS, promoView } from "@/lib/promos";
+import { CAMPAIGN_DEFAULTS, campaignView } from "@/lib/campaign";
 import { readOpsSettings } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { getSupabaseService } from "@/lib/supabase-server";
@@ -21,12 +22,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const off = promoView(PROMO_DEFAULTS, Date.now());
-  if (!isServiceRoleConfigured()) return apiJson({ source: "none", promos: off });
+  if (!isServiceRoleConfigured())
+    return apiJson({ source: "none", promos: off, campaign: campaignView(CAMPAIGN_DEFAULTS) });
   const db = getSupabaseService();
   if (!db) return apiJson({ source: "none", promos: off });
   const settings = await readOpsSettings(db);
   return apiJson({
     source: "live",
     promos: promoView({ flash: settings.flash, bundle: settings.bundle }, Date.now()),
+    // P2 #20 — the campaign state rides the same poll, so the strip and the
+    // landing flip teaser→live→ended without a reload, at the exact minute.
+    campaign: campaignView(settings.campaign ?? CAMPAIGN_DEFAULTS, Date.now()),
   });
 }

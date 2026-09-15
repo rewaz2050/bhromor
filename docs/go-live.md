@@ -1,4 +1,4 @@
-# Go-live playbook — from launch catalog to fully seeded (owner-run)
+# Go-live playbook — from empty store to fully real (owner-run)
 
 Production (`bhromor-zeta.vercel.app`) already talks to Supabase, but on
 2026-09-09 the database had **no catalog seed**, so every live checkout
@@ -6,9 +6,9 @@ failed. This doc takes the shop from there to fully real: database →
 seed → staff → verify. Every step is run by the deployment owner (you);
 nothing here needs the sandbox.
 
-> Local `npm run dev` without keys paints the launch catalog, and every
-> backend endpoint answers an honest 503/unavailable. There is no
-> browser-local fallback store.
+> Local `npm run dev` without keys shows an honest empty storefront — no
+> demo catalog is painted anymore — and every backend endpoint answers an
+> explicit 503/unavailable. There is no browser-local fallback store.
 
 ## 0. What “real” now covers
 
@@ -173,6 +173,32 @@ Run **in this order, in one sequence** (skip files you already applied —
     them. Needs `reviews.shop_id` (step 4), so run it after the
     marketplace migration. It also backfills the numbers for reviews
     that pre-date the trigger.
+27. **`supabase/migrations/202609140012_fabric_transparency.sql`** —
+    P2 #9 (brief #21) fabric columns on `products`
+    (`fabric_gsm`, `fabric_composition`, `test_report_url`,
+    `quality_checked`). Purely additive; until a shop declares a value in
+    the editor, nothing renders on any product page.
+28. **`supabase/migrations/202609140013_campaign_early_access.sql`** —
+    P2 #8 (brief #20) campaign: adds the `campaign` tag column to
+    `newsletter_subscribers` (early-access list + CSV export). The
+    campaign document itself lives in `site_settings` (key `ops`) — no
+    table to seed; Admin → Growth arms it with real dates.
+29. **`supabase/migrations/202609140014_rider_availability.sql`** —
+    P2 #10 (brief #22) rider shifts: `avail_days` (int[] 0–6, Sunday=0),
+    `avail_from_hour`/`avail_to_hour` (0–23, wrap-over allowed) on `riders`
+    + patched `ps_next_eligible_rider` which refuses to auto-dispatch to an
+    on-duty rider outside her window. NULL/NULL = anytime — existing riders
+    behave exactly as before this migration.
+30. **`supabase/migrations/202609140015_plus_membership.sql`** —
+    P2 #5 (brief #17) PROSANTI+: `memberships` ledger (pending/active/
+    rejected, one pending per phone, admin-only RLS), `orders.is_plus`
+    stamp, and `ps_place_order` patched to zero delivery + surcharges when
+    the order's phone holds an ACTIVE unexpired term. After applying: set
+    the price/wallet path in Admin → Growth (PROSANTI+ card), approve the
+    first test application, and place one order with that phone — the
+    confirmation must show FREE 👑 and the inserted order row must carry
+    `is_plus = true`. There is no auto-renew by design: the term ends on
+    `expires_at` and the customer renews from their account page.
 
 Quick check after step 11 (SQL editor):
 
@@ -202,28 +228,55 @@ SUPABASE_SERVICE_ROLE_KEY=<service_role key>   # server-only
 After any env change: Deployments → ⋯ → **Redeploy** with “Use existing
 Build Cache” **unchecked**.
 
-## 3. Seed the launch catalog
+## 3. Seed the store skeleton — then add real products
 
 On any machine with the repo + `.env.local` (same three keys):
 
 ```bash
 npm run seed:dry   # review the plan (writes nothing)
-npm run seed       # upsert shop #1, categories, zones, coupons, products
+npm run seed       # upsert shop #1, categories, zones, starter settings
 ```
 
 Re-running is safe (upserts on natural keys). The script never seeds fake
-orders or fake reviews — those arrive from real customers.
+orders, fake reviews, sample products or demo coupons — those are all gone
+(2026-09-14): products, variants, media and coupons are created by YOU in
+Admin → Catalog & Products / Coupons, and the storefront shows nothing but
+your real rows until then.
 
-> **Checkout self-heals (2026-09-11).** If this step is skipped and a customer
-> checks out, `POST /api/orders` upserts the same launch catalog in place
-> (`src/lib/db/auto-seed.ts`) and places a real order. If the database refuses
-> even the seed (missing schema/outage), the route answers an honest 503 —
-> the storefront never invents a browser-local order. The script remains the
-> recommended path: run it BEFORE launch so the very first order prices
-> against seeded rows.
+> **No more "self-heal".** `POST /api/orders` on an empty catalog answers an
+> honest 503 ("this shop has no published products") — it no longer inserts
+> a sample catalog to keep a checkout alive. Publish your first products
+> before sharing the link.
 
 Verify: `GET https://<your-app>/api/products` must return products, not
-`{"code":"NOT_SEEDED"}`.
+`{"code":"NOT_SEEDED"}` — i.e. after you added real items in the admin.
+
+> **দ্রুততম পথ (এই মুহূর্তে):** বাকি ৪টে (steps 27–30) একসাথে
+> `supabase/pending-p2-final.sql` — ~31KB, **এক পেস্টে** Run → তারপর
+> `supabase/verify-p2.sql` চালালে ৬টা check-ই `OK` দেখাবে।
+
+### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
+
+`supabase/bootstrap-fresh.sql` ≈৩০০KB — পুরোটা SQL Editor-এ পেস্ট করবেন **না**।
+তিনটা পথ, যেকোনো একটা:
+
+1. **Migration ধরে ধরে চালান (recommended — এই ডক-এর উপরের ধাপগুলো)।**
+   প্রতিটা ফাইল ছোট (≤~25KB), Editor সহ্য করে। নতুন দোকানের জন্য 0001 →
+   0015 পর্যন্ত একবারে একটা করে Run; মাঝখানের কোনোটা বাদ যাবে না।
+2. **Parts paste করুন:** `npm run split:bootstrap` চালালে
+   `supabase/bootstrap-parts/01…09_*.sql` তৈরি হয় (repo-তে committed-ও আছে) —
+   এগুলো ক্রমানুসারে, একবারে একটা করে Editor-এ পেস্ট করলেই চলবে; প্রতিটা part
+   নিজের মধ্যে committed transaction-এ থাকে।
+3. **psql (fastest for one shot):** Supabase Dashboard → Settings → Database →
+   **Connection string (Session pooler, port 5432)** —
+
+   ```bash
+   psql "postgresql://postgres.<PROJECT_REF>:<DB_PASSWORD>@aws-<region>.pooler.supabase.com:5432/postgres" \
+     -v ON_ERROR_STOP=1 -f supabase/bootstrap-fresh.sql
+   ```
+
+   Windows-এ `psql` লাগলে: `winget install PostgreSQL.PostgreSQL` (client tools
+   যথেষ্ট)। ফাইল idempotent, তাই মাঝপথে থামলে পুরোটা আবার চালানো নিরাপদ।
 
 ## 4. First staff account
 
@@ -298,7 +351,7 @@ direct file-picker upload, add the four Cloudinary variables from
 
 | Symptom | Cause → fix |
 |---|---|
-| `/api/products` → `NOT_SEEDED` | Step 3 not run → `npm run seed` |
+| `/api/products` → `NOT_SEEDED` | No published products yet → add them in Admin → Catalog & Products (step 3 only seeds the skeleton) |
 | Homepage publish “works” but `/` unchanged | Migration 006 not applied → public read policy missing; apply step 1.7 |
 | `/rider` shows only login | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |

@@ -21,14 +21,15 @@ afterEach(() => {
 });
 
 describe("live-catalog registry", () => {
-  it("serves the launch catalog before any fetch", () => {
-    expect(getProductsSnapshot()).toBe(PRODUCTS);
-    expect(getCategoriesSnapshot()).toBe(CATEGORIES);
+  it("serves NOTHING before the database answers — no demo seeds painted", () => {
+    expect(getProductsSnapshot()).toEqual([]);
+    expect(getCategoriesSnapshot()).toEqual([]);
     expect(getZonesSnapshot()).toEqual([]);
     expect(getShopsSnapshot()).toEqual([]);
     expect(isCatalogSettled()).toBe(false);
     expect(isZonesSettled()).toBe(false);
-    expect(resolveCatalogProduct("p1")).toBe(PRODUCTS[0]);
+    // a stale demo id from an old cart resolves to nothing, quietly
+    expect(resolveCatalogProduct("p1")).toBeUndefined();
     expect(resolveCatalogProduct("nope")).toBeUndefined();
   });
 
@@ -47,10 +48,10 @@ describe("live-catalog registry", () => {
     await expect(ensureLiveCatalog()).resolves.toBe(true);
     expect(getProductsSnapshot()).toEqual([liveProduct]);
     expect(isCatalogSettled()).toBe(true);
-    // Post-cutover, legacy launch ids bridge through slug to the LIVE row
-    // (live prices, not stale seed prices) so carts survive seeding.
-    expect(resolveCatalogProduct("p1")).toBe(liveProduct);
-    expect(resolveCatalogProduct("p2")).toBeUndefined(); // no live row
+    // Ids resolve ONLY against live rows — even a slug twin no longer
+    // bridges a stale demo id into the catalog (that was the auto-seed era).
+    expect(resolveCatalogProduct("p1")).toBeUndefined();
+    expect(resolveCatalogProduct("p2")).toBeUndefined();
     expect(resolveCatalogProduct("uuid-live-1")).toEqual(liveProduct);
   });
 
@@ -86,7 +87,7 @@ describe("live-catalog registry", () => {
     expect(getShopsSnapshot()).toEqual([liveShop]);
   });
 
-  it("keeps the launch catalog when the backend is unreachable", async () => {
+  it("stays empty when the backend is unreachable — an honest empty state", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -94,9 +95,9 @@ describe("live-catalog registry", () => {
       }),
     );
     await expect(ensureLiveCatalog()).resolves.toBe(false);
-    expect(getProductsSnapshot()).toBe(PRODUCTS);
+    expect(getProductsSnapshot()).toEqual([]);
     expect(isCatalogSettled()).toBe(true);
-    expect(resolveCatalogProduct("p1")).toBe(PRODUCTS[0]);
+    expect(resolveCatalogProduct("p1")).toBeUndefined();
   });
 
   it("ignores non-live payloads without crashing", async () => {
@@ -105,7 +106,7 @@ describe("live-catalog registry", () => {
       vi.fn(async () => ({ ok: true, json: async () => ({ source: "seeds" }) })),
     );
     await expect(ensureLiveCatalog()).resolves.toBe(false);
-    expect(getProductsSnapshot()).toBe(PRODUCTS);
+    expect(getProductsSnapshot()).toEqual([]);
   });
 
   it("fetches zones once", async () => {

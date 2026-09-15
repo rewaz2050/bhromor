@@ -2,7 +2,7 @@ import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PRODUCTS, coverImage } from "@/lib/catalog";
+import { coverImage } from "@/lib/catalog";
 import {
   findStorefrontProduct,
   getStorefrontCatalog,
@@ -16,7 +16,8 @@ import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
 import RestockAlertRow from "@/components/product/restock-alert-row";
 import ReviewsSection from "@/components/reviews/reviews-section";
-import { IconChevron, IconLeaf } from "@/components/ui/icons";
+import { IconCheck, IconChevron, IconLeaf } from "@/components/ui/icons";
+import { gsmBand, hasFabricInfo } from "@/lib/fabric";
 import {
   DELIVERY_ETA,
 
@@ -29,7 +30,9 @@ interface PageProps {
 }
 
 export function generateStaticParams() {
-  return PRODUCTS.map((p) => ({ slug: p.slug }));
+  // Live slugs only the database knows — nothing pre-rendered from a demo
+  // catalog (the old launch seeds). Each product page renders on demand.
+  return [];
 }
 
 /**
@@ -155,6 +158,52 @@ export default async function ProductPage({ params }: PageProps) {
               </dl>
             </div>
           </details>
+          {hasFabricInfo(product) ? (
+            <details open>
+              <summary>Quality &amp; transparency</summary>
+              <div className="info-body space-y-3">
+                {product.qualityChecked ? (
+                  <p className="inline-flex items-center gap-1.5 rounded-full bg-forest-50 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-forest-800">
+                    <IconCheck className="h-3.5 w-3.5" /> Quality Checked
+                  </p>
+                ) : null}
+                <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                  {product.fabricGsm ? (
+                    <div className="flex justify-between gap-4 border-b border-line pb-3 text-sm">
+                      <dt className="font-medium text-ink">Fabric weight</dt>
+                      <dd className="text-right text-ink-soft">
+                        {product.fabricGsm} GSM · {gsmBand(product.fabricGsm)}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {product.manufacturer ? (
+                    <div className="flex justify-between gap-4 border-b border-line pb-3 text-sm">
+                      <dt className="font-medium text-ink">Woven by</dt>
+                      <dd className="text-right text-ink-soft">{product.manufacturer}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {product.testReportUrl ? (
+                  <p className="text-sm text-ink-soft">
+                    Fabric test report on file —{" "}
+                    <a
+                      href={product.testReportUrl}
+                      target="_blank"
+                      rel="noopener nofollow"
+                      className="font-medium text-forest-700 underline underline-offset-4"
+                    >
+                      read it here
+                    </a>
+                    .
+                  </p>
+                ) : null}
+                <p className="text-xs leading-6 text-ink-soft/80">
+                  These details are declared by the shop for this piece — we
+                  publish what the maker states, never a generic “premium” label.
+                </p>
+              </div>
+            </details>
+          ) : null}
           <details>
             <summary>Delivery &amp; returns</summary>
             <div className="info-body">

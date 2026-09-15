@@ -12,6 +12,7 @@ import {
 } from "@/lib/wishlist-store";
 import { LoyaltyCard } from "./loyalty-card";
 import { ReferralCard } from "./referral-card";
+import PlusCard from "./plus-card";
 
 /**
  * Account panel — signup/login with NO verification: phone + password and
@@ -124,6 +125,8 @@ export default function AccountView() {
     <div className="space-y-8">
       <LoyaltyCard />
       <ReferralCard />
+      {/* P2 #17 — PROSANTI+ status + apply, keyed to the account phone. */}
+      <PlusCard />
 
       <div className="border border-line bg-paper p-6 sm:p-10">
         {customer ? (

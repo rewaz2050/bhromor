@@ -1,12 +1,10 @@
 /**
- * POST /api/orders — the unseeded-catalog dead-end regression.
+ * POST /api/orders — the catalog is whatever the shop has PUBLISHED.
  *
- * A configured-but-empty database used to answer the 503
- * "Online ordering is not set up yet — please call …" and no customer could
- * ever order. The route must instead: seed the launch catalog in place and
- * place a REAL order (bridging launch-seed ids like `p1` to live uuid rows),
- * and when the database itself refuses, answer an honest 503 — never a fake
- * success. A seeded store is untouched.
+ * The old behaviour seeded the demo launch catalog into an empty store on
+ * the first customer order. That is gone: an unseeded store answers an
+ * honest 503 and NOTHING is validated, placed, or invented. A seeded store
+ * is untouched; a database that refuses answers 503, never a fake success.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,14 +14,10 @@ vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({
   serviceConfigured: true,
   snapshotReads: 0,
-  emptySnapshot: null as Record<string, unknown> | null,
-  seededSnapshot: null as Record<string, unknown> | null,
+  snapshot: null as Record<string, unknown> | null,
   snapshotThrows: false,
-  seedCalls: 0,
-  seedOk: true,
-  seedThrows: false,
   validateResult: { ok: true } as Record<string, unknown>,
-  lastPayload: null as Record<string, unknown> | null,
+  validateCalls: 0,
   placementError: null as Error | null,
   placedOrder: null as Record<string, unknown> | null,
 }));
@@ -55,8 +49,7 @@ vi.mock("@/lib/db/orders", () => ({
   loadOrderSnapshot: async () => {
     state.snapshotReads += 1;
     if (state.snapshotThrows) throw new Error("order snapshot read failed");
-    // First read reflects the pre-seed state; later reads the seeded rows.
-    return state.seedCalls > 0 ? state.seededSnapshot : state.emptySnapshot;
+    return state.snapshot;
   },
   placeLiveOrder: async () => {
     if (state.placementError) throw state.placementError;
@@ -66,47 +59,30 @@ vi.mock("@/lib/db/orders", () => ({
 
 vi.mock("@/lib/db/engagement", () => ({ notifyStaff: async () => undefined }));
 
+vi.mock("@/lib/db/membership", () => ({ isPlusMember: async () => false }));
+
 vi.mock("@/lib/customer-auth", () => ({
   resolveCustomer: async () => null,
   loadSmartCardTarget: async () => ({ target: 10 }),
 }));
 
 vi.mock("@/lib/order-validation", () => ({
-  validateOrderPayload: (payload: Record<string, unknown>) => {
-    state.lastPayload = payload;
+  validateOrderPayload: () => {
+    state.validateCalls += 1;
     return state.validateResult;
   },
 }));
 
-vi.mock("@/lib/db/auto-seed", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/db/auto-seed")>();
-  return {
-    ...actual, // keep the real pure helpers (id→slug bridging is under test)
-    ensureLaunchCatalog: async () => {
-      state.seedCalls += 1;
-      if (state.seedThrows) throw new Error("connection refused");
-      return state.seedOk;
-    },
-  };
-});
-
 import { POST } from "@/app/api/orders/route";
-import { PRODUCTS } from "@/lib/catalog";
 
-const emptySnapshot = () => ({
-  products: [],
+const stockedSnapshot = () => ({
+  products: [{ id: "u-1", slug: "real-panjabi", name: "Real Panjabi" }],
   zones: [],
   coupons: [],
   variants: [],
   mediaByProduct: new Map(),
   shops: [],
   totalOrders: 0,
-});
-
-/** Live mirror of the seed catalog: same slugs, uuid ids. */
-const seededSnapshot = () => ({
-  ...emptySnapshot(),
-  products: PRODUCTS.map((p, i) => ({ ...p, id: `u-${i + 1}` })),
 });
 
 const payload = () => ({
@@ -117,7 +93,7 @@ const payload = () => ({
   para: "বড়পাড়া",
   address: "বড়পাড়া ১২",
   zoneId: "z1",
-  items: [{ productId: PRODUCTS[0].id, variantLabel: "Forest Green · L", qty: 1 }],
+  items: [{ productId: "u-1", variantLabel: "Forest Green · L", qty: 1 }],
 });
 
 const post = async (body: unknown) =>
@@ -132,14 +108,10 @@ const post = async (body: unknown) =>
 beforeEach(() => {
   state.serviceConfigured = true;
   state.snapshotReads = 0;
-  state.emptySnapshot = emptySnapshot();
-  state.seededSnapshot = seededSnapshot();
+  state.snapshot = stockedSnapshot();
   state.snapshotThrows = false;
-  state.seedCalls = 0;
-  state.seedOk = true;
-  state.seedThrows = false;
   state.validateResult = { ok: true, draft: { customer: { name: "রহিম", phone: "01712345678" } } };
-  state.lastPayload = null;
+  state.validateCalls = 0;
   state.placementError = null;
   state.placedOrder = {
     id: "PS-1001",
@@ -149,39 +121,24 @@ beforeEach(() => {
   };
 });
 
-describe("POST /api/orders — unseeded live catalog", () => {
-  it("seeds in place and places a REAL order instead of the dead-end 503", async () => {
+describe("POST /api/orders — empty catalog is honest, not seeded", () => {
+  it("no published products → 503 with a truthful message; nothing validated", async () => {
+    state.snapshot = { products: [], zones: [], coupons: [], variants: [], mediaByProduct: new Map(), shops: [], totalOrders: 0 };
     const res = await post(payload());
-    expect(res.status).toBe(201);
-    expect(state.seedCalls).toBe(1);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.order.id).toBe("PS-1001");
-    expect(body.demoMode).toBeUndefined();
+    expect(body.error).toMatch(/no published products/i);
+    expect(state.validateCalls).toBe(0); // no demo rows inserted, no fake success
   });
 
-  it("bridges launch-seed ids (p1…) to live uuid rows via slug", async () => {
-    const res = await post(payload());
-    expect(res.status).toBe(201);
-    const items = (state.lastPayload as { items: { productId: string }[] }).items;
-    expect(items[0].productId).toBe("u-1"); // PRODUCTS[0] slug → seeded row
-  });
-
-  it("database refuses to seed → honest 503, never a fake success", async () => {
-    state.seedOk = false;
-    const res = await post(payload());
-    expect(res.status).toBe(503);
-    expect(await res.json()).toHaveProperty("error");
-  });
-
-  it("snapshot read failure + seed failure → 503, never a fake success", async () => {
+  it("snapshot read failure → honest 503, never a fake success", async () => {
     state.snapshotThrows = true;
-    state.seedThrows = true;
     const res = await post(payload());
     expect(res.status).toBe(503);
     expect(await res.json()).toHaveProperty("error");
   });
 
-  it("freshly-seeded store whose payload still fails → 422 field errors", async () => {
+  it("stocked store whose payload fails validation → 422 field errors", async () => {
     state.validateResult = {
       ok: false,
       errors: [{ field: "items", message: "That product is not available." }],
@@ -190,29 +147,23 @@ describe("POST /api/orders — unseeded live catalog", () => {
     expect(res.status).toBe(422);
   });
 
-  it("placement blowing up right after auto-seed → 503 (RPC/schema gap)", async () => {
-    const err = new Error("function ps_place_order does not exist");
-    state.placementError = err;
+  it("placement blowing up (RPC/schema gap) → 503", async () => {
+    state.placementError = new Error("function ps_place_order does not exist");
     const res = await post(payload());
     expect(res.status).toBe(503);
   });
 });
 
-describe("POST /api/orders — seeded store is untouched", () => {
-  it("live products present → never seeds; validation errors stay 422", async () => {
-    state.emptySnapshot = seededSnapshot(); // already stocked
-    state.validateResult = {
-      ok: false,
-      errors: [{ field: "couponCode", message: "Coupon is expired." }],
-    };
+describe("POST /api/orders — seeded store places real orders", () => {
+  it("live products present → order placed from the RPC", async () => {
     const res = await post(payload());
-    expect(state.seedCalls).toBe(0);
-    expect(res.status).toBe(422);
-    expect(await res.json()).toMatchObject({ error: "Please fix the highlighted fields." });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.order.id).toBe("PS-1001");
+    expect(body.demoMode).toBeUndefined();
   });
 
-  it("OrderPlacementError on a seeded store keeps its status/field", async () => {
-    state.emptySnapshot = seededSnapshot();
+  it("OrderPlacementError keeps its status/field", async () => {
     const { OrderPlacementError } = (await import("@/lib/db/orders")) as {
       OrderPlacementError: new (f: string, m: string, s: number) => Error;
     };
@@ -229,6 +180,5 @@ describe("POST /api/orders — seeded store is untouched", () => {
     state.serviceConfigured = false;
     const res = await post(payload());
     expect(res.status).toBe(503);
-    expect(state.seedCalls).toBe(0);
   });
 });

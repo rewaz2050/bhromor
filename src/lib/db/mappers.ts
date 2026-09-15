@@ -184,6 +184,10 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     active: p.active,
     stock,
     warrantyDays: p.warranty_days ?? undefined,
+    fabricGsm: p.fabric_gsm ?? undefined,
+    manufacturer: p.manufacturer || undefined,
+    testReportUrl: p.test_report_url || undefined,
+    qualityChecked: p.quality_checked === true ? true : undefined,
     seo:
       p.seo_title || p.seo_description
         ? {
@@ -232,6 +236,13 @@ export const mapRider = (row: DbRider): Rider => ({
   lastLocationAt: (row as any).last_location_at ? Date.parse((row as any).last_location_at) : undefined,
   currentLoad: (row as any).current_load ?? 0,
   totalDeliveries: (row as any).total_deliveries ?? 0,
+  // P2 #22 — availability ships default-on: a rider who never set a shift
+  // is treated as "anytime", exactly like before this feature existed.
+  availability: {
+    fromHour: row.avail_from_hour ?? null,
+    toHour: row.avail_to_hour ?? null,
+    days: Array.isArray(row.avail_days) && row.avail_days.length > 0 ? [...row.avail_days] : null,
+  },
 });
 
 export interface OrderRowBundle {
@@ -309,6 +320,7 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
     paymentVerifiedAt: o.payment_verified_at
       ? new Date(o.payment_verified_at).getTime()
       : undefined,
+    isPlus: o.is_plus === true,
     status: o.status as OrderStatus,
     timeline,
     deliveredMinutes,

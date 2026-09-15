@@ -21,6 +21,9 @@ export default function Footer() {
     { label: t("footer.women"), href: "/shop?category=women" },
     { label: t("footer.traditional"), href: "/shop?category=traditional" },
     { label: t("footer.newArrivals"), href: "/shop?filter=new" },
+    // P2 #19 + #20 — discovery paths that own their route.
+    { label: "স্টাইল ম্যাচ (Style Match)", href: "/style" },
+    { label: "সিজনাল ড্রপ (Campaign)", href: "/campaign" },
   ];
   const HELP_LINKS = [
     { label: t("footer.yourAccount"), href: "/account" },

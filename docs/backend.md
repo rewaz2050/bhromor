@@ -1,12 +1,16 @@
 # Backend — Supabase + API routes (full launch backend)
 
 The storefront is **live-only**. There is no demo mode: every domain reads
-and writes Postgres through Supabase. The launch catalog in
-`src/lib/catalog.ts` is what `scripts/seed-supabase.mjs` and the checkout
-self-heal upsert into the database, and the storefront swaps those same
-rows in as soon as the backend serves them. An unconfigured or broken
-backend answers an explicit 503/unavailable — never a silent browser-local
-substitution, and especially never for money paths.
+and writes Postgres through Supabase, and NOTHING renders until the
+database answers. The former "launch catalog" surfaces — the static
+fallback painted by the client registry and the checkout auto-seed that
+inserted sample products into empty stores — were removed on 2026-09-14:
+`src/lib/catalog.ts` now only carries types, shared constants and the test
+fixtures; `scripts/seed-supabase.mjs` seeds just the store skeleton (shop,
+categories, zones, settings) because products and coupons must be the
+shop's own real entries. An unconfigured or broken backend answers an
+explicit 503/unavailable or an honest empty state — never a silent
+browser-local substitution, and especially never for money paths.
 
 `GET /api/health` probes each dependency (keys, reachability, seed counts,
 the `ps_place_order` RPC, the admin user) and returns `live: true` only when
@@ -85,7 +89,7 @@ src/lib/
 ├── use-guarded-add.ts     # single-shop add-to-bag guard (stages conflicts)
 ├── rate-limit.ts          # fixed windows: per-IP public, per-staff admin
 ├── api-response.ts        # JSON envelopes (always no-store)
-├── live-catalog.ts        # client registry: launch catalog paints, live rows swap in
+├── live-catalog.ts        # client registry: empty until live rows arrive (no seeds)
 ├── use-live-catalog.ts / use-live-zones.ts / use-public-reviews.ts
 ├── admin-api.ts           # typed admin fetch (401 → sign out to login)
 ├── use-staff-live.ts      # shared staff probe for the upgraded hooks
@@ -115,7 +119,7 @@ supabase/
     ├── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
     ├── 202609090007_rider_dispatch.sql        # delivery_code trigger + rider accept/pickup/deliver/settle RPCs
     └── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
-scripts/seed-supabase.mjs  # one-shot launch seed (upsert-safe, re-runnable)
+scripts/seed-supabase.mjs  # store skeleton seed: shop, categories, zones, settings (never products)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
 
@@ -164,15 +168,18 @@ Without Cloudinary keys, `POST /api/media/sign` answers 503 and the media
 page keeps its add-by-URL flow. Restart/rebuild Next.js after changing env.
 On Vercel, set the same variables in the project settings.
 
-### 3. Seed the launch catalog
+### 3. Seed the store skeleton
 
 ```bash
 npm run seed:dry   # review the plan (writes nothing)
-npm run seed       # upsert shop #1, categories, zones, coupons, products + variants + media
+npm run seed       # upsert shop #1, categories, zones, starter settings — nothing else
 ```
 
-Re-running is safe (upserts on natural keys; media rows are rebuilt per
-product). The script never seeds fake orders or fake reviews.
+Re-running is safe (upserts on natural keys). Products, variants, coupons
+and media are **never seeded** — add your real items in Admin → Catalog &
+Products (and Coupons). Until then the storefront honestly shows an empty
+shop, and `POST /api/orders` refuses with "no published products" instead of
+inventing rows (the old demo auto-seed was removed 2026-09-14).
 
 ### 4. Create the first staff account
 
@@ -225,8 +232,9 @@ Then, in the browser:
   wrong category) is refused with a reason, not a silent discount drop.
 
 If the keys are unset (or the database is empty/broken), the storefront
-keeps painting the launch catalog while every backend endpoint answers an
-honest 503/unavailable — no code change, no broken pages, no invented data.
+paints an honest empty/loading state while every backend endpoint answers
+an explicit 503/unavailable — no code change, no broken pages, no
+invented data (and no launch-catalog fallback — that is gone too).
 
 ## Security boundary (please read before launch)
 

@@ -18,6 +18,7 @@ import type {
   Shop,
 } from "../catalog";
 import { slugify } from "../catalog-store";
+import { parseFabricTransparency } from "../fabric";
 import type { Coupon } from "../coupons";
 import type { Order, OrderStatus } from "../orders";
 import type { Review } from "../review-store";
@@ -702,6 +703,16 @@ export async function createProduct(
       seo_title: input.seo?.title ?? null,
       seo_description: input.seo?.description ?? null,
       warranty_days: parseWarrantyDays((raw ?? {}) as Record<string, unknown>).days,
+      ...(() => {
+        // P2 #21 — fabric transparency card; unset fields store as null.
+        const f = parseFabricTransparency((raw ?? {}) as Record<string, unknown>);
+        return {
+          fabric_gsm: f.gsm,
+          manufacturer: f.manufacturer,
+          test_report_url: f.reportUrl,
+          quality_checked: f.qualityChecked,
+        };
+      })(),
     })
     .select("id")
     .single();
@@ -780,6 +791,20 @@ export async function updateProduct(
   // P1 #14 — warranty period: null clears it, a number sets it.
   if (rawRec.warrantyDays !== undefined) {
     patch.warranty_days = parseWarrantyDays(rawRec).days;
+  }
+  // P2 #21 — fabric transparency: the editors send the full set, so once
+  // any key is present all four columns are rewritten (empty clears).
+  if (
+    rawRec.fabricGsm !== undefined ||
+    rawRec.manufacturer !== undefined ||
+    rawRec.testReportUrl !== undefined ||
+    rawRec.qualityChecked !== undefined
+  ) {
+    const f = parseFabricTransparency(rawRec);
+    patch.fabric_gsm = f.gsm;
+    patch.manufacturer = f.manufacturer;
+    patch.test_report_url = f.reportUrl;
+    patch.quality_checked = f.qualityChecked;
   }
   if (rawRec.nameBn !== undefined) {
     patch.name_bn = typeof rawRec.nameBn === "string" ? rawRec.nameBn.trim().slice(0, 160) : "";

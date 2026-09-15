@@ -757,4 +757,18 @@ describe("validateOrderPayload — growth levers", () => {
     expect(result.draft.total).toBeGreaterThanOrEqual(bdt(60));
     expect(result.draft.promo!.discount).toBeLessThanOrEqual(cheap.price);
   });
+
+  it("PROSANTI+ waiver mirrors ps_place_order: delivery AND every surcharge go to zero", () => {
+    const snapPlus = { ...snapshot(), plusActive: true };
+    const result = validateOrderPayload(payload({ is_express: true, is_rain: true }), snapPlus);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.draft.deliveryCharge).toBe(0);
+    expect(result.draft.surchargeExpress).toBe(0);
+    expect(result.draft.surchargeRain).toBe(0);
+    expect(result.draft.total).toBe(bdt(1490)); // subtotal only — money follows the RPC
+    // and a NON-member snapshot with the same payload still pays the full quote
+    const plain = validateOrderPayload(payload({ is_express: true, is_rain: true }), snapshot());
+    if (plain.ok) expect(plain.draft.deliveryCharge).toBe(bdt(60 + 40 + 15));
+  });
 });

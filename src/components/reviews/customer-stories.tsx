@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePublicReviews } from "@/lib/use-public-reviews";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
-import { PRODUCTS, type Product } from "@/lib/catalog";
+import type { Product } from "@/lib/catalog";
 import { isDiscoverable } from "@/lib/merchandising";
 import { averageOf, type Review } from "@/lib/review-store";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconStar } from "@/components/ui/icons";
 
-export function approvedStories(reviews: Review[], products: Product[] = PRODUCTS) {
+/** `products` is the SERVING catalog the caller resolves live — no seeds. */
+export function approvedStories(reviews: Review[], products: Product[]) {
   return reviews
     .filter(
       (r) =>

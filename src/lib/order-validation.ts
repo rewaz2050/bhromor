@@ -116,6 +116,13 @@ export interface OrderSnapshot {
    */
   customerOrderCount?: number;
   /**
+   * P2 #17 — PROSANTI+ membership for THIS order's phone, looked up from
+   * the live memberships table by the orders route before validation. It
+   * waives the flat charge + surcharges exactly as ps_place_order recomputes
+   * it — the client cannot claim it; the snapshot carries the truth.
+   */
+  plusActive?: boolean;
+  /**
    * Retained for potential future promos — the flat-delivery model does
    * NOT apply a store-wide launch offer.
    */
@@ -483,13 +490,21 @@ export const validateOrderPayload = (
   }
 
   /* ---------------- surcharges — computed SERVER-side ---------------- */
+  // P2 #17 — PROSANTI+: an active term zeroes delivery AND every surcharge.
+  // This mirrors what ps_place_order does with the memberships table; the
+  // server looks the phone up (isPlusMember) and passes it in the snapshot —
+  // a client-side claim is never enough, and the quote below can never beat
+  // the RPC's answer, only match it.
+  const plusWaiver = snapshot.plusActive === true;
   const night = isNightHour(new Date(now).getHours());
   const surchargeNight =
-    !isPickup && night ? NIGHT_SURCHARGE_PAISA : 0;
-  const surchargeRain = !isPickup && isRain ? RAIN_SURCHARGE_PAISA : 0;
+    !isPickup && night && !plusWaiver ? NIGHT_SURCHARGE_PAISA : 0;
+  const surchargeRain =
+    !isPickup && isRain && !plusWaiver ? RAIN_SURCHARGE_PAISA : 0;
   const surchargeExpress =
-    !isPickup && isExpress ? EXPRESS_SURCHARGE_PAISA : 0;
-  const surchargeWeight = !isPickup ? weightExtraCharge(weightKg) : 0;
+    !isPickup && isExpress && !plusWaiver ? EXPRESS_SURCHARGE_PAISA : 0;
+  const surchargeWeight =
+    !isPickup && !plusWaiver ? weightExtraCharge(weightKg) : 0;
 
   /* ---------------- coupons ---------------- */
   let coupon: ValidOrderDraft["coupon"];
@@ -543,7 +558,7 @@ export const validateOrderPayload = (
   /* ---------------- delivery charge ----------------
    * Pickup → free. Free-delivery coupon → free (surcharges waived).
    * Otherwise the flat charge + surcharges. */
-  const freeDelivery = isPickup || couponFreeDelivery;
+  const freeDelivery = isPickup || couponFreeDelivery || plusWaiver;
   const deliveryCharge = freeDelivery
     ? 0
     : Math.max(0, FLAT_DELIVERY_CHARGE_PAISA) +

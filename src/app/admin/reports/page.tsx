@@ -14,6 +14,7 @@ import { useStaffLive } from "@/lib/use-staff-live";
 import { apiErrorMessage, apiGet } from "@/lib/admin-api";
 import type { BestSellerRow } from "@/lib/db/reports";
 import { IconArrowRight, IconBanknote, IconChart } from "@/components/ui/icons";
+import { WEEKDAY_LABELS, hourLabel, hourProfile, zoneDemand } from "@/lib/insights";
 
 /** Sales reports over live orders (pure math in lib/reports.ts). */
 export default function AdminReportsPage() {
@@ -47,6 +48,17 @@ export default function AdminReportsPage() {
   }, [live]);
 
   const report = useMemo(() => salesReport(orders, range), [orders, range]);
+
+  /* P2 #24 — zone-wise demand planning over the same window the page is
+     showing. Counts of real orders (never a "forecast"): which zone is
+     loud, which weekday carries it, and what that zone buys most. */
+  const planningOrders = useMemo(() => {
+    if (range.days === null) return orders;
+    const cutoff = Date.now() - range.days * 86_400_000;
+    return orders.filter((o) => o.createdAt >= cutoff);
+  }, [orders, range]);
+  const zoneRows = useMemo(() => zoneDemand(planningOrders), [planningOrders]);
+  const zoneHours = useMemo(() => hourProfile(planningOrders), [planningOrders]);
   const max = seriesMax(report.series);
   const hasOrders = report.summary.orders > 0;
 
@@ -324,6 +336,85 @@ export default function AdminReportsPage() {
                   </li>
                 ))}
               </ul>
+            )}
+          </section>
+
+          {/* P2 #24 — zone demand planning */}
+          <section
+            aria-label="Zone demand planning"
+            className="rounded-2xl bg-paper p-6 ring-1 ring-line"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-display text-base font-medium text-forest-900">
+                Zone demand &amp; planning
+              </h3>
+              <p className="text-xs text-ink-soft">
+                {range.label} · real orders only — a planning weight, not a prediction
+              </p>
+            </div>
+            {zoneRows.length === 0 ? (
+              <p className="mt-4 text-sm text-ink-soft">
+                No orders in this period — nothing to plan with yet.
+              </p>
+            ) : (
+              <>
+                <ul className="mt-3 space-y-3">
+                  {zoneRows.map((z) => (
+                    <li key={z.zoneId} className="text-sm">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="truncate font-semibold text-ink">
+                          {z.zoneName}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-xs text-ink-soft">
+                          {Math.round(z.share * 100)}% of orders ·{" "}
+                          {z.orders} order{z.orders === 1 ? "" : "s"} ·{" "}
+                          {z.units} units
+                        </span>
+                      </div>
+                      <div
+                        className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line/60"
+                        aria-hidden="true"
+                      >
+                        <div
+                          className="h-full rounded-full bg-forest-700"
+                          style={{ width: `${Math.max(4, Math.round(z.share * 100))}%` }}
+                        />
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-soft">
+                        <span>
+                          Loudest day:{" "}
+                          <span className="font-semibold text-forest-800">
+                            {z.busiest === null ? "—" : WEEKDAY_LABELS[z.busiest]}
+                          </span>
+                        </span>
+                        {z.topProducts.length > 0 ? (
+                          <span className="min-w-0 truncate">
+                            Buys most:{" "}
+                            {z.topProducts
+                              .map((tp) => `${tp.name} ×${tp.units}`)
+                              .join(", ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {zoneHours.best ? (
+                  <p className="mt-4 text-xs leading-5 text-ink-soft">
+                    Order rush lands around{" "}
+                    <span className="font-semibold text-forest-800">
+                      {zoneHours.top.map((h) => hourLabel(h.hour)).join(" · ")}
+                    </span>{" "}
+                    (Dhaka clock) — station riders and prep hands there first.
+                  </p>
+                ) : null}
+                <p className="mt-3 text-xs text-ink-soft">
+                  Weekday and hour buckets are fixed to the Asia/Dhaka clock, and
+                  cancelled orders never count — the same rule this whole page
+                  prices by. Stock riders and prep shifts to the zones and hours
+                  that actually demand them.
+                </p>
+              </>
             )}
           </section>
 
