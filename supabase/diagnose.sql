@@ -57,11 +57,15 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('29',  'P1 returns: zero-charge return orders restored', '202609140008_return_order_restore.sql', 'function_src', 'ps_place_order|return_parent_id required'),
   ('30',  'P2 best sellers: real sales view', '202609140009_product_sales_view.sql', 'view', 'v_product_sales'),
   ('31',  'P2 restock alerts: stock watches', '202609140010_stock_watches.sql', 'table', 'stock_watches'),
-  ('32',  'P2 shop ratings: rating recompute', '202609140011_shop_rating_trigger.sql', 'function', 'ps_shop_rating_recompute')
+  ('32',  'P2 shop ratings: rating recompute', '202609140011_shop_rating_trigger.sql', 'function', 'ps_shop_rating_recompute'),
+  ('33',  'CHECKOUT REPAIR: orders.gift_wrap accepts NULL',      '202609160002_order_insert_repair.sql', 'column_nullable', 'orders.gift_wrap'),
+  ('33b', 'CHECKOUT REPAIR: totals guard counts tip + gift fee', '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_totals|gift_fee'),
+  ('33c', 'CHECKOUT REPAIR: insert guard allows bkash/nagad',    '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_insert|bkash'),
+  ('33d', 'CHECKOUT REPAIR: /api/health probe',                  '202609160002_order_insert_repair.sql', 'function', 'ps_checkout_health')
 )
 select step as ord,
        label,
-       case when kind = 'column' then split_part(obj, '.', 1) || '.' || split_part(obj, '.', 2) else obj end as object,
+       case when kind in ('column', 'column_nullable') then split_part(obj, '.', 1) || '.' || split_part(obj, '.', 2) else obj end as object,
        source_file,
        case kind
          when 'table' then exists (
@@ -92,6 +96,16 @@ select step as ord,
              and c.table_name = split_part(obj, '.', 1)
              and c.column_name = split_part(obj, '.', 2)
          )
+         -- column_nullable: true when the column is absent (older schema, the
+         -- RPC never writes it) OR present and nullable. false = the 2026-09-16
+         -- outage: NOT NULL gift_wrap refuses every non-gift order INSERT.
+         when 'column_nullable' then coalesce((
+           select c.is_nullable = 'YES'
+           from information_schema.columns c
+           where c.table_schema = 'public'
+             and c.table_name = split_part(obj, '.', 1)
+             and c.column_name = split_part(obj, '.', 2)
+         ), true)
        end as present
 from checklist
 order by ord, object;

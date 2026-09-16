@@ -1,7 +1,7 @@
 -- PROBE B — which GENERATION of each redefined function is installed?
 -- READ-ONLY, changes nothing. Run PROBE A first.
 --
--- 6 functions are defined by more than one migration, so "it exists" says
+-- 8 functions are defined by more than one migration, so "it exists" says
 -- nothing — the body does. Each row compares md5(prosrc) of what is installed
 -- with the NEWEST definition in supabase/migrations:
 --
@@ -26,6 +26,10 @@ with defs (fname, step, body_md5, body_chars) as (
     ('ps_advance_order', 5, '60cb2c4cafd4db1b2217cc3620576630', 1479),
     ('ps_advance_order', 19, 'b0dfa77e638fae7c2d82cec109cda73b', 2040),
     ('ps_advance_order', 22, '63ddc0164133ef06de57dd0c35f64576', 2843),
+    ('ps_check_order_insert', 3, '51a6cd10e181de70a655bdaaa8a0ef16', 421),
+    ('ps_check_order_insert', 32, 'e73e97b5ff8dd042b854bc9c82108b35', 435),
+    ('ps_check_order_totals', 3, 'd7e73d9bf73beacba2cc4de2ea4ae8cc', 295),
+    ('ps_check_order_totals', 32, 'e1c79cdff7d790ed013bb249a0a15933', 833),
     ('ps_next_eligible_rider', 9, '5f1ee1b3f6bb2772031d51f419adc2c0', 656),
     ('ps_next_eligible_rider', 29, 'a34f95b4297ff93d7bac7b78e23ba3de', 1978),
     ('ps_place_order', 4, 'c84f52e1decf126a582d79fa1fb4e3fa', 4897),
@@ -36,7 +40,7 @@ with defs (fname, step, body_md5, body_chars) as (
     ('ps_place_order', 15, 'd45d9cd50615e42ebcc972c098202a7a', 16716),
     ('ps_place_order', 19, '27b929519f07a67b87815a053827b00e', 18328),
     ('ps_place_order', 23, '5a314bec836cdd0b713788946dfa3342', 20290),
-    ('ps_place_order', 30, 'a2ef2cc2ae969020c1f519858e168564', 21090),
+    ('ps_place_order', 30, '31f48d113cceeb5d3238d000b708932e', 21369),
     ('ps_release_on_cancel', 4, '39163ab8edea0f2697bc22de5dd4b98b', 305),
     ('ps_release_on_cancel', 10, '39163ab8edea0f2697bc22de5dd4b98b', 305),
     ('ps_release_on_cancel', 12, '39163ab8edea0f2697bc22de5dd4b98b', 305),

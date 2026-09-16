@@ -247,12 +247,61 @@ export class OrderPlacementError extends Error {
   }
 }
 
+/**
+ * Failures that are NOT the customer's doing — the database schema and the
+ * installed `ps_place_order` disagree, so every order dies in the same way
+ * regardless of what was typed. Each one names the file the owner has to run.
+ *
+ * Reproduced 2026-09-16 (see supabase/migrations/202609160002_order_insert_repair.sql):
+ *  - 23502 on orders.gift_wrap — the column was NOT NULL while the RPC writes
+ *    NULL for every non-gift order → no plain COD order could be stored.
+ *  - P0001 "order total does not reconcile" / "only cash on delivery is
+ *    enabled" — the phase-1 guard triggers never learned about tips, gift
+ *    wrap or wallet payments, so those orders were refused.
+ *  - 42703 / 42P01 — a column/table the installed RPC writes does not exist
+ *    (a paste-part or a whole migration was skipped).
+ */
+const REPAIR_FILE = "supabase/migrations/202609160002_order_insert_repair.sql";
+const isGuardTriggerRaise = (message: string): boolean =>
+  /order total does not reconcile|only cash on delivery is enabled/i.test(message);
+
+export const schemaGapFor = (error: {
+  code?: string;
+  message?: string;
+}): string | null => {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  if (code === "PGRST202" || /function .*ps_place_order.* does not exist/i.test(message)) {
+    return "ps_place_order is not installed — apply the checkout migrations (docs/go-live.md)";
+  }
+  if (code === "23502") {
+    return `an orders column is still NOT NULL (${message.replace(/^null value in column /i, "").split(" of relation")[0]}) — run ${REPAIR_FILE}`;
+  }
+  if (code === "P0001" && isGuardTriggerRaise(message)) {
+    return `the phase-1 order guard triggers are outdated ("${message.trim()}") — run ${REPAIR_FILE}`;
+  }
+  if (code === "42703" || code === "42P01") {
+    return `the installed ps_place_order writes to something this database lacks (${message.trim()}) — run the missing migration (docs/go-live.md, supabase/diagnose.sql)`;
+  }
+  return null;
+};
+
 /** Map an RPC failure to a field-scoped, status-coded placement error (exported for tests). Our RPC raises user-safe messages (P0001); anything else is a 503. */
 export const placementErrorFrom = (error: {
   code?: string;
   message?: string;
 }): OrderPlacementError => {
   const message = error.message?.trim() || "";
+  if (schemaGapFor(error) !== null) {
+    // Not a validation problem: the shop's database needs a migration. Say
+    // so honestly (no internals, no fake success) — the server log carries
+    // the exact SQL error and the file to run.
+    return new OrderPlacementError(
+      "order",
+      "Ordering is temporarily unavailable — the shop is finishing a database update. Please try again in a few minutes, or call the shop to order by phone.",
+      503,
+    );
+  }
   if (error.code === "P0001" && message !== "") {
     const field = /coupon/i.test(message)
       ? "couponCode"
@@ -331,13 +380,39 @@ export async function placeLiveOrder(
     })),
   });
   if (error || !orderId) {
-    throw placementErrorFrom({
-      code: (error as { code?: string })?.code,
-      message: error?.message,
-    });
+    const raw = (error ?? {}) as {
+      code?: string;
+      message?: string;
+      details?: string;
+      hint?: string;
+    };
+    // The customer only ever sees the mapped message; the log keeps the real
+    // SQLSTATE so a "Could not place the order" report can be diagnosed from
+    // Vercel → Logs without guessing.
+    const gap = schemaGapFor(raw);
+    console.error(
+      "[orders] ps_place_order failed",
+      JSON.stringify({
+        code: raw.code ?? null,
+        message: raw.message ?? (orderId ? null : "rpc returned no order id"),
+        details: raw.details ?? null,
+        hint: raw.hint ?? null,
+        ...(gap ? { schemaGap: gap } : {}),
+      }),
+    );
+    throw placementErrorFrom(raw);
   }
   // Read back the full bundle for the confirmation + tracking views.
-  return findLiveOrderById(db, orderId as string, draft.customer.phone);
+  const placed = await findLiveOrderById(db, orderId as string, draft.customer.phone);
+  if (!placed) {
+    // The row exists (the RPC committed) but the read-back failed — say so in
+    // the log rather than letting the route emit the generic 503 silently.
+    console.error(
+      "[orders] order placed but read-back failed",
+      JSON.stringify({ orderId, phone: draft.customer.phone }),
+    );
+  }
+  return placed;
 }
 
 /** Full order bundle → domain Order. Works with service or staff clients. */

@@ -196,6 +196,35 @@ stable identity), `src/components/account/__tests__/account-view-live.test.tsx`
 (4 — signup flips to dashboard with the real hooks; no stuck form), plus
 42P01-degradation cases in `src/app/api/__tests__/customer-routes.test.ts`.
 
+## 12. Checkout outage — "Could not place the order" on every order (2026-09-16 report)
+
+Reported from `proshanti.rahatahmed.site/checkout`: every order, plain COD
+included, ended in the generic *"অর্ডার প্লেস করা যায়নি — Could not place the
+order — please try again."* while `/api/health` said `live: true`.
+
+Reproduced offline by running `supabase/bootstrap-fresh.sql` end-to-end on a
+fresh Postgres and calling `ps_place_order` with the exact checkout payload
+(gift off, `gift_wrap: "none"`, `tip_amount: 0`, `payment_method: "cod"`):
+
+| # | Fix |
+|---|-----|
+| 94 | **`orders.gift_wrap` NOT NULL vs. the RPC writing NULL** — `202609130008` created `gift_wrap text not null default 'none'`, and every `ps_place_order` from that file onward (growth → wallet → return-restore → PROSANTI+ FINAL, the bootstrap, `pending-p2-final`) inserts `nullif(v_gift_wrap, 'none')`. Result: SQLSTATE **23502** on every non-gift order; `placementErrorFrom` only maps `P0001`, so it fell through to the generic 503. New **`supabase/migrations/202609160002_order_insert_repair.sql`** drops the NOT NULL (NULL = not a gift, which is what the RPC means). |
+| 95 | **Phase-1 guard triggers never updated** — once #94 is lifted, `ps_check_order_totals` (`202609080002`, `total = subtotal − discount + delivery_charge`) still rejected any tip or gift-wrap fee ("order total does not reconcile") and zero-total return orders, and `ps_check_order_insert` rejected bKash/Nagad ("only cash on delivery is enabled") although `orders_payment_check` had been widened. Both are re-created for the current order model (tip + gift fee, `is_return` waived, `cod\|bkash\|nagad`); the trigger names stay, the "pending only / name / area / discount ≤ subtotal" rules stay. Verified on three database shapes (full bootstrap, flat-delivery-only, base schema + guards) — 8 checkout scenarios OK, return order OK, and a hand-written unreconciled/`card` INSERT is still refused. |
+| 96 | **"live" lied** — `/api/health` only proved the RPC *exists*. The repair ships `ps_checkout_health()` (service-role only); the probe now reports `checks.checkoutRepair` + the raw `checkoutRepair` object, `live` is false until the INSERT path works, and `nextSteps` names the file. The admin dashboard banner turns red with the one file to paste instead of showing a green LIVE chip over a dead checkout. |
+| 97 | **Undiagnosable 503** — `placeLiveOrder` now logs the raw RPC failure (`code`/`message`/`details`/`hint`) plus a `schemaGap` line naming the migration; `schemaGapFor` classifies 23502 / 42703 / 42P01 / PGRST202 and the two stale guard raises as *schema gaps*, so the customer gets an honest "temporarily unavailable — database update" 503 (never the SQL text, never a fake success) rather than being told to "try again" forever. Read-back failure after a committed RPC is logged too. |
+
+Also: `bootstrap-fresh.sql` (+ `bootstrap-parts/09`) carries the repair as
+its last section, so a fresh project cannot re-hit it; `diagnose.sql` gained
+rows 33–33d; `paste-parts/99a/99b` regenerated (the ps_place_order checksum
+there had drifted from the PR #28 body, so PROBE B would have called the
+correct function "a body no migration contains" — fixed); `docs/go-live.md`
+steps 31–32.
+
+New tests: `src/lib/db/__tests__/placement-errors.test.ts` (+4 — schema-gap
+classification, no internals leak, genuine raises untouched),
+`src/app/api/__tests__/health-route.test.ts` (3 — missing probe → not live,
+old guards → not live, repaired → live).
+
 ---
 
 ## New files

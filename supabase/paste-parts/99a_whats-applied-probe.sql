@@ -132,7 +132,9 @@ with objects (step, name, kind, obj) as (
     (30, '30 202609140015_plus_membership', 'policy', 'memberships.admin all memberships'),
     (30, '30 202609140015_plus_membership', 'index', 'idx_memberships_phone'),
     (30, '30 202609140015_plus_membership', 'index', 'idx_memberships_status'),
-    (30, '30 202609140015_plus_membership', 'index', 'memberships_pending_uq')
+    (30, '30 202609140015_plus_membership', 'index', 'memberships_pending_uq'),
+    (31, '31 202609160001_checkout_delivery_p', null, null),
+    (32, '32 202609160002_order_insert_repair', 'function', 'ps_checkout_health')
 ),
 checked as (
   select o.step, o.name, o.kind, o.obj,

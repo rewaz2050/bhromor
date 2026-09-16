@@ -225,6 +225,31 @@ Run **in this order, in one sequence** (skip files you already applied —
     confirmation must show FREE 👑 and the inserted order row must carry
     `is_plus = true`. There is no auto-renew by design: the term ends on
     `expires_at` and the customer renews from their account page.
+31. **`supabase/migrations/202609160001_checkout_delivery_pricing.sql`** —
+    checkout repair 1 (2026-09-16): zone tier charges (৳60/120/150/150),
+    every active shop serves every checkout zone, and the installed
+    `ps_place_order` is patched in place (no 500-line paste). Safe after any
+    generation of the RPC.
+32. **`supabase/migrations/202609160002_order_insert_repair.sql`** — 🚨
+    **checkout repair 2 (2026-09-16) — REQUIRED, or NO order can be placed.**
+    Small file, pastes whole, takes seconds, safe to re-run. It fixes the
+    order INSERT itself, which every `ps_place_order` since step 15 was
+    failing on:
+    * `orders.gift_wrap` was created **NOT NULL** (step 15) while the RPC
+      writes `NULL` for every non-gift order → SQLSTATE 23502 on *every*
+      plain COD order, surfaced as the generic "Could not place the order".
+    * the step-3 guard triggers were never updated: `ps_check_order_totals`
+      rejected any tip or gift-wrap fee ("order total does not reconcile")
+      and `ps_check_order_insert` rejected bKash/Nagad ("only cash on
+      delivery is enabled").
+
+    The file drops the NOT NULL, re-creates both guards for the current
+    order model (tip + gift fee, zero-total return orders, `cod|bkash|nagad`)
+    and adds `ps_checkout_health()`, which `/api/health` now reads: `live`
+    is **false** and the admin dashboard shows a red banner naming this file
+    until it has run. The paste ends with a 3-row verify — expect 3 × OK.
+    (Both repairs are also the last two sections of `bootstrap-fresh.sql`,
+    so a fresh project gets them automatically.)
 
 Quick check after step 11 (SQL editor):
 
@@ -280,6 +305,13 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 > **দ্রুততম পথ (এই মুহূর্তে):** বাকি ৪টে (steps 27–30) একসাথে
 > `supabase/pending-p2-final.sql` — ~31KB, **এক পেস্টে** Run → তারপর
 > `supabase/verify-p2.sql` চালালে ৬টা check-ই `OK` দেখাবে।
+>
+> **🚨 চেকআউটে "Could not place the order" আসছে?** (2026-09-16) —
+> `supabase/migrations/202609160002_order_insert_repair.sql` (step 32) এখনো
+> চালানো হয়নি। ছোট ফাইল, পুরোটা পেস্ট করে Run — শেষে ৩টা `OK`। এটা ছাড়া
+> `ps_place_order` থাকলেও ডেটাবেস কোনো অর্ডার row নিতে পারে না
+> (`orders.gift_wrap` NOT NULL + পুরনো guard trigger)। `/api/health`-এ
+> `checkoutRepair: true` দেখালেই হয়ে গেছে।
 
 ### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
 

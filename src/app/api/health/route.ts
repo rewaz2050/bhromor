@@ -31,8 +31,12 @@ export async function GET() {
     adminUser: false,
     placeOrderRpc: false,
     placeOrderRpcPerUser: false,
+    // 202609160002 — the order INSERT path (gift_wrap NULL + current guard
+    // triggers). Without it, ps_place_order exists yet every checkout 503s.
+    checkoutRepair: false,
   };
   const counts: Record<string, number> = {};
+  let checkoutRepair: Record<string, unknown> | null = null;
 
   if (configured) {
     try {
@@ -78,6 +82,18 @@ export async function GET() {
         // Unexpected error shape — if it is NOT "function not found", treat as installed.
         checks.placeOrderRpc = code !== undefined;
       }
+
+      // Can an order row actually be INSERTED? ps_checkout_health() ships with
+      // the repair migration; a missing function IS the answer (not applied).
+      const repair = await svc.rpc("ps_checkout_health");
+      if (!repair.error && repair.data && typeof repair.data === "object") {
+        const r = repair.data as Record<string, unknown>;
+        checkoutRepair = r;
+        checks.checkoutRepair =
+          r.gift_wrap_nullable === true &&
+          r.totals_guard_current === true &&
+          r.insert_guard_current === true;
+      }
     }
   }
 
@@ -89,7 +105,10 @@ export async function GET() {
     checks.zonesSeeded &&
     checks.shopsSeeded &&
     checks.adminUser &&
-    checks.placeOrderRpc;
+    checks.placeOrderRpc &&
+    // "live" means a customer can actually place an order — not just that the
+    // RPC exists. Without the repair every INSERT is refused.
+    checks.checkoutRepair;
 
   const nextSteps: string[] = [];
   if (!checks.supabaseKeys) {
@@ -110,11 +129,17 @@ export async function GET() {
   if (checks.productsSeeded && !checks.placeOrderRpc) {
     nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609120007_flat_delivery.sql chalaben (flat ৳60 delivery rule)");
   }
+  if (checks.placeOrderRpc && !checks.checkoutRepair) {
+    nextSteps.push(
+      "Checkout order INSERT block — SQL Editor-e supabase/migrations/202609160002_order_insert_repair.sql chalaben (gift_wrap NULL + tip/gift/bKash guard fix); na chalale protita order 'Could not place the order' dibe",
+    );
+  }
 
   return apiJson({
     live,
     checks,
     counts,
+    checkoutRepair,
     nextSteps,
     cloudinary: { configured: isCloudinaryConfigured() },
     now: new Date().toISOString(),
