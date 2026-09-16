@@ -42,6 +42,17 @@ Run **in this order, in one sequence** (skip files you already applied —
 > `relation X does not exist` — a file that needs an earlier file's tables),
 > the whole file rolls back, so nothing appears saved. Read the red error —
 > it names the missing relation, and that tells you which file to apply first.
+>
+> **A file too big to paste?** The SQL Editor is a browser text field and the
+> biggest migrations do not survive the paste (the text is cut, and a cut
+> `$$`-quoted function reports a nonsense syntax error). Steps **15, 19 and 30**
+> are pre-split into 11 small pastes in
+> [`supabase/paste-parts/`](../supabase/paste-parts/README.md) — regenerate with
+> `node scripts/split-paste.mjs`. That set also **skips step 23 entirely** and
+> skips the `ps_place_order` bodies inside steps 15 and 19: all four are
+> re-creations of the same function and step 30's version contains every line
+> they add, so only the last one is worth pasting. Read the paste-parts README
+> before running them — it explains the order and the guards.
 
 1. `supabase/schema.sql` — only if the project is fresh
 2. `supabase/migrations/202609080001_storefront_saved_items.sql`
@@ -71,7 +82,8 @@ Run **in this order, in one sequence** (skip files you already applied —
     first-10-free. Flattens the zone charge column and re-creates
     `ps_place_order` with the flat rule. Run this one for the pricing rule.
 15. **`supabase/migrations/202609130008_growth_promos_gift_referral.sql`** —
-    P0 growth levers: `price_watches`, `referral_codes`, `referral_rewards`,
+    *(540 lines — do not paste whole; use `supabase/paste-parts/` 01–02, which
+    skip its superseded `ps_place_order`)* P0 growth levers: `price_watches`, `referral_codes`, `referral_rewards`,
     the gift + automatic-offer columns on `orders`, and a new
     `ps_place_order` that recomputes the flash discount from
     `site_settings['ops']`, bounds a bundle claim, prices gift wrap from
@@ -103,7 +115,9 @@ Run **in this order, in one sequence** (skip files you already applied —
     with a note from the admin order page. After approval, the replacement
     or refund is the shop's offline handling, recorded in the claim's
     resolution.
-19. **`supabase/migrations/202609140004_wallet_payments.sql`** — P1 #8
+19. **`supabase/migrations/202609140004_wallet_payments.sql`** —
+    *(571 lines — use `supabase/paste-parts/` 03 for the columns; its three
+    functions are superseded by steps 22 and 30)* P1 #8
     bKash/Nagad **without a merchant account**: `orders.payment` widens to
     `cod|bkash|nagad`, plus `payment_ref` (the customer's TRXID),
     `payment_status` and `payment_verified_at`. `ps_place_order` accepts the
@@ -129,6 +143,13 @@ Run **in this order, in one sequence** (skip files you already applied —
     shop's own wallet at checkout) and the history note says so. Run it
     AFTER step 19 — it re-creates the delivery-proof function from step 13.
 22. **`supabase/migrations/202609140007_wallet_cancel_payment_settle.sql`** —
+    *(172 lines — paste the whole file. This is the CURRENT `ps_advance_order`
+    and `ps_verify_payment`. `supabase/paste-parts/` 03 carried step 19's
+    columns but deliberately skipped its two older function bodies, so if this
+    step never ran, `ps_verify_payment` does not exist at all and
+    `ps_advance_order` is still the `schema.sql` one — wallet verification
+    cannot work. `supabase/paste-parts/99b_function-versions-probe.sql` says
+    which generation is installed.)*
     P1 #8 follow-up: cancelling a wallet order settles its payment. Before
     this, a bKash/Nagad order cancelled while still `pending_verification`
     stayed "under verification" on the customer's track page, and the shop
@@ -138,7 +159,10 @@ Run **in this order, in one sequence** (skip files you already applied —
     (also covers rows created before this file). Run it AFTER step 19 —
     it re-creates the two functions from step 19 with these additions.
 23. **`supabase/migrations/202609140008_return_order_restore.sql`** —
-    P1 #13 follow-up: `ps_place_order` re-created with the return-order
+    *(474 lines that are ONE statement — never paste this file. Step 30's
+    `ps_place_order` is this exact body plus the PROSANTI+ waiver, so
+    `supabase/paste-parts/` 05–09 installs it and this step needs no separate
+    run.)* P1 #13 follow-up: `ps_place_order` re-created with the return-order
     handling restored. The flat/growth/wallet re-creations (steps 14/15/19)
     silently dropped the `is_return` mechanics, so customer return requests
     landed as full-price COD orders that could not be approved and could be
@@ -190,6 +214,8 @@ Run **in this order, in one sequence** (skip files you already applied —
     on-duty rider outside her window. NULL/NULL = anytime — existing riders
     behave exactly as before this migration.
 30. **`supabase/migrations/202609140015_plus_membership.sql`** —
+    *(516 lines — use `supabase/paste-parts/` 04 + 05–09; paste 09 is what
+    finally swaps in the FINAL `ps_place_order` for steps 15/19/23/30)* 
     P2 #5 (brief #17) PROSANTI+: `memberships` ledger (pending/active/
     rejected, one pending per phone, admin-only RLS), `orders.is_plus`
     stamp, and `ps_place_order` patched to zero delivery + surcharges when
@@ -277,6 +303,19 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 
    Windows-এ `psql` লাগলে: `winget install PostgreSQL.PostgreSQL` (client tools
    যথেষ্ট)। ফাইল idempotent, তাই মাঝপথে থামলে পুরোটা আবার চালানো নিরাপদ।
+4. **একটা migration-ই যদি Editor-এ না ঢোকে (৩০০+ লাইন, বা একটাই বিশাল
+   statement):** `supabase/paste-parts/` — ওই ফাইলগুলো ছোট পেস্টে ভাগ করা,
+   ক্রম আর কারণ ফোল্ডারের `README.md`-তে। একটা `CREATE FUNCTION` SQL হিসেবে
+   কাটা যায় না, তাই সেটা base64-এর চার ভাগে গিয়ে শেষ part-এ md5 যাচাই হয়ে
+   তৈরি হয় — Editor পেস্ট নিজে statement-এ কাটে বলে readable SQL ভেঙে যেত।
+   নতুন করে ভাগ করতে: `node scripts/split-paste.mjs`।
+5. **কোন ধাপটা আসলেই লেগেছে, আর কোন ফাংশনের কোন ভার্সন বসে আছে?**
+   `supabase/paste-parts/99a_whats-applied-probe.sql` (প্রতিটা ধাপের অবজেক্ট
+   ধরে ধরে `APPLIED` / `PARTIAL` / `NOT APPLIED`) আর
+   `99b_function-versions-probe.sql` (যে ফাংশনগুলো একাধিক migration-এ আছে
+   তাদের `md5(prosrc)` মিলিয়ে `latest` / `OUTDATED — step NN` / `MISSING`)।
+   দুটোই read-only, যতবার খুশি চালানো যাবে। তৈরি করে
+   `node scripts/probe-applied.mjs`।
 
 ## 4. First staff account
 

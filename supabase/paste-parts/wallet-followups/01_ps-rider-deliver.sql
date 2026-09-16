@@ -1,0 +1,69 @@
+-- PASTE 1/4 · step 21 — ps_rider_deliver, as base64
+-- Run the four files IN ORDER (01 → 04), one paste each, in the Supabase SQL
+-- Editor. Nothing is created until paste 04.
+--
+-- Why base64 and not the readable migration: the Editor cuts a paste into
+-- statements itself, and readable SQL has arrived there mangled before — once
+-- executed as SQL (relation "v_zone" does not exist), once stored several times
+-- too long. The base64 alphabet holds no semicolon, no quote, no dollar sign and
+-- no double dash, so there is nothing for a splitter to cut on, and line breaks
+-- inside it do not matter because they are stripped before decoding.
+--
+-- Payload: the ONE statement from supabase/migrations/202609140006_wallet_delivery_cash.sql
+-- that creates ps_rider_deliver — 2323 characters, md5 b2b2cbf251af2192632e6a093af70ee9.
+-- a bKash/Nagad order must credit the rider ZERO cash — the customer already paid the shop wallet at checkout.
+-- This chunk must land as 3104 base64 characters.
+
+begin;
+
+create table if not exists _mig_paste_chunks (
+  id   text not null,
+  seq  int  not null,
+  body text not null,
+  primary key (id, seq)
+);
+
+alter table _mig_paste_chunks enable row level security;
+
+drop policy if exists "paste chunks all" on _mig_paste_chunks;
+create policy "paste chunks all" on _mig_paste_chunks
+  for all using (true) with check (true);
+
+insert into _mig_paste_chunks (id, seq, body) values ('ps_rider_deliver', 1, 'Y3JlYXRlIG9yIHJlcGxhY2UgZnVuY3Rpb24gcHNfcmlkZXJfZGVsaXZlcihwX2Fzc2lnbm1lbnRfaWQgdXVpZCwgcF9jb2RlIHRl
+eHQsIHBfcHJvb2ZfdXJsIHRleHQgZGVmYXVsdCBudWxsKQpyZXR1cm5zIGRlbGl2ZXJ5X2Fzc2lnbm1lbnRzCmxhbmd1YWdlIHBs
+cGdzcWwgc2VjdXJpdHkgZGVmaW5lciBzZXQgc2VhcmNoX3BhdGggPSBwdWJsaWMgYXMgJCQKZGVjbGFyZQogIHZfYXNzaWdubWVu
+dCBkZWxpdmVyeV9hc3NpZ25tZW50cyVyb3d0eXBlOwogIHZfb3JkZXIgb3JkZXJzJXJvd3R5cGU7CiAgdl9jYXNoIGJpZ2ludDsK
+YmVnaW4KICBzZWxlY3QgKiBpbnRvIHZfYXNzaWdubWVudCBmcm9tIGRlbGl2ZXJ5X2Fzc2lnbm1lbnRzCiAgd2hlcmUgaWQgPSBw
+X2Fzc2lnbm1lbnRfaWQKICBmb3IgdXBkYXRlOwogIGlmIG5vdCBmb3VuZCBvciB2X2Fzc2lnbm1lbnQucmlkZXJfaWQgaXMgZGlz
+dGluY3QgZnJvbSBwc19yaWRlcl9pZCgpIHRoZW4KICAgIHJhaXNlIGV4Y2VwdGlvbiAnZm9yYmlkZGVuJzsKICBlbmQgaWY7CiAg
+aWYgdl9hc3NpZ25tZW50LnN0YXRlIDw+ICdwaWNrZWRfdXAnIHRoZW4KICAgIHJhaXNlIGV4Y2VwdGlvbiAnZGVsaXZlcnkgbm90
+IGFsbG93ZWQgZnJvbSAlJywgdl9hc3NpZ25tZW50LnN0YXRlOwogIGVuZCBpZjsKCiAgc2VsZWN0ICogaW50byB2X29yZGVyIGZy
+b20gb3JkZXJzIHdoZXJlIGlkID0gdl9hc3NpZ25tZW50Lm9yZGVyX2lkIGZvciB1cGRhdGU7CiAgaWYgbm90IGZvdW5kIHRoZW4K
+ICAgIHJhaXNlIGV4Y2VwdGlvbiAnb3JkZXIgbm90IGZvdW5kJzsKICBlbmQgaWY7CiAgaWYgY29hbGVzY2Uodl9vcmRlci5kZWxp
+dmVyeV9jb2RlLCAnJykgaXMgZGlzdGluY3QgZnJvbSB1cHBlcih0cmltKGNvYWxlc2NlKHBfY29kZSwgJycpKSkgdGhlbgogICAg
+cmFpc2UgZXhjZXB0aW9uICdkZWxpdmVyeSBjb2RlIG1pc21hdGNoJzsKICBlbmQgaWY7CgogIC0tIFN0b3JlIHByb29mIFVSTCBp
+ZiBwcm92aWRlZCAoQ2xvdWRpbmFyeSkKICBpZiBwX3Byb29mX3VybCBpcyBub3QgbnVsbCBhbmQgdHJpbShwX3Byb29mX3VybCkg
+PD4gJycgdGhlbgogICAgdXBkYXRlIG9yZGVycwogICAgc2V0IGRlbGl2ZXJ5X3Byb29mX3VybCA9IHRyaW0ocF9wcm9vZl91cmwp
+LAogICAgICAgIGRlbGl2ZXJ5X3Byb29mX3VwbG9hZGVkX2F0ID0gbm93KCksCiAgICAgICAgdXBkYXRlZF9hdCA9IG5vdygpCiAg
+ICB3aGVyZSBpZCA9IHZfb3JkZXIuaWQ7CiAgZW5kIGlmOwoKICAtLSBQMSAjODogdGhlIHJpZGVyIG9ubHkgZXZlciBjYXJyaWVz
+IGNhc2ggZm9yIENPRCBvcmRlcnMg4oCUIGEgd2FsbGV0IG9yZGVyCiAgLS0gd2FzIHBhaWQgaW50byB0aGUgc2hvcCdzIG93biBi
+S2FzaC9OYWdhZCB3YWxsZXQgYXQgY2hlY2tvdXQuCiAgdl9jYXNoIDo9IGNhc2Ugd2hlbiB2X29yZGVyLnBheW1lbnQgPSAnY29k
+JyB0aGVuIHZfb3JkZXIudG90YWwgZWxzZSAwIGVuZDsKCiAgaWYgdl9vcmRlci5zdGF0dXMgaXMgZGlzdGluY3QgZnJvbSAnZGVs
+aXZlcmVkJyB0aGVuCiAgICB1cGRhdGUgb3JkZXJzCiAgICBzZXQgc3RhdHVzID0gJ2RlbGl2ZXJlZCcsIHVwZGF0ZWRfYXQgPSBu
+b3coKQogICAgd2hlcmUgaWQgPSB2X29yZGVyLmlkOwogICAgaW5zZXJ0IGludG8gb3JkZXJfc3RhdHVzX2hpc3RvcnkgKG9yZGVy
+X2lkLCBzdGF0dXMsIG5vdGUsIGNoYW5nZWRfYnkpCiAgICB2YWx1ZXMgKAogICAgICB2X29yZGVyLmlkLAogICAgICAnZGVsaXZl
+cmVkJywKICAgICAgJ0RlbGl2ZXJ5IGNvbmZpcm1lZCB3aXRoIGNvZGUgKyBwcm9vZiAnIHx8IGNvYWxlc2NlKHRyaW0ocF9wcm9v
+Zl91cmwpLCAnbm8tcGhvdG8nKSB8fCAnIMK3ICcKICAgICAgICB8fCBjYXNlCiAgICAgICAgICAgICB3aGVuIHZfb3JkZXIucGF5
+bWVudCA9ICdia2FzaCcgdGhlbiAncGFpZCB2aWEgYkthc2ggYXQgY2hlY2tvdXQnCiAgICAgICAgICAgICB3aGVuIHZfb3JkZXIu
+cGF5bWVudCA9ICduYWdhZCcgdGhlbiAncGFpZCB2aWEgTmFnYWQgYXQgY2hlY2tvdXQnCiAgICAgICAgICAgICBlbHNlICdDT0Qg
+Y29sbGVjdGVkJwogICAgICAgICAgIGVuZCwKICAgICAgYXV0aC51aWQoKQogICAgKTsKICBlbmQgaWY7CgogIHVwZGF0ZSBkZWxp
+dmVyeV9hc3NpZ25tZW50cyBzZXQgc3RhdGUgPSAnZGVsaXZlcmVkJyB3aGVyZSBpZCA9IHZfYXNzaWdubWVudC5pZAogIHJldHVy
+bmluZyAqIGludG8gdl9hc3NpZ25tZW50OwogIHVwZGF0ZSByaWRlcnMKICBzZXQgY2FzaF9pbl9oYW5kID0gY2FzaF9pbl9oYW5k
+ICsgdl9jYXNoCiAgd2hlcmUgaWQgPSB2X2Fzc2lnbm1lbnQucmlkZXJfaWQ7CiAgcmV0dXJuIHZfYXNzaWdubWVudDsKZW5kICQk
+Ow==')
+on conflict (id, seq) do update set body = excluded.body;  -- re-pasting is safe
+
+commit;
+
+select id, seq, length(regexp_replace(body, '[^A-Za-z0-9+/=]', '', 'g')) as b64_chars from _mig_paste_chunks order by id, seq;
+-- expect ps_rider_deliver/1=3104
