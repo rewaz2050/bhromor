@@ -3,7 +3,7 @@
 -- Run the files IN ORDER (00 → 09), one paste each, in the Supabase SQL Editor.
 --
 -- Runs only if all 4 chunks landed at their exact lengths, the decoded text
--- is 21242 characters with md5 7d407986fbf6bada85963ffd3024cc7e, and every
+-- is 21522 characters with md5 d028d2308ef94e4a84a45b6a65e212b0, and every
 -- table and orders column the function touches exists. Then it EXECUTEs the
 -- CREATE OR REPLACE and drops the helper table.
 
@@ -31,7 +31,7 @@ begin
   select string_agg(x.seq::text, ', ' order by x.seq) into v_short
   from (
     select e.seq, e.expected, length(regexp_replace(c.body, '[^A-Za-z0-9+/=]', '', 'g')) as got
-    from unnest(array[7090, 7090, 7090, 7090])
+    from unnest(array[7182, 7182, 7182, 7182])
            with ordinality as e(expected, seq)
     left join _mig_paste_chunks c on c.id = 'ps_place_order' and c.seq = e.seq
   ) x
@@ -45,12 +45,12 @@ begin
   v_b64 := regexp_replace(v_b64, '[^A-Za-z0-9+/=]', '', 'g');
   v_src := convert_from(decode(v_b64, 'base64'), 'UTF8');
 
-  if length(v_src) <> 21242 then
-    raise exception 'decoded % characters, expected 21242 — the paste was truncated',
+  if length(v_src) <> 21522 then
+    raise exception 'decoded % characters, expected 21522 — the paste was truncated',
       length(v_src);
   end if;
 
-  if md5(v_src) <> '7d407986fbf6bada85963ffd3024cc7e' then
+  if md5(v_src) <> 'd028d2308ef94e4a84a45b6a65e212b0' then
     raise exception 'checksum mismatch, md5 % — the decoded text is not 202609140015_plus_membership.sql', md5(v_src);
   end if;
 
@@ -92,7 +92,7 @@ select 'installed body is byte-identical to the migration' as check_,
        case when exists (
               select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'ps_place_order'
-                and md5(p.prosrc) = 'a2ef2cc2ae969020c1f519858e168564')
+                and md5(p.prosrc) = '31f48d113cceeb5d3238d000b708932e')
        then 'OK' else 'MISMATCH or not swapped — re-run parts 05 to 09' end as state
 union all
 select 'ps_place_order is the FINAL version',
