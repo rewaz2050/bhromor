@@ -20,6 +20,7 @@ import {
   friendlyWhen,
 } from "@/components/admin/order-ui";
 import LiveSetupBanner from "@/components/admin/live-setup-banner";
+import AdminDataError from "@/components/admin/admin-data-error";
 import {
   IconArrowRight,
   IconBox,
@@ -31,7 +32,7 @@ import {
 
 /** §32 operational overview + §88 delivery performance. */
 export default function AdminDashboard() {
-  const { orders } = useOrders();
+  const { orders, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
 
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const perf = useMemo(() => deliveryStats(orders), [orders]);
@@ -46,8 +47,18 @@ export default function AdminDashboard() {
   );
 
   const liveFlow = ORDER_FLOW.filter((s) => s !== "delivered");
-  const { products: catalogProducts } = useCatalog();
-  const { settings } = useSettings();
+  const {
+    products: catalogProducts,
+    error: catalogError,
+    clearError: clearCatalogError,
+    reset: reloadCatalog,
+  } = useCatalog();
+  const {
+    settings,
+    error: settingsError,
+    clearError: clearSettingsError,
+    reset: reloadSettings,
+  } = useSettings();
   const threshold = settings.lowStockThreshold;
   const lowStock = catalogProducts.filter(
     (p) => displayStock(p) > 0 && displayStock(p) <= threshold,
@@ -86,6 +97,9 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-8">
       <LiveSetupBanner />
+      <AdminDataError label="Orders" error={ordersError} onRetry={reloadOrders} onDismiss={clearOrdersError} />
+      <AdminDataError label="Catalog" error={catalogError} onRetry={reloadCatalog} onDismiss={clearCatalogError} />
+      <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
       {/* KPI cards */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c) => (

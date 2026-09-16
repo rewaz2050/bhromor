@@ -15,6 +15,8 @@ import { useSyncExternalStore } from "react";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
 import { useNotifications } from "@/lib/use-notifications";
+import { useStaffLive } from "@/lib/use-staff-live";
+import AdminDataError from "@/components/admin/admin-data-error";
 import {
   IconBell,
   IconBox,
@@ -119,6 +121,10 @@ export default function AdminGate({
 
   const onLogin = pathname.startsWith(ADMIN_LOGIN_PATH);
   const { unread } = useNotifications();
+  // The shared staff probe every data hook waits on. When it fails (server
+  // unreachable, session not seen, not staff) the pages below would render
+  // empty lists as if the shop had no data — say why, once, up here.
+  const staffLive = useStaffLive();
   /** Phones had no way to reach the admin nav: the sidebar simply stacked its
    *  17 links above every page. It is a drawer below `lg` now. */
   const [navOpen, setNavOpen] = useState(false);
@@ -304,6 +310,15 @@ export default function AdminGate({
           </Link>
         </header>
         <main className="mx-auto w-full max-w-6xl px-6 py-8 lg:px-10">
+          {staffLive.checked && !staffLive.live && staffLive.error ? (
+            <div className="mb-6">
+              <AdminDataError
+                label="Live data unavailable"
+                error={staffLive.error}
+                onRetry={staffLive.retry}
+              />
+            </div>
+          ) : null}
           {children}
         </main>
       </div>

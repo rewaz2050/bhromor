@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
 import {
@@ -12,6 +12,7 @@ import {
 import { formatBdt } from "@/lib/format";
 import { StatusBadge, DOT, friendlyWhen } from "@/components/admin/order-ui";
 import { IconSearch } from "@/components/ui/icons";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 const FILTERS: (OrderStatus | "all")[] = [
   "all",
@@ -21,9 +22,26 @@ const FILTERS: (OrderStatus | "all")[] = [
 
 /** §33 admin order list with status filters + search. */
 export default function AdminOrdersPage() {
-  const { orders, live, loading, error, clearError, reset } = useOrders();
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [query, setQuery] = useState("");
+  // Debounced server-side search — the list is paginated, so a client-only
+  // filter would silently miss orders older than the loaded pages.
+  const [serverQuery, setServerQuery] = useState("");
+  useEffect(() => {
+    const id = window.setTimeout(() => setServerQuery(query.trim()), 350);
+    return () => window.clearTimeout(id);
+  }, [query]);
+  const {
+    orders,
+    live,
+    loading,
+    error,
+    clearError,
+    reset,
+    hasMore,
+    loadMore,
+    loadingMore,
+  } = useOrders({ q: serverQuery });
 
   const counts = useMemo(() => aggregateOrders(orders).byStatus, [orders]);
 
@@ -77,18 +95,12 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
-      {error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
-          {error}{" "}
-          <button
-            type="button"
-            onClick={clearError}
-            className="underline underline-offset-2"
-          >
-            Dismiss
-          </button>
-        </p>
-      )}
+      <AdminDataError
+        label="Orders"
+        error={error}
+        onRetry={reset}
+        onDismiss={clearError}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button onClick={exportCsv} className="rounded-full bg-paper px-4 py-2 text-xs font-semibold ring-1 ring-line hover:bg-ivory-100">📥 Export CSV (free)</button>
@@ -148,7 +160,7 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Table */}
-      {visible.length === 0 ? (
+      {visible.length === 0 && !hasMore ? (
         <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">No orders found</p>
           <p className="mt-1 text-sm text-ink-soft">
@@ -250,6 +262,22 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
+      {hasMore ? (
+        <div className="flex flex-col items-center gap-2 py-2">
+          <p className="text-xs text-ink-soft">
+            Showing the newest {orders.length} orders — older ones are still
+            in the database.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="rounded-full bg-paper px-5 py-2 text-sm font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100 disabled:opacity-60"
+          >
+            {loadingMore ? "Loading…" : "Load older orders"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

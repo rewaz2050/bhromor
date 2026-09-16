@@ -75,35 +75,112 @@ const cleanInt = (value: unknown, fallback = 0): number => {
 export interface OrderFilters {
   status?: string;
   q?: string;
+  /** Page size, 1–500 (default 100). */
   limit?: number;
+  /** Opaque keyset cursor from a previous page's `nextCursor`. */
+  cursor?: string;
 }
 
-/** Staff order list — 5 queries total, not N+1 per order. */
+export interface OrderPage {
+  orders: Order[];
+  /** Pass back as `cursor` for the next (older) page; null when exhausted. */
+  nextCursor: string | null;
+}
+
+const ORDER_PAGE_MAX = 500;
+const ISO_TS_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}:\d{2}|Z)$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Keyset cursor = the last row's (created_at, id), base64url-encoded so the
+ * client treats it as opaque. Decoding validates both parts strictly because
+ * they are embedded in a PostgREST filter string.
+ */
+export const encodeOrderCursor = (row: {
+  created_at: string;
+  id: string;
+}): string =>
+  Buffer.from(JSON.stringify({ at: row.created_at, id: row.id }), "utf8").toString(
+    "base64url",
+  );
+
+export const decodeOrderCursor = (
+  cursor: string,
+): { at: string; id: string } => {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as { at?: unknown; id?: unknown };
+    if (
+      typeof parsed.at === "string" &&
+      ISO_TS_RE.test(parsed.at) &&
+      typeof parsed.id === "string" &&
+      UUID_RE.test(parsed.id)
+    ) {
+      return { at: parsed.at, id: parsed.id };
+    }
+  } catch {
+    /* fall through */
+  }
+  throw new AdminInputError("Invalid cursor.", 400);
+};
+
+/**
+ * Staff order list — one page (newest first, keyset-paginated) in 5 queries
+ * total, not N+1 per order. Before 2026-09-16 this was a flat 200-row cap
+ * with no way to reach older orders, and it loaded every coupon and zone on
+ * every call.
+ */
 export async function listOrders(
   db: SupabaseClient,
   filters: OrderFilters,
-): Promise<Order[]> {
-  const limit = Math.max(1, Math.min(200, cleanInt(filters.limit, 100)));
+): Promise<OrderPage> {
+  const limit = Math.max(
+    1,
+    Math.min(ORDER_PAGE_MAX, cleanInt(filters.limit, 100)),
+  );
   let query = db
     .from("orders")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    // One extra row tells us whether an older page exists.
+    .limit(limit + 1);
   const status = clean(filters.status, 32);
   if (status !== "") query = query.eq("status", status);
   const q = clean(filters.q, 64);
   if (q !== "") {
-    const like = `%${q.replace(/[%_]/g, "")}%`;
+    // Quoted PostgREST value: strip the characters that would end or escape
+    // the quote, plus LIKE wildcards, so user text can never break the filter.
+    const like = `"%${q.replace(/[%_"\\]/g, "")}%"`;
     query = query.or(
       `order_no.ilike.${like},customer_name.ilike.${like},customer_phone.ilike.${like}`,
     );
   }
+  const cursor = clean(filters.cursor, 256);
+  if (cursor !== "") {
+    const { at, id } = decodeOrderCursor(cursor);
+    query = query.or(
+      `created_at.lt."${at}",and(created_at.eq."${at}",id.lt.${id})`,
+    );
+  }
   const { data, error } = await query;
   if (error) throw new Error("order list failed");
-  const rows = (data ?? []) as DbOrder[];
-  if (rows.length === 0) return [];
+  const all = (data ?? []) as DbOrder[];
+  const rows = all.slice(0, limit);
+  const nextCursor =
+    all.length > limit ? encodeOrderCursor(rows[rows.length - 1]) : null;
+  if (rows.length === 0) return { orders: [], nextCursor: null };
 
   const ids = rows.map((o) => o.id);
+  const zoneIds = [...new Set(rows.map((o) => o.zone_id).filter(Boolean))];
+  const couponIds = [
+    ...new Set(
+      rows.map((o) => o.coupon_id).filter((id): id is string => !!id),
+    ),
+  ];
   const [itemsRes, historyRes, zonesRes, couponsRes] = await Promise.all([
     db.from("order_items").select("*").in("order_id", ids),
     db
@@ -111,8 +188,12 @@ export async function listOrders(
       .select("*")
       .in("order_id", ids)
       .order("created_at"),
-    db.from("delivery_zones").select("id,name,eta_label"),
-    db.from("coupons").select("id,code"),
+    zoneIds.length > 0
+      ? db.from("delivery_zones").select("id,name,eta_label").in("id", zoneIds)
+      : Promise.resolve({ data: [], error: null }),
+    couponIds.length > 0
+      ? db.from("coupons").select("id,code").in("id", couponIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (itemsRes.error || historyRes.error) throw new Error("order list failed");
   const itemsByOrder = new Map<string, DbOrderItem[]>();
@@ -172,7 +253,7 @@ export async function listOrders(
     }
   }
 
-  return rows.map((order) => {
+  const orders = rows.map((order) => {
     const zone = zones.get(order.zone_id);
     return mapOrder({
       order,
@@ -186,6 +267,7 @@ export async function listOrders(
       products,
     });
   });
+  return { orders, nextCursor };
 }
 
 export async function getOrderDetail(

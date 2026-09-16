@@ -7,6 +7,7 @@ import { useSettings } from "@/lib/use-settings";
 import { displayStock } from "@/lib/catalog-store";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { field, label } from "@/components/admin/form-ui";
+import AdminDataError from "@/components/admin/admin-data-error";
 import {
   IconBanknote,
   IconCheck,
@@ -20,7 +21,13 @@ import {
  */
 
 export default function AdminSettingsPage() {
-  const { settings, save: saveSettings } = useSettings();
+  const {
+    settings,
+    save: saveSettings,
+    error: settingsError,
+    clearError: clearSettingsError,
+    reset: reloadSettings,
+  } = useSettings();
   const catalogApi = useCatalog();
 
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
@@ -154,6 +161,9 @@ export default function AdminSettingsPage() {
           </p>
         </div>
       </div>
+
+      <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
+      <AdminDataError label="Catalog" error={catalogApi.error} onRetry={catalogApi.reset} onDismiss={catalogApi.clearError} />
 
       {flash && (
         <p

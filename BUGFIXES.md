@@ -281,6 +281,14 @@ live-but-unlocked names 0004; locked needs both flags).
 | 108 | **Rider proof-photo upload always failed** — the rider page signed via the staff-only `/api/media/sign` (`staffRoute` → 403 for a rider session) and reported "Cloudinary is not configured". New `POST /api/rider/media/sign` (`riderRoute`, folder pinned to `prosanti/delivery-proofs`, body ignored) on a shared `src/lib/cloudinary-sign.ts`; the staff route uses the same helper. Rider page: typed response, honest 503 vs. unavailable copy, uses the returned `uploadUrl`. `rider-media-sign.test.ts` (3). |
 | 109 | **Dead `DeliveryRating`** — imported by the track view but never rendered; had it been, it posted `{orderId}` to `/api/reviews`, which requires a product → 400 with no error UI. Removed with its import. |
 
+### Admin resilience (audit M4/M5)
+
+| # | Fix |
+|---|-----|
+| 110 | **Admin pages went quiet on API failure** — dashboard, customers, payments, settings and growth never rendered their hook's `error`, so a failed load looked like "no orders" / default settings and a failed save looked like success (the exact reason "Confirm did nothing" was hard to diagnose). New `src/components/admin/admin-data-error.tsx` (`role=alert` strip with Retry/Dismiss) wired into all five pages plus the orders list. |
+| 111 | **Staff-session probe swallowed its failure** — `useStaffLive` turned a network error / 5xx from `/api/admin/me` into plain `live: false`, and every hook then served empty data with no message. The hook now returns `error` (via `staffProbeError`, which distinguishes 401 / unreachable / 5xx) and `retry()`; `AdminGate` renders it once above every admin page. `use-staff-live.test.tsx` (5). |
+| 112 | **Order list capped at 200 rows with no way to older orders** — `listOrders` had a flat `limit(200)` and loaded the whole `coupons` + `delivery_zones` tables on every call. Now keyset-paginated (`created_at desc, id desc`; opaque base64url cursor validated as ISO timestamp + uuid before it is embedded in the filter; search value quoted so `,` `.` `"` cannot break the PostgREST `or`), zones/coupons looked up only for the page. `GET /api/admin/orders` accepts `limit` (≤500) and `cursor`, returns `nextCursor`. Client: `useOrders({q})` holds the newest 200, `loadMore()` appends older pages, the 10s poll re-walks opened pages, orders page has a "Load older orders" button and a debounced server-side search; new `useOrder(orderNo)` falls back to `/api/admin/orders/[orderNo]` so a detail link to an old order no longer says "Order not found". `list-orders-page.test.ts` (6), `use-orders.test.tsx` (7). |
+
 ---
 
 ## New files

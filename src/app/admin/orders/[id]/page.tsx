@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useOrders } from "@/lib/use-orders";
+import { useOrder } from "@/lib/use-orders";
 import {
   ORDER_FLOW,
   STATUS_META,
@@ -36,17 +36,15 @@ const RETURN_STATUS_LABEL: Record<string, string> = {
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { orders, loading, error, clearError, advance, cancel, refresh } = useOrders();
+  // Served from the loaded list, or fetched by order number when the order
+  // is older than the loaded pages (the list is paginated).
+  const { order, loading, error, clearError, advance, cancel, refresh } =
+    useOrder(params.id);
   // Hooks first, before any early return below.
   const [returnBusy, setReturnBusy] = useState<
     null | "approve" | "reject" | "complete"
   >(null);
   const [returnError, setReturnError] = useState<string | null>(null);
-
-  const order = useMemo(
-    () => orders.find((o) => o.id === params.id),
-    [orders, params.id],
-  );
 
   if (loading) {
     return (

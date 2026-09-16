@@ -130,8 +130,14 @@ export const staffProbeError = (probe: StaffProbe): string => {
   if (probe.status === 403) {
     return "This account signed in, but it is not staff. In the Supabase SQL editor run: insert into admin_users (id, role) select id, 'admin' from auth.users where email = 'YOUR_EMAIL';";
   }
-  if (probe.status === 401 || probe.status === 0) {
+  if (probe.status === 401) {
     return "Signed in, but the server did not see the session. Redeploy after adding env vars, and set the Site URL in Supabase → Authentication → URL configuration to this Vercel domain.";
+  }
+  if (probe.status === 0) {
+    return "Could not reach the server to verify the staff session. Check the connection and retry.";
+  }
+  if (probe.status >= 500) {
+    return `The server failed while verifying the staff session (HTTP ${probe.status}). Retry; if it persists check the deployment logs.`;
   }
   return probe.reason ?? "Staff sign-in failed. Try again.";
 };

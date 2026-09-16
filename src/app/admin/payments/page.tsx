@@ -8,6 +8,7 @@ import { salesReport } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
 import { StatusBadge } from "@/components/admin/order-ui";
 import { IconBanknote, IconCard, IconCheck } from "@/components/ui/icons";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 /**
  * Payments — P1 #8: Cash on delivery + bKash/Nagad into the shop's OWN
@@ -21,8 +22,14 @@ import { IconBanknote, IconCard, IconCheck } from "@/components/ui/icons";
  */
 
 export default function AdminPaymentsPage() {
-  const { orders } = useOrders();
-  const { settings, save: saveSettings } = useSettings();
+  const { orders, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
+  const {
+    settings,
+    save: saveSettings,
+    error: settingsError,
+    clearError: clearSettingsError,
+    reset: reloadSettings,
+  } = useSettings();
 
   const [bkash, setBkash] = useState(settings.wallets.bkash);
   const [nagad, setNagad] = useState(settings.wallets.nagad);
@@ -161,6 +168,9 @@ export default function AdminPaymentsPage() {
           verify it before the order starts.
         </p>
       </div>
+
+      <AdminDataError label="Orders" error={ordersError} onRetry={reloadOrders} onDismiss={clearOrdersError} />
+      <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
 
       {flash && (
         <p
