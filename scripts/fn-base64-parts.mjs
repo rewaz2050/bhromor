@@ -98,8 +98,6 @@ for (const p of payloads) {
   p.b64Wrapped = p.b64.replace(new RegExp(`.{1,${WRAP}}`, "g"), "$&\n").replace(/\n$/, "");
 }
 
-const wrapSql = (s) => s.replace(/(.{1,100})/g, "$1\n").replace(/\n$/, "");
-const esc = (s) => s.replace(/'/g, "''");
 // anything interpolated into a SQL comment must not carry a ';' or a quote —
 // that is what made the Editor cut earlier pastes in the wrong place
 const cmt = (s) => s.replace(/;/g, ",").replace(/['"]/g, "");
