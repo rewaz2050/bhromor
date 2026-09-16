@@ -330,7 +330,7 @@ export async function listVendorEarnings(
   if (ledgerRes.error || payoutRes.error) {
     throw new Error("vendor earnings failed");
   }
-  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r: any) => ({
+  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r) => ({
     id: r.id,
     orderId: r.order_id,
     subtotal: r.subtotal,

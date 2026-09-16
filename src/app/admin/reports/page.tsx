@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
+import { useNow } from "@/lib/use-now";
 import {
   REPORT_RANGES,
   salesReport,
@@ -52,11 +53,12 @@ export default function AdminReportsPage() {
   /* P2 #24 — zone-wise demand planning over the same window the page is
      showing. Counts of real orders (never a "forecast"): which zone is
      loud, which weekday carries it, and what that zone buys most. */
+  const now = useNow();
   const planningOrders = useMemo(() => {
     if (range.days === null) return orders;
-    const cutoff = Date.now() - range.days * 86_400_000;
+    const cutoff = now - range.days * 86_400_000;
     return orders.filter((o) => o.createdAt >= cutoff);
-  }, [orders, range]);
+  }, [now, orders, range]);
   const zoneRows = useMemo(() => zoneDemand(planningOrders), [planningOrders]);
   const zoneHours = useMemo(() => hourProfile(planningOrders), [planningOrders]);
   const max = seriesMax(report.series);

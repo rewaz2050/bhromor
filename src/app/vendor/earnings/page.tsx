@@ -86,7 +86,7 @@ export default function VendorEarningsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {earnings.ledger.map((r: any) => (
+                    {earnings.ledger.map((r) => (
                       <tr key={r.id} className="border-b border-line/60 last:border-0">
                         <td className="px-4 py-2.5 text-xs text-ink-soft">
                           {formatDateTime(r.at)}

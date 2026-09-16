@@ -31,6 +31,13 @@ export interface DbRider {
   rating_avg: number;
   rating_count: number;
   created_at: string;
+  /** Live position from the rider app (ps_rider_update_location). */
+  lat?: number | null;
+  lng?: number | null;
+  last_location_at?: string | null;
+  /** Dispatch load counters (maintained by the assignment triggers). */
+  current_load?: number | null;
+  total_deliveries?: number | null;
   /** P2 #22 — self-declared availability (Dhaka clock); null = always on. */
   avail_from_hour?: number | null;
   avail_to_hour?: number | null;

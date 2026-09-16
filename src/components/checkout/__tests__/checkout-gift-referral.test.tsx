@@ -82,7 +82,11 @@ const fillAndSubmit = async () => {
   fireEvent.change(screen.getAllByPlaceholderText("017XXXXXXXX")[0], {
     target: { value: "01712345678" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Boropara" }));
+  // District + Upazila default to Sunamganj / Sunamganj Sadar; the para is
+  // a free-text field (no chips since PR #28).
+  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+    target: { value: "Boropara" },
+  });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 12, College Road" },
   });

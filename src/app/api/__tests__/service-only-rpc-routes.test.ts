@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   staffRpcs: [] as string[],
   serviceRpcs: [] as string[],
   serviceAvailable: true,
+  /** What the service client's rpc() answers (batch assign tests). */
+  serviceRpcResult: { data: 0 as unknown, error: null as null | { message: string; code?: string } },
 }));
 
 const table = (rows: unknown[]) => {
@@ -32,7 +34,7 @@ const client = (log: string[]) => ({
     table(name === "orders" ? [{ id: "11111111-1111-4111-8111-111111111111" }] : []),
   rpc: async (fn: string) => {
     log.push(fn);
-    return { data: 0, error: null };
+    return log === state.serviceRpcs ? state.serviceRpcResult : { data: 0, error: null };
   },
 });
 
@@ -65,6 +67,7 @@ beforeEach(() => {
   state.staffRpcs = [];
   state.serviceRpcs = [];
   state.serviceAvailable = true;
+  state.serviceRpcResult = { data: 0, error: null };
 });
 
 describe("return action route", () => {
@@ -116,5 +119,56 @@ describe("dispatch board route", () => {
     const body = (await res.json()) as { deliveries: unknown[]; awaitingOrders: unknown[] };
     expect(body.deliveries).toEqual([]);
     expect(state.staffRpcs).toEqual([]);
+  });
+});
+
+describe("batch assign route (202609160005)", () => {
+  const RIDER = "22222222-2222-4222-8222-222222222222";
+  const ORDERS = ["11111111-1111-4111-8111-111111111111", "33333333-3333-4333-8333-333333333333"];
+  const post = (body: unknown) =>
+    new Request("http://localhost/api/admin/deliveries/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("calls ps_assign_batch_to_rider once on the service client and returns its count", async () => {
+    state.serviceRpcResult = { data: 2, error: null };
+    const { POST } = await import("../admin/deliveries/batch/route");
+    const res = await POST(post({ riderId: RIDER, orderIds: ORDERS }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ assigned: 2 });
+    // One RPC for the whole batch — no per-order fallback to a phantom
+    // ps_assign_order_to_rider (the pre-0005 route looped over one that
+    // never existed and reported success anyway).
+    expect(state.serviceRpcs).toEqual(["ps_assign_batch_to_rider"]);
+    expect(state.staffRpcs).toEqual([]);
+  });
+
+  it("surfaces the function's own rules (offline rider) as 409, not as a silent 0", async () => {
+    state.serviceRpcResult = { data: null, error: { message: "rider not available", code: "P0001" } };
+    const { POST } = await import("../admin/deliveries/batch/route");
+    const res = await POST(post({ riderId: RIDER, orderIds: ORDERS }));
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe("rider not available");
+  });
+
+  it("names the 0005 repair when the database still has the phantom dependency", async () => {
+    state.serviceRpcResult = {
+      data: null,
+      error: { message: 'relation "rider_assignments" does not exist', code: "42P01" },
+    };
+    const { POST } = await import("../admin/deliveries/batch/route");
+    const res = await POST(post({ riderId: RIDER, orderIds: ORDERS }));
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toContain("202609160005_dispatch_reoffer_repair.sql");
+  });
+
+  it("validates input before touching the database", async () => {
+    const { POST } = await import("../admin/deliveries/batch/route");
+    expect((await POST(post({ riderId: RIDER, orderIds: [] }))).status).toBe(422);
+    expect((await POST(post({ riderId: "not-a-uuid", orderIds: ORDERS }))).status).toBe(422);
+    expect((await POST(post({ riderId: RIDER, orderIds: [...ORDERS, ...ORDERS, ...ORDERS] }))).status).toBe(422);
+    expect(state.serviceRpcs).toEqual([]);
   });
 });

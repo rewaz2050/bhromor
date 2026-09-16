@@ -34,7 +34,10 @@ describe("delivery pricing — flat model", () => {
     expect(weightExtraCharge(7)).toBe(bdt(20));
   });
 
-  it("breakdown: flat charge applies when no coupon", () => {
+  it("breakdown: the zone's charge is the base, surcharges stack on it", () => {
+    // Zone pricing (city ৳60 / nearby ৳120 / remote ৳150) is derived from
+    // the address and passed in as `zone`; FLAT_DELIVERY_CHARGE_PAISA is the
+    // city rate the copy quotes, not a charge applied on top.
     const br = deliveryBreakdown({
       zone: zone("z1", 30),
       subtotal: bdt(500),
@@ -44,7 +47,8 @@ describe("delivery pricing — flat model", () => {
       weightKg: 7,
     });
     expect(br.freeDelivery).toBe(false);
-    expect(br.totalCharge).toBe(bdt(60 + 20 + 15 + 40 + 20));
+    expect(br.baseCharge).toBe(bdt(30));
+    expect(br.totalCharge).toBe(bdt(30 + 20 + 15 + 40 + 20));
   });
 
   it("breakdown: coupon free-delivery waives everything", () => {
@@ -79,7 +83,7 @@ describe("delivery pricing — flat model", () => {
       isNight: true,
     });
     expect(br.surcharge.night).toBe(bdt(20));
-    expect(br.totalCharge).toBe(bdt(60 + 20));
+    expect(br.totalCharge).toBe(bdt(30 + 20));
   });
 });
 

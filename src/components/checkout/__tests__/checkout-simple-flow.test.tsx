@@ -104,9 +104,11 @@ it("places an order through the simple form (live)", async () => {
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
     target: { value: "01712345678" },
   });
-  // District + Upazila default to Sunamganj / Sunamganj Sadar — paras are
-  // direct chips: tap "Boropara".
-  fireEvent.click(screen.getByRole("button", { name: "Boropara" }));
+  // District + Upazila default to Sunamganj / Sunamganj Sadar; the para is
+  // a free-text field (no chips since PR #28) — type a known Zone A para.
+  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+    target: { value: "Boropara" },
+  });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 12, College Road, Mosque-এর পাশে" },
   });
@@ -124,7 +126,7 @@ it("places an order through the simple form (live)", async () => {
   expect(orderCall).toBeTruthy();
 });
 
-it("stays placeable when the para is typed by hand (other para)", async () => {
+it("stays placeable when the para is one the list never knew (typed by hand)", async () => {
   render(
     createElement(
       LanguageProvider,
@@ -143,10 +145,11 @@ it("stays placeable when the para is typed by hand (other para)", async () => {
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
     target: { value: "01812345678" },
   });
-  // "Other para" chip → free-text input appears.
-  fireEvent.click(screen.getByRole("button", { name: /অন্য পাড়া/ }));
-  const typed = screen.getByPlaceholderText(/পাড়া \/ গ্রামের নাম লিখুন/);
-  fireEvent.change(typed, { target: { value: "Notun para" } });
+  // A para that is not in the Sunamganj list — the field is plain text, so
+  // the order must still go through (the zone falls back to the upazila).
+  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+    target: { value: "Notun para" },
+  });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 5, Temple Road" },
   });

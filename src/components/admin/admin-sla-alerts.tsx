@@ -3,28 +3,36 @@
 import { useMemo } from "react";
 import type { Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
+
+/** Minutes an order may stay open per zone before it counts as a breach. */
+export const slaLimitMinutes = (o: Pick<Order, "zoneId" | "isExpress">): number => {
+  if (o.isExpress) return 60;
+  if (o.zoneId === "z2") return 120;
+  if (o.zoneId === "z4") return 180;
+  return 90; // z1
+};
 
 export function AdminSlaAlerts({ orders }: { orders: Order[] }) {
+  // Wall-clock comes from a subscription (ticks once a minute), never from
+  // Date.now() inside render — that made server and client HTML disagree.
+  const now = useNow(60_000);
   const breaches = useMemo(() => {
-    const now = Date.now();
     return orders
       .filter((o) => o.status !== "delivered" && o.status !== "cancelled")
       .map((o) => {
         const ageMin = (now - o.createdAt) / 60000;
-        let limit = 90; // z1
-        if (o.zoneId === "z2") limit = 120;
-        if (o.zoneId === "z4") limit = 180;
-        if ((o as any).isExpress) limit = 60;
+        const limit = slaLimitMinutes(o);
         const breached = ageMin > limit;
         const scheduledBreached =
-          (o as any).scheduledAt &&
-          now > new Date((o as any).scheduledAt).getTime() + 60 * 60 * 1000;
+          o.scheduledAt !== undefined &&
+          now > o.scheduledAt + 60 * 60 * 1000;
         return { order: o, ageMin, limit, breached, scheduledBreached };
       })
       .filter((x) => x.breached || x.scheduledBreached)
       .sort((a, b) => b.ageMin - a.ageMin)
       .slice(0, 20);
-  }, [orders]);
+  }, [now, orders]);
 
   if (breaches.length === 0) {
     return (
@@ -48,7 +56,7 @@ export function AdminSlaAlerts({ orders }: { orders: Order[] }) {
             <div>
               <p className="font-mono text-xs font-bold">
                 #{order.id} · {order.zoneName} · {order.status}
-                {(order as any).isExpress ? " · Express" : ""}
+                {order.isExpress ? " · Express" : ""}
               </p>
               <p className="text-xs text-ink-soft">
                 Age {Math.round(ageMin)} min / limit {limit} min{" "}

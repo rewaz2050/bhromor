@@ -232,7 +232,7 @@ export const useRiderJobs = (enabled: boolean) => {
         await riderFetch("/api/rider/location", "PATCH", { lat, lng });
         setError(null);
         return true;
-      } catch (err) {
+      } catch {
         // silent fail for location
         return false;
       }

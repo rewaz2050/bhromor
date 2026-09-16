@@ -26,14 +26,14 @@ const REPAIR = "202609160003_order_status_update_repair.sql";
 
 const fakeDb = (rpcError: { code?: string; message: string }) =>
   ({
-    from: (_table: string) => ({
+    from: () => ({
       select: () => ({
         eq: () => ({
           single: async () => ({ data: { id: "order-uuid" }, error: null }),
         }),
       }),
     }),
-    rpc: async (_fn: string, _args: unknown) => ({ error: rpcError }),
+    rpc: async () => ({ error: rpcError }),
   }) as never;
 
 afterEach(() => {

@@ -73,7 +73,7 @@ export function useCoupons() {
   );
 
   /** Usage is recorded by the order RPC in live mode — no client record. */
-  const recordUse = useCallback((_code: string) => {}, []);
+  const recordUse = useCallback((code: string) => void code, []);
 
   return {
     coupons: liveCoupons ?? [],

@@ -41,7 +41,11 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
           `/api/track/rider-location?orderId=${encodeURIComponent(order.id)}&phone=${encodeURIComponent(order.customer.phone)}`,
         );
         if (!res.ok) return;
-        const data = await res.json().catch(() => null) as any;
+        const data = (await res.json().catch(() => null)) as {
+          lat?: number | null;
+          lng?: number | null;
+          updatedAt?: string | null;
+        } | null;
         if (data?.lat && data?.lng && !cancelled) {
           setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString() });
         }

@@ -17,6 +17,7 @@ import {
 import { aggregateOrders } from "@/lib/orders";
 import { statusCounts } from "@/lib/review-store";
 import { IconBell, IconCheck } from "@/components/ui/icons";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 const KIND_ICON: Record<NotifKind, string> = {
   order: "bg-forest-100 text-forest-800",
@@ -29,7 +30,7 @@ const FILTERS: (NotifKind | "all")[] = ["all", "order", "review", "stock", "syst
 
 /** §35 notifications — live attention summary + readable inbox. */
 export default function AdminNotificationsPage() {
-  const { notifs, read, readAll, reset, live, loading, error } = useNotifications();
+  const { notifs, read, readAll, reset, loading, error } = useNotifications();
   const { orders } = useOrders();
   const { products } = useCatalog();
   const { settings } = useSettings();
@@ -139,11 +140,7 @@ export default function AdminNotificationsPage() {
         ))}
       </div>
 
-      {error && (
-        <p role="alert" className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">
-          {error}
-        </p>
-      )}
+      <AdminDataError label="Inbox" error={error} onRetry={reset} />
 
       {loading ? (
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">

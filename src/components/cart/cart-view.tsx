@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
 import BagShopHeader from "./bag-shop-header";
-import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
 import {
   DELIVERY_ETA,
@@ -33,8 +32,6 @@ export default function CartView() {
   const { t, lang } = useLanguage();
   const { detail, updateQty, removeItem, subtotal } = useCart();
   const offer = useBagOffer(detail);
-  /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
-  const { activeZones } = useZones();
   /** Hook BEFORE the empty early-return — hook order must not change. */
   const { shops } = useLiveCatalog();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);

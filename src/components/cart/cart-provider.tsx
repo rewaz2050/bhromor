@@ -111,7 +111,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     getProductsSnapshot,
     getProductsSnapshot,
   );
-  const summary = useMemo(() => summarize(lines), [lines, catalogPool]);
+  const summary = useMemo(() => summarize(lines, catalogPool), [lines, catalogPool]);
 
   const value = useMemo(
     () => ({

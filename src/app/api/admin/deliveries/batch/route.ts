@@ -1,13 +1,24 @@
-/** POST /api/admin/deliveries/batch — batch assign multiple orders to one rider (route optimization) */
+/**
+ * POST /api/admin/deliveries/batch { riderId, orderIds } — staff assigns up
+ * to 5 orders to ONE rider in a single call (route batching).
+ *
+ * ps_assign_batch_to_rider (202609160005) withdraws each order's live offer
+ * and offers it to the chosen rider; orders that are not dispatchable yet
+ * are skipped, not failed. It is service-only (202609160004), so it runs on
+ * the service client after staffRoute has verified the session.
+ */
 import { apiError, apiJson } from "@/lib/api-response";
 import { staffRoute } from "../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const POST = staffRoute(
   "deliveries-batch",
-  async ({ db }, request) => {
+  async (_ctx, request) => {
     const body = (await request.json().catch(() => null)) as {
       riderId?: string;
       orderIds?: string[];
@@ -20,6 +31,9 @@ export const POST = staffRoute(
     if (orderIds.length > 5) {
       return apiError("max 5 orders per batch", 422);
     }
+    if (!UUID_RE.test(riderId) || !orderIds.every((id) => typeof id === "string" && UUID_RE.test(id))) {
+      return apiError("riderId and orderIds must be ids", 422);
+    }
     const supa = getSupabaseService();
     if (!supa) return apiError("service not configured", 503);
     const { data, error } = await supa.rpc("ps_assign_batch_to_rider", {
@@ -27,21 +41,17 @@ export const POST = staffRoute(
       p_order_ids: orderIds,
     });
     if (error) {
-      // Fallback individual
-      let assigned = 0;
-      for (const oid of orderIds) {
-        const { error: e2 } = await supa.rpc("ps_assign_order_to_rider", {
-          p_order_id: oid,
-          p_rider_id: riderId,
-        } as any);
-        if (!e2) assigned++;
+      // P0001 'rider not available' etc. are the function's own rules; a
+      // schema-level failure (missing repair) is named so it can be fixed.
+      if (/rider_assignments|ps_assign_order_to_rider/.test(error.message)) {
+        return apiError(
+          "Batch assign needs supabase/migrations/202609160005_dispatch_reoffer_repair.sql (see /api/health).",
+          503,
+        );
       }
-      if (assigned === 0) {
-        return apiError(error.message, 500);
-      }
-      return apiJson({ assigned });
+      return apiError(error.message || "batch assign failed", 409);
     }
-    return apiJson({ assigned: data });
+    return apiJson({ assigned: typeof data === "number" ? data : 0 });
   },
-  { limit: 20 }
+  { limit: 20 },
 );

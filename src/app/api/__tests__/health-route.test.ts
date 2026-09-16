@@ -137,9 +137,11 @@ describe("GET /api/health — checkout repair awareness", () => {
     // 0004 does not gate `live` — orders flow without it — but the probe
     // must not stay silent about an anon key that can still call the RPCs.
     expect(body.checks.securityRepair).toBe(false);
+    expect(body.checks.dispatchRepair).toBe(false);
     expect(body.live).toBe(true);
-    expect(body.nextSteps).toHaveLength(1);
+    expect(body.nextSteps).toHaveLength(2);
     expect(body.nextSteps[0]).toContain("202609160004_rpc_grants_rls_repair.sql");
+    expect(body.nextSteps[1]).toContain("202609160005_dispatch_reoffer_repair.sql");
   });
 
   it("reports securityRepair only when BOTH the grants and memberships RLS are in place", async () => {
@@ -161,6 +163,31 @@ describe("GET /api/health — checkout repair awareness", () => {
     state.repair = { data: { ...base, rpc_grants_locked: true, memberships_rls: true } };
     body = (await (await GET()).json()) as Health;
     expect(body.checks.securityRepair).toBe(true);
+    expect(body.live).toBe(true);
+    // 0005 still pending → exactly one step left, and it names the file.
+    expect(body.nextSteps).toHaveLength(1);
+    expect(body.nextSteps[0]).toContain("202609160005_dispatch_reoffer_repair.sql");
+  });
+
+  it("reports dispatchRepair from ps_checkout_health().dispatch_reoffer_ok and clears nextSteps", async () => {
+    state.repair = {
+      data: {
+        version: "202609160005",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+      },
+    };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.dispatchRepair).toBe(true);
     expect(body.live).toBe(true);
     expect(body.nextSteps).toEqual([]);
   });

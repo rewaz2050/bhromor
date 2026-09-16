@@ -414,15 +414,15 @@ describe("validateOrderPayload shop availability (marketplace slice 4)", () => {
     }
   });
 
-  it("rejects a zone the shop doesn't serve with a zone error", () => {
+  it("accepts a zone outside the shop's list — the list is merchandising, not a delivery block", () => {
+    // Delivery is accepted for every address (the zone drives the charge);
+    // a shop's zoneIds only filter what the storefront shows. Open/suspended
+    // checks above are still the ones that refuse the order.
     const result = validateOrderPayload(
       payload(),
       snap([shop({ zoneIds: ["z9"] })]),
     );
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors[0].field).toBe("zoneId");
-    expect(result.errors[0].message).toMatch(/doesn't deliver/);
+    expect(result.ok).toBe(true);
   });
 
   it("skips the check when the snapshot carries no shops", () => {

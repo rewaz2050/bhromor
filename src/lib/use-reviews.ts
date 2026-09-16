@@ -38,8 +38,9 @@ export function useReviews() {
     void refresh();
   }, [live, refresh]);
 
-  const submit = useCallback((_r: Review) => {
+  const submit = useCallback((review: Review) => {
     // Public submissions go through usePublicReviews() — no-op here.
+    void review;
   }, []);
 
   const moderate = useCallback(

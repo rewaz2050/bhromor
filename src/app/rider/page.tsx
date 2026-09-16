@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
@@ -528,19 +529,19 @@ export default function RiderPage() {
                           {formatBdt(order.total)}
                         </strong>
                       </div>
-                      {(order as any).tipAmount > 0 && (
+                      {(order.tipAmount ?? 0) > 0 && (
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-forest-700">💝 Tip for you</span>
-                          <span className="font-bold text-forest-700">+{formatBdt((order as any).tipAmount)}</span>
+                          <span className="font-bold text-forest-700">+{formatBdt(order.tipAmount ?? 0)}</span>
                         </div>
                       )}
-                      {(order as any).isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
-                      {(order as any).isReturn && (
+                      {order.isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
+                      {order.isReturn && (
                         <p className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-1 rounded-full">
                           ↩️ Return pickup — collect from the customer, drop at the shop. No cash to collect.
                         </p>
                       )}
-                      {(order as any).scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</p>}
+                      {order.scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date(order.scheduledAt).toLocaleString()} {order.deliveryWindow ?? ""}</p>}
                     </div>
 
                     {/* Action Controls */}
@@ -622,7 +623,7 @@ export default function RiderPage() {
                                   setShowFailed(null);
                                   setFailedReason("");
                                 } else {
-                                  const d = await res.json().catch(() => null) as any;
+                                  const d = (await res.json().catch(() => null)) as { error?: string } | null;
                                   setPinError(d?.error || "Failed");
                                 }
                               }}
@@ -699,7 +700,15 @@ export default function RiderPage() {
               {proofUploading && <p className="text-xs text-amber-700">Uploading to Cloudinary...</p>}
               {proofUrl && (
                 <div className="rounded-xl overflow-hidden ring-1 ring-line">
-                  <img src={proofUrl} alt="Proof" className="w-full h-32 object-cover" />
+                  <div className="relative h-32 w-full">
+                    <Image
+                      src={proofUrl}
+                      alt="Delivery proof photo"
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
+                    />
+                  </div>
                   <p className="p-2 text-[10px] break-all text-ink-soft">{proofUrl}</p>
                 </div>
               )}
@@ -794,7 +803,19 @@ function RiderShiftCard({
   onSave: (payload: { fromHour: number | null; toHour: number | null; days: number[] }) => Promise<string | null>;
   flash: (msg: string) => void;
 }) {
-  const avail: RiderAvailability = rider?.availability ?? { fromHour: null, toHour: null, days: null };
+  const availFromHour = rider?.availability?.fromHour ?? null;
+  const availToHour = rider?.availability?.toHour ?? null;
+  const availDaysKey = JSON.stringify(rider?.availability?.days ?? null);
+  // Rebuilt from the three primitives so the effect below can depend on
+  // stable values (a fresh object every render would re-arm the interval).
+  const avail = useMemo<RiderAvailability>(
+    () => ({
+      fromHour: availFromHour,
+      toHour: availToHour,
+      days: JSON.parse(availDaysKey) as number[] | null,
+    }),
+    [availFromHour, availToHour, availDaysKey],
+  );
   const [from, setFrom] = useState<string>(avail.fromHour === null ? "" : String(avail.fromHour));
   const [to, setTo] = useState<string>(avail.toHour === null ? "" : String(avail.toHour));
   const [days, setDays] = useState<number[]>(avail.days ?? []);
@@ -808,7 +829,7 @@ function RiderShiftCard({
     setOnShift(isOnShift(avail, Date.now()));
     const id = window.setInterval(() => setOnShift(isOnShift(avail, Date.now())), 60_000);
     return () => window.clearInterval(id);
-  }, [avail.fromHour, avail.toHour, JSON.stringify(avail.days ?? [])]);
+  }, [avail]);
 
   const dirty =
     from !== (avail.fromHour === null ? "" : String(avail.fromHour)) ||

@@ -38,6 +38,9 @@ export default function LiveSetupBanner() {
     // 202609160004 does not gate `live` (orders flow without it) but the
     // shop is exposed until it runs — say so next to the green chip.
     const securityPending = health.checks?.securityRepair === false;
+    // 202609160005 likewise: orders flow, but dispatch breaks the first time
+    // an offer lapses/rejects with a second rider online.
+    const dispatchPending = health.checks?.dispatchRepair === false;
     return (
       <div className="mb-8 space-y-3">
         <div className="flex items-center gap-2.5 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
@@ -69,6 +72,24 @@ export default function LiveSetupBanner() {
               </p>
               <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
                 supabase/migrations/202609160004_rpc_grants_rls_repair.sql
+              </code>
+            </div>
+          </div>
+        )}
+        {dispatchPending && (
+          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <IconShield className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <p className="font-semibold">
+                🛵 ডেলিভারি re-offer ফিক্স বাকি — একটা offer expire বা reject হলেই rider app-এর job list বন্ধ হয়ে যাবে
+              </p>
+              <p className="mt-0.5 text-[13px] text-amber-900/90">
+                ডেটাবেসে প্রতি অর্ডারে একটাই assignment row রাখা যায়, তাই দ্বিতীয় rider-কে offer করার চেষ্টা fail করে (rider job feed 503, Admin → Deliveries batch assign কাজ করে না)। ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন (৩টা <strong>OK</strong> দেখাবে):
+              </p>
+              <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
+                supabase/migrations/202609160005_dispatch_reoffer_repair.sql
               </code>
             </div>
           </div>

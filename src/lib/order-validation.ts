@@ -28,7 +28,6 @@ import {
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
   EXPRESS_SURCHARGE_PAISA,
-  FLAT_DELIVERY_CHARGE_PAISA,
 } from "./delivery";
 import { normalizePhone } from "./orders";
 import {

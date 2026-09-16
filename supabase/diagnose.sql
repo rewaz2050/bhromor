@@ -68,7 +68,11 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('34d', 'ORDER FLOW REPAIR: /api/health probe knows all three',                            '202609160003_order_status_update_repair.sql', 'function_src', 'ps_checkout_health|rider_guard_ok'),
   ('35',  'SECURITY: anon key cannot call ps_place_order (service-only RPCs revoked)', '202609160004_rpc_grants_rls_repair.sql', 'function_locked', 'ps_place_order(jsonb,jsonb)'),
   ('35b', 'SECURITY: memberships has row level security',                              '202609160004_rpc_grants_rls_repair.sql', 'table_rls', 'memberships'),
-  ('35c', 'SECURITY: /api/health probe knows the lock',                                '202609160004_rpc_grants_rls_repair.sql', 'function_src', 'ps_checkout_health|rpc_grants_locked')
+  ('35c', 'SECURITY: /api/health probe knows the lock',                                '202609160004_rpc_grants_rls_repair.sql', 'function_src', 'ps_checkout_health|rpc_grants_locked'),
+  ('36',  'DISPATCH REPAIR: offers can be re-issued (no UNIQUE order_id on delivery_assignments)', '202609160005_dispatch_reoffer_repair.sql', 'constraint_absent', 'delivery_assignments.delivery_assignments_order_id_key'),
+  ('36b', 'DISPATCH REPAIR: one live offer per order (partial unique index)',                    '202609160005_dispatch_reoffer_repair.sql', 'index', 'delivery_assignments.delivery_assignments_one_live_offer'),
+  ('36c', 'DISPATCH REPAIR: batch assign has no phantom dependencies',                            '202609160005_dispatch_reoffer_repair.sql', 'function_src_absent', 'ps_assign_batch_to_rider|rider_assignments'),
+  ('36d', 'DISPATCH REPAIR: /api/health probe knows it',                                          '202609160005_dispatch_reoffer_repair.sql', 'function_src', 'ps_checkout_health|dispatch_reoffer_ok')
 )
 select step as ord,
        label,
@@ -103,6 +107,30 @@ select step as ord,
          when 'function_locked' then coalesce(
            not has_function_privilege('anon', to_regprocedure('public.' || obj), 'execute'),
            true)
+         -- function_src_absent: obj = 'name|marker' — true when the function
+         -- is absent OR its body no longer contains the marker (a rewrite
+         -- removed a bad dependency, 2026-09-16 dispatch repair).
+         when 'function_src_absent' then not exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public'
+             and p.proname = split_part(obj, '|', 1)
+             and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
+         )
+         -- constraint_absent: obj = 'table.constraint' — true when the table
+         -- is absent OR the named constraint is gone.
+         when 'constraint_absent' then not exists (
+           select 1 from pg_constraint k
+           where k.conrelid = to_regclass('public.' || split_part(obj, '.', 1))
+             and k.conname = split_part(obj, '.', 2)
+         )
+         -- index: obj = 'table.index'
+         when 'index' then exists (
+           select 1 from pg_indexes i
+           where i.schemaname = 'public'
+             and i.tablename = split_part(obj, '.', 1)
+             and i.indexname = split_part(obj, '.', 2)
+         )
          -- table_rls: true when the table is absent OR has RLS enabled.
          when 'table_rls' then coalesce((
            select c.relrowsecurity from pg_class c

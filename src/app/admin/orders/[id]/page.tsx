@@ -258,37 +258,37 @@ export default function AdminOrderDetailPage() {
             <div className="flex justify-between text-ink-soft">
               <dt>
                 Delivery · {order.etaLabel}
-                {(order as any).isPickup ? " — PICKUP" : ""}
-                {(order as any).isExpress ? " — Express" : ""}
+                {order.isPickup ? " — PICKUP" : ""}
+                {order.isExpress ? " — Express" : ""}
               </dt>
               <dd>{formatBdt(order.deliveryCharge)}</dd>
             </div>
-            {(order as any).scheduledAt && (
+            {order.scheduledAt && (
               <div className="flex justify-between text-sky-800 bg-sky-50 px-2 py-1 rounded">
-                <dt>Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</dt>
-                <dd>{(order as any).isExpress ? "+Express" : ""}</dd>
+                <dt>Scheduled: {new Date(order.scheduledAt).toLocaleString()} {order.deliveryWindow ?? ""}</dt>
+                <dd>{order.isExpress ? "+Express" : ""}</dd>
               </div>
             )}
-            {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+            {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
               <div className="rounded-xl bg-amber-50 p-2 ring-1 ring-amber-200 text-xs space-y-1">
                 <p className="font-bold text-amber-900">Surcharges breakdown</p>
                 {(order.surchargeNight ?? 0) > 0 && <div className="flex justify-between"><span>Night (9PM-6AM)</span><span>{formatBdt(order.surchargeNight ?? 0)}</span></div>}
                 {(order.surchargeRain ?? 0) > 0 && <div className="flex justify-between"><span>Rain</span><span>{formatBdt(order.surchargeRain ?? 0)}</span></div>}
                 {(order.surchargeDistance ?? 0) > 0 && <div className="flex justify-between"><span>Distance &gt;4km</span><span>{formatBdt(order.surchargeDistance ?? 0)}</span></div>}
                 {(order.surchargeExpress ?? 0) > 0 && <div className="flex justify-between"><span>Express</span><span>{formatBdt(order.surchargeExpress ?? 0)}</span></div>}
-                {(order as any).surchargeWeight > 0 && <div className="flex justify-between"><span>Weight &gt;5kg</span><span>{formatBdt((order as any).surchargeWeight)}</span></div>}
+                {(order.surchargeWeight ?? 0) > 0 && <div className="flex justify-between"><span>Weight &gt;5kg</span><span>{formatBdt(order.surchargeWeight ?? 0)}</span></div>}
               </div>
             )}
-            {(order as any).tipAmount > 0 && (
+            {(order.tipAmount ?? 0) > 0 && (
               <div className="flex justify-between text-forest-700">
                 <dt>💝 Tip for Rider</dt>
-                <dd>+{formatBdt((order as any).tipAmount)}</dd>
+                <dd>+{formatBdt(order.tipAmount ?? 0)}</dd>
               </div>
             )}
-            {(order as any).weightKg && (
+            {order.weightKg && (
               <div className="flex justify-between text-ink-soft text-xs">
                 <dt>Approx weight</dt>
-                <dd>{(order as any).weightKg} kg</dd>
+                <dd>{order.weightKg} kg</dd>
               </div>
             )}
             {order.coupon && (
@@ -298,7 +298,7 @@ export default function AdminOrderDetailPage() {
               </div>
             )}
             <div className="flex justify-between border-t border-line pt-3 text-base font-semibold text-forest-900">
-              <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
+              <dt>Total (COD){order.isPickup ? " — Pickup" : ""}</dt>
               <dd>{formatBdt(order.total)}</dd>
             </div>
           </dl>
@@ -385,7 +385,15 @@ export default function AdminOrderDetailPage() {
               {order.deliveryProofUrl && (
                 <div className="mt-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
                   <p className="text-[0.7rem] font-bold uppercase tracking-wider text-emerald-800">Delivery Proof — Cloudinary</p>
-                  <img src={order.deliveryProofUrl} alt="Proof" className="mt-2 w-full rounded-xl object-cover max-h-64" />
+                  <div className="relative mt-2 h-64 w-full overflow-hidden rounded-xl">
+                    <Image
+                      src={order.deliveryProofUrl}
+                      alt="Delivery proof photo"
+                      fill
+                      sizes="(min-width: 1024px) 40vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
                   <p className="mt-1 text-[10px] break-all text-ink-soft">{order.deliveryProofUrl}</p>
                 </div>
               )}
@@ -486,10 +494,10 @@ export default function AdminOrderDetailPage() {
                   </p>
                 </div>
               )}
-              {(order as any).isPickup && (
+              {order.isPickup && (
                 <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
                   <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">Store Pickup — Traffic Point</p>
-                  <p className="text-xs">Pickup Slot: {(order as any).pickupSlot || (order as any).deliveryWindow || "now"}</p>
+                  <p className="text-xs">Pickup Slot: {order.pickupSlot || order.deliveryWindow || "now"}</p>
                   <p className="text-xs">Ready in ~{order.etaLabel}</p>
                 </div>
               )}

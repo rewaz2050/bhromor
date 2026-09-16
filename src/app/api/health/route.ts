@@ -43,6 +43,11 @@ export async function GET() {
     // `memberships` is actually protected by its policy. Ordering works
     // without it; the shop is simply exposed until it runs.
     securityRepair: false,
+    // 202609160005 — a delivery offer can be re-issued after it expires or a
+    // rider rejects it (UNIQUE(order_id) replaced by one-live-offer index),
+    // and staff batch assign exists. Without it the rider job feed 503s as
+    // soon as one offer lapses with a second rider online.
+    dispatchRepair: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -108,6 +113,7 @@ export async function GET() {
           r.rider_guard_ok === true;
         checks.securityRepair =
           r.rpc_grants_locked === true && r.memberships_rls === true;
+        checks.dispatchRepair = r.dispatch_reoffer_ok === true;
       }
     }
   }
@@ -160,6 +166,11 @@ export async function GET() {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.securityRepair) {
     nextSteps.push(
       "Security lock — SQL Editor-e supabase/migrations/202609160004_rpc_grants_rls_repair.sql chalaben (anon key diye ps_place_order/ps_use_coupon/ps_book_delivery_slot call bondho + memberships RLS + delivery_slots policy); order flow eite bhangbe na, kintu na chalale je keu browser key diye slot full / coupon sesh / membership pora korte pare",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.dispatchRepair) {
+    nextSteps.push(
+      "Dispatch re-offer — SQL Editor-e supabase/migrations/202609160005_dispatch_reoffer_repair.sql chalaben (delivery_assignments UNIQUE(order_id) → one-live-offer index + batch assign fix); na chalale ekta offer expire/reject holei rider app-er job list 503 dibe ar Admin → Deliveries batch assign kaj korbe na",
     );
   }
 

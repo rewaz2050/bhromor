@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SUNAMGANJ_HUB_COORDS, SUNAMGANJ_BOUNDS } from "@/lib/sunamganj";
+import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
+import { SUNAMGANJ_HUB_COORDS } from "@/lib/sunamganj";
 import type { Rider } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
+
+/** Marker identity: hub markers are never cleared on refresh. */
+const HUB_MARKER_TAG = "ps-hub-marker";
 
 interface AdminLiveMapProps {
   riders: Rider[];
@@ -13,7 +17,7 @@ interface AdminLiveMapProps {
 
 export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMapRef = useRef<any>(null);
+  const leafletMapRef = useRef<LeafletMap | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [leafletReady, setLeafletReady] = useState(false);
 
@@ -29,7 +33,7 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
 
   useEffect(() => {
     import("leaflet").then((L) => {
-      (L as any).Icon.Default.mergeOptions({
+      L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
@@ -56,7 +60,7 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
       // Hub
       const hubIcon = L.divIcon({
         html: `<div style="background:#142c22;color:#e6c374;border:2px solid #e6c374;border-radius:9999px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:bold">H</div>`,
-        className: "",
+        className: HUB_MARKER_TAG,
         iconSize: [36, 36],
         iconAnchor: [18, 18],
       });
@@ -82,10 +86,14 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
     if (!leafletReady || !leafletMapRef.current) return;
     import("leaflet").then((L) => {
       const map = leafletMapRef.current;
-      // Clear previous markers (except hub) - we track via custom property
-      // Simple: remove all layers that are markers and not hub (hub has custom icon)
-      map.eachLayer((layer: any) => {
-        if (layer instanceof L.Marker && !( (layer.options.icon?.options as any)?.html?.includes("H</div>"))) {
+      if (!map) return;
+      // Clear previous rider/order markers and lines; the hub marker (tagged
+      // by its icon className) and the tile layer stay.
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          const cls = (layer as LeafletMarker).options.icon?.options.className ?? "";
+          if (!cls.includes(HUB_MARKER_TAG)) map.removeLayer(layer);
+        } else if (layer instanceof L.Polyline) {
           map.removeLayer(layer);
         }
       });

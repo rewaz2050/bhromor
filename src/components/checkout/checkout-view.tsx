@@ -27,7 +27,6 @@ import { coverImage } from "@/lib/catalog";
 import { getDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import {
-  FLAT_DELIVERY_CHARGE_PAISA,
   INSTANT_DELIVERY_TITLE,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,

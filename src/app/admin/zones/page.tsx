@@ -12,6 +12,7 @@ import {
   IconTrash,
 } from "@/components/ui/icons";
 import type { DeliveryZone } from "@/lib/catalog";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 function ZoneRow({
   zone,
@@ -279,18 +280,7 @@ export default function AdminZonesPage() {
 
   return (
     <div className="space-y-5">
-      {error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
-          {error}{" "}
-          <button
-            type="button"
-            onClick={clearError}
-            className="underline underline-offset-2"
-          >
-            Dismiss
-          </button>
-        </p>
-      )}
+      <AdminDataError label="Zones" error={error} onRetry={reset} onDismiss={clearError} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">

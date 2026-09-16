@@ -303,8 +303,37 @@ Run **in this order, in one sequence** (skip files you already applied —
     `/api/health` reads as `checks.securityRepair`. `live` is **not** gated
     on it; the admin dashboard shows an amber "security lock pending" note
     under the green chip until it has run. Ends with a 3-row verify —
+    expect 3 × OK. (Also in `bootstrap-fresh.sql` / `bootstrap-parts/10`;
+    `diagnose.sql` rows 35–35c.)
+
+35. **`supabase/migrations/202609160005_dispatch_reoffer_repair.sql`** — 🛵
+    **dispatch re-offer repair (2026-09-16 audit) — required before riders
+    work a real day.** Small file, pastes whole, safe to re-run. Two defects
+    in the delivery-offer chain, both reproduced against a fresh bootstrap:
+    * `delivery_assignments` was created with `UNIQUE (order_id)`, but every
+      re-offer path (`ps_expire_stale_offers`, `ps_rider_reject`,
+      `ps_offer_order`) *inserts a second row* for the same order. So the
+      moment ONE 90-second offer lapses while a second eligible rider is
+      online, the sweep raises `23505` — and because the sweep runs at the
+      top of `GET /api/rider/jobs`, **every rider's job feed answers 503**
+      until that row is fixed by hand. A rider tapping Reject hit the same
+      wall.
+    * `ps_assign_batch_to_rider` called a `ps_assign_order_to_rider` that
+      never existed and read a `rider_assignments` table that never existed
+      — Admin → Deliveries → Batch assign has never assigned anything.
+
+    The file drops the unique constraint and replaces it with a **partial**
+    unique index (`delivery_assignments_one_live_offer`: one row per order
+    in `offered`/`accepted`/`picked_up`, so history and the "already seen"
+    rotation are kept), rewrites `ps_assign_batch_to_rider` as a direct
+    90-second offer to the chosen rider (withdraws other riders' live
+    offers, never touches a picked-up parcel, skips orders that are not
+    ready, returns the count; rider must be active + online), keeps it
+    service-only, and extends `ps_checkout_health()` with
+    `dispatch_reoffer_ok` → `/api/health` `checks.dispatchRepair` + an amber
+    note on the admin dashboard until it has run. Ends with a 3-row verify —
     expect 3 × OK. (Also the last section of `bootstrap-fresh.sql` /
-    `bootstrap-parts/10`; `diagnose.sql` rows 35–35c.)
+    `bootstrap-parts/10`; `diagnose.sql` rows 36–36d.)
 
 Quick check after step 11 (SQL editor):
 

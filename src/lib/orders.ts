@@ -148,10 +148,16 @@ export interface Order {
   scheduledAt?: number;
   deliveryWindow?: string;
   isExpress?: boolean;
+  /** Customer collects from the shop (no delivery leg). */
+  isPickup?: boolean;
+  pickupSlot?: string;
+  tipAmount?: number;
+  weightKg?: number;
   surchargeNight?: number;
   surchargeRain?: number;
   surchargeDistance?: number;
   surchargeExpress?: number;
+  surchargeWeight?: number;
   /** Delivery proof photo via Cloudinary */
   deliveryProofUrl?: string;
   deliveryProofUploadedAt?: number;
