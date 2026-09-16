@@ -240,7 +240,7 @@ export default function CheckoutView() {
   }, []);
 
   /* ------------------------------------------------------------------ */
-  /* Flat delivery model — no launch offer or promo counter.             */
+  /* Zone-based delivery model — pricing stays hidden behind address detection. */
   /* ------------------------------------------------------------------ */
 
   /* ------------------------------------------------------------------ */
@@ -446,7 +446,7 @@ export default function CheckoutView() {
     const capped = Math.min(promo + referralCredit, Math.max(0, subtotal - discount));
     return {
       charge,
-      fullCharge: FLAT_DELIVERY_CHARGE_PAISA,
+      fullCharge: breakdown.baseCharge,
       freeDelivery: breakdown.freeDelivery,
       couponFree: couponFreeDelivery && !!activeCoupon,
       plusFree: plusActive && !form.isPickup,
@@ -938,7 +938,7 @@ export default function CheckoutView() {
       fieldErrors[field] ? "ring-rose-300 bg-rose-50/50" : "ring-line"
     }`;
 
-  const paraIsSelect = sadarUpazila;
+
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_400px]">
@@ -949,7 +949,7 @@ export default function CheckoutView() {
         }}
         className="min-w-0"
       >
-        {/* Flat delivery promise */}
+        {/* Simple zone-based delivery promise */}
         <div className="mb-8 rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-forest-900">
@@ -957,11 +957,11 @@ export default function CheckoutView() {
             </span>
             <div className="flex-1">
               <p className="text-sm font-bold">
-                🚚 ফ্ল্যাট ডেলিভারি চার্জ মাত্র ৳৬০ — সব জায়গায়
+                🚚 ঠিকানা অনুযায়ী সহজ ডেলিভারি চার্জ
               </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
-                স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ছাড়া বাকি সব অর্ডারে সমান ৳৬০।
-                সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০।
+                শহরের ভেতর ৳৬০ · আশেপাশে ৳১২০ · দূরের উপজেলা/গ্রামে ৳১৫০।
+                ঠিকানা ও লোকেশন অনুযায়ী চার্জ অটোমেটিক হিসাব হবে।
               </p>
             </div>
           </div>
@@ -1134,8 +1134,7 @@ export default function CheckoutView() {
               </select>
               {!sunamganjDistrict && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  এই মুহূর্তে ডেলিভারি সুনামগঞ্জ জেলায় — অন্য জেলায়ও ফ্ল্যাট ৳৬০,
-                  তবে ন্যূনতম ৳৫০০ অর্ডার প্রয়োজন (কুরিয়ার)।
+                  এই মুহূর্তে ডেলিভারি সুনামগঞ্জ জেলায় — অন্য জেলায় কুরিয়ার চার্জ ঠিকানা অনুযায়ী হিসাব হবে।
                 </p>
               )}
             </label>
@@ -1207,95 +1206,23 @@ export default function CheckoutView() {
             <span className="mb-2 block text-sm font-medium text-ink">
               পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
             </span>
-            {paraIsSelect ? (
-              <>
-                {/* All paras as direct tappable chips — no dropdown needed */}
-                <div className="space-y-3" role="group" aria-label="আপনার পাড়া সিলেক্ট করুন">
-                  {(
-                    [
-                      { zoneId: "z1", label: "সুনামগঞ্জ সিটি — এ জোন", tone: "green" },
-                      { zoneId: "z2", label: "সদর কোর — বি জোন", tone: "plain" },
-                      { zoneId: "z3", label: "সদর এক্সটেন্ডেড — সি জোন", tone: "plain" },
-                    ] as const
-                  ).map((group) => (
-                    <div key={group.zoneId}>
-                      <p className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${group.tone === "green" ? "text-forest-700" : "text-ink-soft"}`}>
-                        {group.label}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {SADAR_PARA_OPTIONS.filter((p) => p.zoneId === group.zoneId).map((p) => {
-                          const selected = form.paraSelected === p.name;
-                          return (
-                            <button
-                              key={p.name}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => {
-                                update("paraSelected", p.name);
-                                update("paraCustom", "");
-                                if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                              }}
-                              className={`rounded-full px-3.5 py-2 text-xs font-medium ring-1 transition-colors ${
-                                selected
-                                  ? "bg-forest-800 text-ivory-50 ring-forest-700"
-                                  : group.tone === "green"
-                                    ? "bg-forest-50 text-forest-900 ring-forest-200 hover:bg-forest-100"
-                                    : "bg-paper text-ink ring-line hover:bg-ivory-100"
-                              }`}
-                            >
-                              {selected && "✓ "}{p.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                  <div>
-                    <button
-                      type="button"
-                      aria-pressed={form.paraSelected === PARA_CUSTOM}
-                      onClick={() => {
-                        update("paraSelected", PARA_CUSTOM);
-                        if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                      }}
-                      className={`rounded-full px-3.5 py-2 text-xs font-medium ring-1 transition-colors ${
-                        form.paraSelected === PARA_CUSTOM
-                          ? "bg-forest-800 text-ivory-50 ring-forest-700"
-                          : "bg-paper text-ink ring-line hover:bg-ivory-100"
-                      }`}
-                    >
-                      {form.paraSelected === PARA_CUSTOM && "✓ "}অন্য পাড়া / গ্রাম — নিজে লিখব
-                    </button>
-                    {form.paraSelected === PARA_CUSTOM && (
-                      <input
-                        ref={paraRef}
-                        value={form.paraCustom}
-                        onChange={(e) => {
-                          update("paraCustom", e.target.value);
-                          if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                        }}
-                        placeholder="পাড়া / গ্রামের নাম লিখুন"
-                        aria-invalid={!!fieldErrors.area}
-                        className={`mt-2 ${inputClass("area")}`}
-                      />
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <input
-                ref={paraRef}
-                required
-                value={form.paraCustom}
-                onChange={(e) => {
-                  update("paraCustom", e.target.value);
-                  if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
-                }}
-                placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
-                aria-invalid={!!fieldErrors.area}
-                className={inputClass("area")}
-              />
-            )}
+            <input
+              ref={paraRef}
+              required
+              value={form.paraCustom}
+              onChange={(e) => {
+                update("paraCustom", e.target.value);
+                update("paraSelected", PARA_CUSTOM);
+                if (fieldErrors.area) setFieldErrors((f) => ({ ...f, area: "" }));
+              }}
+              placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
+              aria-label="পাড়া বা গ্রামের নাম"
+              aria-invalid={!!fieldErrors.area}
+              className={inputClass("area")}
+            />
+            <p className="mt-1.5 text-xs text-ink-soft">
+              আপনার পাড়া বা গ্রামের নাম লিখে দিন — তালিকা থেকে বেছে নেওয়ার দরকার নেই।
+            </p>
             {fieldErrors.area && (
               <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
             )}

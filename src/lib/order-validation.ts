@@ -557,11 +557,11 @@ export const validateOrderPayload = (
 
   /* ---------------- delivery charge ----------------
    * Pickup → free. Free-delivery coupon → free (surcharges waived).
-   * Otherwise the flat charge + surcharges. */
+   * Otherwise the address-derived zone charge + surcharges. */
   const freeDelivery = isPickup || couponFreeDelivery || plusWaiver;
   const deliveryCharge = freeDelivery
     ? 0
-    : Math.max(0, FLAT_DELIVERY_CHARGE_PAISA) +
+    : Math.max(0, zone.charge) +
       surchargeNight +
       surchargeRain +
       surchargeExpress +
