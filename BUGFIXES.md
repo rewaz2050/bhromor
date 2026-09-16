@@ -256,6 +256,25 @@ not live and names 0003; partial 0003 → not live; full → live).
 
 ---
 
+## 14. Full-site audit — security lock on the public key (2026-09-16)
+
+The audit (`docs/AUDIT-2026-09-16.md`) replayed `bootstrap-fresh.sql` in an
+embedded Postgres and queried every table and RPC as the `anon` and
+`authenticated` roles with Supabase's default grants. Three holes, no feature
+involved:
+
+| # | Fix |
+|---|-----|
+| 103 | **`memberships` had no RLS** — `202609140015` created the PROSANTI+ table with an `admin all` policy but never ran `enable row level security`, so the policy was inert: the browser key could `select phone, trxid` from every request and `update … set status = 'active'`. Verified in the replay (1 row read, 1 row updated as `anon`). New **`supabase/migrations/202609160004_rpc_grants_rls_repair.sql`** enables it (the existing policy then applies). |
+| 104 | **Nine service-only RPCs were callable with the anon key** — `ps_place_order`, `ps_use_coupon`, `ps_book_delivery_slot`, `ps_return_action`, `ps_create_return_request`, `ps_assign_batch_to_rider`, `ps_credit_referrer`, `ps_expire_stale_offers`, `ps_shop_rating_recompute` are `SECURITY DEFINER`, check nothing about their caller (they trust our API, which always calls them with the service key) and inherited Supabase's default `EXECUTE` for `anon`/`authenticated`. Replay as `anon`: 20 × `ps_book_delivery_slot` → `booked_orders 20/20` (a day's scheduled delivery closed), 3 × `ps_use_coupon` → limit exhausted. 0004 revokes them from `public`/`anon`/`authenticated` and grants `service_role`; the user-session RPCs (`ps_rider_*`, `ps_advance_order`, `ps_verify_payment`, `ps_offer_order`, …) all self-check `ps_is_admin()` / `ps_rider_id()` / `ps_vendor_shop()` and are untouched. Every app caller was confirmed to use the service client (`grep -rn '.rpc("ps_' src`). |
+| 105 | **`delivery_slots` writable by everyone** — `202609090017`'s "admin all" policy was `using (true) with check (true)`. Replay as `anon`: block/delete every slot. 0004 rewrites it to `ps_is_admin()`; the public read policy stays. |
+| 106 | **Probe + banner** — `ps_checkout_health()` reports `rpc_grants_locked` / `memberships_rls`; `/api/health` exposes `checks.securityRepair` and a next step naming 0004. It does **not** gate `live` (orders flow without it); the admin dashboard shows an amber "security lock pending" note under the green chip instead. `diagnose.sql` rows 35–35c (`function_locked` / `table_rls` kinds); `docs/go-live.md` step 34; bootstrap + `bootstrap-parts/10` carry it as the last section. |
+
+Tests: `src/app/api/__tests__/health-route.test.ts` (+1, one adjusted —
+live-but-unlocked names 0004; locked needs both flags).
+
+---
+
 ## New files
 
 - `src/components/ui/drawer.tsx` — accessible, portalled drawer (menu, shop filters, admin nav)

@@ -38,6 +38,11 @@ export async function GET() {
     // Delivered, cancel), bKash/Nagad verify, and the rider's own delivery
     // bookkeeping. Without it orders arrive and nothing can move them.
     orderFlowRepair: false,
+    // 202609160004 — the public anon key can no longer call the service-only
+    // RPCs (ps_place_order, ps_use_coupon, ps_book_delivery_slot, …) and
+    // `memberships` is actually protected by its policy. Ordering works
+    // without it; the shop is simply exposed until it runs.
+    securityRepair: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -101,6 +106,8 @@ export async function GET() {
           r.status_update_ok === true &&
           r.payment_verify_ok === true &&
           r.rider_guard_ok === true;
+        checks.securityRepair =
+          r.rpc_grants_locked === true && r.memberships_rls === true;
       }
     }
   }
@@ -148,6 +155,11 @@ export async function GET() {
   if (checks.placeOrderRpc && !checks.orderFlowRepair) {
     nextSteps.push(
       "Order status UPDATE block — SQL Editor-e supabase/migrations/202609160003_order_status_update_repair.sql chalaben (ledger trigger enum fix + ps_verify_payment + riders guard); na chalale admin Confirm/Cancel, bKash verify ar rider Delivered kichui kaj korbe na",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.securityRepair) {
+    nextSteps.push(
+      "Security lock — SQL Editor-e supabase/migrations/202609160004_rpc_grants_rls_repair.sql chalaben (anon key diye ps_place_order/ps_use_coupon/ps_book_delivery_slot call bondho + memberships RLS + delivery_slots policy); order flow eite bhangbe na, kintu na chalale je keu browser key diye slot full / coupon sesh / membership pora korte pare",
     );
   }
 

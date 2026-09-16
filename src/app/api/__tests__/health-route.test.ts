@@ -117,7 +117,7 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.live).toBe(false);
   });
 
-  it("is live once both the INSERT and the UPDATE paths are repaired", async () => {
+  it("is live once both the INSERT and the UPDATE paths are repaired — and still names the 0004 security lock", async () => {
     state.repair = {
       data: {
         version: "202609160003",
@@ -134,6 +134,33 @@ describe("GET /api/health — checkout repair awareness", () => {
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.checkoutRepair).toBe(true);
     expect(body.checks.orderFlowRepair).toBe(true);
+    // 0004 does not gate `live` — orders flow without it — but the probe
+    // must not stay silent about an anon key that can still call the RPCs.
+    expect(body.checks.securityRepair).toBe(false);
+    expect(body.live).toBe(true);
+    expect(body.nextSteps).toHaveLength(1);
+    expect(body.nextSteps[0]).toContain("202609160004_rpc_grants_rls_repair.sql");
+  });
+
+  it("reports securityRepair only when BOTH the grants and memberships RLS are in place", async () => {
+    const base = {
+      version: "202609160004",
+      gift_wrap_nullable: true,
+      totals_guard_current: true,
+      insert_guard_current: true,
+      status_update_ok: true,
+      payment_verify_ok: true,
+      rider_guard_ok: true,
+      payment_methods_widened: true,
+      place_order_rpc: true,
+    };
+    state.repair = { data: { ...base, rpc_grants_locked: true, memberships_rls: false } };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.securityRepair).toBe(false);
+
+    state.repair = { data: { ...base, rpc_grants_locked: true, memberships_rls: true } };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.securityRepair).toBe(true);
     expect(body.live).toBe(true);
     expect(body.nextSteps).toEqual([]);
   });

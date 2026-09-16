@@ -65,7 +65,10 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('34',  'ORDER FLOW REPAIR: ledger trigger compares the enum safely (Confirm/Cancel work)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_write_shop_ledger|old.status is distinct from new.status'),
   ('34b', 'ORDER FLOW REPAIR: ps_verify_payment returns the row (bKash verify works)',       '202609160003_order_status_update_repair.sql', 'function_src', 'ps_verify_payment|select * into v_order from orders where id = p_order_id;'),
   ('34c', 'ORDER FLOW REPAIR: riders guard lets RPCs/triggers write (rider Delivered works)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_guard_rider_self_update|current_user not in'),
-  ('34d', 'ORDER FLOW REPAIR: /api/health probe knows all three',                            '202609160003_order_status_update_repair.sql', 'function_src', 'ps_checkout_health|rider_guard_ok')
+  ('34d', 'ORDER FLOW REPAIR: /api/health probe knows all three',                            '202609160003_order_status_update_repair.sql', 'function_src', 'ps_checkout_health|rider_guard_ok'),
+  ('35',  'SECURITY: anon key cannot call ps_place_order (service-only RPCs revoked)', '202609160004_rpc_grants_rls_repair.sql', 'function_locked', 'ps_place_order(jsonb,jsonb)'),
+  ('35b', 'SECURITY: memberships has row level security',                              '202609160004_rpc_grants_rls_repair.sql', 'table_rls', 'memberships'),
+  ('35c', 'SECURITY: /api/health probe knows the lock',                                '202609160004_rpc_grants_rls_repair.sql', 'function_src', 'ps_checkout_health|rpc_grants_locked')
 )
 select step as ord,
        label,
@@ -94,6 +97,17 @@ select step as ord,
              and p.proname = split_part(obj, '|', 1)
              and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
+         -- function_locked: true when the function is absent (nothing to
+         -- lock) OR present and NOT executable by anon. false = the public
+         -- browser key can still call a service-only RPC (2026-09-16 audit).
+         when 'function_locked' then coalesce(
+           not has_function_privilege('anon', to_regprocedure('public.' || obj), 'execute'),
+           true)
+         -- table_rls: true when the table is absent OR has RLS enabled.
+         when 'table_rls' then coalesce((
+           select c.relrowsecurity from pg_class c
+           where c.relnamespace = 'public'::regnamespace and c.relname = obj
+         ), true)
          when 'column' then exists (
            select 1 from information_schema.columns c
            where c.table_schema = 'public'

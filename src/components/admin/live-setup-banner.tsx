@@ -35,21 +35,44 @@ export default function LiveSetupBanner() {
   if (!health) return null;
 
   if (health.live) {
+    // 202609160004 does not gate `live` (orders flow without it) but the
+    // shop is exposed until it runs — say so next to the green chip.
+    const securityPending = health.checks?.securityRepair === false;
     return (
-      <div className="mb-8 flex items-center gap-2.5 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-forest-800 text-ivory-50">
-          <IconCheck className="h-3.5 w-3.5 stroke-[3]" />
-        </span>
-        <p className="text-sm font-semibold text-forest-900">
-          LIVE — সব ডেটা Supabase থেকে চলছে (অর্ডার, নোটিফিকেশন, ক্যাটালগ, জোন)
-        </p>
-        <Link
-          href="/api/health"
-          target="_blank"
-          className="ml-auto text-xs font-medium text-forest-700 underline underline-offset-2"
-        >
-          health report
-        </Link>
+      <div className="mb-8 space-y-3">
+        <div className="flex items-center gap-2.5 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-forest-800 text-ivory-50">
+            <IconCheck className="h-3.5 w-3.5 stroke-[3]" />
+          </span>
+          <p className="text-sm font-semibold text-forest-900">
+            LIVE — সব ডেটা Supabase থেকে চলছে (অর্ডার, নোটিফিকেশন, ক্যাটালগ, জোন)
+          </p>
+          <Link
+            href="/api/health"
+            target="_blank"
+            className="ml-auto text-xs font-medium text-forest-700 underline underline-offset-2"
+          >
+            health report
+          </Link>
+        </div>
+        {securityPending && (
+          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <IconShield className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <p className="font-semibold">
+                🔒 সিকিউরিটি লক বাকি — ব্রাউজারের public key দিয়ে এখনো ডেটাবেসের কিছু RPC সরাসরি কল করা যায়
+              </p>
+              <p className="mt-0.5 text-[13px] text-amber-900/90">
+                অর্ডার চলছে, কিন্তু যে কেউ delivery slot ভরে দিতে, coupon শেষ করে দিতে বা PROSANTI+ আবেদন পড়তে পারে। ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন (৩টা <strong>OK</strong> দেখাবে):
+              </p>
+              <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
+                supabase/migrations/202609160004_rpc_grants_rls_repair.sql
+              </code>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -279,7 +279,32 @@ Run **in this order, in one sequence** (skip files you already applied —
     `rider_guard_ok`) which `/api/health` reads as `checks.orderFlowRepair`.
     `live` stays **false** and the admin dashboard shows a red banner naming
     this file until it has run. Ends with a 4-row verify — expect 4 × OK.
-    (Also the last section of `bootstrap-fresh.sql` / `bootstrap-parts/10`.)
+    (Also a late section of `bootstrap-fresh.sql` / `bootstrap-parts/10`.)
+34. **`supabase/migrations/202609160004_rpc_grants_rls_repair.sql`** — 🔒
+    **security lock (2026-09-16 audit) — strongly recommended.** Small file,
+    pastes whole, safe to re-run, changes no feature. Ordering keeps working
+    without it, but until it runs the *public* anon key (shipped in every
+    page) can reach three things directly through PostgREST:
+    * nine SECURITY DEFINER write RPCs with no internal auth check and the
+      Supabase default EXECUTE grant — `ps_place_order`, `ps_use_coupon`,
+      `ps_book_delivery_slot` (20 calls = a day's slots full),
+      `ps_return_action`, `ps_create_return_request`,
+      `ps_assign_batch_to_rider`, `ps_credit_referrer`,
+      `ps_expire_stale_offers`, `ps_shop_rating_recompute`;
+    * `memberships` (step 30's PROSANTI+ table), created with an admin policy
+      but **without** `enable row level security`, so every request's phone
+      and trxid was readable and its status writable;
+    * `delivery_slots`, whose "admin all" policy was `using (true)`.
+
+    The file revokes those RPCs from `anon`/`authenticated` (service_role,
+    i.e. every one of our API routes, keeps them), enables RLS on
+    `memberships`, rewrites the slot policy to `ps_is_admin()`, and extends
+    `ps_checkout_health()` (`rpc_grants_locked`, `memberships_rls`) which
+    `/api/health` reads as `checks.securityRepair`. `live` is **not** gated
+    on it; the admin dashboard shows an amber "security lock pending" note
+    under the green chip until it has run. Ends with a 3-row verify —
+    expect 3 × OK. (Also the last section of `bootstrap-fresh.sql` /
+    `bootstrap-parts/10`; `diagnose.sql` rows 35–35c.)
 
 Quick check after step 11 (SQL editor):
 
