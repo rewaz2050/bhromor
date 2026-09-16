@@ -166,6 +166,10 @@ export async function createReturnRequest(
  * Shop decision on a requested return. Actions and their guarded effects
  * live in ps_return_action (approve → ready-for-pickup for dispatch,
  * reject → cancelled, complete → refunded).
+ *
+ * `db` must be the service client: ps_return_action is service-only since
+ * 202609160004 — a staff JWT client gets "permission denied for function".
+ * The route verifies the staff session before calling this.
  */
 export async function performReturnAction(
   db: SupabaseClient,

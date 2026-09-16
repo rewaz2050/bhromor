@@ -273,6 +273,19 @@ involved:
 Tests: `src/app/api/__tests__/health-route.test.ts` (+1, one adjusted —
 live-but-unlocked names 0004; locked needs both flags).
 
+Two staff routes called the now service-only RPCs on the staff's RLS-bound
+JWT client and would have started failing with "permission denied for
+function" the moment 0004 was applied: `POST /api/admin/orders/[id]/return`
+(`ps_return_action`) and `GET /api/admin/deliveries` (`ps_expire_stale_offers`
+via `listDispatchJobs`). Both now run the RPC on the service client *after*
+`staffRoute` has verified the session (the same pattern the advance route
+already used for `ps_credit_referrer`): the return route answers an honest
+503 naming `SUPABASE_SERVICE_ROLE_KEY` if the key is missing; the dispatch
+board treats the sweep as best-effort (the rider job feed runs the same
+sweep) so a missing key never blanks the board.
+`src/app/api/__tests__/service-only-rpc-routes.test.ts` (4) pins which
+client each RPC runs on.
+
 ### Broken features found by the same audit
 
 | # | Fix |

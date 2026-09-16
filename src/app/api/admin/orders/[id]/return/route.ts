@@ -9,6 +9,7 @@
 import { performReturnAction } from "@/lib/db/returns";
 import { apiError, apiJson } from "@/lib/api-response";
 import { notifyStaff } from "@/lib/db/engagement";
+import { getSupabaseService } from "@/lib/supabase-server";
 import { routeId, staffRoute } from "../../../_lib";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +32,21 @@ export const POST = staffRoute(
     }
     const note = typeof body.note === "string" ? body.note.trim() : "";
 
+    // ps_return_action is service-only since 202609160004 (the anon key must
+    // not be able to approve returns); staffRoute has already verified the
+    // staff session, so the decision runs on the service client — the same
+    // pattern as ps_credit_referrer in the advance route.
+    const service = getSupabaseService();
+    if (!service) {
+      return apiError(
+        "Return actions need SUPABASE_SERVICE_ROLE_KEY on the server (docs/go-live.md).",
+        503,
+      );
+    }
+
     try {
       await performReturnAction(
-        db,
+        service,
         id,
         action as "approve" | "reject" | "complete",
         note,

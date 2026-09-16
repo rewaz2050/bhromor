@@ -241,10 +241,15 @@ export async function listRiderJobs(
   return jobs;
 }
 
+/**
+ * Staff dispatch board. Reads only — the caller runs
+ * `expireStaleAssignments` on the service client first (the RPC is
+ * service-only since 202609160004; this list may be read with the staff's
+ * RLS-bound client).
+ */
 export async function listDispatchJobs(
   service: SupabaseClient,
 ): Promise<RiderDispatchJob[]> {
-  await expireStaleAssignments(service);
   const { data: assignments, error } = await service
     .from("delivery_assignments")
     .select("*")
@@ -321,6 +326,7 @@ export async function cancelDispatchAssignment(
 }
 
 /** Mark stale offered assignments as expired (no background worker). */
+/** Service-only RPC (202609160004): expire timed-out offers and re-offer. */
 export async function expireStaleAssignments(
   service: SupabaseClient,
 ): Promise<void> {
