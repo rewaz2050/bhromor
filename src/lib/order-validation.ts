@@ -462,17 +462,9 @@ export const validateOrderPayload = (
         ],
       };
     }
-    if (!isPickup && !shop.zoneIds.includes(zone.id)) {
-      return {
-        ok: false,
-        errors: [
-          {
-            field: "zoneId",
-            message: `“${shop.name}” doesn't deliver to ${zone.name} — pick another zone or shop.`,
-          },
-        ],
-      };
-    }
+    // Delivery is now accepted for every address. The selected shop's zone list
+    // is a storefront merchandising filter, not a checkout delivery block.
+    // Actual delivery eligibility is handled by the address/charge rules below.
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
