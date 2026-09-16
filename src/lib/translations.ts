@@ -9,6 +9,7 @@ export const translations = {
     },
     header: {
       wishlist: "Wishlist",
+      account: "Your account",
       menu: "Menu",
       openMenu: "Open menu",
       closeMenu: "Close menu",
@@ -444,6 +445,7 @@ export const translations = {
     },
     header: {
       wishlist: "পছন্দের তালিকা",
+      account: "আপনার অ্যাকাউন্ট",
       menu: "মেনু",
       openMenu: "মেনু খুলুন",
       closeMenu: "মেনু বন্ধ করুন",

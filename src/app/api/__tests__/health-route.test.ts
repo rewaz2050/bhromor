@@ -15,6 +15,15 @@ vi.mock("server-only", () => ({}));
 
 const state = vi.hoisted(() => ({
   repair: null as null | { error?: { code: string }; data?: Record<string, unknown> },
+  /** Whether the caller holds a staff session (audit L6: details are staff-only). */
+  staff: true,
+}));
+
+vi.mock("@/lib/staff-auth", () => ({
+  requireStaff: async () => {
+    if (!state.staff) throw new Error("Please sign in again.");
+    return { user: { id: "staff-1" }, role: "admin", db: null };
+  },
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -52,6 +61,36 @@ type Health = {
 
 beforeEach(() => {
   state.repair = null;
+  state.staff = true;
+  delete process.env.HEALTH_TOKEN;
+});
+
+describe("GET /api/health — who sees what (audit L6)", () => {
+  it("answers anonymous callers with the bare `live` flag only", async () => {
+    state.staff = false;
+    const body = (await (await GET(new Request("http://localhost/api/health"))).json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["live", "now"]);
+    expect(body.live).toBe(false);
+  });
+
+  it("gives a staff session the full report", async () => {
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks).toBeDefined();
+    expect(body.nextSteps).toBeDefined();
+  });
+
+  it("accepts HEALTH_TOKEN in x-health-token for external monitors", async () => {
+    state.staff = false;
+    process.env.HEALTH_TOKEN = "s3cret";
+    const denied = (await (await GET(
+      new Request("http://localhost/api/health", { headers: { "x-health-token": "nope" } }),
+    )).json()) as Record<string, unknown>;
+    expect(denied.checks).toBeUndefined();
+    const ok = (await (await GET(
+      new Request("http://localhost/api/health", { headers: { "x-health-token": "s3cret" } }),
+    )).json()) as Health;
+    expect(ok.checks).toBeDefined();
+  });
 });
 
 describe("GET /api/health — checkout repair awareness", () => {

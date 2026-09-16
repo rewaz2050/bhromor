@@ -358,7 +358,17 @@ team — see `docs/vercel.md` for Config-vs-Secret types):
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service_role key>   # server-only
+NEXT_PUBLIC_SITE_URL=https://proshanti.rahatahmed.site   # the public domain, no trailing slash
+# HEALTH_TOKEN=<random string>   # optional: lets an uptime monitor read the full /api/health
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is not optional any more (2026-09-16): after
+migration 0004 the staff routes reach the service-only RPCs (returns,
+dispatch board, batch assign) through it, and `/api/health` /
+`/api/orders` need it as before. `NEXT_PUBLIC_SITE_URL` is what
+`<link rel=canonical>`, `og:url`, `/sitemap.xml` and `/robots.txt` print —
+without it Vercel's production domain is used, and off Vercel the fallback
+is `https://prosanti.store`.
 
 After any env change: Deployments → ⋯ → **Redeploy** with “Use existing
 Build Cache” **unchecked**.

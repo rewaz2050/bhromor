@@ -13,10 +13,30 @@ import {
   isSupabaseConfigured,
 } from "@/lib/env";
 import { apiJson } from "@/lib/api-response";
+import { requireStaff } from "@/lib/staff-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/**
+ * Who may see the full report (audit L6). Anyone can read `live` (a bare
+ * boolean for uptime monitors); the per-table counts, seeded flags and
+ * repair status go only to a signed-in staff session (cookie or bearer —
+ * the admin dashboard banner and the owner's own browser tab) or to a
+ * caller presenting HEALTH_TOKEN in `x-health-token` (external monitors).
+ */
+const mayReadDetails = async (request: Request | undefined): Promise<boolean> => {
+  const token = process.env.HEALTH_TOKEN?.trim();
+  if (token && request?.headers.get("x-health-token") === token) return true;
+  try {
+    await requireStaff();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export async function GET(request?: Request) {
+  const detailed = await mayReadDetails(request);
   const configured = isSupabaseConfigured();
   const serviceConfigured = isServiceRoleConfigured();
 
@@ -174,6 +194,12 @@ export async function GET() {
     );
   }
 
+  const now = new Date().toISOString();
+  if (!detailed) {
+    // Public shape: is the shop taking orders — nothing about how it is built.
+    return apiJson({ live, now });
+  }
+
   return apiJson({
     live,
     checks,
@@ -181,6 +207,6 @@ export async function GET() {
     checkoutRepair,
     nextSteps,
     cloudinary: { configured: isCloudinaryConfigured() },
-    now: new Date().toISOString(),
+    now,
   });
 }

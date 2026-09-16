@@ -22,7 +22,8 @@ export async function generateMetadata({
   const { slug } = await params;
   const { shops } = await getStorefrontCatalog();
   const shop = shops.find((s) => s.slug === slug);
-  if (!shop) return {};
+  // See product/[slug]: a real 404 for crawlers with blocking metadata.
+  if (!shop) notFound();
   return {
     title: `${shop.name} — PROSANTI`,
     description: shop.tagline ?? `Shop ${shop.name} on PROSANTI.`,

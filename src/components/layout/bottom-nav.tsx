@@ -7,6 +7,23 @@ import { IconBag, IconHeart, IconBox } from "@/components/ui/icons";
 import MobileNav from "./mobile-nav";
 import { useLanguage } from "@/components/i18n/language-provider";
 
+/**
+ * Which tab a pathname belongs to. `/` is exact; every other tab also owns
+ * its sub-routes, and the Shop tab owns the product/shop detail pages so the
+ * bar is never blank while browsing (audit L7).
+ */
+export const activeTab = (path: string | null, href: string): boolean => {
+  if (!path) return false;
+  if (href === "/") return path === "/";
+  if (path === href || path.startsWith(`${href}/`)) return true;
+  if (href === "/shop") {
+    return ["/product", "/shops", "/style", "/campaign", "/live"].some(
+      (p) => path === p || path.startsWith(`${p}/`),
+    );
+  }
+  return false;
+};
+
 export default function BottomNav() {
   const { t } = useLanguage();
   const path = usePathname();
@@ -41,17 +58,20 @@ export default function BottomNav() {
           label: t("bottomNav.wishlist"),
           icon: <IconHeart className="h-5 w-5" />,
         },
-      ].map((item) => (
+      ].map((item) => {
+        const active = activeTab(path, item.href);
+        return (
         <Link
           key={item.href}
           href={item.href}
-          aria-current={path === item.href ? "page" : undefined}
-          className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] ${path === item.href ? "text-forest-900" : "text-ink-soft"}`}
+          aria-current={active ? "page" : undefined}
+          className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] ${active ? "text-forest-900" : "text-ink-soft"}`}
         >
           {item.icon}
           {item.label}
         </Link>
-      ))}
+        );
+      })}
       <button
         onClick={openBag}
         aria-label={`Open bag, ${itemCount} items`}

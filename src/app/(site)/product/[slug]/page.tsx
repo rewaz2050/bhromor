@@ -46,7 +46,10 @@ export async function generateMetadata({
   const { slug } = await params;
   const { products } = await getStorefrontCatalog();
   const product = findStorefrontProduct(products, slug);
-  if (!product) return {};
+  // Thrown here as well as in the page: metadata is resolved before the
+  // shell streams for crawlers with blocking metadata, so an unknown slug
+  // answers a real 404 instead of a 200 with a 404 body (audit L1).
+  if (!product) notFound();
   const cover = coverImage(product);
   return {
     title: product.name,
