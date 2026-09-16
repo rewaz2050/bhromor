@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
 import { SignatureCanvas } from "./signature-canvas";
-import { DeliveryRating } from "./delivery-rating";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";

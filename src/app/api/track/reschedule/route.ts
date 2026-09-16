@@ -1,7 +1,7 @@
 /** POST /api/track/reschedule — customer reschedules delivery (free). */
 import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
-import { normalizePhone } from "@/lib/orders";
+import { findOwnedOrder } from "@/lib/db/order-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -35,19 +35,15 @@ export async function POST(req: Request) {
   const db = getSupabaseService();
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });
 
-  const { data: order, error } = await db
-    .from("orders")
-    .select("id, status, customer_phone")
-    .or(`id.eq.${orderId},order_no.eq.${orderId.toUpperCase()}`)
-    .single();
+  // Order number (what the storefront holds) or uuid; phone proves ownership.
   // Vague 404 on id OR phone mismatch — same as /api/track.
-  const stored = (order as { customer_phone?: string } | null)?.customer_phone ?? "";
-  if (
-    error ||
-    !order ||
-    normalizePhone(stored) === "" ||
-    normalizePhone(stored) !== normalizePhone(phone)
-  ) {
+  const order = await findOwnedOrder<{ id: string; status: string; customer_phone: string | null }>(
+    db,
+    orderId,
+    phone,
+    "id, status, customer_phone",
+  );
+  if (!order) {
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
   if (order.status === "delivered" || order.status === "cancelled") {

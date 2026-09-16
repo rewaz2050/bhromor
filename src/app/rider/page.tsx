@@ -181,35 +181,46 @@ export default function RiderPage() {
     setProofUploading(true);
     setPinError("");
     try {
-      // Get Cloudinary signature
-      const signRes = await fetch("/api/media/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: "prosanti/delivery-proofs" }),
-      });
-      const signData = await signRes.json().catch(() => null) as any;
-      if (!signRes.ok || !signData?.cloudName) {
-        setPinError("Photo upload unavailable — Cloudinary is not configured.");
+      // Rider-scoped Cloudinary signature (the staff /api/media/sign
+      // answers 403 to a rider session).
+      const signRes = await fetch("/api/rider/media/sign", { method: "POST" });
+      const signData = (await signRes.json().catch(() => null)) as
+        | {
+            cloudName?: string;
+            apiKey?: string;
+            timestamp?: number;
+            folder?: string;
+            signature?: string;
+            uploadUrl?: string;
+            error?: string;
+          }
+        | null;
+      if (!signRes.ok || !signData?.cloudName || !signData.uploadUrl) {
+        setPinError(
+          signData?.error ||
+            (signRes.status === 503
+              ? "Photo upload is not configured yet — you can still deliver without a photo."
+              : "Photo upload unavailable right now — you can still deliver without a photo."),
+        );
         return;
       }
       const form = new FormData();
       form.append("file", file);
-      form.append("api_key", signData.apiKey);
-      form.append("timestamp", String(signData.timestamp));
-      form.append("folder", signData.folder);
-      form.append("signature", signData.signature);
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/image/upload`, {
-        method: "POST",
-        body: form,
-      });
-      const upData = await upRes.json().catch(() => null) as any;
+      form.append("api_key", signData.apiKey ?? "");
+      form.append("timestamp", String(signData.timestamp ?? ""));
+      form.append("folder", signData.folder ?? "");
+      form.append("signature", signData.signature ?? "");
+      const upRes = await fetch(signData.uploadUrl, { method: "POST", body: form });
+      const upData = (await upRes.json().catch(() => null)) as
+        | { secure_url?: string; error?: { message?: string } }
+        | null;
       if (!upRes.ok || !upData?.secure_url) {
         throw new Error(upData?.error?.message || "Upload failed");
       }
       setProofUrl(upData.secure_url);
-      showFlash("📸 Proof photo uploaded to Cloudinary!");
-    } catch (e: any) {
-      setPinError(e?.message || "Photo upload failed");
+      showFlash("📸 Proof photo uploaded!");
+    } catch (e) {
+      setPinError(e instanceof Error && e.message ? e.message : "Photo upload failed");
     } finally {
       setProofUploading(false);
     }

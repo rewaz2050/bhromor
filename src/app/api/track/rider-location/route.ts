@@ -8,9 +8,25 @@
  */
 import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
-import { normalizePhone } from "@/lib/orders";
+import { findOwnedOrder } from "@/lib/db/order-lookup";
 
 export const dynamic = "force-dynamic";
+
+interface OrderRow {
+  id: string;
+  rider_id: string | null;
+  status: string;
+  customer_phone: string | null;
+}
+
+interface RiderRow {
+  lat: number | null;
+  lng: number | null;
+  last_location_at: string | null;
+  is_online: boolean | null;
+}
+
+const EN_ROUTE = new Set(["out-for-delivery", "courier-assigned", "ready-for-pickup"]);
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -26,41 +42,38 @@ export async function GET(req: Request) {
   const db = getSupabaseService();
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });
 
-  // Find order and its rider assignment
-  const { data: order, error: orderErr } = await db
-    .from("orders")
-    .select("id, rider_id, status, customer_phone")
-    .or(`id.eq.${orderId},order_no.eq.${orderId.toUpperCase()}`)
-    .single();
+  // Order number (what the storefront holds) or uuid; phone proves ownership.
   // Vague 404 on id OR phone mismatch — same as /api/track.
-  if (
-    orderErr ||
-    !order ||
-    normalizePhone((order as { customer_phone?: string }).customer_phone ?? "") ===
-      "" ||
-    normalizePhone((order as { customer_phone?: string }).customer_phone ?? "") !==
-      normalizePhone(phone)
-  ) {
+  const order = await findOwnedOrder<OrderRow>(
+    db,
+    orderId,
+    phone,
+    "id, rider_id, status, customer_phone",
+  );
+  if (!order) {
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
   if (!order.rider_id) return NextResponse.json({ error: "no rider assigned yet" }, { status: 404 });
-  if (order.status !== "out-for-delivery" && order.status !== "courier-assigned" && order.status !== "ready-for-pickup") {
+  if (!EN_ROUTE.has(order.status)) {
     return NextResponse.json({ error: "rider not on the way yet" }, { status: 400 });
   }
 
-  const { data: rider, error: riderErr } = await db
+  const { data, error: riderErr } = await db
     .from("riders")
     .select("lat, lng, last_location_at, is_online")
     .eq("id", order.rider_id)
     .single();
+  const rider = data as RiderRow | null;
   if (riderErr || !rider) return NextResponse.json({ error: "rider not found" }, { status: 404 });
 
-  const lat = (rider as any).lat;
-  const lng = (rider as any).lng;
-  const last = (rider as any).last_location_at;
-  if (lat == null || lng == null) {
+  if (rider.lat == null || rider.lng == null) {
     return NextResponse.json({ error: "rider location not available yet" }, { status: 404 });
   }
 
-  return NextResponse.json({ lat, lng, updatedAt: last, isOnline: (rider as any).is_online });
+  return NextResponse.json({
+    lat: rider.lat,
+    lng: rider.lng,
+    updatedAt: rider.last_location_at,
+    isOnline: rider.is_online,
+  });
 }

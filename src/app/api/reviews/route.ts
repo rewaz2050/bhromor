@@ -20,6 +20,7 @@ import type { DbReview } from "@/lib/db/types";
 import { isServiceRoleConfigured, isSupabaseConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
+import { isUuid } from "@/lib/db/order-lookup";
 import {
   attachReviewPhotos,
   sanitizeReviewPhotos,
@@ -133,13 +134,16 @@ export async function POST(request: Request) {
   try {
     const db = getSupabaseService();
     if (!db) return apiError("Reviews are temporarily unavailable.", 503);
+    // Accept the internal id or the public slug. Only compare against the
+    // uuid column when the value is one — `id = 'some-slug'::uuid` raises
+    // 22P02 and would fail the whole lookup.
     const { data: product } = await db
       .from("products")
       .select("id")
-      .or(`id.eq.${productRef},slug.eq.${productRef}`)
+      .eq(isUuid(productRef) ? "id" : "slug", productRef)
       .eq("status", "published")
       .eq("active", true)
-      .single();
+      .maybeSingle();
     const productId = (product as { id: string } | null)?.id;
     if (!productId) return apiError("That product is not available.", 422);
     // Customer photos: at most 3, already server-sanitized (shape, count,

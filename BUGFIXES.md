@@ -273,6 +273,14 @@ involved:
 Tests: `src/app/api/__tests__/health-route.test.ts` (+1, one adjusted —
 live-but-unlocked names 0004; locked needs both flags).
 
+### Broken features found by the same audit
+
+| # | Fix |
+|---|-----|
+| 107 | **Live delivery map never showed the rider; reschedule never worked** — `/api/track/rider-location` and `/api/track/reschedule` looked the order up with `.or("id.eq.<ref>,order_no.eq.<ref>")`. The storefront only ever has the order *number* (`mapOrder` publishes `order_no` as `id`), and PostgREST compiles `id.eq.PS-…` to `'PS-…'::uuid` → SQLSTATE 22P02, so every call answered 404 "order not found" and the map's `if (!res.ok) return` swallowed it. Tests passed because the mock's `.or()` returned the row. New `src/lib/db/order-lookup.ts` (`findOwnedOrder`: order_no match, uuid only when the value is one, phone proof, strict reference charset) used by both routes; the test mock now raises on a non-uuid `id` filter like Postgres does and pins order_no matching, uuid matching and case-folding. Same pattern in `POST /api/reviews` (`id.eq.<slug>`) — now `eq(isUuid ? "id" : "slug")`. |
+| 108 | **Rider proof-photo upload always failed** — the rider page signed via the staff-only `/api/media/sign` (`staffRoute` → 403 for a rider session) and reported "Cloudinary is not configured". New `POST /api/rider/media/sign` (`riderRoute`, folder pinned to `prosanti/delivery-proofs`, body ignored) on a shared `src/lib/cloudinary-sign.ts`; the staff route uses the same helper. Rider page: typed response, honest 503 vs. unavailable copy, uses the returned `uploadUrl`. `rider-media-sign.test.ts` (3). |
+| 109 | **Dead `DeliveryRating`** — imported by the track view but never rendered; had it been, it posted `{orderId}` to `/api/reviews`, which requires a product → 400 with no error UI. Removed with its import. |
+
 ---
 
 ## New files
