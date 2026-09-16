@@ -9,3 +9,10 @@ update public.delivery_zones set charge = case id
   else charge
 end
 where id in ('z1','z2','z3','z4');
+
+-- Existing shop rows may still have only the Sadar zones. Make the shop
+-- eligible for every checkout delivery zone; the customer address still
+-- determines the delivery charge.
+update public.shops
+set zone_ids = array['z1','z2','z3','z4']::text[]
+where status = 'active';
