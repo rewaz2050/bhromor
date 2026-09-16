@@ -1,8 +1,8 @@
 /**
  * Delivery pricing rules — simplified flat charge model.
  *
- * Pricing model (owner decisions):
- *   • Flat delivery charge: ৳60 everywhere (no zones).
+ * Pricing model: city ৳60, nearby ৳120, remote/upazila ৳150.
+ * The zone is derived internally from the address; customers never pick one.
  *   • Free for store pickup.
  *   • Surcharges: night/rain/express/weight still apply.
  *   • No free delivery promos (launch offer, first-10, threshold all removed).
@@ -17,7 +17,7 @@ export const DELIVERY_ETA = "45–50 min";
 export const INSTANT_DELIVERY_TITLE = "Instant delivery";
 export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the service area.`;
 
-/** Flat delivery charge — no zones. */
+/** Fallback charge when a zone has not been resolved. */
 export const FLAT_DELIVERY_CHARGE_PAISA: Bdt = bdt(60); // ৳60
 
 /** Surcharges — Sunamganj real */
@@ -119,7 +119,9 @@ export const deliveryBreakdown = (opts: {
   }
 
   const freeDelivery = !!couponFree;
-  const baseCharge = FLAT_DELIVERY_CHARGE_PAISA;
+  // Zone pricing: city ৳60, nearby ৳120, outside/remote ৳150.
+  // The zone is derived internally from address/distance and never exposed as a choice.
+  const baseCharge = opts.zone?.charge ?? FLAT_DELIVERY_CHARGE_PAISA;
 
   const surcharge: DeliverySurcharge = {
     night: night && !freeDelivery ? NIGHT_SURCHARGE_PAISA : 0,

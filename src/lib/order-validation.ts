@@ -462,30 +462,20 @@ export const validateOrderPayload = (
         ],
       };
     }
-    if (!isPickup && !shop.zoneIds.includes(zone.id)) {
-      return {
-        ok: false,
-        errors: [
-          {
-            field: "zoneId",
-            message: `“${shop.name}” doesn't deliver to ${zone.name} — pick another zone or shop.`,
-          },
-        ],
-      };
-    }
+    // Delivery is now accepted for every address. The selected shop's zone list
+    // is a storefront merchandising filter, not a checkout delivery block.
+    // Actual delivery eligibility is handled by the address/charge rules below.
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
-  // Zone D (outside Sadar / other district) requires minimum ৳500
-  if (zone.id === "z4" && subtotal < 50000) {
+  // Orders outside Sunamganj Sadar require a minimum basket above ৳599.
+  if (zone.id === "z4" && subtotal < 60000) {
     return {
       ok: false,
-      errors: [
-        {
-          field: "items",
-          message: `Outside Sunamganj Sadar requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
-        },
-      ],
+      errors: [{
+        field: "items",
+        message: "সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ৳৬০০ টাকার অর্ডার করতে হবে।",
+      }],
     };
   }
 
@@ -557,11 +547,11 @@ export const validateOrderPayload = (
 
   /* ---------------- delivery charge ----------------
    * Pickup → free. Free-delivery coupon → free (surcharges waived).
-   * Otherwise the flat charge + surcharges. */
+   * Otherwise the address-derived zone charge + surcharges. */
   const freeDelivery = isPickup || couponFreeDelivery || plusWaiver;
   const deliveryCharge = freeDelivery
     ? 0
-    : Math.max(0, FLAT_DELIVERY_CHARGE_PAISA) +
+    : Math.max(0, zone.charge) +
       surchargeNight +
       surchargeRain +
       surchargeExpress +
