@@ -79,7 +79,7 @@ const BLOCKS = {
   creditReferrer: { file: GROWTH, from: 475, to: 538 }, // ps_credit_referrer
   walletDdl: { file: WALLET, from: 20, to: 32 }, // payment columns + constraint
   plusDdl: { file: PLUS, from: 21, to: 49 }, // memberships + orders.is_plus + RLS
-  finalFn: { file: PLUS, from: 52, to: 514 }, // THE ps_place_order (one statement)
+  finalFn: { file: PLUS, from: 52, to: 518 }, // THE ps_place_order (one statement)
   returnCols: { file: REMAINING, from: 5, to: 9 }, // contingency, see part 00b
 };
 

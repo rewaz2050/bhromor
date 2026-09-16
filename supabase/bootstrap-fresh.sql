@@ -2015,10 +2015,10 @@ begin;
 
 -- Upsert Sunamganj paras (idempotent, FK-safe)
 insert into delivery_zones (id, name, areas, charge, eta_label, sort_order, active) values
-  ('z1', 'Zone A — Traffic Point (0-1.5km)', array['Boropara','Shologhar','Ukilpara','Courtpara','Jail Road','Modhyabazar','Kalibari','Arambagh','Mollapara'], 3000, '30–40 min', 0, true),
-  ('z2', 'Zone B — Sadar Core (1.5-2.5km)', array['Notunpara','Hasannagar','Tegharia','Nabinagar','Sahib Bari Ghat','Hospital Road','Kazir Point','Purba Bazar','Paschim Bazar'], 5000, '40–50 min', 1, true),
-  ('z3', 'Zone C — Sadar Extended (2.5-4km)', array['Wayesspur','Balaka Para','Jaliapara','Palpur','Dargahpara','Uttarpara','Dakkhinpara','Shologhar Bypass'], 7000, '50–60 min', 2, true),
-  ('z4', 'Zone D — Sunamganj Sadar Bahire', array['Sunamganj Sadar Other','Dolura','Gouripur','Surma River Side','Mollapara Bahire','Shantiganj Border'], 10000, '60–80 min', 3, true)
+  ('z1', 'Zone A — Traffic Point (0-1.5km)', array['Boropara','Shologhar','Ukilpara','Courtpara','Jail Road','Modhyabazar','Kalibari','Arambagh','Mollapara'], 6000, '30–40 min', 0, true),
+  ('z2', 'Zone B — Sadar Core (1.5-2.5km)', array['Notunpara','Hasannagar','Tegharia','Nabinagar','Sahib Bari Ghat','Hospital Road','Kazir Point','Purba Bazar','Paschim Bazar'], 12000, '40–50 min', 1, true),
+  ('z3', 'Zone C — Sadar Extended (2.5-4km)', array['Wayesspur','Balaka Para','Jaliapara','Palpur','Dargahpara','Uttarpara','Dakkhinpara','Shologhar Bypass'], 15000, '50–60 min', 2, true),
+  ('z4', 'Zone D — Sunamganj Sadar Bahire', array['Sunamganj Sadar Other','Dolura','Gouripur','Surma River Side','Mollapara Bahire','Shantiganj Border'], 15000, '60–80 min', 3, true)
 on conflict (id) do update set
   name = excluded.name,
   areas = excluded.areas,
@@ -6831,9 +6831,7 @@ begin
       if not v_shop.is_open and not v_is_return then
         raise exception 'shop closed';
       end if;
-      if not v_is_pickup and not v_is_return and not (v_zone.id = any (v_shop.zone_ids)) then
-        raise exception 'shop does not deliver to zone';
-      end if;
+      -- checkout coverage is determined by the address-derived zone charge
     elsif v_product.shop_id <> v_shop.id then
       raise exception 'order mixes multiple shops';
     end if;
@@ -6915,8 +6913,9 @@ begin
   end if;
 
   -- ------------------------------------------------------------------
-  -- FLAT RULE: pickup and free-delivery coupons ride free. Otherwise
-  -- ৳60 flat + server-computed surcharges (night/rain/distance/express/weight).
+  -- TIERED RULE: pickup and free-delivery coupons ride free. Otherwise
+  -- use the address-derived zone charge + server-computed surcharges
+  -- (night/rain/distance/express/weight).
   -- ------------------------------------------------------------------
   if v_is_pickup then
     v_charge := 0;
@@ -6926,7 +6925,7 @@ begin
     v_charge := 0;
     v_sur_night := 0; v_sur_rain := 0; v_sur_dist := 0; v_sur_express := 0; v_sur_weight := 0;
   else
-    v_charge := 6000 + v_sur_night + v_sur_rain + v_sur_dist + v_sur_express + v_sur_weight;
+    v_charge := coalesce(v_zone.charge, 6000) + v_sur_night + v_sur_rain + v_sur_dist + v_sur_express + v_sur_weight;
     if v_has_coupon and v_coupon.type = 'free_delivery' then
       v_charge := 0;
       v_sur_night := 0; v_sur_rain := 0; v_sur_dist := 0; v_sur_express := 0; v_sur_weight := 0;
@@ -7106,7 +7105,7 @@ begin
     v_order_id, 'pending',
     'Placed via checkout — ' || v_district || ' / ' || v_upazila || ' / '
       || nullif(v_para, '') || ' | zone=' || v_zone.id
-      || ' | flat60=' || (v_charge = 6000)::text
+      || ' | zone_charge=' || coalesce(v_zone.charge, 6000)::text
       || ' | pickup=' || v_is_pickup::text
       || ' | coupon_free=' || (v_has_coupon and v_coupon.type = 'free_delivery')::text
       || ' | tip=' || v_tip::text

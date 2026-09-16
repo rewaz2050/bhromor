@@ -16,10 +16,10 @@ ON CONFLICT (id) DO UPDATE SET
 
 -- 1. Delivery zones (already seeded by migration 202609110005, but safe to upsert)
 INSERT INTO delivery_zones (id, name, areas, charge, eta_label, sort_order, active) VALUES
-  ('z1', 'Zone A — Sunamganj City (A Zone)', ARRAY['Boropara','Shologhar','Ukilpara','Courtpara','Jail Road','Modhyabazar','Kalibari','Arambagh','Mollapara'], 3000, '30–40 min', 0, true),
-  ('z2', 'Zone B — Sadar Core (1.5-2.5km)', ARRAY['Notunpara','Hasannagar','Tegharia','Nabinagar','Sahib Bari Ghat','Hospital Road','Kazir Point','Purba Bazar','Paschim Bazar'], 5000, '40–50 min', 1, true),
-  ('z3', 'Zone C — Sadar Extended (2.5-4km)', ARRAY['Wayesspur','Balaka Para','Jaliapara','Palpur','Dargahpara','Uttarpara','Dakkhinpara','Shologhar Bypass'], 7000, '50–60 min', 2, true),
-  ('z4', 'Zone D — Sadar Bahire / Other district (Courier)', ARRAY['Sunamganj Sadar Other','Dolura','Gouripur','Surma River Side','Mollapara Bahire','Shantiganj Border'], 10000, '60–80 min', 3, true)
+  ('z1', 'Zone A — Sunamganj City (A Zone)', ARRAY['Boropara','Shologhar','Ukilpara','Courtpara','Jail Road','Modhyabazar','Kalibari','Arambagh','Mollapara'], 6000, '30–40 min', 0, true),
+  ('z2', 'Zone B — Sadar Core (1.5-2.5km)', ARRAY['Notunpara','Hasannagar','Tegharia','Nabinagar','Sahib Bari Ghat','Hospital Road','Kazir Point','Purba Bazar','Paschim Bazar'], 12000, '40–50 min', 1, true),
+  ('z3', 'Zone C — Sadar Extended (2.5-4km)', ARRAY['Wayesspur','Balaka Para','Jaliapara','Palpur','Dargahpara','Uttarpara','Dakkhinpara','Shologhar Bypass'], 15000, '50–60 min', 2, true),
+  ('z4', 'Zone D — Sadar Bahire / Other district (Courier)', ARRAY['Sunamganj Sadar Other','Dolura','Gouripur','Surma River Side','Mollapara Bahire','Shantiganj Border'], 15000, '60–80 min', 3, true)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, areas = EXCLUDED.areas, charge = EXCLUDED.charge,
   eta_label = EXCLUDED.eta_label, sort_order = EXCLUDED.sort_order, active = EXCLUDED.active;

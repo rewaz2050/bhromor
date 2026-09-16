@@ -2,7 +2,7 @@
 -- go-live step 30b — FINAL ps_place_order, base64 chunk 1/4
 -- Run the files IN ORDER (00 → 09), one paste each, in the Supabase SQL Editor.
 --
--- Payload: 202609140015_plus_membership.sql lines 52–514 — ONE 463-line statement,
+-- Payload: 202609140015_plus_membership.sql lines 52–518 — ONE 463-line statement,
 -- so it cannot be cut as SQL. Each chunk stores a slice of its BASE64 into
 -- _mig_paste_chunks, and paste 9 decodes, checksums and runs the CREATE.
 -- Nothing is created until that last paste.
@@ -12,8 +12,8 @@
 -- and no double dash, so there is nothing for a splitter to cut on.
 -- Copy the block as it is. Line breaks inside it do not matter (they are stripped
 -- before decoding), but nothing may be dropped: this chunk must land as
--- 7090 base64 characters, and the assembled payload must
--- decode to 21242 characters with md5 7d407986fbf6bada85963ffd3024cc7e.
+-- 7182 base64 characters, and the assembled payload must
+-- decode to 21522 characters with md5 d028d2308ef94e4a84a45b6a65e212b0.
 
 begin;
 
@@ -98,7 +98,8 @@ dHMgKHNlbGVjdCAxIGZyb20gb3JkZXJzIHdoZXJlIGlkID0gdl9yZXR1cm5fcGFyZW50IGFuZCBzdGF0
 JykgdGhlbgogICAgICByYWlzZSBleGNlcHRpb24gJ3BhcmVudCBvcmRlciBub3QgZGVsaXZlcmVkJzsKICAgIGVuZCBpZjsKICBl
 bmQgaWY7CgogIC0tIElzIGEgZmxhc2ggd2luZG93IG9wZW4gcmlnaHQgbm93IChBc2lhL0RoYWthKT8gU2xvdHMgd3JhcCBtaWRu
 aWdodC4KICBpZiBjb2FsZXNjZSgodl9mbGFzaC0+PidlbmFibGVkJyk6OmJvb2xlYW4sIGZhbHNlKSB0aGVuCiAgICB2X2ZsYXNo
-X3BjdCA6PSBsZWFzdChncmVhdGVzdChjb2FsZXNjZSgodl9mbGFzaC0+PidkaXNjb3VudFBjdCcpOjppbnQsIDApLC')
+X3BjdCA6PSBsZWFzdChncmVhdGVzdChjb2FsZXNjZSgodl9mbGFzaC0+PidkaXNjb3VudFBjdCcpOjppbnQsIDApLCAwKSwgMTAw
+KTsKICAgIHZfZmxhc2hfY2FwIDo9IGdyZWF0ZXN0KDAsIGNvYWxlc2NlKCh2X2ZsYXNoLT4+J21heERpc2')
 on conflict (id, seq) do update set body = excluded.body;  -- re-pasting is safe
 
 commit;
