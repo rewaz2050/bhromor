@@ -34,6 +34,10 @@ export async function GET() {
     // 202609160002 — the order INSERT path (gift_wrap NULL + current guard
     // triggers). Without it, ps_place_order exists yet every checkout 503s.
     checkoutRepair: false,
+    // 202609160003 — the order UPDATE path: status changes (admin Confirm →
+    // Delivered, cancel), bKash/Nagad verify, and the rider's own delivery
+    // bookkeeping. Without it orders arrive and nothing can move them.
+    orderFlowRepair: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -93,6 +97,10 @@ export async function GET() {
           r.gift_wrap_nullable === true &&
           r.totals_guard_current === true &&
           r.insert_guard_current === true;
+        checks.orderFlowRepair =
+          r.status_update_ok === true &&
+          r.payment_verify_ok === true &&
+          r.rider_guard_ok === true;
       }
     }
   }
@@ -108,7 +116,10 @@ export async function GET() {
     checks.placeOrderRpc &&
     // "live" means a customer can actually place an order — not just that the
     // RPC exists. Without the repair every INSERT is refused.
-    checks.checkoutRepair;
+    checks.checkoutRepair &&
+    // …and the shop can actually move it: without 0003 every status change,
+    // payment decision and rider delivery is refused by the database.
+    checks.orderFlowRepair;
 
   const nextSteps: string[] = [];
   if (!checks.supabaseKeys) {
@@ -132,6 +143,11 @@ export async function GET() {
   if (checks.placeOrderRpc && !checks.checkoutRepair) {
     nextSteps.push(
       "Checkout order INSERT block — SQL Editor-e supabase/migrations/202609160002_order_insert_repair.sql chalaben (gift_wrap NULL + tip/gift/bKash guard fix); na chalale protita order 'Could not place the order' dibe",
+    );
+  }
+  if (checks.placeOrderRpc && !checks.orderFlowRepair) {
+    nextSteps.push(
+      "Order status UPDATE block — SQL Editor-e supabase/migrations/202609160003_order_status_update_repair.sql chalaben (ledger trigger enum fix + ps_verify_payment + riders guard); na chalale admin Confirm/Cancel, bKash verify ar rider Delivered kichui kaj korbe na",
     );
   }
 

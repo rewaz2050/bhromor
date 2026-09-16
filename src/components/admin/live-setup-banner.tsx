@@ -56,10 +56,42 @@ export default function LiveSetupBanner() {
 
   const steps = health.nextSteps ?? [];
   const c = health.checks ?? {};
-  const onlyRepairMissing =
+  const baseLive =
     c.supabaseKeys && c.serviceRoleKey && c.reachable && c.productsSeeded &&
-    c.zonesSeeded && c.shopsSeeded && c.adminUser && c.placeOrderRpc &&
-    c.checkoutRepair === false;
+    c.zonesSeeded && c.shopsSeeded && c.adminUser && c.placeOrderRpc;
+  const onlyRepairMissing = baseLive && c.checkoutRepair === false;
+  const onlyFlowRepairMissing =
+    baseLive && c.checkoutRepair === true && c.orderFlowRepair === false;
+
+  if (onlyFlowRepairMissing) {
+    // Orders arrive but the shop cannot move them: Confirm / Cancel, bKash
+    // verify and the rider's Delivered are all refused by the database.
+    return (
+      <div className="mb-8 rounded-2xl bg-rose-50 p-5 ring-1 ring-rose-200">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-600 text-white">
+            <IconShield className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-rose-900">
+              🚨 অর্ডার আসছে, কিন্তু কোনো অর্ডার Confirm / Cancel / Deliver হচ্ছে না
+            </h3>
+            <p className="mt-1.5 text-sm leading-6 text-rose-900/90">
+              ডেটাবেসের একটা trigger প্রতিটা status পরিবর্তন আটকে দিচ্ছে (ledger trigger-এ enum তুলনা), bKash/Nagad verify-এর RPC ভাঙা, আর rider-এর Delivered বাটন guard-এ আটকে।
+              ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন:
+            </p>
+            <code className="mt-2 block rounded-xl bg-white/80 px-3.5 py-2.5 text-xs font-mono text-rose-900 ring-1 ring-rose-200">
+              supabase/migrations/202609160003_order_status_update_repair.sql
+            </code>
+            <p className="mt-2 text-[11px] text-rose-800/80">
+              কয়েক সেকেন্ড লাগে, বারবার চালানো নিরাপদ, শেষে ৪টা <strong>OK</strong> দেখাবে। তারপর এই পেজ রিফ্রেশ করলে সবুজ LIVE চিপ আসবে।{" "}
+              <Link href="/api/health" target="_blank" className="underline font-medium">/api/health</Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (onlyRepairMissing) {
     // Everything is live EXCEPT the order INSERT path — every checkout is

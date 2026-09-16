@@ -10,7 +10,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AdminInputError, readProductBundle } from "./admin";
+import { AdminInputError, orderFlowSchemaGap, readProductBundle } from "./admin";
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapShop } from "./mappers";
@@ -179,6 +179,25 @@ export async function advanceVendorOrder(
       throw new AdminInputError(
         "That status change is not allowed from here.",
         422,
+      );
+    }
+    // Same honesty as the staff path: a schema-level refusal is logged with
+    // its SQLSTATE and named to the vendor as a repair, not a bare generic.
+    const gap = orderFlowSchemaGap(rpcError);
+    console.error(
+      "[vendor] ps_advance_order failed",
+      JSON.stringify({
+        orderNo,
+        to,
+        code: rpcError.code ?? null,
+        message: rpcError.message ?? null,
+        ...(gap ? { schemaGap: gap } : {}),
+      }),
+    );
+    if (gap) {
+      throw new AdminInputError(
+        "The database refused this change — the order was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
+        503,
       );
     }
     throw new AdminInputError("Could not update the order.", 422);

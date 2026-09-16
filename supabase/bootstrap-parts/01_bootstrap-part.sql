@@ -1,4 +1,4 @@
--- PART 1/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 1/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
 -- Generated from schema.sql + the 32 in-order migrations.

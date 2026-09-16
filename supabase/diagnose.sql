@@ -61,7 +61,11 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('33',  'CHECKOUT REPAIR: orders.gift_wrap accepts NULL',      '202609160002_order_insert_repair.sql', 'column_nullable', 'orders.gift_wrap'),
   ('33b', 'CHECKOUT REPAIR: totals guard counts tip + gift fee', '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_totals|gift_fee'),
   ('33c', 'CHECKOUT REPAIR: insert guard allows bkash/nagad',    '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_insert|bkash'),
-  ('33d', 'CHECKOUT REPAIR: /api/health probe',                  '202609160002_order_insert_repair.sql', 'function', 'ps_checkout_health')
+  ('33d', 'CHECKOUT REPAIR: /api/health probe',                  '202609160002_order_insert_repair.sql', 'function', 'ps_checkout_health'),
+  ('34',  'ORDER FLOW REPAIR: ledger trigger compares the enum safely (Confirm/Cancel work)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_write_shop_ledger|old.status is distinct from new.status'),
+  ('34b', 'ORDER FLOW REPAIR: ps_verify_payment returns the row (bKash verify works)',       '202609160003_order_status_update_repair.sql', 'function_src', 'ps_verify_payment|select * into v_order from orders where id = p_order_id;'),
+  ('34c', 'ORDER FLOW REPAIR: riders guard lets RPCs/triggers write (rider Delivered works)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_guard_rider_self_update|current_user not in'),
+  ('34d', 'ORDER FLOW REPAIR: /api/health probe knows all three',                            '202609160003_order_status_update_repair.sql', 'function_src', 'ps_checkout_health|rider_guard_ok')
 )
 select step as ord,
        label,

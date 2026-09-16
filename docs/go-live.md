@@ -250,6 +250,36 @@ Run **in this order, in one sequence** (skip files you already applied —
     until it has run. The paste ends with a 3-row verify — expect 3 × OK.
     (Both repairs are also the last two sections of `bootstrap-fresh.sql`,
     so a fresh project gets them automatically.)
+33. **`supabase/migrations/202609160003_order_status_update_repair.sql`** — 🚨
+    **checkout repair 3 (2026-09-16) — REQUIRED, or NO order can be moved.**
+    Small file, pastes whole, takes seconds, safe to re-run. Found while
+    checking why Admin → Orders → *Mark confirmed* did nothing: three
+    database defects, all reproduced on a fresh bootstrap:
+    * `ps_write_shop_ledger` (step 13's ledger trigger, fires on **every**
+      `UPDATE OF status`) compared the `ps_order_status` **enum** with `''`
+      → SQLSTATE 22P02 on every status change: Confirm, Preparing, …,
+      Delivered, Cancel — staff *and* vendor — all answered "Could not
+      update the order."
+    * `ps_verify_payment` (steps 24/28) ended with
+      `return (select * from orders …)` — a scalar subquery → 42601, so no
+      bKash/Nagad payment could ever be verified or rejected.
+    * `trg_riders_guard_self_update` (step 6) raised `forbidden` for any
+      non-staff write to `riders` other than the online switch — including
+      the writes our own RPCs/triggers make (cash-in-hand, load counters,
+      GPS, shift): rider *Delivered*, *Reject offer*, location, the
+      stale-offer sweep (run before every rider job list and the admin
+      Deliveries board) and the vendor's *Ready for pickup* all failed.
+
+    The file re-creates the trigger with `old.status is distinct from
+    new.status`, re-creates `ps_verify_payment` with a proper
+    `select … into`, makes the riders guard apply only to a rider's own
+    **direct** write (and then to nothing but `is_online`), drops the stale
+    2-argument `ps_rider_deliver` overload, and extends
+    `ps_checkout_health()` (`status_update_ok`, `payment_verify_ok`,
+    `rider_guard_ok`) which `/api/health` reads as `checks.orderFlowRepair`.
+    `live` stays **false** and the admin dashboard shows a red banner naming
+    this file until it has run. Ends with a 4-row verify — expect 4 × OK.
+    (Also the last section of `bootstrap-fresh.sql` / `bootstrap-parts/10`.)
 
 Quick check after step 11 (SQL editor):
 
@@ -312,6 +342,13 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 > `ps_place_order` থাকলেও ডেটাবেস কোনো অর্ডার row নিতে পারে না
 > (`orders.gift_wrap` NOT NULL + পুরনো guard trigger)। `/api/health`-এ
 > `checkoutRepair: true` দেখালেই হয়ে গেছে।
+>
+> **🚨 অর্ডার আসছে কিন্তু Admin-এ Confirm/Cancel কিছু হচ্ছে না?** (2026-09-16) —
+> `supabase/migrations/202609160003_order_status_update_repair.sql` (step 33)
+> চালানো হয়নি। ছোট ফাইল, পুরোটা পেস্ট করে Run — শেষে ৪টা `OK`। এটা ছাড়া
+> ডেটাবেসের ledger trigger প্রতিটা status পরিবর্তন আটকে দেয়, bKash verify
+> কাজ করে না, rider-এর Delivered বাটনও না। `/api/health`-এ
+> `orderFlowRepair: true` দেখালেই হয়ে গেছে।
 
 ### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
 

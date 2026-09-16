@@ -448,7 +448,16 @@ export const deliverRiderAssignment = async (
     p_code: code,
     p_proof_url: proofUrl ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // 'forbidden' here used to be the riders self-update guard rejecting the
+    // RPC's own cash/load bookkeeping (fixed in 202609160003) — keep the raw
+    // shape in the log so a rider's "Delivered does nothing" is diagnosable.
+    console.error(
+      "[rider] ps_rider_deliver failed",
+      JSON.stringify({ assignmentId, code: error.code ?? null, message: error.message }),
+    );
+    throw new Error(error.message);
+  }
 };
 
 export const failedRiderAttempt = async (

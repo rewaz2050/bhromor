@@ -1,4 +1,4 @@
--- PART 6/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 6/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 21/23 — P0 GROWTH: flash, bundle, gift, referral, price watches (recreates ps_place_order — FINAL)  (source: supabase/migrations/202609130008_growth_promos_gift_referral.sql)
 -- ============================================================================

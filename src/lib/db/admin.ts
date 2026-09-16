@@ -241,10 +241,78 @@ export async function advanceOrderAsStaff(
         422,
       );
     }
-    throw new AdminInputError("Could not update the order.", 422);
+    throw staffRpcFailure("ps_advance_order", rpcError, {
+      orderNo,
+      to,
+      fallback: "Could not update the order.",
+    });
   }
   return getOrderDetail(db, orderNo);
 }
+
+/**
+ * The order-flow RPCs raise user-safe P0001 messages for every rule they
+ * enforce; anything ELSE is the database refusing the write (a trigger or
+ * function that no longer matches the schema). Log the real SQLSTATE so a
+ * "nothing happens when I click Confirm" report can be read straight from
+ * the server log, and tell staff which file repairs it — never a bare
+ * generic while the order silently stays put.
+ */
+const ORDER_FLOW_REPAIR_FILE =
+  "supabase/migrations/202609160003_order_status_update_repair.sql";
+
+export const orderFlowSchemaGap = (error: {
+  code?: string;
+  message?: string;
+}): string | null => {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  // 22P02 invalid input value for enum ps_order_status: "" — the 0017 ledger
+  // trigger compared the enum with '' on every status UPDATE.
+  if (code === "22P02" && /ps_order_status/i.test(message)) {
+    return `a trigger on orders compares the status enum with '' (${message.trim()}) — run ${ORDER_FLOW_REPAIR_FILE}`;
+  }
+  // 42601 subquery must return only one column — ps_verify_payment's
+  // `return (select * from orders …)`.
+  if (code === "42601" && /subquery must return only one column/i.test(message)) {
+    return `the installed RPC ends with a scalar-subquery RETURN (${message.trim()}) — run ${ORDER_FLOW_REPAIR_FILE}`;
+  }
+  if (code === "PGRST202" || /function .* does not exist/i.test(message)) {
+    return `the RPC is not installed (${message.trim()}) — apply the order migrations (docs/go-live.md)`;
+  }
+  if (code === "42703" || code === "42P01") {
+    return `the installed RPC touches something this database lacks (${message.trim()}) — run the missing migration (docs/go-live.md, supabase/diagnose.sql)`;
+  }
+  return null;
+};
+
+const staffRpcFailure = (
+  rpc: string,
+  error: { code?: string; message?: string; details?: string; hint?: string },
+  ctx: { orderNo: string; to?: string; action?: string; fallback: string },
+): AdminInputError => {
+  const gap = orderFlowSchemaGap(error);
+  console.error(
+    `[admin] ${rpc} failed`,
+    JSON.stringify({
+      orderNo: ctx.orderNo,
+      ...(ctx.to ? { to: ctx.to } : {}),
+      ...(ctx.action ? { action: ctx.action } : {}),
+      code: error.code ?? null,
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+      ...(gap ? { schemaGap: gap } : {}),
+    }),
+  );
+  if (gap) {
+    return new AdminInputError(
+      `The database refused this change (${error.code ?? "database error"}) — the order was NOT updated. Run ${ORDER_FLOW_REPAIR_FILE} in Supabase → SQL Editor, then try again.`,
+      503,
+    );
+  }
+  return new AdminInputError(ctx.fallback, 422);
+};
 
 /**
  * P1 #8 — the shop's decision on a bKash/Nagad payment. 'verified' unlocks
@@ -288,7 +356,11 @@ export async function verifyPaymentAsStaff(
         422,
       );
     }
-    throw new AdminInputError("Could not record the payment decision.", 422);
+    throw staffRpcFailure("ps_verify_payment", rpcError, {
+      orderNo,
+      action,
+      fallback: "Could not record the payment decision.",
+    });
   }
   return getOrderDetail(db, orderNo);
 }

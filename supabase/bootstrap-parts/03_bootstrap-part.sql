@@ -1,4 +1,4 @@
--- PART 3/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 3/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 8/23 — dispatch auto-offer  (source: supabase/migrations/202609090008_dispatch_auto.sql)
 -- ============================================================================

@@ -1,4 +1,4 @@
--- PART 9/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 9/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== P2 #17: PROSANTI+ membership (202609140015) ====
 -- ============================================================================
 -- P2 #17 (2026-09-14): PROSANTI+ membership — ৳99/month, no PSP needed.

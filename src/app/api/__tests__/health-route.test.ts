@@ -79,7 +79,9 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.checkoutRepair).toMatchObject({ gift_wrap_nullable: false });
   });
 
-  it("is live once the INSERT path is repaired", async () => {
+  it("is NOT live when only the INSERT path is repaired (0002) — orders would arrive but never move", async () => {
+    // A 0002-generation probe has no status_update_ok / payment_verify_ok /
+    // rider_guard_ok keys at all: that IS the answer (0003 not applied).
     state.repair = {
       data: {
         version: "202609160002",
@@ -92,6 +94,46 @@ describe("GET /api/health — checkout repair awareness", () => {
     };
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.checkoutRepair).toBe(true);
+    expect(body.checks.orderFlowRepair).toBe(false);
+    expect(body.live).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("202609160003_order_status_update_repair.sql");
+    expect(body.nextSteps.join("\n")).not.toContain("202609160002_order_insert_repair.sql");
+  });
+
+  it("is NOT live when 0003 ran but one of its three repairs is still missing", async () => {
+    state.repair = {
+      data: {
+        version: "202609160003",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: false,
+      },
+    };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.orderFlowRepair).toBe(false);
+    expect(body.live).toBe(false);
+  });
+
+  it("is live once both the INSERT and the UPDATE paths are repaired", async () => {
+    state.repair = {
+      data: {
+        version: "202609160003",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+      },
+    };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.checkoutRepair).toBe(true);
+    expect(body.checks.orderFlowRepair).toBe(true);
     expect(body.live).toBe(true);
     expect(body.nextSteps).toEqual([]);
   });

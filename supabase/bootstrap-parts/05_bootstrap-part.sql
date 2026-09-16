@@ -1,4 +1,4 @@
--- PART 5/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 5/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 17/23 — delivery remaining  (source: supabase/migrations/202609090017_delivery_remaining.sql)
 -- ============================================================================

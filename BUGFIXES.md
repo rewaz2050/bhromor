@@ -227,6 +227,35 @@ old guards → not live, repaired → live).
 
 ---
 
+## 13. Admin "Confirm" does nothing — no order could be moved (2026-09-16 follow-up)
+
+Reported right after #12: orders now arrive in Admin → Orders, but *Mark
+confirmed* has no effect (the page shows "Could not update the order.").
+Reproduced by running `bootstrap-fresh.sql` end-to-end in an embedded
+Postgres, inserting a real `admin_users` row and calling every post-order RPC
+as staff, vendor, rider and service role. Three independent database defects,
+plus two app-side honesty gaps:
+
+| # | Fix |
+|---|-----|
+| 98 | **Every status UPDATE raised 22P02** — `ps_write_shop_ledger` (`202609090017`, fired by `trg_orders_ledger_on_delivered` on *every* `UPDATE OF status`) tested `coalesce(old.status, '') <> 'delivered'`; `orders.status` is the enum `ps_order_status` and `''` is not a label, so the comparison itself raised — for Confirm, Preparing, Ready, Courier, Out-for-delivery, Delivered **and** Cancel, staff and vendor alike. A per-trigger bisect (all user triggers off → OK; only this one on → fails) and a `pg_proc` scan of every plpgsql body confirmed it is the sole such comparison. New **`supabase/migrations/202609160003_order_status_update_repair.sql`** re-creates the trigger with `old.status is distinct from new.status`, keeping the 0017 ledger columns/upsert and reading tip/surcharge/`is_return` through `jsonb` so it also runs on older schemas. Verified: pending → … → delivered as staff (history tagged, ledger 59900/8985/50915), cancel releases reserved stock (2 → 1), illegal moves and non-staff still refused. |
+| 99 | **bKash/Nagad Verify/Reject never succeeded** — `ps_verify_payment` (`202609140004`/`202609140007`) ends with `return (select * from orders where id = p_order_id);`, which plpgsql evaluates as a *scalar* subquery → 42601 "subquery must return only one column"; the body ran, the RETURN raised, the whole call rolled back. Re-created with identical rules and `select * into v_order`. Verified: verify → `payment_status='verified'` and the gated `preparing` step then passes; reject → `cancelled` + stock back; second decision refused. |
+| 100 | **Rider "Delivered" (and more) answered `forbidden`** — `trg_riders_guard_self_update` (`202609090005`) rejects any non-staff `riders` write that is not the online switch. It predates everything that later writes that table from inside our own `SECURITY DEFINER` code: `ps_track_rider_load` (`current_load`/`total_deliveries`), the `cash_in_hand` update in `ps_rider_deliver`, `ps_rider_update_location`, the shift columns. Proven fallout: rider deliver, rider reject-offer, GPS, `setRiderAvailability`, `ps_expire_stale_offers` (called before **every** rider job list and the admin Deliveries board → both break once any offer is > 90 s old), and the *vendor's* "Ready for pickup" whenever an eligible rider exists (auto-dispatch bumps the load). Inside a security-definer function or trigger `current_user` is the owner (`postgres`), a direct RLS write runs as `authenticated` — the guard now restricts only that direct path, and restricts it *harder* (nothing but `is_online` may change; before, `current_load`/`total_deliveries`/`lat`/`lng` were not in its list). Also drops the stale 2-arg `ps_rider_deliver` overload (a 2-key PostgREST payload would get 300 "not unique"). Verified as `authenticated`/`service_role`: all 7 rider RPCs OK, rider still cannot zero their own cash or change their status, service role can flip online/shift, stale-offer sweep re-offers, vendor reaches ready-for-pickup, return leg (approve → offer → accept → pickup → deliver → `refunded`, ledger −50915) and warranty eligibility OK. |
+| 101 | **Silent generic 422** — `advanceOrderAsStaff`, `verifyPaymentAsStaff` (and the vendor advance) folded *any* RPC failure into "Could not update the order." with no log line. New `orderFlowSchemaGap` classifies 22P02-on-enum / 42601 / PGRST202 / 42703 / 42P01 as *schema gaps*: the raw `code`/`message`/`details`/`hint` + `schemaGap` go to the server log, and staff get an honest **503** "the database refused this change — the order was NOT updated — run `202609160003…`" instead of a generic that reads like a bad click. Rule-based P0001 mappings (forbidden 403, illegal transition 422, payment gate 422, already decided 409) unchanged. `deliverRiderAssignment` logs its raw failure too. |
+| 102 | **"live" lied again** — `/api/health` was green while nothing could move. `ps_checkout_health()` now also reports `status_update_ok`, `payment_verify_ok`, `rider_guard_ok` (positive probes on the named function bodies — the previous negative probe would have matched its own source); the route exposes `checks.orderFlowRepair`, `live` requires it, `nextSteps` names the file, and the admin dashboard banner turns red with the one file to paste. |
+
+Also: `bootstrap-fresh.sql` (+ new `bootstrap-parts/10`) carries the repair as
+its last section (a fresh project passes the whole walk without the
+migration; re-applying the file on top is a no-op — idempotent);
+`diagnose.sql` rows 34–34d; `docs/go-live.md` step 33.
+
+New tests: `src/lib/db/__tests__/order-flow-errors.test.ts` (10 — schema-gap
+classification, 503 + log line + "NOT updated" wording, rule mappings kept,
+verify path), `src/app/api/__tests__/health-route.test.ts` (+2 — 0002-only →
+not live and names 0003; partial 0003 → not live; full → live).
+
+---
+
 ## New files
 
 - `src/components/ui/drawer.tsx` — accessible, portalled drawer (menu, shop filters, admin nav)
