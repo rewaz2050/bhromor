@@ -476,6 +476,17 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
+  // Orders outside Sunamganj Sadar require a minimum basket above ৳599.
+  if (zone.id === "z4" && subtotal < 60000) {
+    return {
+      ok: false,
+      errors: [{
+        field: "items",
+        message: "সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ৳৬০০ টাকার অর্ডার করতে হবে।",
+      }],
+    };
+  }
+
   /* ---------------- surcharges — computed SERVER-side ---------------- */
   // P2 #17 — PROSANTI+: an active term zeroes delivery AND every surcharge.
   // This mirrors what ps_place_order does with the memberships table; the

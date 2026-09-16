@@ -791,6 +791,7 @@ export default function CheckoutView() {
         paraRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       else if (firstField === "address") addressRef.current?.focus();
+      else if (firstField === "items") window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
     const localErrors: Record<string, string> = {};
@@ -802,6 +803,8 @@ export default function CheckoutView() {
         "সঠিক মোবাইল নম্বর দিন — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
     if (effectivePara.trim().length < 2)
       localErrors.area = "পাড়া / গ্রামের নাম লিখুন — please enter your village or area.";
+    if (derivedZoneId === "z4" && subtotal < 60000)
+      localErrors.items = "সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ৳৬০০ টাকার অর্ডার করতে হবে।";
     if (!form.isPickup && form.address.trim().length < 6)
       localErrors.address =
         "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
