@@ -476,19 +476,6 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
-  // Zone D (outside Sadar / other district) requires minimum ৳500
-  if (zone.id === "z4" && subtotal < 50000) {
-    return {
-      ok: false,
-      errors: [
-        {
-          field: "items",
-          message: `Outside Sunamganj Sadar requires minimum ৳500 order — add ৳${Math.ceil((50000 - subtotal) / 100)} more.`,
-        },
-      ],
-    };
-  }
-
   /* ---------------- surcharges — computed SERVER-side ---------------- */
   // P2 #17 — PROSANTI+: an active term zeroes delivery AND every surcharge.
   // This mirrors what ps_place_order does with the memberships table; the

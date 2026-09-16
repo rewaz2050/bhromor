@@ -786,7 +786,10 @@ export default function CheckoutView() {
       const firstField = Object.keys(fields ?? {})[0];
       if (firstField === "name") nameRef.current?.focus();
       else if (firstField === "phone") phoneRef.current?.focus();
-      else if (firstField === "area" || firstField === "para") paraRef.current?.focus();
+      else if (firstField === "area" || firstField === "para" || firstField === "village") {
+        paraRef.current?.focus();
+        paraRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       else if (firstField === "address") addressRef.current?.focus();
     };
 
@@ -798,7 +801,7 @@ export default function CheckoutView() {
       localErrors.phone =
         "সঠিক মোবাইল নম্বর দিন — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
     if (effectivePara.trim().length < 2)
-      localErrors.area = "পাড়া / গ্রামের নাম সিলেক্ট বা লিখুন — pick or type your para.";
+      localErrors.area = "পাড়া / গ্রামের নাম লিখুন — please enter your village or area.";
     if (!form.isPickup && form.address.trim().length < 6)
       localErrors.address =
         "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
@@ -923,7 +926,10 @@ export default function CheckoutView() {
       if (e.field) fieldMap[e.field] = e.message;
       if (e.field?.startsWith("items")) fieldMap.items = e.message;
     }
-    if (data.field) fieldMap[data.field] = data.error ?? "";
+    if (data.field) {
+      fieldMap[data.field] = data.error ?? "";
+      if (data.field === "village" || data.field === "para") fieldMap.area = data.error ?? "";
+    }
     const serverMessage =
       data.errors?.map((e) => e.message).join(" ") || data.error;
     fail(
