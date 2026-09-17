@@ -41,6 +41,9 @@ export default function LiveSetupBanner() {
     // 202609160005 likewise: orders flow, but dispatch breaks the first time
     // an offer lapses/rejects with a second rider online.
     const dispatchPending = health.checks?.dispatchRepair === false;
+    // 202609170001: the two-tap buttons ship in the app; until the RPC
+    // accepts confirmed → ready-for-pickup, "Ready — call rider" is a 422.
+    const twoTapPending = health.checks?.twoTapFlow === false;
     return (
       <div className="mb-8 space-y-3">
         <div className="flex items-center gap-2.5 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
@@ -90,6 +93,24 @@ export default function LiveSetupBanner() {
               </p>
               <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
                 supabase/migrations/202609160005_dispatch_reoffer_repair.sql
+              </code>
+            </div>
+          </div>
+        )}
+        {twoTapPending && (
+          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <IconShield className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <p className="font-semibold">
+                ⚡ ২-ট্যাপ অর্ডার ফ্লো বাকি — “Ready — call rider” বোতাম এখনো ডেটাবেসে আটকাবে
+              </p>
+              <p className="mt-0.5 text-[13px] text-amber-900/90">
+                অ্যাপে এখন Confirm → Ready — call rider, দুই ট্যাপেই রাইডার ডাকা যায়। কিন্তু ডেটাবেসের নিয়ম এখনো মাঝখানে “Start preparing” চায়, তাই Ready চাপলে “not allowed from here” আসবে (আপাতত <strong>More… → Start preparing</strong> চেপে নিন)। ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন (২টা <strong>OK</strong> দেখাবে):
+              </p>
+              <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
+                supabase/migrations/202609170001_two_tap_order_flow.sql
               </code>
             </div>
           </div>

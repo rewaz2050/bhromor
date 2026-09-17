@@ -10,7 +10,13 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AdminInputError, orderFlowSchemaGap, readProductBundle } from "./admin";
+import {
+  AdminInputError,
+  isPreTwoTapRefusal,
+  legacyTwoStepReady,
+  orderFlowSchemaGap,
+  readProductBundle,
+} from "./admin";
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapShop } from "./mappers";
@@ -165,11 +171,16 @@ export async function advanceVendorOrder(
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
-  const { error: rpcError } = await db.rpc("ps_advance_order", {
-    p_order_id: (data as { id: string }).id,
+  const orderId = (data as { id: string }).id;
+  let { error: rpcError } = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
     p_to: to,
     p_note: null,
   });
+  if (rpcError && isPreTwoTapRefusal(rpcError, to)) {
+    // Database predates 202609170001 — same two-step fallback as staff.
+    rpcError = await legacyTwoStepReady(db, orderId, null);
+  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {

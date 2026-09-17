@@ -177,10 +177,12 @@ describe("GET /api/health — checkout repair awareness", () => {
     // must not stay silent about an anon key that can still call the RPCs.
     expect(body.checks.securityRepair).toBe(false);
     expect(body.checks.dispatchRepair).toBe(false);
+    expect(body.checks.twoTapFlow).toBe(false);
     expect(body.live).toBe(true);
-    expect(body.nextSteps).toHaveLength(2);
+    expect(body.nextSteps).toHaveLength(3);
     expect(body.nextSteps[0]).toContain("202609160004_rpc_grants_rls_repair.sql");
     expect(body.nextSteps[1]).toContain("202609160005_dispatch_reoffer_repair.sql");
+    expect(body.nextSteps[2]).toContain("202609170001_two_tap_order_flow.sql");
   });
 
   it("reports securityRepair only when BOTH the grants and memberships RLS are in place", async () => {
@@ -203,12 +205,13 @@ describe("GET /api/health — checkout repair awareness", () => {
     body = (await (await GET()).json()) as Health;
     expect(body.checks.securityRepair).toBe(true);
     expect(body.live).toBe(true);
-    // 0005 still pending → exactly one step left, and it names the file.
-    expect(body.nextSteps).toHaveLength(1);
+    // 0005 + 202609170001 still pending → two steps left, naming the files.
+    expect(body.nextSteps).toHaveLength(2);
     expect(body.nextSteps[0]).toContain("202609160005_dispatch_reoffer_repair.sql");
+    expect(body.nextSteps[1]).toContain("202609170001_two_tap_order_flow.sql");
   });
 
-  it("reports dispatchRepair from ps_checkout_health().dispatch_reoffer_ok and clears nextSteps", async () => {
+  it("reports dispatchRepair from ps_checkout_health().dispatch_reoffer_ok and leaves only the two-tap step", async () => {
     state.repair = {
       data: {
         version: "202609160005",
@@ -227,6 +230,32 @@ describe("GET /api/health — checkout repair awareness", () => {
     };
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.dispatchRepair).toBe(true);
+    expect(body.checks.twoTapFlow).toBe(false);
+    expect(body.live).toBe(true);
+    expect(body.nextSteps).toHaveLength(1);
+    expect(body.nextSteps[0]).toContain("202609170001_two_tap_order_flow.sql");
+  });
+
+  it("reports twoTapFlow from ps_checkout_health().two_tap_flow_ok and clears nextSteps", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+      },
+    };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.twoTapFlow).toBe(true);
     expect(body.live).toBe(true);
     expect(body.nextSteps).toEqual([]);
   });

@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
 import {
-  ORDER_FLOW,
-  STATUS_META,
+  PUBLIC_STEPS,
   aggregateOrders,
   type OrderStatus,
 } from "@/lib/orders";
@@ -14,15 +13,31 @@ import { StatusBadge, DOT, friendlyWhen } from "@/components/admin/order-ui";
 import { IconSearch } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
 
-const FILTERS: (OrderStatus | "all")[] = [
-  "all",
-  ...ORDER_FLOW,
-  "cancelled",
+/**
+ * Filter chips follow the four public phases (+ cancelled): eight internal
+ * states were eight chips nobody used. "With rider" groups ready-for-pickup,
+ * courier-assigned and out-for-delivery — the badge on each row still shows
+ * the exact internal state.
+ */
+type FilterId = "all" | (typeof PUBLIC_STEPS)[number]["key"] | "cancelled";
+
+const FILTERS: { id: FilterId; label: string; statuses: readonly OrderStatus[]; dot: OrderStatus }[] = [
+  { id: "all", label: "All", statuses: [], dot: "pending" },
+  ...PUBLIC_STEPS.map((step) => ({
+    id: step.key as FilterId,
+    label: step.adminLabel,
+    statuses: step.statuses as readonly OrderStatus[],
+    dot: step.statuses[0] as OrderStatus,
+  })),
+  { id: "cancelled", label: "Cancelled", statuses: ["cancelled"], dot: "cancelled" },
 ];
+
+const filterStatuses = (id: FilterId): readonly OrderStatus[] =>
+  FILTERS.find((f) => f.id === id)?.statuses ?? [];
 
 /** §33 admin order list with status filters + search. */
 export default function AdminOrdersPage() {
-  const [filter, setFilter] = useState<OrderStatus | "all">("all");
+  const [filter, setFilter] = useState<FilterId>("all");
   const [query, setQuery] = useState("");
   // Debounced server-side search — the list is paginated, so a client-only
   // filter would silently miss orders older than the loaded pages.
@@ -47,9 +62,10 @@ export default function AdminOrdersPage() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const allowed = filterStatuses(filter);
     return [...orders]
       .sort((a, b) => b.createdAt - a.createdAt)
-      .filter((o) => (filter === "all" ? true : o.status === filter))
+      .filter((o) => (filter === "all" ? true : allowed.includes(o.status)))
       .filter(
         (o) =>
           q === "" ||
@@ -121,17 +137,17 @@ export default function AdminOrdersPage() {
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-        {FILTERS.map((s) => {
-          const active = filter === s;
+        {FILTERS.map((f) => {
+          const active = filter === f.id;
           const count =
-            s === "all"
+            f.id === "all"
               ? orders.length
-              : counts[s];
+              : f.statuses.reduce((sum, st) => sum + counts[st], 0);
           return (
             <button
-              key={s}
+              key={f.id}
               type="button"
-              onClick={() => setFilter(s)}
+              onClick={() => setFilter(f.id)}
               aria-pressed={active}
               className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium transition-colors ${
                 active
@@ -139,12 +155,12 @@ export default function AdminOrdersPage() {
                   : "bg-paper text-ink-soft ring-1 ring-line hover:text-forest-800"
               }`}
             >
-              {s === "all" ? (
+              {f.id === "all" ? (
                 "All"
               ) : (
                 <>
-                  <span className={`h-1.5 w-1.5 rounded-full ${DOT[s]}`} aria-hidden />
-                  {STATUS_META[s].short}
+                  <span className={`h-1.5 w-1.5 rounded-full ${DOT[f.dot]}`} aria-hidden />
+                  {f.label}
                 </>
               )}
               <span

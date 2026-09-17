@@ -335,6 +335,26 @@ Run **in this order, in one sequence** (skip files you already applied —
     expect 3 × OK. (Also the last section of `bootstrap-fresh.sql` /
     `bootstrap-parts/10`; `diagnose.sql` rows 36–36d.)
 
+36. **`supabase/migrations/202609170001_two_tap_order_flow.sql`** — ⚡
+    **two-tap order flow (2026-09-17 audit).** Tiny file, pastes whole, safe
+    to re-run. Staff/vendor now move an order with **two taps** — *Confirm*
+    (pending → confirmed) and *Ready — call rider* (confirmed →
+    ready-for-pickup, which fires the existing auto-dispatch). Until this
+    runs, `ps_advance_order` only accepts +1 steps, so the second button is
+    served by the app as two internal RPC calls (confirmed → preparing →
+    ready-for-pickup, with a `console.warn` naming this file). The migration
+    re-creates `ps_advance_order` with that single extra allowance
+    (`confirmed → ready-for-pickup`); every other rule is untouched — no
+    other skips, no backwards moves, cancel only from pending / confirmed /
+    preparing, vendors limited to their own shop's confirmed / preparing /
+    ready / cancelled, bKash/Nagad still blocked past confirmed until
+    `ps_verify_payment`, rider RPCs and the dispatch trigger unchanged. It
+    also extends `ps_checkout_health()` with `two_tap_flow_ok` →
+    `/api/health` `checks.twoTapFlow` + an amber note on the admin
+    dashboard until it has run. Ends with a 2-row verify — expect 2 × OK.
+    The customer-facing track page now shows four milestones (Order placed
+    → Confirmed → Picked up → Delivered) regardless of this migration.
+
 Quick check after step 11 (SQL editor):
 
 ```sql

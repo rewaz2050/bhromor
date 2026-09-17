@@ -9,8 +9,7 @@ import { useSettings } from "@/lib/use-settings";
 import {
   aggregateOrders,
   deliveryStats,
-  ORDER_FLOW,
-  STATUS_META,
+  PUBLIC_STEPS,
 } from "@/lib/orders";
 import { displayStock } from "@/lib/catalog-store";
 import { formatBdt } from "@/lib/format";
@@ -46,7 +45,10 @@ export default function AdminDashboard() {
     [orders],
   );
 
-  const liveFlow = ORDER_FLOW.filter((s) => s !== "delivered");
+  // Live pipeline in the four public phases — the internal states inside
+  // each one are summed (an order "with rider" may be ready / assigned /
+  // on the way; the list page's badge still shows which).
+  const liveFlow = PUBLIC_STEPS.filter((step) => step.key !== "delivered");
   const {
     products: catalogProducts,
     error: catalogError,
@@ -74,21 +76,23 @@ export default function AdminDashboard() {
     {
       label: "Awaiting action",
       value: String(agg.newOrders),
-      note: "pending + confirmed",
+      note: "new + confirmed — two taps each",
       icon: IconClock,
       href: "/admin/orders",
     },
     {
-      label: "Preparing",
-      value: String(agg.byStatus.preparing),
-      note: "being packed now",
+      label: "Waiting for rider",
+      value: String(
+        agg.byStatus["ready-for-pickup"] + agg.byStatus["courier-assigned"],
+      ),
+      note: "ready · rider on the way to shop",
       icon: IconBox,
-      href: "/admin/orders",
+      href: "/admin/deliveries",
     },
     {
-      label: "Out for delivery",
+      label: "Picked up",
       value: String(agg.byStatus["out-for-delivery"]),
-      note: "on the road",
+      note: "on the road to the customer",
       icon: IconTruck,
       href: "/admin/orders",
     },
@@ -148,17 +152,20 @@ export default function AdminDashboard() {
           </div>
 
           <ul className="mt-5 space-y-3">
-            {liveFlow.map((s) => {
-              const count = agg.byStatus[s];
+            {liveFlow.map((step) => {
+              const count = step.statuses.reduce(
+                (sum, st) => sum + agg.byStatus[st],
+                0,
+              );
               return (
-                <li key={s}>
+                <li key={step.key}>
                   <Link
                     href="/admin/orders"
                     className="group flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors hover:bg-ivory-100"
                   >
-                    <span className={`h-2.5 w-2.5 rounded-full ${DOT[s]}`} aria-hidden />
+                    <span className={`h-2.5 w-2.5 rounded-full ${DOT[step.statuses[0]]}`} aria-hidden />
                     <span className="flex-1 text-sm font-medium text-ink">
-                      {STATUS_META[s].label}
+                      {step.adminLabel}
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${

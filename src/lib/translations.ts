@@ -436,6 +436,21 @@ export const translations = {
       logged: "You're on the list for {name} — we'll call when it's back.",
       failed: "Could not save that — try once more.",
     },
+    track: {
+      // Four public milestones (2026-09-17 two-tap flow) — the internal
+      // eight states stay in the database; the customer sees these.
+      stepPlaced: "Order placed",
+      stepPlacedNote: "We have your order",
+      stepConfirmed: "Confirmed",
+      stepConfirmedNote: "Stock checked — the shop is packing it",
+      stepPickedUp: "Picked up",
+      stepPickedUpNote: "The rider has your parcel and is on the way",
+      stepPickedUpWaiting: "Packed — calling the nearest rider",
+      stepPickedUpAssigned: "Rider {name} is heading to the shop",
+      stepDelivered: "Delivered",
+      stepDeliveredNote: "Enjoy — thank you for shopping with PROSANTI",
+      current: "Current",
+    },
   },
   bn: {
     nav: {
@@ -872,6 +887,19 @@ export const translations = {
       logged: "{name}-এর তালিকায় থাকলেন — ফিরলে ফোন করা হবে।",
       failed: "সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।",
     },
+    track: {
+      stepPlaced: "অর্ডার হয়েছে",
+      stepPlacedNote: "আপনার অর্ডার আমরা পেয়েছি",
+      stepConfirmed: "কনফার্ম",
+      stepConfirmedNote: "স্টক দেখা হয়েছে — দোকান প্যাক করছে",
+      stepPickedUp: "রাইডার নিয়েছে",
+      stepPickedUpNote: "রাইডারের হাতে পার্সেল — আপনার পথে",
+      stepPickedUpWaiting: "প্যাক শেষ — কাছের রাইডারকে ডাকা হচ্ছে",
+      stepPickedUpAssigned: "রাইডার {name} দোকানের দিকে আসছেন",
+      stepDelivered: "ডেলিভারি হয়েছে",
+      stepDeliveredNote: "উপভোগ করুন — প্রসান্তিতে কেনাকাটার জন্য ধন্যবাদ",
+      current: "এখন",
+    },
   },
 } as const;
 
@@ -902,4 +930,5 @@ export type TranslationKey =
   | `gift.${keyof typeof translations.en.gift}`
   | `referral.${keyof typeof translations.en.referral}`
   | `priceDrop.${keyof typeof translations.en.priceDrop}`
-  | `restock.${keyof typeof translations.en.restock}`;
+  | `restock.${keyof typeof translations.en.restock}`
+  | `track.${keyof typeof translations.en.track}`;

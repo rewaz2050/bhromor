@@ -18,9 +18,11 @@ vi.mock("server-only", () => ({}));
 import {
   AdminInputError,
   advanceOrderAsStaff,
+  isPreTwoTapRefusal,
   orderFlowSchemaGap,
   verifyPaymentAsStaff,
 } from "../admin";
+import { advanceVendorOrder } from "../vendor";
 
 const REPAIR = "202609160003_order_status_update_repair.sql";
 
@@ -125,6 +127,114 @@ describe("advanceOrderAsStaff — schema refusal vs rule refusal", () => {
       advanceOrderAsStaff(fakeDb({ message: "some surprise" }), "PS-1", "confirmed"),
     ).rejects.toMatchObject({ status: 422, message: "Could not update the order." });
     expect(log).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Two-tap flow (2026-09-17): a database WITHOUT 202609170001 still answers
+ * "illegal transition confirmed -> ready-for-pickup". The one button must
+ * keep working there — the server takes the two internal steps itself.
+ */
+const PRE_TWO_TAP = {
+  code: "P0001",
+  message: "illegal transition confirmed -> ready-for-pickup",
+};
+
+/** RPC double: first call answers with `first`; later calls are scripted. */
+const scriptedDb = (
+  script: ({ error: { code?: string; message: string } | null })[],
+) => {
+  const calls: { fn: string; args: Record<string, unknown> }[] = [];
+  let i = 0;
+  const db = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            single: async () => ({ data: { id: "order-uuid" }, error: null }),
+          }),
+          single: async () => ({ data: { id: "order-uuid" }, error: null }),
+        }),
+      }),
+    }),
+    rpc: async (fn: string, args: Record<string, unknown>) => {
+      calls.push({ fn, args });
+      const step = script[Math.min(i, script.length - 1)];
+      i += 1;
+      return step;
+    },
+  };
+  return { db: db as never, calls };
+};
+
+describe("two-tap flow fallback (database predates 202609170001)", () => {
+  it("recognises only the exact confirmed → ready-for-pickup refusal", () => {
+    expect(isPreTwoTapRefusal(PRE_TWO_TAP, "ready-for-pickup")).toBe(true);
+    expect(isPreTwoTapRefusal(PRE_TWO_TAP, "preparing")).toBe(false);
+    expect(
+      isPreTwoTapRefusal({ message: "illegal transition pending -> ready-for-pickup" }, "ready-for-pickup"),
+    ).toBe(false);
+    expect(isPreTwoTapRefusal({ message: "payment not verified" }, "ready-for-pickup")).toBe(false);
+  });
+
+  it("staff: takes confirmed → preparing → ready-for-pickup as two RPCs and warns about the migration", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { db, calls } = scriptedDb([
+      { error: PRE_TWO_TAP },
+      { error: null },
+      { error: null },
+    ]);
+    // getOrderDetail reads the order back through a richer query chain than
+    // the double provides — we only assert the RPC sequence here.
+    await advanceOrderAsStaff(db, "PS-1", "ready-for-pickup", "packed").catch(() => undefined);
+    expect(calls.map((c) => c.args.p_to)).toEqual([
+      "ready-for-pickup",
+      "preparing",
+      "ready-for-pickup",
+    ]);
+    // the staff note travels with the final step, not the filler step
+    expect(calls[1].args.p_note).toBeNull();
+    expect(calls[2].args.p_note).toBe("packed");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("202609170001_two_tap_order_flow.sql");
+  });
+
+  it("staff: a failure on the second step is still reported (never a silent half-move)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { db, calls } = scriptedDb([
+      { error: PRE_TWO_TAP },
+      { error: null },
+      { error: { code: "P0001", message: "payment not verified" } },
+    ]);
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "ready-for-pickup"),
+    ).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/verify or reject/i) });
+    expect(calls).toHaveLength(3);
+  });
+
+  it("staff: does NOT retry for any other illegal transition", async () => {
+    const { db, calls } = scriptedDb([
+      { error: { code: "P0001", message: "illegal transition pending -> ready-for-pickup" } },
+    ]);
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "ready-for-pickup"),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("vendor: same two-step fallback through advanceVendorOrder", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { db, calls } = scriptedDb([
+      { error: PRE_TWO_TAP },
+      { error: null },
+      { error: null },
+    ]);
+    await advanceVendorOrder(db, "shop-1", "PS-1", "ready-for-pickup").catch(() => undefined);
+    expect(calls.map((c) => c.args.p_to)).toEqual([
+      "ready-for-pickup",
+      "preparing",
+      "ready-for-pickup",
+    ]);
   });
 });
 

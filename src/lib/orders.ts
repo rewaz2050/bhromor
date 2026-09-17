@@ -29,10 +29,18 @@ export const ORDER_FLOW = [
 
 export type OrderStatus = (typeof ORDER_FLOW)[number] | "cancelled";
 
-/** Legal transitions. Cancel is an operational decision, allowed early. */
+/**
+ * Legal transitions. Cancel is an operational decision, allowed early.
+ *
+ * Two-tap flow (2026-09-17, migration 202609170001): `confirmed` may go
+ * straight to `ready-for-pickup` — "preparing" is an OPTIONAL intermediate
+ * step, not a mandatory tap. The first entry of each list is the primary
+ * action the admin/vendor UI offers. Everything else is unchanged: rider
+ * states still move one at a time and never backwards.
+ */
 export const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled"],
-  confirmed: ["preparing", "cancelled"],
+  confirmed: ["ready-for-pickup", "preparing", "cancelled"],
   preparing: ["ready-for-pickup", "cancelled"],
   "ready-for-pickup": ["courier-assigned"],
   "courier-assigned": ["out-for-delivery"],
@@ -45,15 +53,101 @@ export const STATUS_META: Record<
   OrderStatus,
   { label: string; short: string }
 > = {
-  pending: { label: "Pending", short: "New" },
+  pending: { label: "New order", short: "New" },
   confirmed: { label: "Confirmed", short: "Confirmed" },
   preparing: { label: "Preparing", short: "Preparing" },
-  "ready-for-pickup": { label: "Ready for Pickup", short: "Ready" },
-  "courier-assigned": { label: "Courier Assigned", short: "Assigned" },
-  "out-for-delivery": { label: "Out for Delivery", short: "Out" },
+  "ready-for-pickup": { label: "Ready for rider", short: "Ready" },
+  "courier-assigned": { label: "Rider assigned", short: "Assigned" },
+  "out-for-delivery": { label: "Picked up — on the way", short: "On the way" },
   delivered: { label: "Delivered", short: "Delivered" },
   cancelled: { label: "Cancelled", short: "Cancelled" },
 };
+
+/**
+ * What the button that moves an order TO this status should say. The
+ * internal names stay on the badges; the buttons speak the shop's language
+ * ("Ready — call rider" is one tap that packs + summons the rider).
+ */
+export const ACTION_LABEL: Record<Exclude<OrderStatus, "pending">, string> = {
+  confirmed: "Confirm order",
+  preparing: "Start preparing",
+  "ready-for-pickup": "Ready — call rider",
+  "courier-assigned": "Rider assigned (manual)",
+  "out-for-delivery": "Picked up by rider",
+  delivered: "Mark delivered",
+  cancelled: "Cancel order",
+};
+
+/* ------------------------------------------------------------------ */
+/* Public 4-step view (customer track page + admin grouping)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The customer sees four milestones, not eight internal states:
+ *
+ *   1 Order placed → 2 Confirmed → 3 Picked up → 4 Delivered
+ *
+ * `statuses` = the internal states that BELONG to the milestone's phase (used
+ * to group admin filters/pipeline). `doneAt` = the internal state at which the
+ * milestone has actually HAPPENED — "Picked up" is only done once the rider
+ * taps pickup (`out-for-delivery`); while the order is `ready-for-pickup` or
+ * `courier-assigned` the step is in progress ("waiting for a rider").
+ */
+export const PUBLIC_STEPS = [
+  {
+    key: "placed",
+    label: "Order placed",
+    adminLabel: "New",
+    statuses: ["pending"],
+    doneAt: "pending",
+  },
+  {
+    key: "confirmed",
+    label: "Confirmed",
+    adminLabel: "Confirmed",
+    statuses: ["confirmed", "preparing"],
+    doneAt: "confirmed",
+  },
+  {
+    key: "picked-up",
+    label: "Picked up",
+    adminLabel: "With rider",
+    statuses: ["ready-for-pickup", "courier-assigned", "out-for-delivery"],
+    doneAt: "out-for-delivery",
+  },
+  {
+    key: "delivered",
+    label: "Delivered",
+    adminLabel: "Delivered",
+    statuses: ["delivered"],
+    doneAt: "delivered",
+  },
+] as const satisfies readonly {
+  key: string;
+  label: string;
+  adminLabel: string;
+  statuses: readonly OrderStatus[];
+  doneAt: OrderStatus;
+}[];
+
+export type PublicStepKey = (typeof PUBLIC_STEPS)[number]["key"];
+
+/** Index of the public phase an internal status sits in (-1 = cancelled). */
+export const publicPhase = (status: OrderStatus): number =>
+  PUBLIC_STEPS.findIndex((step) =>
+    (step.statuses as readonly OrderStatus[]).includes(status),
+  );
+
+/** Has public milestone `index` actually happened for this status? */
+export const publicStepDone = (status: OrderStatus, index: number): boolean => {
+  const step = PUBLIC_STEPS[index];
+  if (!step || status === "cancelled") return false;
+  return flowIndex(status) >= flowIndex(step.doneAt);
+};
+
+/** How many of the four public milestones are done (0 when cancelled). */
+export const publicStepsDone = (status: OrderStatus): number =>
+  PUBLIC_STEPS.filter((_, i) => publicStepDone(status, i)).length;
 
 export const isFlowStatus = (s: OrderStatus): boolean =>
   (ORDER_FLOW as readonly string[]).includes(s);

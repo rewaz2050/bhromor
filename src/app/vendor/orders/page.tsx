@@ -22,10 +22,10 @@ import { useVendorOrders } from "@/lib/use-vendor";
 
 const FILTERS = [
   { id: "all", label: "All" },
-  { id: "pending", label: "Pending" },
+  { id: "pending", label: "New" },
   { id: "confirmed", label: "Confirmed" },
   { id: "preparing", label: "Preparing" },
-  { id: "ready-for-pickup", label: "Ready" },
+  { id: "ready-for-pickup", label: "Ready for rider" },
   { id: "delivered", label: "Delivered" },
   { id: "cancelled", label: "Cancelled" },
 ];

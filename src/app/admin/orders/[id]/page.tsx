@@ -6,13 +6,16 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useOrder } from "@/lib/use-orders";
 import {
-  ORDER_FLOW,
+  ACTION_LABEL,
+  PUBLIC_STEPS,
   STATUS_META,
   canCancel,
   flowIndex,
   getDeliveryCode,
   normalizePhone,
   nextActions,
+  publicPhase,
+  publicStepDone,
   type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
@@ -45,6 +48,8 @@ export default function AdminOrderDetailPage() {
     null | "approve" | "reject" | "complete"
   >(null);
   const [returnError, setReturnError] = useState<string | null>(null);
+  // Two-tap flow: "Start preparing" is an optional extra step, tucked away.
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   if (loading) {
     return (
@@ -114,10 +119,21 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  // Two-tap flow (2026-09-17): Confirm → Ready — call rider. The primary
+  // action is the first legal step; any other legal step (the optional
+  // "Start preparing") sits behind an "Advanced" disclosure. Rider states
+  // (courier-assigned → out-for-delivery → delivered) belong to the rider
+  // app — the admin sees who has it, not a button.
   const steps = nextActions(order.status);
+  const [primary, ...secondary] = steps;
+  const riderOwned =
+    order.status === "ready-for-pickup" ||
+    order.status === "courier-assigned" ||
+    order.status === "out-for-delivery";
   const cancellable = canCancel(order.status);
   const flowPos = flowIndex(order.status);
   const isCancelled = order.status === "cancelled";
+  const phase = publicPhase(order.status);
 
   const doAdvance = (to: OrderStatus) => {
     if (to === "cancelled") {
@@ -165,17 +181,49 @@ export default function AdminOrderDetailPage() {
       <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
         {!order.isReturn && (steps.length > 0 || cancellable) && (
           <>
-            {steps.map((to) => (
+            {primary && !riderOwned && (
               <button
-                key={to}
                 type="button"
-                onClick={() => doAdvance(to)}
+                onClick={() => doAdvance(primary)}
                 className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
               >
-                Mark {STATUS_META[to].label.toLowerCase()}
+                {ACTION_LABEL[primary as Exclude<OrderStatus, "pending">]}
                 <IconArrowRight className="h-4 w-4" />
               </button>
-            ))}
+            )}
+            {primary && !riderOwned && secondary.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  aria-expanded={showAdvanced}
+                  className="rounded-full px-4 py-2.5 text-sm font-medium text-ink-soft ring-1 ring-line transition-colors hover:text-forest-800"
+                >
+                  {showAdvanced ? "Hide" : "More…"}
+                </button>
+                {showAdvanced && (
+                  <div className="absolute left-0 top-full z-10 mt-2 w-64 rounded-2xl bg-paper p-2 shadow-lg ring-1 ring-line">
+                    {secondary.map((to) => (
+                      <button
+                        key={to}
+                        type="button"
+                        onClick={() => {
+                          setShowAdvanced(false);
+                          doAdvance(to);
+                        }}
+                        className="block w-full rounded-xl px-3 py-2 text-left text-sm text-ink hover:bg-ivory-100"
+                      >
+                        {ACTION_LABEL[to as Exclude<OrderStatus, "pending">]}
+                        <span className="block text-xs text-ink-soft">
+                          Optional step — packing takes a while, and you want the
+                          customer to see it.
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {cancellable && (
               <button
                 type="button"
@@ -186,6 +234,15 @@ export default function AdminOrderDetailPage() {
               </button>
             )}
           </>
+        )}
+        {!order.isReturn && riderOwned && (
+          <p className="text-sm text-ink-soft">
+            {order.status === "ready-for-pickup" && !order.rider
+              ? "Waiting for a rider — the nearest online rider has been offered this order. Manual assign: Admin → Deliveries."
+              : order.status === "out-for-delivery"
+                ? `Picked up — ${order.rider?.name ?? "the rider"} is on the way. The rider marks Delivered with the customer's 4-digit code.`
+                : `${order.rider?.name ?? "A rider"} accepted and is heading to the shop. The rider taps Pickup, then Delivered.`}
+          </p>
         )}
         <button
           type="button"
@@ -525,46 +582,69 @@ export default function AdminOrderDetailPage() {
               Journey
             </h3>
             <ol className="mt-5">
-              {ORDER_FLOW.map((s, i) => {
-                const reached = !isCancelled && flowPos >= i;
-                const isCurrent = !isCancelled && flowPos === i;
-                const last = i === ORDER_FLOW.length - 1;
-                const entry = order.timeline.find((t) => t.status === s);
+              {/* Four public milestones (what the customer sees on /track);
+                  the internal states reached inside each one are listed
+                  underneath with their timestamps, so nothing is hidden. */}
+              {PUBLIC_STEPS.map((step, i) => {
+                const done = publicStepDone(order.status, i);
+                const isCurrent =
+                  !isCancelled && phase === i && order.status !== "delivered";
+                const last = i === PUBLIC_STEPS.length - 1;
+                const reachedStatuses = (step.statuses as readonly OrderStatus[]).filter(
+                  (st) => !isCancelled && flowPos >= flowIndex(st),
+                );
+                const dotStatus =
+                  reachedStatuses[reachedStatuses.length - 1] ?? step.statuses[0];
                 return (
-                  <li key={s} className="relative flex gap-4 pb-6 last:pb-0">
+                  <li key={step.key} className="relative flex gap-4 pb-6 last:pb-0">
                     {!last && (
                       <span
                         aria-hidden
                         className={`absolute left-[9px] top-6 h-full w-px ${
-                          flowPos > i && !isCancelled ? "bg-forest-300" : "bg-line"
+                          done && !isCancelled ? "bg-forest-300" : "bg-line"
                         }`}
                       />
                     )}
                     <span
                       aria-hidden
                       className={`mt-0.5 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full ring-4 ring-paper ${
-                        reached ? DOT[s] : "bg-ivory-200"
+                        done || isCurrent ? DOT[dotStatus] : "bg-ivory-200"
                       } ${isCurrent ? "shadow-[0_0_0_2px_#1b3a2d]" : ""}`}
                     />
                     <div className="min-w-0">
                       <p
                         className={`text-sm font-medium ${
-                          reached ? "text-ink" : "text-ink-soft/70"
+                          done || isCurrent ? "text-ink" : "text-ink-soft/70"
                         }`}
                       >
-                        {STATUS_META[s].label}
+                        {step.label}
                         {isCurrent && (
                           <span className="ml-2 rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-gold-700">
                             Now
                           </span>
                         )}
                       </p>
-                      {entry && (
-                        <p className="mt-0.5 text-xs text-ink-soft">
-                          {clockTime(entry.at)}
-                          {entry.note ? ` · ${entry.note}` : ""}
-                        </p>
-                      )}
+                      {reachedStatuses.map((st) => {
+                        const entry = order.timeline.find((t) => t.status === st);
+                        const isNow = st === order.status;
+                        // A milestone reached in one internal step needs no
+                        // repeated label — just its time.
+                        const soleStep = reachedStatuses.length === 1 && st === step.doneAt;
+                        const parts = [
+                          soleStep ? "" : STATUS_META[st].label,
+                          entry ? clockTime(entry.at) : "",
+                          entry?.note ?? "",
+                        ].filter(Boolean);
+                        if (parts.length === 0) return null;
+                        return (
+                          <p
+                            key={st}
+                            className={`mt-0.5 text-xs ${isNow ? "font-medium text-ink" : "text-ink-soft"}`}
+                          >
+                            {parts.join(" · ")}
+                          </p>
+                        );
+                      })}
                     </div>
                   </li>
                 );

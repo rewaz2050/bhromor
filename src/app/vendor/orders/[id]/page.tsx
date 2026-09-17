@@ -2,8 +2,9 @@
 
 /**
  * Vendor order detail (marketplace slice 3): items, customer + delivery,
- * timeline, and the vendor's status moves (confirm → prepare → ready,
- * cancel early). Dispatch states are read-only here.
+ * timeline, and the vendor's status moves — two taps: Confirm → Ready (call
+ * rider); "Start preparing" is optional (2026-09-17, migration 202609170001).
+ * Cancel stays available early. Dispatch states are read-only here.
  */
 
 import { useEffect, use, useState } from "react";
@@ -27,8 +28,13 @@ import {
 
 const NEXT_ACTION: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
   pending: { to: "confirmed", label: "Confirm order" },
-  confirmed: { to: "preparing", label: "Start preparing" },
-  preparing: { to: "ready-for-pickup", label: "Mark ready for pickup" },
+  confirmed: { to: "ready-for-pickup", label: "Ready — call rider" },
+  preparing: { to: "ready-for-pickup", label: "Ready — call rider" },
+};
+
+/** Optional extra step — packing takes a while and the customer should see it. */
+const OPTIONAL_ACTION: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
+  confirmed: { to: "preparing", label: "Start preparing (optional)" },
 };
 
 function PrepTimer({ createdAt, prepMinutes = 15 }: { createdAt: number; prepMinutes?: number }) {
@@ -63,7 +69,7 @@ function PrepTimer({ createdAt, prepMinutes = 15 }: { createdAt: number; prepMin
           <p className="text-xs text-ink-soft">
             {isOverdue
               ? "দ্রুত পার্সেল রেডি করুন যাতে ৪৫-৬০ মিনিটে কাস্টমারকে দেওয়া যায়"
-              : `লক্ষ্য: ${prepMinutes} মিনিটের মধ্যে পার্সেল রেডি করে 'Ready for Pickup' চাপুন`}
+              : `লক্ষ্য: ${prepMinutes} মিনিটের মধ্যে পার্সেল রেডি করে 'Ready — call rider' চাপুন`}
           </p>
         </div>
       </div>
@@ -133,6 +139,7 @@ export default function VendorOrderDetailPage({
   }
 
   const next = NEXT_ACTION[order.status];
+  const optional = OPTIONAL_ACTION[order.status];
   const canCancel = ["pending", "confirmed", "preparing"].includes(order.status);
 
   return (
@@ -163,6 +170,16 @@ export default function VendorOrderDetailPage({
               className="rounded-xl bg-forest-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60"
             >
               {busy === next.to ? "Saving…" : next.label}
+            </button>
+          )}
+          {optional && (
+            <button
+              type="button"
+              onClick={() => move(optional.to)}
+              disabled={busy !== null}
+              className="rounded-xl bg-paper px-4 py-2.5 text-sm font-medium text-ink-soft ring-1 ring-line hover:text-forest-900 disabled:opacity-60"
+            >
+              {busy === optional.to ? "Saving…" : optional.label}
             </button>
           )}
           {canCancel && (

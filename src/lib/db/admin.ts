@@ -9,7 +9,7 @@
 
 import "server-only";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
   Category,
   DeliveryZone,
@@ -301,11 +301,19 @@ export async function advanceOrderAsStaff(
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
-  const { error: rpcError } = await db.rpc("ps_advance_order", {
-    p_order_id: (data as { id: string }).id,
+  const orderId = (data as { id: string }).id;
+  const cleanNote = note?.trim().slice(0, 300) ?? null;
+  let { error: rpcError } = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
     p_to: to,
-    p_note: note?.trim().slice(0, 300) ?? null,
+    p_note: cleanNote,
   });
+  if (rpcError && isPreTwoTapRefusal(rpcError, to)) {
+    // The database predates 202609170001 (confirmed → ready-for-pickup is
+    // still "illegal"). Take the two internal steps so the one button still
+    // works; /api/health names the migration to paste.
+    rpcError = await legacyTwoStepReady(db, orderId, cleanNote);
+  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
@@ -330,6 +338,49 @@ export async function advanceOrderAsStaff(
     });
   }
   return getOrderDetail(db, orderNo);
+}
+
+const TWO_TAP_FILE = "supabase/migrations/202609170001_two_tap_order_flow.sql";
+
+/**
+ * Two-tap flow (2026-09-17): "Ready — call rider" moves confirmed →
+ * ready-for-pickup in one RPC once 202609170001 is applied. Before that the
+ * RPC answers exactly "illegal transition confirmed -> ready-for-pickup".
+ */
+export const isPreTwoTapRefusal = (
+  rpcError: { message?: string | null },
+  to: string,
+): boolean =>
+  to === "ready-for-pickup" &&
+  (rpcError.message ?? "")
+    .toLowerCase()
+    .includes("illegal transition confirmed -> ready-for-pickup");
+
+/**
+ * Fallback for a database without 202609170001: confirmed → preparing →
+ * ready-for-pickup as two RPC calls. Returns the error of whichever step
+ * failed (null on success). Used by both the staff and vendor paths.
+ */
+export async function legacyTwoStepReady(
+  db: SupabaseClient,
+  orderId: string,
+  note: string | null,
+): Promise<PostgrestError | null> {
+  console.warn(
+    `[orders] ps_advance_order refused confirmed -> ready-for-pickup; falling back to two steps — run ${TWO_TAP_FILE}`,
+  );
+  const step1 = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
+    p_to: "preparing",
+    p_note: null,
+  });
+  if (step1.error) return step1.error;
+  const step2 = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
+    p_to: "ready-for-pickup",
+    p_note: note,
+  });
+  return step2.error ?? null;
 }
 
 /**

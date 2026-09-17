@@ -68,6 +68,12 @@ export async function GET(request?: Request) {
     // and staff batch assign exists. Without it the rider job feed 503s as
     // soon as one offer lapses with a second rider online.
     dispatchRepair: false,
+    // 202609170001 — two-tap order flow: ps_advance_order accepts
+    // confirmed → ready-for-pickup, so admin/vendor "Ready — call rider"
+    // works without a "preparing" tap in between. Without it the button
+    // gets a 422 ("not allowed from here") and staff must use "More… →
+    // Start preparing" first.
+    twoTapFlow: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -134,6 +140,7 @@ export async function GET(request?: Request) {
         checks.securityRepair =
           r.rpc_grants_locked === true && r.memberships_rls === true;
         checks.dispatchRepair = r.dispatch_reoffer_ok === true;
+        checks.twoTapFlow = r.two_tap_flow_ok === true;
       }
     }
   }
@@ -191,6 +198,11 @@ export async function GET(request?: Request) {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.dispatchRepair) {
     nextSteps.push(
       "Dispatch re-offer — SQL Editor-e supabase/migrations/202609160005_dispatch_reoffer_repair.sql chalaben (delivery_assignments UNIQUE(order_id) → one-live-offer index + batch assign fix); na chalale ekta offer expire/reject holei rider app-er job list 503 dibe ar Admin → Deliveries batch assign kaj korbe na",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
+    nextSteps.push(
+      "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
     );
   }
 

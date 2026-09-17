@@ -3,12 +3,15 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
-  flowIndex,
+  PUBLIC_STEPS,
+  publicPhase,
+  publicStepDone,
   type Order,
-  type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { clockTime } from "@/components/admin/order-ui";
+import { useLanguage } from "@/components/i18n/language-provider";
+import type { TranslationKey } from "@/lib/translations";
 import {
   IconBox,
   IconCheck,
@@ -22,60 +25,41 @@ import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";
 
-/** Public-facing steps — “ready for pickup” folds into courier assignment. */
-const STEPS: {
-  statuses: OrderStatus[];
-  label: string;
-  note: string;
-}[] = [
-  {
-    statuses: ["pending"],
-    label: "Order Placed",
-    note: "Confirmed receipt of your order",
-  },
-  {
-    statuses: ["confirmed"],
-    label: "Order Confirmed",
-    note: "Stock reserved & payment method verified",
-  },
-  {
-    statuses: ["preparing"],
-    label: "Preparing",
-    note: "Being quality-checked & packed",
-  },
-  {
-    statuses: ["ready-for-pickup", "courier-assigned"],
-    label: "Courier Assigned",
-    note: "A rider is on the way to collect",
-  },
-  {
-    statuses: ["out-for-delivery"],
-    label: "Out for Delivery",
-    note: "Your order is on the move",
-  },
-  {
-    statuses: ["delivered"],
-    label: "Delivered",
-    note: "Enjoy — thank you for shopping with PROSANTI",
-  },
-];
-
-/** Index of the step the order is actually sitting on (-1 when cancelled). */
-export const currentStepIndex = (order: Order): number =>
-  STEPS.findIndex((step) => step.statuses.includes(order.status));
-
-const stepReached = (order: Order, step: number): boolean => {
-  if (order.status === "cancelled") return false;
-  const current = currentStepIndex(order);
-  if (current !== -1) return step <= current;
-  // Unknown/legacy status → fall back to the flow position.
-  return STEPS[step].statuses.some(
-    (s) => flowIndex(s) !== -1 && flowIndex(order.status) >= flowIndex(s),
-  );
+/**
+ * Public-facing steps — the four milestones from `PUBLIC_STEPS`
+ * (Order placed → Confirmed → Picked up → Delivered). Copy lives in
+ * translations.ts so the Bengali switch covers the timeline too.
+ */
+const STEP_COPY: Record<
+  (typeof PUBLIC_STEPS)[number]["key"],
+  { label: TranslationKey; note: TranslationKey }
+> = {
+  placed: { label: "track.stepPlaced", note: "track.stepPlacedNote" },
+  confirmed: { label: "track.stepConfirmed", note: "track.stepConfirmedNote" },
+  "picked-up": { label: "track.stepPickedUp", note: "track.stepPickedUpNote" },
+  delivered: { label: "track.stepDelivered", note: "track.stepDeliveredNote" },
 };
 
-const stepTime = (order: Order, step: number): string | undefined => {
-  for (const s of STEPS[step].statuses) {
+/** Index of the public step the order is sitting in (-1 when cancelled). */
+export const currentStepIndex = (order: Order): number =>
+  publicPhase(order.status);
+
+/** The milestone has actually happened (not merely "in progress"). */
+export const stepReached = (order: Order, step: number): boolean =>
+  publicStepDone(order.status, step);
+
+/**
+ * When the milestone happened — the time of its `doneAt` state, or (for a
+ * step still in progress) the earliest internal state reached inside it, so
+ * the customer sees when the shop packed the order while the rider is
+ * still on the way.
+ */
+export const stepTime = (order: Order, step: number): string | undefined => {
+  const def = PUBLIC_STEPS[step];
+  if (!def) return undefined;
+  const done = order.timeline.find((t) => t.status === def.doneAt);
+  if (done) return clockTime(done.at);
+  for (const s of def.statuses) {
     const entry = order.timeline.find((t) => t.status === s);
     if (entry) return clockTime(entry.at);
   }
@@ -88,6 +72,7 @@ type Result =
   | null;
 
 export default function TrackView() {
+  const { t } = useLanguage();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
@@ -269,7 +254,7 @@ export default function TrackView() {
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
-              {STEPS.map((step, index) => {
+              {PUBLIC_STEPS.map((step, index) => {
                 const reached = stepReached(order, index);
                 // "Current" is the step the order is on — it used to point at
                 // the *next*, unreached step, so a pending order claimed it
@@ -279,12 +264,23 @@ export default function TrackView() {
                   order.status !== "delivered" &&
                   index === currentStepIndex(order);
                 const time = stepTime(order, index);
+                const copy = STEP_COPY[step.key];
+                // Step 3 in progress: say honestly where the parcel is.
+                const note =
+                  step.key === "picked-up" && current && !reached
+                    ? order.status === "ready-for-pickup" || !order.rider
+                      ? t("track.stepPickedUpWaiting")
+                      : t("track.stepPickedUpAssigned").replace(
+                          "{name}",
+                          order.rider.name,
+                        )
+                    : t(copy.note);
                 return (
                   <li
-                    key={step.label}
+                    key={step.key}
                     className="relative flex gap-4 pb-7 last:pb-0"
                   >
-                    {index < STEPS.length - 1 && (
+                    {index < PUBLIC_STEPS.length - 1 && (
                       <span
                         aria-hidden="true"
                         className={`absolute left-[1.02rem] top-9 h-[calc(100%-2rem)] w-0.5 ${
@@ -317,16 +313,16 @@ export default function TrackView() {
                           reached || current ? "text-ink" : "text-ink-soft"
                         }`}
                       >
-                        {step.label}
+                        {t(copy.label)}
                         {current && (
                           <span className="ml-2 rounded-full bg-gold-200 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-gold-700">
-                            Current
+                            {t("track.current")}
                           </span>
                         )}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-ink-soft">
-                        {step.note}
-                        {time && reached && (
+                        {note}
+                        {time && (
                           <span className="ml-2 text-ink-soft/70">
                             · {time}
                           </span>
