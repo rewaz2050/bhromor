@@ -73,6 +73,40 @@ export const resolveCatalogCategory = (id: string): Category | undefined =>
   (liveCategories ?? EMPTY_CATEGORIES).find((c) => c.id === id);
 
 /**
+ * Seed the registry from rows a server component already rendered (audit
+ * 2026-09-17 P2.1). `/shop`, `/product/[slug]` and `/shops/[slug]` read the
+ * catalog on the server; before this the browser then fetched /api/products
+ * AGAIN before the bag, purchase panel or search could resolve a product.
+ * Hydrating from the SSR payload makes those surfaces live on first paint
+ * and skips one round trip per page view.
+ *
+ * Only a non-empty product list counts as live (the same rule as the fetch
+ * path). A later `ensureLiveCatalog()` becomes a no-op; a page that arrives
+ * with a newer payload simply replaces the rows. Zones are optional — a page
+ * without them leaves `ensureLiveZones()` to do its own read.
+ */
+export const hydrateLiveCatalog = (seed: {
+  products: Product[];
+  categories?: Category[];
+  shops?: Shop[];
+  zones?: DeliveryZone[];
+}): boolean => {
+  if (!Array.isArray(seed.products) || seed.products.length === 0) return false;
+  liveProducts = seed.products;
+  liveCategories = Array.isArray(seed.categories) ? seed.categories : liveCategories ?? [];
+  liveShops = Array.isArray(seed.shops) ? seed.shops : liveShops ?? [];
+  catalogSettled = true;
+  catalogPromise = Promise.resolve(true);
+  if (Array.isArray(seed.zones) && seed.zones.length > 0) {
+    liveZones = seed.zones;
+    zonesSettled = true;
+    zonesPromise = Promise.resolve(true);
+  }
+  notify();
+  return true;
+};
+
+/**
  * Fetch-once live catalog. Returns true when live rows are serving.
  * Failures are silent by design — surfaces keep their empty state.
  */
@@ -80,7 +114,9 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
   if (catalogPromise) return catalogPromise;
   catalogPromise = (async () => {
     try {
-      const res = await fetch("/api/products", { cache: "no-store" });
+      // Default cache mode: the route answers `public, s-maxage=60` (P1.1),
+      // so a back/forward navigation or a second tab reuses the CDN copy.
+      const res = await fetch("/api/products");
       if (!res.ok) return false;
       const data = (await res.json()) as {
         source?: string;
@@ -116,7 +152,7 @@ export const ensureLiveZones = (): Promise<boolean> => {
   if (zonesPromise) return zonesPromise;
   zonesPromise = (async () => {
     try {
-      const res = await fetch("/api/zones", { cache: "no-store" });
+      const res = await fetch("/api/zones");
       if (!res.ok) return false;
       const data = (await res.json()) as {
         zones?: DeliveryZone[];

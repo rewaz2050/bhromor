@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { afterFirstPaint } from "./defer";
 import type { Product } from "./catalog";
 import {
   PROMO_DEFAULTS,
@@ -142,9 +143,7 @@ const useTicker = (): number | null => {
 export function usePromos() {
   const promos = useSyncExternalStore(subscribePromos, getPromoSnapshot, getPromoSnapshotServer);
   const now = useTicker();
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => afterFirstPaint(() => void load()), []);
   const cfg = useMemo(() => flashConfigOf(promos), [promos]);
   // `null` = first paint: same "nothing is running" the server rendered. The
   // live view replaces it as soon as the promo store answers.
@@ -178,9 +177,7 @@ export function useCampaign() {
     getCampaignSnapshotServer,
   );
   const now = useTicker();
-  useEffect(() => {
-    void load();
-  }, []);
+  useEffect(() => afterFirstPaint(() => void load()), []);
   return { campaign: snap, now, ready: checked, live };
 }
 

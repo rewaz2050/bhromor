@@ -3,6 +3,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import Home from "../page";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { HOME_DEFAULTS } from "@/lib/home-cms";
+import { __resetHomeSettings } from "@/lib/use-home-settings";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -50,6 +51,9 @@ const mockFetch = (input: RequestInfo | URL) => {
 
 beforeEach(() => {
   homepageSettings = HOME_DEFAULTS;
+  // The homepage settings store is fetch-once per page lifetime (P2.2);
+  // each test is a fresh page.
+  __resetHomeSettings();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
 });
 

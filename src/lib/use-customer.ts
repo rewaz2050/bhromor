@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { afterFirstPaint } from "./defer";
 import {
   __resetCustomerProbe,
   AUTH_SERVER_SNAPSHOT,
@@ -30,8 +31,10 @@ export function useCustomer(): {
   );
 
   useEffect(() => {
-    // Shared promise: concurrent mounts coalesce into one probe.
-    void probeCustomerSession();
+    // Shared promise: concurrent mounts coalesce into one probe. Deferred
+    // past the first paint (P2.5) — the session badge is not what a visitor
+    // is waiting for; the hero and the product grid are.
+    return afterFirstPaint(() => void probeCustomerSession());
   }, []);
 
   const refresh = useCallback(async () => {

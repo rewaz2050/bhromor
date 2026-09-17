@@ -9,7 +9,7 @@ import { IconArrowRight } from "@/components/ui/icons";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useMyZone } from "@/lib/use-my-zone";
 import { filterProductsForZone } from "@/lib/shop-utils";
-import { useCms } from "@/lib/use-cms";
+import { useHomeSettings } from "@/lib/use-home-settings";
 import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
 import FlashRail from "@/components/promo/flash-rail";
@@ -23,7 +23,7 @@ import LiveBanner from "@/components/live/live-banner";
  */
 
 export default function Home() {
-  const { settings } = useCms();
+  const { settings } = useHomeSettings();
   const sections = settings.sections;
 
   return (

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { IconArrowRight, IconClock } from "@/components/ui/icons";
 import { liveState, type LiveSession } from "@/lib/live";
+import { afterFirstPaint } from "@/lib/defer";
 
 interface LiveData {
   live: LiveSession | null;
@@ -53,10 +54,13 @@ export default function LiveBanner() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount + interval
-    void load();
+    // First read after the first paint (P2.5), then every 60 s.
+    const cancel = afterFirstPaint(() => void load());
     const t = setInterval(() => void load(), 60_000);
-    return () => clearInterval(t);
+    return () => {
+      cancel();
+      clearInterval(t);
+    };
   }, [load]);
 
   const live = data?.live && liveState(data.live) === "live" ? data.live : null;

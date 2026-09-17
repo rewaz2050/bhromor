@@ -34,7 +34,7 @@ import {
 } from "./mappers";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
-import type { StaffRole } from "../staff-auth";
+import { forgetStaffRole, type StaffRole } from "../staff-auth";
 import type {
   DbCategory,
   DbCoupon,
@@ -2295,6 +2295,9 @@ export async function grantStaffRole(
     .select("id,role,created_at")
     .single();
   if (error || !data) throw new Error("staff grant failed");
+  // P2.6 — the gate memoises roles for a minute; a changed role must apply
+  // on the very next request.
+  forgetStaffRole(target.id);
   const row = data as { id: string; role: StaffRole; created_at: string };
   return {
     id: row.id,
@@ -2353,5 +2356,6 @@ export async function revokeStaffRole(
   }
   const { error } = await service.from("admin_users").delete().eq("id", target.id);
   if (error) throw new Error("staff revoke failed");
+  forgetStaffRole(target.id);
   return { email };
 }

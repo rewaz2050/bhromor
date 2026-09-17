@@ -5,6 +5,7 @@ import {
   getStorefrontZones,
 } from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
+import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
 import FlashRail from "@/components/promo/flash-rail";
@@ -46,6 +47,9 @@ export default async function ShopPage({
 
   return (
     <>
+      {/* P2.1 — the rows this page rendered seed the client registry, so the
+          bag/search/quick-add resolve products without a second fetch. */}
+      <CatalogHydrator products={products} categories={categories} shops={shops} zones={zones} />
       <ShopHeroHeader categories={categories} />
       {/* Renders nothing unless a drop window is actually open. */}
       <FlashRail limit={4} />

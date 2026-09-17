@@ -8,6 +8,22 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Place the element below the fold (or on screen) for the mount check. */
+const placeAt = (top: number) => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+    top,
+    bottom: top + 100,
+    left: 0,
+    right: 100,
+    width: 100,
+    height: 100,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect);
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+};
+
 describe("Progressive editorial reveal", () => {
   it("leaves content visible when browser animation APIs are unavailable", () => {
     render(
@@ -17,7 +33,8 @@ describe("Progressive editorial reveal", () => {
     );
     expect(screen.getByRole("heading")).toBeVisible();
   });
-  it("does not observe or animate when reduced motion is requested", () => {
+
+  it("does not observe or hide when reduced motion is requested", () => {
     const observe = vi.fn();
     vi.stubGlobal("matchMedia", () => ({ matches: true }));
     vi.stubGlobal(
@@ -26,31 +43,47 @@ describe("Progressive editorial reveal", () => {
         observe = observe;
       },
     );
-    const animate = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "animate", {
-      configurable: true,
-      value: animate,
-    });
+    placeAt(2000);
     render(
       <Reveal>
         <h2>Thoughtful essentials</h2>
       </Reveal>,
     );
     expect(observe).not.toHaveBeenCalled();
-    expect(animate).not.toHaveBeenCalled();
+    const el = screen.getByRole("heading").parentElement as HTMLElement;
+    expect(el.classList.contains("reveal-pending")).toBe(false);
     expect(screen.getByRole("heading")).toBeVisible();
-    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
   });
-  it("animates on entry and releases observer and animation on unmount", () => {
+
+  it("never hides a block that is already on screen at mount (first paint = final paint)", () => {
+    const observe = vi.fn();
+    vi.stubGlobal("matchMedia", () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe = observe;
+        disconnect = vi.fn();
+      },
+    );
+    placeAt(300); // inside an 800px viewport
+    render(
+      <Reveal>
+        <h2>Thoughtful essentials</h2>
+      </Reveal>,
+    );
+    const el = screen.getByRole("heading").parentElement as HTMLElement;
+    expect(el.classList.contains("reveal-pending")).toBe(false);
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it("hides a below-the-fold block, reveals it on entry via CSS classes and cleans up on unmount", () => {
     let intersect: IntersectionObserverCallback | undefined;
     const disconnect = vi.fn();
-    const cancel = vi.fn();
     const removeEventListener = vi.fn();
-    const animate = vi.fn(() => ({ cancel }));
-    Object.defineProperty(HTMLElement.prototype, "animate", {
-      configurable: true,
-      value: animate,
-    });
     vi.stubGlobal("matchMedia", () => ({
       matches: false,
       addEventListener: vi.fn(),
@@ -66,24 +99,28 @@ describe("Progressive editorial reveal", () => {
         disconnect = disconnect;
       },
     );
+    placeAt(2000);
     const { unmount } = render(
-      <Reveal>
+      <Reveal delay={120}>
         <h2>Thoughtful essentials</h2>
       </Reveal>,
     );
-    expect(animate).not.toHaveBeenCalled();
+    const el = screen.getByRole("heading").parentElement as HTMLElement;
+    expect(el.classList.contains("reveal-pending")).toBe(true);
+    expect(el.classList.contains("reveal-shown")).toBe(false);
+    expect(el.style.transitionDelay).toBe("120ms");
+    // no blur filter, no Web Animation — compositor-only CSS
+    expect(el.style.filter).toBe("");
+
     intersect?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver,
     );
-    expect(animate).toHaveBeenCalledTimes(1);
+    expect(el.classList.contains("reveal-shown")).toBe(true);
     expect(disconnect).toHaveBeenCalled();
+
     unmount();
-    expect(cancel).toHaveBeenCalled();
-    expect(removeEventListener).toHaveBeenCalledWith(
-      "change",
-      expect.any(Function),
-    );
-    delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
+    expect(el.classList.contains("reveal-pending")).toBe(false);
+    expect(removeEventListener).toHaveBeenCalledWith("change", expect.any(Function));
   });
 });

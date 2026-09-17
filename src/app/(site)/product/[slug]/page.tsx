@@ -10,6 +10,7 @@ import {
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
+import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
@@ -65,7 +66,7 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params;
-  const { products } = await getStorefrontCatalog();
+  const { products, categories, shops } = await getStorefrontCatalog();
   const product = findStorefrontProduct(products, slug);
   if (!product) notFound();
 
@@ -101,6 +102,8 @@ export default async function ProductPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      {/* P2.1 — seed the client registry from the rows already rendered. */}
+      <CatalogHydrator products={products} categories={categories} shops={shops} />
       {/* Breadcrumb */}
       <nav
         aria-label="Breadcrumb"
