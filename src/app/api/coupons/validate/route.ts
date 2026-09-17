@@ -50,7 +50,8 @@ export async function POST(request: Request) {
   let products: Product[];
   let coupons: Coupon[];
   try {
-    const snapshot = await loadOrderSnapshot();
+    // P1.4: pricing scope — catalog + coupons only, no shops/ops/referrals.
+    const snapshot = await loadOrderSnapshot({ scope: "pricing" });
     if (!snapshot || snapshot.products.length === 0) {
       return apiError("Coupons are unavailable right now.", 503);
     }

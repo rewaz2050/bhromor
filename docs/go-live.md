@@ -355,6 +355,23 @@ Run **in this order, in one sequence** (skip files you already applied —
     The customer-facing track page now shows four milestones (Order placed
     → Confirmed → Picked up → Delivered) regardless of this migration.
 
+37. **`supabase/migrations/202609170002_perf_indexes.sql`** — ⚡ **speed
+    (2026-09-17 audit, Batch B).** Seven `create index if not exists`
+    statements, no data change, safe to re-run, seconds to apply. Adds the
+    composite indexes the hot lists were missing: `orders (status,
+    created_at desc, id desc)` for Admin → Orders keyset paging,
+    `orders (shop_id, created_at desc)` for the vendor list, a partial
+    `orders (rider_id)` for the rider's deliveries, `delivery_assignments
+    (rider_id, state, offered_at desc)` for the rider board, a partial
+    `delivery_assignments (state, order_id)` over the live states for the
+    dispatch "awaiting" filter, `orders (return_parent_id, created_at desc)`
+    for return links and `referral_rewards (referee_phone)` for the
+    phone-scoped referral proof. Nothing breaks without it — the app is
+    faster on its own from this batch (CDN caching of the public catalog
+    routes, one batched order mapper, a scoped checkout snapshot) — but at a
+    few thousand orders the admin list and boards stop scaling without
+    these. Ends with a 7-row verify — expect 7 × OK.
+
 Quick check after step 11 (SQL editor):
 
 ```sql

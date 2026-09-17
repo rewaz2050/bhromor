@@ -10,6 +10,7 @@ import {
   writeHomepageSetting,
 } from "@/lib/db/engagement";
 import { apiError, apiJson } from "@/lib/api-response";
+import { CACHE_TAG_HOMEPAGE, revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -30,5 +31,6 @@ export const PATCH = staffRoute("homepage-write", async ({ db }, request) => {
     db,
     (body as Record<string, unknown> | null)?.settings ?? body,
   );
+  revalidateCatalogCaches(CACHE_TAG_HOMEPAGE);
   return apiJson({ settings });
 });

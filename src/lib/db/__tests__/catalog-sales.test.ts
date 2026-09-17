@@ -66,7 +66,8 @@ const table = (data: unknown, error: unknown = null) => {
 };
 
 vi.mock("@/lib/supabase-server", () => ({
-  getSupabaseServer: async () => ({
+  // The cached catalog read uses the cookie-less anon client (P1.2).
+  getSupabaseAnon: () => ({
     from: (t: string) => {
       switch (t) {
         case "products":

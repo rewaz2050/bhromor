@@ -7,6 +7,7 @@ import { createProduct } from "@/lib/db/admin";
 import { listVendorProducts } from "@/lib/db/vendor";
 
 import { apiJson } from "@/lib/api-response";
+import { revalidateCatalogCaches } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export const POST = vendorRoute(
       delete body.isNew;
     }
     const product = await createProduct(ctx.db, body, ctx.shopId);
+    revalidateCatalogCaches();
     return apiJson({ product }, 201);
   },
   { limit: 20 },

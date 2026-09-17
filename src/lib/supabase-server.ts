@@ -46,6 +46,22 @@ export async function getSupabaseServer(): Promise<SupabaseClient | null> {
 }
 
 /**
+ * Cookie-less anon client — exactly what an anonymous visitor sees through
+ * RLS (published products, active zones/shops, the public homepage row).
+ * Used by the SHARED, cached catalog read: `cookies()` may not be touched
+ * inside `unstable_cache`, and a cache entry must never be widened by
+ * whichever staff member happened to warm it.
+ */
+export function getSupabaseAnon(): SupabaseClient | null {
+  const url = supabaseUrl();
+  const anonKey = supabaseAnonKey();
+  if (!url || !anonKey) return null;
+  return createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/**
  * Privileged server client. `server-only` + the `SUPABASE_*` (non-public)
  * env var keep this out of browser bundles; call sites must still be
  * route handlers / server functions, never client components.

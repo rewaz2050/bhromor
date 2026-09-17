@@ -36,7 +36,8 @@ export async function POST(request: Request) {
 
   let snapshot;
   try {
-    snapshot = await loadOrderSnapshot();
+    // P1.4: pricing scope — catalog + coupons only, no shops/ops/referrals.
+    snapshot = await loadOrderSnapshot({ scope: "pricing" });
   } catch {
     snapshot = null;
   }

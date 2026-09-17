@@ -6,7 +6,8 @@
 
 import { fetchLiveCatalog } from "@/lib/db/catalog";
 import { isSupabaseConfigured } from "@/lib/env";
-import { apiError, apiJson } from "@/lib/api-response";
+import { apiError } from "@/lib/api-response";
+import { publicJson } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,9 @@ export async function GET() {
         { code: "NOT_SEEDED" },
       );
     }
-    return apiJson({ source: "live" as const, ...live });
+    // Same rows for every visitor → the CDN may hold this for a minute
+    // (admin catalog edits invalidate the data cache behind it).
+    return publicJson({ source: "live" as const, ...live });
   } catch {
     return apiError("Catalog is temporarily unavailable.", 503);
   }

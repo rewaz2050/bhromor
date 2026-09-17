@@ -9,6 +9,7 @@ import {
   upsertCategory,
 } from "@/lib/db/admin";
 import { apiJson } from "@/lib/api-response";
+import { revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -32,9 +33,11 @@ export const POST = staffRoute(
         throw new AdminInputError("Invalid move.");
       }
       const categories = await moveCategoryRow(db, body.id, body.dir);
+      revalidateCatalogCaches();
       return apiJson({ categories });
     }
     const category = await upsertCategory(db, body);
+    revalidateCatalogCaches();
     return apiJson({ category });
   },
   { limit: 30 },

@@ -2,14 +2,21 @@
  * Server-side catalog reads (blueprint §41–44).
  *
  * Returns null when Supabase is not configured or the catalog is empty.
- * Public reads use the RLS-respecting server client — only published +
- * active rows are visible, enforced by the database, not by trust.
+ * Public reads use the anon RLS client — only published + active rows are
+ * visible, enforced by the database, not by trust.
  */
 
 import "server-only";
 
-import { getSupabaseServer } from "../supabase-server";
+import { unstable_cache } from "next/cache";
+import { getSupabaseAnon } from "../supabase-server";
 import { mapCategory, mapProduct, mapShop, mapZone, type ProductRowBundle } from "./mappers";
+import {
+  CACHE_TAG_CATALOG,
+  CACHE_TAG_SHOPS,
+  CACHE_TAG_ZONES,
+  PUBLIC_CACHE_SECONDS,
+} from "../public-cache";
 import type {
   Category,
   DeliveryZone,
@@ -47,9 +54,44 @@ const toBundle = (
 /**
  * Published storefront catalog from Supabase.
  * Null = backend not configured OR reachable-but-empty.
+ *
+ * Perf (audit 2026-09-17 P1.2): the seven-query read is wrapped in the Next
+ * data cache for `PUBLIC_CACHE_SECONDS`, tagged so admin/vendor catalog
+ * writes (`revalidateCatalogCaches`) rebuild it on the next request. The
+ * storefront pages (`/`, `/shop`, `/product/[slug]`, `/api/products`) all
+ * share ONE cached copy instead of each re-reading the whole catalog.
+ *
+ * The read goes through the cookie-less anon client, so the cache entry is
+ * exactly what an anonymous visitor may see (published + active only) no
+ * matter who warmed it — and `cookies()` is never touched inside the cache
+ * scope (Next forbids dynamic sources there).
  */
 export async function fetchLiveCatalog(): Promise<LiveCatalog | null> {
-  const db = await getSupabaseServer();
+  try {
+    return await cachedLiveCatalog();
+  } catch (err) {
+    // No incremental cache in this context (tests, CLI) → read directly. A
+    // real read failure is re-thrown by readLiveCatalog itself.
+    if (isCacheInfraError(err)) return readLiveCatalog();
+    throw err;
+  }
+}
+
+const isCacheInfraError = (err: unknown): boolean =>
+  err instanceof Error && /incrementalCache|static generation store/i.test(err.message);
+
+const cachedLiveCatalog = unstable_cache(
+  async () => readLiveCatalog(),
+  ["live-catalog-v1"],
+  {
+    revalidate: PUBLIC_CACHE_SECONDS,
+    tags: [CACHE_TAG_CATALOG, CACHE_TAG_ZONES, CACHE_TAG_SHOPS],
+  },
+);
+
+/** The uncached read — one round of seven parallel queries. */
+export async function readLiveCatalog(): Promise<LiveCatalog | null> {
+  const db = getSupabaseAnon();
   if (!db) return null;
 
   const [productsRes, variantsRes, mediaRes, categoriesRes, zonesRes, shopsRes, salesRes] =

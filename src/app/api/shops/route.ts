@@ -8,7 +8,8 @@
 
 import { listPublicShops } from "@/lib/db/marketplace";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { apiError, apiJson } from "@/lib/api-response";
+import { apiError } from "@/lib/api-response";
+import { publicJson } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,8 @@ export async function GET(request: Request) {
     if (!shops) {
       return apiError("Shops are temporarily unavailable.", 503);
     }
-    return apiJson({ source: "live" as const, shops });
+    // Public rows, keyed by the ?zone= query → CDN-cacheable per zone.
+    return publicJson({ source: "live" as const, shops });
   } catch {
     return apiError("Shops are temporarily unavailable.", 503);
   }

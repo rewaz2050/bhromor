@@ -17,7 +17,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
-import { toDomain } from "./orders";
+import { toDomainMany } from "./orders";
 import { AdminInputError } from "./admin";
 import type {
   DbDeliveryAssignment,
@@ -200,6 +200,20 @@ export async function listRiderSettlements(
   }));
 }
 
+/** Order rows → domain Orders keyed by row id (one batched read). */
+const mapOrdersById = async (
+  service: SupabaseClient,
+  rows: DbOrder[],
+): Promise<Map<string, Order>> => {
+  const mapped = await toDomainMany(service, rows);
+  const out = new Map<string, Order>();
+  rows.forEach((row, i) => {
+    const order = mapped[i];
+    if (order) out.set(row.id, order);
+  });
+  return out;
+};
+
 export async function listRiderJobs(
   service: SupabaseClient,
   riderId: string,
@@ -220,14 +234,12 @@ export async function listRiderJobs(
     .select("*")
     .in("id", orderIds);
   if (orderError) throw new Error("rider jobs order read failed");
-  const orderMap = new Map<string, DbOrder>();
-  for (const o of (orderRows ?? []) as DbOrder[]) orderMap.set(o.id, o);
+  // P1.3: one batched mapping for every order on the board, not one per job.
+  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[]);
 
   const jobs: RiderJob[] = [];
   for (const assignment of rows) {
-    const row = orderMap.get(assignment.order_id);
-    if (!row) continue;
-    const order = await toDomain(service, row);
+    const order = orderMap.get(assignment.order_id);
     if (!order) continue;
     jobs.push({
       id: assignment.id,
@@ -267,19 +279,16 @@ export async function listDispatchJobs(
   if (orderResult.error) throw new Error("dispatch board order read failed");
   if (riderResult.error) throw new Error("dispatch board rider read failed");
 
-  const orderMap = new Map<string, DbOrder>();
-  for (const o of (orderResult.data ?? []) as DbOrder[]) orderMap.set(o.id, o);
+  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[]);
   const riderMap = new Map<string, Pick<DbRider, "id" | "name" | "phone">>();
   for (const r of (riderResult.data ?? []) as Pick<DbRider, "id" | "name" | "phone">[])
     riderMap.set(r.id, r);
 
   const jobs: RiderDispatchJob[] = [];
   for (const assignment of rows) {
-    const row = orderMap.get(assignment.order_id);
+    const order = orderMap.get(assignment.order_id);
     const rider = riderMap.get(assignment.rider_id);
-    if (!row || !rider) continue;
-    const order = await toDomain(service, row);
-    if (!order) continue;
+    if (!order || !rider) continue;
     jobs.push({
       id: assignment.id,
       orderId: assignment.order_id,
@@ -371,13 +380,9 @@ export async function listAwaitingDispatchOrders(
   const active = new Set(
     ((assignmentRows ?? []) as { order_id: string }[]).map((a) => a.order_id),
   );
-  const pending: Order[] = [];
-  for (const row of rows) {
-    if (active.has(row.id)) continue;
-    const order = await toDomain(service, row);
-    if (order) pending.push(order);
-  }
-  return pending;
+  const waiting = rows.filter((row) => !active.has(row.id));
+  const mapped = await toDomainMany(service, waiting);
+  return mapped.filter((order): order is Order => order !== null);
 }
 
 /** P2 #22 — the rider sets their own shift; dispatch honours it. */

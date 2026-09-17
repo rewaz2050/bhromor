@@ -20,7 +20,7 @@ import {
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapShop } from "./mappers";
-import { toDomain } from "./orders";
+import { toDomain, toDomainMany } from "./orders";
 import type {
   DbCategory,
   DbShopLedger,
@@ -132,12 +132,9 @@ export async function listVendorOrders(
   if (status && status !== "all") query = query.eq("status", status);
   const { data, error } = await query;
   if (error) throw new Error("vendor order list failed");
-  const out: Order[] = [];
-  for (const row of ((data ?? []) as DbOrder[])) {
-    const order = await toDomain(db, row);
-    if (order) out.push(order);
-  }
-  return out;
+  // P1.3: one batched mapping for the whole page instead of one per order.
+  const mapped = await toDomainMany(db, (data ?? []) as DbOrder[]);
+  return mapped.filter((order): order is Order => order !== null);
 }
 
 export async function getVendorOrderDetail(

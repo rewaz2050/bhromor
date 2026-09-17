@@ -7,7 +7,8 @@ import { getSupabaseServer } from "@/lib/supabase-server";
 import { mapZone } from "@/lib/db/mappers";
 import type { DbZone } from "@/lib/db/types";
 import { isSupabaseConfigured } from "@/lib/env";
-import { apiError, apiJson } from "@/lib/api-response";
+import { apiError } from "@/lib/api-response";
+import { publicJson } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export async function GET() {
         { code: "NOT_SEEDED" },
       );
     }
-    return apiJson({
+    return publicJson({
       source: "live" as const,
       zones: (data as DbZone[]).map(mapZone),
     });

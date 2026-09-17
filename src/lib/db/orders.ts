@@ -36,7 +36,7 @@ import type {
 import { normalizePhone, type Order } from "../orders";
 import { sanitizeBundle, sanitizeFlash } from "../promos";
 import { sanitizeGift } from "../gift";
-import { sanitizeReferral, type ReferralRecord } from "../referral";
+import { normalizeRefCode, sanitizeReferral, type ReferralRecord } from "../referral";
 import { sanitizeSettings } from "../settings-store";
 import type { ValidOrderDraft } from "../order-validation";
 
@@ -48,9 +48,13 @@ export interface OrderSnapshot {
   mediaByProduct: Map<string, string>;
   /** All shops (validator checks active/open/zone itself). */
   shops: Shop[];
-  /** Total orders ever placed (global stat). */
-  totalOrders: number;
-  /** THIS customer's earlier order count — retained for future promos. */
+  /**
+   * Total orders ever placed (global stat). No longer read on the checkout
+   * path (audit 2026-09-17 P1.4 — it was a `count(*)` over the orders table
+   * on every order and coupon check, and nothing priced from it).
+   */
+  totalOrders?: number;
+  /** THIS customer's earlier non-cancelled order count (first-order proof). */
   customerOrderCount?: number;
   /** ৳1000+-always-free toggle (ops) — retained for future promos. */
   freeThresholdEnabled?: boolean;
@@ -89,16 +93,58 @@ export async function countOrdersForPhone(
   const { data, error } = await db
     .from("orders")
     .select("customer_phone")
-    .neq("status", "cancelled");
+    .neq("status", "cancelled")
+    // P1.4: let Postgres drop the other customers' rows instead of shipping
+    // every phone in the table to the function on each call.
+    .ilike("customer_phone", phoneNeedle(digits));
   if (error) return 0; // fail closed → no free-delivery grant on DB errors
   return ((data ?? []) as { customer_phone: string }[]).filter(
     (row) => normalizePhone(row.customer_phone) === digits,
   ).length;
 }
 
-export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
+/**
+ * `%1%7%1%…%` — an ILIKE needle that matches ANY stored spelling of the
+ * number (bare, +88-prefixed, with spaces or dashes) by requiring its last
+ * ten digits in order. It over-matches by design; callers still compare with
+ * `normalizePhone` exactly. Digits only, so it is safe inside a filter.
+ */
+const phoneNeedle = (digits: string): string =>
+  `%${digits.replace(/\D/g, "").slice(-10).split("").join("%")}%`;
+
+/**
+ * What the caller already knows about the order being priced. Every field
+ * is optional — a bare call still returns a complete snapshot — but the
+ * hints let the read skip what this request cannot need:
+ *
+ * - `scope: "pricing"` (coupon best/validate): products, variants, media,
+ *   zones and coupons only — no shops, ops, referral or phone reads.
+ * - `phone`: scopes the first-order proof (and any referral redemptions) to
+ *   this customer instead of reading up to 5000 phones.
+ * - `referralCode`: the referral ledger is read ONLY when a code was typed,
+ *   and only the rows for that code / this phone.
+ */
+export interface SnapshotHints {
+  scope?: "checkout" | "pricing";
+  phone?: string;
+  referralCode?: string;
+}
+
+const emptyResult = { data: [] as never[], error: null, count: null };
+
+export async function loadOrderSnapshot(
+  hints: SnapshotHints = {},
+): Promise<OrderSnapshot | null> {
   const db = getSupabaseService();
   if (!db) return null;
+
+  const pricingOnly = hints.scope === "pricing";
+  const phoneDigits = normalizePhone(hints.phone ?? "");
+  const refCode = normalizeRefCode(hints.referralCode);
+  // The referral ledger matters only when a well-formed code was typed; the
+  // validator answers format errors itself without touching the records.
+  const wantReferral = !pricingOnly && refCode !== "";
+  const wantPhoneScope = wantReferral && phoneDigits !== "";
 
   const [
     productsRes,
@@ -107,32 +153,48 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     zonesRes,
     couponsRes,
     shopsRes,
-    ordersCountRes,
     opsRes,
     codesRes,
-    rewardsRes,
-    phonesRes,
-  ] =
-    await Promise.all([
-      db
-        .from("products")
-        .select("*")
-        .eq("status", "published")
-        .eq("active", true),
-      db.from("product_variants").select("*").eq("active", true),
-      db.from("product_media").select("*").order("sort_order"),
-      db.from("delivery_zones").select("*").eq("active", true),
-      db.from("coupons").select("*").eq("active", true),
-      db.from("shops").select("*"),
-      db.from("orders").select("id", { count: "exact", head: true }),
-      // ৳1000+-always-free toggle; read failure keeps the default (on).
-      db.from("site_settings").select("value").eq("key", "ops").maybeSingle(),
-      // P0 growth reads. Missing tables (pre-migration) answer an error object,
-      // never a throw — every lever simply prices at zero until they exist.
-      db.from("referral_codes").select("code,customer_id,customer_phone,customer_name"),
-      db.from("referral_rewards").select("code,referee_phone,referrer_coupon_id"),
-      db.from("orders").select("customer_phone").neq("status", "cancelled").limit(5000),
-    ]);
+    codeRewardsRes,
+    phoneRewardsRes,
+    phoneOrdersRes,
+  ] = await Promise.all([
+    db.from("products").select("*").eq("status", "published").eq("active", true),
+    db.from("product_variants").select("*").eq("active", true),
+    db.from("product_media").select("*").order("sort_order"),
+    db.from("delivery_zones").select("*").eq("active", true),
+    db.from("coupons").select("*").eq("active", true),
+    pricingOnly ? emptyResult : db.from("shops").select("*"),
+    // ৳1000+-always-free toggle + wallets + promo levers; read failure keeps
+    // the defaults.
+    pricingOnly
+      ? { data: null, error: null }
+      : db.from("site_settings").select("value").eq("key", "ops").maybeSingle(),
+    // P0 growth reads. Missing tables (pre-migration) answer an error object,
+    // never a throw — every lever simply prices at zero until they exist.
+    wantReferral
+      ? db
+          .from("referral_codes")
+          .select("code,customer_id,customer_phone,customer_name")
+          .eq("code", refCode)
+      : emptyResult,
+    wantReferral
+      ? db.from("referral_rewards").select("code,referee_phone").eq("code", refCode)
+      : emptyResult,
+    wantPhoneScope
+      ? db
+          .from("referral_rewards")
+          .select("code,referee_phone")
+          .ilike("referee_phone", phoneNeedle(phoneDigits))
+      : emptyResult,
+    wantPhoneScope
+      ? db
+          .from("orders")
+          .select("customer_phone")
+          .neq("status", "cancelled")
+          .ilike("customer_phone", phoneNeedle(phoneDigits))
+      : emptyResult,
+  ]);
   if (
     productsRes.error ||
     variantsRes.error ||
@@ -159,7 +221,16 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       mediaByProduct.set(m.product_id, m.url);
     }
   }
-  const ops = (opsRes.data?.value ?? {}) as Record<string, unknown>;
+  const zones = ((zonesRes.data ?? []) as DbZone[]).map(mapZone);
+  const coupons = ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon);
+  if (pricingOnly) {
+    return { products, zones, coupons, variants, mediaByProduct, shops: [] };
+  }
+
+  const ops = ((opsRes.data as { value?: unknown } | null)?.value ?? {}) as Record<
+    string,
+    unknown
+  >;
   const settings = sanitizeSettings(ops);
   // P1 #8 — wallet numbers the storefront may offer (sanitized to BD mobile;
   // ps_place_order re-checks against the same ops document at placement).
@@ -175,11 +246,23 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
     customer_phone: string | null;
     customer_name: string | null;
   }[];
-  const rewardRows = (rewardsRes.data ?? []) as {
-    code: string;
-    referee_phone: string;
-    referrer_coupon_id: string | null;
-  }[];
+  type RewardRow = { code: string; referee_phone: string };
+  const codeRewards = (codeRewardsRes.data ?? []) as RewardRow[];
+  // Union of "rewards this code already paid" and "rewards this phone already
+  // took", de-duplicated on the (code, phone) key the table is unique on.
+  const rewardRows = [
+    ...new Map(
+      [...codeRewards, ...((phoneRewardsRes.data ?? []) as RewardRow[])].map((r) => [
+        `${r.code}\u0000${r.referee_phone}`,
+        r,
+      ]),
+    ).values(),
+  ];
+  const customerOrderCount = wantPhoneScope
+    ? ((phoneOrdersRes.data ?? []) as { customer_phone: string }[]).filter(
+        (r) => normalizePhone(r.customer_phone) === phoneDigits,
+      ).length
+    : undefined;
   return {
     promos: {
       flash: settings.flash,
@@ -192,27 +275,24 @@ export async function loadOrderSnapshot(): Promise<OrderSnapshot | null> {
       customerId: row.customer_id,
       referrerName: row.customer_name ?? "",
       referrerPhone: normalizePhone(row.customer_phone ?? ""),
-      rewardsGranted: rewardRows.filter((r) => r.code === row.code).length,
+      rewardsGranted: codeRewards.filter((r) => r.code === row.code).length,
       createdAt: 0,
     })),
     referralRewards: rewardRows.map((r) => ({
       code: r.code,
       refereePhone: r.referee_phone,
     })),
-    priorOrderPhones: ((phonesRes.data ?? []) as { customer_phone: string }[]).map(
-      (r) => r.customer_phone,
-    ),
+    ...(customerOrderCount !== undefined ? { customerOrderCount } : {}),
     products,
     payments: {
       bkash: walletNum(opsWallets.bkash),
       nagad: walletNum(opsWallets.nagad),
     },
-    zones: ((zonesRes.data ?? []) as DbZone[]).map(mapZone),
-    coupons: ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon),
+    zones,
+    coupons,
     variants,
     mediaByProduct,
     shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
-    totalOrders: ordersCountRes.count ?? 0,
     freeThresholdEnabled: ops.perZoneFreeThresholdEnabled !== false,
   };
 }
@@ -415,131 +495,241 @@ export async function placeLiveOrder(
   return placed;
 }
 
-/** Full order bundle → domain Order. Works with service or staff clients. */
-export const toDomain = async (
+/* ------------------------------------------------------------------ */
+/* Order rows → domain (batched)                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * PostgREST `.in()` filters travel in the URL — keep each request well under
+ * the gateway's limit (100 uuids ≈ 3.8 KB). Chunks run in parallel, so a
+ * long list still costs ONE round trip of wall-clock time.
+ */
+const IN_CHUNK = 100;
+
+const chunk = <T>(list: readonly T[]): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += IN_CHUNK) out.push(list.slice(i, i + IN_CHUNK));
+  return out;
+};
+
+/**
+ * Minimal shape of a PostgREST select builder — enough for the refinements
+ * used here (`.eq`, `.order`) and to await. Typed loosely on purpose: the
+ * supabase-js generics do not survive being passed through a helper.
+ */
+interface SelectBuilder extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
+  eq: (col: string, value: unknown) => SelectBuilder;
+  order: (col: string, opts?: { ascending?: boolean }) => SelectBuilder;
+}
+
+/**
+ * `select … where col in (ids)` across chunks. Returns the merged rows or
+ * the first error; an empty id list never hits the network.
+ */
+const selectIn = async <Row>(
   db: SupabaseClient,
-  order: DbOrder,
-): Promise<Order | null> => {
-  const [itemsRes, historyRes, zoneRes, couponRes] = await Promise.all([
-    db.from("order_items").select("*").eq("order_id", order.id),
-    db
-      .from("order_status_history")
-      .select("*")
-      .eq("order_id", order.id)
-      .order("created_at"),
-    db.from("delivery_zones").select("name,eta_label").eq("id", order.zone_id).single(),
-    order.coupon_id
-      ? db.from("coupons").select("code").eq("id", order.coupon_id).single()
-      : Promise.resolve({ data: null as { code: string } | null }),
-  ]);
-  if (itemsRes.error || historyRes.error) return null;
-  const items = (itemsRes.data ?? []) as DbOrderItem[];
-  const productIds = [...new Set(items.map((it) => it.product_id).filter(Boolean))] as string[];
-  let products = new Map<string, { slug: string; image: string; warrantyDays?: number }>();
-  if (productIds.length > 0) {
-    const [pRes, mRes] = await Promise.all([
-      db.from("products").select("id,slug,warranty_days").in("id", productIds),
-      db
-        .from("product_media")
-        .select("product_id,url")
-        .eq("type", "image")
-        .in("product_id", productIds)
-        .order("sort_order"),
-    ]);
-    const slugs = new Map<string, string>(
-      ((pRes.data ?? []) as { id: string; slug: string }[]).map((p) => [p.id, p.slug]),
-    );
-    const warranties = new Map<string, number | undefined>(
-      ((pRes.data ?? []) as { id: string; warranty_days: number | null }[]).map(
-        (p) => [p.id, p.warranty_days ?? undefined],
-      ),
-    );
-    const images = new Map<string, string>();
-    for (const m of ((mRes.data ?? []) as { product_id: string; url: string }[])) {
-      if (!images.has(m.product_id)) images.set(m.product_id, m.url);
-    }
-    products = new Map(
-      productIds.map((id) => [
-        id,
-        {
-          slug: slugs.get(id) ?? "",
-          image: images.get(id) ?? "",
-          warrantyDays: warranties.get(id),
-        },
-      ]),
-    );
+  table: string,
+  columns: string,
+  col: string,
+  ids: readonly string[],
+  refine: (q: SelectBuilder) => SelectBuilder = (q) => q,
+): Promise<{ data: Row[]; error: { message: string } | null }> => {
+  if (ids.length === 0) return { data: [], error: null };
+  const results = await Promise.all(
+    chunk(ids).map((part) =>
+      refine(db.from(table).select(columns).in(col, part) as unknown as SelectBuilder),
+    ),
+  );
+  const data: Row[] = [];
+  for (const r of results) {
+    if (r.error) return { data: [], error: r.error };
+    data.push(...((r.data ?? []) as Row[]));
   }
-  const zone = (zoneRes.data ?? {}) as { name?: string; eta_label?: string };
-  const domain = mapOrder({
-    order,
-    items,
-    history: (historyRes.data ?? []) as DbOrderHistory[],
-    zoneName: zone.name ?? order.zone_id,
-    etaLabel: zone.eta_label ?? "",
-    couponCode: (couponRes.data as { code: string } | null)?.code,
-    products,
-  });
-  if (!domain) return null;
-  if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+  return { data, error: null };
+};
 
-  // P1 #13: a delivered parent carries its linked return/exchange pickup,
-  // so the customer's tracking page can show the reverse leg's progress.
-  if (!order.is_return) {
-    const { data: child } = await db
-      .from("orders")
-      .select("order_no,status,return_status")
-      .eq("return_parent_id", order.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const c = child as
-      | { order_no: string; status: string; return_status: string }
-      | null;
-    if (c && c.return_status && c.return_status !== "rejected") {
-      domain.returnChild = {
-        orderNo: c.order_no,
-        status: c.status as Order["status"],
-        returnStatus: c.return_status,
-      };
-    }
+const groupBy = <Row>(rows: readonly Row[], key: (row: Row) => string): Map<string, Row[]> => {
+  const out = new Map<string, Row[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const list = out.get(k);
+    if (list) list.push(row);
+    else out.set(k, [row]);
   }
+  return out;
+};
 
+const RIDER_VISIBLE_STATUSES = new Set(["courier-assigned", "out-for-delivery", "delivered"]);
+
+/**
+ * Full order bundles → domain Orders, for MANY rows at once. Works with the
+ * service or a staff/vendor RLS client (the policies decide what is seen).
+ *
+ * Perf (audit 2026-09-17 P1.3): the per-order mapper cost 8–10 sequential
+ * round trips, and the rider/dispatch/vendor lists called it once per order —
+ * 100 orders ≈ 900 queries ≈ 40 s from Dhaka. This version fetches every
+ * child table with `.in()` in TWO rounds (items/history/zones/coupons/
+ * return links/assignments, then products/media/riders) whatever the count.
+ *
+ * Output is aligned with the input: `result[i]` is the Order for
+ * `orders[i]`, or null when its items/history could not be read.
+ */
+export const toDomainMany = async (
+  db: SupabaseClient,
+  orders: readonly DbOrder[],
+): Promise<(Order | null)[]> => {
+  if (orders.length === 0) return [];
+  const ids = orders.map((o) => o.id);
+  const zoneIds = [...new Set(orders.map((o) => o.zone_id).filter(Boolean))];
+  const couponIds = [
+    ...new Set(orders.map((o) => o.coupon_id).filter((id): id is string => !!id)),
+  ];
+  // P1 #13: a delivered parent carries its linked return/exchange pickup.
+  const parentCandidateIds = orders.filter((o) => !o.is_return).map((o) => o.id);
   // A return pickup shows the public number of the order it returns.
-  if (order.is_return && order.return_parent_id) {
-    const { data: parent } = await db
-      .from("orders")
-      .select("order_no")
-      .eq("id", order.return_parent_id)
-      .maybeSingle();
-    const p = parent as { order_no: string } | null;
-    if (p) domain.returnParentOrderNo = p.order_no;
+  const parentIds = [
+    ...new Set(
+      orders
+        .filter((o) => o.is_return && o.return_parent_id)
+        .map((o) => o.return_parent_id as string),
+    ),
+  ];
+  // Slice 9 rider-leg: attach the assigned rider once dispatch has started.
+  const dispatchedIds = orders
+    .filter((o) => RIDER_VISIBLE_STATUSES.has(o.status))
+    .map((o) => o.id);
+
+  const [itemsRes, historyRes, zonesRes, couponsRes, childrenRes, parentsRes, assignmentsRes] =
+    await Promise.all([
+      selectIn<DbOrderItem>(db, "order_items", "*", "order_id", ids),
+      selectIn<DbOrderHistory>(db, "order_status_history", "*", "order_id", ids, (q) =>
+        q.order("created_at"),
+      ),
+      selectIn<{ id: string; name: string; eta_label: string }>(
+        db,
+        "delivery_zones",
+        "id,name,eta_label",
+        "id",
+        zoneIds,
+      ),
+      selectIn<{ id: string; code: string }>(db, "coupons", "id,code", "id", couponIds),
+      selectIn<{
+        return_parent_id: string;
+        order_no: string;
+        status: string;
+        return_status: string | null;
+      }>(
+        db,
+        "orders",
+        "return_parent_id,order_no,status,return_status",
+        "return_parent_id",
+        parentCandidateIds,
+        (q) => q.order("created_at", { ascending: false }),
+      ),
+      selectIn<{ id: string; order_no: string }>(db, "orders", "id,order_no", "id", parentIds),
+      selectIn<{ order_id: string; rider_id: string | null }>(
+        db,
+        "delivery_assignments",
+        "order_id,rider_id",
+        "order_id",
+        dispatchedIds,
+        (q) => q.order("offered_at", { ascending: false }),
+      ),
+    ]);
+  if (itemsRes.error || historyRes.error) return orders.map(() => null);
+
+  const itemsByOrder = groupBy(itemsRes.data, (it) => it.order_id);
+  const historyByOrder = groupBy(historyRes.data, (h) => h.order_id);
+  const zones = new Map(zonesRes.data.map((z) => [z.id, z]));
+  const couponCodes = new Map(couponsRes.data.map((c) => [c.id, c.code]));
+  // Rows arrive newest-first, so the first child/assignment per order wins —
+  // the same "latest" the per-order `.limit(1)` used to pick.
+  const latestChild = new Map<string, (typeof childrenRes.data)[number]>();
+  for (const c of childrenRes.data) {
+    if (!latestChild.has(c.return_parent_id)) latestChild.set(c.return_parent_id, c);
+  }
+  const parentNos = new Map(parentsRes.data.map((p) => [p.id, p.order_no]));
+  const latestRiderByOrder = new Map<string, string>();
+  for (const a of assignmentsRes.data) {
+    if (!latestRiderByOrder.has(a.order_id) && a.rider_id) {
+      latestRiderByOrder.set(a.order_id, a.rider_id);
+    }
   }
 
-  // Slice 9 rider-leg: attach the assigned rider when dispatch has started.
-  if (["courier-assigned", "out-for-delivery", "delivered"].includes(domain.status)) {
-    const { data: assignment } = await db
-      .from("delivery_assignments")
-      .select("rider_id")
-      .eq("order_id", order.id)
-      .order("offered_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const riderId = (assignment as { rider_id?: string } | null)?.rider_id;
-    if (riderId) {
-      const { data: rider } = await db
-        .from("riders")
-        .select("id,name,phone,rating_avg,rating_count")
-        .eq("id", riderId)
-        .maybeSingle();
-      const r = rider as
-        | {
-            id: string;
-            name: string;
-            phone: string;
-            rating_avg: number;
-            rating_count: number;
-          }
-        | null;
+  const productIds = [
+    ...new Set(itemsRes.data.map((it) => it.product_id).filter((id): id is string => !!id)),
+  ];
+  const riderIds = [...new Set(latestRiderByOrder.values())];
+  const [pRes, mRes, rRes] = await Promise.all([
+    selectIn<{ id: string; slug: string; warranty_days: number | null }>(
+      db,
+      "products",
+      "id,slug,warranty_days",
+      "id",
+      productIds,
+    ),
+    selectIn<{ product_id: string; url: string }>(
+      db,
+      "product_media",
+      "product_id,url",
+      "product_id",
+      productIds,
+      (q) => q.eq("type", "image").order("sort_order"),
+    ),
+    selectIn<{
+      id: string;
+      name: string;
+      phone: string;
+      rating_avg: number;
+      rating_count: number;
+    }>(db, "riders", "id,name,phone,rating_avg,rating_count", "id", riderIds),
+  ]);
+  const productRows = new Map(pRes.data.map((p) => [p.id, p]));
+  const images = new Map<string, string>();
+  for (const m of mRes.data) if (!images.has(m.product_id)) images.set(m.product_id, m.url);
+  const products = new Map<string, { slug: string; image: string; warrantyDays?: number }>(
+    productIds.map((id) => [
+      id,
+      {
+        slug: productRows.get(id)?.slug ?? "",
+        image: images.get(id) ?? "",
+        warrantyDays: productRows.get(id)?.warranty_days ?? undefined,
+      },
+    ]),
+  );
+  const riders = new Map(rRes.data.map((r) => [r.id, r]));
+
+  return orders.map((order) => {
+    const zone = zones.get(order.zone_id);
+    const domain = mapOrder({
+      order,
+      items: itemsByOrder.get(order.id) ?? [],
+      history: historyByOrder.get(order.id) ?? [],
+      zoneName: zone?.name ?? order.zone_id,
+      etaLabel: zone?.eta_label ?? "",
+      couponCode: order.coupon_id ? couponCodes.get(order.coupon_id) : undefined,
+      products,
+    });
+    if (!domain) return null;
+    if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+
+    if (!order.is_return) {
+      const c = latestChild.get(order.id);
+      if (c && c.return_status && c.return_status !== "rejected") {
+        domain.returnChild = {
+          orderNo: c.order_no,
+          status: c.status as Order["status"],
+          returnStatus: c.return_status,
+        };
+      }
+    }
+    if (order.is_return && order.return_parent_id) {
+      const no = parentNos.get(order.return_parent_id);
+      if (no) domain.returnParentOrderNo = no;
+    }
+    if (RIDER_VISIBLE_STATUSES.has(domain.status)) {
+      const riderId = latestRiderByOrder.get(order.id);
+      const r = riderId ? riders.get(riderId) : undefined;
       if (r) {
         domain.rider = {
           id: r.id,
@@ -550,9 +740,15 @@ export const toDomain = async (
         };
       }
     }
-  }
-  return domain;
+    return domain;
+  });
 };
+
+/** One order row → domain Order (the batched mapper for a single row). */
+export const toDomain = async (
+  db: SupabaseClient,
+  order: DbOrder,
+): Promise<Order | null> => (await toDomainMany(db, [order]))[0] ?? null;
 
 const findLiveOrderById = async (
   db: SupabaseClient,
