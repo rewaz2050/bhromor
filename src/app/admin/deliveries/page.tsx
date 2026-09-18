@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
-import { useRiders } from "@/lib/use-riders";
+import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
 import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
 import { cashToCollect } from "@/lib/payment-labels";
@@ -34,7 +34,7 @@ export default function AdminDeliveriesPage() {
     offer,
     cancel,
   } = useAdminDeliveries();
-  const { riders } = useRiders();
+  const { riders } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
 
   const counts = useMemo(() => {

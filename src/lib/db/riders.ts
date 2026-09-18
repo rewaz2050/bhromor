@@ -33,6 +33,7 @@ import {
 
 export interface RiderJob {
   id: string;
+  /** PUBLIC order number (`Order.id`, PS-…) — never the row uuid. */
   orderId: string;
   state: DbDeliveryAssignment["state"];
   offeredAt: number;
@@ -52,6 +53,12 @@ export interface RiderSettlement {
 /** Admin dispatcher row: assignment + rider + full order (slice 7 board). */
 export interface RiderDispatchJob {
   id: string;
+  /**
+   * PUBLIC order number (`Order.id`, PS-…). Until 2026-09-18 this carried
+   * the row uuid: the board linked to `/admin/orders/<uuid>` (404 — the
+   * detail page reads by order number) and the live map matched it against
+   * `Order.id`, so every pin painted "unassigned" red.
+   */
   orderId: string;
   riderId: string;
   riderName: string;
@@ -243,7 +250,7 @@ export async function listRiderJobs(
     if (!order) continue;
     jobs.push({
       id: assignment.id,
-      orderId: assignment.order_id,
+      orderId: order.id,
       state: assignment.state,
       offeredAt: epoch(assignment.offered_at),
       expiresAt: epoch(assignment.expires_at),
@@ -291,7 +298,7 @@ export async function listDispatchJobs(
     if (!order || !rider) continue;
     jobs.push({
       id: assignment.id,
-      orderId: assignment.order_id,
+      orderId: order.id,
       riderId: assignment.rider_id,
       riderName: rider.name,
       riderPhone: rider.phone,

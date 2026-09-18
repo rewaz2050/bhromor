@@ -9,8 +9,15 @@ import { useCallback, useEffect, useState } from "react";
 import type { Rider } from "./catalog";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
+import { usePoll } from "./use-poll";
 
-export function useRiders() {
+/**
+ * Rider roster refresh while a staff page that shows online/load state is
+ * open (dispatch board, riders page). 0 = load once (default).
+ */
+export const RIDERS_POLL_MS = 30_000;
+
+export function useRiders(pollMs = 0) {
   const { live, checked } = useStaffLive();
   const [liveRiders, setLiveRiders] = useState<Rider[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +43,9 @@ export function useRiders() {
     }
     void refresh();
   }, [live, refresh]);
+  // Online flags, load and cash-in-hand change from the rider app; the
+  // dispatch board read them once and painted a stale roster (2026-09-18).
+  usePoll(refresh, pollMs, live && pollMs > 0);
 
   const saveRider = useCallback(
     async (r: Rider): Promise<boolean> => {

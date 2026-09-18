@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { LiveDeliveryMap } from "../live-delivery-map";
 import type { Order } from "@/lib/orders";
 
@@ -77,5 +77,79 @@ describe("LiveDeliveryMap Component", () => {
     );
     expect(screen.getByText(/bKash \(ওয়ালেট\)/)).toBeInTheDocument();
     expect(screen.queryByText(/ক্যাশ অন ডেলিভারি/)).not.toBeInTheDocument();
+  });
+
+  describe("rider position polling", () => {
+    afterEach(() => {
+      cleanup();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    const stubFetch = () => {
+      const fetchMock = vi.fn<(input: RequestInfo | URL) => Promise<{ ok: boolean; json: () => Promise<unknown> }>>(async () => ({
+        ok: true,
+        json: async () => ({ lat: 25.0658, lng: 91.395, updatedAt: "2026-09-18T10:00:00Z" }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    };
+
+    it("asks for the rider's position once on mount, then every 15 s while the tab is visible", async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      const fetchMock = stubFetch();
+      render(<LiveDeliveryMap order={withRider} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        "/api/track/rider-location?orderId=PS-20260909-0042&phone=01711111111",
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // The real position lands in the ETA card.
+      expect(screen.getByText(/Rider live 25\.0658,91\.3950/)).toBeInTheDocument();
+    });
+
+    it("stops polling while the tab is hidden", async () => {
+      vi.useFakeTimers();
+      let visibility: DocumentVisibilityState = "visible";
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+      const fetchMock = stubFetch();
+      render(<LiveDeliveryMap order={withRider} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      act(() => {
+        visibility = "hidden";
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Back → an instant catch-up read, then the interval resumes.
+      await act(async () => {
+        visibility = "visible";
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("never polls before the parcel is on the road", async () => {
+      vi.useFakeTimers();
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      const fetchMock = stubFetch();
+      render(<LiveDeliveryMap order={{ ...withRider, status: "courier-assigned" }} />);
+      await act(async () => {
+        vi.advanceTimersByTime(45_000);
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 });

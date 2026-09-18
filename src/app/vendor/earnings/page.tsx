@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Vendor earnings (marketplace slice 3): per-order ledger, payout history,
- * and the running balance. Ledger rows start landing once delivered
- * orders settle (the settlement writer is slice 5).
+ * Vendor earnings: per-order ledger, payout history and the running balance.
+ * A ledger row is written by the database the moment an order is marked
+ * delivered (trg_orders_ledger_on_delivered); payouts are recorded by
+ * PROSANTI when the money is sent.
  */
 
+import Link from "next/link";
 import { useVendor } from "@/components/vendor/vendor-shell";
 import {
   EmptyState,
@@ -25,7 +27,7 @@ export default function VendorEarningsPage() {
     <div>
       <PageHeader
         title="Earnings"
-        sub={`PROSANTI keeps ${Math.round(me?.shop.commissionPct ?? 15)}% per order — rest yours. Delivery charge + surcharges (night/rain/distance/weight/express) go to platform/rider, tip 100% to rider via Cloudinary-tracked settlement.`}
+        sub={`PROSANTI keeps ${Math.round(me?.shop.commissionPct ?? 15)}% of each delivered order's item total — the rest is yours. Delivery charges and any surcharge go to the platform and rider; tips go 100% to the rider.`}
       />
 
       {loading ? (
@@ -36,7 +38,7 @@ export default function VendorEarningsPage() {
         (earnings.ledger.length === 0 && earnings.payouts.length === 0) ? (
         <EmptyState
           title="No earnings yet"
-          sub="Each delivered order adds a ledger row here with your share. Payouts settle to your bKash/bank account."
+          sub="The moment an order is marked delivered, a row appears here with your share. Payouts are sent to your bKash/bank account and listed below."
         />
       ) : (
         <div className="space-y-6">
@@ -92,7 +94,16 @@ export default function VendorEarningsPage() {
                           {formatDateTime(r.at)}
                         </td>
                         <td className="px-4 py-2.5 font-mono text-xs">
-                          {r.orderId.slice(0, 8)}…
+                          {r.orderNo ? (
+                            <Link
+                              href={`/vendor/orders/${encodeURIComponent(r.orderNo)}`}
+                              className="font-semibold text-forest-800 hover:underline"
+                            >
+                              {r.orderNo}
+                            </Link>
+                          ) : (
+                            <span title={r.orderId}>{r.orderId.slice(0, 8)}…</span>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           {formatBdt(r.subtotal)}

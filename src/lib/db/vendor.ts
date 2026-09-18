@@ -367,7 +367,10 @@ export interface VendorEarnings {
   balance: number;
   ledger: {
     id: string;
+    /** Row uuid (kept for keys); shops recognise `orderNo`. */
     orderId: string;
+    /** PUBLIC order number (PS-…); empty when the order row is unreadable. */
+    orderNo: string;
     subtotal: number;
     commission: number;
     payable: number;
@@ -392,7 +395,10 @@ export async function listVendorEarnings(
   const [ledgerRes, payoutRes] = await Promise.all([
     db
       .from("shop_ledger")
-      .select("*")
+      // Left-join the order number: a uuid prefix meant nothing to the shop
+      // (2026-09-18). Left, not inner — a ledger row must never vanish
+      // because its order row happened to be unreadable.
+      .select("*, orders(order_no)")
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(100),
@@ -406,9 +412,16 @@ export async function listVendorEarnings(
   if (ledgerRes.error || payoutRes.error) {
     throw new Error("vendor earnings failed");
   }
-  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r) => ({
+  const ledger = (
+    (ledgerRes.data ?? []) as (DbShopLedger & {
+      orders?: { order_no: string } | { order_no: string }[] | null;
+    })[]
+  ).map((r) => ({
     id: r.id,
     orderId: r.order_id,
+    orderNo: Array.isArray(r.orders)
+      ? (r.orders[0]?.order_no ?? "")
+      : (r.orders?.order_no ?? ""),
     subtotal: r.subtotal,
     commission: r.commission,
     payable: r.payable,

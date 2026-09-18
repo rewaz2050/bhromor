@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
+import { usePoll } from "@/lib/use-poll";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
 import { IconMapPin, IconPhone, IconShield, IconTruck } from "@/components/ui/icons";
@@ -32,33 +33,33 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   const baseProgress = isDelivered ? 1 : isOut ? 0.65 : isAssigned ? 0.25 : 0.05;
   const [riderLive, setRiderLive] = useState<RiderLivePos | null>(null);
 
-  // Free real rider location polling (no cost, uses existing rider/location API)
+  // Real rider position while the parcel is on the road (existing
+  // rider/location API). One read on mount, then every 15 s while the tab is
+  // visible — a tracking tab in a customer's pocket no longer polls all trip.
+  const orderId = order.id;
+  const phone = order.customer.phone;
+  const fetchRiderPos = useCallback(async () => {
+    if (!isOut || !orderId) return;
+    try {
+      const res = await fetch(
+        `/api/track/rider-location?orderId=${encodeURIComponent(orderId)}&phone=${encodeURIComponent(phone)}`,
+      );
+      if (!res.ok) return;
+      const data = (await res.json().catch(() => null)) as {
+        lat?: number | null;
+        lng?: number | null;
+        updatedAt?: string | null;
+      } | null;
+      if (data?.lat && data?.lng) {
+        setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString() });
+      }
+    } catch {}
+  }, [isOut, orderId, phone]);
   useEffect(() => {
-    if (!isOut || !order.id) return;
-    let cancelled = false;
-    const fetchRiderPos = async () => {
-      try {
-        const res = await fetch(
-          `/api/track/rider-location?orderId=${encodeURIComponent(order.id)}&phone=${encodeURIComponent(order.customer.phone)}`,
-        );
-        if (!res.ok) return;
-        const data = (await res.json().catch(() => null)) as {
-          lat?: number | null;
-          lng?: number | null;
-          updatedAt?: string | null;
-        } | null;
-        if (data?.lat && data?.lng && !cancelled) {
-          setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString() });
-        }
-      } catch {}
-    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount; setState lands after the await
     void fetchRiderPos();
-    const id = window.setInterval(fetchRiderPos, 15000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [isOut, order.id, order.customer.phone]);
+  }, [fetchRiderPos]);
+  usePoll(fetchRiderPos, 15_000, isOut && !!orderId);
 
   const transitProgress = Math.min(1, Math.max(0, baseProgress));
 

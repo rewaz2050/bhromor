@@ -16,6 +16,7 @@ import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
 import { useNotifications } from "@/lib/use-notifications";
 import { useStaffLive } from "@/lib/use-staff-live";
+import { useNow } from "@/lib/use-now";
 import AdminDataError from "@/components/admin/admin-data-error";
 import {
   IconBell,
@@ -121,6 +122,9 @@ export default function AdminGate({
 
   const onLogin = pathname.startsWith(ADMIN_LOGIN_PATH);
   const { unread } = useNotifications();
+  // Header date: a clock read in render is impure (hydration mismatch and a
+  // date that never rolls over on a tab left open past midnight).
+  const now = useNow(60_000);
   // The shared staff probe every data hook waits on. When it fails (server
   // unreachable, session not seen, not staff) the pages below would render
   // empty lists as if the shop had no data — say why, once, up here.
@@ -289,7 +293,7 @@ export default function AdminGate({
             </span>
           </div>
           <p className="hidden text-sm text-ink-soft sm:block">
-            {new Date().toLocaleDateString("en-GB", {
+            {new Date(now).toLocaleDateString("en-GB", {
               weekday: "short",
               day: "numeric",
               month: "short",

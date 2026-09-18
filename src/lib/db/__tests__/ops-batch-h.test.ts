@@ -14,7 +14,12 @@ vi.mock("server-only", () => ({}));
 
 import { AdminInputError, advanceOrderAsStaff, counterHandover, isCounterHandoverRefusal } from "../admin";
 import { verifyPaymentAsVendor } from "../vendor";
-import { listAwaitingDispatchOrders, resolveOrderRowIds } from "../riders";
+import {
+  listAwaitingDispatchOrders,
+  listDispatchJobs,
+  listRiderJobs,
+  resolveOrderRowIds,
+} from "../riders";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -255,5 +260,51 @@ describe("listAwaitingDispatchOrders", () => {
     const out = await listAwaitingDispatchOrders(service);
     expect(out.map((o) => o.id)).toEqual(["o-home", "o-return"]);
     expect(spy.mock.calls[0][1].map((r) => (r as { id: string }).id)).toEqual(["o-home", "o-return"]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Job feeds expose the PUBLIC order number                            */
+/* ------------------------------------------------------------------ */
+
+describe("job feeds carry Order.id (order number), not the row uuid", () => {
+  const ORDER_UUID = "0b1c2d3e-4f50-4617-8a9b-0c1d2e3f4a5b";
+  const RIDER_UUID = "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a";
+  const tables: Record<string, unknown[]> = {
+    delivery_assignments: [
+      {
+        id: "asg-1",
+        order_id: ORDER_UUID,
+        rider_id: RIDER_UUID,
+        state: "accepted",
+        offered_at: "2026-09-18T10:00:00Z",
+        expires_at: "2026-09-18T10:01:30Z",
+      },
+    ],
+    orders: [{ id: ORDER_UUID, order_no: "PS-20260918-0042", status: "courier-assigned" }],
+    riders: [{ id: RIDER_UUID, name: "Rafiq", phone: "01712345678" }],
+  };
+  // listRiderJobs expires stale offers first (service-only RPC).
+  const rpc = vi.fn(async () => ({ error: null }));
+  const service = { from: (table: string) => query(tables[table] ?? []), rpc } as never;
+  const domainStub = async (_db: unknown, rows: readonly unknown[]) =>
+    rows.map((r) => ({ id: (r as { order_no: string }).order_no }) as never);
+
+  it("listDispatchJobs: the board's link and the live-map join use the order number", async () => {
+    vi.spyOn(await import("../orders"), "toDomainMany").mockImplementation(domainStub);
+    const [job] = await listDispatchJobs(service);
+    expect(job.orderId).toBe("PS-20260918-0042");
+    expect(job.order.id).toBe(job.orderId);
+    expect(job.riderId).toBe(RIDER_UUID);
+    expect(job.riderName).toBe("Rafiq");
+    expect(job.expiresAt - job.offeredAt).toBe(90_000);
+  });
+
+  it("listRiderJobs: same identity for the rider app", async () => {
+    vi.spyOn(await import("../orders"), "toDomainMany").mockImplementation(domainStub);
+    const [job] = await listRiderJobs(service, RIDER_UUID);
+    expect(rpc).toHaveBeenCalledWith("ps_expire_stale_offers");
+    expect(job.orderId).toBe("PS-20260918-0042");
+    expect(job.id).toBe("asg-1");
   });
 });
