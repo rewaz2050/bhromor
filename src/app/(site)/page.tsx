@@ -14,6 +14,7 @@ import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
 import FlashRail from "@/components/promo/flash-rail";
 import LiveBanner from "@/components/live/live-banner";
+import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 
 /**
  * The storefront deliberately follows one short editorial journey:
@@ -31,6 +32,10 @@ export default function Home() {
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
       {sections.hero && <Hero cms={settings} />}
+      {/* P2 #20 — the first question is "do you come to my para, for how
+          much?": four true-for-every-order facts + a one-field zone check,
+          directly under the hero instead of three pages away. */}
+      <HomeDeliveryCheck />
       {/* A running drop goes above the browsing, not under it — that is the
           one place a countdown actually changes what someone does next. */}
       <FlashRail limit={4} />

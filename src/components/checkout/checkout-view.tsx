@@ -14,7 +14,7 @@
  */
 
 import CheckoutAssurance from "./checkout-assurance";
-import { isPlausibleBdPhone } from "@/lib/phone";
+import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
 import { useBagOffer } from "@/lib/use-bag-offer";
 import { validateGift } from "@/lib/gift";
@@ -92,6 +92,7 @@ import { useSmartCard } from "@/lib/use-smart-card";
 import MapPinPicker from "./map-pin-picker";
 import {
   CheckoutProgress,
+  ReceiptNextSteps,
   MoreOptions,
   OrderErrorBanner,
   StepSection,
@@ -316,6 +317,7 @@ function WalletPaySteps({
           onChange={(e) => onTrxid(e.target.value.toUpperCase().replace(/\s+/g, ""))}
           placeholder="e.g. 9K2L7M4QXZ"
           inputMode="text"
+          autoComplete="off"
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}
@@ -399,6 +401,9 @@ export default function CheckoutView() {
     giftNote?: string;
     /** "Evening (6–9 PM) · 18 Sep, 6:00 pm" — the slot the shop will plan around. */
     slotNote?: string | null;
+    /** P2 #18 — the "what happens next" list is built from THIS order. */
+    isPickup?: boolean;
+    isCourier?: boolean;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -893,6 +898,52 @@ export default function CheckoutView() {
           </p>
         </div>
 
+        {/* P2 #18 — what happens next, for THIS order (wallet / courier / pickup aware) */}
+        <ReceiptNextSteps
+          title={t("checkout.nextTitle")}
+          steps={(() => {
+            const wallet =
+              placed.payment === "bkash" ? "bKash" : placed.payment === "nagad" ? "Nagad" : null;
+            const steps: { title: string; body: string; when?: string | null }[] = [
+              {
+                title: t("track.stepConfirmed"),
+                body: wallet
+                  ? t("checkout.nextVerifyWallet").replace("{wallet}", wallet)
+                  : t("checkout.nextConfirmCall"),
+                when: lang === "bn" ? "কিছুক্ষণের মধ্যে" : "shortly",
+              },
+              placed.isPickup
+                ? {
+                    title: lang === "bn" ? "পিকআপ" : "Pickup",
+                    body: t("checkout.nextPickup").replace("{hub}", SUNAMGANJ_HUB),
+                    when: placed.eta,
+                  }
+                : placed.isCourier
+                  ? {
+                      title: lang === "bn" ? "কুরিয়ার" : "Courier",
+                      body: t("checkout.nextCourier").replace("{eta}", courierEta(lang)),
+                      when: null,
+                    }
+                  : {
+                      title: t("track.stepPickedUp"),
+                      body: t("checkout.nextPacked"),
+                      when: placed.slotNote ?? placed.eta,
+                    },
+            ];
+            if (!placed.isPickup) {
+              steps.push({
+                title: t("track.stepDelivered"),
+                body: wallet
+                  ? t("checkout.nextDeliverPaid")
+                  : t("checkout.nextDeliverPin").replace("{total}", formatBdt(placed.total)),
+                when: null,
+              });
+            }
+            return steps;
+          })()}
+          footnote={t("checkout.nextCancelHint")}
+        />
+
         {placed.payment && placed.payment !== "cod" && (
           <div
             role="status"
@@ -1313,6 +1364,8 @@ export default function CheckoutView() {
           : fullAddress,
         deliveryCode: data.order.deliveryCode,
         payment: data.order.payment,
+        isPickup: form.isPickup,
+        isCourier: !form.isPickup && isCourierZone(derivedZoneId),
         cardFull: data.smartCard?.justCompleted ?? false,
         giftNote: giftCheck.value.isGift
           ? [
@@ -1528,7 +1581,7 @@ export default function CheckoutView() {
                 autoComplete="tel"
                 value={form.phone}
                 onChange={(e) => {
-                  update("phone", e.target.value);
+                  update("phone", tidyPhoneInput(e.target.value));
                   clearFieldError("phone");
                 }}
                 placeholder="017XXXXXXXX"
@@ -1540,7 +1593,7 @@ export default function CheckoutView() {
                 <p id="err-phone" className="mt-1.5 text-xs text-rose-700">{fieldErrors.phone}</p>
               ) : (
                 <p className="mt-1 text-[11px] text-ink-soft">
-                  এই নম্বরে রাইডার কল করবে — ১১ ডিজিটের সঠিক নম্বর দিন।
+                  {t("checkout.phoneHint")}
                 </p>
               )}
             </label>
@@ -1603,6 +1656,7 @@ export default function CheckoutView() {
               </span>
               <select
                 required
+                autoComplete="address-level1"
                 value={form.district}
                 onChange={(e) => {
                   update("district", e.target.value);
@@ -1725,6 +1779,7 @@ export default function CheckoutView() {
               <input
                 value={form.houseNo}
                 onChange={(e) => update("houseNo", e.target.value)}
+                autoComplete="address-line1"
                 placeholder="যেমন: 12/A, Holding 45"
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
               />
@@ -1737,6 +1792,7 @@ export default function CheckoutView() {
                 list="prosanti-roads"
                 value={form.roadName}
                 onChange={(e) => update("roadName", e.target.value)}
+                autoComplete="address-line2"
                 placeholder="যেমন: College Road, Hospital Road"
                 className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
               />

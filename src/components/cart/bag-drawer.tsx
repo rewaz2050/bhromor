@@ -17,7 +17,7 @@ import {
   DELIVERY_ETA,
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
-import { IconBag, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
+import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -246,32 +246,45 @@ export default function BagDrawer() {
               {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
               {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
+            {/* P2 #19 — ONE primary action. "View bag" and the WhatsApp
+                order used to sit as two more full-width buttons under it,
+                so three equal CTAs competed for the same thumb; they now
+                live behind one quiet "more ways" row. */}
             <Link
               href="/checkout"
               onClick={closeBag}
+              data-testid="bag-checkout"
               className="editorial-button w-full justify-center bg-forest-800 text-white"
             >
               {t("bag.checkout")}
             </Link>
-            <Link
-              href="/cart"
-              onClick={closeBag}
-              className="mt-3 flex min-h-11 items-center justify-center border border-line text-xs uppercase tracking-widest text-ink-soft transition-colors hover:border-forest-400 hover:text-forest-800"
-            >
-              {t("bag.viewBag")}
-            </Link>
-            {bagWaHref ? (
-              <a
-                href={bagWaHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="whatsapp-bag-order"
-                className="mt-3 flex min-h-11 items-center justify-center gap-2 border border-forest-300 bg-forest-50 text-xs font-semibold uppercase tracking-widest text-forest-800 transition-colors hover:bg-forest-100"
-              >
-                <IconSend className="h-3.5 w-3.5" /> {t("bag.orderBagWhatsApp")}
-              </a>
-            ) : null}
-            <p className="mt-4 text-center text-xs text-ink-soft">
+            <details className="group mt-3" data-testid="bag-more-ways">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center gap-1.5 text-xs font-medium uppercase tracking-widest text-ink-soft transition-colors hover:text-forest-800 [&::-webkit-details-marker]:hidden">
+                {t("bag.moreWays")}
+                <IconChevron className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-2 grid gap-2">
+                <Link
+                  href="/cart"
+                  onClick={closeBag}
+                  className="flex min-h-11 items-center justify-center border border-line text-xs uppercase tracking-widest text-ink-soft transition-colors hover:border-forest-400 hover:text-forest-800"
+                >
+                  {t("bag.viewBag")}
+                </Link>
+                {bagWaHref ? (
+                  <a
+                    href={bagWaHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="whatsapp-bag-order"
+                    className="flex min-h-11 items-center justify-center gap-2 border border-forest-300 bg-forest-50 text-xs font-semibold uppercase tracking-widest text-forest-800 transition-colors hover:bg-forest-100"
+                  >
+                    <IconSend className="h-3.5 w-3.5" /> {t("bag.orderBagWhatsApp")}
+                  </a>
+                ) : null}
+              </div>
+            </details>
+            <p className="mt-3 text-center text-xs text-ink-soft">
               {t("bag.cashQuality")}
             </p>
           </div>

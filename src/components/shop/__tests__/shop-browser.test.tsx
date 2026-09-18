@@ -313,6 +313,23 @@ describe("ShopBrowser", () => {
     expect(gridNames()).toHaveLength(PRODUCTS.length);
   });
 
+  it("names zones by their paras, charge and time — not the internal label (P2 #23)", () => {
+    renderShop();
+    const select = screen.getByLabelText(/deliver to/i) as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent ?? "");
+    const zoneA = DELIVERY_ZONES[0];
+    const optionA = labels.find((l) => l.startsWith("Zone A"))!;
+    expect(optionA).toContain(zoneA.areas[0]);
+    expect(optionA).toContain("৳60");
+    expect(optionA).toContain(zoneA.etaLabel);
+    // Zone D (courier) says days, never "60–80 min".
+    const optionD = labels.find((l) => l.startsWith("Zone D"))!;
+    expect(optionD).toContain("1–3 days by courier");
+    expect(optionD).not.toContain("60–80 min");
+    // The raw "Sadar Core (1.5-2.5km)" wording is gone from the picker.
+    expect(labels.some((l) => l.includes("(1.5-2.5km)"))).toBe(false);
+  });
+
   it("hides closed shops from browse surfaces (slice 4)", () => {
     const shops = launchShops().map(toPublicShop);
     renderShop({ shops: [{ ...shops[0], isOpen: false }] });

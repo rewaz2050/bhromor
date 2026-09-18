@@ -267,3 +267,72 @@ export function StickyOrderBar({
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Receipt — "এরপর কী হবে" (UX audit 2026-09-18, P2 #18)               */
+/* ------------------------------------------------------------------ */
+
+export interface ReceiptStep {
+  /** Short label, e.g. "Confirm" — the bold line. */
+  title: string;
+  /** One honest sentence about what happens and who does it. */
+  body: string;
+  /** Optional "when" hint on the right, e.g. "৪৫–৫০ মিনিট". */
+  when?: string | null;
+}
+
+/**
+ * The receipt used to end at "Track" with nothing about what the customer
+ * should expect; first-time buyers then called the shop to ask. Three or four
+ * numbered steps, built from THIS order (wallet vs COD, courier vs rider,
+ * pickup) — never a generic promise.
+ */
+export function ReceiptNextSteps({
+  title,
+  steps,
+  footnote,
+}: {
+  title: string;
+  steps: ReceiptStep[];
+  footnote?: string | null;
+}) {
+  return (
+    <section
+      aria-labelledby="receipt-next-title"
+      className="mx-auto mt-6 max-w-sm rounded-3xl bg-paper p-6 text-left ring-1 ring-line"
+      data-testid="receipt-next-steps"
+    >
+      <h2
+        id="receipt-next-title"
+        className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft"
+      >
+        {title}
+      </h2>
+      <ol className="mt-4 space-y-4">
+        {steps.map((step, index) => (
+          <li key={index} className="relative flex gap-3 pl-0">
+            <span className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-forest-800 text-[0.7rem] font-bold text-ivory-50">
+              {index + 1}
+            </span>
+            {index < steps.length - 1 ? (
+              <span
+                aria-hidden="true"
+                className="absolute left-[0.85rem] top-7 h-[calc(100%-0.25rem)] w-px bg-line"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="flex items-baseline justify-between gap-3 text-sm font-semibold text-ink">
+                <span>{step.title}</span>
+                {step.when ? (
+                  <span className="shrink-0 text-[11px] font-medium text-ink-soft">{step.when}</span>
+                ) : null}
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-ink-soft">{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {footnote ? <p className="mt-4 text-[11px] leading-5 text-ink-soft">{footnote}</p> : null}
+    </section>
+  );
+}

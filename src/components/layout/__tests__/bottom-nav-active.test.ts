@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 vi.mock("@/components/cart/cart-provider", () => ({ useCart: () => ({ openBag: () => {}, itemCount: 0 }) }));
 vi.mock("@/components/i18n/language-provider", () => ({ useLanguage: () => ({ t: (k: string) => k }) }));
 vi.mock("../mobile-nav", () => ({ default: () => null }));
+vi.mock("@/lib/use-customer", () => ({ useCustomer: () => ({ customer: null, checked: true }) }));
 
 import { activeTab } from "../bottom-nav";
 
@@ -32,6 +33,16 @@ describe("bottom nav active tab", () => {
     expect(activeTab("/wishlist", "/wishlist")).toBe(true);
     expect(activeTab("/wishlist/shared", "/wishlist")).toBe(true);
     expect(activeTab("/shop", "/wishlist")).toBe(false);
+  });
+
+  it("lights Orders on the tracker, the account and returns (P2 #24)", () => {
+    for (const href of ["/track", "/account"]) {
+      for (const path of ["/track", "/account", "/returns", "/account/orders"]) {
+        expect(activeTab(path, href), `${path} ← ${href}`).toBe(true);
+      }
+      expect(activeTab("/shop", href)).toBe(false);
+      expect(activeTab("/wishlist", href)).toBe(false);
+    }
   });
 
   it("is quiet before the pathname is known", () => {

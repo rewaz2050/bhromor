@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { tidyPhoneInput } from "@/lib/phone";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -260,11 +261,12 @@ export default function AccountView() {
                 <input
                   id="ac-phone"
                   required
-                  inputMode="numeric"
+                  type="tel"
+                  inputMode="tel"
                   autoComplete="tel"
                   placeholder="01712345678"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
                   disabled={busy}
                   className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
                 />

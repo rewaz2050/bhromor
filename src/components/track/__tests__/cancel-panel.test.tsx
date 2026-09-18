@@ -100,7 +100,7 @@ describe("TrackView — customer cancel", () => {
       expect(screen.getByTestId("cancel-message").textContent).toMatch(/Order cancelled/),
     );
     // The timeline now reads as cancelled — no refetch needed.
-    expect(screen.getByText(/This order was cancelled/)).toBeInTheDocument();
+    expect(screen.getByTestId("order-now")).toHaveAttribute("data-stage", "cancelled");
     expect(screen.queryByRole("button", { name: "Cancel this order" })).not.toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe("TrackView — customer cancel", () => {
       expect(screen.getByTestId("cancel-message").textContent).toMatch(/already packed/),
     );
     // Still confirmed on screen — we did not pretend.
-    expect(screen.queryByText(/This order was cancelled/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("order-now")).toHaveAttribute("data-stage", "confirmed");
   });
 
   it("renders no panel for a delivered or cancelled order", async () => {

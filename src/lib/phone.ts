@@ -18,3 +18,24 @@ export const normalizeBdPhone = (phone: string): string => {
 /** Real BD mobile prefixes only — 01[3-9] + 8 digits. */
 export const isPlausibleBdPhone = (phone: string): boolean =>
   /^01[3-9]\d{8}$/.test(normalizeBdPhone(phone));
+
+/** Bengali digits (০–৯) → ASCII — phones typed on a Bangla keyboard. */
+const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+export const asciiDigits = (value: string): string =>
+  value.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)));
+
+/**
+ * What the phone INPUT keeps while the customer types (UX audit 2026-09-18,
+ * P2 #25). Pasted "+880 17-1234 5678" or a Bangla-keyboard "০১৭…" collapses
+ * to the digits a BD mobile actually has; the leading "88"/"+88" is dropped
+ * so the field never shows 13 digits when the placeholder promises 11. The
+ * value is capped at 11 digits — a 12th keystroke is ignored instead of
+ * silently producing an invalid number. Validation stays where it was
+ * (`isPlausibleBdPhone`) — this only tidies, it never rejects.
+ */
+export const tidyPhoneInput = (raw: string): string => {
+  let digits = asciiDigits(raw).replace(/\D/g, "");
+  if (digits.startsWith("880") && digits.length > 11) digits = digits.slice(2);
+  else if (digits.startsWith("88") && digits.length > 11) digits = digits.slice(2);
+  return digits.slice(0, 11);
+};

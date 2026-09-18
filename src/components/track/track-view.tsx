@@ -27,7 +27,9 @@ import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
+import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
 import { courierEta, isCourierZone } from "@/lib/delivery";
+import { tidyPhoneInput } from "@/lib/phone";
 
 /**
  * Public-facing steps — the four milestones from `PUBLIC_STEPS`
@@ -246,7 +248,8 @@ export default function TrackView() {
               pattern="(\+?88)?01[0-9]{9}"
               title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
+              autoComplete="tel"
               placeholder="017XXXXXXXX"
               className="h-12 w-full rounded-2xl bg-ivory-50 pl-11 pr-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
@@ -296,6 +299,9 @@ export default function TrackView() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* P2 #21: the one thing that is true right now (+ the PIN when a rider is on the way) */}
+            <OrderNowBanner key={`now-${order.id}-${order.status}`} order={order} />
+
             {/* P1 #8: wallet-payment state (COD orders render nothing) */}
             <PaymentStatus order={order} />
 
@@ -308,8 +314,10 @@ export default function TrackView() {
               onCancelled={(next) => setResult({ found: true, order: next, via: "live" })}
             />
 
-            {/* Live Interactive Delivery Map & Security PIN */}
-            <LiveDeliveryMap order={order} />
+            {/* Live delivery map & security PIN — only while a rider can
+                actually come (P2 #21): not for pickup, courier, delivered
+                or cancelled orders. */}
+            {showsRiderMap(order) ? <LiveDeliveryMap order={order} /> : null}
 
             {/* P1 #13: return/exchange — status, or the home-pickup request */}
             <ReturnPanel
@@ -325,22 +333,14 @@ export default function TrackView() {
             <WarrantyPanel key={order.id} order={order} />
 
             {/* Timeline */}
-            {order.status === "cancelled" && (
+            {order.status === "cancelled" && contactNumber && (
               <p
-                role="status"
-                className="rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
+                role="note"
+                className="rounded-2xl bg-paper px-5 py-3 text-xs leading-5 text-ink-soft ring-1 ring-line"
               >
-                This order was cancelled. If that looks wrong, {contactNumber ? (
-                  <>
-                    call/WhatsApp us on <span className="font-semibold">{contactNumber}</span>{" "}
-                    with the order ID and we will check it for you.
-                  </>
-                ) : (
-                  <>
-                    contact the shop with the order ID and we will check it
-                    for you.
-                  </>
-                )}
+                This order was cancelled. If that looks wrong, call/WhatsApp us on{" "}
+                <span className="font-semibold text-ink">{contactNumber}</span> with the order ID
+                and we will check it for you.
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
