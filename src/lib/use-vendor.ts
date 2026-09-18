@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { isSupabaseConfigured } from "./env";
+import { usePoll } from "./use-poll";
 import type { Category, Product, Shop } from "./catalog";
 import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
@@ -154,10 +155,23 @@ export const useVendorSession = () => {
 /* Data hooks                                                          */
 /* ------------------------------------------------------------------ */
 
+/** Vendor order queue refresh while the tab is visible (paused when hidden). */
+export const VENDOR_ORDERS_POLL_MS = 20_000;
+
 const useVendorResource = <T,>(
   path: string | null,
   enabled: boolean,
-): { data: T | null; loading: boolean; error: string | null; refresh: () => void } => {
+  /** Background refresh cadence in ms; 0 (default) = load once + manual. */
+  pollMs = 0,
+): {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+  /** Re-read with the loading skeleton (manual retry). */
+  refresh: () => void;
+  /** Re-read in place — keeps the current rows on screen (after an action). */
+  reload: () => void;
+} => {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled && path !== null);
   const [error, setError] = useState<string | null>(null);
@@ -188,35 +202,96 @@ const useVendorResource = <T,>(
     setError(null);
     setNonce((n) => n + 1);
   }, []);
-  return { data, loading, error, refresh };
+  // Background ticks re-read WITHOUT flipping `loading` — the queue must not
+  // blink into a skeleton every 20 s while the shop is looking at it. A
+  // failed silent tick keeps the last good rows (the next tick retries).
+  const silentRefresh = useCallback(() => {
+    setNonce((n) => n + 1);
+  }, []);
+  usePoll(silentRefresh, pollMs, enabled && path !== null && pollMs > 0);
+  return { data, loading, error, refresh, reload: silentRefresh };
+};
+
+/** POST /api/vendor/orders/[orderNo]/advance — the shop's status move. */
+export const advanceVendorOrderRequest = async (
+  orderNo: string,
+  to: string,
+): Promise<Order> => {
+  const data = await vendorSend<{ order: Order }>(
+    `/api/vendor/orders/${encodeURIComponent(orderNo)}/advance`,
+    "POST",
+    { to },
+  );
+  return data.order;
+};
+
+/**
+ * POST /api/vendor/orders/[orderNo]/payment — the shop's decision on a
+ * bKash/Nagad payment (2026-09-18: vendors verify their own wallet money;
+ * the database already authorised the owning shop, only the route was
+ * missing).
+ */
+export const decideVendorPaymentRequest = async (
+  orderNo: string,
+  action: "verified" | "rejected",
+  note?: string,
+): Promise<Order> => {
+  const data = await vendorSend<{ order: Order }>(
+    `/api/vendor/orders/${encodeURIComponent(orderNo)}/payment`,
+    "POST",
+    { action, note },
+  );
+  return data.order;
 };
 
 export const useVendorOrders = (enabled: boolean, status = "all") => {
+  // Before 2026-09-18 the vendor queue never refreshed itself: a new order
+  // stayed invisible until the shop reloaded the page.
   const res = useVendorResource<{ orders: Order[] }>(
     `/api/vendor/orders?status=${encodeURIComponent(status)}`,
     enabled,
+    VENDOR_ORDERS_POLL_MS,
   );
+  const { reload } = res;
   const advance = useCallback(
     async (orderNo: string, to: string): Promise<Order> => {
-      const data = await vendorSend<{ order: Order }>(
-        `/api/vendor/orders/${encodeURIComponent(orderNo)}/advance`,
-        "POST",
-        { to },
-      );
-      res.refresh();
-      return data.order;
+      const order = await advanceVendorOrderRequest(orderNo, to);
+      // In-place re-read: the queue must not collapse into a skeleton after
+      // every Confirm tap (inline actions, 2026-09-18).
+      reload();
+      return order;
     },
-    [res],
+    [reload],
   );
   return { ...res, orders: res.data?.orders ?? [], advance };
 };
 
 export const useVendorOrder = (enabled: boolean, orderNo: string) => {
+  // Polls too: once the shop taps Ready the status is moved by dispatch and
+  // the rider, and the shop should watch that happen without reloading.
   const res = useVendorResource<{ order: Order }>(
     orderNo ? `/api/vendor/orders/${encodeURIComponent(orderNo)}` : null,
     enabled,
+    VENDOR_ORDERS_POLL_MS,
   );
-  return { ...res, order: res.data?.order ?? null };
+  const { reload } = res;
+  const advance = useCallback(
+    async (to: string): Promise<Order> => {
+      const order = await advanceVendorOrderRequest(orderNo, to);
+      reload();
+      return order;
+    },
+    [orderNo, reload],
+  );
+  const decidePayment = useCallback(
+    async (action: "verified" | "rejected", note?: string): Promise<Order> => {
+      const order = await decideVendorPaymentRequest(orderNo, action, note);
+      reload();
+      return order;
+    },
+    [orderNo, reload],
+  );
+  return { ...res, order: res.data?.order ?? null, advance, decidePayment };
 };
 
 export const useVendorProducts = (enabled: boolean) => {

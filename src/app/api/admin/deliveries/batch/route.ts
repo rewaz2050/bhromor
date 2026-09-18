@@ -10,11 +10,11 @@
 import { apiError, apiJson } from "@/lib/api-response";
 import { staffRoute } from "../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
+import { isOrderRowId, resolveOrderRowIds } from "@/lib/db/riders";
 
 export const dynamic = "force-dynamic";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORDER_REF_RE = /^[A-Za-z0-9-]{1,64}$/;
 
 export const POST = staffRoute(
   "deliveries-batch",
@@ -24,18 +24,24 @@ export const POST = staffRoute(
       orderIds?: string[];
     } | null;
     const riderId = body?.riderId?.trim();
-    const orderIds = body?.orderIds;
-    if (!riderId || !Array.isArray(orderIds) || orderIds.length === 0) {
+    const orderRefs = body?.orderIds;
+    if (!riderId || !Array.isArray(orderRefs) || orderRefs.length === 0) {
       return apiError("riderId and orderIds required", 422);
     }
-    if (orderIds.length > 5) {
+    if (orderRefs.length > 5) {
       return apiError("max 5 orders per batch", 422);
     }
-    if (!UUID_RE.test(riderId) || !orderIds.every((id) => typeof id === "string" && UUID_RE.test(id))) {
+    // Order references may be public order numbers (what the panel holds)
+    // or row ids; the rider is always a row id.
+    if (
+      !isOrderRowId(riderId) ||
+      !orderRefs.every((id) => typeof id === "string" && ORDER_REF_RE.test(id.trim()))
+    ) {
       return apiError("riderId and orderIds must be ids", 422);
     }
     const supa = getSupabaseService();
     if (!supa) return apiError("service not configured", 503);
+    const orderIds = await resolveOrderRowIds(supa, orderRefs);
     const { data, error } = await supa.rpc("ps_assign_batch_to_rider", {
       p_rider_id: riderId,
       p_order_ids: orderIds,

@@ -14,10 +14,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Order, OrderStatus } from "./orders";
 import { useStaffLive } from "./use-staff-live";
+import { usePoll } from "./use-poll";
 import { AdminApiError, apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 /** Rows per page — one call covers a typical shop's whole recent history. */
 export const ORDERS_PAGE_SIZE = 200;
+
+/** Background refresh cadence while the tab is visible (paused when hidden). */
+export const ORDERS_POLL_MS = 10_000;
 
 interface OrdersPageResponse {
   orders: Order[];
@@ -106,12 +110,11 @@ export function useOrders(options: UseOrdersOptions = {}) {
     if (!live) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
-    // Free real-time polling every 10s — admin sees new orders instantly without cost
-    const id = window.setInterval(() => {
-      void refresh();
-    }, 10000);
-    return () => window.clearInterval(id);
   }, [live, refresh]);
+  // Background refresh — pauses while the tab is hidden and refreshes the
+  // moment staff look at it again (usePoll), so a forgotten tab neither
+  // burns the rate limit nor shows stale rows on return.
+  usePoll(refresh, ORDERS_POLL_MS, live);
 
   const advance = useCallback(
     async (

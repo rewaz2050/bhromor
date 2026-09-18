@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
+import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
+import { useNow } from "@/lib/use-now";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -27,7 +29,20 @@ interface RiderTask {
   id: string;
   order: Order;
   state: "offered" | "accepted" | "picked_up" | "delivered";
+  /** When an OFFER lapses (epoch ms) — the rider has until then to accept. */
+  expiresAt: number;
 }
+
+/** Google Maps deep link — opens the app on a phone, the site on a desktop. */
+const mapsHref = (order: Order): string | null => {
+  if (order.lat && order.lng) return `https://www.google.com/maps?q=${order.lat},${order.lng}`;
+  const q = [order.customer.address, order.customer.area, "Sunamganj"].filter(Boolean).join(", ");
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
+};
+
+/** Seconds left on an offer, never negative. */
+const secondsLeft = (expiresAt: number, now: number): number =>
+  Math.max(0, Math.ceil((expiresAt - now) / 1000));
 
 export default function RiderPage() {
   const session = useRiderSession();
@@ -83,9 +98,14 @@ export default function RiderPage() {
               : job.state === "picked_up"
                 ? "picked_up"
                 : "accepted",
+          expiresAt: job.expiresAt,
         })),
     [riderJobsApi.jobs],
   );
+  // Ticks once a second only while an offer is on screen (the countdown);
+  // otherwise once a minute for the "ago" labels.
+  const hasOffer = tasks.some((t) => t.state === "offered");
+  const now = useNow(hasOffer ? 1000 : 60_000);
 
   const deliveredCount = useMemo(
     () => riderJobsApi.jobs.filter((j) => j.state === "delivered").length,
@@ -481,6 +501,10 @@ export default function RiderPage() {
                 const isReady =
                   task.state === "accepted" || task.state === "offered";
                 const order = task.order;
+                const cash = cashToCollect(order);
+                const pay = paymentSummary(order);
+                const maps = mapsHref(order);
+                const left = task.state === "offered" ? secondsLeft(task.expiresAt, now) : null;
 
                 return (
                   <div
@@ -509,6 +533,21 @@ export default function RiderPage() {
                       </span>
                     </div>
 
+                    {left !== null && (
+                      <div
+                        className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold ${
+                          left <= 20 ? "bg-rose-50 text-rose-800 ring-1 ring-rose-200" : "bg-gold-100 text-forest-900 ring-1 ring-gold-300"
+                        }`}
+                        data-testid="rider-offer-countdown"
+                        aria-live="polite"
+                      >
+                        <span>⏳ একসেপ্ট করার সময় বাকি</span>
+                        <span className="font-mono text-sm tabular-nums">
+                          {left > 0 ? `${left} সেকেন্ড` : "সময় শেষ — রিফ্রেশ হচ্ছে…"}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Customer & Area details */}
                     <div className="rounded-xl bg-ivory-100/60 p-3 space-y-2 text-xs">
                       <div className="flex items-start gap-2">
@@ -524,12 +563,29 @@ export default function RiderPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium">
-                        <span className="text-ink-soft">ক্যাশ সংগ্রহ করতে হবে:</span>
-                        <strong className="text-forest-900 font-bold text-sm">
-                          {formatBdt(order.total)}
-                        </strong>
-                      </div>
+                      {order.customer.note && (
+                        <p className="rounded-lg bg-paper px-2 py-1.5 text-[11px] italic text-ink ring-1 ring-line/60" data-testid="rider-note">
+                          📝 কাস্টমারের নোট: “{order.customer.note}”
+                        </p>
+                      )}
+
+                      {cash > 0 ? (
+                        <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium" data-testid="rider-cash">
+                          <span className="text-ink-soft">💵 ক্যাশ সংগ্রহ করতে হবে (COD):</span>
+                          <strong className="text-forest-900 font-bold text-sm">
+                            {formatBdt(cash)}
+                          </strong>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium" data-testid="rider-cash">
+                          <span className="text-emerald-800">
+                            ✅ {order.isReturn
+                              ? "রিটার্ন — কোনো টাকা নিবেন না"
+                              : `${pay.wallet ?? "অনলাইনে"}-এ পেমেন্ট হয়ে গেছে — কোনো টাকা নিবেন না`}
+                          </span>
+                          <strong className="text-sm font-bold text-emerald-800">৳০</strong>
+                        </div>
+                      )}
                       {(order.tipAmount ?? 0) > 0 && (
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-forest-700">💝 Tip for you</span>
@@ -558,6 +614,17 @@ export default function RiderPage() {
                         >
                           <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
                         </a>
+                        {maps && !order.isPickup && (
+                          <a
+                            href={maps}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                            data-testid="rider-maps"
+                          >
+                            <IconMapPin className="h-4 w-4 text-emerald-700" /> ম্যাপ
+                          </a>
+                        )}
 
                       {task.state === "offered" ? (
                         <>

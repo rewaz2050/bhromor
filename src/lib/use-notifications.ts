@@ -3,7 +3,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { unreadCountOf, type Notif } from "./notification-store";
 import { useStaffLive } from "./use-staff-live";
+import { usePoll } from "./use-poll";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
+
+/** Inbox refresh cadence while the tab is visible (paused when hidden). */
+export const NOTIFICATIONS_POLL_MS = 15_000;
 
 /**
  * Staff inbox (§35) — live only. Staff sessions read their own notices +
@@ -91,16 +95,15 @@ export function useNotifications() {
     if (!live) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
-    // Poll every 15s for new orders — free, no external cost, Sunamganj Sadar live
-    const id = window.setInterval(() => {
-      void refresh();
-    }, 15000);
-    // Request browser notification permission once (free)
+    // Ask for browser notifications once, so a new order can beep even when
+    // staff are in another tab.
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => {});
     }
-    return () => window.clearInterval(id);
   }, [live, refresh]);
+  // Visibility-aware poll (see use-poll.ts): stops in a hidden tab, refreshes
+  // on return, so the unread counter is current the moment staff look.
+  usePoll(refresh, NOTIFICATIONS_POLL_MS, live);
 
   useEffect(() => {
     if (live && liveNotifs) {

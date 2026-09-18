@@ -32,7 +32,17 @@ interface PaymentCardProps {
   orderStatus?: string;
   /** Re-read the order after a decision. */
   onDecided: () => Promise<unknown> | void;
+  /**
+   * Who is deciding. The staff card posts to /api/admin/…; the vendor card
+   * (2026-09-18) posts to /api/vendor/… — the shop verifies its own wallet.
+   */
+  actor?: "staff" | "vendor";
 }
+
+const endpointFor = (actor: "staff" | "vendor", orderNo: string): string =>
+  actor === "vendor"
+    ? `/api/vendor/orders/${encodeURIComponent(orderNo)}/payment`
+    : `/api/admin/orders/${encodeURIComponent(orderNo)}/payment`;
 
 const fmt = (ms?: number): string =>
   ms
@@ -55,6 +65,7 @@ export default function PaymentCard({
   customerPhone,
   orderStatus,
   onDecided,
+  actor = "staff",
 }: PaymentCardProps) {
   const [busy, setBusy] = useState<"verified" | "rejected" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +86,11 @@ export default function PaymentCard({
     setBusy(action);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/admin/orders/${encodeURIComponent(orderNo)}/payment`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action, note }),
-        },
-      );
+      const res = await fetch(endpointFor(actor, orderNo), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, note }),
+      });
       const data = (await res.json().catch(() => null)) as {
         error?: string;
       } | null;

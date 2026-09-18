@@ -22,8 +22,11 @@ export function AdminBatchAssign({
   // Mirrors ps_assign_batch_to_rider (202609160005): only orders that are
   // ready to leave the shop (or offered/accepted but not yet picked up) can
   // be routed. Listing confirmed/preparing here would just get them skipped.
+  // Counter pickups never ride (the customer collects at Traffic Point).
   const pendingOrders = orders.filter(
-    (o) => o.status === "ready-for-pickup" || o.status === "courier-assigned"
+    (o) =>
+      (o.status === "ready-for-pickup" || o.status === "courier-assigned") &&
+      !o.isPickup,
   );
   const onlineRiders = riders.filter((r) => r.isOnline && r.status === "active");
 
@@ -81,8 +84,9 @@ export function AdminBatchAssign({
                   onChange={() => toggleOrder(o.id)}
                   className="h-4 w-4"
                 />
-                <span className="font-mono text-[11px]">{o.id.slice(0, 8)}</span>
+                <span className="font-mono text-[11px]">{o.id}</span>
                 <span className="text-xs">{o.customer.area} · {formatBdt(o.total)}</span>
+                {o.isReturn && <span className="text-[10px] font-bold text-amber-800">↩ return</span>}
                 {o.lat && o.lng && <span className="text-[10px] text-sky-700">📍</span>}
               </label>
             ))}

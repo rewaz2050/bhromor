@@ -20,6 +20,8 @@ import {
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { deliverySlotLabel, deliverySlotSummary } from "@/lib/delivery-slots";
+import { paymentSummary } from "@/lib/payment-labels";
+import { PICKUP_HANDOVER_LABEL, PICKUP_HANDOVER_NOTE } from "@/lib/order-actions";
 import {
   DOT,
   StatusBadge,
@@ -135,14 +137,18 @@ export default function AdminOrderDetailPage() {
   const flowPos = flowIndex(order.status);
   const isCancelled = order.status === "cancelled";
   const phase = publicPhase(order.status);
+  const pay = paymentSummary(order);
+  // A counter pickup never meets a rider: once it is ready, the shop closes
+  // it when the customer collects (the server walks the rider states).
+  const pickupHandover = riderOwned && order.isPickup && !order.isReturn;
 
-  const doAdvance = (to: OrderStatus) => {
+  const doAdvance = (to: OrderStatus, note?: string) => {
     if (to === "cancelled") {
       if (!window.confirm("Cancel this order? Reserved stock is released.")) return;
       void cancel(order.id);
       return;
     }
-    void advance(order.id, to);
+    void advance(order.id, to, note);
   };
 
   return (
@@ -236,7 +242,29 @@ export default function AdminOrderDetailPage() {
             )}
           </>
         )}
-        {!order.isReturn && riderOwned && (
+        {pickupHandover && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (!window.confirm(`Customer collected order ${order.id} at Traffic Point?`)) return;
+                doAdvance("delivered", PICKUP_HANDOVER_NOTE);
+              }}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+            >
+              {PICKUP_HANDOVER_LABEL}
+              <IconArrowRight className="h-4 w-4" />
+            </button>
+            <p className="text-sm text-ink-soft">
+              Counter pickup — no rider. Check the customer&apos;s PIN{" "}
+              <span className="font-mono font-semibold text-forest-900">
+                {order.deliveryCode ?? getDeliveryCode(order.id)}
+              </span>{" "}
+              and hand the parcel over.
+            </p>
+          </>
+        )}
+        {!order.isReturn && riderOwned && !pickupHandover && (
           <p className="text-sm text-ink-soft">
             {order.status === "ready-for-pickup" && !order.rider
               ? "Waiting for a rider — the nearest online rider has been offered this order. Manual assign: Admin → Deliveries."
@@ -250,7 +278,7 @@ export default function AdminOrderDetailPage() {
           onClick={() => window.print()}
           className="rounded-full bg-paper px-5 py-2.5 text-sm font-semibold ring-1 ring-line hover:bg-ivory-100"
         >
-          🖨️ Print Invoice (free)
+          🖨️ Print invoice
         </button>
         <button
           type="button"
@@ -269,7 +297,7 @@ export default function AdminOrderDetailPage() {
           }}
           className="rounded-full bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white"
         >
-          WhatsApp Customer (free)
+          WhatsApp customer
         </button>
       </div>
 
@@ -356,9 +384,21 @@ export default function AdminOrderDetailPage() {
               </div>
             )}
             <div className="flex justify-between border-t border-line pt-3 text-base font-semibold text-forest-900">
-              <dt>Total (COD){order.isPickup ? " — Pickup" : ""}</dt>
+              <dt>
+                Total · {pay.short}
+                {order.isPickup ? " · counter pickup" : ""}
+              </dt>
               <dd>{formatBdt(order.total)}</dd>
             </div>
+            <p className="text-xs text-ink-soft">
+              {order.isReturn
+                ? "Return leg — the rider collects goods, not money."
+                : pay.prepaid
+                  ? `${pay.label} — the rider collects nothing at the door.`
+                  : order.isPickup
+                    ? "Cash at the counter when the customer collects."
+                    : `Cash on delivery — the rider collects ${formatBdt(order.total)}.`}
+            </p>
           </dl>
         </section>
 

@@ -20,17 +20,11 @@ import {
 } from "@/components/vendor/vendor-ui";
 import { formatBdt } from "@/lib/format";
 import type { OrderStatus } from "@/lib/orders";
-import {
-  useVendorOrder,
-  useVendorOrders,
-  vendorErrorMessage,
-} from "@/lib/use-vendor";
-
-const NEXT_ACTION: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
-  pending: { to: "confirmed", label: "Confirm order" },
-  confirmed: { to: "ready-for-pickup", label: "Ready — call rider" },
-  preparing: { to: "ready-for-pickup", label: "Ready — call rider" },
-};
+import { paymentSummary } from "@/lib/payment-labels";
+import { canQuickCancel, primaryAction } from "@/lib/order-actions";
+import { useVendorOrder, vendorErrorMessage } from "@/lib/use-vendor";
+import PaymentCard from "@/components/admin/payment-card";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 
 /** Optional extra step — packing takes a while and the customer should see it. */
 const OPTIONAL_ACTION: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
@@ -89,18 +83,19 @@ export default function VendorOrderDetailPage({
   const orderNo = decodeURIComponent(id);
   const me = useVendor();
   const authed = me !== null;
-  const { order, loading, error, refresh } = useVendorOrder(authed, orderNo);
-  const { advance } = useVendorOrders(authed);
+  const { order, loading, error, refresh, reload, advance } = useVendorOrder(authed, orderNo);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const move = async (to: OrderStatus) => {
     if (!order) return;
+    if (to === "cancelled" && !window.confirm(`Cancel order ${order.id}? Reserved stock is released.`)) return;
     setBusy(to);
     setActionError(null);
     try {
-      await advance(order.id, to);
-      refresh();
+      // `advance` re-reads in place (no skeleton flash) — the status pill
+      // and buttons update while the rest of the page stays put.
+      await advance(to);
     } catch (err) {
       setActionError(vendorErrorMessage(err));
     } finally {
@@ -138,15 +133,20 @@ export default function VendorOrderDetailPage({
     );
   }
 
-  const next = NEXT_ACTION[order.status];
+  const action = primaryAction(order, "vendor");
+  const next = action?.kind === "action" ? action : null;
   const optional = OPTIONAL_ACTION[order.status];
-  const canCancel = ["pending", "confirmed", "preparing"].includes(order.status);
+  const canCancel = canQuickCancel(order);
+  const pay = paymentSummary(order);
+  const where = order.isPickup
+    ? "Counter pickup — customer collects at Traffic Point"
+    : order.zoneName;
 
   return (
     <div>
       <PageHeader
         title={order.id}
-        sub={`${formatDateTime(order.createdAt)} · ${order.zoneName} · Cash on delivery`}
+        sub={`${formatDateTime(order.createdAt)} · ${where} · ${pay.label}`}
         action={<StatusPill status={order.status} />}
       />
 
@@ -158,6 +158,28 @@ export default function VendorOrderDetailPage({
 
       {(order.status === "confirmed" || order.status === "preparing") && (
         <PrepTimer createdAt={order.createdAt} prepMinutes={me?.shop.prepMinutes ?? 15} />
+      )}
+
+      {pay.awaitingVerification && order.status !== "cancelled" && (
+        <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+          <p className="font-semibold">
+            💳 {pay.wallet} payment of {formatBdt(order.total)} is waiting for YOUR check.
+          </p>
+          <p className="mt-1 text-xs leading-5">
+            Open your {pay.wallet} app, find the TRXID below, then verify — the order cannot be
+            marked Ready until you do. No money? Reject it and the order is cancelled.
+          </p>
+        </div>
+      )}
+      {action?.kind === "blocked" && (
+        <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+          {action.reason}.
+        </p>
+      )}
+      {action?.kind === "wait" && (
+        <p className="mb-4 rounded-xl bg-teal-50 px-4 py-3 text-sm text-teal-900 ring-1 ring-teal-200">
+          {action.reason}
+        </p>
       )}
 
       {(next || canCancel) && (
@@ -172,7 +194,7 @@ export default function VendorOrderDetailPage({
               {busy === next.to ? "Saving…" : next.label}
             </button>
           )}
-          {optional && (
+          {optional && !pay.awaitingVerification && (
             <button
               type="button"
               onClick={() => move(optional.to)}
@@ -193,11 +215,6 @@ export default function VendorOrderDetailPage({
             </button>
           )}
         </div>
-      )}
-      {order.status === "ready-for-pickup" && (
-        <p className="mb-4 rounded-xl bg-teal-50 px-4 py-3 text-sm text-teal-900 ring-1 ring-teal-200">
-          Ready and waiting — PROSANTI dispatch assigns a courier from here.
-        </p>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -237,28 +254,76 @@ export default function VendorOrderDetailPage({
               <dt className="text-ink-soft">Delivery</dt>
               <dd className="font-medium">{formatBdt(order.deliveryCharge)}</dd>
             </div>
+            {order.coupon && (
+              <div className="flex justify-between text-emerald-700">
+                <dt>Coupon · {order.coupon.code}</dt>
+                <dd>−{formatBdt(order.coupon.discount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between text-base font-semibold text-forest-900">
-              <dt>Total (COD)</dt>
+              <dt>Total · {pay.short}</dt>
               <dd>{formatBdt(order.total)}</dd>
             </div>
+            <p className="text-xs text-ink-soft">
+              {pay.prepaid
+                ? `${pay.label} — nobody collects cash.`
+                : order.isPickup
+                  ? "Cash at your counter when the customer collects."
+                  : "Cash on delivery — the rider collects and settles with PROSANTI."}
+            </p>
           </dl>
+          <PaymentCard
+            actor="vendor"
+            orderNo={order.id}
+            payment={order.payment}
+            paymentRef={order.paymentRef}
+            paymentStatus={order.paymentStatus}
+            paymentVerifiedAt={order.paymentVerifiedAt}
+            total={order.total}
+            customerPhone={order.customer.phone}
+            orderStatus={order.status}
+            onDecided={reload}
+          />
         </section>
 
         <div className="space-y-4">
           <section className="rounded-2xl bg-paper p-5 ring-1 ring-line">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-              Customer + delivery
+              {order.isPickup ? "Customer — collects at the counter" : "Customer + delivery"}
             </h3>
             <p className="mt-2 text-sm font-semibold text-forest-900">
               {order.customer.name}
             </p>
-            <p className="text-sm text-ink-soft">{order.customer.phone}</p>
-            <p className="mt-1 text-sm text-ink-soft">
-              {order.customer.address ?? order.customer.area} · {order.zoneName}
+            <p className="text-sm text-ink-soft">
+              <a href={`tel:${order.customer.phone}`} className="underline underline-offset-2">
+                {order.customer.phone}
+              </a>
             </p>
-            {order.etaLabel && (
-              <p className="mt-1 text-xs text-ink-soft">
-                Promised: {order.etaLabel}
+            {order.isPickup ? (
+              <p className="mt-1 text-sm text-ink-soft">
+                🏪 No delivery — the customer picks this up at Traffic Point
+                {deliverySlotSummary(order) ? ` · ${deliverySlotSummary(order)}` : ""}.
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-ink-soft">
+                  {order.customer.address ?? order.customer.area} · {order.zoneName}
+                </p>
+                {deliverySlotSummary(order) && (
+                  <p className="mt-1 text-xs font-semibold text-sky-900">
+                    🕒 Customer asked for: {deliverySlotSummary(order)}
+                  </p>
+                )}
+                {order.etaLabel && (
+                  <p className="mt-1 text-xs text-ink-soft">
+                    Promised: {order.etaLabel}
+                  </p>
+                )}
+              </>
+            )}
+            {order.customer.note && (
+              <p className="mt-2 rounded-xl bg-ivory-100 px-3 py-2 text-xs italic text-ink">
+                “{order.customer.note}”
               </p>
             )}
           </section>

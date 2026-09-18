@@ -314,6 +314,12 @@ export async function advanceOrderAsStaff(
     // works; /api/health names the migration to paste.
     rpcError = await legacyTwoStepReady(db, orderId, cleanNote);
   }
+  if (rpcError && isCounterHandoverRefusal(rpcError, to)) {
+    // Counter pickup handed over at the shop (2026-09-18): the status machine
+    // only knows the rider path, so walk it — the customer already has the
+    // parcel, and no rider was ever involved.
+    rpcError = await counterHandover(db, orderId, rpcError.message, cleanNote);
+  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
@@ -341,6 +347,77 @@ export async function advanceOrderAsStaff(
 }
 
 const TWO_TAP_FILE = "supabase/migrations/202609170001_two_tap_order_flow.sql";
+
+/** Rider-path states between "ready" and "delivered", in machine order. */
+const RIDER_PATH: readonly OrderStatus[] = [
+  "ready-for-pickup",
+  "courier-assigned",
+  "out-for-delivery",
+  "delivered",
+];
+
+/**
+ * "Handed to customer" on a counter pickup asks for `delivered` from one of
+ * the rider states; ps_advance_order answers exactly
+ * `illegal transition <rider state> -> delivered`. Nothing else matches.
+ */
+export const isCounterHandoverRefusal = (
+  rpcError: { message?: string | null },
+  to: string,
+): boolean => {
+  if (to !== "delivered") return false;
+  const m = /illegal transition ([a-z-]+) -> delivered/i.exec(rpcError.message ?? "");
+  return m !== null && RIDER_PATH.slice(0, -1).includes(m[1] as OrderStatus);
+};
+
+/**
+ * Walk ready-for-pickup → courier-assigned → out-for-delivery → delivered
+ * as separate RPCs — ONLY for a counter pickup (`is_pickup`), checked here
+ * against the row so a home-delivery order can never be "delivered" from the
+ * list by mistake. Any live rider offer for the order is withdrawn first
+ * (auto-dispatch may have offered it before this guard existed). Returns the
+ * error of whichever step failed, null on success.
+ */
+export async function counterHandover(
+  db: SupabaseClient,
+  orderId: string,
+  refusal: string,
+  note: string | null,
+): Promise<PostgrestError | null> {
+  // The original refusal, re-thrown unchanged when this is not a pickup.
+  const keep = { message: refusal, code: "P0001", details: "", hint: "", name: "PostgrestError" } as PostgrestError;
+  const { data } = await db
+    .from("orders")
+    .select("is_pickup")
+    .eq("id", orderId)
+    .single();
+  if (!(data as { is_pickup?: boolean } | null)?.is_pickup) return keep;
+  const from = /illegal transition ([a-z-]+) ->/i.exec(refusal)?.[1] as OrderStatus | undefined;
+  const start = from ? RIDER_PATH.indexOf(from) : -1;
+  if (start < 0) return keep;
+
+  const live = await db
+    .from("delivery_assignments")
+    .select("id")
+    .eq("order_id", orderId)
+    .in("state", ["offered", "accepted"]);
+  for (const row of (live.data ?? []) as { id: string }[]) {
+    const cancelled = await db.rpc("ps_cancel_assignment", { p_assignment_id: row.id });
+    if (cancelled.error) return cancelled.error;
+  }
+
+  const steps = RIDER_PATH.slice(start + 1);
+  for (const [i, step] of steps.entries()) {
+    const last = i === steps.length - 1;
+    const res = await db.rpc("ps_advance_order", {
+      p_order_id: orderId,
+      p_to: step,
+      p_note: last ? note : null,
+    });
+    if (res.error) return res.error;
+  }
+  return null;
+}
 
 /**
  * Two-tap flow (2026-09-17): "Ready — call rider" moves confirmed →

@@ -17,6 +17,7 @@ const state = vi.hoisted(() => ({
   serviceAvailable: true,
   /** What the service client's rpc() answers (batch assign tests). */
   serviceRpcResult: { data: 0 as unknown, error: null as null | { message: string; code?: string } },
+  lastRpcArgs: null as Record<string, unknown> | null,
 }));
 
 const table = (rows: unknown[]) => {
@@ -31,9 +32,17 @@ const table = (rows: unknown[]) => {
 
 const client = (log: string[]) => ({
   from: (name: string) =>
-    table(name === "orders" ? [{ id: "11111111-1111-4111-8111-111111111111" }] : []),
-  rpc: async (fn: string) => {
+    table(
+      name === "orders"
+        ? [
+            { id: "11111111-1111-4111-8111-111111111111", order_no: "PS-20260918-0001" },
+            { id: "33333333-3333-4333-8333-333333333333", order_no: "PS-20260918-0002" },
+          ]
+        : [],
+    ),
+  rpc: async (fn: string, args?: Record<string, unknown>) => {
     log.push(fn);
+    state.lastRpcArgs = args ?? null;
     return log === state.serviceRpcs ? state.serviceRpcResult : { data: 0, error: null };
   },
 });
@@ -68,6 +77,7 @@ beforeEach(() => {
   state.serviceRpcs = [];
   state.serviceAvailable = true;
   state.serviceRpcResult = { data: 0, error: null };
+  state.lastRpcArgs = null;
 });
 
 describe("return action route", () => {
@@ -169,6 +179,49 @@ describe("batch assign route (202609160005)", () => {
     expect((await POST(post({ riderId: RIDER, orderIds: [] }))).status).toBe(422);
     expect((await POST(post({ riderId: "not-a-uuid", orderIds: ORDERS }))).status).toBe(422);
     expect((await POST(post({ riderId: RIDER, orderIds: [...ORDERS, ...ORDERS, ...ORDERS] }))).status).toBe(422);
+    expect((await POST(post({ riderId: RIDER, orderIds: ["PS-1; drop table"] }))).status).toBe(422);
     expect(state.serviceRpcs).toEqual([]);
+  });
+
+  it("accepts PUBLIC order numbers (what the panel holds) and hands the RPC row ids (Batch H)", async () => {
+    state.serviceRpcResult = { data: 2, error: null };
+    const { POST } = await import("../admin/deliveries/batch/route");
+    const res = await POST(post({ riderId: RIDER, orderIds: ["PS-20260918-0001", "ps-20260918-0002"] }));
+    expect(res.status).toBe(200);
+    expect(state.lastRpcArgs).toEqual({
+      p_rider_id: RIDER,
+      p_order_ids: ["11111111-1111-4111-8111-111111111111", "33333333-3333-4333-8333-333333333333"],
+    });
+  });
+
+  it("answers 404 for an order number that matches nothing — never dispatches a guess", async () => {
+    const { POST } = await import("../admin/deliveries/batch/route");
+    const res = await POST(post({ riderId: RIDER, orderIds: ["PS-20260918-0009"] }));
+    expect(res.status).toBe(404);
+    expect(state.serviceRpcs).toEqual([]);
+  });
+});
+
+describe("single offer route (Batch H)", () => {
+  const post = (body: unknown) =>
+    new Request("http://localhost/api/admin/deliveries/offer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("resolves the public order number and calls ps_offer_order with the row id on the staff client", async () => {
+    const { POST } = await import("../admin/deliveries/offer/route");
+    const res = await POST(post({ orderId: "PS-20260918-0002" }));
+    expect(res.status).toBe(200);
+    expect(state.staffRpcs).toEqual(["ps_offer_order"]);
+    expect(state.lastRpcArgs).toEqual({ p_order_id: "33333333-3333-4333-8333-333333333333" });
+  });
+
+  it("still accepts a raw row id, and rejects an empty body", async () => {
+    const { POST } = await import("../admin/deliveries/offer/route");
+    expect((await POST(post({ orderId: "11111111-1111-4111-8111-111111111111" }))).status).toBe(200);
+    expect(state.lastRpcArgs).toEqual({ p_order_id: "11111111-1111-4111-8111-111111111111" });
+    expect((await POST(post({}))).status).toBe(422);
   });
 });

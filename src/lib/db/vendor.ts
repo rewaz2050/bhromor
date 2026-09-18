@@ -213,6 +213,74 @@ export async function advanceVendorOrder(
   return getVendorOrderDetail(db, shopId, orderNo);
 }
 
+/**
+ * The shop's decision on a bKash/Nagad payment (2026-09-18). ps_verify_payment
+ * already authorises the OWNING shop (`orders.shop_id = ps_vendor_shop()`),
+ * so the vendor may settle its own wallet money without waiting for PROSANTI
+ * staff; the shop scope here is belt-and-braces (a foreign order number
+ * answers 404, never a leak). Same rules and messages as the staff path.
+ */
+export async function verifyPaymentAsVendor(
+  db: SupabaseClient,
+  shopId: string,
+  orderNo: string,
+  action: "verified" | "rejected",
+  note?: string,
+): Promise<Order> {
+  const { data, error } = await db
+    .from("orders")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("order_no", orderNo.trim().toUpperCase())
+    .single();
+  if (error || !data) throw new AdminInputError("Order not found.", 404);
+  const { error: rpcError } = await db.rpc("ps_verify_payment", {
+    p_order_id: (data as { id: string }).id,
+    p_action: action,
+    p_note: note?.trim().slice(0, 300) ?? null,
+  });
+  if (rpcError) {
+    const msg = rpcError.message.toLowerCase();
+    if (msg.includes("forbidden")) {
+      throw new AdminInputError("Only the shop that owns this order can decide its payment.", 403);
+    }
+    if (msg.includes("not a wallet payment")) {
+      throw new AdminInputError(
+        "This order is cash on delivery — nothing to verify.",
+        422,
+      );
+    }
+    if (msg.includes("already decided")) {
+      throw new AdminInputError("This payment was already decided.", 409);
+    }
+    if (msg.includes("order already cancelled")) {
+      throw new AdminInputError(
+        "This order was cancelled — its wallet payment is settled as rejected; nothing to decide.",
+        422,
+      );
+    }
+    const gap = orderFlowSchemaGap(rpcError);
+    console.error(
+      "[vendor] ps_verify_payment failed",
+      JSON.stringify({
+        orderNo,
+        action,
+        code: rpcError.code ?? null,
+        message: rpcError.message ?? null,
+        ...(gap ? { schemaGap: gap } : {}),
+      }),
+    );
+    if (gap) {
+      throw new AdminInputError(
+        "The database refused this decision — the payment was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
+        503,
+      );
+    }
+    throw new AdminInputError("Could not record the payment decision.", 422);
+  }
+  return getVendorOrderDetail(db, shopId, orderNo);
+}
+
 /* ------------------------------------------------------------------ */
 /* Products (own shop — drafts included)                               */
 /* ------------------------------------------------------------------ */

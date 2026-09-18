@@ -304,6 +304,47 @@ export async function listDispatchJobs(
   return jobs;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True for an orders.id row key (vs a public PS-… order number). */
+export const isOrderRowId = (value: string): boolean => UUID_RE.test(value);
+
+/**
+ * Dispatch routes take order references from the admin UI, which only ever
+ * holds PUBLIC order numbers (`Order.id` is `order_no`, §70) — the row id
+ * never leaves the database. Until 2026-09-18 both dispatch routes demanded
+ * a uuid, so "Assign rider" and "Batch assign" answered 422 for every live
+ * order. Accepts either form; a reference that matches nothing is a 404, so
+ * a typo can never offer a different order.
+ */
+export async function resolveOrderRowIds(
+  db: SupabaseClient,
+  refs: readonly string[],
+): Promise<string[]> {
+  const cleaned = refs.map((r) => r.trim());
+  const orderNos = [
+    ...new Set(cleaned.filter((r) => !isOrderRowId(r)).map((r) => r.toUpperCase())),
+  ];
+  const byOrderNo = new Map<string, string>();
+  if (orderNos.length > 0) {
+    const { data, error } = await db
+      .from("orders")
+      .select("id, order_no")
+      .in("order_no", orderNos);
+    if (error) throw new Error("order lookup failed");
+    for (const row of (data ?? []) as { id: string; order_no: string | null }[]) {
+      if (row.order_no) byOrderNo.set(row.order_no.toUpperCase(), row.id);
+    }
+  }
+  return cleaned.map((r) => {
+    if (isOrderRowId(r)) return r;
+    const id = byOrderNo.get(r.toUpperCase());
+    if (!id) throw new AdminInputError(`Order ${r} not found.`, 404);
+    return id;
+  });
+}
+
 const dispatchRpcError = (message: string): AdminInputError => {
   const msg = message.toLowerCase();
   if (msg.includes("forbidden")) return new AdminInputError(message, 403);
@@ -358,8 +399,16 @@ export async function settleRiderCashByAdmin(
   if (error) throw dispatchRpcError(error.message);
 }
 
-/** Orders that are dispatch-ready but have no active offer. Used by the
- * Admin → Deliveries board so a staff member can assign manually. */
+/**
+ * Orders that are dispatch-ready but have no active offer. Used by the
+ * Admin → Deliveries board so a staff member can assign manually.
+ *
+ * Counter pickups are excluded (2026-09-18): the customer collects at
+ * Traffic Point, so a rider is never needed — before this they sat in
+ * "Awaiting dispatch" forever with an "Assign rider" button that would have
+ * sent a rider to deliver an order nobody was waiting for at home. Return
+ * legs DO need a rider (collect from the customer) and stay listed.
+ */
 export async function listAwaitingDispatchOrders(
   service: SupabaseClient,
 ): Promise<Order[]> {
@@ -370,7 +419,7 @@ export async function listAwaitingDispatchOrders(
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error("awaiting orders read failed");
-  const rows = (orderRows ?? []) as DbOrder[];
+  const rows = ((orderRows ?? []) as DbOrder[]).filter((row) => !row.is_pickup);
   if (rows.length === 0) return [];
 
   const { data: assignmentRows } = await service

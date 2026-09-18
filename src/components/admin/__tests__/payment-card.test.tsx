@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import PaymentCard from "../payment-card";
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const props = {
   orderNo: "PS-20260909-0042",
@@ -78,5 +84,40 @@ describe("PaymentCard (admin order detail)", () => {
     expect(
       screen.queryByText(/may start fulfilment/),
     ).not.toBeInTheDocument();
+  });
+
+  it("posts the decision to the STAFF endpoint by default and to the VENDOR endpoint for actor=\"vendor\" (Batch H)", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return { ok: true, json: async () => ({ ok: true }) } as Response;
+      }),
+    );
+    const onDecided = vi.fn();
+    const { unmount } = render(
+      <PaymentCard {...props} payment="bkash" paymentStatus="pending_verification" orderStatus="confirmed" onDecided={onDecided} />,
+    );
+    fireEvent.click(screen.getByText("Payment verified"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(1));
+    unmount();
+
+    render(
+      <PaymentCard
+        {...props}
+        actor="vendor"
+        payment="nagad"
+        paymentStatus="pending_verification"
+        orderStatus="confirmed"
+        onDecided={onDecided}
+      />,
+    );
+    fireEvent.click(screen.getByText("Payment verified"));
+    await waitFor(() => expect(onDecided).toHaveBeenCalledTimes(2));
+    expect(calls).toEqual([
+      "/api/admin/orders/PS-20260909-0042/payment",
+      "/api/vendor/orders/PS-20260909-0042/payment",
+    ]);
   });
 });
