@@ -26,6 +26,8 @@ import { LiveDeliveryMap } from "./live-delivery-map";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";
+import CancelPanel from "./cancel-panel";
+import { courierEta, isCourierZone } from "@/lib/delivery";
 
 /**
  * Public-facing steps — the four milestones from `PUBLIC_STEPS`
@@ -297,6 +299,15 @@ export default function TrackView() {
             {/* P1 #8: wallet-payment state (COD orders render nothing) */}
             <PaymentStatus order={order} />
 
+            {/* P1 #14: cancel online while the shop has not packed it yet */}
+            <CancelPanel
+              key={`cancel-${order.id}`}
+              order={order}
+              phone={phone}
+              contactNumber={contactNumber}
+              onCancelled={(next) => setResult({ found: true, order: next, via: "live" })}
+            />
+
             {/* Live Interactive Delivery Map & Security PIN */}
             <LiveDeliveryMap order={order} />
 
@@ -481,7 +492,11 @@ export default function TrackView() {
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
-                    <dt>Total (COD){order.isPickup ? " — Pickup" : ""}</dt>
+                    <dt>
+                      Total (
+                      {order.payment === "bkash" ? "bKash" : order.payment === "nagad" ? "Nagad" : "COD"})
+                      {order.isPickup ? " — Pickup" : ""}
+                    </dt>
                     <dd>{formatBdt(order.total)}</dd>
                   </div>
                 </dl>
@@ -498,8 +513,8 @@ export default function TrackView() {
                 </p>
                 <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-                  {order.zoneName} · {order.etaLabel}
-                  {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
+                  {order.zoneName} · {isCourierZone(order.zoneId) && !order.isPickup ? courierEta(lang) : order.etaLabel}
+                  {isCourierZone(order.zoneId) && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar · Courier</span>}
                   {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                   {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
                     <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">

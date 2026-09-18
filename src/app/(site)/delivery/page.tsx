@@ -5,9 +5,12 @@ import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import {
+  COURIER_ETA_BN,
   DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
   MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
+  courierEta,
+  isCourierZone,
 } from "@/lib/delivery";
 
 
@@ -50,9 +53,10 @@ export default async function DeliveryPage() {
             Instant delivery — Sunamganj target
           </h2>
           <p className="mt-2 text-sm leading-7 text-ivory-100/70">
-            Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min, Zone D
-            (বাইরে) 60–80 min. এটি আমাদের অপারেশনাল টার্গেট — ট্রাফিক ও
-            ক্যাপাসিটি অনুযায়ী কিছুটা কম-বেশি হতে পারে।
+            Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min — সদরের
+            ভেতরে রাইডার। সদরের বাইরে / অন্য জেলা: {COURIER_ETA_BN}। এটি
+            আমাদের অপারেশনাল টার্গেট — ট্রাফিক ও ক্যাপাসিটি অনুযায়ী কিছুটা
+            কম-বেশি হতে পারে।
           </p>
         </div>
       </div>
@@ -85,7 +89,9 @@ export default async function DeliveryPage() {
                   {formatBdt(zone.charge)}
                   {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} order</span>}
                 </td>
-                <td className="px-5 py-4 text-ink-soft">{zone.etaLabel}</td>
+                <td className="px-5 py-4 text-ink-soft">
+                  {isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel}
+                </td>
               </tr>
             ))}
           </tbody>

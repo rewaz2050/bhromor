@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { courierEta, isCourierZone } from "@/lib/delivery";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
 import { IconMapPin, IconPhone, IconShield, IconTruck } from "@/components/ui/icons";
@@ -198,7 +199,9 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               ? "বাতিল"
               : isOut
               ? "১০–১৫ মিনিট বাকি"
-              : order.etaLabel}
+              : isCourierZone(order.zoneId) && !order.isPickup
+                ? courierEta("bn")
+                : order.etaLabel}
           </p>
           {riderLive && (
             <p className="mt-1 text-[10px] text-emerald-300">📍 Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>

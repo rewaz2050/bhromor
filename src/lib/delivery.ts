@@ -102,6 +102,22 @@ export interface DeliveryBreakdown {
   etaMinutes: number;
 }
 
+/**
+ * Zone D (outside Sunamganj Sadar / other districts) goes by courier. The
+ * zone row still says "60–80 min" because the same row also covers the
+ * Sadar-adjacent paras a rider can reach — but a shopper in Sylhet or Dhaka
+ * must never be promised minutes (UX audit 2026-09-18, P1 #17). The
+ * checkout, the summary card and the tracker all print THIS instead.
+ */
+export const COURIER_ZONE_ID = "z4";
+export const COURIER_ETA_EN = "1–3 days by courier";
+export const COURIER_ETA_BN = "কুরিয়ারে ১–৩ দিন";
+export const courierEta = (lang: "en" | "bn" = "en"): string =>
+  lang === "bn" ? COURIER_ETA_BN : COURIER_ETA_EN;
+/** True when the order leaves the rider area — the ETA is days, not minutes. */
+export const isCourierZone = (zoneId: string | null | undefined): boolean =>
+  zoneId === COURIER_ZONE_ID;
+
 export const deliveryBreakdown = (opts: {
   zone: DeliveryZone;
   subtotal: Bdt;
@@ -165,6 +181,8 @@ export const deliveryBreakdown = (opts: {
     queueCount,
     hour: nowHour,
   });
+  // P1 #17 — a courier leg is measured in days; never show rider minutes.
+  const courier = isCourierZone(opts.zone?.id);
 
   return {
     baseCharge,
@@ -173,8 +191,8 @@ export const deliveryBreakdown = (opts: {
     couponFree: !!couponFree,
     isPickup: false,
     totalCharge,
-    eta: eta.label,
-    etaMinutes: eta.minutes,
+    eta: courier ? COURIER_ETA_EN : eta.label,
+    etaMinutes: courier ? 2 * 24 * 60 : eta.minutes,
   };
 };
 

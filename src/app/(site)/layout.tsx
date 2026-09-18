@@ -52,7 +52,11 @@ export default function SiteLayout({
   children: React.ReactNode;
 }) {
   return (
-    <LanguageProvider>
+    // Bangla first (UX audit 2026-09-18, P1 #8): the shop serves Sunamganj,
+    // so a device that never picked a language reads Bangla; the switcher
+    // (header on every width, drawer, bottom sheet) flips to English and the
+    // choice is remembered on this device.
+    <LanguageProvider initialLang="bn">
       <CartProvider>
         <CustomerProvider>
           <a

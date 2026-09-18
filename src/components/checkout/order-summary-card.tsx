@@ -14,7 +14,7 @@ import type { useCart } from "@/components/cart/cart-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconBox, IconTruck } from "@/components/ui/icons";
 import { coverImage, type DeliveryZone } from "@/lib/catalog";
-import { INSTANT_DELIVERY_TITLE, type deliveryBreakdown } from "@/lib/delivery";
+import { INSTANT_DELIVERY_TITLE, courierEta, isCourierZone, type deliveryBreakdown } from "@/lib/delivery";
 import { formatBdt } from "@/lib/format";
 import { SUNAMGANJ_HUB } from "@/lib/sunamganj";
 import type { BagOffer } from "@/lib/use-bag-offer";
@@ -54,7 +54,6 @@ export default function OrderSummaryCard({
   giftWrap,
   plusState,
   bagShopPrep,
-  onRemoveCoupon,
 }: {
   compact: boolean;
   detail: ReturnType<typeof useCart>["detail"];
@@ -67,9 +66,8 @@ export default function OrderSummaryCard({
   giftWrap: string;
   plusState: PlusState;
   bagShopPrep: number;
-  onRemoveCoupon: () => void;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   return (
     <div className={`rounded-3xl bg-ivory-50 ring-1 ring-line ${compact ? "p-5" : "bg-paper p-7"}`}>
       <h3 className="font-display text-xl font-medium text-forest-900">
@@ -77,7 +75,11 @@ export default function OrderSummaryCard({
       </h3>
       <p className="mt-1.5 flex items-center gap-2 text-sm font-semibold text-forest-800">
         <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-        {isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
+        {isPickup
+          ? `Pickup — ${SUNAMGANJ_HUB}`
+          : isCourierZone(zone.id)
+            ? `${t("purchase.courierTitle")} — ${zone.name}`
+            : `${INSTANT_DELIVERY_TITLE} — ${zone.name}`}
       </p>
       <div className="mt-4">
         <BagShopHeader />
@@ -119,20 +121,10 @@ export default function OrderSummaryCard({
       <div className="mt-4 empty:hidden">
         <BagOffers lines={detail} />
       </div>
-      {activeCoupon && (
-        <div className="mt-6 flex items-center justify-between rounded-xl bg-forest-50 px-3.5 py-2.5 text-sm ring-1 ring-forest-200">
-          <span className="font-mono font-bold text-forest-800">
-            {activeCoupon.code}
-          </span>
-          <button
-            type="button"
-            onClick={onRemoveCoupon}
-            className="text-xs font-semibold text-ink-soft underline underline-offset-2 hover:text-rose-700"
-          >
-            {t("checkout.remove")}
-          </button>
-        </div>
-      )}
+      {/* P1 #13 — the applied coupon is shown ONCE as a price line below;
+          the chip with its own Remove button lived here as well, so the same
+          code appeared three times on one screen. The "More options" panel
+          keeps the Remove button (next to the input that applied it). */}
 
       <dl className="mt-5 space-y-2.5 border-t border-line pt-5 text-sm">
         <div className="flex justify-between">
@@ -177,7 +169,12 @@ export default function OrderSummaryCard({
         )}
         <div className="flex justify-between">
           <dt className="text-ink-soft">
-            {t("checkout.delivery")} · {summary.breakdown?.eta ?? zone.etaLabel}
+            {t("checkout.delivery")} ·{" "}
+            {isPickup
+              ? (summary.breakdown?.eta ?? zone.etaLabel)
+              : isCourierZone(zone.id)
+                ? courierEta(lang)
+                : (summary.breakdown?.eta ?? zone.etaLabel)}
           </dt>
           <dd className="font-medium text-ink">
             {summary.freeDelivery ? (
@@ -207,10 +204,11 @@ export default function OrderSummaryCard({
             {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ Weight</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
           </div>
         )}
-        {summary.couponFree && (
-          <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">
-            🚚 Free delivery coupon applied — {activeCoupon?.code}
-          </p>
+        {summary.couponFree && summary.discount === 0 && (
+          <div className="flex justify-between">
+            <dt className="text-ink-soft">{t("checkout.coupon")} · {activeCoupon?.code}</dt>
+            <dd className="font-medium text-emerald-700">🚚 Free delivery</dd>
+          </div>
         )}
         {summary.plusFree && !summary.couponFree && (
           <p className="rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200">

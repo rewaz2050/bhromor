@@ -30,6 +30,15 @@ export const ORDER_FLOW = [
 export type OrderStatus = (typeof ORDER_FLOW)[number] | "cancelled";
 
 /**
+ * Statuses a CUSTOMER may cancel from (UX audit 2026-09-18, P1 #14) — the
+ * same set `ps_advance_order` accepts a cancel from. Once the parcel is
+ * packed ("ready-for-pickup" and beyond) the shop has to be called.
+ */
+export const CUSTOMER_CANCELLABLE: readonly OrderStatus[] = ["pending", "confirmed", "preparing"];
+export const canCustomerCancel = (status: OrderStatus): boolean =>
+  CUSTOMER_CANCELLABLE.includes(status);
+
+/**
  * Legal transitions. Cancel is an operational decision, allowed early.
  *
  * Two-tap flow (2026-09-17, migration 202609170001): `confirmed` may go

@@ -19,25 +19,51 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-const STORAGE_KEY = "prosanti-lang";
+export const LANGUAGE_STORAGE_KEY = "prosanti-lang";
+const STORAGE_KEY = LANGUAGE_STORAGE_KEY;
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Language>("en");
+/** The stored choice (localStorage first, then the cookie) — or null. */
+export const readStoredLanguage = (): Language | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === "en" || stored === "bn") return stored;
+  } catch {
+    // storage blocked — fall through to the cookie
+  }
+  const match = /(?:^|;\s*)prosanti-lang=(en|bn)(?:;|$)/.exec(document.cookie ?? "");
+  return match ? (match[1] as Language) : null;
+};
+
+/**
+ * The language the shopper sees before any stored preference is read.
+ * The storefront passes "bn" (UX audit 2026-09-18, P1 #8 — the customers are
+ * in Sunamganj, so Bangla is the default and English is the switch); tests
+ * and the staff surfaces keep the English default.
+ */
+export function LanguageProvider({
+  children,
+  initialLang = "en",
+}: {
+  children: ReactNode;
+  initialLang?: Language;
+}) {
+  const [lang, setLangState] = useState<Language>(initialLang);
   const [mounted, setMounted] = useState(false);
 
-  // Hydration-safe: read stored preference after mount
+  // Hydration-safe: read stored preference after mount. A device that never
+  // chose stays on `initialLang`; one that did gets its choice back.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setMounted(true);
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY) as Language | null;
-      if (stored === "en" || stored === "bn") {
-        setLangState(stored);
-        document.documentElement.lang = stored === "bn" ? "bn" : "en";
-      }
+      const stored = readStoredLanguage();
+      if (stored) setLangState(stored);
+      document.documentElement.lang = (stored ?? initialLang) === "bn" ? "bn" : "en";
     } catch {
       // ignore storage errors
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialLang is a mount-time default
   }, []);
 
   useEffect(() => {

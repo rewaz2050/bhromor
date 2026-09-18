@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useMyZone } from "@/lib/use-my-zone";
 import { formatBdt } from "@/lib/format";
+import { courierEta, isCourierZone } from "@/lib/delivery";
 import { IconTruck } from "@/components/ui/icons";
 
 export default function DeliveryChecker() {
@@ -75,7 +76,7 @@ export default function DeliveryChecker() {
             {checked &&
               (zone ? (
                 <>
-                  {`✓ Available · Estimated delivery: ${zone.etaLabel} · Delivery from ${formatBdt(zone.charge)} (free on qualifying orders).`}{" "}
+                  {`✓ Available · Estimated delivery: ${isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel} · Delivery from ${formatBdt(zone.charge)} (free on qualifying orders).`}{" "}
                   {myZoneId === zone.id ? (
                     <span className="font-medium">
                       Showing shops for {zone.name}.

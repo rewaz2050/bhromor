@@ -103,6 +103,98 @@ export async function countOrdersForPhone(
   ).length;
 }
 
+/** One row of the signed-in customer's order history (P1 #15). */
+export interface CustomerOrderSummary {
+  /** Public order number (falls back to the row id for legacy rows). */
+  id: string;
+  createdAt: number;
+  status: DbOrder["status"];
+  total: number;
+  itemCount: number;
+  /** "Cotton Panjabi · M / White" + "and 2 more" — enough to recognise it. */
+  firstItem: string | null;
+  payment: DbOrder["payment"];
+  paymentStatus: DbOrder["payment_status"] | null;
+  scheduledAt: number | null;
+  deliveryWindow: string | null;
+  isPickup: boolean;
+  isReturn: boolean;
+}
+
+/**
+ * The most recent orders placed with THIS phone — the account page's
+ * history (UX audit 2026-09-18, P1 #15). Reads only what the list needs
+ * (no timeline, zones or coupons); the tracker shows the full order.
+ * Same needle + exact normalize as countOrdersForPhone so every spelling of
+ * the number is found and nobody else's is.
+ */
+export async function listOrdersForPhone(
+  db: SupabaseClient,
+  phone: string,
+  limit = 20,
+): Promise<CustomerOrderSummary[]> {
+  const digits = normalizePhone(phone);
+  if (digits === "") return [];
+  const { data, error } = await db
+    .from("orders")
+    .select(
+      "id, order_no, customer_phone, status, total, payment, payment_status, scheduled_at, delivery_window, is_pickup, is_return, created_at",
+    )
+    .ilike("customer_phone", phoneNeedle(digits))
+    .order("created_at", { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 50)) * 2);
+  if (error) return [];
+  const rows = ((data ?? []) as Pick<
+    DbOrder,
+    | "id"
+    | "order_no"
+    | "customer_phone"
+    | "status"
+    | "total"
+    | "payment"
+    | "payment_status"
+    | "scheduled_at"
+    | "delivery_window"
+    | "is_pickup"
+    | "is_return"
+    | "created_at"
+  >[])
+    .filter((row) => normalizePhone(row.customer_phone) === digits)
+    .slice(0, limit);
+  if (rows.length === 0) return [];
+  const items = await selectIn<Pick<DbOrderItem, "order_id" | "name" | "variant" | "qty">>(
+    db,
+    "order_items",
+    "order_id, name, variant, qty",
+    "order_id",
+    rows.map((r) => r.id),
+  );
+  const byOrder = new Map<string, { count: number; first: string | null }>();
+  for (const it of items.data) {
+    const cur = byOrder.get(it.order_id) ?? { count: 0, first: null };
+    cur.count += it.qty;
+    if (!cur.first) cur.first = [it.name, it.variant].filter(Boolean).join(" · ");
+    byOrder.set(it.order_id, cur);
+  }
+  return rows.map((row) => {
+    const agg = byOrder.get(row.id) ?? { count: 0, first: null };
+    return {
+      id: row.order_no ?? row.id,
+      createdAt: new Date(row.created_at).getTime(),
+      status: row.status,
+      total: row.total,
+      itemCount: agg.count,
+      firstItem: agg.first,
+      payment: row.payment,
+      paymentStatus: row.payment_status ?? null,
+      scheduledAt: row.scheduled_at ? new Date(row.scheduled_at).getTime() : null,
+      deliveryWindow: row.delivery_window ?? null,
+      isPickup: !!row.is_pickup,
+      isReturn: !!row.is_return,
+    };
+  });
+}
+
 /**
  * `%1%7%1%…%` — an ILIKE needle that matches ANY stored spelling of the
  * number (bare, +88-prefixed, with spaces or dashes) by requiring its last

@@ -45,7 +45,9 @@ import {
   MIN_ORDER_OUTSIDE_SADAR_PAISA,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
+  courierEta,
   deliveryBreakdown,
+  isCourierZone,
   isNightHour,
   orderTotal,
 } from "@/lib/delivery";
@@ -189,6 +191,184 @@ const scrollTo = (el: Element | null | undefined, block: ScrollLogicalPosition =
 
 
 
+/* ------------------------------------------------------------------ */
+/* bKash / Nagad — number + amount with one-tap copy, TRXID input       */
+/* (UX audit 2026-09-18, P1 #12)                                         */
+/* ------------------------------------------------------------------ */
+
+const TRXID_RE = /^[A-Z0-9]{8,14}$/;
+
+function WalletPaySteps({
+  method,
+  number,
+  amount,
+  trxid,
+  error,
+  inputRef,
+  inputClassName,
+  onTrxid,
+}: {
+  method: "bkash" | "nagad";
+  number: string;
+  amount: number;
+  trxid: string;
+  error?: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  inputClassName: string;
+  onTrxid: (value: string) => void;
+}) {
+  const { t } = useLanguage();
+  const [copied, setCopied] = useState<"number" | "amount" | null>(null);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+  const brand = method === "bkash" ? "bKash" : "Nagad";
+  const tone =
+    method === "bkash"
+      ? "border-[#e2136e]/30 bg-[#fdf2f8]"
+      : "border-[#f6921e]/30 bg-[#fff8f0]";
+  const takaWhole = Math.round(amount / 100);
+  const copy = async (what: "number" | "amount") => {
+    const text = what === "number" ? number : String(takaWhole);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Clipboard blocked (http / old WebView) — the value is still selectable.
+    }
+    setCopied(what);
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(null), 1800);
+  };
+  const clean = trxid.trim();
+  const looksShort = clean.length > 0 && clean.length < 8;
+  const looksWrong = clean.length >= 8 && !TRXID_RE.test(clean);
+
+  return (
+    <div className={`rounded-2xl border p-5 ${tone}`} data-testid="wallet-steps">
+      <p className="text-sm font-semibold text-ink">{brand} — {t("checkout.sendExactly")}</p>
+
+      {/* Number + amount, each with its own copy button (44px) */}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-paper px-4 py-3 ring-1 ring-line">
+          <div className="min-w-0">
+            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+              {brand} Personal
+            </p>
+            <p className="select-all font-mono text-base font-bold tracking-wide text-ink" data-testid="wallet-number">
+              {number}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => copy("number")}
+            aria-label={t("checkout.copyNumber")}
+            data-testid="copy-wallet-number"
+            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-forest-800 px-3.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+          >
+            {copied === "number" ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+            {copied === "number" ? t("checkout.copied") : t("checkout.copyNumber")}
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-paper px-4 py-3 ring-1 ring-line">
+          <div className="min-w-0">
+            <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+              {t("checkout.total")}
+            </p>
+            <p className="select-all font-mono text-base font-bold text-ink" data-testid="wallet-amount">
+              {formatBdt(amount)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => copy("amount")}
+            aria-label={t("checkout.copyAmount")}
+            data-testid="copy-wallet-amount"
+            className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-paper px-3.5 text-xs font-semibold text-forest-900 ring-1 ring-line hover:bg-ivory-100"
+          >
+            {copied === "amount" ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+            {copied === "amount" ? t("checkout.copied") : t("checkout.copyAmount")}
+          </button>
+        </div>
+      </div>
+
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-6 text-ink-soft">
+        <li>
+          {brand} অ্যাপ → <strong className="text-ink">Send Money</strong> → উপরের নম্বরে{" "}
+          <strong className="text-ink">{formatBdt(amount)}</strong> পাঠান।
+        </li>
+        <li>
+          সফল হলে অ্যাপ/SMS-এ <strong className="text-ink">TRXID</strong> দেখাবে — সেটি নিচে লিখুন।
+        </li>
+        <li>দোকান নিজের wallet-এ মিলিয়ে order confirm করবে।</li>
+      </ol>
+
+      <label className="mt-3 block">
+        <span className="mb-1.5 block text-sm font-medium text-ink">
+          TRXID (Transaction ID) <span className="text-rose-600">*</span>
+        </span>
+        <input
+          ref={inputRef}
+          value={trxid}
+          onChange={(e) => onTrxid(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+          placeholder="e.g. 9K2L7M4QXZ"
+          inputMode="text"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={20}
+          aria-invalid={!!error || looksWrong}
+          aria-describedby="trxid-help"
+          className={`${inputClassName} font-mono tracking-[0.12em]`}
+        />
+        <span id="trxid-help" className="mt-1.5 block text-[11px] leading-5 text-ink-soft">
+          {t("checkout.trxidHelp")}
+        </span>
+        {(looksShort || looksWrong) && !error ? (
+          <p className="mt-1 text-xs text-amber-800" data-testid="trxid-hint">
+            {t("checkout.trxidLooksShort")}
+          </p>
+        ) : null}
+        {error && <p className="mt-1.5 text-xs text-rose-700">{error}</p>}
+      </label>
+      <p className="mt-2 text-[11px] leading-5 text-ink-soft">
+        দোকান verify করার আগ পর্যন্ত order “payment under verification” থাকবে —
+        রাইডার পাঠানো হবে না। ভুল হয়ে গেলে track page থেকে বাতিল করা যাবে।
+      </p>
+    </div>
+  );
+}
+
+/** Copy a saved address into the form (P1 #16) — shared by the auto prefill
+ *  and the "use this one" button, so both fill exactly the same fields. */
+const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
+  const savedPara = addr.area;
+  const listed = SADAR_PARA_OPTIONS.some((p) => p.name === savedPara);
+  const savedDistrict = addr.district || SUNAMGANJ_DISTRICT;
+  const savedUpazila = addr.upazila || SUNAMGANJ_UPAZILA;
+  return {
+    ...f,
+    name: addr.name,
+    phone: addr.phone,
+    district: savedDistrict,
+    upazila: isSunamganjDistrict(savedDistrict)
+      ? SUNAMGANJ_UPAZILAS.some((u) => u.en === savedUpazila)
+        ? savedUpazila
+        : SUNAMGANJ_UPAZILA
+      : f.upazila,
+    upazilaCustom: isSunamganjDistrict(savedDistrict) ? f.upazilaCustom : savedUpazila,
+    paraSelected: listed ? savedPara : PARA_CUSTOM,
+    paraCustom: savedPara,
+    houseNo: addr.houseNo,
+    roadName: addr.roadName,
+    address: addr.fullAddress,
+    note: addr.note,
+  };
+};
+
 export default function CheckoutView() {
   const { t, lang } = useLanguage();
   const { detail, subtotal, clear, ready } = useCart();
@@ -287,9 +467,24 @@ export default function CheckoutView() {
   const [addrTag, setAddrTag] = useState<AddressTag>("home");
   const [bestLoading, setBestLoading] = useState(false);
 
+  /* P1 #16 — a repeat customer's last address (name, phone, para, house,
+     pin) fills the form by itself; the "saved addresses" sheet stays for
+     picking a different one. Only ever on an untouched form, only once. */
+  const [prefilledFrom, setPrefilledFrom] = useState<SavedAddress | null>(null);
+  const prefillDone = useRef(false);
   useEffect(() => {
+    const all = getSavedAddresses();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
-    setSavedAddrs(getSavedAddresses());
+    setSavedAddrs(all);
+    if (prefillDone.current || all.length === 0) return;
+    prefillDone.current = true;
+    const last = all[0];
+    setForm((f) => {
+      if (f.name.trim() || f.phone.trim() || f.address.trim() || f.houseNo.trim()) return f;
+      return applySavedAddress(f, last);
+    });
+    if (last.lat && last.lng) setPinPos({ lat: last.lat, lng: last.lng });
+    setPrefilledFrom(last);
   }, []);
 
   /* ------------------------------------------------------------------ */
@@ -850,6 +1045,8 @@ export default function CheckoutView() {
         fullAddress: form.address,
         note: form.note,
         zoneId: derivedZoneId,
+        district: form.district,
+        upazila: effectiveUpazila,
         tag: addrTag,
         lat: pinPos?.lat,
         lng: pinPos?.lng,
@@ -860,29 +1057,9 @@ export default function CheckoutView() {
   };
 
   const handleUseSaved = (addr: SavedAddress) => {
-    const savedPara = addr.area;
-    const listed = SADAR_PARA_OPTIONS.some((p) => p.name === savedPara);
-    const savedDistrict = addr.district || SUNAMGANJ_DISTRICT;
-    const savedUpazila = addr.upazila || SUNAMGANJ_UPAZILA;
-    setForm((f) => ({
-      ...f,
-      name: addr.name,
-      phone: addr.phone,
-      district: savedDistrict,
-      upazila: isSunamganjDistrict(savedDistrict)
-        ? SUNAMGANJ_UPAZILAS.some((u) => u.en === savedUpazila)
-          ? savedUpazila
-          : SUNAMGANJ_UPAZILA
-        : f.upazila,
-      upazilaCustom: isSunamganjDistrict(savedDistrict) ? f.upazilaCustom : savedUpazila,
-      paraSelected: listed ? savedPara : PARA_CUSTOM,
-      paraCustom: savedPara,
-      houseNo: addr.houseNo,
-      roadName: addr.roadName,
-      address: addr.fullAddress,
-      note: addr.note,
-    }));
+    setForm((f) => applySavedAddress(f, addr));
     if (addr.lat && addr.lng) setPinPos({ lat: addr.lat, lng: addr.lng });
+    setPrefilledFrom(addr);
     setShowSaved(false);
   };
 
@@ -1126,7 +1303,9 @@ export default function CheckoutView() {
         phone: form.phone,
         eta: form.isPickup
           ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
-          : (summary.breakdown?.eta ?? data.order.etaLabel),
+          : isCourierZone(derivedZoneId)
+            ? courierEta(lang)
+            : (summary.breakdown?.eta ?? data.order.etaLabel),
         charge: data.order.deliveryCharge,
         total: data.order.total,
         addressSummary: form.isPickup
@@ -1182,9 +1361,12 @@ export default function CheckoutView() {
 
   const firstBadField = firstErrorField(fieldErrors);
   const deliveryPromise = lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN;
+  // P1 #17 — outside the rider area the honest answer is days, not minutes.
   const etaLabel = form.isPickup
     ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
-    : (summary.breakdown?.eta ?? zone.etaLabel);
+    : isCourierZone(derivedZoneId)
+      ? courierEta(lang)
+      : (summary.breakdown?.eta ?? zone.etaLabel);
   const extrasBadge = [
     activeCoupon ? `${t("checkout.coupon")} ${activeCoupon.code} ✓` : null,
     giftValue.on ? t("gift.badge") : null,
@@ -1214,7 +1396,6 @@ export default function CheckoutView() {
       giftWrap={giftValue.wrap}
       plusState={plusState}
       bagShopPrep={bagShop?.prepMinutes ?? 15}
-      onRemoveCoupon={removeCoupon}
     />
   );
 
@@ -1284,6 +1465,18 @@ export default function CheckoutView() {
           {geoNote ? (
             <p role="status" className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
               {geoNote}
+            </p>
+          ) : null}
+          {prefilledFrom ? (
+            <p
+              role="status"
+              data-testid="address-prefilled"
+              className="mb-4 flex items-start gap-2 rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200"
+            >
+              <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                {prefilledFrom.label} — {t("checkout.savedAddressUsed")}
+              </span>
             </p>
           ) : null}
           {showSaved && savedAddrs.length > 0 && (
@@ -1763,8 +1956,17 @@ export default function CheckoutView() {
                   {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
                 </p>
                 <p className="mt-1 text-ivory-100/70">
-                  {INSTANT_DELIVERY_TITLE} — কনফার্মেশনের পর{" "}
-                  <strong className="text-gold-300">{etaLabel}</strong>{" "}
+                  {summary.isOutside && !form.isPickup ? (
+                    <>
+                      🚚 {t("purchase.courierTitle")} — কনফার্মেশনের পর{" "}
+                      <strong className="text-gold-300" data-testid="courier-eta">{etaLabel}</strong>{" "}
+                    </>
+                  ) : (
+                    <>
+                      {INSTANT_DELIVERY_TITLE} — কনফার্মেশনের পর{" "}
+                      <strong className="text-gold-300">{etaLabel}</strong>{" "}
+                    </>
+                  )}
                   · ডেলিভারি চার্জ{" "}
                   <strong data-testid="delivery-charge">
                     {summary.freeDelivery ? (
@@ -1888,49 +2090,19 @@ export default function CheckoutView() {
                 </label>
               ) : null}
               {form.payMethod !== "cod" && wallets?.[form.payMethod] && (
-                <div className="rounded-2xl bg-ivory-50 p-5 ring-1 ring-line">
-                  <p className="text-sm font-semibold text-ink">
-                    {form.payMethod === "bkash" ? "bKash" : "Nagad"} payment steps
-                  </p>
-                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-6 text-ink-soft">
-                    <li>
-                      {formatBdt(summary.total)} টাকা Send Money করুন এই
-                      নম্বরে: <strong className="font-mono text-ink">{wallets[form.payMethod]}</strong>
-                    </li>
-                    <li>
-                      পাঠানোর পর অ্যাপ একটি <strong className="text-ink">TRXID</strong>{" "}
-                      (transaction ID) দেখাবে — সেটি কপি করুন।
-                    </li>
-                    <li>
-                      নিচে TRXID টি লিখুন। দোকান নিজের wallet-এ যাচাই করে order
-                      confirm করবে।
-                    </li>
-                  </ol>
-                  <label className="mt-3 block">
-                    <span className="mb-1.5 block text-sm font-medium text-ink">
-                      TRXID (Transaction ID) <span className="text-rose-600">*</span>
-                    </span>
-                    <input
-                      ref={trxidRef}
-                      value={form.trxid}
-                      onChange={(e) => {
-                        update("trxid", e.target.value.toUpperCase());
-                        clearFieldError("trxid");
-                      }}
-                      placeholder="e.g. 9K2L7M4QXZ"
-                      aria-invalid={!!fieldErrors.trxid}
-                      className={inputClass("trxid")}
-                    />
-                    {fieldErrors.trxid && (
-                      <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.trxid}</p>
-                    )}
-                  </label>
-                  <p className="mt-2 text-[11px] leading-5 text-ink-soft">
-                    দোকান verify করার আগ পর্যন্ত order “payment under verification”
-                    থাকবে — রাইডার পাঠানো হবে না। ভুল হয়ে গেলে track page থেকে বাতিল
-                    করা যাবে।
-                  </p>
-                </div>
+                <WalletPaySteps
+                  method={form.payMethod}
+                  number={wallets[form.payMethod] as string}
+                  amount={summary.total}
+                  trxid={form.trxid}
+                  error={fieldErrors.trxid}
+                  inputRef={trxidRef}
+                  inputClassName={inputClass("trxid")}
+                  onTrxid={(v) => {
+                    update("trxid", v);
+                    clearFieldError("trxid");
+                  }}
+                />
               )}
               {fieldErrors.payMethod && (
                 <p className="text-xs text-rose-700">{fieldErrors.payMethod}</p>
@@ -1954,13 +2126,19 @@ export default function CheckoutView() {
             <h3 className="text-sm font-semibold text-ink">{t("checkout.haveCoupon")}</h3>
             <div className="mt-2 max-w-md">
               {activeCoupon ? (
-                <div className="flex items-center justify-between rounded-2xl bg-forest-50 px-4 py-3.5 text-sm ring-1 ring-forest-200">
+                <div
+                  className="flex items-center justify-between rounded-2xl bg-forest-50 px-4 py-3.5 text-sm ring-1 ring-forest-200"
+                  data-testid="coupon-applied"
+                >
                   <span className="flex items-center gap-2">
                     <IconGift className="h-4 w-4 text-forest-700" />
                     <span className="font-mono font-bold text-forest-800">
                       {activeCoupon.code}
                     </span>
-                    <span className="text-xs text-forest-700">প্রয়োগ হয়েছে ✓</span>
+                    <span className="text-xs text-forest-700">
+                      প্রয়োগ হয়েছে ✓
+                      {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? " · ফ্রি ডেলিভারি" : ""}
+                    </span>
                   </span>
                   <button
                     type="button"

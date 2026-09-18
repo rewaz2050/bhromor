@@ -128,8 +128,15 @@ export default function Header() {
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />
             </div>
+            {/* Phones: one-tap language toggle where the wishlist icon was —
+                the bottom bar already carries the wishlist (P1 #8). */}
+            <div className="flex sm:hidden">
+              <LanguageSwitcher variant="toggle" />
+            </div>
             <ProductSearch />
-            <WishlistButton />
+            <div className="hidden sm:flex">
+              <WishlistButton />
+            </div>
             {/* Account was reachable only from the burger menu / footer on
                 desktop (audit L7). Hidden on phones — the bottom bar's Menu
                 already lists it. */}
