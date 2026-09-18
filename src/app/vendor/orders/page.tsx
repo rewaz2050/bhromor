@@ -18,6 +18,7 @@ import {
   formatDateTime,
 } from "@/components/vendor/vendor-ui";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { useVendorOrders } from "@/lib/use-vendor";
 
 const FILTERS = [
@@ -94,6 +95,7 @@ function Queue() {
                   <p className="truncate text-xs text-ink-soft">
                     {o.items.length} item{o.items.length === 1 ? "" : "s"} ·{" "}
                     {o.zoneName} · {formatDateTime(o.createdAt)}
+                    {deliverySlotSummary(o) ? ` · 🕒 ${deliverySlotSummary(o)}` : ""}
                   </p>
                 </div>
                 <span className="text-sm font-semibold text-forest-900">

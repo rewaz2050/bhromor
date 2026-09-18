@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { clearLastOrder, readLastOrder, type LastOrder } from "@/lib/last-order";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 import {
   PUBLIC_STEPS,
   publicPhase,
@@ -72,12 +74,15 @@ type Result =
   | null;
 
 export default function TrackView() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
   const [checking, setChecking] = useState(false);
   const [lookupFailed, setLookupFailed] = useState(false);
+  /** "আপনার শেষ অর্ডার" — remembered by the receipt on this device (P0 #5). */
+  const [lastOrder, setLastOrder] = useState<LastOrder | null>(null);
+  const autoLookedUp = useRef(false);
   // The shop's real WhatsApp number (ops settings) — the support button
   // renders only when it is configured, never a placeholder.
   const [contactNumber, setContactNumber] = useState<string | null>(null);
@@ -95,14 +100,15 @@ export default function TrackView() {
     };
   }, []);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = orderId.trim().toUpperCase();
+  const lookup = useCallback(async (rawId: string, rawPhone: string) => {
+    const id = rawId.trim().toUpperCase();
+    const ph = rawPhone.trim();
+    if (!id || !ph) return;
     setChecking(true);
     setLookupFailed(false);
     try {
       const res = await fetch(
-        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone.trim())}`,
+        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
       );
       const data = (await res.json().catch(() => null)) as {
         order?: Order;
@@ -119,6 +125,42 @@ export default function TrackView() {
     } finally {
       setChecking(false);
     }
+  }, []);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void lookup(orderId, phone);
+  };
+
+  // /track?id=…&phone=… (the receipt link) → prefill AND look up once.
+  // Read from the URL after mount (not useSearchParams) so the form itself
+  // is still server-rendered — no Suspense bailout on a static page.
+  useEffect(() => {
+    if (autoLookedUp.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const paramId = params.get("id")?.trim() ?? "";
+    const paramPhone = params.get("phone")?.trim() ?? "";
+    if (!paramId) return;
+    autoLookedUp.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL → form prefill, once
+    setOrderId(paramId.toUpperCase());
+    if (paramPhone) {
+      setPhone(paramPhone);
+      void lookup(paramId, paramPhone);
+    }
+  }, [lookup]);
+
+  // Last order placed on this device — one tap instead of typing both fields.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage read must happen post-mount
+    setLastOrder(readLastOrder());
+  }, []);
+
+  const useLastOrder = () => {
+    if (!lastOrder) return;
+    setOrderId(lastOrder.id);
+    setPhone(lastOrder.phone);
+    void lookup(lastOrder.id, lastOrder.phone);
   };
 
   const order = result?.found ? result.order : null;
@@ -137,6 +179,43 @@ export default function TrackView() {
           District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
           No account needed — order ID + phone. PIN required for COD delivery.
         </p>
+        {lastOrder && lastOrder.id !== (order?.id ?? "") ? (
+          <div
+            className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-gold-50 px-4 py-3 ring-1 ring-gold-200"
+            data-testid="last-order-shortcut"
+          >
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+                আপনার শেষ অর্ডার
+              </p>
+              <p className="truncate font-mono text-sm font-bold text-forest-900">{lastOrder.id}</p>
+              {lastOrder.total ? (
+                <p className="text-[11px] text-ink-soft">{formatBdt(lastOrder.total)} · {clockTime(lastOrder.placedAt)}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={useLastOrder}
+                disabled={checking}
+                className="rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
+              >
+                ট্র্যাক করুন
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearLastOrder();
+                  setLastOrder(null);
+                }}
+                aria-label="শেষ অর্ডার শর্টকাট সরান"
+                className="rounded-full px-2 py-1.5 text-xs text-ink-soft ring-1 ring-line hover:bg-paper"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ) : null}
         <label className="mt-6 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
             Order ID
@@ -390,8 +469,10 @@ export default function TrackView() {
                       <dd>+{formatBdt(order.tipAmount ?? 0)}</dd>
                     </div>
                   )}
-                  {order.scheduledAt && (
-                    <div className="text-xs text-sky-800">Scheduled: {new Date(order.scheduledAt).toLocaleString()} {order.deliveryWindow ?? ""}</div>
+                  {deliverySlotSummary(order, lang) && (
+                    <div className="rounded-xl bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 ring-1 ring-sky-200" data-testid="track-slot">
+                      🕒 {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
+                    </div>
                   )}
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">
@@ -420,6 +501,11 @@ export default function TrackView() {
                   {order.zoneName} · {order.etaLabel}
                   {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
                   {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
+                  {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
+                    <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                      🕒 {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
+                    </span>
+                  )}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {contactNumber && (

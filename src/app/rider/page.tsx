@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -541,7 +542,11 @@ export default function RiderPage() {
                           ↩️ Return pickup — collect from the customer, drop at the shop. No cash to collect.
                         </p>
                       )}
-                      {order.scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date(order.scheduledAt).toLocaleString()} {order.deliveryWindow ?? ""}</p>}
+                      {deliverySlotSummary(order, "bn") && (
+                        <p className="w-fit rounded-full bg-sky-50 px-2 py-1 text-[11px] font-bold text-sky-800" data-testid="rider-slot">
+                          🕒 ডেলিভারি সময়: {deliverySlotSummary(order, "bn")}
+                        </p>
+                      )}
                     </div>
 
                     {/* Action Controls */}

@@ -10,7 +10,13 @@ import { useCart } from "./cart-provider";
 import BagShopHeader from "./bag-shop-header";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { formatBdt } from "@/lib/format";
-import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
+import {
+  DELIVERY_CHARGE_LADDER_BN,
+  DELIVERY_CHARGE_PROMISE_BN,
+  DELIVERY_CHARGE_PROMISE_EN,
+  DELIVERY_ETA,
+  INSTANT_DELIVERY_TITLE,
+} from "@/lib/delivery";
 import { IconBag, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
@@ -104,13 +110,16 @@ export default function BagDrawer() {
           <div className="border-b border-line bg-forest-50 px-6 py-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-forest-900">
               <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-              {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
+              {INSTANT_DELIVERY_TITLE} — Sunamganj · {DELIVERY_ETA}
             </p>
-            <p className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200">
-              🚚 ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ — সব জায়গায়
+            <p
+              className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200"
+              data-testid="delivery-promise"
+            >
+              🚚 {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
-              Night +৳20 · Rain +৳15 · Express +৳40 · ৫ কেজির পর প্রতি কেজি +৳10
+              {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
             </p>
           </div>
           <div className="flex-1 overflow-y-auto px-6">
@@ -234,8 +243,8 @@ export default function BagDrawer() {
               </strong>
             </div>
             <p className="mb-5 mt-1.5 text-xs text-ink-soft">
-              {INSTANT_DELIVERY_TITLE} · Sunamganj Sadar · {DELIVERY_ETA} —{" "}
-              {"ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ — সব জায়গায়"}
+              {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
+              {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             <Link
               href="/checkout"
@@ -263,7 +272,7 @@ export default function BagDrawer() {
               </a>
             ) : null}
             <p className="mt-4 text-center text-xs text-ink-soft">
-              {t("bag.cashQuality")} — Sunamganj Sadar COD
+              {t("bag.cashQuality")}
             </p>
           </div>
         </>

@@ -20,6 +20,31 @@ export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the serv
 /** Fallback charge when a zone has not been resolved. */
 export const FLAT_DELIVERY_CHARGE_PAISA: Bdt = bdt(60); // ৳60
 
+/**
+ * The customer-facing delivery-charge promise — ONE sentence everywhere
+ * (bag drawer, cart, checkout, product page). The real charge is ৳60 / ৳120 /
+ * ৳150 by zone (`SUNAMGANJ_ZONES`), so "flat ৳60 everywhere" was a lie the
+ * checkout then corrected. Audit 2026-09-18, P0 #2.
+ */
+export const DELIVERY_CHARGE_MIN_PAISA: Bdt = bdt(60);
+export const DELIVERY_CHARGE_MAX_PAISA: Bdt = bdt(150);
+export const DELIVERY_CHARGE_RANGE_LABEL = "৳৬০–১৫০";
+export const DELIVERY_CHARGE_PROMISE_BN =
+  "ডেলিভারি ৳৬০ থেকে — ঠিকানা দিলে সঠিক চার্জ দেখাবে";
+export const DELIVERY_CHARGE_PROMISE_EN =
+  "Delivery from ৳60 — the exact charge shows once you enter your address";
+/** Per-zone one-liner used where there is room for the full ladder. */
+export const DELIVERY_CHARGE_LADDER_BN =
+  "শহরের ভেতর ৳৬০ · আশেপাশে ৳১২০ · দূরের উপজেলা/গ্রামে ৳১৫০";
+
+/**
+ * Minimum basket outside Sunamganj Sadar (Zone D / courier) — the SAME
+ * number the database RPC enforces (`Zone D requires minimum ৳500 order`,
+ * bootstrap-fresh.sql). Checkout, server validation and copy all read this.
+ */
+export const MIN_ORDER_OUTSIDE_SADAR_PAISA: Bdt = bdt(500);
+export const MIN_ORDER_OUTSIDE_SADAR_LABEL_BN = "৳৫০০";
+
 /** Surcharges — Sunamganj real */
 export const NIGHT_SURCHARGE_PAISA: Bdt = bdt(20); // 9PM-6AM
 export const RAIN_SURCHARGE_PAISA: Bdt = bdt(15); // when admin toggles rain

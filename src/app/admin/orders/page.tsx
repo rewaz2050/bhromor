@@ -9,6 +9,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { StatusBadge, DOT, friendlyWhen } from "@/components/admin/order-ui";
 import { IconSearch } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
@@ -230,6 +231,11 @@ export default function AdminOrdersPage() {
                     </td>
                     <td className="px-5 py-3.5 text-xs text-ink-soft">
                       {o.zoneName}
+                      {deliverySlotSummary(o) && (
+                        <span className="mt-1 block w-fit rounded-full bg-sky-100 px-2 py-0.5 text-[0.62rem] font-bold text-sky-900">
+                          🕒 {deliverySlotSummary(o)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-right font-medium text-ink">
                       {formatBdt(o.total)}

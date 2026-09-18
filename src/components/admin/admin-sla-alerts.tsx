@@ -21,9 +21,12 @@ export function AdminSlaAlerts({ orders }: { orders: Order[] }) {
     return orders
       .filter((o) => o.status !== "delivered" && o.status !== "cancelled")
       .map((o) => {
+        // A slot order (evening / scheduled) is not "late" while its window
+        // is still ahead — its clock starts at the slot, not at placement.
+        const scheduledFuture = o.scheduledAt !== undefined && o.scheduledAt > now;
         const ageMin = (now - o.createdAt) / 60000;
         const limit = slaLimitMinutes(o);
-        const breached = ageMin > limit;
+        const breached = !scheduledFuture && ageMin > limit;
         const scheduledBreached =
           o.scheduledAt !== undefined &&
           now > o.scheduledAt + 60 * 60 * 1000;

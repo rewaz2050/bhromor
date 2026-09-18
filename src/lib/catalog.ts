@@ -487,8 +487,9 @@ export const productsByCategory = (id: CategoryId) =>
 
 /** Sunamganj delivery zones — Traffic Point centric (10-20 min cycle).
  *  District: Sunamganj, Upazila: Sunamganj Sadar (default).
- *  Zones set the name/ETA and the Zone-D minimum-order rule; the delivery
- *  charge itself is a flat ৳60 everywhere (see src/lib/delivery.ts).
+ *  Client-side FALLBACK until /api/zones answers — the charges mirror the
+ *  database seed (৳60 / ৳120 / ৳150 / ৳150, bootstrap-fresh.sql) so the
+ *  pre-fetch quote never contradicts the server (audit 2026-09-18, P0 #2).
  */
 export const DELIVERY_ZONES: DeliveryZone[] = [
   {
@@ -522,7 +523,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
       "Purba Bazar",
       "Paschim Bazar",
     ],
-    charge: bdt(60),
+    charge: bdt(120),
     etaLabel: "40–50 min",
   },
   {
@@ -538,7 +539,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
       "Dakkhinpara",
       "Shologhar Bypass",
     ],
-    charge: bdt(60),
+    charge: bdt(150),
     etaLabel: "50–60 min",
   },
   {
@@ -552,12 +553,12 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
       "Mollapara Bahire",
       "Shantiganj Border",
     ],
-    charge: bdt(60),
+    charge: bdt(150),
     etaLabel: "60–80 min",
   },
 ];
 
 export const FLAT_DELIVERY_NOTE =
-  "সুনামগঞ্জ: জেলা সুনামগঞ্জ, উপজেলা সুনামগঞ্জ সদর, হাব Traffic Point। ডেলিভারি চার্জ ফ্ল্যাট ৳৬০ — সব জায়গায়। সারচার্জ: Night +৳২০, Rain +৳১৫, Express ৩০মিনিট +৳৪০, ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।";
+  "সুনামগঞ্জ: জেলা সুনামগঞ্জ, উপজেলা সুনামগঞ্জ সদর, হাব Traffic Point। ডেলিভারি ৳৬০ থেকে — শহরে ৳৬০ · আশেপাশে ৳১২০ · দূরে ৳১৫০। সারচার্জ: Night +৳২০, Rain +৳১৫, Express ৩০মিনিট +৳৪০, ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।";
 
 export const ORDER_PREFIX = "PS";

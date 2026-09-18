@@ -19,6 +19,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotLabel, deliverySlotSummary } from "@/lib/delivery-slots";
 import {
   DOT,
   StatusBadge,
@@ -320,9 +321,9 @@ export default function AdminOrderDetailPage() {
               </dt>
               <dd>{formatBdt(order.deliveryCharge)}</dd>
             </div>
-            {order.scheduledAt && (
-              <div className="flex justify-between text-sky-800 bg-sky-50 px-2 py-1 rounded">
-                <dt>Scheduled: {new Date(order.scheduledAt).toLocaleString()} {order.deliveryWindow ?? ""}</dt>
+            {deliverySlotSummary(order) && (
+              <div className="flex justify-between rounded bg-sky-50 px-2 py-1 text-sky-800" data-testid="admin-slot">
+                <dt>🕒 Slot: {deliverySlotSummary(order)}</dt>
                 <dd>{order.isExpress ? "+Express" : ""}</dd>
               </div>
             )}
@@ -554,8 +555,15 @@ export default function AdminOrderDetailPage() {
               {order.isPickup && (
                 <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
                   <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">Store Pickup — Traffic Point</p>
-                  <p className="text-xs">Pickup Slot: {order.pickupSlot || order.deliveryWindow || "now"}</p>
+                  <p className="text-xs">Pickup Slot: {deliverySlotLabel(order.pickupSlot || order.deliveryWindow || "now") ?? "now"}</p>
                   <p className="text-xs">Ready in ~{order.etaLabel}</p>
+                </div>
+              )}
+              {!order.isPickup && deliverySlotSummary(order) && (
+                <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">🕒 Customer asked for a delivery slot</p>
+                  <p className="mt-1 text-sm font-semibold text-sky-900">{deliverySlotSummary(order)}</p>
+                  <p className="text-xs text-sky-800">Pack in time and hand to a rider before the window starts.</p>
                 </div>
               )}
               {/* P1 #8: bKash/Nagad wallet payment — verify or reject */}

@@ -25,6 +25,8 @@ import {
   isNightHour,
   orderTotal,
   weightExtraCharge,
+  MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
+  MIN_ORDER_OUTSIDE_SADAR_PAISA,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
   EXPRESS_SURCHARGE_PAISA,
@@ -467,13 +469,14 @@ export const validateOrderPayload = (
   }
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
-  // Orders outside Sunamganj Sadar require a minimum basket above ৳599.
-  if (zone.id === "z4" && subtotal < 60000) {
+  // Orders outside Sunamganj Sadar need the SAME minimum the database RPC
+  // enforces (`Zone D requires minimum ৳500 order`) — one constant, one copy.
+  if (zone.id === "z4" && !isPickup && subtotal < MIN_ORDER_OUTSIDE_SADAR_PAISA) {
     return {
       ok: false,
       errors: [{
         field: "items",
-        message: "সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ৳৬০০ টাকার অর্ডার করতে হবে।",
+        message: `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} টাকার অর্ডার করতে হবে।`,
       }],
     };
   }
