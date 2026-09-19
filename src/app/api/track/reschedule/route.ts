@@ -1,13 +1,26 @@
 /** POST /api/track/reschedule — customer reschedules delivery (free). */
 import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
-import { normalizePhone } from "@/lib/orders";
+import { findOwnedOrder } from "@/lib/db/order-lookup";
+import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 const WINDOWS = ["9-11", "11-1", "2-4", "4-6", "6-8", "8-10", "express"];
+// Same budget as the track lookup it mirrors: the phone is the only proof of
+// ownership, so unlimited attempts would let a caller guess it (audit L5).
+const WINDOW_MS = 60_000;
+const LIMIT = 10;
 
 export async function POST(req: Request) {
+  const ip = clientIpFromHeaders(req.headers);
+  const gate = checkRateLimit(`track-reschedule:${ip}`, LIMIT, WINDOW_MS);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: "Too many attempts — please wait a moment." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfterSec) } },
+    );
+  }
   const body = (await req.json().catch(() => null)) as {
     orderId?: string;
     phone?: string;
@@ -35,19 +48,15 @@ export async function POST(req: Request) {
   const db = getSupabaseService();
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });
 
-  const { data: order, error } = await db
-    .from("orders")
-    .select("id, status, customer_phone")
-    .or(`id.eq.${orderId},order_no.eq.${orderId.toUpperCase()}`)
-    .single();
+  // Order number (what the storefront holds) or uuid; phone proves ownership.
   // Vague 404 on id OR phone mismatch — same as /api/track.
-  const stored = (order as { customer_phone?: string } | null)?.customer_phone ?? "";
-  if (
-    error ||
-    !order ||
-    normalizePhone(stored) === "" ||
-    normalizePhone(stored) !== normalizePhone(phone)
-  ) {
+  const order = await findOwnedOrder<{ id: string; status: string; customer_phone: string | null }>(
+    db,
+    orderId,
+    phone,
+    "id, status, customer_phone",
+  );
+  if (!order) {
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
   if (order.status === "delivered" || order.status === "cancelled") {

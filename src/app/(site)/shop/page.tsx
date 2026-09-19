@@ -5,6 +5,8 @@ import {
   getStorefrontZones,
 } from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
+import { resolveSort } from "@/lib/shop-sort";
+import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
 import FlashRail from "@/components/promo/flash-rail";
@@ -29,6 +31,7 @@ export default async function ShopPage({
     q?: string | string[];
     mood?: string | string[];
     price?: string | string[];
+    sort?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -43,9 +46,14 @@ export default async function ShopPage({
     : ("all" as const);
   const query = typeof params.q === "string" ? params.q : "";
   const onlyNew = params.filter === "new";
+  // Batch J — the homepage rails deep-link here ("See all best sellers").
+  const initialSort = resolveSort(params.sort);
 
   return (
     <>
+      {/* P2.1 — the rows this page rendered seed the client registry, so the
+          bag/search/quick-add resolve products without a second fetch. */}
+      <CatalogHydrator products={products} categories={categories} shops={shops} zones={zones} />
       <ShopHeroHeader categories={categories} />
       {/* Renders nothing unless a drop window is actually open. */}
       <FlashRail limit={4} />
@@ -60,6 +68,7 @@ export default async function ShopPage({
           initialQuery={query}
           initialMood={resolveMood(params.mood)}
           initialPrice={params.price === "under500" ? "under500" : "any"}
+          initialSort={initialSort}
         />
       </div>
       {/* Visual journal retained on the shop (removed from the short homepage). */}

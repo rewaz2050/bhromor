@@ -5,6 +5,7 @@ import { vendorRoute } from "../_lib";
 import { getVendorShop, patchVendorShop } from "@/lib/db/vendor";
 
 import { apiJson } from "@/lib/api-response";
+import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export const PATCH = vendorRoute(
   async (ctx, request) => {
     const body = await request.json().catch(() => null);
     const shop = await patchVendorShop(ctx.db, ctx.shopId, ctx.role, body);
+    revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ shop });
   },
   { limit: 20 },

@@ -225,6 +225,152 @@ Run **in this order, in one sequence** (skip files you already applied —
     confirmation must show FREE 👑 and the inserted order row must carry
     `is_plus = true`. There is no auto-renew by design: the term ends on
     `expires_at` and the customer renews from their account page.
+31. **`supabase/migrations/202609160001_checkout_delivery_pricing.sql`** —
+    checkout repair 1 (2026-09-16): zone tier charges (৳60/120/150/150),
+    every active shop serves every checkout zone, and the installed
+    `ps_place_order` is patched in place (no 500-line paste). Safe after any
+    generation of the RPC.
+32. **`supabase/migrations/202609160002_order_insert_repair.sql`** — 🚨
+    **checkout repair 2 (2026-09-16) — REQUIRED, or NO order can be placed.**
+    Small file, pastes whole, takes seconds, safe to re-run. It fixes the
+    order INSERT itself, which every `ps_place_order` since step 15 was
+    failing on:
+    * `orders.gift_wrap` was created **NOT NULL** (step 15) while the RPC
+      writes `NULL` for every non-gift order → SQLSTATE 23502 on *every*
+      plain COD order, surfaced as the generic "Could not place the order".
+    * the step-3 guard triggers were never updated: `ps_check_order_totals`
+      rejected any tip or gift-wrap fee ("order total does not reconcile")
+      and `ps_check_order_insert` rejected bKash/Nagad ("only cash on
+      delivery is enabled").
+
+    The file drops the NOT NULL, re-creates both guards for the current
+    order model (tip + gift fee, zero-total return orders, `cod|bkash|nagad`)
+    and adds `ps_checkout_health()`, which `/api/health` now reads: `live`
+    is **false** and the admin dashboard shows a red banner naming this file
+    until it has run. The paste ends with a 3-row verify — expect 3 × OK.
+    (Both repairs are also the last two sections of `bootstrap-fresh.sql`,
+    so a fresh project gets them automatically.)
+33. **`supabase/migrations/202609160003_order_status_update_repair.sql`** — 🚨
+    **checkout repair 3 (2026-09-16) — REQUIRED, or NO order can be moved.**
+    Small file, pastes whole, takes seconds, safe to re-run. Found while
+    checking why Admin → Orders → *Mark confirmed* did nothing: three
+    database defects, all reproduced on a fresh bootstrap:
+    * `ps_write_shop_ledger` (step 13's ledger trigger, fires on **every**
+      `UPDATE OF status`) compared the `ps_order_status` **enum** with `''`
+      → SQLSTATE 22P02 on every status change: Confirm, Preparing, …,
+      Delivered, Cancel — staff *and* vendor — all answered "Could not
+      update the order."
+    * `ps_verify_payment` (steps 24/28) ended with
+      `return (select * from orders …)` — a scalar subquery → 42601, so no
+      bKash/Nagad payment could ever be verified or rejected.
+    * `trg_riders_guard_self_update` (step 6) raised `forbidden` for any
+      non-staff write to `riders` other than the online switch — including
+      the writes our own RPCs/triggers make (cash-in-hand, load counters,
+      GPS, shift): rider *Delivered*, *Reject offer*, location, the
+      stale-offer sweep (run before every rider job list and the admin
+      Deliveries board) and the vendor's *Ready for pickup* all failed.
+
+    The file re-creates the trigger with `old.status is distinct from
+    new.status`, re-creates `ps_verify_payment` with a proper
+    `select … into`, makes the riders guard apply only to a rider's own
+    **direct** write (and then to nothing but `is_online`), drops the stale
+    2-argument `ps_rider_deliver` overload, and extends
+    `ps_checkout_health()` (`status_update_ok`, `payment_verify_ok`,
+    `rider_guard_ok`) which `/api/health` reads as `checks.orderFlowRepair`.
+    `live` stays **false** and the admin dashboard shows a red banner naming
+    this file until it has run. Ends with a 4-row verify — expect 4 × OK.
+    (Also a late section of `bootstrap-fresh.sql` / `bootstrap-parts/10`.)
+34. **`supabase/migrations/202609160004_rpc_grants_rls_repair.sql`** — 🔒
+    **security lock (2026-09-16 audit) — strongly recommended.** Small file,
+    pastes whole, safe to re-run, changes no feature. Ordering keeps working
+    without it, but until it runs the *public* anon key (shipped in every
+    page) can reach three things directly through PostgREST:
+    * nine SECURITY DEFINER write RPCs with no internal auth check and the
+      Supabase default EXECUTE grant — `ps_place_order`, `ps_use_coupon`,
+      `ps_book_delivery_slot` (20 calls = a day's slots full),
+      `ps_return_action`, `ps_create_return_request`,
+      `ps_assign_batch_to_rider`, `ps_credit_referrer`,
+      `ps_expire_stale_offers`, `ps_shop_rating_recompute`;
+    * `memberships` (step 30's PROSANTI+ table), created with an admin policy
+      but **without** `enable row level security`, so every request's phone
+      and trxid was readable and its status writable;
+    * `delivery_slots`, whose "admin all" policy was `using (true)`.
+
+    The file revokes those RPCs from `anon`/`authenticated` (service_role,
+    i.e. every one of our API routes, keeps them), enables RLS on
+    `memberships`, rewrites the slot policy to `ps_is_admin()`, and extends
+    `ps_checkout_health()` (`rpc_grants_locked`, `memberships_rls`) which
+    `/api/health` reads as `checks.securityRepair`. `live` is **not** gated
+    on it; the admin dashboard shows an amber "security lock pending" note
+    under the green chip until it has run. Ends with a 3-row verify —
+    expect 3 × OK. (Also in `bootstrap-fresh.sql` / `bootstrap-parts/10`;
+    `diagnose.sql` rows 35–35c.)
+
+35. **`supabase/migrations/202609160005_dispatch_reoffer_repair.sql`** — 🛵
+    **dispatch re-offer repair (2026-09-16 audit) — required before riders
+    work a real day.** Small file, pastes whole, safe to re-run. Two defects
+    in the delivery-offer chain, both reproduced against a fresh bootstrap:
+    * `delivery_assignments` was created with `UNIQUE (order_id)`, but every
+      re-offer path (`ps_expire_stale_offers`, `ps_rider_reject`,
+      `ps_offer_order`) *inserts a second row* for the same order. So the
+      moment ONE 90-second offer lapses while a second eligible rider is
+      online, the sweep raises `23505` — and because the sweep runs at the
+      top of `GET /api/rider/jobs`, **every rider's job feed answers 503**
+      until that row is fixed by hand. A rider tapping Reject hit the same
+      wall.
+    * `ps_assign_batch_to_rider` called a `ps_assign_order_to_rider` that
+      never existed and read a `rider_assignments` table that never existed
+      — Admin → Deliveries → Batch assign has never assigned anything.
+
+    The file drops the unique constraint and replaces it with a **partial**
+    unique index (`delivery_assignments_one_live_offer`: one row per order
+    in `offered`/`accepted`/`picked_up`, so history and the "already seen"
+    rotation are kept), rewrites `ps_assign_batch_to_rider` as a direct
+    90-second offer to the chosen rider (withdraws other riders' live
+    offers, never touches a picked-up parcel, skips orders that are not
+    ready, returns the count; rider must be active + online), keeps it
+    service-only, and extends `ps_checkout_health()` with
+    `dispatch_reoffer_ok` → `/api/health` `checks.dispatchRepair` + an amber
+    note on the admin dashboard until it has run. Ends with a 3-row verify —
+    expect 3 × OK. (Also the last section of `bootstrap-fresh.sql` /
+    `bootstrap-parts/10`; `diagnose.sql` rows 36–36d.)
+
+36. **`supabase/migrations/202609170001_two_tap_order_flow.sql`** — ⚡
+    **two-tap order flow (2026-09-17 audit).** Tiny file, pastes whole, safe
+    to re-run. Staff/vendor now move an order with **two taps** — *Confirm*
+    (pending → confirmed) and *Ready — call rider* (confirmed →
+    ready-for-pickup, which fires the existing auto-dispatch). Until this
+    runs, `ps_advance_order` only accepts +1 steps, so the second button is
+    served by the app as two internal RPC calls (confirmed → preparing →
+    ready-for-pickup, with a `console.warn` naming this file). The migration
+    re-creates `ps_advance_order` with that single extra allowance
+    (`confirmed → ready-for-pickup`); every other rule is untouched — no
+    other skips, no backwards moves, cancel only from pending / confirmed /
+    preparing, vendors limited to their own shop's confirmed / preparing /
+    ready / cancelled, bKash/Nagad still blocked past confirmed until
+    `ps_verify_payment`, rider RPCs and the dispatch trigger unchanged. It
+    also extends `ps_checkout_health()` with `two_tap_flow_ok` →
+    `/api/health` `checks.twoTapFlow` + an amber note on the admin
+    dashboard until it has run. Ends with a 2-row verify — expect 2 × OK.
+    The customer-facing track page now shows four milestones (Order placed
+    → Confirmed → Picked up → Delivered) regardless of this migration.
+
+37. **`supabase/migrations/202609170002_perf_indexes.sql`** — ⚡ **speed
+    (2026-09-17 audit, Batch B).** Seven `create index if not exists`
+    statements, no data change, safe to re-run, seconds to apply. Adds the
+    composite indexes the hot lists were missing: `orders (status,
+    created_at desc, id desc)` for Admin → Orders keyset paging,
+    `orders (shop_id, created_at desc)` for the vendor list, a partial
+    `orders (rider_id)` for the rider's deliveries, `delivery_assignments
+    (rider_id, state, offered_at desc)` for the rider board, a partial
+    `delivery_assignments (state, order_id)` over the live states for the
+    dispatch "awaiting" filter, `orders (return_parent_id, created_at desc)`
+    for return links and `referral_rewards (referee_phone)` for the
+    phone-scoped referral proof. Nothing breaks without it — the app is
+    faster on its own from this batch (CDN caching of the public catalog
+    routes, one batched order mapper, a scoped checkout snapshot) — but at a
+    few thousand orders the admin list and boards stop scaling without
+    these. Ends with a 7-row verify — expect 7 × OK.
 
 Quick check after step 11 (SQL editor):
 
@@ -249,7 +395,17 @@ team — see `docs/vercel.md` for Config-vs-Secret types):
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service_role key>   # server-only
+NEXT_PUBLIC_SITE_URL=https://proshanti.rahatahmed.site   # the public domain, no trailing slash
+# HEALTH_TOKEN=<random string>   # optional: lets an uptime monitor read the full /api/health
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is not optional any more (2026-09-16): after
+migration 0004 the staff routes reach the service-only RPCs (returns,
+dispatch board, batch assign) through it, and `/api/health` /
+`/api/orders` need it as before. `NEXT_PUBLIC_SITE_URL` is what
+`<link rel=canonical>`, `og:url`, `/sitemap.xml` and `/robots.txt` print —
+without it Vercel's production domain is used, and off Vercel the fallback
+is `https://prosanti.store`.
 
 After any env change: Deployments → ⋯ → **Redeploy** with “Use existing
 Build Cache” **unchecked**.
@@ -280,6 +436,20 @@ Verify: `GET https://<your-app>/api/products` must return products, not
 > **দ্রুততম পথ (এই মুহূর্তে):** বাকি ৪টে (steps 27–30) একসাথে
 > `supabase/pending-p2-final.sql` — ~31KB, **এক পেস্টে** Run → তারপর
 > `supabase/verify-p2.sql` চালালে ৬টা check-ই `OK` দেখাবে।
+>
+> **🚨 চেকআউটে "Could not place the order" আসছে?** (2026-09-16) —
+> `supabase/migrations/202609160002_order_insert_repair.sql` (step 32) এখনো
+> চালানো হয়নি। ছোট ফাইল, পুরোটা পেস্ট করে Run — শেষে ৩টা `OK`। এটা ছাড়া
+> `ps_place_order` থাকলেও ডেটাবেস কোনো অর্ডার row নিতে পারে না
+> (`orders.gift_wrap` NOT NULL + পুরনো guard trigger)। `/api/health`-এ
+> `checkoutRepair: true` দেখালেই হয়ে গেছে।
+>
+> **🚨 অর্ডার আসছে কিন্তু Admin-এ Confirm/Cancel কিছু হচ্ছে না?** (2026-09-16) —
+> `supabase/migrations/202609160003_order_status_update_repair.sql` (step 33)
+> চালানো হয়নি। ছোট ফাইল, পুরোটা পেস্ট করে Run — শেষে ৪টা `OK`। এটা ছাড়া
+> ডেটাবেসের ledger trigger প্রতিটা status পরিবর্তন আটকে দেয়, bKash verify
+> কাজ করে না, rider-এর Delivered বাটনও না। `/api/health`-এ
+> `orderFlowRepair: true` দেখালেই হয়ে গেছে।
 
 ### বড় SQL পেস্ট করা যাচ্ছে না? (Supabase editor freeze)
 

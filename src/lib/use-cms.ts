@@ -1,45 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { HOME_DEFAULTS, type HomeSettings } from "./home-cms";
-import { sanitizeHomeSettings } from "./engagement";
+import { useCallback, useState } from "react";
+import { type HomeSettings } from "./home-cms";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiSend } from "./admin-api";
+import { publishHomeSettings, useHomeSettings } from "./use-home-settings";
 
 /**
- * Homepage CMS (§31) — live only. Everyone (storefront included) reads the
- * published row from GET /api/homepage; staff publish through
- * PATCH /api/admin/homepage.
+ * Homepage CMS EDITOR (§31) — staff only (`/admin/homepage`).
+ *
+ * Reads through the same shared store the storefront uses
+ * (`useHomeSettings`) and publishes through PATCH /api/admin/homepage.
+ * Storefront surfaces must use `useHomeSettings()` directly: this hook
+ * pulls in the staff-session probe and the admin API client, which the
+ * public bundle should never carry (audit 2026-09-17 P2.2).
  */
 export function useCms() {
   const { live: staffLive } = useStaffLive();
-  const [published, setPublished] = useState<HomeSettings | null>(null);
+  const { settings, loading } = useHomeSettings();
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/homepage", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("CMS unavailable");
-        const data = (await res.json()) as {
-          settings?: HomeSettings;
-        };
-        if (!cancelled) {
-          setPublished(
-            data.settings
-              ? sanitizeHomeSettings(data.settings)
-              : HOME_DEFAULTS,
-          );
-          setError(null);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setPublished(HOME_DEFAULTS);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const save = useCallback(
     async (s: HomeSettings): Promise<boolean> => {
@@ -50,7 +29,7 @@ export function useCms() {
           "PATCH",
           { settings: s },
         );
-        setPublished(sanitizeHomeSettings(data.settings));
+        publishHomeSettings(data.settings);
         setError(null);
         return true;
       } catch (err) {
@@ -62,12 +41,12 @@ export function useCms() {
   );
 
   return {
-    settings: published ?? HOME_DEFAULTS,
+    settings,
     save,
     reset: () => {},
     /** True when the editor publishes to the database (staff session). */
     live: staffLive,
-    loading: published === null,
+    loading,
     error,
     clearError: () => setError(null),
   };

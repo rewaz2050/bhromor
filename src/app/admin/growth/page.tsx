@@ -32,6 +32,7 @@ import type { ReferralConfig } from "@/lib/referral";
 import { campaignStateFor, type CampaignConfig } from "@/lib/campaign";
 import type { PlusConfig } from "@/lib/membership";
 import { field, hint, label } from "@/components/admin/form-ui";
+import AdminDataError from "@/components/admin/admin-data-error";
 import { IconBell, IconBolt, IconCheck, IconClock, IconGift, IconTag, IconTrendDown, IconUser } from "@/components/ui/icons";
 
 const taka = (paisa: number): string => String(paisa / 100);
@@ -135,7 +136,14 @@ const Num = ({
 );
 
 export default function AdminGrowthPage() {
-  const { settings, save, live } = useSettings();
+  const {
+    settings,
+    save,
+    live,
+    error: settingsError,
+    clearError: clearSettingsError,
+    reset: reloadSettings,
+  } = useSettings();
   const growth = useGrowth();
   const catalog = useCatalog();
 
@@ -265,7 +273,9 @@ export default function AdminGrowthPage() {
         </div>
       </div>
       {status ? <p className="text-sm text-forest-800">{status}</p> : null}
-      {growth.error ? <p className="text-sm text-rose-700">{growth.error}</p> : null}
+      <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
+      <AdminDataError label="Growth data" error={growth.error} onRetry={growth.refresh} />
+      <AdminDataError label="Catalog" error={catalog.error} onRetry={catalog.reset} onDismiss={catalog.clearError} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* ---------------- Flash drop ---------------- */}

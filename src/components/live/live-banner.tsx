@@ -13,6 +13,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { IconArrowRight, IconClock } from "@/components/ui/icons";
 import { liveState, type LiveSession } from "@/lib/live";
+import { afterFirstPaint } from "@/lib/defer";
+import { usePoll } from "@/lib/use-poll";
 
 interface LiveData {
   live: LiveSession | null;
@@ -53,11 +55,12 @@ export default function LiveBanner() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount + interval
-    void load();
-    const t = setInterval(() => void load(), 60_000);
-    return () => clearInterval(t);
+    // First read after the first paint (P2.5).
+    return afterFirstPaint(() => void load());
   }, [load]);
+  // Then every 60 s — only while the tab is visible (a home tab left open
+  // in the background used to poll /api/live all day).
+  usePoll(load, 60_000);
 
   const live = data?.live && liveState(data.live) === "live" ? data.live : null;
   const upcoming =

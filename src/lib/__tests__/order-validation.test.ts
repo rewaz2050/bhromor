@@ -36,7 +36,7 @@ describe("validateOrderPayload", () => {
     const result = validateOrderPayload(payload(), snapshot());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // p1 = ৳1,490 → 149000 paisa; flat delivery charge ৳60 in every zone.
+    // p1 = ৳1,490 → 149000 paisa; Zone A delivery charge ৳60.
     expect(result.draft.subtotal).toBe(bdt(1490));
     expect(result.draft.deliveryCharge).toBe(bdt(60));
     expect(result.draft.discount).toBe(0);
@@ -49,7 +49,7 @@ describe("validateOrderPayload", () => {
     expect(result.draft.customer.para).toBe("Boropara");
   });
 
-  it("flat ৳60 applies in every zone — no launch offer, threshold or first-10 promo", () => {
+  it("the zone row prices delivery (৳60 / ৳120 / ৳150) — no launch offer, threshold or first-10 promo", () => {
     const inA = validateOrderPayload(payload(), snapshot());
     expect(inA.ok).toBe(true);
     if (inA.ok) expect(inA.draft.deliveryCharge).toBe(bdt(60));
@@ -61,7 +61,7 @@ describe("validateOrderPayload", () => {
     expect(inB.ok).toBe(true);
     if (inB.ok) {
       expect(inB.draft.zone.id).toBe("z2");
-      expect(inB.draft.deliveryCharge).toBe(bdt(60));
+      expect(inB.draft.deliveryCharge).toBe(bdt(120));
     }
 
     const outside = validateOrderPayload(
@@ -71,7 +71,7 @@ describe("validateOrderPayload", () => {
     expect(outside.ok).toBe(true);
     if (outside.ok) {
       expect(outside.draft.zone.id).toBe("z4");
-      expect(outside.draft.deliveryCharge).toBe(bdt(60));
+      expect(outside.draft.deliveryCharge).toBe(bdt(150));
     }
   });
 
@@ -126,7 +126,7 @@ describe("validateOrderPayload", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.draft.zone.id).toBe("z2");
-    expect(result.draft.deliveryCharge).toBe(bdt(60));
+    expect(result.draft.deliveryCharge).toBe(bdt(120));
   });
 
   it("applies a fixed coupon and snapshots code + discount", () => {
@@ -414,15 +414,15 @@ describe("validateOrderPayload shop availability (marketplace slice 4)", () => {
     }
   });
 
-  it("rejects a zone the shop doesn't serve with a zone error", () => {
+  it("accepts a zone outside the shop's list — the list is merchandising, not a delivery block", () => {
+    // Delivery is accepted for every address (the zone drives the charge);
+    // a shop's zoneIds only filter what the storefront shows. Open/suspended
+    // checks above are still the ones that refuse the order.
     const result = validateOrderPayload(
       payload(),
       snap([shop({ zoneIds: ["z9"] })]),
     );
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.errors[0].field).toBe("zoneId");
-    expect(result.errors[0].message).toMatch(/doesn't deliver/);
+    expect(result.ok).toBe(true);
   });
 
   it("skips the check when the snapshot carries no shops", () => {

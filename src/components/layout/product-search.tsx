@@ -101,9 +101,7 @@ export default function ProductSearch() {
                 <IconArrowRight />
               </button>
             </div>
-            <p className="mt-3 text-xs text-ink-soft">
-              Search in English or বাংলা. Find something that feels like you.
-            </p>
+            <p className="mt-3 text-xs text-ink-soft">{t("header.searchHint")}</p>
           </form>
         </div>
         <div className="flex-1 px-5 py-6 sm:px-8">
@@ -152,7 +150,9 @@ export default function ProductSearch() {
             className="mb-4 break-words text-sm text-ink-soft"
           >
             {searching
-              ? `${matches.length} ${matches.length === 1 ? "match" : "matches"} for “${query.trim()}”`
+              ? (matches.length === 1 ? t("header.matchFor") : t("header.matchesFor"))
+                  .replace("{n}", String(matches.length))
+                  .replace("{q}", query.trim())
               : t("header.fewFavourites")}
           </p>
           {searching && matches.length === 0 ? (
@@ -194,13 +194,29 @@ export default function ProductSearch() {
                         {product.subCategory}
                       </p>
                       <h3 className="mt-1 font-display text-lg leading-snug text-forest-900 group-hover:underline">
-                        {product.name}
+                        {lang === "bn" && product.nameBn ? (
+                          <>
+                            <span lang="bn" className="font-bengali">
+                              {product.nameBn}
+                            </span>
+                            <span className="block text-xs font-normal text-ink-soft">{product.name}</span>
+                          </>
+                        ) : (
+                          <>
+                            {product.name}
+                            {product.nameBn ? (
+                              <span lang="bn" className="font-bengali block text-xs font-normal text-ink-soft">
+                                {product.nameBn}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
                       </h3>
                       <p className="mt-2 text-sm font-medium text-ink">
                         {formatBdt(product.price)}
                         {!product.inStock && (
                           <span className="ml-2 text-xs font-normal text-ink-soft">
-                            Sold out
+                            {t("header.soldOut")}
                           </span>
                         )}
                       </p>
@@ -220,7 +236,9 @@ export default function ProductSearch() {
               className="flex min-h-12 items-center justify-center gap-3 rounded-full bg-forest-800 px-5 py-3 text-sm font-semibold text-ivory-50 hover:bg-forest-700"
             >
               {searching
-                ? `View ${matches.length === 1 ? "1 result" : `all ${matches.length} results`}`
+                ? matches.length === 1
+                  ? t("header.viewOneResult")
+                  : t("header.viewAllResults").replace("{n}", String(matches.length))
                 : t("header.shopFullCollection")}
               <IconArrowRight className="h-4 w-4" />
             </Link>

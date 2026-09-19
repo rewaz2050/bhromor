@@ -68,7 +68,7 @@ export default function AboutPage() {
             {
               icon: IconBox,
               title: "Tracked to the door",
-              text: "A calm order timeline: confirmation, preparing, courier assigned, out for delivery — no chasing, no guessing.",
+              text: "A calm four-step order timeline: placed, confirmed, picked up, delivered — no chasing, no guessing.",
             },
             {
               icon: IconLeaf,

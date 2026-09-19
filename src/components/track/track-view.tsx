@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { clearLastOrder, readLastOrder, type LastOrder } from "@/lib/last-order";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
 import {
-  flowIndex,
+  PUBLIC_STEPS,
+  publicPhase,
+  publicStepDone,
   type Order,
-  type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { clockTime } from "@/components/admin/order-ui";
+import { useLanguage } from "@/components/i18n/language-provider";
+import type { TranslationKey } from "@/lib/translations";
 import {
   IconBox,
   IconCheck,
@@ -18,66 +23,49 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
-import { SignatureCanvas } from "./signature-canvas";
-import { DeliveryRating } from "./delivery-rating";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";
+import CancelPanel from "./cancel-panel";
+import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
+import { courierEta, isCourierZone } from "@/lib/delivery";
+import { tidyPhoneInput } from "@/lib/phone";
 
-/** Public-facing steps — “ready for pickup” folds into courier assignment. */
-const STEPS: {
-  statuses: OrderStatus[];
-  label: string;
-  note: string;
-}[] = [
-  {
-    statuses: ["pending"],
-    label: "Order Placed",
-    note: "Confirmed receipt of your order",
-  },
-  {
-    statuses: ["confirmed"],
-    label: "Order Confirmed",
-    note: "Stock reserved & payment method verified",
-  },
-  {
-    statuses: ["preparing"],
-    label: "Preparing",
-    note: "Being quality-checked & packed",
-  },
-  {
-    statuses: ["ready-for-pickup", "courier-assigned"],
-    label: "Courier Assigned",
-    note: "A rider is on the way to collect",
-  },
-  {
-    statuses: ["out-for-delivery"],
-    label: "Out for Delivery",
-    note: "Your order is on the move",
-  },
-  {
-    statuses: ["delivered"],
-    label: "Delivered",
-    note: "Enjoy — thank you for shopping with PROSANTI",
-  },
-];
-
-/** Index of the step the order is actually sitting on (-1 when cancelled). */
-export const currentStepIndex = (order: Order): number =>
-  STEPS.findIndex((step) => step.statuses.includes(order.status));
-
-const stepReached = (order: Order, step: number): boolean => {
-  if (order.status === "cancelled") return false;
-  const current = currentStepIndex(order);
-  if (current !== -1) return step <= current;
-  // Unknown/legacy status → fall back to the flow position.
-  return STEPS[step].statuses.some(
-    (s) => flowIndex(s) !== -1 && flowIndex(order.status) >= flowIndex(s),
-  );
+/**
+ * Public-facing steps — the four milestones from `PUBLIC_STEPS`
+ * (Order placed → Confirmed → Picked up → Delivered). Copy lives in
+ * translations.ts so the Bengali switch covers the timeline too.
+ */
+const STEP_COPY: Record<
+  (typeof PUBLIC_STEPS)[number]["key"],
+  { label: TranslationKey; note: TranslationKey }
+> = {
+  placed: { label: "track.stepPlaced", note: "track.stepPlacedNote" },
+  confirmed: { label: "track.stepConfirmed", note: "track.stepConfirmedNote" },
+  "picked-up": { label: "track.stepPickedUp", note: "track.stepPickedUpNote" },
+  delivered: { label: "track.stepDelivered", note: "track.stepDeliveredNote" },
 };
 
-const stepTime = (order: Order, step: number): string | undefined => {
-  for (const s of STEPS[step].statuses) {
+/** Index of the public step the order is sitting in (-1 when cancelled). */
+export const currentStepIndex = (order: Order): number =>
+  publicPhase(order.status);
+
+/** The milestone has actually happened (not merely "in progress"). */
+export const stepReached = (order: Order, step: number): boolean =>
+  publicStepDone(order.status, step);
+
+/**
+ * When the milestone happened — the time of its `doneAt` state, or (for a
+ * step still in progress) the earliest internal state reached inside it, so
+ * the customer sees when the shop packed the order while the rider is
+ * still on the way.
+ */
+export const stepTime = (order: Order, step: number): string | undefined => {
+  const def = PUBLIC_STEPS[step];
+  if (!def) return undefined;
+  const done = order.timeline.find((t) => t.status === def.doneAt);
+  if (done) return clockTime(done.at);
+  for (const s of def.statuses) {
     const entry = order.timeline.find((t) => t.status === s);
     if (entry) return clockTime(entry.at);
   }
@@ -90,11 +78,15 @@ type Result =
   | null;
 
 export default function TrackView() {
+  const { t, lang } = useLanguage();
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
   const [checking, setChecking] = useState(false);
   const [lookupFailed, setLookupFailed] = useState(false);
+  /** "আপনার শেষ অর্ডার" — remembered by the receipt on this device (P0 #5). */
+  const [lastOrder, setLastOrder] = useState<LastOrder | null>(null);
+  const autoLookedUp = useRef(false);
   // The shop's real WhatsApp number (ops settings) — the support button
   // renders only when it is configured, never a placeholder.
   const [contactNumber, setContactNumber] = useState<string | null>(null);
@@ -112,14 +104,15 @@ export default function TrackView() {
     };
   }, []);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = orderId.trim().toUpperCase();
+  const lookup = useCallback(async (rawId: string, rawPhone: string) => {
+    const id = rawId.trim().toUpperCase();
+    const ph = rawPhone.trim();
+    if (!id || !ph) return;
     setChecking(true);
     setLookupFailed(false);
     try {
       const res = await fetch(
-        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone.trim())}`,
+        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
       );
       const data = (await res.json().catch(() => null)) as {
         order?: Order;
@@ -136,6 +129,42 @@ export default function TrackView() {
     } finally {
       setChecking(false);
     }
+  }, []);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void lookup(orderId, phone);
+  };
+
+  // /track?id=…&phone=… (the receipt link) → prefill AND look up once.
+  // Read from the URL after mount (not useSearchParams) so the form itself
+  // is still server-rendered — no Suspense bailout on a static page.
+  useEffect(() => {
+    if (autoLookedUp.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const paramId = params.get("id")?.trim() ?? "";
+    const paramPhone = params.get("phone")?.trim() ?? "";
+    if (!paramId) return;
+    autoLookedUp.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- URL → form prefill, once
+    setOrderId(paramId.toUpperCase());
+    if (paramPhone) {
+      setPhone(paramPhone);
+      void lookup(paramId, paramPhone);
+    }
+  }, [lookup]);
+
+  // Last order placed on this device — one tap instead of typing both fields.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage read must happen post-mount
+    setLastOrder(readLastOrder());
+  }, []);
+
+  const useLastOrder = () => {
+    if (!lastOrder) return;
+    setOrderId(lastOrder.id);
+    setPhone(lastOrder.phone);
+    void lookup(lastOrder.id, lastOrder.phone);
   };
 
   const order = result?.found ? result.order : null;
@@ -154,6 +183,43 @@ export default function TrackView() {
           District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
           No account needed — order ID + phone. PIN required for COD delivery.
         </p>
+        {lastOrder && lastOrder.id !== (order?.id ?? "") ? (
+          <div
+            className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-gold-50 px-4 py-3 ring-1 ring-gold-200"
+            data-testid="last-order-shortcut"
+          >
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+                আপনার শেষ অর্ডার
+              </p>
+              <p className="truncate font-mono text-sm font-bold text-forest-900">{lastOrder.id}</p>
+              {lastOrder.total ? (
+                <p className="text-[11px] text-ink-soft">{formatBdt(lastOrder.total)} · {clockTime(lastOrder.placedAt)}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={useLastOrder}
+                disabled={checking}
+                className="rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
+              >
+                ট্র্যাক করুন
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearLastOrder();
+                  setLastOrder(null);
+                }}
+                aria-label="শেষ অর্ডার শর্টকাট সরান"
+                className="rounded-full px-2 py-1.5 text-xs text-ink-soft ring-1 ring-line hover:bg-paper"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        ) : null}
         <label className="mt-6 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
             Order ID
@@ -182,7 +248,8 @@ export default function TrackView() {
               pattern="(\+?88)?01[0-9]{9}"
               title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
+              autoComplete="tel"
               placeholder="017XXXXXXXX"
               className="h-12 w-full rounded-2xl bg-ivory-50 pl-11 pr-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
@@ -232,11 +299,25 @@ export default function TrackView() {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* P2 #21: the one thing that is true right now (+ the PIN when a rider is on the way) */}
+            <OrderNowBanner key={`now-${order.id}-${order.status}`} order={order} />
+
             {/* P1 #8: wallet-payment state (COD orders render nothing) */}
             <PaymentStatus order={order} />
 
-            {/* Live Interactive Delivery Map & Security PIN */}
-            <LiveDeliveryMap order={order} />
+            {/* P1 #14: cancel online while the shop has not packed it yet */}
+            <CancelPanel
+              key={`cancel-${order.id}`}
+              order={order}
+              phone={phone}
+              contactNumber={contactNumber}
+              onCancelled={(next) => setResult({ found: true, order: next, via: "live" })}
+            />
+
+            {/* Live delivery map & security PIN — only while a rider can
+                actually come (P2 #21): not for pickup, courier, delivered
+                or cancelled orders. */}
+            {showsRiderMap(order) ? <LiveDeliveryMap order={order} /> : null}
 
             {/* P1 #13: return/exchange — status, or the home-pickup request */}
             <ReturnPanel
@@ -252,26 +333,18 @@ export default function TrackView() {
             <WarrantyPanel key={order.id} order={order} />
 
             {/* Timeline */}
-            {order.status === "cancelled" && (
+            {order.status === "cancelled" && contactNumber && (
               <p
-                role="status"
-                className="rounded-2xl bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-800 ring-1 ring-rose-200"
+                role="note"
+                className="rounded-2xl bg-paper px-5 py-3 text-xs leading-5 text-ink-soft ring-1 ring-line"
               >
-                This order was cancelled. If that looks wrong, {contactNumber ? (
-                  <>
-                    call/WhatsApp us on <span className="font-semibold">{contactNumber}</span>{" "}
-                    with the order ID and we will check it for you.
-                  </>
-                ) : (
-                  <>
-                    contact the shop with the order ID and we will check it
-                    for you.
-                  </>
-                )}
+                This order was cancelled. If that looks wrong, call/WhatsApp us on{" "}
+                <span className="font-semibold text-ink">{contactNumber}</span> with the order ID
+                and we will check it for you.
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
-              {STEPS.map((step, index) => {
+              {PUBLIC_STEPS.map((step, index) => {
                 const reached = stepReached(order, index);
                 // "Current" is the step the order is on — it used to point at
                 // the *next*, unreached step, so a pending order claimed it
@@ -281,12 +354,23 @@ export default function TrackView() {
                   order.status !== "delivered" &&
                   index === currentStepIndex(order);
                 const time = stepTime(order, index);
+                const copy = STEP_COPY[step.key];
+                // Step 3 in progress: say honestly where the parcel is.
+                const note =
+                  step.key === "picked-up" && current && !reached
+                    ? order.status === "ready-for-pickup" || !order.rider
+                      ? t("track.stepPickedUpWaiting")
+                      : t("track.stepPickedUpAssigned").replace(
+                          "{name}",
+                          order.rider.name,
+                        )
+                    : t(copy.note);
                 return (
                   <li
-                    key={step.label}
+                    key={step.key}
                     className="relative flex gap-4 pb-7 last:pb-0"
                   >
-                    {index < STEPS.length - 1 && (
+                    {index < PUBLIC_STEPS.length - 1 && (
                       <span
                         aria-hidden="true"
                         className={`absolute left-[1.02rem] top-9 h-[calc(100%-2rem)] w-0.5 ${
@@ -319,16 +403,16 @@ export default function TrackView() {
                           reached || current ? "text-ink" : "text-ink-soft"
                         }`}
                       >
-                        {step.label}
+                        {t(copy.label)}
                         {current && (
                           <span className="ml-2 rounded-full bg-gold-200 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-gold-700">
-                            Current
+                            {t("track.current")}
                           </span>
                         )}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-ink-soft">
-                        {step.note}
-                        {time && reached && (
+                        {note}
+                        {time && (
                           <span className="ml-2 text-ink-soft/70">
                             · {time}
                           </span>
@@ -376,28 +460,30 @@ export default function TrackView() {
                     <dd>{formatBdt(order.subtotal)}</dd>
                   </div>
                   <div className="flex justify-between text-ink-soft">
-                    <dt>Delivery{(order as any).isPickup ? " — Pickup" : ""}{(order as any).isExpress ? " — Express" : ""}</dt>
+                    <dt>Delivery{order.isPickup ? " — Pickup" : ""}{order.isExpress ? " — Express" : ""}</dt>
                     <dd>
-                      {(order as any).isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
+                      {order.isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
-                  {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+                  {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
                     <div className="text-xs text-ink-soft bg-amber-50 p-2 rounded-xl">
                       {(order.surchargeNight ?? 0) > 0 && <div>Night: {formatBdt(order.surchargeNight ?? 0)}</div>}
                       {(order.surchargeRain ?? 0) > 0 && <div>Rain: {formatBdt(order.surchargeRain ?? 0)}</div>}
                       {(order.surchargeDistance ?? 0) > 0 && <div>Distance: {formatBdt(order.surchargeDistance ?? 0)}</div>}
                       {(order.surchargeExpress ?? 0) > 0 && <div>Express: {formatBdt(order.surchargeExpress ?? 0)}</div>}
-                      {(order as any).surchargeWeight > 0 && <div>Weight: {formatBdt((order as any).surchargeWeight)}</div>}
+                      {(order.surchargeWeight ?? 0) > 0 && <div>Weight: {formatBdt(order.surchargeWeight ?? 0)}</div>}
                     </div>
                   )}
-                  {(order as any).tipAmount > 0 && (
+                  {(order.tipAmount ?? 0) > 0 && (
                     <div className="flex justify-between text-forest-700">
                       <dt>💝 Tip</dt>
-                      <dd>+{formatBdt((order as any).tipAmount)}</dd>
+                      <dd>+{formatBdt(order.tipAmount ?? 0)}</dd>
                     </div>
                   )}
-                  {(order as any).scheduledAt && (
-                    <div className="text-xs text-sky-800">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</div>
+                  {deliverySlotSummary(order, lang) && (
+                    <div className="rounded-xl bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 ring-1 ring-sky-200" data-testid="track-slot">
+                      🕒 {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
+                    </div>
                   )}
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">
@@ -406,7 +492,11 @@ export default function TrackView() {
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
-                    <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
+                    <dt>
+                      Total (
+                      {order.payment === "bkash" ? "bKash" : order.payment === "nagad" ? "Nagad" : "COD"})
+                      {order.isPickup ? " — Pickup" : ""}
+                    </dt>
                     <dd>{formatBdt(order.total)}</dd>
                   </div>
                 </dl>
@@ -423,9 +513,14 @@ export default function TrackView() {
                 </p>
                 <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
-                  {order.zoneName} · {order.etaLabel}
-                  {order.zoneId === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar</span>}
-                  {(order as any).isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
+                  {order.zoneName} · {isCourierZone(order.zoneId) && !order.isPickup ? courierEta(lang) : order.etaLabel}
+                  {isCourierZone(order.zoneId) && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar · Courier</span>}
+                  {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
+                  {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
+                    <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                      🕒 {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
+                    </span>
+                  )}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {contactNumber && (

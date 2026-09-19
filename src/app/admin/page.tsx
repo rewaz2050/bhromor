@@ -9,17 +9,20 @@ import { useSettings } from "@/lib/use-settings";
 import {
   aggregateOrders,
   deliveryStats,
-  ORDER_FLOW,
-  STATUS_META,
+  PUBLIC_STEPS,
 } from "@/lib/orders";
 import { displayStock } from "@/lib/catalog-store";
 import { formatBdt } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
+import { ageLabel, oldestOf } from "@/lib/order-actions";
 import {
   StatusBadge,
   DOT,
   friendlyWhen,
 } from "@/components/admin/order-ui";
 import LiveSetupBanner from "@/components/admin/live-setup-banner";
+import AdminDataError from "@/components/admin/admin-data-error";
+import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import {
   IconArrowRight,
   IconBox,
@@ -31,10 +34,25 @@ import {
 
 /** §32 operational overview + §88 delivery performance. */
 export default function AdminDashboard() {
-  const { orders } = useOrders();
+  const { orders, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
 
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const perf = useMemo(() => deliveryStats(orders), [orders]);
+  const now = useNow(30_000);
+  // The dashboard is an action queue: each card says how long the OLDEST
+  // order in that bucket has been waiting, so the person on shift knows
+  // whether "3 awaiting" means thirty seconds or forty minutes.
+  const oldestAction = oldestOf(orders, ["pending", "confirmed", "preparing"]);
+  const oldestRider = oldestOf(orders, ["ready-for-pickup", "courier-assigned"]);
+  const oldestOut = oldestOf(orders, ["out-for-delivery"]);
+  const waitingNote = (oldest: number | null, idle: string): string =>
+    oldest === null ? idle : `oldest waiting ${ageLabel(oldest, now)}`;
+  const walletPending = orders.filter(
+    (o) =>
+      o.payment !== "cod" &&
+      o.paymentStatus === "pending_verification" &&
+      o.status !== "cancelled",
+  ).length;
 
   const recent = useMemo(
     () =>
@@ -45,75 +63,120 @@ export default function AdminDashboard() {
     [orders],
   );
 
-  const liveFlow = ORDER_FLOW.filter((s) => s !== "delivered");
-  const { products: catalogProducts } = useCatalog();
-  const { settings } = useSettings();
+  // Live pipeline in the four public phases — the internal states inside
+  // each one are summed (an order "with rider" may be ready / assigned /
+  // on the way; the list page's badge still shows which).
+  const liveFlow = PUBLIC_STEPS.filter((step) => step.key !== "delivered");
+  const {
+    products: catalogProducts,
+    error: catalogError,
+    clearError: clearCatalogError,
+    reset: reloadCatalog,
+  } = useCatalog();
+  const {
+    settings,
+    error: settingsError,
+    clearError: clearSettingsError,
+    reset: reloadSettings,
+  } = useSettings();
   const threshold = settings.lowStockThreshold;
   const lowStock = catalogProducts.filter(
     (p) => displayStock(p) > 0 && displayStock(p) <= threshold,
   );
 
+  const actionCount = agg.byStatus.pending + agg.byStatus.confirmed + agg.byStatus.preparing;
   const cards = [
     {
       label: "Today's sales",
       value: formatBdt(agg.todaySales),
       note: `${agg.todayOrders} order${agg.todayOrders === 1 ? "" : "s"} today`,
       icon: IconShield,
+      urgent: false,
     },
     {
-      label: "Awaiting action",
-      value: String(agg.newOrders),
-      note: "pending + confirmed",
+      label: "Needs your tap",
+      value: String(actionCount),
+      note: waitingNote(oldestAction, "nothing waiting on the shop"),
       icon: IconClock,
-      href: "/admin/orders",
+      href: "/admin/orders?status=action",
+      urgent: oldestAction !== null && now - oldestAction > 15 * 60_000,
     },
     {
-      label: "Preparing",
-      value: String(agg.byStatus.preparing),
-      note: "being packed now",
+      label: "Waiting for rider",
+      value: String(
+        agg.byStatus["ready-for-pickup"] + agg.byStatus["courier-assigned"],
+      ),
+      note: waitingNote(oldestRider, "no parcel waiting at the shop"),
       icon: IconBox,
-      href: "/admin/orders",
+      href: "/admin/deliveries",
+      urgent: oldestRider !== null && now - oldestRider > 30 * 60_000,
     },
     {
-      label: "Out for delivery",
+      label: "On the road",
       value: String(agg.byStatus["out-for-delivery"]),
-      note: "on the road",
+      note: waitingNote(oldestOut, "no rider out right now"),
       icon: IconTruck,
-      href: "/admin/orders",
+      href: "/admin/orders?status=picked-up",
+      urgent: false,
     },
   ];
 
   return (
     <div className="space-y-8">
       <LiveSetupBanner />
-      {/* KPI cards */}
+      <AdminDataError label="Orders" error={ordersError} onRetry={reloadOrders} onDismiss={clearOrdersError} />
+      <AdminDataError label="Catalog" error={catalogError} onRetry={reloadCatalog} onDismiss={clearCatalogError} />
+      <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
+      {/* KPI cards — each one is the door to its queue */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((c) => (
-          <div
-            key={c.label}
-            className="rounded-2xl bg-paper p-5 ring-1 ring-line"
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-                {c.label}
+        {cards.map((c) => {
+          const body = (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+                  {c.label}
+                </p>
+                <c.icon className={`h-4 w-4 ${c.urgent ? "text-rose-600" : "text-gold-500"}`} />
+              </div>
+              <p className="mt-2 font-display text-[1.7rem] font-medium leading-none text-forest-900">
+                {c.value}
               </p>
-              <c.icon className="h-4 w-4 text-gold-500" />
+              <p className={`mt-2 inline-flex items-center gap-1 text-xs ${c.urgent ? "font-semibold text-rose-700" : "text-ink-soft"}`}>
+                {c.note}
+                {c.href && <IconArrowRight className="h-3 w-3" />}
+              </p>
+            </>
+          );
+          const cls = `block rounded-2xl bg-paper p-5 ring-1 ${
+            c.urgent ? "ring-rose-300" : "ring-line"
+          }`;
+          return c.href ? (
+            <Link key={c.label} href={c.href} className={`${cls} transition-shadow hover:shadow-md`}>
+              {body}
+            </Link>
+          ) : (
+            <div key={c.label} className={cls}>
+              {body}
             </div>
-            <p className="mt-2 font-display text-[1.7rem] font-medium leading-none text-forest-900">
-              {c.value}
-            </p>
-            <p className="mt-2 text-xs text-ink-soft">
-              {c.href ? (
-                <Link href={c.href} className="inline-flex items-center gap-1 hover:text-forest-700">
-                  {c.note} <IconArrowRight className="h-3 w-3" />
-                </Link>
-              ) : (
-                c.note
-              )}
-            </p>
-          </div>
-        ))}
+          );
+        })}
       </section>
+
+      {walletPending > 0 && (
+        <Link
+          href="/admin/orders?status=action"
+          className="flex items-center justify-between rounded-2xl bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100"
+        >
+          <span>
+            💳 {walletPending} bKash/Nagad payment{walletPending === 1 ? "" : "s"} waiting for verification — check the wallet, then verify or reject.
+          </span>
+          <IconArrowRight className="h-4 w-4" />
+        </Link>
+      )}
+
+      {/* Late orders — the same SLA list as the dispatch board, on the page
+          staff actually keep open. */}
+      <AdminSlaAlerts orders={orders} />
 
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Live order pipeline */}
@@ -134,17 +197,20 @@ export default function AdminDashboard() {
           </div>
 
           <ul className="mt-5 space-y-3">
-            {liveFlow.map((s) => {
-              const count = agg.byStatus[s];
+            {liveFlow.map((step) => {
+              const count = step.statuses.reduce(
+                (sum, st) => sum + agg.byStatus[st],
+                0,
+              );
               return (
-                <li key={s}>
+                <li key={step.key}>
                   <Link
-                    href="/admin/orders"
+                    href={`/admin/orders?status=${step.key}`}
                     className="group flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors hover:bg-ivory-100"
                   >
-                    <span className={`h-2.5 w-2.5 rounded-full ${DOT[s]}`} aria-hidden />
+                    <span className={`h-2.5 w-2.5 rounded-full ${DOT[step.statuses[0]]}`} aria-hidden />
                     <span className="flex-1 text-sm font-medium text-ink">
-                      {STATUS_META[s].label}
+                      {step.adminLabel}
                     </span>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${

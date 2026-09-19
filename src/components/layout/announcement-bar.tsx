@@ -1,6 +1,6 @@
 "use client";
 
-import { useCms } from "@/lib/use-cms";
+import { useHomeSettings } from "@/lib/use-home-settings";
 
 /**
  * Announcement bar (§31 CMS) — admin copy overlays the shipped default;
@@ -8,7 +8,7 @@ import { useCms } from "@/lib/use-cms";
  * Polished with subtle gradient, refined typography and gentle sheen.
  */
 export default function AnnouncementBar() {
-  const { settings } = useCms();
+  const { settings } = useHomeSettings();
   const { enabled, text } = settings.announcement;
   if (!enabled) return null;
   return (

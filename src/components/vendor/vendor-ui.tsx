@@ -8,12 +8,12 @@ import Link from "next/link";
 import type { OrderStatus } from "@/lib/orders";
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
-  pending: "Pending",
+  pending: "New",
   confirmed: "Confirmed",
   preparing: "Preparing",
-  "ready-for-pickup": "Ready for pickup",
-  "courier-assigned": "Courier assigned",
-  "out-for-delivery": "Out for delivery",
+  "ready-for-pickup": "Ready for rider",
+  "courier-assigned": "Rider assigned",
+  "out-for-delivery": "Picked up",
   delivered: "Delivered",
   cancelled: "Cancelled",
 };

@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import ShopBrowser from "@/components/shop/shop-browser";
+import { resolveSort } from "@/lib/shop-sort";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 import { toPublicShop } from "@/lib/shop-utils";
@@ -143,6 +144,36 @@ describe("ShopBrowser", () => {
     for (const name of gridNames()) {
       expect(PRODUCTS.find((p) => p.name === name)?.isNew).toBe(true);
     }
+  });
+
+  /* Batch J — the homepage rails deep-link into a pre-sorted shop. */
+  it("honours ?sort= from a homepage rail and follows a later URL change", () => {
+    const { rerender } = renderShop({ initialSort: "newest" });
+    expect(screen.getByLabelText(/sort products/i)).toHaveValue("newest");
+    const names = gridNames();
+    const firstNew = names.findIndex((n) => PRODUCTS.find((p) => p.name === n)?.isNew);
+    const firstOld = names.findIndex((n) => !PRODUCTS.find((p) => p.name === n)?.isNew);
+    expect(firstNew).toBe(0);
+    expect(firstOld === -1 || firstOld > firstNew).toBe(true);
+
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          shops={launchShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
+          initialCategory="all"
+          initialNew={false}
+          initialSort="price-asc"
+        />
+      </CartProvider>,
+    );
+    expect(screen.getByLabelText(/sort products/i)).toHaveValue("price-asc");
+    expect(resolveSort("best")).toBe("best");
+    expect(resolveSort(["newest", "best"])).toBe("newest");
+    expect(resolveSort("drop table")).toBe("featured");
+    expect(resolveSort(undefined)).toBe("featured");
   });
 
   it("offers only sizes and colours that exist in the catalog", () => {
@@ -311,6 +342,23 @@ describe("ShopBrowser", () => {
       target: { value: "" },
     });
     expect(gridNames()).toHaveLength(PRODUCTS.length);
+  });
+
+  it("names zones by their paras, charge and time — not the internal label (P2 #23)", () => {
+    renderShop();
+    const select = screen.getByLabelText(/deliver to/i) as HTMLSelectElement;
+    const labels = Array.from(select.options).map((o) => o.textContent ?? "");
+    const zoneA = DELIVERY_ZONES[0];
+    const optionA = labels.find((l) => l.startsWith("Zone A"))!;
+    expect(optionA).toContain(zoneA.areas[0]);
+    expect(optionA).toContain("৳60");
+    expect(optionA).toContain(zoneA.etaLabel);
+    // Zone D (courier) says days, never "60–80 min".
+    const optionD = labels.find((l) => l.startsWith("Zone D"))!;
+    expect(optionD).toContain("1–3 days by courier");
+    expect(optionD).not.toContain("60–80 min");
+    // The raw "Sadar Core (1.5-2.5km)" wording is gone from the picker.
+    expect(labels.some((l) => l.includes("(1.5-2.5km)"))).toBe(false);
   });
 
   it("hides closed shops from browse surfaces (slice 4)", () => {

@@ -6,9 +6,14 @@ import "@fontsource/noto-serif-bengali/500.css";
 import "@fontsource/noto-serif-bengali/600.css";
 import "./globals.css";
 import SmoothScroll from "@/components/ui/smooth-scroll";
+import { siteBaseUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://prosanti.store"),
+  // Canonical/OG/sitemap origin. NEXT_PUBLIC_SITE_URL → Vercel production
+  // domain → https://prosanti.store; the live store is served from
+  // proshanti.rahatahmed.site, so a hard-coded origin put the wrong host in
+  // every og:url and canonical tag (audit M8).
+  metadataBase: new URL(siteBaseUrl()),
 };
 
 export const viewport: Viewport = {

@@ -7,10 +7,19 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
+import { usePoll } from "./use-poll";
 import type { Rider } from "./catalog";
 import type { RiderJob, RiderSettlement } from "./db/riders";
+
+/**
+ * Job feed refresh while the app is on screen. A dispatch offer lives 90 s,
+ * so 15 s keeps a new offer visible with most of its window left; usePoll
+ * stops the timer while the phone is in a pocket (tab hidden) and refreshes
+ * the instant the rider looks again.
+ */
+export const RIDER_JOBS_POLL_MS = 15_000;
 
 export class RiderApiError extends Error {
   status: number;
@@ -151,31 +160,43 @@ export const useRiderJobs = (enabled: boolean) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // One in-flight read at a time: a poll tick that lands while an accept →
+  // refresh is running would otherwise race it and paint the older answer.
+  const inflight = useRef<Promise<boolean> | null>(null);
+
   const refresh = useCallback(async (): Promise<boolean> => {
     if (!enabled) return false;
-    setLoading(true);
-    setError(null);
-    try {
-      const [jobsData, settlementsData] = await Promise.all([
-        riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
-        riderFetch<{ settlements: RiderSettlement[] }>("/api/rider/settlements"),
-      ]);
-      setJobs(jobsData.jobs);
-      setSettlements(settlementsData.settlements);
-      return true;
-    } catch (err) {
-      setError(riderErrorMessage(err));
-      return false;
-    } finally {
-      setLoading(false);
-    }
+    if (inflight.current) return inflight.current;
+    const run = (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [jobsData, settlementsData] = await Promise.all([
+          riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
+          riderFetch<{ settlements: RiderSettlement[] }>("/api/rider/settlements"),
+        ]);
+        setJobs(jobsData.jobs);
+        setSettlements(settlementsData.settlements);
+        return true;
+      } catch (err) {
+        setError(riderErrorMessage(err));
+        return false;
+      } finally {
+        setLoading(false);
+        inflight.current = null;
+      }
+    })();
+    inflight.current = run;
+    return run;
   }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
   }, [enabled, refresh]);
+  // Background feed refresh — before this the rider had to reload the page
+  // to see a new offer (or an offer that had expired under them).
+  usePoll(refresh, RIDER_JOBS_POLL_MS, enabled);
 
   const run = async (
     path: string,
@@ -232,7 +253,7 @@ export const useRiderJobs = (enabled: boolean) => {
         await riderFetch("/api/rider/location", "PATCH", { lat, lng });
         setError(null);
         return true;
-      } catch (err) {
+      } catch {
         // silent fail for location
         return false;
       }

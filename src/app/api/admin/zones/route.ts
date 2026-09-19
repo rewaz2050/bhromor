@@ -9,6 +9,7 @@ import {
   upsertZone,
 } from "@/lib/db/admin";
 import { apiJson } from "@/lib/api-response";
+import { CACHE_TAG_ZONES, revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -32,9 +33,11 @@ export const POST = staffRoute(
         throw new AdminInputError("Invalid move.");
       }
       const zones = await moveZoneRow(db, body.id, body.dir);
+      revalidateCatalogCaches(CACHE_TAG_ZONES);
       return apiJson({ zones });
     }
     const zone = await upsertZone(db, body);
+    revalidateCatalogCaches(CACHE_TAG_ZONES);
     return apiJson({ zone });
   },
   { limit: 30 },

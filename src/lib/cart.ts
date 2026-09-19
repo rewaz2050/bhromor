@@ -70,7 +70,15 @@ export interface CartSummary {
   subtotal: number;
 }
 
-export const summarize = (lines: CartLine[]): CartSummary => {
+/**
+ * @param pool — the product rows to resolve lines against. Defaults to the
+ * live registry; the cart provider passes its useSyncExternalStore snapshot
+ * so the memo genuinely depends on the catalog swapping in.
+ */
+export const summarize = (lines: CartLine[], pool?: Product[]): CartSummary => {
+  const resolve = pool
+    ? (id: string) => pool.find((p) => p.id === id)
+    : resolveProduct;
   const detailed = lines
     // Guard against corrupted/legacy storage payloads.
     .filter(
@@ -82,7 +90,7 @@ export const summarize = (lines: CartLine[]): CartSummary => {
         l.qty > 0,
     )
     .map((l) => {
-      const product = resolveProduct(l.productId);
+      const product = resolve(l.productId);
       if (!product) return null;
       return { ...l, product, lineTotal: product.price * l.qty };
     })

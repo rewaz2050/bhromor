@@ -4,7 +4,12 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import type { Language } from "@/lib/translations";
 
 interface Props {
-  variant?: "header" | "drawer" | "compact";
+  /**
+   * `toggle` is the one-button phone variant (P1 #8): it shows the OTHER
+   * language's short label, so a Bangla screen offers "EN" and vice versa —
+   * one 44px tap, no pill pair squeezed into a 360px header.
+   */
+  variant?: "header" | "drawer" | "compact" | "toggle";
   className?: string;
 }
 
@@ -35,6 +40,24 @@ export default function LanguageSwitcher({ variant = "header", className = "" }:
   const handle = (next: Language) => {
     if (next !== lang) setLang(next);
   };
+
+  if (variant === "toggle") {
+    const next: Language = lang === "bn" ? "en" : "bn";
+    return (
+      <button
+        type="button"
+        onClick={() => handle(next)}
+        aria-label={next === "en" ? t("language.switchToEnglish") : t("language.switchToBengali")}
+        title={next === "en" ? t("language.switchToEnglish") : t("language.switchToBengali")}
+        data-testid="language-toggle"
+        className={`header-icon-btn inline-flex h-11 min-w-11 items-center justify-center rounded-full px-2 text-[0.72rem] font-bold tracking-wide text-forest-900 ring-1 ring-line/70 hover:bg-forest-50 ${
+          next === "bn" ? "font-bengali" : ""
+        } ${className}`}
+      >
+        {next === "en" ? "EN" : "বাং"}
+      </button>
+    );
+  }
 
   if (isDrawer) {
     return (

@@ -134,6 +134,23 @@ export function useCatalog() {
     [live, refresh],
   );
 
+  /**
+   * Shelf change from a list row (Publish / Unpublish / Archive / Restore):
+   * a one-field PATCH that throws the API message so the row can show it
+   * inline instead of the page-level banner.
+   */
+  const patchProduct = useCallback(
+    async (
+      id: string,
+      patch: { status?: "draft" | "published"; active?: boolean },
+    ): Promise<void> => {
+      if (!live) throw new Error("Sign in as staff first.");
+      await apiSend(`/api/admin/products/${encodeURIComponent(id)}`, "PATCH", patch);
+      await refresh();
+    },
+    [live, refresh],
+  );
+
   const saveCategory = useCallback(
     async (c: Category): Promise<boolean> => {
       if (!live) return false;
@@ -190,6 +207,7 @@ export function useCatalog() {
     saveProduct,
     toggleFlag,
     setProductActive,
+    patchProduct,
     saveCategory,
     setCategoryActive,
     moveCategory,

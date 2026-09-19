@@ -15,7 +15,7 @@ export function useLiveZones() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/zones", { cache: "no-store" })
+    void fetch("/api/zones")
       .then(async (res) => {
         if (!res.ok) return null;
         const data = (await res.json()) as { zones?: DeliveryZone[] };

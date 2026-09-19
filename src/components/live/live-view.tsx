@@ -23,6 +23,7 @@ import { IconArrowRight, IconBag, IconClock, IconExternal } from "@/components/u
 import { youtubeEmbedUrl } from "@/lib/media";
 import { formatBdt } from "@/lib/format";
 import { liveState, type LiveSession, type LiveSessionProduct } from "@/lib/live";
+import { usePoll } from "@/lib/use-poll";
 
 interface LiveData {
   live: LiveSession | null;
@@ -348,18 +349,11 @@ export default function LiveView() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount + interval
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount
     void load();
-    const t = setInterval(() => void load(), POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void load();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
   }, [load]);
+  // Re-check every 45 s while visible; catch up the moment the tab returns.
+  usePoll(load, POLL_MS);
 
   if (!data) {
     return (

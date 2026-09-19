@@ -259,6 +259,20 @@ body {
   .editorial-hero h1 {
     animation: storefront-reveal 520ms var(--ease-refined) both;
   }
+  /* <Reveal> — below-the-fold blocks only; compositor-only properties (no
+     blur filter), see components/ui/reveal.tsx. */
+  .reveal-pending {
+    opacity: 0;
+    transform: translateY(16px);
+    transition:
+      opacity 560ms var(--ease-refined),
+      transform 560ms var(--ease-refined);
+    will-change: opacity, transform;
+  }
+  .reveal-pending.reveal-shown {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Storefront design tokens — shared rhythm without affecting admin screens. */
@@ -576,8 +590,11 @@ body {
 /* Premium storefront refresh ------------------------------------------------
    Full-bleed campaign imagery and quiet product cards. These are intentionally
    scoped classes so the admin surface keeps its compact utility styling. */
+/* Batch J (2026-09-19): the hero is a compact opener, not a full screen —
+   the browse chips sit inside it and the first product row must start
+   within the first scroll on a phone. */
 .cinematic-hero {
-  min-height: clamp(38rem, calc(100svh - 6rem), 53rem);
+  min-height: clamp(26rem, 62svh, 38rem);
 }
 .hero-cinematic-image {
   object-position: center center;
@@ -605,10 +622,29 @@ body {
 
 @media (max-width: 639px) {
   .cinematic-hero {
-    min-height: min(43rem, calc(100svh - 4.5rem));
+    min-height: clamp(24rem, 58svh, 34rem);
   }
   .hero-cinematic-image {
     object-position: 64% center;
+  }
+}
+
+/* Phones (UX audit 2026-09-18, P1 #9): the quick-add bar used to float over
+   the photo, stealing taps meant for the product and hiding the hem of the
+   garment. Below the sm breakpoint it sits in its own strip directly under
+   the image; only the heart stays on the photo. (Unlayered, so it wins over
+   the positioning utilities without !important.) */
+@media (max-width: 639px) {
+  .product-card-actions {
+    position: static;
+    inset: auto;
+    margin: 0;
+    padding: 0.375rem;
+    background: transparent;
+  }
+  .product-card-actions .product-quick-add {
+    min-height: 2.75rem;
+    box-shadow: none;
   }
 }
 
@@ -921,6 +957,21 @@ body {
 @media (min-width: 1024px) {
   .sticky-buy-bar {
     display: none;
+  }
+}
+
+/* P1 #10 — the size row pulses twice when a tap on "Select a size" lands. */
+@keyframes size-nudge-pulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.025); }
+  100% { transform: scale(1); }
+}
+.size-nudge {
+  animation: size-nudge-pulse 0.45s var(--ease-refined) 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .size-nudge {
+    animation: none;
   }
 }
 

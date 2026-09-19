@@ -39,16 +39,19 @@ export default function StyleMatchPanel() {
     [products],
   );
 
-  const query = {
-    occasion: occasion || undefined,
-    budgetTaka: budget.trim() === "" ? null : Number(budget),
-    colors: color.trim() === "" ? [] : [color.trim()],
-    size: size.trim() === "" ? null : size.trim(),
-    categoryId: categoryId || null,
-  };
+  const query = useMemo(
+    () => ({
+      occasion: occasion || undefined,
+      budgetTaka: budget.trim() === "" ? null : Number(budget),
+      colors: color.trim() === "" ? [] : [color.trim()],
+      size: size.trim() === "" ? null : size.trim(),
+      categoryId: categoryId || null,
+    }),
+    [occasion, budget, color, size, categoryId],
+  );
 
   const empty = isStyleQueryEmpty(query as never);
-  const matches = useMemo(() => styleMatch(products, query), [products, occasion, budget, color, size, categoryId]);
+  const matches = useMemo(() => styleMatch(products, query), [products, query]);
 
   const chip =
     "h-9 rounded-full px-3 text-xs font-semibold ring-1 transition-colors";

@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotSummary } from "@/lib/delivery-slots";
+import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
+import { useNow } from "@/lib/use-now";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -25,7 +29,20 @@ interface RiderTask {
   id: string;
   order: Order;
   state: "offered" | "accepted" | "picked_up" | "delivered";
+  /** When an OFFER lapses (epoch ms) — the rider has until then to accept. */
+  expiresAt: number;
 }
+
+/** Google Maps deep link — opens the app on a phone, the site on a desktop. */
+const mapsHref = (order: Order): string | null => {
+  if (order.lat && order.lng) return `https://www.google.com/maps?q=${order.lat},${order.lng}`;
+  const q = [order.customer.address, order.customer.area, "Sunamganj"].filter(Boolean).join(", ");
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
+};
+
+/** Seconds left on an offer, never negative. */
+const secondsLeft = (expiresAt: number, now: number): number =>
+  Math.max(0, Math.ceil((expiresAt - now) / 1000));
 
 export default function RiderPage() {
   const session = useRiderSession();
@@ -81,9 +98,14 @@ export default function RiderPage() {
               : job.state === "picked_up"
                 ? "picked_up"
                 : "accepted",
+          expiresAt: job.expiresAt,
         })),
     [riderJobsApi.jobs],
   );
+  // Ticks once a second only while an offer is on screen (the countdown);
+  // otherwise once a minute for the "ago" labels.
+  const hasOffer = tasks.some((t) => t.state === "offered");
+  const now = useNow(hasOffer ? 1000 : 60_000);
 
   const deliveredCount = useMemo(
     () => riderJobsApi.jobs.filter((j) => j.state === "delivered").length,
@@ -181,35 +203,46 @@ export default function RiderPage() {
     setProofUploading(true);
     setPinError("");
     try {
-      // Get Cloudinary signature
-      const signRes = await fetch("/api/media/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folder: "prosanti/delivery-proofs" }),
-      });
-      const signData = await signRes.json().catch(() => null) as any;
-      if (!signRes.ok || !signData?.cloudName) {
-        setPinError("Photo upload unavailable — Cloudinary is not configured.");
+      // Rider-scoped Cloudinary signature (the staff /api/media/sign
+      // answers 403 to a rider session).
+      const signRes = await fetch("/api/rider/media/sign", { method: "POST" });
+      const signData = (await signRes.json().catch(() => null)) as
+        | {
+            cloudName?: string;
+            apiKey?: string;
+            timestamp?: number;
+            folder?: string;
+            signature?: string;
+            uploadUrl?: string;
+            error?: string;
+          }
+        | null;
+      if (!signRes.ok || !signData?.cloudName || !signData.uploadUrl) {
+        setPinError(
+          signData?.error ||
+            (signRes.status === 503
+              ? "Photo upload is not configured yet — you can still deliver without a photo."
+              : "Photo upload unavailable right now — you can still deliver without a photo."),
+        );
         return;
       }
       const form = new FormData();
       form.append("file", file);
-      form.append("api_key", signData.apiKey);
-      form.append("timestamp", String(signData.timestamp));
-      form.append("folder", signData.folder);
-      form.append("signature", signData.signature);
-      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${signData.cloudName}/image/upload`, {
-        method: "POST",
-        body: form,
-      });
-      const upData = await upRes.json().catch(() => null) as any;
+      form.append("api_key", signData.apiKey ?? "");
+      form.append("timestamp", String(signData.timestamp ?? ""));
+      form.append("folder", signData.folder ?? "");
+      form.append("signature", signData.signature ?? "");
+      const upRes = await fetch(signData.uploadUrl, { method: "POST", body: form });
+      const upData = (await upRes.json().catch(() => null)) as
+        | { secure_url?: string; error?: { message?: string } }
+        | null;
       if (!upRes.ok || !upData?.secure_url) {
         throw new Error(upData?.error?.message || "Upload failed");
       }
       setProofUrl(upData.secure_url);
-      showFlash("📸 Proof photo uploaded to Cloudinary!");
-    } catch (e: any) {
-      setPinError(e?.message || "Photo upload failed");
+      showFlash("📸 Proof photo uploaded!");
+    } catch (e) {
+      setPinError(e instanceof Error && e.message ? e.message : "Photo upload failed");
     } finally {
       setProofUploading(false);
     }
@@ -468,6 +501,10 @@ export default function RiderPage() {
                 const isReady =
                   task.state === "accepted" || task.state === "offered";
                 const order = task.order;
+                const cash = cashToCollect(order);
+                const pay = paymentSummary(order);
+                const maps = mapsHref(order);
+                const left = task.state === "offered" ? secondsLeft(task.expiresAt, now) : null;
 
                 return (
                   <div
@@ -496,6 +533,21 @@ export default function RiderPage() {
                       </span>
                     </div>
 
+                    {left !== null && (
+                      <div
+                        className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold ${
+                          left <= 20 ? "bg-rose-50 text-rose-800 ring-1 ring-rose-200" : "bg-gold-100 text-forest-900 ring-1 ring-gold-300"
+                        }`}
+                        data-testid="rider-offer-countdown"
+                        aria-live="polite"
+                      >
+                        <span>⏳ একসেপ্ট করার সময় বাকি</span>
+                        <span className="font-mono text-sm tabular-nums">
+                          {left > 0 ? `${left} সেকেন্ড` : "সময় শেষ — রিফ্রেশ হচ্ছে…"}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Customer & Area details */}
                     <div className="rounded-xl bg-ivory-100/60 p-3 space-y-2 text-xs">
                       <div className="flex items-start gap-2">
@@ -511,25 +563,46 @@ export default function RiderPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium">
-                        <span className="text-ink-soft">ক্যাশ সংগ্রহ করতে হবে:</span>
-                        <strong className="text-forest-900 font-bold text-sm">
-                          {formatBdt(order.total)}
-                        </strong>
-                      </div>
-                      {(order as any).tipAmount > 0 && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-forest-700">💝 Tip for you</span>
-                          <span className="font-bold text-forest-700">+{formatBdt((order as any).tipAmount)}</span>
+                      {order.customer.note && (
+                        <p className="rounded-lg bg-paper px-2 py-1.5 text-[11px] italic text-ink ring-1 ring-line/60" data-testid="rider-note">
+                          📝 কাস্টমারের নোট: “{order.customer.note}”
+                        </p>
+                      )}
+
+                      {cash > 0 ? (
+                        <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium" data-testid="rider-cash">
+                          <span className="text-ink-soft">💵 ক্যাশ সংগ্রহ করতে হবে (COD):</span>
+                          <strong className="text-forest-900 font-bold text-sm">
+                            {formatBdt(cash)}
+                          </strong>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between border-t border-line/60 pt-2 font-medium" data-testid="rider-cash">
+                          <span className="text-emerald-800">
+                            ✅ {order.isReturn
+                              ? "রিটার্ন — কোনো টাকা নিবেন না"
+                              : `${pay.wallet ?? "অনলাইনে"}-এ পেমেন্ট হয়ে গেছে — কোনো টাকা নিবেন না`}
+                          </span>
+                          <strong className="text-sm font-bold text-emerald-800">৳০</strong>
                         </div>
                       )}
-                      {(order as any).isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
-                      {(order as any).isReturn && (
+                      {(order.tipAmount ?? 0) > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-forest-700">💝 Tip for you</span>
+                          <span className="font-bold text-forest-700">+{formatBdt(order.tipAmount ?? 0)}</span>
+                        </div>
+                      )}
+                      {order.isPickup && <p className="text-[11px] font-bold text-sky-800 bg-sky-50 px-2 py-1 rounded-full">🏪 Pickup at Traffic Point — no home delivery</p>}
+                      {order.isReturn && (
                         <p className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-1 rounded-full">
                           ↩️ Return pickup — collect from the customer, drop at the shop. No cash to collect.
                         </p>
                       )}
-                      {(order as any).scheduledAt && <p className="text-[11px] text-sky-700">Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</p>}
+                      {deliverySlotSummary(order, "bn") && (
+                        <p className="w-fit rounded-full bg-sky-50 px-2 py-1 text-[11px] font-bold text-sky-800" data-testid="rider-slot">
+                          🕒 ডেলিভারি সময়: {deliverySlotSummary(order, "bn")}
+                        </p>
+                      )}
                     </div>
 
                     {/* Action Controls */}
@@ -541,6 +614,17 @@ export default function RiderPage() {
                         >
                           <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
                         </a>
+                        {maps && !order.isPickup && (
+                          <a
+                            href={maps}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                            data-testid="rider-maps"
+                          >
+                            <IconMapPin className="h-4 w-4 text-emerald-700" /> ম্যাপ
+                          </a>
+                        )}
 
                       {task.state === "offered" ? (
                         <>
@@ -611,7 +695,7 @@ export default function RiderPage() {
                                   setShowFailed(null);
                                   setFailedReason("");
                                 } else {
-                                  const d = await res.json().catch(() => null) as any;
+                                  const d = (await res.json().catch(() => null)) as { error?: string } | null;
                                   setPinError(d?.error || "Failed");
                                 }
                               }}
@@ -688,7 +772,15 @@ export default function RiderPage() {
               {proofUploading && <p className="text-xs text-amber-700">Uploading to Cloudinary...</p>}
               {proofUrl && (
                 <div className="rounded-xl overflow-hidden ring-1 ring-line">
-                  <img src={proofUrl} alt="Proof" className="w-full h-32 object-cover" />
+                  <div className="relative h-32 w-full">
+                    <Image
+                      src={proofUrl}
+                      alt="Delivery proof photo"
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
+                    />
+                  </div>
                   <p className="p-2 text-[10px] break-all text-ink-soft">{proofUrl}</p>
                 </div>
               )}
@@ -783,7 +875,19 @@ function RiderShiftCard({
   onSave: (payload: { fromHour: number | null; toHour: number | null; days: number[] }) => Promise<string | null>;
   flash: (msg: string) => void;
 }) {
-  const avail: RiderAvailability = rider?.availability ?? { fromHour: null, toHour: null, days: null };
+  const availFromHour = rider?.availability?.fromHour ?? null;
+  const availToHour = rider?.availability?.toHour ?? null;
+  const availDaysKey = JSON.stringify(rider?.availability?.days ?? null);
+  // Rebuilt from the three primitives so the effect below can depend on
+  // stable values (a fresh object every render would re-arm the interval).
+  const avail = useMemo<RiderAvailability>(
+    () => ({
+      fromHour: availFromHour,
+      toHour: availToHour,
+      days: JSON.parse(availDaysKey) as number[] | null,
+    }),
+    [availFromHour, availToHour, availDaysKey],
+  );
   const [from, setFrom] = useState<string>(avail.fromHour === null ? "" : String(avail.fromHour));
   const [to, setTo] = useState<string>(avail.toHour === null ? "" : String(avail.toHour));
   const [days, setDays] = useState<number[]>(avail.days ?? []);
@@ -797,7 +901,7 @@ function RiderShiftCard({
     setOnShift(isOnShift(avail, Date.now()));
     const id = window.setInterval(() => setOnShift(isOnShift(avail, Date.now())), 60_000);
     return () => window.clearInterval(id);
-  }, [avail.fromHour, avail.toHour, JSON.stringify(avail.days ?? [])]);
+  }, [avail]);
 
   const dirty =
     from !== (avail.fromHour === null ? "" : String(avail.fromHour)) ||

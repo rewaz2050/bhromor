@@ -5,6 +5,7 @@
  */
 import { listShopsFull, upsertShop } from "@/lib/db/admin";
 import { apiJson } from "@/lib/api-response";
+import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export const POST = staffRoute(
   async ({ db }, request) => {
     const body: unknown = await request.json().catch(() => null);
     const shop = await upsertShop(db, body);
+    revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ shop });
   },
   { limit: 30 },

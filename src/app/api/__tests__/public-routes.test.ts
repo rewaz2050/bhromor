@@ -122,6 +122,9 @@ describe("GET /api/products without a configured backend", () => {
     const { GET } = await import("../products/route");
     const res = await GET();
     expect(res.status).toBe(503);
+    // P1.1 — an error must never be cached at the CDN: the moment the shop
+    // seeds products, the next request has to see them.
+    expect(res.headers.get("Cache-Control")).toContain("no-store");
   });
 });
 
@@ -231,6 +234,7 @@ describe("shops routes (unconfigured backend)", () => {
     const { GET } = await import("../shops/route");
     const res = await GET(new Request("http://localhost/api/shops"));
     expect(res.status).toBe(503);
+    expect(res.headers.get("Cache-Control")).toContain("no-store");
   });
 
   it("GET /api/shops?zone= answers 503 too", async () => {

@@ -14,7 +14,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useCustomer } from "@/lib/use-customer";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { apiGet } from "@/lib/admin-api";
 import { formatBdt } from "@/lib/format";
 import { shareMessage } from "@/lib/referral";
 import { IconCheck, IconCopy, IconSend, IconTag, IconUser } from "@/components/ui/icons";
@@ -47,7 +46,14 @@ export function ReferralCard({ className = "" }: { className?: string }) {
   useEffect(() => {
     if (!customer) return;
     let alive = true;
-    void apiGet<ReferralData>("/api/referral")
+    // A customer read — plain fetch, not the staff helper (which would sign
+    // the ADMIN out on a 401 and drags the admin/auth bundle into the
+    // account page; audit 2026-09-17 P2.2).
+    void fetch("/api/referral", { cache: "no-store", credentials: "same-origin" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`referral ${res.status}`);
+        return (await res.json()) as ReferralData;
+      })
       .then((next) => {
         if (!alive) return;
         setData(next);

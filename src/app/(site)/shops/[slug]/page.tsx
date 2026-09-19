@@ -5,6 +5,7 @@ import {
   getStorefrontCatalog,
   getStorefrontZones,
 } from "@/lib/db/storefront";
+import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import { productShopId } from "@/lib/shop-utils";
 import { IconChevron } from "@/components/ui/icons";
 import ShopHero from "@/components/shop/shop-hero";
@@ -22,7 +23,8 @@ export async function generateMetadata({
   const { slug } = await params;
   const { shops } = await getStorefrontCatalog();
   const shop = shops.find((s) => s.slug === slug);
-  if (!shop) return {};
+  // See product/[slug]: a real 404 for crawlers with blocking metadata.
+  if (!shop) notFound();
   return {
     title: `${shop.name} — PROSANTI`,
     description: shop.tagline ?? `Shop ${shop.name} on PROSANTI.`,
@@ -31,7 +33,7 @@ export async function generateMetadata({
 
 export default async function ShopPage({ params }: PageProps) {
   const { slug } = await params;
-  const [{ products, shops }, { zones }] = await Promise.all([
+  const [{ products, categories, shops }, { zones }] = await Promise.all([
     getStorefrontCatalog(),
     getStorefrontZones(),
   ]);
@@ -48,6 +50,8 @@ export default async function ShopPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      {/* P2.1 — seed the client registry from the rows already rendered. */}
+      <CatalogHydrator products={products} categories={categories} shops={shops} zones={zones} />
       <nav
         aria-label="Breadcrumb"
         className="flex items-center gap-1.5 text-sm text-ink-soft"

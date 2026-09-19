@@ -1,21 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useOrders } from "@/lib/use-orders";
+import { useOrder } from "@/lib/use-orders";
 import {
-  ORDER_FLOW,
+  ACTION_LABEL,
+  PUBLIC_STEPS,
   STATUS_META,
   canCancel,
   flowIndex,
   getDeliveryCode,
   normalizePhone,
   nextActions,
+  publicPhase,
+  publicStepDone,
   type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { deliverySlotLabel, deliverySlotSummary } from "@/lib/delivery-slots";
+import { paymentSummary } from "@/lib/payment-labels";
+import { PICKUP_HANDOVER_LABEL, PICKUP_HANDOVER_NOTE } from "@/lib/order-actions";
 import {
   DOT,
   StatusBadge,
@@ -36,17 +42,17 @@ const RETURN_STATUS_LABEL: Record<string, string> = {
 
 export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const { orders, loading, error, clearError, advance, cancel, refresh } = useOrders();
+  // Served from the loaded list, or fetched by order number when the order
+  // is older than the loaded pages (the list is paginated).
+  const { order, loading, error, clearError, advance, cancel, refresh } =
+    useOrder(params.id);
   // Hooks first, before any early return below.
   const [returnBusy, setReturnBusy] = useState<
     null | "approve" | "reject" | "complete"
   >(null);
   const [returnError, setReturnError] = useState<string | null>(null);
-
-  const order = useMemo(
-    () => orders.find((o) => o.id === params.id),
-    [orders, params.id],
-  );
+  // Two-tap flow: "Start preparing" is an optional extra step, tucked away.
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   if (loading) {
     return (
@@ -116,18 +122,33 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  // Two-tap flow (2026-09-17): Confirm → Ready — call rider. The primary
+  // action is the first legal step; any other legal step (the optional
+  // "Start preparing") sits behind an "Advanced" disclosure. Rider states
+  // (courier-assigned → out-for-delivery → delivered) belong to the rider
+  // app — the admin sees who has it, not a button.
   const steps = nextActions(order.status);
+  const [primary, ...secondary] = steps;
+  const riderOwned =
+    order.status === "ready-for-pickup" ||
+    order.status === "courier-assigned" ||
+    order.status === "out-for-delivery";
   const cancellable = canCancel(order.status);
   const flowPos = flowIndex(order.status);
   const isCancelled = order.status === "cancelled";
+  const phase = publicPhase(order.status);
+  const pay = paymentSummary(order);
+  // A counter pickup never meets a rider: once it is ready, the shop closes
+  // it when the customer collects (the server walks the rider states).
+  const pickupHandover = riderOwned && order.isPickup && !order.isReturn;
 
-  const doAdvance = (to: OrderStatus) => {
+  const doAdvance = (to: OrderStatus, note?: string) => {
     if (to === "cancelled") {
       if (!window.confirm("Cancel this order? Reserved stock is released.")) return;
       void cancel(order.id);
       return;
     }
-    void advance(order.id, to);
+    void advance(order.id, to, note);
   };
 
   return (
@@ -167,17 +188,49 @@ export default function AdminOrderDetailPage() {
       <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-paper p-4 ring-1 ring-line">
         {!order.isReturn && (steps.length > 0 || cancellable) && (
           <>
-            {steps.map((to) => (
+            {primary && !riderOwned && (
               <button
-                key={to}
                 type="button"
-                onClick={() => doAdvance(to)}
+                onClick={() => doAdvance(primary)}
                 className="inline-flex items-center gap-2 rounded-full bg-forest-800 px-5 py-2.5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
               >
-                Mark {STATUS_META[to].label.toLowerCase()}
+                {ACTION_LABEL[primary as Exclude<OrderStatus, "pending">]}
                 <IconArrowRight className="h-4 w-4" />
               </button>
-            ))}
+            )}
+            {primary && !riderOwned && secondary.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((v) => !v)}
+                  aria-expanded={showAdvanced}
+                  className="rounded-full px-4 py-2.5 text-sm font-medium text-ink-soft ring-1 ring-line transition-colors hover:text-forest-800"
+                >
+                  {showAdvanced ? "Hide" : "More…"}
+                </button>
+                {showAdvanced && (
+                  <div className="absolute left-0 top-full z-10 mt-2 w-64 rounded-2xl bg-paper p-2 shadow-lg ring-1 ring-line">
+                    {secondary.map((to) => (
+                      <button
+                        key={to}
+                        type="button"
+                        onClick={() => {
+                          setShowAdvanced(false);
+                          doAdvance(to);
+                        }}
+                        className="block w-full rounded-xl px-3 py-2 text-left text-sm text-ink hover:bg-ivory-100"
+                      >
+                        {ACTION_LABEL[to as Exclude<OrderStatus, "pending">]}
+                        <span className="block text-xs text-ink-soft">
+                          Optional step — packing takes a while, and you want the
+                          customer to see it.
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {cancellable && (
               <button
                 type="button"
@@ -189,12 +242,43 @@ export default function AdminOrderDetailPage() {
             )}
           </>
         )}
+        {pickupHandover && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (!window.confirm(`Customer collected order ${order.id} at Traffic Point?`)) return;
+                doAdvance("delivered", PICKUP_HANDOVER_NOTE);
+              }}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+            >
+              {PICKUP_HANDOVER_LABEL}
+              <IconArrowRight className="h-4 w-4" />
+            </button>
+            <p className="text-sm text-ink-soft">
+              Counter pickup — no rider. Check the customer&apos;s PIN{" "}
+              <span className="font-mono font-semibold text-forest-900">
+                {order.deliveryCode ?? getDeliveryCode(order.id)}
+              </span>{" "}
+              and hand the parcel over.
+            </p>
+          </>
+        )}
+        {!order.isReturn && riderOwned && !pickupHandover && (
+          <p className="text-sm text-ink-soft">
+            {order.status === "ready-for-pickup" && !order.rider
+              ? "Waiting for a rider — the nearest online rider has been offered this order. Manual assign: Admin → Deliveries."
+              : order.status === "out-for-delivery"
+                ? `Picked up — ${order.rider?.name ?? "the rider"} is on the way. The rider marks Delivered with the customer's 4-digit code.`
+                : `${order.rider?.name ?? "A rider"} accepted and is heading to the shop. The rider taps Pickup, then Delivered.`}
+          </p>
+        )}
         <button
           type="button"
           onClick={() => window.print()}
           className="rounded-full bg-paper px-5 py-2.5 text-sm font-semibold ring-1 ring-line hover:bg-ivory-100"
         >
-          🖨️ Print Invoice (free)
+          🖨️ Print invoice
         </button>
         <button
           type="button"
@@ -213,7 +297,7 @@ export default function AdminOrderDetailPage() {
           }}
           className="rounded-full bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white"
         >
-          WhatsApp Customer (free)
+          WhatsApp customer
         </button>
       </div>
 
@@ -260,37 +344,37 @@ export default function AdminOrderDetailPage() {
             <div className="flex justify-between text-ink-soft">
               <dt>
                 Delivery · {order.etaLabel}
-                {(order as any).isPickup ? " — PICKUP" : ""}
-                {(order as any).isExpress ? " — Express" : ""}
+                {order.isPickup ? " — PICKUP" : ""}
+                {order.isExpress ? " — Express" : ""}
               </dt>
               <dd>{formatBdt(order.deliveryCharge)}</dd>
             </div>
-            {(order as any).scheduledAt && (
-              <div className="flex justify-between text-sky-800 bg-sky-50 px-2 py-1 rounded">
-                <dt>Scheduled: {new Date((order as any).scheduledAt).toLocaleString()} {(order as any).deliveryWindow ?? ""}</dt>
-                <dd>{(order as any).isExpress ? "+Express" : ""}</dd>
+            {deliverySlotSummary(order) && (
+              <div className="flex justify-between rounded bg-sky-50 px-2 py-1 text-sky-800" data-testid="admin-slot">
+                <dt>🕒 Slot: {deliverySlotSummary(order)}</dt>
+                <dd>{order.isExpress ? "+Express" : ""}</dd>
               </div>
             )}
-            {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order as any).surchargeWeight > 0) && (
+            {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
               <div className="rounded-xl bg-amber-50 p-2 ring-1 ring-amber-200 text-xs space-y-1">
                 <p className="font-bold text-amber-900">Surcharges breakdown</p>
                 {(order.surchargeNight ?? 0) > 0 && <div className="flex justify-between"><span>Night (9PM-6AM)</span><span>{formatBdt(order.surchargeNight ?? 0)}</span></div>}
                 {(order.surchargeRain ?? 0) > 0 && <div className="flex justify-between"><span>Rain</span><span>{formatBdt(order.surchargeRain ?? 0)}</span></div>}
                 {(order.surchargeDistance ?? 0) > 0 && <div className="flex justify-between"><span>Distance &gt;4km</span><span>{formatBdt(order.surchargeDistance ?? 0)}</span></div>}
                 {(order.surchargeExpress ?? 0) > 0 && <div className="flex justify-between"><span>Express</span><span>{formatBdt(order.surchargeExpress ?? 0)}</span></div>}
-                {(order as any).surchargeWeight > 0 && <div className="flex justify-between"><span>Weight &gt;5kg</span><span>{formatBdt((order as any).surchargeWeight)}</span></div>}
+                {(order.surchargeWeight ?? 0) > 0 && <div className="flex justify-between"><span>Weight &gt;5kg</span><span>{formatBdt(order.surchargeWeight ?? 0)}</span></div>}
               </div>
             )}
-            {(order as any).tipAmount > 0 && (
+            {(order.tipAmount ?? 0) > 0 && (
               <div className="flex justify-between text-forest-700">
                 <dt>💝 Tip for Rider</dt>
-                <dd>+{formatBdt((order as any).tipAmount)}</dd>
+                <dd>+{formatBdt(order.tipAmount ?? 0)}</dd>
               </div>
             )}
-            {(order as any).weightKg && (
+            {order.weightKg && (
               <div className="flex justify-between text-ink-soft text-xs">
                 <dt>Approx weight</dt>
-                <dd>{(order as any).weightKg} kg</dd>
+                <dd>{order.weightKg} kg</dd>
               </div>
             )}
             {order.coupon && (
@@ -300,9 +384,21 @@ export default function AdminOrderDetailPage() {
               </div>
             )}
             <div className="flex justify-between border-t border-line pt-3 text-base font-semibold text-forest-900">
-              <dt>Total (COD){(order as any).isPickup ? " — Pickup" : ""}</dt>
+              <dt>
+                Total · {pay.short}
+                {order.isPickup ? " · counter pickup" : ""}
+              </dt>
               <dd>{formatBdt(order.total)}</dd>
             </div>
+            <p className="text-xs text-ink-soft">
+              {order.isReturn
+                ? "Return leg — the rider collects goods, not money."
+                : pay.prepaid
+                  ? `${pay.label} — the rider collects nothing at the door.`
+                  : order.isPickup
+                    ? "Cash at the counter when the customer collects."
+                    : `Cash on delivery — the rider collects ${formatBdt(order.total)}.`}
+            </p>
           </dl>
         </section>
 
@@ -387,7 +483,15 @@ export default function AdminOrderDetailPage() {
               {order.deliveryProofUrl && (
                 <div className="mt-3 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
                   <p className="text-[0.7rem] font-bold uppercase tracking-wider text-emerald-800">Delivery Proof — Cloudinary</p>
-                  <img src={order.deliveryProofUrl} alt="Proof" className="mt-2 w-full rounded-xl object-cover max-h-64" />
+                  <div className="relative mt-2 h-64 w-full overflow-hidden rounded-xl">
+                    <Image
+                      src={order.deliveryProofUrl}
+                      alt="Delivery proof photo"
+                      fill
+                      sizes="(min-width: 1024px) 40vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
                   <p className="mt-1 text-[10px] break-all text-ink-soft">{order.deliveryProofUrl}</p>
                 </div>
               )}
@@ -488,11 +592,18 @@ export default function AdminOrderDetailPage() {
                   </p>
                 </div>
               )}
-              {(order as any).isPickup && (
+              {order.isPickup && (
                 <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
                   <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">Store Pickup — Traffic Point</p>
-                  <p className="text-xs">Pickup Slot: {(order as any).pickupSlot || (order as any).deliveryWindow || "now"}</p>
+                  <p className="text-xs">Pickup Slot: {deliverySlotLabel(order.pickupSlot || order.deliveryWindow || "now") ?? "now"}</p>
                   <p className="text-xs">Ready in ~{order.etaLabel}</p>
+                </div>
+              )}
+              {!order.isPickup && deliverySlotSummary(order) && (
+                <div className="mt-3 rounded-xl bg-sky-50 p-3 ring-1 ring-sky-200">
+                  <p className="text-[0.7rem] font-bold uppercase tracking-wider text-sky-900">🕒 Customer asked for a delivery slot</p>
+                  <p className="mt-1 text-sm font-semibold text-sky-900">{deliverySlotSummary(order)}</p>
+                  <p className="text-xs text-sky-800">Pack in time and hand to a rider before the window starts.</p>
                 </div>
               )}
               {/* P1 #8: bKash/Nagad wallet payment — verify or reject */}
@@ -519,46 +630,69 @@ export default function AdminOrderDetailPage() {
               Journey
             </h3>
             <ol className="mt-5">
-              {ORDER_FLOW.map((s, i) => {
-                const reached = !isCancelled && flowPos >= i;
-                const isCurrent = !isCancelled && flowPos === i;
-                const last = i === ORDER_FLOW.length - 1;
-                const entry = order.timeline.find((t) => t.status === s);
+              {/* Four public milestones (what the customer sees on /track);
+                  the internal states reached inside each one are listed
+                  underneath with their timestamps, so nothing is hidden. */}
+              {PUBLIC_STEPS.map((step, i) => {
+                const done = publicStepDone(order.status, i);
+                const isCurrent =
+                  !isCancelled && phase === i && order.status !== "delivered";
+                const last = i === PUBLIC_STEPS.length - 1;
+                const reachedStatuses = (step.statuses as readonly OrderStatus[]).filter(
+                  (st) => !isCancelled && flowPos >= flowIndex(st),
+                );
+                const dotStatus =
+                  reachedStatuses[reachedStatuses.length - 1] ?? step.statuses[0];
                 return (
-                  <li key={s} className="relative flex gap-4 pb-6 last:pb-0">
+                  <li key={step.key} className="relative flex gap-4 pb-6 last:pb-0">
                     {!last && (
                       <span
                         aria-hidden
                         className={`absolute left-[9px] top-6 h-full w-px ${
-                          flowPos > i && !isCancelled ? "bg-forest-300" : "bg-line"
+                          done && !isCancelled ? "bg-forest-300" : "bg-line"
                         }`}
                       />
                     )}
                     <span
                       aria-hidden
                       className={`mt-0.5 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full ring-4 ring-paper ${
-                        reached ? DOT[s] : "bg-ivory-200"
+                        done || isCurrent ? DOT[dotStatus] : "bg-ivory-200"
                       } ${isCurrent ? "shadow-[0_0_0_2px_#1b3a2d]" : ""}`}
                     />
                     <div className="min-w-0">
                       <p
                         className={`text-sm font-medium ${
-                          reached ? "text-ink" : "text-ink-soft/70"
+                          done || isCurrent ? "text-ink" : "text-ink-soft/70"
                         }`}
                       >
-                        {STATUS_META[s].label}
+                        {step.label}
                         {isCurrent && (
                           <span className="ml-2 rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-gold-700">
                             Now
                           </span>
                         )}
                       </p>
-                      {entry && (
-                        <p className="mt-0.5 text-xs text-ink-soft">
-                          {clockTime(entry.at)}
-                          {entry.note ? ` · ${entry.note}` : ""}
-                        </p>
-                      )}
+                      {reachedStatuses.map((st) => {
+                        const entry = order.timeline.find((t) => t.status === st);
+                        const isNow = st === order.status;
+                        // A milestone reached in one internal step needs no
+                        // repeated label — just its time.
+                        const soleStep = reachedStatuses.length === 1 && st === step.doneAt;
+                        const parts = [
+                          soleStep ? "" : STATUS_META[st].label,
+                          entry ? clockTime(entry.at) : "",
+                          entry?.note ?? "",
+                        ].filter(Boolean);
+                        if (parts.length === 0) return null;
+                        return (
+                          <p
+                            key={st}
+                            className={`mt-0.5 text-xs ${isNow ? "font-medium text-ink" : "text-ink-soft"}`}
+                          >
+                            {parts.join(" · ")}
+                          </p>
+                        );
+                      })}
                     </div>
                   </li>
                 );

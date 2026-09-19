@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { tidyPhoneInput } from "@/lib/phone";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
+import { useLanguage } from "@/components/i18n/language-provider";
 import { getAuthSnapshot } from "@/lib/customer-session";
 import { useCustomer } from "@/lib/use-customer";
 import {
@@ -13,6 +15,7 @@ import {
 import { LoyaltyCard } from "./loyalty-card";
 import { ReferralCard } from "./referral-card";
 import PlusCard from "./plus-card";
+import OrderHistory from "./order-history";
 
 /**
  * Account panel — signup/login with NO verification: phone + password and
@@ -40,6 +43,7 @@ const nextFromQuery = (): string | null => {
 };
 
 export default function AccountView() {
+  const { t } = useLanguage();
   const { customer, checked, refresh, signOut } = useCustomer();
   const guest = useSyncExternalStore(
     subscribeWishlist,
@@ -54,6 +58,21 @@ export default function AccountView() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  const [contact, setContact] = useState<string | null>(null);
+  // Forgot password (P1 #15): there is no OTP/email on this site by design,
+  // so the honest path is the shop's own number — fetched, never invented.
+  useEffect(() => {
+    let live = true;
+    fetch("/api/contact", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { whatsapp?: string | null; phone?: string | null } | null) => {
+        if (live && d) setContact(d.whatsapp ?? d.phone ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   if (!checked) {
     return (
@@ -123,6 +142,8 @@ export default function AccountView() {
 
   return (
     <div className="space-y-8">
+      {/* P1 #15 — what the account is FOR: the orders on this number. */}
+      {customer ? <OrderHistory phone={customer.phone} /> : null}
       <LoyaltyCard />
       <ReferralCard />
       {/* P2 #17 — PROSANTI+ status + apply, keyed to the account phone. */}
@@ -240,11 +261,12 @@ export default function AccountView() {
                 <input
                   id="ac-phone"
                   required
-                  inputMode="numeric"
+                  type="tel"
+                  inputMode="tel"
                   autoComplete="tel"
                   placeholder="01712345678"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
                   disabled={busy}
                   className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
                 />
@@ -288,6 +310,27 @@ export default function AccountView() {
                 {done}
               </p>
             )}
+
+            {tab === "login" ? (
+              <details className="mt-4 rounded-2xl bg-ivory-50 px-4 py-3 ring-1 ring-line" data-testid="forgot-password">
+                <summary className="cursor-pointer text-sm font-semibold text-forest-900">
+                  {t("track.forgotTitle")}
+                </summary>
+                <p className="mt-2 text-xs leading-6 text-ink-soft">{t("track.forgotBody")}</p>
+                {contact ? (
+                  <a
+                    href={`https://wa.me/88${contact}?text=${encodeURIComponent(
+                      `PROSANTI account — password reset for ${phone.trim() || "my number"}`,
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex min-h-11 items-center rounded-full bg-[#25D366] px-4 text-sm font-semibold text-white"
+                  >
+                    WhatsApp {contact}
+                  </a>
+                ) : null}
+              </details>
+            ) : null}
 
             <p className="mt-5 text-xs leading-6 text-ink-soft">
               গেস্ট হয়ে অর্ডার করাও রইল; তবে স্মার্ট কার্ডের স্ট্যাম্প জমাতে

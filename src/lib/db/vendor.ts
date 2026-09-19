@@ -10,17 +10,25 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AdminInputError, readProductBundle } from "./admin";
+import {
+  AdminInputError,
+  isPreTwoTapRefusal,
+  legacyTwoStepReady,
+  orderFlowSchemaGap,
+} from "./admin";
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
-import { mapCategory, mapShop } from "./mappers";
-import { toDomain } from "./orders";
+import { mapCategory, mapProduct, mapShop } from "./mappers";
+import { toDomain, toDomainMany } from "./orders";
 import type {
   DbCategory,
+  DbMedia,
+  DbProduct,
   DbShopLedger,
   DbOrder,
   DbShopPayout,
   DbShop,
+  DbVariant,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -126,12 +134,9 @@ export async function listVendorOrders(
   if (status && status !== "all") query = query.eq("status", status);
   const { data, error } = await query;
   if (error) throw new Error("vendor order list failed");
-  const out: Order[] = [];
-  for (const row of ((data ?? []) as DbOrder[])) {
-    const order = await toDomain(db, row);
-    if (order) out.push(order);
-  }
-  return out;
+  // P1.3: one batched mapping for the whole page instead of one per order.
+  const mapped = await toDomainMany(db, (data ?? []) as DbOrder[]);
+  return mapped.filter((order): order is Order => order !== null);
 }
 
 export async function getVendorOrderDetail(
@@ -165,11 +170,16 @@ export async function advanceVendorOrder(
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
-  const { error: rpcError } = await db.rpc("ps_advance_order", {
-    p_order_id: (data as { id: string }).id,
+  const orderId = (data as { id: string }).id;
+  let { error: rpcError } = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
     p_to: to,
     p_note: null,
   });
+  if (rpcError && isPreTwoTapRefusal(rpcError, to)) {
+    // Database predates 202609170001 — same two-step fallback as staff.
+    rpcError = await legacyTwoStepReady(db, orderId, null);
+  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
@@ -181,7 +191,94 @@ export async function advanceVendorOrder(
         422,
       );
     }
+    // Same honesty as the staff path: a schema-level refusal is logged with
+    // its SQLSTATE and named to the vendor as a repair, not a bare generic.
+    const gap = orderFlowSchemaGap(rpcError);
+    console.error(
+      "[vendor] ps_advance_order failed",
+      JSON.stringify({
+        orderNo,
+        to,
+        code: rpcError.code ?? null,
+        message: rpcError.message ?? null,
+        ...(gap ? { schemaGap: gap } : {}),
+      }),
+    );
+    if (gap) {
+      throw new AdminInputError(
+        "The database refused this change — the order was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
+        503,
+      );
+    }
     throw new AdminInputError("Could not update the order.", 422);
+  }
+  return getVendorOrderDetail(db, shopId, orderNo);
+}
+
+/**
+ * The shop's decision on a bKash/Nagad payment (2026-09-18). ps_verify_payment
+ * already authorises the OWNING shop (`orders.shop_id = ps_vendor_shop()`),
+ * so the vendor may settle its own wallet money without waiting for PROSANTI
+ * staff; the shop scope here is belt-and-braces (a foreign order number
+ * answers 404, never a leak). Same rules and messages as the staff path.
+ */
+export async function verifyPaymentAsVendor(
+  db: SupabaseClient,
+  shopId: string,
+  orderNo: string,
+  action: "verified" | "rejected",
+  note?: string,
+): Promise<Order> {
+  const { data, error } = await db
+    .from("orders")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("order_no", orderNo.trim().toUpperCase())
+    .single();
+  if (error || !data) throw new AdminInputError("Order not found.", 404);
+  const { error: rpcError } = await db.rpc("ps_verify_payment", {
+    p_order_id: (data as { id: string }).id,
+    p_action: action,
+    p_note: note?.trim().slice(0, 300) ?? null,
+  });
+  if (rpcError) {
+    const msg = rpcError.message.toLowerCase();
+    if (msg.includes("forbidden")) {
+      throw new AdminInputError("Only the shop that owns this order can decide its payment.", 403);
+    }
+    if (msg.includes("not a wallet payment")) {
+      throw new AdminInputError(
+        "This order is cash on delivery — nothing to verify.",
+        422,
+      );
+    }
+    if (msg.includes("already decided")) {
+      throw new AdminInputError("This payment was already decided.", 409);
+    }
+    if (msg.includes("order already cancelled")) {
+      throw new AdminInputError(
+        "This order was cancelled — its wallet payment is settled as rejected; nothing to decide.",
+        422,
+      );
+    }
+    const gap = orderFlowSchemaGap(rpcError);
+    console.error(
+      "[vendor] ps_verify_payment failed",
+      JSON.stringify({
+        orderNo,
+        action,
+        code: rpcError.code ?? null,
+        message: rpcError.message ?? null,
+        ...(gap ? { schemaGap: gap } : {}),
+      }),
+    );
+    if (gap) {
+      throw new AdminInputError(
+        "The database refused this decision — the payment was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
+        503,
+      );
+    }
+    throw new AdminInputError("Could not record the payment decision.", 422);
   }
   return getVendorOrderDetail(db, shopId, orderNo);
 }
@@ -190,22 +287,40 @@ export async function advanceVendorOrder(
 /* Products (own shop — drafts included)                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The shop's own catalog, drafts and archived rows included. Three batched
+ * reads whatever the size — until 2026-09-18 this ran three queries PER
+ * product (a 200-piece shop = 600 round trips on every visit and after
+ * every save).
+ */
 export async function listVendorProducts(
   db: SupabaseClient,
   shopId: string,
 ): Promise<Product[]> {
   const { data, error } = await db
     .from("products")
-    .select("id")
+    .select("*")
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw new Error("vendor product list failed");
-  const out: Product[] = [];
-  for (const row of ((data ?? []) as { id: string }[])) {
-    out.push(await readProductBundle(db, row.id));
-  }
-  return out;
+  const products = (data ?? []) as DbProduct[];
+  if (products.length === 0) return [];
+  const ids = products.map((p) => p.id);
+  const [vRes, mRes] = await Promise.all([
+    db.from("product_variants").select("*").in("product_id", ids),
+    db.from("product_media").select("*").in("product_id", ids).order("sort_order"),
+  ]);
+  if (vRes.error || mRes.error) throw new Error("vendor product list failed");
+  const variants = (vRes.data ?? []) as DbVariant[];
+  const media = (mRes.data ?? []) as DbMedia[];
+  return products.map((p) =>
+    mapProduct({
+      product: p,
+      variants: variants.filter((v) => v.product_id === p.id),
+      media: media.filter((m) => m.product_id === p.id),
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -272,7 +387,10 @@ export interface VendorEarnings {
   balance: number;
   ledger: {
     id: string;
+    /** Row uuid (kept for keys); shops recognise `orderNo`. */
     orderId: string;
+    /** PUBLIC order number (PS-…); empty when the order row is unreadable. */
+    orderNo: string;
     subtotal: number;
     commission: number;
     payable: number;
@@ -297,7 +415,10 @@ export async function listVendorEarnings(
   const [ledgerRes, payoutRes] = await Promise.all([
     db
       .from("shop_ledger")
-      .select("*")
+      // Left-join the order number: a uuid prefix meant nothing to the shop
+      // (2026-09-18). Left, not inner — a ledger row must never vanish
+      // because its order row happened to be unreadable.
+      .select("*, orders(order_no)")
       .eq("shop_id", shopId)
       .order("created_at", { ascending: false })
       .limit(100),
@@ -311,9 +432,16 @@ export async function listVendorEarnings(
   if (ledgerRes.error || payoutRes.error) {
     throw new Error("vendor earnings failed");
   }
-  const ledger = ((ledgerRes.data ?? []) as DbShopLedger[]).map((r: any) => ({
+  const ledger = (
+    (ledgerRes.data ?? []) as (DbShopLedger & {
+      orders?: { order_no: string } | { order_no: string }[] | null;
+    })[]
+  ).map((r) => ({
     id: r.id,
     orderId: r.order_id,
+    orderNo: Array.isArray(r.orders)
+      ? (r.orders[0]?.order_no ?? "")
+      : (r.orders?.order_no ?? ""),
     subtotal: r.subtotal,
     commission: r.commission,
     payable: r.payable,

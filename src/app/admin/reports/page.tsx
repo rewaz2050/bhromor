@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
+import { useNow } from "@/lib/use-now";
 import {
   REPORT_RANGES,
   salesReport,
+  seriesCsv,
   seriesMax,
   type ReportRange,
 } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
+import { csvDateSuffix, downloadText, ordersCsv } from "@/lib/csv";
 import { useStaffLive } from "@/lib/use-staff-live";
 import { apiErrorMessage, apiGet } from "@/lib/admin-api";
 import type { BestSellerRow } from "@/lib/db/reports";
@@ -18,7 +21,7 @@ import { WEEKDAY_LABELS, hourLabel, hourProfile, zoneDemand } from "@/lib/insigh
 
 /** Sales reports over live orders (pure math in lib/reports.ts). */
 export default function AdminReportsPage() {
-  const { orders } = useOrders();
+  const { orders, hasMore, loadMore, loadingMore } = useOrders();
   const [range, setRange] = useState<ReportRange>(REPORT_RANGES[0]);
 
   /* P2 #4 — the all-time best-seller list from the server: the exact
@@ -52,15 +55,39 @@ export default function AdminReportsPage() {
   /* P2 #24 — zone-wise demand planning over the same window the page is
      showing. Counts of real orders (never a "forecast"): which zone is
      loud, which weekday carries it, and what that zone buys most. */
+  const now = useNow();
   const planningOrders = useMemo(() => {
     if (range.days === null) return orders;
-    const cutoff = Date.now() - range.days * 86_400_000;
+    const cutoff = now - range.days * 86_400_000;
     return orders.filter((o) => o.createdAt >= cutoff);
-  }, [orders, range]);
+  }, [now, orders, range]);
   const zoneRows = useMemo(() => zoneDemand(planningOrders), [planningOrders]);
   const zoneHours = useMemo(() => hourProfile(planningOrders), [planningOrders]);
   const max = seriesMax(report.series);
   const hasOrders = report.summary.orders > 0;
+  // The client-side figures run over the loaded pages. When older orders
+  // exist beyond them, an "All time" or 30-day window is a partial answer —
+  // say so, and offer to load the rest, instead of presenting it as total.
+  const oldestLoaded = orders.length > 0 ? Math.min(...orders.map((o) => o.createdAt)) : null;
+  const windowStart = range.days === null ? null : now - range.days * 86_400_000;
+  const partial =
+    hasMore && (windowStart === null || (oldestLoaded !== null && oldestLoaded > windowStart));
+  const windowOrders = useMemo(
+    () => orders.filter((o) => o.createdAt >= report.from && o.createdAt < report.to),
+    [orders, report.from, report.to],
+  );
+  const exportOrders = () => {
+    downloadText(
+      `prosanti-orders-${range.label.replace(/\s+/g, "")}-${csvDateSuffix(now)}.csv`,
+      ordersCsv(windowOrders),
+    );
+  };
+  const exportDaily = () => {
+    downloadText(
+      `prosanti-daily-${range.label.replace(/\s+/g, "")}-${csvDateSuffix(now)}.csv`,
+      seriesCsv(report),
+    );
+  };
 
   const kpis = [
     {
@@ -99,11 +126,28 @@ export default function AdminReportsPage() {
             Reports
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Sales figures computed live from the order store (§32). Every
-            amount is integer paisa (§69); booked ≠ collected until the money
-            arrives — COD at delivery, bKash/Nagad when the payment is
-            verified.
+            Live sales figures. Booked ≠ collected until the money arrives —
+            cash at delivery, bKash/Nagad when the payment is verified.
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={exportOrders}
+            disabled={windowOrders.length === 0}
+            className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100 disabled:opacity-50"
+          >
+            Orders CSV ({windowOrders.length})
+          </button>
+          <button
+            type="button"
+            onClick={exportDaily}
+            disabled={!hasOrders}
+            className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100 disabled:opacity-50"
+          >
+            Daily CSV
+          </button>
         </div>
         <div className="flex rounded-full bg-paper p-1 ring-1 ring-line" role="group" aria-label="Report period">
           {REPORT_RANGES.map((r) => (
@@ -122,7 +166,29 @@ export default function AdminReportsPage() {
             </button>
           ))}
         </div>
+        </div>
       </div>
+
+      {partial && (
+        <p
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200"
+          data-testid="report-partial"
+        >
+          <span>
+            These figures cover the {orders.length} most recent orders loaded —
+            older orders exist and are not counted yet.
+          </span>
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="rounded-full bg-amber-900 px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+          >
+            {loadingMore ? "Loading…" : "Load older orders"}
+          </button>
+        </p>
+      )}
 
       {/* KPI row */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -278,6 +344,40 @@ export default function AdminReportsPage() {
         </p>
       </section>
 
+      {/* Payment mix — the three pockets the owner reconciles */}
+      <section aria-label="By payment method" className="rounded-2xl bg-paper p-6 ring-1 ring-line">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-display text-base font-medium text-forest-900">By payment method</h3>
+          <p className="text-xs text-ink-soft">
+            Cash arrives with the riders; wallet money arrives when you verify it.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {report.payments.map((row) => (
+            <div key={row.method} className="rounded-xl bg-ivory-100/70 p-4" data-testid={`pay-${row.method}`}>
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
+                {row.label}
+              </p>
+              <p className="mt-1 font-display text-xl font-medium text-forest-900">
+                {formatPaisa(row.collected)}
+                <span className="ml-1 text-xs font-normal text-ink-soft">collected</span>
+              </p>
+              <p className="mt-1 text-xs text-ink-soft">
+                {row.orders} order{row.orders === 1 ? "" : "s"} · {formatPaisa(row.booked)} booked
+              </p>
+              {row.awaiting > 0 && (
+                <Link
+                  href="/admin/payments"
+                  className="mt-2 inline-block text-xs font-semibold text-rose-700 underline underline-offset-2"
+                >
+                  {row.awaiting} awaiting verification →
+                </Link>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Top products */}
         <section aria-label="Top products" className="rounded-2xl bg-paper p-6 ring-1 ring-line lg:col-span-3">
@@ -312,9 +412,9 @@ export default function AdminReportsPage() {
             </table>
           )}
           <p className="mt-3 text-xs text-ink-soft">
-            Names are snapshots from each order line (§75); cancelled orders are
-            excluded. Coupon discounts worth {formatPaisa(report.summary.couponDiscount)} were given
-            in this period (§56).
+            Names are the ones on each order line at purchase time; cancelled
+            orders are excluded. Coupon discounts worth{" "}
+            {formatPaisa(report.summary.couponDiscount)} were given in this period.
           </p>
         </section>
 

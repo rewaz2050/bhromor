@@ -5,6 +5,7 @@ import { routeId, vendorRoute } from "../../_lib";
 import { updateProduct } from "@/lib/db/admin";
 
 import { apiJson } from "@/lib/api-response";
+import { revalidateCatalogCaches } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export const PATCH = vendorRoute(
       await routeId(routeContext),
       body,
     );
+    revalidateCatalogCaches();
     return apiJson({ product });
   },
   { limit: 30 },

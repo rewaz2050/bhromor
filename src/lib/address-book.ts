@@ -55,19 +55,27 @@ export const getSavedAddresses = (): SavedAddress[] => {
 export const saveAddress = (
   addr: Omit<SavedAddress, "id" | "createdAt" | "district" | "upazila" | "tag"> & {
     tag?: AddressTag;
+    /** Defaults to Sunamganj / Sunamganj Sadar — pass the real picks so a
+     *  saved out-of-Sadar address restores as itself (P1 #16). */
+    district?: string;
+    upazila?: string;
   },
 ): SavedAddress => {
   const all = getSavedAddresses();
   const entry: SavedAddress = {
     ...addr,
     id: `addr-${Date.now()}`,
-    district: SUNAMGANJ_DISTRICT,
-    upazila: SUNAMGANJ_UPAZILA,
+    district: addr.district?.trim() || SUNAMGANJ_DISTRICT,
+    upazila: addr.upazila?.trim() || SUNAMGANJ_UPAZILA,
     tag: addr.tag ?? "other",
     createdAt: Date.now(),
   };
-  // Keep max 5, newest first
-  const next = [entry, ...all.filter((a) => a.fullAddress !== addr.fullAddress)].slice(0, 5);
+  // Keep max 5, newest first. The SAME place (house + para + phone) replaces
+  // its older copy instead of stacking — a repeat customer used to see five
+  // identical rows after five orders.
+  const sameKey = (a: { houseNo: string; area: string; phone: string; fullAddress: string }) =>
+    `${a.phone.replace(/\D/g, "")}|${a.houseNo.trim().toLowerCase()}|${a.area.trim().toLowerCase()}|${a.fullAddress.trim().toLowerCase()}`;
+  const next = [entry, ...all.filter((a) => sameKey(a) !== sameKey(entry))].slice(0, 5);
   localStorage.setItem(KEY, JSON.stringify(next));
   return entry;
 };

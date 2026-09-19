@@ -4,14 +4,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
 import BagShopHeader from "./bag-shop-header";
-import { useZones } from "@/lib/use-zones";
 import { formatBdt } from "@/lib/format";
 import {
+  DELIVERY_CHARGE_LADDER_BN,
+  DELIVERY_CHARGE_MIN_PAISA,
+  DELIVERY_CHARGE_PROMISE_BN,
+  DELIVERY_CHARGE_PROMISE_EN,
   DELIVERY_ETA,
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
-import { FLAT_DELIVERY_NOTE, coverImage } from "@/lib/catalog";
+import { coverImage } from "@/lib/catalog";
 import { MAX_LINE_QTY } from "@/lib/cart";
+import BagSkeleton from "./bag-skeleton";
 import { ButtonLink } from "@/components/ui/primitives";
 import {
   IconArrowRight,
@@ -31,10 +35,8 @@ import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 
 export default function CartView() {
   const { t, lang } = useLanguage();
-  const { detail, updateQty, removeItem, subtotal } = useCart();
+  const { detail, updateQty, removeItem, subtotal, ready } = useCart();
   const offer = useBagOffer(detail);
-  /** Real zone pricing (shared with checkout) instead of a hardcoded fee. */
-  const { activeZones } = useZones();
   /** Hook BEFORE the empty early-return — hook order must not change. */
   const { shops } = useLiveCatalog();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
@@ -61,6 +63,11 @@ export default function CartView() {
       )
     : null;
 
+  // Stored lines + catalog still in flight → skeleton, not "empty" (P0 #7).
+  if (!ready) {
+    return <BagSkeleton />;
+  }
+
   if (empty) {
     return (
       <div className="flex flex-col items-center px-6 py-24 text-center">
@@ -80,13 +87,13 @@ export default function CartView() {
     );
   }
 
-  const fromCharge = 6000; // ৳60 flat
-  const deliveryFee = fromCharge;
-  // Marketing note — per-user promo; the real check happens at checkout/server.
-  const promoFree = true;
+  // "From" charge — the cheapest zone; checkout prices the real one from the
+  // address and the server re-derives it again at placement.
+  const deliveryFee = DELIVERY_CHARGE_MIN_PAISA;
   // The automatic offer (flash drop or a complete set) is shown and subtracted
   // here; checkout and the server re-derive the same number.
   const total = Math.max(0, subtotal - (offer?.discount ?? 0));
+  const deliveryPromise = lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN;
 
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_380px]">
@@ -201,10 +208,13 @@ export default function CartView() {
           </h2>
           <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-forest-800">
             <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-            {INSTANT_DELIVERY_TITLE} — Sunamganj Sadar · {DELIVERY_ETA}
+            {INSTANT_DELIVERY_TITLE} — Sunamganj · {DELIVERY_ETA}
           </p>
-          <p className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200">
-            🎉 ডেলিভারি চার্জ মাত্র ৳৬০!
+          <p
+            className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200"
+            data-testid="delivery-promise"
+          >
+            🚚 {deliveryPromise}
           </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
@@ -217,15 +227,9 @@ export default function CartView() {
               <dt className="text-ink-soft">{t("cart.deliveryFrom")}</dt>
               <dd className="font-medium text-ink">{formatBdt(deliveryFee)}</dd>
             </div>
-            {promoFree ? (
-              <p className="rounded-xl bg-forest-100 px-3 py-2 text-xs text-forest-800">
-                {"🎉 ডেলিভারি চার্জ মাত্র ৳৬০!"}
-              </p>
-            ) : (
-              <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
-                {"ডেলিভারি চার্জ ঠিকানা অনুযায়ী চেকআউটে হিসাব হবে (জোন ৳৩০–৳১০০)।"}
-              </p>
-            )}
+            <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink-soft">
+              {DELIVERY_CHARGE_LADDER_BN} — স্টোর পিকআপ ফ্রি।
+            </p>
             {offer ? (
               <div className="flex justify-between">
                 <dt className="text-ink-soft">
@@ -268,12 +272,7 @@ export default function CartView() {
             </a>
           ) : null}
           <p className="mt-4 text-center text-xs leading-5 text-ink-soft">
-            {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA}. Cash on delivery
-            available.{" "}
-            {"ডেলিভারি চার্জ মাত্র ৳৬০।"}
-          </p>
-          <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-soft/80">
-            {FLAT_DELIVERY_NOTE}
+            {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} · ক্যাশ অন ডেলিভারি।
           </p>
         </div>
       </aside>

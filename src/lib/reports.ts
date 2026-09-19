@@ -88,6 +88,22 @@ export interface CouponRow {
   discount: Bdt;
 }
 
+/**
+ * Money by payment method (2026-09-18). The owner reconciles three pockets
+ * — the riders' cash bag, the bKash wallet, the Nagad wallet — and the
+ * report only ever showed one "collected" number.
+ */
+export interface PaymentRow {
+  method: "cod" | "bkash" | "nagad";
+  label: string;
+  orders: number;
+  booked: Bdt;
+  /** COD: delivered orders. Wallet: verified payments. */
+  collected: Bdt;
+  /** Wallet only: still awaiting the shop's verification (live orders). */
+  awaiting: number;
+}
+
 export interface SalesReport {
   range: ReportRange;
   from: number; // inclusive, local midnight ms
@@ -98,6 +114,7 @@ export interface SalesReport {
   topProducts: ProductRow[];
   zones: ZoneRow[];
   coupons: CouponRow[];
+  payments: PaymentRow[];
 }
 
 const isLive = (o: Order) => o.status !== "cancelled";
@@ -211,6 +228,27 @@ export const salesReport = (
     row.discount += o.coupon.discount;
     byCoupon.set(o.coupon.code, row);
   }
+  // Payment mix — the same "collected" rule as the summary, per method.
+  const PAY_LABEL = { cod: "Cash on delivery", bkash: "bKash", nagad: "Nagad" } as const;
+  const payments: PaymentRow[] = (["cod", "bkash", "nagad"] as const).map((method) => {
+    const rows = live.filter((o) => o.payment === method);
+    const collectedRows =
+      method === "cod"
+        ? rows.filter((o) => o.status === "delivered")
+        : rows.filter((o) => o.paymentStatus === "verified");
+    return {
+      method,
+      label: PAY_LABEL[method],
+      orders: rows.length,
+      booked: rows.reduce((sum, o) => sum + o.total, 0),
+      collected: collectedRows.reduce((sum, o) => sum + o.total, 0),
+      awaiting:
+        method === "cod"
+          ? 0
+          : rows.filter((o) => o.paymentStatus === "pending_verification").length,
+    };
+  });
+
   const coupons: CouponRow[] = [...byCoupon.entries()]
     .map(([code, c]) => ({ code, ...c }))
     .sort((a, b) => b.discount - a.discount);
@@ -237,7 +275,19 @@ export const salesReport = (
     topProducts,
     zones,
     coupons,
+    payments,
   };
+};
+
+/** Daily series as spreadsheet rows (taka, not paisa). */
+export const seriesCsv = (report: SalesReport): string => {
+  const lines = [
+    "Day,Orders,Revenue (Tk)",
+    ...report.series.map(
+      (d) => `${d.key},${d.orderCount},${(d.revenue / 100).toFixed(2)}`,
+    ),
+  ];
+  return "\uFEFF" + lines.join("\r\n") + "\r\n";
 };
 
 /** Highest single-day revenue in a series (bar scaling). */

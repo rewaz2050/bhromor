@@ -26,7 +26,7 @@ const FAQS = [
   },
   {
     q: "How do I track my order?",
-    a: "Visit the Track page and enter the order ID from your confirmation message plus your phone number. You will see the live timeline: placed → confirmed → preparing → courier assigned → out for delivery → delivered.",
+    a: "Visit the Track page and enter the order ID from your confirmation message plus your phone number. You will see the live timeline: order placed → confirmed → picked up by the rider → delivered.",
   },
   {
     q: "What is your return and exchange policy?",

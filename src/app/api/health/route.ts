@@ -13,10 +13,30 @@ import {
   isSupabaseConfigured,
 } from "@/lib/env";
 import { apiJson } from "@/lib/api-response";
+import { requireStaff } from "@/lib/staff-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/**
+ * Who may see the full report (audit L6). Anyone can read `live` (a bare
+ * boolean for uptime monitors); the per-table counts, seeded flags and
+ * repair status go only to a signed-in staff session (cookie or bearer —
+ * the admin dashboard banner and the owner's own browser tab) or to a
+ * caller presenting HEALTH_TOKEN in `x-health-token` (external monitors).
+ */
+const mayReadDetails = async (request: Request | undefined): Promise<boolean> => {
+  const token = process.env.HEALTH_TOKEN?.trim();
+  if (token && request?.headers.get("x-health-token") === token) return true;
+  try {
+    await requireStaff();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export async function GET(request?: Request) {
+  const detailed = await mayReadDetails(request);
   const configured = isSupabaseConfigured();
   const serviceConfigured = isServiceRoleConfigured();
 
@@ -31,8 +51,32 @@ export async function GET() {
     adminUser: false,
     placeOrderRpc: false,
     placeOrderRpcPerUser: false,
+    // 202609160002 — the order INSERT path (gift_wrap NULL + current guard
+    // triggers). Without it, ps_place_order exists yet every checkout 503s.
+    checkoutRepair: false,
+    // 202609160003 — the order UPDATE path: status changes (admin Confirm →
+    // Delivered, cancel), bKash/Nagad verify, and the rider's own delivery
+    // bookkeeping. Without it orders arrive and nothing can move them.
+    orderFlowRepair: false,
+    // 202609160004 — the public anon key can no longer call the service-only
+    // RPCs (ps_place_order, ps_use_coupon, ps_book_delivery_slot, …) and
+    // `memberships` is actually protected by its policy. Ordering works
+    // without it; the shop is simply exposed until it runs.
+    securityRepair: false,
+    // 202609160005 — a delivery offer can be re-issued after it expires or a
+    // rider rejects it (UNIQUE(order_id) replaced by one-live-offer index),
+    // and staff batch assign exists. Without it the rider job feed 503s as
+    // soon as one offer lapses with a second rider online.
+    dispatchRepair: false,
+    // 202609170001 — two-tap order flow: ps_advance_order accepts
+    // confirmed → ready-for-pickup, so admin/vendor "Ready — call rider"
+    // works without a "preparing" tap in between. Without it the button
+    // gets a 422 ("not allowed from here") and staff must use "More… →
+    // Start preparing" first.
+    twoTapFlow: false,
   };
   const counts: Record<string, number> = {};
+  let checkoutRepair: Record<string, unknown> | null = null;
 
   if (configured) {
     try {
@@ -78,6 +122,26 @@ export async function GET() {
         // Unexpected error shape — if it is NOT "function not found", treat as installed.
         checks.placeOrderRpc = code !== undefined;
       }
+
+      // Can an order row actually be INSERTED? ps_checkout_health() ships with
+      // the repair migration; a missing function IS the answer (not applied).
+      const repair = await svc.rpc("ps_checkout_health");
+      if (!repair.error && repair.data && typeof repair.data === "object") {
+        const r = repair.data as Record<string, unknown>;
+        checkoutRepair = r;
+        checks.checkoutRepair =
+          r.gift_wrap_nullable === true &&
+          r.totals_guard_current === true &&
+          r.insert_guard_current === true;
+        checks.orderFlowRepair =
+          r.status_update_ok === true &&
+          r.payment_verify_ok === true &&
+          r.rider_guard_ok === true;
+        checks.securityRepair =
+          r.rpc_grants_locked === true && r.memberships_rls === true;
+        checks.dispatchRepair = r.dispatch_reoffer_ok === true;
+        checks.twoTapFlow = r.two_tap_flow_ok === true;
+      }
     }
   }
 
@@ -89,7 +153,13 @@ export async function GET() {
     checks.zonesSeeded &&
     checks.shopsSeeded &&
     checks.adminUser &&
-    checks.placeOrderRpc;
+    checks.placeOrderRpc &&
+    // "live" means a customer can actually place an order — not just that the
+    // RPC exists. Without the repair every INSERT is refused.
+    checks.checkoutRepair &&
+    // …and the shop can actually move it: without 0003 every status change,
+    // payment decision and rider delivery is refused by the database.
+    checks.orderFlowRepair;
 
   const nextSteps: string[] = [];
   if (!checks.supabaseKeys) {
@@ -110,13 +180,45 @@ export async function GET() {
   if (checks.productsSeeded && !checks.placeOrderRpc) {
     nextSteps.push("ps_place_order nai — SQL Editor-e supabase/migrations/202609120007_flat_delivery.sql chalaben (flat ৳60 delivery rule)");
   }
+  if (checks.placeOrderRpc && !checks.checkoutRepair) {
+    nextSteps.push(
+      "Checkout order INSERT block — SQL Editor-e supabase/migrations/202609160002_order_insert_repair.sql chalaben (gift_wrap NULL + tip/gift/bKash guard fix); na chalale protita order 'Could not place the order' dibe",
+    );
+  }
+  if (checks.placeOrderRpc && !checks.orderFlowRepair) {
+    nextSteps.push(
+      "Order status UPDATE block — SQL Editor-e supabase/migrations/202609160003_order_status_update_repair.sql chalaben (ledger trigger enum fix + ps_verify_payment + riders guard); na chalale admin Confirm/Cancel, bKash verify ar rider Delivered kichui kaj korbe na",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.securityRepair) {
+    nextSteps.push(
+      "Security lock — SQL Editor-e supabase/migrations/202609160004_rpc_grants_rls_repair.sql chalaben (anon key diye ps_place_order/ps_use_coupon/ps_book_delivery_slot call bondho + memberships RLS + delivery_slots policy); order flow eite bhangbe na, kintu na chalale je keu browser key diye slot full / coupon sesh / membership pora korte pare",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.dispatchRepair) {
+    nextSteps.push(
+      "Dispatch re-offer — SQL Editor-e supabase/migrations/202609160005_dispatch_reoffer_repair.sql chalaben (delivery_assignments UNIQUE(order_id) → one-live-offer index + batch assign fix); na chalale ekta offer expire/reject holei rider app-er job list 503 dibe ar Admin → Deliveries batch assign kaj korbe na",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
+    nextSteps.push(
+      "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
+    );
+  }
+
+  const now = new Date().toISOString();
+  if (!detailed) {
+    // Public shape: is the shop taking orders — nothing about how it is built.
+    return apiJson({ live, now });
+  }
 
   return apiJson({
     live,
     checks,
     counts,
+    checkoutRepair,
     nextSteps,
     cloudinary: { configured: isCloudinaryConfigured() },
-    now: new Date().toISOString(),
+    now,
   });
 }

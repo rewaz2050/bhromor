@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { availabilityLabel, isOnShift } from "@/lib/rider-hours";
+import { useNow } from "@/lib/use-now";
 import { useRiders } from "@/lib/use-riders";
 import { useZones } from "@/lib/use-zones";
 import type { Rider } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 type Filter = Rider["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
@@ -47,6 +49,8 @@ function RiderCard({
   onLinkRider: (id: string, email: string) => Promise<boolean>;
   onSettle: (r: Rider) => Promise<boolean>;
 }) {
+  // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
+  const now = useNow();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(rider.name);
   const [phone, setPhone] = useState(rider.phone);
@@ -116,8 +120,8 @@ function RiderCard({
             {/* P2 #22 — a rider can be "Online" yet outside their own shift;
                 auto-dispatch will skip them until the shift window opens. */}
             {rider.status === "active" && (rider.availability?.fromHour ?? null) !== null && (
-              <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${isOnShift(rider.availability, Date.now()) ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
-                {isOnShift(rider.availability, Date.now()) ? "On shift" : `Off shift · ${availabilityLabel(rider.availability)}`}
+              <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${isOnShift(rider.availability, now) ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
+                {isOnShift(rider.availability, now) ? "On shift" : `Off shift · ${availabilityLabel(rider.availability)}`}
               </span>
             )}
             {rider.ratingCount > 0 && (
@@ -378,14 +382,7 @@ export default function AdminRidersPage() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
-          {error}{" "}
-          <button type="button" onClick={clearError} className="underline underline-offset-2">
-            Dismiss
-          </button>
-        </p>
-      )}
+      <AdminDataError label="Riders" error={error} onRetry={reset} onDismiss={clearError} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-medium text-forest-900">

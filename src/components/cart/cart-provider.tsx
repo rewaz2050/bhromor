@@ -10,7 +10,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { getProductsSnapshot, subscribeLiveCatalog } from "@/lib/live-catalog";
+import {
+  ensureLiveCatalog,
+  getProductsSnapshot,
+  isCatalogSettled,
+  subscribeLiveCatalog,
+} from "@/lib/live-catalog";
 import {
   addLine,
   CART_STORAGE_KEY,
@@ -29,6 +34,13 @@ interface CartContextValue {
   detail: CartSummary["lines"];
   itemCount: number;
   subtotal: number;
+  /**
+   * False until BOTH the stored lines have been read and the live catalog has
+   * answered (or the bag is known to be empty). While false, `detail` may be
+   * empty only because the rows have not arrived yet — surfaces show a
+   * skeleton, never "your bag is empty" (audit 2026-09-18, P0 #7).
+   */
+  ready: boolean;
   addItem: (productId: string, variantLabel: string, qty?: number) => void;
   updateQty: (productId: string, variantLabel: string, qty: number) => void;
   removeItem: (productId: string, variantLabel: string) => void;
@@ -53,6 +65,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const openBag = useCallback(() => setBagOpen(true), []);
   const closeBag = useCallback(() => setBagOpen(false), []);
   const hydrated = useRef(false);
+  const [storageRead, setStorageRead] = useState(false);
+  const [catalogSettled, setCatalogSettled] = useState(() => isCatalogSettled());
 
   // Hydration-safe: initialise from localStorage after first paint.
   // (Pattern intentionally reads after mount to avoid SSR/client markup
@@ -61,6 +75,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setLines(readStorage());
     hydrated.current = true;
+    setStorageRead(true);
+  }, []);
+
+  // The catalog answers once (fetch-once registry); until then a restored
+  // cart cannot resolve its products. `ensureLiveCatalog()` resolves for the
+  // SSR-seeded, fetched AND failed cases — a failure is still "settled".
+  useEffect(() => {
+    let live = true;
+    void ensureLiveCatalog().then(() => {
+      if (live) setCatalogSettled(true);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -111,7 +139,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     getProductsSnapshot,
     getProductsSnapshot,
   );
-  const summary = useMemo(() => summarize(lines), [lines, catalogPool]);
+  const summary = useMemo(() => summarize(lines, catalogPool), [lines, catalogPool]);
+  const ready = storageRead && (catalogSettled || lines.length === 0);
 
   const value = useMemo(
     () => ({
@@ -122,6 +151,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       detail: summary.lines,
       itemCount: summary.itemCount,
       subtotal: summary.subtotal,
+      ready,
       addItem,
       updateQty,
       removeItem,
@@ -133,6 +163,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       closeBag,
       lines,
       summary,
+      ready,
       addItem,
       updateQty,
       removeItem,

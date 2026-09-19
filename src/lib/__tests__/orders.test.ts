@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTION_LABEL,
   ORDER_FLOW,
+  PUBLIC_STEPS,
   TRANSITIONS,
   advanceOrder,
   aggregateOrders,
@@ -11,6 +13,9 @@ import {
   makePlacedOrder,
   maskPhone,
   normalizePhone,
+  publicPhase,
+  publicStepDone,
+  publicStepsDone,
   samePhone,
   nextActions,
   transitionAllowed,
@@ -113,6 +118,28 @@ describe("order status state machine (§34)", () => {
     expect(transitionAllowed("confirmed", "out-for-delivery")).toBe(false);
   });
 
+  it("two-tap flow: the ONLY skip is confirmed → ready-for-pickup (preparing is optional)", () => {
+    expect(transitionAllowed("confirmed", "ready-for-pickup")).toBe(true);
+    // everything else still steps one at a time
+    expect(transitionAllowed("pending", "ready-for-pickup")).toBe(false);
+    expect(transitionAllowed("pending", "preparing")).toBe(false);
+    expect(transitionAllowed("confirmed", "courier-assigned")).toBe(false);
+    expect(transitionAllowed("confirmed", "delivered")).toBe(false);
+    expect(transitionAllowed("ready-for-pickup", "out-for-delivery")).toBe(false);
+    expect(transitionAllowed("ready-for-pickup", "delivered")).toBe(false);
+    expect(transitionAllowed("courier-assigned", "delivered")).toBe(false);
+    // and the old three-tap route still exists for shops that want it
+    expect(transitionAllowed("confirmed", "preparing")).toBe(true);
+    expect(transitionAllowed("preparing", "ready-for-pickup")).toBe(true);
+  });
+
+  it("offers 'Ready — call rider' as the PRIMARY action from confirmed, preparing second", () => {
+    expect(nextActions("confirmed")).toEqual(["ready-for-pickup", "preparing"]);
+    expect(nextActions("pending")).toEqual(["confirmed"]);
+    expect(ACTION_LABEL["ready-for-pickup"]).toBe("Ready — call rider");
+    expect(ACTION_LABEL.confirmed).toBe("Confirm order");
+  });
+
   it("never moves backwards", () => {
     for (const from of ORDER_FLOW) {
       for (const to of ORDER_FLOW) {
@@ -141,6 +168,58 @@ describe("order status state machine (§34)", () => {
   it("exposes the happy-path next step as the primary action", () => {
     expect(nextActions("preparing")).toEqual(["ready-for-pickup"]);
     expect(nextActions("delivered")).toEqual([]);
+  });
+});
+
+describe("public 4-step view (two-tap flow, 2026-09-17)", () => {
+  it("maps every internal state into exactly one of the four public phases", () => {
+    expect(PUBLIC_STEPS.map((s) => s.key)).toEqual([
+      "placed",
+      "confirmed",
+      "picked-up",
+      "delivered",
+    ]);
+    const seen = new Map<OrderStatus, number>();
+    for (const st of ORDER_FLOW) {
+      const hits = PUBLIC_STEPS.filter((s) =>
+        (s.statuses as readonly OrderStatus[]).includes(st),
+      );
+      expect(hits, st).toHaveLength(1);
+      seen.set(st, publicPhase(st));
+    }
+    expect(seen.get("pending")).toBe(0);
+    expect(seen.get("confirmed")).toBe(1);
+    expect(seen.get("preparing")).toBe(1);
+    expect(seen.get("ready-for-pickup")).toBe(2);
+    expect(seen.get("courier-assigned")).toBe(2);
+    expect(seen.get("out-for-delivery")).toBe(2);
+    expect(seen.get("delivered")).toBe(3);
+    expect(publicPhase("cancelled")).toBe(-1);
+  });
+
+  it("'Picked up' is only DONE once the rider actually has the parcel", () => {
+    // ready / assigned: phase 3 in progress, not done
+    expect(publicStepDone("ready-for-pickup", 2)).toBe(false);
+    expect(publicStepDone("courier-assigned", 2)).toBe(false);
+    expect(publicStepDone("out-for-delivery", 2)).toBe(true);
+    // earlier milestones stay ticked
+    expect(publicStepDone("ready-for-pickup", 0)).toBe(true);
+    expect(publicStepDone("ready-for-pickup", 1)).toBe(true);
+    // 'Confirmed' is done at confirmed AND while preparing
+    expect(publicStepDone("preparing", 1)).toBe(true);
+    expect(publicStepDone("pending", 1)).toBe(false);
+  });
+
+  it("counts done milestones 1..4, and 0 when cancelled", () => {
+    expect(publicStepsDone("pending")).toBe(1);
+    expect(publicStepsDone("confirmed")).toBe(2);
+    expect(publicStepsDone("preparing")).toBe(2);
+    expect(publicStepsDone("ready-for-pickup")).toBe(2);
+    expect(publicStepsDone("courier-assigned")).toBe(2);
+    expect(publicStepsDone("out-for-delivery")).toBe(3);
+    expect(publicStepsDone("delivered")).toBe(4);
+    expect(publicStepsDone("cancelled")).toBe(0);
+    for (let i = 0; i < 4; i++) expect(publicStepDone("cancelled", i)).toBe(false);
   });
 });
 

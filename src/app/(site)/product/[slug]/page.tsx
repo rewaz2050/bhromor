@@ -1,4 +1,6 @@
 import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
+import { moreInCategory } from "@/lib/home-shelves";
+import MoreInCategory from "@/components/product/more-in-category";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,6 +12,7 @@ import {
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
+import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
@@ -23,7 +26,6 @@ import {
 
   INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
-import { Eyebrow } from "@/components/ui/primitives";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -46,7 +48,10 @@ export async function generateMetadata({
   const { slug } = await params;
   const { products } = await getStorefrontCatalog();
   const product = findStorefrontProduct(products, slug);
-  if (!product) return {};
+  // Thrown here as well as in the page: metadata is resolved before the
+  // shell streams for crawlers with blocking metadata, so an unknown slug
+  // answers a real 404 instead of a 200 with a 404 body (audit L1).
+  if (!product) notFound();
   const cover = coverImage(product);
   return {
     title: product.name,
@@ -62,20 +67,26 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params;
-  const { products } = await getStorefrontCatalog();
+  const { products, categories, shops } = await getStorefrontCatalog();
   const product = findStorefrontProduct(products, slug);
   if (!product) notFound();
 
   const complements = completeTheLook(product, products);
-  const related = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
-    .concat(
-      products.filter((p) => p.category !== product.category && p.featured),
-    )
-    .filter(
-      (p) => isDiscoverable(p) && !complements.some((item) => item.id === p.id),
-    )
-    .slice(0, 4);
+  // Batch J — the tail of the page is the SAME shelf the shopper is on
+  // (siblings first, featured fill only when the category is short), with a
+  // scoped "See all N in <category>" link.
+  const more = moreInCategory(product, products, complements);
+  const category = categories.find((c) => c.id === product.category) ?? {
+    id: product.category,
+    name: product.category,
+    nameBn: "",
+    tagline: "",
+    image: "",
+    subCategories: [],
+  };
+  const siblingsTotal = products.filter(
+    (p) => isDiscoverable(p) && p.category === product.category && p.id !== product.id,
+  ).length;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -98,6 +109,8 @@ export default async function ProductPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      {/* P2.1 — seed the client registry from the rows already rendered. */}
+      <CatalogHydrator products={products} categories={categories} shops={shops} />
       {/* Breadcrumb */}
       <nav
         aria-label="Breadcrumb"
@@ -108,10 +121,10 @@ export default async function ProductPage({ params }: PageProps) {
         </Link>
         <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
         <Link
-          href={`/shop?category=${product.category}`}
-          className="capitalize transition-colors hover:text-forest-700"
+          href={`/shop?category=${encodeURIComponent(product.category)}`}
+          className="transition-colors hover:text-forest-700"
         >
-          {product.category}
+          {category.name}
         </Link>
         <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
         <span aria-current="page" className="truncate text-ink">
@@ -291,20 +304,13 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
-      {/* Related */}
-      {related.length > 0 && (
-        <section className="mt-20">
-          <Eyebrow>Keep exploring</Eyebrow>
-          <h2 className="font-display mt-3 text-3xl font-medium tracking-tight text-forest-900">
-            You may also like
-          </h2>
-          <div className="mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
-            {related.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Batch J — same-category shelf (replaces the mixed "You may also like"). */}
+      <MoreInCategory
+        category={category}
+        items={more.items}
+        sameCategory={more.sameCategory}
+        total={siblingsTotal}
+      />
       {/* §30 reviews — live approved reviews + moderated submission form */}
       <ReviewsSection product={product} />
     </div>

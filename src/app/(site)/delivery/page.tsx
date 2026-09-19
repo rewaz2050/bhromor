@@ -3,12 +3,21 @@ import Link from "next/link";
 import { getStorefrontZones } from "@/lib/db/storefront";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
+import { formatBdt } from "@/lib/format";
+import {
+  COURIER_ETA_BN,
+  DELIVERY_CHARGE_LADDER_BN,
+  DELIVERY_CHARGE_PROMISE_BN,
+  MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
+  courierEta,
+  isCourierZone,
+} from "@/lib/delivery";
 
 
 export const metadata: Metadata = {
   title: "Delivery Information — Sunamganj",
   description:
-    "PROSANTI delivery — সহজ ফর্মে অর্ডার: জেলা → উপজেলা → পাড়া। ফ্ল্যাট ডেলিভারি চার্জ ৳৬০ সব জায়গায়। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি। COD ও ট্র্যাকিং।",
+    "PROSANTI delivery — সহজ ফর্মে অর্ডার: জেলা → উপজেলা → পাড়া। ডেলিভারি ৳৬০ থেকে (শহরে ৳৬০ · আশেপাশে ৳১২০ · দূরে ৳১৫০)। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি। COD ও ট্র্যাকিং।",
 };
 
 export const dynamic = "force-dynamic";
@@ -29,9 +38,9 @@ export default async function DeliveryPage() {
         ডেলিভারি।
       </p>
 
-      {/* Flat delivery promise */}
+      {/* Delivery promise — the same sentence the bag and checkout show */}
       <div className="mt-8 rounded-2xl bg-gold-50 px-5 py-4 text-sm text-forest-900 ring-1 ring-gold-200">
-        🚚 <strong>ফ্ল্যাট ডেলিভারি চার্জ ৳৬০</strong> — সব জোনে, সারা সুনামগঞ্জ। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
+        🚚 <strong>{DELIVERY_CHARGE_PROMISE_BN}</strong> — {DELIVERY_CHARGE_LADDER_BN}। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
       </div>
 
       {/* Promise */}
@@ -44,9 +53,10 @@ export default async function DeliveryPage() {
             Instant delivery — Sunamganj target
           </h2>
           <p className="mt-2 text-sm leading-7 text-ivory-100/70">
-            Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min, Zone D
-            (বাইরে) 60–80 min. এটি আমাদের অপারেশনাল টার্গেট — ট্রাফিক ও
-            ক্যাপাসিটি অনুযায়ী কিছুটা কম-বেশি হতে পারে।
+            Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min — সদরের
+            ভেতরে রাইডার। সদরের বাইরে / অন্য জেলা: {COURIER_ETA_BN}। এটি
+            আমাদের অপারেশনাল টার্গেট — ট্রাফিক ও ক্যাপাসিটি অনুযায়ী কিছুটা
+            কম-বেশি হতে পারে।
           </p>
         </div>
       </div>
@@ -76,10 +86,12 @@ export default async function DeliveryPage() {
                   {zone.areas.join(", ")}
                 </td>
                 <td className="px-5 py-4 font-semibold text-ink">
-                  ৳60 flat
-                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min ৳500 order</span>}
+                  {formatBdt(zone.charge)}
+                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} order</span>}
                 </td>
-                <td className="px-5 py-4 text-ink-soft">{zone.etaLabel}</td>
+                <td className="px-5 py-4 text-ink-soft">
+                  {isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -116,8 +128,8 @@ export default async function DeliveryPage() {
         <h2>Good to know</h2>
         <ul>
           <li>
-            <strong>ফ্ল্যাট ডেলিভারি চার্জ ৳৬০</strong> — সুনামগঞ্জের সব জোনে
-            সমান। কোনো লুকানো জোন-ভেদে চার্জ নেই।
+            <strong>ডেলিভারি চার্জ ঠিকানা অনুযায়ী</strong> — {DELIVERY_CHARGE_LADDER_BN}।
+            চেকআউটে ঠিকানা দিলেই সঠিক চার্জ দেখা যায় — কোনো লুকানো চার্জ নেই।
           </li>
           <li>
             <strong>সারচার্জ:</strong> Night (৯টা–সকাল ৬টা) +৳২০ · Rain +৳১৫ ·
@@ -128,7 +140,7 @@ export default async function DeliveryPage() {
             কোনো ডেলিভারি চার্জ লাগে না। ফ্রি-ডেলিভারি কুপনও ডেলিভারি ফ্রি করে।
           </li>
           <li>
-            <strong>Zone D-তে সর্বনিম্ন ৳৫০০ অর্ডার</strong> — সুনামগঞ্জ সদরের বাইরের
+            <strong>Zone D-তে সর্বনিম্ন {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} অর্ডার</strong> — সুনামগঞ্জ সদরের বাইরের
             (অন্য উপজেলা / অন্য জেলা) ডেলিভারিতে প্রযোজ্য।
           </li>
           <li>

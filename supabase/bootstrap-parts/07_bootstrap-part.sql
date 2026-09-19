@@ -1,4 +1,4 @@
--- PART 7/9 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 7/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 25/25 — bKash/Nagad wallet payments, no merchant account (P1 #8)  (source: supabase/migrations/202609140004_wallet_payments.sql)
 -- ===========================================================================

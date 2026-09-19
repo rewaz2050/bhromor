@@ -20,6 +20,31 @@ export const INSTANT_DELIVERY_NOTE = `Arrives in ${DELIVERY_ETA} inside the serv
 /** Fallback charge when a zone has not been resolved. */
 export const FLAT_DELIVERY_CHARGE_PAISA: Bdt = bdt(60); // ৳60
 
+/**
+ * The customer-facing delivery-charge promise — ONE sentence everywhere
+ * (bag drawer, cart, checkout, product page). The real charge is ৳60 / ৳120 /
+ * ৳150 by zone (`SUNAMGANJ_ZONES`), so "flat ৳60 everywhere" was a lie the
+ * checkout then corrected. Audit 2026-09-18, P0 #2.
+ */
+export const DELIVERY_CHARGE_MIN_PAISA: Bdt = bdt(60);
+export const DELIVERY_CHARGE_MAX_PAISA: Bdt = bdt(150);
+export const DELIVERY_CHARGE_RANGE_LABEL = "৳৬০–১৫০";
+export const DELIVERY_CHARGE_PROMISE_BN =
+  "ডেলিভারি ৳৬০ থেকে — ঠিকানা দিলে সঠিক চার্জ দেখাবে";
+export const DELIVERY_CHARGE_PROMISE_EN =
+  "Delivery from ৳60 — the exact charge shows once you enter your address";
+/** Per-zone one-liner used where there is room for the full ladder. */
+export const DELIVERY_CHARGE_LADDER_BN =
+  "শহরের ভেতর ৳৬০ · আশেপাশে ৳১২০ · দূরের উপজেলা/গ্রামে ৳১৫০";
+
+/**
+ * Minimum basket outside Sunamganj Sadar (Zone D / courier) — the SAME
+ * number the database RPC enforces (`Zone D requires minimum ৳500 order`,
+ * bootstrap-fresh.sql). Checkout, server validation and copy all read this.
+ */
+export const MIN_ORDER_OUTSIDE_SADAR_PAISA: Bdt = bdt(500);
+export const MIN_ORDER_OUTSIDE_SADAR_LABEL_BN = "৳৫০০";
+
 /** Surcharges — Sunamganj real */
 export const NIGHT_SURCHARGE_PAISA: Bdt = bdt(20); // 9PM-6AM
 export const RAIN_SURCHARGE_PAISA: Bdt = bdt(15); // when admin toggles rain
@@ -76,6 +101,22 @@ export interface DeliveryBreakdown {
   eta: string;
   etaMinutes: number;
 }
+
+/**
+ * Zone D (outside Sunamganj Sadar / other districts) goes by courier. The
+ * zone row still says "60–80 min" because the same row also covers the
+ * Sadar-adjacent paras a rider can reach — but a shopper in Sylhet or Dhaka
+ * must never be promised minutes (UX audit 2026-09-18, P1 #17). The
+ * checkout, the summary card and the tracker all print THIS instead.
+ */
+export const COURIER_ZONE_ID = "z4";
+export const COURIER_ETA_EN = "1–3 days by courier";
+export const COURIER_ETA_BN = "কুরিয়ারে ১–৩ দিন";
+export const courierEta = (lang: "en" | "bn" = "en"): string =>
+  lang === "bn" ? COURIER_ETA_BN : COURIER_ETA_EN;
+/** True when the order leaves the rider area — the ETA is days, not minutes. */
+export const isCourierZone = (zoneId: string | null | undefined): boolean =>
+  zoneId === COURIER_ZONE_ID;
 
 export const deliveryBreakdown = (opts: {
   zone: DeliveryZone;
@@ -140,6 +181,8 @@ export const deliveryBreakdown = (opts: {
     queueCount,
     hour: nowHour,
   });
+  // P1 #17 — a courier leg is measured in days; never show rider minutes.
+  const courier = isCourierZone(opts.zone?.id);
 
   return {
     baseCharge,
@@ -148,8 +191,8 @@ export const deliveryBreakdown = (opts: {
     couponFree: !!couponFree,
     isPickup: false,
     totalCharge,
-    eta: eta.label,
-    etaMinutes: eta.minutes,
+    eta: courier ? COURIER_ETA_EN : eta.label,
+    etaMinutes: courier ? 2 * 24 * 60 : eta.minutes,
   };
 };
 

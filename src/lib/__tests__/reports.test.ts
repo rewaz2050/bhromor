@@ -3,6 +3,7 @@ import {
   dayKey,
   dayLabel,
   salesReport,
+  seriesCsv,
   seriesMax,
   startOfDay,
 } from "../reports";
@@ -237,5 +238,40 @@ describe("salesReport", () => {
     expect(report.series[5].revenue).toBe(bdt(900)); // yesterday
     expect(report.series[6].revenue).toBe(bdt(400)); // today
     expect(dayLabel(Date.now())).toMatch(/^\d{1,2} [A-Z]\w+$/);
+  });
+});
+
+describe("salesReport — payment mix (ops batch I)", () => {
+  const orders = [
+    // Cash: one delivered (collected), one still on the road (booked only).
+    makeOrder({ id: "c1", daysAgo: 0, total: 1000, payment: "cod", status: "delivered" }),
+    makeOrder({ id: "c2", daysAgo: 0, total: 500, payment: "cod", status: "out-for-delivery" }),
+    // bKash: one verified (collected even before delivery), one awaiting.
+    makeOrder({ id: "b1", daysAgo: 1, total: 700, payment: "bkash", status: "confirmed", paymentStatus: "verified" }),
+    makeOrder({ id: "b2", daysAgo: 1, total: 300, payment: "bkash", status: "pending", paymentStatus: "pending_verification" }),
+    // Cancelled wallet order never counts anywhere.
+    makeOrder({ id: "x1", daysAgo: 1, total: 900, payment: "nagad", status: "cancelled", paymentStatus: "rejected" }),
+  ];
+  const r = salesReport(orders, { days: 7, label: "7 days" });
+  const by = Object.fromEntries(r.payments.map((p) => [p.method, p]));
+
+  it("splits booked vs collected per pocket with the summary's own rule", () => {
+    expect(by.cod).toMatchObject({ orders: 2, booked: bdt(1500), collected: bdt(1000), awaiting: 0 });
+    expect(by.bkash).toMatchObject({ orders: 2, booked: bdt(1000), collected: bdt(700), awaiting: 1 });
+    expect(by.nagad).toMatchObject({ orders: 0, booked: 0, collected: 0, awaiting: 0 });
+  });
+
+  it("adds up to the headline numbers", () => {
+    const booked = r.payments.reduce((s, p) => s + p.booked, 0);
+    const collected = r.payments.reduce((s, p) => s + p.collected, 0);
+    expect(booked).toBe(r.summary.booked);
+    expect(collected).toBe(r.summary.collected);
+  });
+
+  it("exports the daily series in taka with a BOM and CRLF rows", () => {
+    const csv = seriesCsv(r);
+    expect(csv.startsWith("\uFEFFDay,Orders,Revenue (Tk)\r\n")).toBe(true);
+    const today = csv.trim().split("\r\n").pop();
+    expect(today).toBe(`${dayKey(startOfDay(Date.now()))},2,1500.00`);
   });
 });

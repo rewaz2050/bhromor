@@ -9,7 +9,7 @@
 
 import "server-only";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
   Category,
   DeliveryZone,
@@ -34,7 +34,7 @@ import {
 } from "./mappers";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
-import type { StaffRole } from "../staff-auth";
+import { forgetStaffRole, type StaffRole } from "../staff-auth";
 import type {
   DbCategory,
   DbCoupon,
@@ -75,35 +75,112 @@ const cleanInt = (value: unknown, fallback = 0): number => {
 export interface OrderFilters {
   status?: string;
   q?: string;
+  /** Page size, 1–500 (default 100). */
   limit?: number;
+  /** Opaque keyset cursor from a previous page's `nextCursor`. */
+  cursor?: string;
 }
 
-/** Staff order list — 5 queries total, not N+1 per order. */
+export interface OrderPage {
+  orders: Order[];
+  /** Pass back as `cursor` for the next (older) page; null when exhausted. */
+  nextCursor: string | null;
+}
+
+const ORDER_PAGE_MAX = 500;
+const ISO_TS_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}:\d{2}|Z)$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Keyset cursor = the last row's (created_at, id), base64url-encoded so the
+ * client treats it as opaque. Decoding validates both parts strictly because
+ * they are embedded in a PostgREST filter string.
+ */
+export const encodeOrderCursor = (row: {
+  created_at: string;
+  id: string;
+}): string =>
+  Buffer.from(JSON.stringify({ at: row.created_at, id: row.id }), "utf8").toString(
+    "base64url",
+  );
+
+export const decodeOrderCursor = (
+  cursor: string,
+): { at: string; id: string } => {
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as { at?: unknown; id?: unknown };
+    if (
+      typeof parsed.at === "string" &&
+      ISO_TS_RE.test(parsed.at) &&
+      typeof parsed.id === "string" &&
+      UUID_RE.test(parsed.id)
+    ) {
+      return { at: parsed.at, id: parsed.id };
+    }
+  } catch {
+    /* fall through */
+  }
+  throw new AdminInputError("Invalid cursor.", 400);
+};
+
+/**
+ * Staff order list — one page (newest first, keyset-paginated) in 5 queries
+ * total, not N+1 per order. Before 2026-09-16 this was a flat 200-row cap
+ * with no way to reach older orders, and it loaded every coupon and zone on
+ * every call.
+ */
 export async function listOrders(
   db: SupabaseClient,
   filters: OrderFilters,
-): Promise<Order[]> {
-  const limit = Math.max(1, Math.min(200, cleanInt(filters.limit, 100)));
+): Promise<OrderPage> {
+  const limit = Math.max(
+    1,
+    Math.min(ORDER_PAGE_MAX, cleanInt(filters.limit, 100)),
+  );
   let query = db
     .from("orders")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    // One extra row tells us whether an older page exists.
+    .limit(limit + 1);
   const status = clean(filters.status, 32);
   if (status !== "") query = query.eq("status", status);
   const q = clean(filters.q, 64);
   if (q !== "") {
-    const like = `%${q.replace(/[%_]/g, "")}%`;
+    // Quoted PostgREST value: strip the characters that would end or escape
+    // the quote, plus LIKE wildcards, so user text can never break the filter.
+    const like = `"%${q.replace(/[%_"\\]/g, "")}%"`;
     query = query.or(
       `order_no.ilike.${like},customer_name.ilike.${like},customer_phone.ilike.${like}`,
     );
   }
+  const cursor = clean(filters.cursor, 256);
+  if (cursor !== "") {
+    const { at, id } = decodeOrderCursor(cursor);
+    query = query.or(
+      `created_at.lt."${at}",and(created_at.eq."${at}",id.lt.${id})`,
+    );
+  }
   const { data, error } = await query;
   if (error) throw new Error("order list failed");
-  const rows = (data ?? []) as DbOrder[];
-  if (rows.length === 0) return [];
+  const all = (data ?? []) as DbOrder[];
+  const rows = all.slice(0, limit);
+  const nextCursor =
+    all.length > limit ? encodeOrderCursor(rows[rows.length - 1]) : null;
+  if (rows.length === 0) return { orders: [], nextCursor: null };
 
   const ids = rows.map((o) => o.id);
+  const zoneIds = [...new Set(rows.map((o) => o.zone_id).filter(Boolean))];
+  const couponIds = [
+    ...new Set(
+      rows.map((o) => o.coupon_id).filter((id): id is string => !!id),
+    ),
+  ];
   const [itemsRes, historyRes, zonesRes, couponsRes] = await Promise.all([
     db.from("order_items").select("*").in("order_id", ids),
     db
@@ -111,8 +188,12 @@ export async function listOrders(
       .select("*")
       .in("order_id", ids)
       .order("created_at"),
-    db.from("delivery_zones").select("id,name,eta_label"),
-    db.from("coupons").select("id,code"),
+    zoneIds.length > 0
+      ? db.from("delivery_zones").select("id,name,eta_label").in("id", zoneIds)
+      : Promise.resolve({ data: [], error: null }),
+    couponIds.length > 0
+      ? db.from("coupons").select("id,code").in("id", couponIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (itemsRes.error || historyRes.error) throw new Error("order list failed");
   const itemsByOrder = new Map<string, DbOrderItem[]>();
@@ -172,7 +253,7 @@ export async function listOrders(
     }
   }
 
-  return rows.map((order) => {
+  const orders = rows.map((order) => {
     const zone = zones.get(order.zone_id);
     return mapOrder({
       order,
@@ -186,6 +267,7 @@ export async function listOrders(
       products,
     });
   });
+  return { orders, nextCursor };
 }
 
 export async function getOrderDetail(
@@ -219,11 +301,25 @@ export async function advanceOrderAsStaff(
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
-  const { error: rpcError } = await db.rpc("ps_advance_order", {
-    p_order_id: (data as { id: string }).id,
+  const orderId = (data as { id: string }).id;
+  const cleanNote = note?.trim().slice(0, 300) ?? null;
+  let { error: rpcError } = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
     p_to: to,
-    p_note: note?.trim().slice(0, 300) ?? null,
+    p_note: cleanNote,
   });
+  if (rpcError && isPreTwoTapRefusal(rpcError, to)) {
+    // The database predates 202609170001 (confirmed → ready-for-pickup is
+    // still "illegal"). Take the two internal steps so the one button still
+    // works; /api/health names the migration to paste.
+    rpcError = await legacyTwoStepReady(db, orderId, cleanNote);
+  }
+  if (rpcError && isCounterHandoverRefusal(rpcError, to)) {
+    // Counter pickup handed over at the shop (2026-09-18): the status machine
+    // only knows the rider path, so walk it — the customer already has the
+    // parcel, and no rider was ever involved.
+    rpcError = await counterHandover(db, orderId, rpcError.message, cleanNote);
+  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
@@ -241,10 +337,192 @@ export async function advanceOrderAsStaff(
         422,
       );
     }
-    throw new AdminInputError("Could not update the order.", 422);
+    throw staffRpcFailure("ps_advance_order", rpcError, {
+      orderNo,
+      to,
+      fallback: "Could not update the order.",
+    });
   }
   return getOrderDetail(db, orderNo);
 }
+
+const TWO_TAP_FILE = "supabase/migrations/202609170001_two_tap_order_flow.sql";
+
+/** Rider-path states between "ready" and "delivered", in machine order. */
+const RIDER_PATH: readonly OrderStatus[] = [
+  "ready-for-pickup",
+  "courier-assigned",
+  "out-for-delivery",
+  "delivered",
+];
+
+/**
+ * "Handed to customer" on a counter pickup asks for `delivered` from one of
+ * the rider states; ps_advance_order answers exactly
+ * `illegal transition <rider state> -> delivered`. Nothing else matches.
+ */
+export const isCounterHandoverRefusal = (
+  rpcError: { message?: string | null },
+  to: string,
+): boolean => {
+  if (to !== "delivered") return false;
+  const m = /illegal transition ([a-z-]+) -> delivered/i.exec(rpcError.message ?? "");
+  return m !== null && RIDER_PATH.slice(0, -1).includes(m[1] as OrderStatus);
+};
+
+/**
+ * Walk ready-for-pickup → courier-assigned → out-for-delivery → delivered
+ * as separate RPCs — ONLY for a counter pickup (`is_pickup`), checked here
+ * against the row so a home-delivery order can never be "delivered" from the
+ * list by mistake. Any live rider offer for the order is withdrawn first
+ * (auto-dispatch may have offered it before this guard existed). Returns the
+ * error of whichever step failed, null on success.
+ */
+export async function counterHandover(
+  db: SupabaseClient,
+  orderId: string,
+  refusal: string,
+  note: string | null,
+): Promise<PostgrestError | null> {
+  // The original refusal, re-thrown unchanged when this is not a pickup.
+  const keep = { message: refusal, code: "P0001", details: "", hint: "", name: "PostgrestError" } as PostgrestError;
+  const { data } = await db
+    .from("orders")
+    .select("is_pickup")
+    .eq("id", orderId)
+    .single();
+  if (!(data as { is_pickup?: boolean } | null)?.is_pickup) return keep;
+  const from = /illegal transition ([a-z-]+) ->/i.exec(refusal)?.[1] as OrderStatus | undefined;
+  const start = from ? RIDER_PATH.indexOf(from) : -1;
+  if (start < 0) return keep;
+
+  const live = await db
+    .from("delivery_assignments")
+    .select("id")
+    .eq("order_id", orderId)
+    .in("state", ["offered", "accepted"]);
+  for (const row of (live.data ?? []) as { id: string }[]) {
+    const cancelled = await db.rpc("ps_cancel_assignment", { p_assignment_id: row.id });
+    if (cancelled.error) return cancelled.error;
+  }
+
+  const steps = RIDER_PATH.slice(start + 1);
+  for (const [i, step] of steps.entries()) {
+    const last = i === steps.length - 1;
+    const res = await db.rpc("ps_advance_order", {
+      p_order_id: orderId,
+      p_to: step,
+      p_note: last ? note : null,
+    });
+    if (res.error) return res.error;
+  }
+  return null;
+}
+
+/**
+ * Two-tap flow (2026-09-17): "Ready — call rider" moves confirmed →
+ * ready-for-pickup in one RPC once 202609170001 is applied. Before that the
+ * RPC answers exactly "illegal transition confirmed -> ready-for-pickup".
+ */
+export const isPreTwoTapRefusal = (
+  rpcError: { message?: string | null },
+  to: string,
+): boolean =>
+  to === "ready-for-pickup" &&
+  (rpcError.message ?? "")
+    .toLowerCase()
+    .includes("illegal transition confirmed -> ready-for-pickup");
+
+/**
+ * Fallback for a database without 202609170001: confirmed → preparing →
+ * ready-for-pickup as two RPC calls. Returns the error of whichever step
+ * failed (null on success). Used by both the staff and vendor paths.
+ */
+export async function legacyTwoStepReady(
+  db: SupabaseClient,
+  orderId: string,
+  note: string | null,
+): Promise<PostgrestError | null> {
+  console.warn(
+    `[orders] ps_advance_order refused confirmed -> ready-for-pickup; falling back to two steps — run ${TWO_TAP_FILE}`,
+  );
+  const step1 = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
+    p_to: "preparing",
+    p_note: null,
+  });
+  if (step1.error) return step1.error;
+  const step2 = await db.rpc("ps_advance_order", {
+    p_order_id: orderId,
+    p_to: "ready-for-pickup",
+    p_note: note,
+  });
+  return step2.error ?? null;
+}
+
+/**
+ * The order-flow RPCs raise user-safe P0001 messages for every rule they
+ * enforce; anything ELSE is the database refusing the write (a trigger or
+ * function that no longer matches the schema). Log the real SQLSTATE so a
+ * "nothing happens when I click Confirm" report can be read straight from
+ * the server log, and tell staff which file repairs it — never a bare
+ * generic while the order silently stays put.
+ */
+const ORDER_FLOW_REPAIR_FILE =
+  "supabase/migrations/202609160003_order_status_update_repair.sql";
+
+export const orderFlowSchemaGap = (error: {
+  code?: string;
+  message?: string;
+}): string | null => {
+  const code = error.code ?? "";
+  const message = error.message ?? "";
+  // 22P02 invalid input value for enum ps_order_status: "" — the 0017 ledger
+  // trigger compared the enum with '' on every status UPDATE.
+  if (code === "22P02" && /ps_order_status/i.test(message)) {
+    return `a trigger on orders compares the status enum with '' (${message.trim()}) — run ${ORDER_FLOW_REPAIR_FILE}`;
+  }
+  // 42601 subquery must return only one column — ps_verify_payment's
+  // `return (select * from orders …)`.
+  if (code === "42601" && /subquery must return only one column/i.test(message)) {
+    return `the installed RPC ends with a scalar-subquery RETURN (${message.trim()}) — run ${ORDER_FLOW_REPAIR_FILE}`;
+  }
+  if (code === "PGRST202" || /function .* does not exist/i.test(message)) {
+    return `the RPC is not installed (${message.trim()}) — apply the order migrations (docs/go-live.md)`;
+  }
+  if (code === "42703" || code === "42P01") {
+    return `the installed RPC touches something this database lacks (${message.trim()}) — run the missing migration (docs/go-live.md, supabase/diagnose.sql)`;
+  }
+  return null;
+};
+
+const staffRpcFailure = (
+  rpc: string,
+  error: { code?: string; message?: string; details?: string; hint?: string },
+  ctx: { orderNo: string; to?: string; action?: string; fallback: string },
+): AdminInputError => {
+  const gap = orderFlowSchemaGap(error);
+  console.error(
+    `[admin] ${rpc} failed`,
+    JSON.stringify({
+      orderNo: ctx.orderNo,
+      ...(ctx.to ? { to: ctx.to } : {}),
+      ...(ctx.action ? { action: ctx.action } : {}),
+      code: error.code ?? null,
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+      ...(gap ? { schemaGap: gap } : {}),
+    }),
+  );
+  if (gap) {
+    return new AdminInputError(
+      `The database refused this change (${error.code ?? "database error"}) — the order was NOT updated. Run ${ORDER_FLOW_REPAIR_FILE} in Supabase → SQL Editor, then try again.`,
+      503,
+    );
+  }
+  return new AdminInputError(ctx.fallback, 422);
+};
 
 /**
  * P1 #8 — the shop's decision on a bKash/Nagad payment. 'verified' unlocks
@@ -288,7 +566,11 @@ export async function verifyPaymentAsStaff(
         422,
       );
     }
-    throw new AdminInputError("Could not record the payment decision.", 422);
+    throw staffRpcFailure("ps_verify_payment", rpcError, {
+      orderNo,
+      action,
+      fallback: "Could not record the payment decision.",
+    });
   }
   return getOrderDetail(db, orderNo);
 }
@@ -741,13 +1023,22 @@ export async function updateProduct(
   if (readError || !existing) throw new AdminInputError("Product not found.", 404);
   const row = existing as DbProduct;
   const input = sanitizeProductInput(raw, true);
+  const rawRec = (raw ?? {}) as Record<string, unknown>;
   const { data: cats } = await db.from("categories").select("id");
-  // PATCH semantics: blank fields fall back to the stored row.
+  // PATCH semantics: blank fields fall back to the stored row. Price and
+  // compare-at too — until 2026-09-18 a body without `price` sanitised to
+  // -1 and every one-field update (Feature, Archive, Restore, the vendor
+  // quick actions) was refused with "Price must be 0 or more".
   const merged: ProductInput = {
     ...input,
     name: input.name || row.name,
     sku: input.sku || row.sku,
     category: input.category || row.category_id,
+    price: rawRec.price === undefined ? row.price : input.price,
+    compareAtPrice:
+      rawRec.compareAtPrice === undefined
+        ? row.compare_at_price
+        : input.compareAtPrice,
   };
   validateProductInput(merged, (cats ?? []) as { id: string }[]);
   const nextSlug =
@@ -780,14 +1071,15 @@ export async function updateProduct(
     sku: merged.sku,
     category_id: merged.category,
     price: merged.price,
-    status: (raw as { status?: string })?.status ?? row.status,
+    // Sanitised (draft|published) when sent; an arbitrary string can no
+    // longer be written into the enum column.
+    status: rawRec.status === undefined ? row.status : input.status,
     active: (raw as { active?: boolean })?.active ?? row.active,
     featured: (raw as { featured?: boolean })?.featured ?? row.featured,
     is_new: (raw as { isNew?: boolean })?.isNew ?? row.is_new,
     in_stock: (raw as { inStock?: boolean })?.inStock ?? row.in_stock,
     low_stock: (raw as { lowStock?: boolean })?.lowStock ?? row.low_stock,
   };
-  const rawRec = (raw ?? {}) as Record<string, unknown>;
   // P1 #14 — warranty period: null clears it, a number sets it.
   if (rawRec.warrantyDays !== undefined) {
     patch.warranty_days = parseWarrantyDays(rawRec).days;
@@ -2090,6 +2382,9 @@ export async function grantStaffRole(
     .select("id,role,created_at")
     .single();
   if (error || !data) throw new Error("staff grant failed");
+  // P2.6 — the gate memoises roles for a minute; a changed role must apply
+  // on the very next request.
+  forgetStaffRole(target.id);
   const row = data as { id: string; role: StaffRole; created_at: string };
   return {
     id: row.id,
@@ -2148,5 +2443,6 @@ export async function revokeStaffRole(
   }
   const { error } = await service.from("admin_users").delete().eq("id", target.id);
   if (error) throw new Error("staff revoke failed");
+  forgetStaffRole(target.id);
   return { email };
 }

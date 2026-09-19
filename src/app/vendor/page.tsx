@@ -32,6 +32,7 @@ import {
   weekdayProfile,
   zoneDemand,
 } from "@/lib/insights";
+import { shelfState } from "@/lib/product-shelf";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -56,7 +57,12 @@ export default function VendorDashboardPage() {
   const topProds = unitsByProduct(list).slice(0, 3);
   const zones = zoneDemand(list);
   const maxDay = Math.max(1, ...weekday.orders);
-  const lowStock = prods.products.filter((pp) => pp.lowStock || (!pp.inStock && pp.active !== false));
+  // Same shelf model as the product list: published rows that are sold out
+  // or running low (drafts and archived pieces are not "needs restock").
+  const lowStock = prods.products.filter((pp) => {
+    const st = shelfState(pp);
+    return st === "out" || st === "low";
+  });
 
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -321,7 +327,7 @@ export default function VendorDashboardPage() {
                   : "One zone so far — the rest will follow the courier map."}
               </p>
               <Link
-                href="/vendor/products"
+                href={lowStock.length > 0 ? "/vendor/products?shelf=out" : "/vendor/products"}
                 className={`mt-2 inline-block text-xs font-semibold underline underline-offset-2 ${
                   lowStock.length > 0 ? "text-amber-800" : "text-forest-800"
                 }`}

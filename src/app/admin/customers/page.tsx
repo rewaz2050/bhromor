@@ -6,6 +6,7 @@ import { formatBdt } from "@/lib/format";
 import { normalizePhone } from "@/lib/orders";
 import { friendlyWhen } from "@/components/admin/order-ui";
 import { IconSearch } from "@/components/ui/icons";
+import AdminDataError from "@/components/admin/admin-data-error";
 
 interface CustomerRow {
   name: string;
@@ -19,7 +20,7 @@ interface CustomerRow {
 
 /** Customer view derived from live orders. */
 export default function AdminCustomersPage() {
-  const { orders } = useOrders();
+  const { orders, error, clearError, reset } = useOrders();
   const [query, setQuery] = useState("");
 
   const rows = useMemo(() => {
@@ -77,6 +78,7 @@ export default function AdminCustomersPage() {
           />
         </div>
       </div>
+      <AdminDataError label="Orders" error={error} onRetry={reset} onDismiss={clearError} />
 
       {visible.length === 0 ? (
         <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">

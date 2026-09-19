@@ -39,6 +39,35 @@ export class StaffAuthError extends Error {
 
 const STAFF_ROLES: readonly string[] = ["manager", "admin", "super_admin"];
 
+/**
+ * Audit 2026-09-17 P2.6 — the `admin_users` role lookup ran on EVERY admin
+ * request (the dashboard fires ~6 in parallel on load, each a Dhaka → iad1
+ * → Supabase round trip on top of the JWT check). A staff role changes
+ * rarely and only through `grantStaffRole` / `revokeStaffRole`, which call
+ * `forgetStaffRole()` — so a short per-user memo is safe. Only POSITIVE
+ * results are memoised: a missing/removed row is re-checked every time, so a
+ * revoke can never be "cached away" for longer than the TTL on THIS instance
+ * (other serverless instances simply re-read).
+ */
+const ROLE_CACHE_MS = 60_000;
+const roleCache = new Map<string, { role: StaffRole; until: number }>();
+
+const cachedRole = (userId: string, now: number): StaffRole | null => {
+  const hit = roleCache.get(userId);
+  if (!hit) return null;
+  if (hit.until <= now) {
+    roleCache.delete(userId);
+    return null;
+  }
+  return hit.role;
+};
+
+/** Drop the memoised role after a grant/revoke/role change (or for tests). */
+export const forgetStaffRole = (userId?: string): void => {
+  if (userId === undefined) roleCache.clear();
+  else roleCache.delete(userId);
+};
+
 export const readBearerToken = (authorization: string | null): string | null => {
   if (!authorization) return null;
   const match = /^Bearer\s+(\S+)/i.exec(authorization.trim());
@@ -91,6 +120,10 @@ export async function requireStaff(): Promise<StaffContext> {
   }
   if (!db) throw new StaffAuthError("Staff sign-in is not configured.", 401);
 
+  const now = Date.now();
+  const memo = cachedRole(user.id, now);
+  if (memo) return { user, role: memo, db };
+
   const lookup = getSupabaseService() ?? db;
   const { data: row, error: roleError } = await lookup
     .from("admin_users")
@@ -113,7 +146,9 @@ export async function requireStaff(): Promise<StaffContext> {
   if (!row || !STAFF_ROLES.includes((row as { role: string }).role)) {
     throw new StaffAuthError("This account is not staff.", 403);
   }
-  return { user, role: (row as { role: StaffRole }).role, db };
+  const role = (row as { role: StaffRole }).role;
+  roleCache.set(user.id, { role, until: now + ROLE_CACHE_MS });
+  return { user, role, db };
 }
 
 /**

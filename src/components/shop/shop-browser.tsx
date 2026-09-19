@@ -17,7 +17,8 @@ import {
 import { matchesProduct } from "@/lib/product-search";
 import { filterProductsForZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
-import { bdt } from "@/lib/format";
+import { bdt, formatBdt } from "@/lib/format";
+import { courierEta, isCourierZone } from "@/lib/delivery";
 import ProductCard from "@/components/product/product-card";
 import Drawer from "@/components/ui/drawer";
 import {
@@ -29,7 +30,7 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 type CategoryFilter = "all" | CategoryId;
-type SortKey = "featured" | "newest" | "best" | "price-asc" | "price-desc";
+import type { SortKey } from "@/lib/shop-sort";
 
 /** Static price band bounds — labels come from translations so BN shows pure Bangla. */
 const PRICE_BAND_DEFS: {
@@ -86,6 +87,7 @@ export default function ShopBrowser({
   initialQuery = "",
   initialMood = "",
   initialPrice = "any",
+  initialSort = "featured",
 }: {
   products: Product[];
   categories: Category[];
@@ -96,12 +98,13 @@ export default function ShopBrowser({
   initialQuery?: string;
   initialMood?: MoodId | "";
   initialPrice?: "any" | "under500";
+  initialSort?: SortKey;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
   const [q, setQ] = useState(initialQuery);
-  const [sort, setSort] = useState<SortKey>("featured");
+  const [sort, setSort] = useState<SortKey>(initialSort);
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
   const [mood, setMood] = useState<MoodId | "">(initialMood);
@@ -116,6 +119,15 @@ export default function ShopBrowser({
   const scopedZoneId =
     zoneId && zones.some((z) => z.id === zoneId) ? zoneId : null;
   const scopedZone = zones.find((z) => z.id === scopedZoneId);
+  /** P2 #23 — "Zone B — Sadar Core (1.5-2.5km)" meant nothing to a shopper;
+   *  the option now leads with the paras it covers and the real charge. */
+  const zoneOptionLabel = (z: DeliveryZone): string => {
+    const short = z.name.split(" — ")[0];
+    const paras = z.areas.slice(0, 3).join(", ");
+    const more = z.areas.length > 3 ? (lang === "bn" ? " …" : " …") : "";
+    const eta = isCourierZone(z.id) ? courierEta(lang) : z.etaLabel;
+    return `${short} · ${paras}${more} · ${formatBdt(z.charge)} · ${eta}`;
+  };
   const fallbackShopId = shops[0]?.id ?? "";
   const zonedProducts = useMemo(
     () => filterProductsForZone(products, shops, scopedZoneId, fallbackShopId),
@@ -154,6 +166,7 @@ export default function ShopBrowser({
     initialQuery,
     initialMood,
     initialPrice,
+    initialSort,
   });
   useEffect(() => {
     const prev = lastUrlState.current;
@@ -162,7 +175,8 @@ export default function ShopBrowser({
       prev.initialNew !== initialNew ||
       prev.initialMood !== initialMood ||
       prev.initialPrice !== initialPrice ||
-      prev.initialQuery !== initialQuery
+      prev.initialQuery !== initialQuery ||
+      prev.initialSort !== initialSort
     ) {
       lastUrlState.current = {
         initialCategory,
@@ -170,6 +184,7 @@ export default function ShopBrowser({
         initialQuery,
         initialMood,
         initialPrice,
+        initialSort,
       };
       setCategory(initialCategory);
       setOnlyNew(initialNew);
@@ -179,9 +194,9 @@ export default function ShopBrowser({
       setPriceBand(initialPrice);
       setMood(initialMood);
       setOnlyInStock(false);
-      setSort("featured");
+      setSort(initialSort);
     }
-  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice]);
+  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice, initialSort]);
 
   const allSizes = useMemo(
     () => collectSizes(zonedProducts),
@@ -515,7 +530,7 @@ export default function ShopBrowser({
                   .filter((z) => z.active !== false)
                   .map((z) => (
                     <option key={z.id} value={z.id}>
-                      {z.name}
+                      {zoneOptionLabel(z)}
                     </option>
                   ))}
               </select>
@@ -542,7 +557,7 @@ export default function ShopBrowser({
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value as SortKey)}
-                aria-label="Sort products"
+                aria-label={t("shopBrowser.sortAria")}
                 className="h-12 w-full min-w-0 appearance-none rounded-sm bg-paper pl-4 pr-9 text-sm sm:pl-5 sm:pr-10 font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
               >
                 {SORTS.map((s) => (
@@ -567,7 +582,7 @@ export default function ShopBrowser({
           ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
         {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
-        {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name}`}
+        {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name.split(" — ")[0]}`}
       </p>
 
       {hasActiveFilters && (
@@ -663,7 +678,7 @@ export default function ShopBrowser({
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
-            aria-label="Close filters"
+            aria-label={t("shopBrowser.closeFilters")}
             className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100"
           >
             <IconClose />

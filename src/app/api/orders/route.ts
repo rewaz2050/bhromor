@@ -55,7 +55,16 @@ export async function POST(request: Request) {
     // The catalog is whatever the shop has PUBLISHED — nothing else. An
     // empty store answers an honest 503; we never seed demo rows into a
     // real database to make an order "work".
-    const snapshot = await loadOrderSnapshotSafely();
+    // P1.4: the read is scoped by what THIS payload can need — the buyer's
+    // phone (first-order proof) and the referral code, if any was typed.
+    const snapshot = await loadOrderSnapshotSafely({
+      scope: "checkout",
+      phone: isRecord(payload) && typeof payload.phone === "string" ? payload.phone : undefined,
+      referralCode:
+        isRecord(payload) && typeof payload.referral_code === "string"
+          ? payload.referral_code
+          : undefined,
+    });
     if (!snapshot || snapshot.products.length === 0) {
       return apiError(
         "Online ordering is not set up yet — this shop has no published products.",
@@ -141,11 +150,11 @@ export async function POST(request: Request) {
 }
 
 /** Snapshot read that never throws — a failing read degrades to 503. */
-async function loadOrderSnapshotSafely(): Promise<Awaited<
-  ReturnType<typeof loadOrderSnapshot>
-> | null> {
+async function loadOrderSnapshotSafely(
+  hints: Parameters<typeof loadOrderSnapshot>[0],
+): Promise<Awaited<ReturnType<typeof loadOrderSnapshot>> | null> {
   try {
-    return await loadOrderSnapshot();
+    return await loadOrderSnapshot(hints);
   } catch {
     return null;
   }

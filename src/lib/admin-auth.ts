@@ -11,7 +11,19 @@
 
 "use client";
 
-import { getSupabaseBrowser } from "./supabase-browser";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/**
+ * Perf (audit 2026-09-17 P2.2): the Supabase browser client is loaded on
+ * demand. This module sits on the storefront's import graph (via
+ * `admin-api` → `use-cms` / the referral card), and a static import shipped
+ * the whole supabase-js bundle to every visitor. Staff sign-in and the
+ * session refresh are the only callers, and they can await the import.
+ */
+const browserClient = (): Promise<SupabaseClient | null> =>
+  import("./supabase-browser")
+    .then((m) => m.getSupabaseBrowser())
+    .catch(() => null);
 
 /**
  * The single real admin (owner) email. Shown as a prefill on the admin
@@ -130,8 +142,14 @@ export const staffProbeError = (probe: StaffProbe): string => {
   if (probe.status === 403) {
     return "This account signed in, but it is not staff. In the Supabase SQL editor run: insert into admin_users (id, role) select id, 'admin' from auth.users where email = 'YOUR_EMAIL';";
   }
-  if (probe.status === 401 || probe.status === 0) {
+  if (probe.status === 401) {
     return "Signed in, but the server did not see the session. Redeploy after adding env vars, and set the Site URL in Supabase → Authentication → URL configuration to this Vercel domain.";
+  }
+  if (probe.status === 0) {
+    return "Could not reach the server to verify the staff session. Check the connection and retry.";
+  }
+  if (probe.status >= 500) {
+    return `The server failed while verifying the staff session (HTTP ${probe.status}). Retry; if it persists check the deployment logs.`;
   }
   return probe.reason ?? "Staff sign-in failed. Try again.";
 };
@@ -142,7 +160,10 @@ export const staffProbeError = (probe: StaffProbe): string => {
  */
 export const refreshStaffSession = async (): Promise<boolean> => {
   getAdminAuthed();
-  const token = await getSupabaseBrowser()
+  // Visitors without the staff flag cannot hold a staff JWT — skip the auth
+  // library download entirely and let the cookie-less probe answer 401.
+  const client = authed ? await browserClient() : null;
+  const token = await client
     ?.auth.getSession()
     .then((r) => r.data.session?.access_token)
     .catch(() => undefined);
@@ -160,7 +181,7 @@ export const signInStaff = async (
   email: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string }> => {
-  const client = getSupabaseBrowser();
+  const client = await browserClient();
   if (!client) return { ok: false, error: "Staff sign-in is not configured." };
   const { data, error } = await client.auth.signInWithPassword({
     email: email.trim(),
@@ -185,11 +206,12 @@ export const signInStaff = async (
 };
 
 export const signOutAdmin = (): void => {
-  // Best-effort server sign-out; the local flag clears regardless.
-  try {
-    void getSupabaseBrowser()?.auth.signOut();
-  } catch {
-    // browser client unavailable — local-only session
+  // Best-effort server sign-out; the local flag clears regardless. Only a
+  // browser that actually held a staff session needs the auth library.
+  if (authed) {
+    void browserClient()
+      .then((client) => client?.auth.signOut())
+      .catch(() => undefined);
   }
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);

@@ -5,6 +5,7 @@
  */
 import { createProduct, listProductsFull } from "@/lib/db/admin";
 import { apiJson } from "@/lib/api-response";
+import { revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export const POST = staffRoute(
   async ({ db }, request) => {
     const body: unknown = await request.json().catch(() => null);
     const product = await createProduct(db, body);
+    revalidateCatalogCaches();
     return apiJson({ product }, 201);
   },
   { limit: 30 },

@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 import { GET as vendorMe } from "../vendor/me/route";
 import { GET as vendorOrders } from "../vendor/orders/route";
 import { POST as vendorAdvance } from "../vendor/orders/[id]/advance/route";
+import { POST as vendorPayment } from "../vendor/orders/[id]/payment/route";
 import {
   GET as vendorProducts,
   POST as vendorProductCreate,
@@ -36,6 +37,10 @@ describe("vendor routes without a session (slice 3)", () => {
     expect((await vendorCategories(get("/api/vendor/categories"))).status).toBe(401);
     expect(
       (await vendorAdvance(post("/api/vendor/orders/x/advance", { to: "confirmed" }), ctx)).status,
+    ).toBe(401);
+    // Batch H: the shop's own payment decision is behind the same vendor gate.
+    expect(
+      (await vendorPayment(post("/api/vendor/orders/x/payment", { action: "verified" }), ctx)).status,
     ).toBe(401);
     expect(
       (await vendorProductCreate(post("/api/vendor/products", {}))).status,

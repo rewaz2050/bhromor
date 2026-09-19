@@ -11,6 +11,7 @@ import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
 import LanguageSwitcher from "./language-switcher";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { IconUser } from "@/components/ui/icons";
 
 /**
  * Premium sticky header — glass morphism, condensed on scroll,
@@ -127,8 +128,26 @@ export default function Header() {
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />
             </div>
+            {/* Phones: one-tap language toggle where the wishlist icon was —
+                the bottom bar already carries the wishlist (P1 #8). */}
+            <div className="flex sm:hidden">
+              <LanguageSwitcher variant="toggle" />
+            </div>
             <ProductSearch />
-            <WishlistButton />
+            <div className="hidden sm:flex">
+              <WishlistButton />
+            </div>
+            {/* Account was reachable only from the burger menu / footer on
+                desktop (audit L7). Hidden on phones — the bottom bar's Menu
+                already lists it. */}
+            <Link
+              href="/account"
+              aria-label={t("header.account")}
+              title={t("header.account")}
+              className="header-icon-btn relative hidden h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:text-forest-900 sm:flex"
+            >
+              <IconUser className="h-[1.18rem] w-[1.18rem]" />
+            </Link>
             <CartButton />
           </div>
         </div>

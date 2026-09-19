@@ -8,6 +8,7 @@ import { staffRoute, routeId } from "../../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { AdminInputError } from "@/lib/db/admin";
 import { apiJson } from "@/lib/api-response";
+import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 
 export const POST = staffRoute(
   "shop-link-vendor",
@@ -51,6 +52,7 @@ export const POST = staffRoute(
       }
       throw new Error("vendor link failed");
     }
+    revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ linked: email });
   },
   { limit: 20 },

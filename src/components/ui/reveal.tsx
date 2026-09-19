@@ -2,9 +2,21 @@
 
 import { useEffect, useRef } from "react";
 
-/** 
- * Progressive enhancement: content is never hidden while waiting for JS or an observer.
- * Polished with premium easing, will-change, and optional stagger delay.
+/**
+ * Progressive editorial reveal.
+ *
+ * Content is NEVER hidden while waiting for JS: the element renders visible,
+ * and only when the browser supports the observer and motion is allowed do
+ * we hide it — and only if it is still below the fold. Anything already on
+ * screen at mount (the section header, the first product row) stays put, so
+ * the first paint is the final paint (audit 2026-09-17 P2.4: the previous
+ * version hid every block with opacity 0 + blur(4px) on mount, then ran a
+ * 640 ms Web Animation per card — the hero-to-grid handoff flashed blank and
+ * the blur filter forced a compositor layer per element on phones).
+ *
+ * The animation itself is a CSS transition (`.reveal-pending` →
+ * `.reveal-shown`, see globals.css), which the compositor runs off the main
+ * thread and which reduced-motion turns off wholesale.
  */
 export default function Reveal({
   children,
@@ -24,79 +36,61 @@ export default function Reveal({
       !element ||
       typeof window === "undefined" ||
       !window.matchMedia ||
-      !window.IntersectionObserver ||
-      !(element as HTMLElement & { animate?: unknown }).animate
+      !window.IntersectionObserver
     )
       return;
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (preference.matches) return;
-    // Prepare initial hidden state for premium reveal — avoids flash before observer fires
-    element.style.opacity = "0";
-    element.style.transform = "translateY(18px) scale(0.985)";
-    element.style.filter = "blur(4px)";
-    element.style.willChange = "transform, opacity, filter";
-    let animation: Animation | undefined;
+
+    // Already on screen (or above it)? Leave it exactly as painted.
+    const rect = element.getBoundingClientRect();
+    const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    if (rect.top < viewportH * 0.92) return;
+
+    element.style.transitionDelay = delay > 0 ? `${delay}ms` : "";
+    element.classList.add("reveal-pending");
+
+    const show = () => {
+      element.classList.add("reveal-shown");
+      // Drop the transition hooks once done so later layout/opacity changes
+      // (hover, drawers) are not slowed by the reveal transition.
+      const done = () => {
+        element.classList.remove("reveal-pending", "reveal-shown");
+        element.style.transitionDelay = "";
+        element.removeEventListener("transitionend", done);
+      };
+      element.addEventListener("transitionend", done);
+      setTimeout(done, 900 + delay);
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
-        if (!preference.matches) {
-          // Premium editorial reveal — softer, more luxurious
-          animation = element.animate(
-            [
-              { opacity: 0, transform: "translateY(18px) scale(0.985)", filter: "blur(4px)" },
-              { opacity: 1, transform: "translateY(0) scale(1)", filter: "blur(0px)" },
-            ],
-            {
-              duration: 640,
-              delay,
-              easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-              fill: "both",
-            },
-          );
-          animation.onfinish = () => {
-            element.style.opacity = "";
-            element.style.transform = "";
-            element.style.filter = "";
-            element.style.willChange = "auto";
-          };
-          // Fallback for browsers where onfinish may not fire (e.g., test mocks)
-          setTimeout(() => {
-            if (element.style.opacity === "0") {
-              element.style.opacity = "1";
-              element.style.transform = "translateY(0) scale(1)";
-              element.style.filter = "blur(0px)";
-            }
-          }, 640 + delay + 50);
-        } else {
-          // Reduced motion was enabled after initial hide — restore visibility
-          element.style.opacity = "";
-          element.style.transform = "";
-          element.style.filter = "";
-          element.style.willChange = "auto";
-        }
+        show();
       },
       { threshold, rootMargin: "0px 0px -8% 0px" },
     );
     const reduce = () => {
       if (preference.matches) {
         observer.disconnect();
-        animation?.cancel();
+        element.classList.remove("reveal-pending", "reveal-shown");
+        element.style.transitionDelay = "";
       }
     };
     observer.observe(element);
-    // Support both modern and legacy matchMedia
     if (typeof preference.addEventListener === "function") {
       preference.addEventListener("change", reduce);
-    } else if (typeof (preference as unknown as { addListener: (cb: () => void) => void }).addListener === "function") {
+    } else if (typeof (preference as unknown as { addListener?: (cb: () => void) => void }).addListener === "function") {
       (preference as unknown as { addListener: (cb: () => void) => void }).addListener(reduce);
     }
     return () => {
       observer.disconnect();
-      animation?.cancel();
+      element.classList.remove("reveal-pending", "reveal-shown");
+      element.style.transitionDelay = "";
       if (typeof preference.removeEventListener === "function") {
         preference.removeEventListener("change", reduce);
-      } else if (typeof (preference as unknown as { removeListener: (cb: () => void) => void }).removeListener === "function") {
+      } else if (typeof (preference as unknown as { removeListener?: (cb: () => void) => void }).removeListener === "function") {
         (preference as unknown as { removeListener: (cb: () => void) => void }).removeListener(reduce);
       }
     };

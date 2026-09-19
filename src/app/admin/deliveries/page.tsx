@@ -3,10 +3,12 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
-import { useRiders } from "@/lib/use-riders";
+import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
 import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
+import { cashToCollect } from "@/lib/payment-labels";
 import { friendlyWhen } from "@/components/admin/order-ui";
+import { PaymentChip } from "@/components/admin/payment-chip";
 import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons";
 import AdminLiveMap from "@/components/admin/admin-live-map";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
@@ -32,7 +34,7 @@ export default function AdminDeliveriesPage() {
     offer,
     cancel,
   } = useAdminDeliveries();
-  const { riders } = useRiders();
+  const { riders } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
 
   const counts = useMemo(() => {
@@ -111,7 +113,7 @@ export default function AdminDeliveriesPage() {
           deliveries={deliveries.map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
-          Auto-assign: nearest by haversine from Traffic Point, rating desc, load asc, idle. Max 2 concurrent, cash ৳5000. Rider location 30s via <code>/api/rider/location</code>. Cloudinary proof. Batch assign below for multi-order route optimization.
+          Auto-assign picks the nearest online rider (rating, then lightest load); each offer lasts 90 s and rolls to the next rider. Riders carry at most 2 orders and ৳5,000 cash. Counter pickups never enter dispatch — the customer collects at Traffic Point.
         </p>
       </section>
 
@@ -141,6 +143,13 @@ export default function AdminDeliveriesPage() {
                   </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {order.customer.name} · {order.zoneName} · {formatBdt(order.total)}
+                    {order.isReturn ? " · ↩ return pickup" : ""}
+                    {" · "}
+                    <PaymentChip order={order} className="normal-case tracking-normal" />
+                    {" · "}
+                    {cashToCollect(order) > 0
+                      ? `rider collects ${formatBdt(cashToCollect(order))}`
+                      : "no cash to collect"}
                   </p>
                 </div>
                 <Link
@@ -202,8 +211,15 @@ export default function AdminDeliveriesPage() {
                         {friendlyWhen(job.offeredAt)}
                       </p>
                     </div>
-                    <span className="text-sm font-bold text-forest-900">
+                    <span className="text-right text-sm font-bold text-forest-900">
                       {formatBdt(job.order.total)}
+                      <span className="block text-[0.65rem] font-semibold text-ink-soft">
+                        {cashToCollect(job.order) > 0
+                          ? `COD · rider collects`
+                          : job.order.isReturn
+                            ? "return · no cash"
+                            : "prepaid · no cash"}
+                      </span>
                     </span>
                   </div>
 

@@ -7,9 +7,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRiders } from "./use-riders";
+import { usePoll } from "./use-poll";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 import type { RiderDispatchJob } from "./db/riders";
 import type { Order } from "./orders";
+
+/** Board refresh while visible — an offer lives 90 s, so 15 s shows each
+ *  hop (offered → accepted → picked up) without a manual reload. */
+export const DELIVERIES_POLL_MS = 15_000;
 
 export function useAdminDeliveries() {
   const { live, loading, error: ridersError } = useRiders();
@@ -39,6 +44,9 @@ export function useAdminDeliveries() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
   }, [live, refresh]);
+  // Until 2026-09-18 the board loaded once: staff watched a stale "Offered"
+  // row until they reloaded. Paused while the tab is hidden (use-poll.ts).
+  usePoll(refresh, DELIVERIES_POLL_MS, live);
 
   const offer = useCallback(
     async (orderId: string): Promise<boolean> => {

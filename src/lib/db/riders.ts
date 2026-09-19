@@ -17,7 +17,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
-import { toDomain } from "./orders";
+import { toDomainMany } from "./orders";
 import { AdminInputError } from "./admin";
 import type {
   DbDeliveryAssignment,
@@ -33,6 +33,7 @@ import {
 
 export interface RiderJob {
   id: string;
+  /** PUBLIC order number (`Order.id`, PS-…) — never the row uuid. */
   orderId: string;
   state: DbDeliveryAssignment["state"];
   offeredAt: number;
@@ -52,6 +53,12 @@ export interface RiderSettlement {
 /** Admin dispatcher row: assignment + rider + full order (slice 7 board). */
 export interface RiderDispatchJob {
   id: string;
+  /**
+   * PUBLIC order number (`Order.id`, PS-…). Until 2026-09-18 this carried
+   * the row uuid: the board linked to `/admin/orders/<uuid>` (404 — the
+   * detail page reads by order number) and the live map matched it against
+   * `Order.id`, so every pin painted "unassigned" red.
+   */
   orderId: string;
   riderId: string;
   riderName: string;
@@ -200,6 +207,20 @@ export async function listRiderSettlements(
   }));
 }
 
+/** Order rows → domain Orders keyed by row id (one batched read). */
+const mapOrdersById = async (
+  service: SupabaseClient,
+  rows: DbOrder[],
+): Promise<Map<string, Order>> => {
+  const mapped = await toDomainMany(service, rows);
+  const out = new Map<string, Order>();
+  rows.forEach((row, i) => {
+    const order = mapped[i];
+    if (order) out.set(row.id, order);
+  });
+  return out;
+};
+
 export async function listRiderJobs(
   service: SupabaseClient,
   riderId: string,
@@ -220,18 +241,16 @@ export async function listRiderJobs(
     .select("*")
     .in("id", orderIds);
   if (orderError) throw new Error("rider jobs order read failed");
-  const orderMap = new Map<string, DbOrder>();
-  for (const o of (orderRows ?? []) as DbOrder[]) orderMap.set(o.id, o);
+  // P1.3: one batched mapping for every order on the board, not one per job.
+  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[]);
 
   const jobs: RiderJob[] = [];
   for (const assignment of rows) {
-    const row = orderMap.get(assignment.order_id);
-    if (!row) continue;
-    const order = await toDomain(service, row);
+    const order = orderMap.get(assignment.order_id);
     if (!order) continue;
     jobs.push({
       id: assignment.id,
-      orderId: assignment.order_id,
+      orderId: order.id,
       state: assignment.state,
       offeredAt: epoch(assignment.offered_at),
       expiresAt: epoch(assignment.expires_at),
@@ -241,10 +260,15 @@ export async function listRiderJobs(
   return jobs;
 }
 
+/**
+ * Staff dispatch board. Reads only — the caller runs
+ * `expireStaleAssignments` on the service client first (the RPC is
+ * service-only since 202609160004; this list may be read with the staff's
+ * RLS-bound client).
+ */
 export async function listDispatchJobs(
   service: SupabaseClient,
 ): Promise<RiderDispatchJob[]> {
-  await expireStaleAssignments(service);
   const { data: assignments, error } = await service
     .from("delivery_assignments")
     .select("*")
@@ -262,22 +286,19 @@ export async function listDispatchJobs(
   if (orderResult.error) throw new Error("dispatch board order read failed");
   if (riderResult.error) throw new Error("dispatch board rider read failed");
 
-  const orderMap = new Map<string, DbOrder>();
-  for (const o of (orderResult.data ?? []) as DbOrder[]) orderMap.set(o.id, o);
+  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[]);
   const riderMap = new Map<string, Pick<DbRider, "id" | "name" | "phone">>();
   for (const r of (riderResult.data ?? []) as Pick<DbRider, "id" | "name" | "phone">[])
     riderMap.set(r.id, r);
 
   const jobs: RiderDispatchJob[] = [];
   for (const assignment of rows) {
-    const row = orderMap.get(assignment.order_id);
+    const order = orderMap.get(assignment.order_id);
     const rider = riderMap.get(assignment.rider_id);
-    if (!row || !rider) continue;
-    const order = await toDomain(service, row);
-    if (!order) continue;
+    if (!order || !rider) continue;
     jobs.push({
       id: assignment.id,
-      orderId: assignment.order_id,
+      orderId: order.id,
       riderId: assignment.rider_id,
       riderName: rider.name,
       riderPhone: rider.phone,
@@ -288,6 +309,47 @@ export async function listDispatchJobs(
     });
   }
   return jobs;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True for an orders.id row key (vs a public PS-… order number). */
+export const isOrderRowId = (value: string): boolean => UUID_RE.test(value);
+
+/**
+ * Dispatch routes take order references from the admin UI, which only ever
+ * holds PUBLIC order numbers (`Order.id` is `order_no`, §70) — the row id
+ * never leaves the database. Until 2026-09-18 both dispatch routes demanded
+ * a uuid, so "Assign rider" and "Batch assign" answered 422 for every live
+ * order. Accepts either form; a reference that matches nothing is a 404, so
+ * a typo can never offer a different order.
+ */
+export async function resolveOrderRowIds(
+  db: SupabaseClient,
+  refs: readonly string[],
+): Promise<string[]> {
+  const cleaned = refs.map((r) => r.trim());
+  const orderNos = [
+    ...new Set(cleaned.filter((r) => !isOrderRowId(r)).map((r) => r.toUpperCase())),
+  ];
+  const byOrderNo = new Map<string, string>();
+  if (orderNos.length > 0) {
+    const { data, error } = await db
+      .from("orders")
+      .select("id, order_no")
+      .in("order_no", orderNos);
+    if (error) throw new Error("order lookup failed");
+    for (const row of (data ?? []) as { id: string; order_no: string | null }[]) {
+      if (row.order_no) byOrderNo.set(row.order_no.toUpperCase(), row.id);
+    }
+  }
+  return cleaned.map((r) => {
+    if (isOrderRowId(r)) return r;
+    const id = byOrderNo.get(r.toUpperCase());
+    if (!id) throw new AdminInputError(`Order ${r} not found.`, 404);
+    return id;
+  });
 }
 
 const dispatchRpcError = (message: string): AdminInputError => {
@@ -321,6 +383,7 @@ export async function cancelDispatchAssignment(
 }
 
 /** Mark stale offered assignments as expired (no background worker). */
+/** Service-only RPC (202609160004): expire timed-out offers and re-offer. */
 export async function expireStaleAssignments(
   service: SupabaseClient,
 ): Promise<void> {
@@ -343,8 +406,16 @@ export async function settleRiderCashByAdmin(
   if (error) throw dispatchRpcError(error.message);
 }
 
-/** Orders that are dispatch-ready but have no active offer. Used by the
- * Admin → Deliveries board so a staff member can assign manually. */
+/**
+ * Orders that are dispatch-ready but have no active offer. Used by the
+ * Admin → Deliveries board so a staff member can assign manually.
+ *
+ * Counter pickups are excluded (2026-09-18): the customer collects at
+ * Traffic Point, so a rider is never needed — before this they sat in
+ * "Awaiting dispatch" forever with an "Assign rider" button that would have
+ * sent a rider to deliver an order nobody was waiting for at home. Return
+ * legs DO need a rider (collect from the customer) and stay listed.
+ */
 export async function listAwaitingDispatchOrders(
   service: SupabaseClient,
 ): Promise<Order[]> {
@@ -355,7 +426,7 @@ export async function listAwaitingDispatchOrders(
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error("awaiting orders read failed");
-  const rows = (orderRows ?? []) as DbOrder[];
+  const rows = ((orderRows ?? []) as DbOrder[]).filter((row) => !row.is_pickup);
   if (rows.length === 0) return [];
 
   const { data: assignmentRows } = await service
@@ -365,13 +436,9 @@ export async function listAwaitingDispatchOrders(
   const active = new Set(
     ((assignmentRows ?? []) as { order_id: string }[]).map((a) => a.order_id),
   );
-  const pending: Order[] = [];
-  for (const row of rows) {
-    if (active.has(row.id)) continue;
-    const order = await toDomain(service, row);
-    if (order) pending.push(order);
-  }
-  return pending;
+  const waiting = rows.filter((row) => !active.has(row.id));
+  const mapped = await toDomainMany(service, waiting);
+  return mapped.filter((order): order is Order => order !== null);
 }
 
 /** P2 #22 — the rider sets their own shift; dispatch honours it. */
@@ -448,7 +515,16 @@ export const deliverRiderAssignment = async (
     p_code: code,
     p_proof_url: proofUrl ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // 'forbidden' here used to be the riders self-update guard rejecting the
+    // RPC's own cash/load bookkeeping (fixed in 202609160003) — keep the raw
+    // shape in the log so a rider's "Delivered does nothing" is diagnosable.
+    console.error(
+      "[rider] ps_rider_deliver failed",
+      JSON.stringify({ assignmentId, code: error.code ?? null, message: error.message }),
+    );
+    throw new Error(error.message);
+  }
 };
 
 export const failedRiderAttempt = async (

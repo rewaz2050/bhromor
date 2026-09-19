@@ -28,7 +28,7 @@ const OUT_A = join(ROOT, "supabase", "paste-parts", "99a_whats-applied-probe.sql
 const OUT_B = join(ROOT, "supabase", "paste-parts", "99b_function-versions-probe.sql");
 const MAX_PER_STEP = 6;
 const DRY = process.argv.includes("--dry");
-const PROSRC_MD5_FINAL = "a2ef2cc2ae969020c1f519858e168564"; // ps_place_order, step 30
+const PROSRC_MD5_FINAL = "31f48d113cceeb5d3238d000b708932e"; // ps_place_order, step 30 (body as of PR #28)
 
 // ---------------------------------------------------------------------------
 // 1. the go-live order, straight out of docs/go-live.md
@@ -40,7 +40,7 @@ for (const line of section1.split("\n")) {
   const m = line.match(/^(\d+)\.\s+(?:\*\*)?`?(supabase\/[^`\s]+\.sql)`?(?:\*\*)?/);
   if (m) STEPS.push({ step: Number(m[1]), file: m[2] });
 }
-if (STEPS.length !== 30) throw new Error(`expected 30 go-live steps, found ${STEPS.length}`);
+if (STEPS.length < 30) throw new Error(`expected at least 30 go-live steps, found ${STEPS.length}`);
 STEPS.forEach((s, k) => { if (s.step !== k + 1) throw new Error(`step numbering gap at ${s.file}`); });
 
 // ---------------------------------------------------------------------------

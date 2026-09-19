@@ -11,14 +11,14 @@ import { AdminInputError, verifyPaymentAsStaff } from "../admin";
  */
 const fakeDb = (rpcMessage: string) =>
   ({
-    from: (_table: string) => ({
+    from: () => ({
       select: () => ({
         eq: () => ({
           single: async () => ({ data: { id: "order-uuid" }, error: null }),
         }),
       }),
     }),
-    rpc: async (_fn: string, _args: unknown) => ({
+    rpc: async () => ({
       error: { message: rpcMessage },
     }),
   }) as never;

@@ -5,6 +5,7 @@
  */
 
 import type { DeliveryZone } from "./catalog";
+import { MIN_ORDER_OUTSIDE_SADAR_PAISA } from "./delivery";
 
 export const SUNAMGANJ_DISTRICT = "Sunamganj";
 export const SUNAMGANJ_UPAZILA = "Sunamganj Sadar";
@@ -121,7 +122,8 @@ export const getRoadSuggestions = (input: string, limit = 6): string[] => {
   return ROAD_NAMES.filter((r) => r.toLowerCase().includes(clean)).slice(0, limit);
 };
 
-export const MIN_ORDER_OUTSIDE_PAISA = 50000; // ৳500 minimum for Zone D
+/** @deprecated use `MIN_ORDER_OUTSIDE_SADAR_PAISA` from `./delivery` (same value). */
+export const MIN_ORDER_OUTSIDE_PAISA = MIN_ORDER_OUTSIDE_SADAR_PAISA;
 
 /* ------------------------------------------------------------------ */
 /* Simple checkout form data — District / Upazila / Para               */

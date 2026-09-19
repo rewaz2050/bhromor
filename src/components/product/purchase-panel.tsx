@@ -33,6 +33,7 @@ import {
   IconMapPin,
   IconMinus,
   IconPlus,
+  IconRuler,
   IconSend,
   IconShield,
   IconTruck,
@@ -74,6 +75,14 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [stickyVisible, setStickyVisible] = useState(false);
   const ctaRef = useRef<HTMLDivElement | null>(null);
+  /* P1 #10 — a tap on a disabled "Select a size" used to do nothing. Now the
+     size row scrolls into view and pulses, and the sticky bar offers the
+     sizes itself, so the next step is never a mystery. */
+  const sizeRowRef = useRef<HTMLDivElement | null>(null);
+  const [sizeNudge, setSizeNudge] = useState(false);
+  const nudgeTimer = useRef<number | null>(null);
+  /* P1 #11 — the three size helpers live behind ONE "Size help" row. */
+  const [sizeHelpOpen, setSizeHelpOpen] = useState(false);
 
   /** Join only the parts that exist — colourless products used to produce
    *  a label like " · L" with a dangling separator. */
@@ -108,9 +117,25 @@ export default function PurchasePanel({ product }: { product: Product }) {
     () => () => {
       if (feedbackTimer.current !== null)
         window.clearTimeout(feedbackTimer.current);
+      if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
     },
     [],
   );
+
+  const needsSize = product.sizes.length > 0 && !size;
+
+  /** Bring the size row into view and pulse it (P1 #10). */
+  const nudgeSize = () => {
+    const row = sizeRowRef.current;
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      const first = row.querySelector<HTMLButtonElement>("button[aria-pressed]");
+      first?.focus({ preventScroll: true });
+    }
+    setSizeNudge(true);
+    if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
+    nudgeTimer.current = window.setTimeout(() => setSizeNudge(false), 1400);
+  };
 
   /**
    * On phones the add-to-bag controls scroll out of view quickly. A compact
@@ -139,6 +164,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
    *  sticky bar and the disabled state can never disagree. */
   const ctaDisabled =
     shopClosed || !product.inStock || (product.sizes.length > 0 && !size);
+  /** Truly blocked (closed shop / sold out) — a missing size is NOT a hard
+   *  stop any more: the tap teaches instead of ignoring (P1 #10). */
+  const hardStop = shopClosed || !product.inStock;
   const ctaLabel = shopClosed
     ? t("shops.closed")
     : !product.inStock
@@ -148,6 +176,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
         : t("purchase.addToBag");
 
   const handleAdd = () => {
+    if (needsSize && !shopClosed && product.inStock) return nudgeSize();
     if (ctaDisabled) return;
     setPendingBuyNow(false);
     if (add(product, variantLabel, qty)) {
@@ -157,6 +186,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   };
 
   const handleBuyNow = () => {
+    if (needsSize && !shopClosed && product.inStock) return nudgeSize();
     if (ctaDisabled) return;
     setPendingBuyNow(true);
     if (add(product, variantLabel, qty)) {
@@ -323,45 +353,47 @@ export default function PurchasePanel({ product }: { product: Product }) {
       )}
 
       {/* Size */}
-      <div className="mt-6">
+      <div className="mt-6" ref={sizeRowRef} id="purchase-size" data-testid="size-row">
         <div className="flex items-center justify-between gap-4">
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
             {t("purchase.size")}
+            {needsSize ? (
+              <span className="ml-2 normal-case tracking-normal text-forest-800">
+                · {t("purchase.selectASize")}
+              </span>
+            ) : null}
           </p>
-          <div className="flex items-center gap-3">
-            <SizeFinder
-              product={product}
-              onPick={(picked) => setSize(picked)}
-              autoOpenKey={stylistTarget === "finder" ? stylistSignal : 0}
-            />
-            <SizeGuide
-              product={product}
-              autoOpenKey={stylistTarget === "guide" ? stylistSignal : 0}
-            />
-            <StylistChat
-              product={product}
-              catalog={products}
-              shop={shop ?? null}
-              onUseSize={(picked) => setSize(picked)}
-              onOpenSizeFinder={() => {
-                setStylistTarget("finder");
-                setStylistSignal((k) => k + 1);
-              }}
-              onOpenSizeGuide={() => {
-                setStylistTarget("guide");
-                setStylistSignal((k) => k + 1);
-              }}
-            />
-          </div>
+          {product.sizes.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setSizeHelpOpen((v) => !v)}
+              aria-expanded={sizeHelpOpen}
+              aria-controls="purchase-size-help"
+              data-testid="size-help-toggle"
+              className="inline-flex min-h-11 items-center gap-1.5 text-xs font-medium text-forest-800 underline underline-offset-4"
+            >
+              <IconRuler className="h-3.5 w-3.5" />
+              {t("purchase.sizeHelp")}
+            </button>
+          ) : null}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div
+          className={`mt-3 flex flex-wrap gap-2 rounded-md transition-shadow ${
+            sizeNudge ? "size-nudge ring-2 ring-gold-400 ring-offset-4 ring-offset-ivory-50" : ""
+          }`}
+          role="group"
+          aria-label={t("purchase.size")}
+        >
           {product.sizes.map((s) => {
             const verdict = suggestion.scores.find((x) => x.size === s);
             return (
               <button
                 key={s}
                 type="button"
-                onClick={() => setSize(s)}
+                onClick={() => {
+                  sizeTouched.current = true;
+                  setSize(s);
+                }}
                 aria-pressed={size === s}
                 data-size-fit={verdict?.verdict ?? "unknown"}
                 className={`relative h-11 min-w-11 rounded-sm px-4 text-sm transition-colors ${
@@ -414,6 +446,49 @@ export default function PurchasePanel({ product }: { product: Product }) {
             {t("sizeFinder.closest").replace("{size}", suggestion.closest)}
           </p>
         ) : null}
+        {/* P1 #11 — one sheet for all three helpers. The helpers themselves
+            keep their own buttons and drawers (and the stylist handoff), they
+            are simply not three competing links on the first paint. */}
+        <div
+          id="purchase-size-help"
+          hidden={!sizeHelpOpen}
+          className="mt-3 rounded-md bg-ivory-100/70 p-3 ring-1 ring-line"
+        >
+          <p className="text-xs leading-5 text-ink-soft">{t("purchase.sizeHelpHint")}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <SizeFinder
+              product={product}
+              onPick={(picked) => {
+                sizeTouched.current = true;
+                setSize(picked);
+              }}
+              autoOpenKey={stylistTarget === "finder" ? stylistSignal : 0}
+            />
+            <SizeGuide
+              product={product}
+              autoOpenKey={stylistTarget === "guide" ? stylistSignal : 0}
+            />
+            <StylistChat
+              product={product}
+              catalog={products}
+              shop={shop ?? null}
+              onUseSize={(picked) => {
+                sizeTouched.current = true;
+                setSize(picked);
+              }}
+              onOpenSizeFinder={() => {
+                setSizeHelpOpen(true);
+                setStylistTarget("finder");
+                setStylistSignal((k) => k + 1);
+              }}
+              onOpenSizeGuide={() => {
+                setSizeHelpOpen(true);
+                setStylistTarget("guide");
+                setStylistSignal((k) => k + 1);
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Quantity + CTAs */}
@@ -446,16 +521,23 @@ export default function PurchasePanel({ product }: { product: Product }) {
         <button
           type="button"
           onClick={handleAdd}
-          className="h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
-          disabled={ctaDisabled}
+          aria-disabled={ctaDisabled || undefined}
+          aria-describedby={needsSize ? "purchase-size" : undefined}
+          className={`h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
+            needsSize && !hardStop ? "opacity-70" : ""
+          }`}
+          disabled={hardStop}
         >
           {ctaLabel}
         </button>
         <button
           type="button"
           onClick={handleBuyNow}
-          className="h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-all hover:-translate-y-px hover:bg-gold-400 disabled:translate-y-0 disabled:opacity-40"
-          disabled={ctaDisabled}
+          aria-disabled={ctaDisabled || undefined}
+          className={`h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-all hover:-translate-y-px hover:bg-gold-400 disabled:translate-y-0 disabled:opacity-40 ${
+            needsSize && !hardStop ? "opacity-70" : ""
+          }`}
+          disabled={hardStop}
         >
           {t("purchase.buyNow")}
         </button>
@@ -494,7 +576,11 @@ export default function PurchasePanel({ product }: { product: Product }) {
         <TrustPill
           icon={IconTruck}
           title={INSTANT_DELIVERY_TITLE}
-          text={`Arrives in ${DELIVERY_ETA} in the service area`}
+          text={`${
+            lang === "bn"
+              ? `সুনামগঞ্জ সদরে ${DELIVERY_ETA}-এ পৌঁছায়`
+              : `Arrives in ${DELIVERY_ETA} inside Sunamganj Sadar`
+          } · ${t("purchase.courierText")}`}
         />
         <TrustPill
           icon={IconMapPin}
@@ -514,26 +600,57 @@ export default function PurchasePanel({ product }: { product: Product }) {
         data-visible={stickyVisible}
         inert={!stickyVisible}
       >
-        <div className="mx-auto flex max-w-3xl items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-              {product.subCategory}
+        <div className="mx-auto max-w-3xl">
+          {needsSize && !hardStop ? (
+            <div
+              className="mb-2 flex items-center gap-2 overflow-x-auto pb-0.5"
+              role="group"
+              aria-label={t("purchase.selectASize")}
+              data-testid="sticky-size-pills"
+            >
+              <span className="shrink-0 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
+                {t("purchase.size")}
+              </span>
+              {product.sizes.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    sizeTouched.current = true;
+                    setSize(s);
+                  }}
+                  className="h-9 shrink-0 rounded-sm bg-paper px-3 text-xs text-ink ring-1 ring-line"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[0.6rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                {product.subCategory}
+                {size && hasSizes ? ` · ${size}` : ""}
+              </p>
+              <p className="truncate font-display text-base leading-tight text-forest-900">
+                {product.name}
+              </p>
+            </div>
+            <p className="shrink-0 text-sm font-semibold text-ink">
+              {formatBdt(product.price)}
             </p>
-            <p className="truncate font-display text-base leading-tight text-forest-900">
-              {product.name}
-            </p>
+            <button
+              type="button"
+              onClick={handleAdd}
+              aria-disabled={ctaDisabled || undefined}
+              className={`h-12 shrink-0 rounded-sm bg-forest-800 px-5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40 ${
+                needsSize && !hardStop ? "opacity-70" : ""
+              }`}
+              disabled={hardStop}
+            >
+              {ctaLabel}
+            </button>
           </div>
-          <p className="shrink-0 text-sm font-semibold text-ink">
-            {formatBdt(product.price)}
-          </p>
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="h-12 shrink-0 rounded-sm bg-forest-800 px-5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40"
-            disabled={ctaDisabled}
-          >
-            {ctaLabel}
-          </button>
         </div>
       </div>
 
