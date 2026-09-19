@@ -21,6 +21,7 @@ import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
 import RestockAlertRow from "@/components/product/restock-alert-row";
+import ProductShare from "@/components/product/product-share";
 import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconCheck, IconChevron, IconLeaf } from "@/components/ui/icons";
 import { gsmBand, hasFabricInfo } from "@/lib/fabric";
@@ -144,7 +145,10 @@ export default async function ProductPage({ params }: PageProps) {
       <RecentlyViewedTracker product={product} />
 
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
-        <ProductGallery product={product} />
+        <div>
+          <ProductGallery product={product} />
+          <ProductShare product={product} />
+        </div>
         <PurchasePanel product={product} />
       </div>
 

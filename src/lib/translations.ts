@@ -198,6 +198,15 @@ export const translations = {
       addToBag: "Add to Bag →",
       almostGone: "Almost gone",
     },
+    share: {
+      label: "Share",
+      share: "Share",
+      whatsApp: "WhatsApp",
+      copyLink: "Copy link",
+      linkCopied: "Copied",
+      copied: "Link copied — paste it in any chat",
+      failed: "Could not copy the link — long-press the page title instead",
+    },
     gallery: {
       viewer: "Photo viewer",
       openZoom: "Zoom in on",
@@ -767,6 +776,15 @@ export const translations = {
       addToBag: "ব্যাগে যোগ করুন →",
       almostGone: "শেষ হয়ে যাচ্ছে",
     },
+    share: {
+      label: "শেয়ার",
+      share: "শেয়ার",
+      whatsApp: "হোয়াটসঅ্যাপ",
+      copyLink: "লিংক কপি",
+      linkCopied: "কপি হয়েছে",
+      copied: "লিংক কপি হয়েছে — যেকোনো চ্যাটে পেস্ট করুন",
+      failed: "লিংক কপি করা গেল না — পেজের নাম চেপে ধরে কপি করুন",
+    },
     gallery: {
       viewer: "ছবি দেখার স্ক্রিন",
       openZoom: "বড় করে দেখুন",
@@ -1152,6 +1170,7 @@ export type TranslationKey =
   | `shop.${keyof typeof translations.en.shop}`
   | `shopBrowser.${keyof typeof translations.en.shopBrowser}`
   | `product.${keyof typeof translations.en.product}`
+  | `share.${keyof typeof translations.en.share}`
   | `gallery.${keyof typeof translations.en.gallery}`
   | `recently.${keyof typeof translations.en.recently}`
   | `bag.${keyof typeof translations.en.bag}`

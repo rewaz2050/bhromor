@@ -13,6 +13,7 @@ import { IconArrowRight, IconCheck, IconHeart, IconPlus } from "@/components/ui/
 import QuickAdd from "./quick-add";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useFlashPrice } from "@/lib/use-promos";
+import { useCardFlight } from "./card-flight";
 import { usePriceDropFor } from "@/lib/use-price-watch";
 import { FlashRibbon } from "@/components/promo/flash-timer";
 import { IconTrendDown } from "@/components/ui/icons";
@@ -53,14 +54,27 @@ export default function ProductCard({ product }: { product: Product }) {
   const styleName = editorialProductName(product);
   const { shops } = useLiveCatalog();
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
+  /* Batch M — tapping the photo flies it into the product page's cover. The
+     card's own buttons (heart, quick add) cancel that before it starts, so
+     only "open this garment" ever animates. */
+  const flight = useCardFlight({
+    slug: product.slug,
+    imageSelector: "img.product-image-primary",
+  });
 
   return (
-    <article className="product-card group relative flex min-w-0 flex-col">
+    <article
+      data-card-flight={product.slug}
+      className="product-card group relative flex min-w-0 flex-col"
+    >
       <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
           href={`/product/${product.slug}`}
           className="relative block aspect-[4/5]"
           aria-label={`View ${product.name}`}
+          onClick={flight.onClick}
+          onPointerDownCapture={flight.onPointerDownCapture}
+          onPointerUpCapture={flight.onPointerUpCapture}
         >
           <Image
             src={cover.src}
@@ -68,6 +82,7 @@ export default function ProductCard({ product }: { product: Product }) {
             fill
             sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
             className="product-image-primary object-cover"
+            data-flight-image="true"
           />
           {hoverImage && (
             <Image
@@ -89,6 +104,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
         <button
           type="button"
+          onPointerDownCapture={flight.markGesture}
           onClick={async () => {
             const saved = await toggle(product.id);
             setNotice(
@@ -115,7 +131,10 @@ export default function ProductCard({ product }: { product: Product }) {
           <div className="product-card-actions absolute inset-x-2 bottom-2 grid grid-cols-1 gap-1.5 sm:inset-x-3 sm:bottom-3 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() => setQuickOpen(true)}
+              onClick={() => {
+                flight.markGesture();
+                setQuickOpen(true);
+              }}
               aria-label={`Quick add ${product.name} to cart`}
               className="product-quick-add flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
             >

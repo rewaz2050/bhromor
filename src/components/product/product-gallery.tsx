@@ -6,6 +6,7 @@ import type { Product } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconPlus } from "@/components/ui/icons";
 import GalleryLightbox from "./gallery-lightbox";
+import { useProductCoverFlight } from "./card-flight";
 import {
   driveThumbnailUrl,
   extractDriveFileId,
@@ -93,6 +94,9 @@ function EmbedFacade({
 
 export default function ProductGallery({ product }: { product: Product }) {
   const { t } = useLanguage();
+  /* Batch M — if this page was opened from a product card, the tapped photo
+     grows into this cover (FLIP overlay); nothing happens otherwise. */
+  const coverRef = useProductCoverFlight(product.slug);
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState<string | null>(null);
   /* Batch L — fullscreen viewer. The card is 4:5 in a phone column; the
@@ -138,6 +142,8 @@ export default function ProductGallery({ product }: { product: Product }) {
             className="group/zoom absolute inset-0 block cursor-zoom-in"
           >
             <Image
+              key={current.key}
+              ref={index === 0 ? coverRef : undefined}
               src={current.src}
               alt={current.alt}
               fill
