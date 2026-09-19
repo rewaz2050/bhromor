@@ -304,15 +304,17 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
-      {/* Batch J — same-category shelf (replaces the mixed "You may also like"). */}
+      {/* §30 reviews — live approved reviews + moderated submission form */}
+      <ReviewsSection product={product} />
+      {/* Batch K — the very last shelf is the category the shopper is
+          already in: same-category siblings (with a scoped "See all N in
+          <category>" link) so the page ends where the browsing continues. */}
       <MoreInCategory
         category={category}
         items={more.items}
         sameCategory={more.sameCategory}
         total={siblingsTotal}
       />
-      {/* §30 reviews — live approved reviews + moderated submission form */}
-      <ReviewsSection product={product} />
     </div>
   );
 }

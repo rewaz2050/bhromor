@@ -43,7 +43,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
       await noOverflow(page);
       await expect(page.locator("h1")).toBeVisible();
       if (route === "/") {
-        await expect(page.locator(".cinematic-hero")).toBeVisible();
+        await expect(page.locator(".compact-hero")).toBeVisible();
         await expect(
           page.getByRole("link", { name: "Explore collection" }),
         ).toBeVisible();
@@ -197,10 +197,10 @@ test("reduced motion disables entrance and feedback animations", async ({
   ).toBe("none");
   await page.keyboard.press("Escape");
   await page
-    .getByRole("heading", { name: "Featured." })
+    .getByRole("heading", { name: "Everything, by category" })
     .scrollIntoViewIfNeeded();
   await expect(
-    page.getByRole("heading", { name: "Featured." }),
+    page.getByRole("heading", { name: "Everything, by category" }),
   ).toBeVisible();
 });
 

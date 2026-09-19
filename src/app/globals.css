@@ -590,13 +590,14 @@ body {
 /* Premium storefront refresh ------------------------------------------------
    Full-bleed campaign imagery and quiet product cards. These are intentionally
    scoped classes so the admin surface keeps its compact utility styling. */
-/* Batch J (2026-09-19): the hero is a compact opener, not a full screen —
-   the browse chips sit inside it and the first product row must start
-   within the first scroll on a phone. */
-.cinematic-hero {
-  min-height: clamp(26rem, 62svh, 38rem);
+/* Batch K (2026-09-19): the full-screen cinematic hero is gone. The opener
+   is one slim banner — copy plus a single CTA — so the category cards start
+   right below it and the first products arrive within the first scroll on
+   a phone. Height comes from the copy and its padding, not a viewport clamp. */
+.compact-hero {
+  min-height: 12rem;
 }
-.hero-cinematic-image {
+.hero-compact-image {
   object-position: center center;
   will-change: transform;
   transform: translateZ(0);
@@ -621,10 +622,7 @@ body {
 }
 
 @media (max-width: 639px) {
-  .cinematic-hero {
-    min-height: clamp(24rem, 58svh, 34rem);
-  }
-  .hero-cinematic-image {
+  .hero-compact-image {
     object-position: 64% center;
   }
 }
