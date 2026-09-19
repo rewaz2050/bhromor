@@ -1,6 +1,9 @@
 import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
+import RecentlyViewedRail, {
+  RecentlyViewedTracker,
+} from "@/components/product/recently-viewed-rail";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -18,6 +21,7 @@ import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
 import RestockAlertRow from "@/components/product/restock-alert-row";
+import ProductShare from "@/components/product/product-share";
 import ReviewsSection from "@/components/reviews/reviews-section";
 import { IconCheck, IconChevron, IconLeaf } from "@/components/ui/icons";
 import { gsmBand, hasFabricInfo } from "@/lib/fabric";
@@ -137,8 +141,14 @@ export default async function ProductPage({ params }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
+      {/* Batch L — remember this look on this device (localStorage only). */}
+      <RecentlyViewedTracker product={product} />
+
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
-        <ProductGallery product={product} />
+        <div>
+          <ProductGallery product={product} />
+          <ProductShare product={product} />
+        </div>
         <PurchasePanel product={product} />
       </div>
 
@@ -304,15 +314,19 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
-      {/* Batch J — same-category shelf (replaces the mixed "You may also like"). */}
+      {/* Batch L — the trail this device already walked (local only). */}
+      <RecentlyViewedRail excludeId={product.id} className="mt-10" />
+      {/* §30 reviews — live approved reviews + moderated submission form */}
+      <ReviewsSection product={product} />
+      {/* Batch K — the very last shelf is the category the shopper is
+          already in: same-category siblings (with a scoped "See all N in
+          <category>" link) so the page ends where the browsing continues. */}
       <MoreInCategory
         category={category}
         items={more.items}
         sameCategory={more.sameCategory}
         total={siblingsTotal}
       />
-      {/* §30 reviews — live approved reviews + moderated submission form */}
-      <ReviewsSection product={product} />
     </div>
   );
 }

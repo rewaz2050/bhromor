@@ -6,11 +6,12 @@
  *
  * The first question a Sunamganj shopper has is not "which panjabi" but
  * "does this shop even come to my para, and for how much?". The answer used
- * to live three pages away (/delivery) and in the checkout. This strip puts
- * it directly under the hero: four facts that are true for every order, and
- * a one-field check that quotes the zone's real charge and time from the
- * same zone table the checkout prices from. A match also sets the "deliver
- * to" zone so /shop opens already scoped.
+ * to live three pages away (/delivery) and in the checkout. Since Batch K
+ * this strip closes the homepage (under the whole shelf, above the service
+ * promises): four facts that are true for every order, and a one-field
+ * check that quotes the zone's real charge and time from the same zone
+ * table the checkout prices from. A match also sets the "deliver to" zone
+ * so /shop opens already scoped.
  */
 
 import { useId, useState } from "react";

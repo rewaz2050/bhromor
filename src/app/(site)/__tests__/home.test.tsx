@@ -93,7 +93,7 @@ describe("Homepage editorial journey", () => {
     expect(screen.queryByRole("link", { name: /shop men/i })).toBeNull();
   });
 
-  it("shows collections and a restrained featured edit", async () => {
+  it("shows the categories block, without the retired featured edit", async () => {
     await renderHome();
 
     expect(
@@ -102,9 +102,11 @@ describe("Homepage editorial journey", () => {
         name: "A wardrobe, thoughtfully composed.",
       }),
     ).toBeInTheDocument();
+    // Batch K — the featured edit moved off the homepage; the whole shelf
+    // below the categories already carries every piece.
     expect(
-      screen.getByRole("heading", { level: 2, name: "Featured." }),
-    ).toBeInTheDocument();
+      screen.queryByRole("heading", { level: 2, name: "Featured." }),
+    ).toBeNull();
     const links = screen.getAllByRole("link", { name: "Heritage Green Panjabi" });
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
@@ -123,27 +125,27 @@ describe("Homepage editorial journey", () => {
     expect(screen.queryByRole("heading", { name: /customer reviews/i })).toBeNull();
   });
 
-  /* Batch J (2026-09-19) — the homepage is the shelf: chips name every
-     category on the first screen, and every published piece appears under
-     its category further down. */
-  it("names every category (and the curated paths) on the first screen", async () => {
+  /* Batch K (2026-09-19) — the homepage opens with a compact hero, then the
+     categories, then the offers, then every piece under its own category. */
+  it("offers every category directly under the hero", async () => {
     await renderHome();
-    const chips = await screen.findByTestId("browse-chips");
-    const names = within(chips).getAllByRole("link").map((a) => a.textContent);
-    expect(names).toEqual(
-      expect.arrayContaining(["Men", "Women", "Traditional", "New arrivals", "All pieces"]),
+    const collections = document.getElementById("collections");
+    expect(collections).not.toBeNull();
+    const hrefs = within(collections!)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/shop?category=men",
+        "/shop?category=women",
+        "/shop?category=traditional",
+      ]),
     );
-    expect(within(chips).getByRole("link", { name: "Men" })).toHaveAttribute(
-      "href",
-      "/shop?category=men",
-    );
-    expect(within(chips).getByRole("link", { name: "New arrivals" })).toHaveAttribute(
-      "href",
-      "/shop?sort=newest",
-    );
-    // Launch seeds carry no real sales → no "Best sellers" chip, no rail.
-    expect(within(chips).queryByRole("link", { name: "Best sellers" })).toBeNull();
-    expect(screen.queryByTestId("rail-best")).toBeNull();
+    expect(hrefs).toContain("/shop");
+    // The hero jumps straight to the categories.
+    expect(
+      screen.getByRole("link", { name: /shop by category/i }),
+    ).toHaveAttribute("href", "#collections");
   });
 
   it("lists every published piece under its own category shelf", async () => {
@@ -172,20 +174,6 @@ describe("Homepage editorial journey", () => {
     ).toHaveAttribute("href", "/shop?category=men");
   });
 
-  it("has a new-arrivals rail that deep-links to the sorted shop", async () => {
-    await renderHome();
-    const rail = await screen.findByTestId("rail-new");
-    expect(within(rail).getByRole("heading", { level: 2, name: "New arrivals" })).toBeInTheDocument();
-    expect(within(rail).getByRole("link", { name: /see all new arrivals/i })).toHaveAttribute(
-      "href",
-      "/shop?sort=newest",
-    );
-    // in-stock pieces only
-    for (const card of within(rail).getAllByRole("article")) {
-      expect(within(card).queryByText(/sold out/i)).toBeNull();
-    }
-  });
-
   it("says 'no shop delivers there' (with a reset) instead of 'being stocked' for an unserved zone", async () => {
     window.localStorage.setItem(MY_ZONE_KEY, "zone-nowhere");
     try {
@@ -203,15 +191,14 @@ describe("Homepage editorial journey", () => {
     }
   });
 
-  it("follows hero → rails → collections → featured → shelf → trust", async () => {
+  it("follows hero → categories → shelf → para check → trust", async () => {
     const { container } = await renderHome();
     await screen.findByTestId("whole-shelf");
     const selectors = [
-      ".cinematic-hero",
-      "#new-arrivals",
+      ".compact-hero",
       "#collections",
-      "#featured",
       '[data-testid="category-shelf"]',
+      '[data-testid="home-delivery-check"]',
       '[aria-label="PROSANTI service promises"]',
     ];
     const positions = selectors.map((selector) => {
@@ -224,7 +211,7 @@ describe("Homepage editorial journey", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
-  it("retains CMS hero copy and visibility controls in the shorter layout", async () => {
+  it("retains CMS hero copy and visibility controls in the compact layout", async () => {
     homepageSettings = {
       ...HOME_DEFAULTS,
       hero: {
@@ -248,9 +235,8 @@ describe("Homepage editorial journey", () => {
         name: "A wardrobe, thoughtfully composed.",
       }),
     ).toBeNull();
-    expect(
-      await screen.findByRole("heading", { name: "Featured." }),
-    ).toBeVisible();
+    // Without the categories block the shelf still carries the pieces.
+    expect(await screen.findByTestId("whole-shelf")).toBeInTheDocument();
   });
 
   it("links service promises to real pages", async () => {

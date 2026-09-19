@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
@@ -15,26 +14,19 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import FlashRail from "@/components/promo/flash-rail";
 import LiveBanner from "@/components/live/live-banner";
 import HomeDeliveryCheck from "@/components/home/home-delivery-check";
-import ProductRail from "@/components/home/product-rail";
 import CategoryShelfBlock from "@/components/home/category-shelf";
-import {
-  bestSellers,
-  categoryLabel,
-  categoryShelves,
-  newArrivals,
-} from "@/lib/home-shelves";
+import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
+import { categoryShelves } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 
 /**
- * Homepage (Batch J, 2026-09-19) — a shelf, not a poster.
+ * Homepage (Batch K, 2026-09-19) — a small door, then the whole shop.
  *
- * Hero (compact) → browse chips → delivery check → flash drop (when live)
- * → best sellers (real orders) → new arrivals → collections → featured edit
- * → EVERY category with its pieces → service strip.
- *
- * The shopper who lands here can see what we sell, in which category, at
- * what price, without leaving the page — and every heading is a link into
- * the filtered shop when they want the long list.
+ * Compact hero (one slim banner, not a full screen) → categories → offers
+ * (the running flash drop) → EVERY category with its pieces → para check
+ * → service strip. The shopper who lands here sees what we sell, in which
+ * category, at what price, within the first scroll — and every heading is
+ * a link into the filtered shop when they want the long list.
  */
 
 export default function Home() {
@@ -49,91 +41,21 @@ export default function Home() {
     <>
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
-      {sections.hero && <Hero cms={settings} categories={categories} pool={pool} />}
-      {/* P2 #20 — the first question is "do you come to my para, for how
-          much?": four true-for-every-order facts + a one-field zone check,
-          directly under the hero instead of three pages away. */}
-      <HomeDeliveryCheck />
-      {/* A running drop goes above the browsing, not under it — that is the
-          one place a countdown actually changes what someone does next. */}
-      <FlashRail limit={4} />
-      <CuratedRails pool={pool} />
+      {sections.hero && <Hero cms={settings} />}
+      {/* Categories first: the landing question is "what do you sell?" */}
       {sections.collections && <CollectionsSection pool={pool} categories={categories} />}
-      {sections.featured && <BestSellersSection pool={pool} />}
+      {/* Offers — whatever drop is running right now; renders nothing between
+          windows, so the categories flow straight into the shelf. */}
+      <FlashRail limit={4} />
+      {/* The whole shop: one block per category, every discoverable piece. */}
       <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
+      {/* Batch L — this device's own trail, resolved against the live
+          catalog; renders nothing for a first-time visitor. */}
+      <RecentlyViewedRail className="mt-14 border-t-0" />
+      {/* P2 #20 — "do you come to my para, for how much?" closes the page:
+          trust pills + a one-field zone check that quotes the real charge. */}
+      <HomeDeliveryCheck />
       {sections.trust && <TrustStrip />}
-    </>
-  );
-}
-
-/**
- * "Browse" chips directly under the hero copy: every active category with
- * pieces, plus New arrivals / Best sellers. This is the first screen's
- * answer to "what do you sell?" — on a phone the hero used to fill the whole
- * viewport with a photo and one button.
- */
-function BrowseChips({ categories, pool }: { categories: Category[]; pool: Product[] }) {
-  const { t, lang } = useLanguage();
-  const shelves = categoryShelves(pool, categories, 0);
-  const hasBest = bestSellers(pool).length > 0;
-  const chips: { key: string; label: string; href: string }[] = [
-    ...shelves.map((s) => ({
-      key: s.category.id,
-      label: categoryLabel(s.category, lang),
-      href: s.href,
-    })),
-    { key: "new", label: t("home.chipNew"), href: "/shop?sort=newest" },
-    ...(hasBest ? [{ key: "best", label: t("home.chipBest"), href: "/shop?sort=best" }] : []),
-    { key: "all", label: t("home.chipAll"), href: "/shop" },
-  ];
-  return (
-    <nav aria-label={t("home.browseLabel")} data-testid="browse-chips" className="mt-7">
-      <ul className="-mx-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
-        {chips.map((chip) => (
-          <li key={chip.key} className="shrink-0 snap-start">
-            <Link
-              href={chip.href}
-              lang={lang === "bn" ? "bn" : undefined}
-              className={`inline-flex min-h-10 items-center rounded-full border border-ivory-100/35 bg-ivory-50/10 px-4 text-xs font-semibold text-ivory-50 backdrop-blur-sm transition-colors hover:border-gold-200 hover:bg-ivory-50 hover:text-forest-950 ${lang === "bn" ? "font-bengali text-sm" : ""}`}
-            >
-              {chip.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
-
-/** Best sellers (real `unitsSold`) + new arrivals — the two curated paths. */
-function CuratedRails({ pool }: { pool: Product[] }) {
-  const { t } = useLanguage();
-  const best = bestSellers(pool);
-  const fresh = newArrivals(pool);
-  return (
-    <>
-      <ProductRail
-        id="best-sellers"
-        testId="rail-best"
-        eyebrow={t("home.bestEyebrow")}
-        title={t("home.bestTitle")}
-        sub={t("home.bestSub")}
-        href="/shop?sort=best"
-        seeAllLabel={t("home.bestAll")}
-        products={best}
-        tone="ivory"
-      />
-      <ProductRail
-        id="new-arrivals"
-        testId="rail-new"
-        eyebrow={t("home.newEyebrow")}
-        title={t("home.newTitle")}
-        sub={t("home.newSub")}
-        href="/shop?sort=newest"
-        seeAllLabel={t("home.newAll")}
-        products={fresh}
-        tone="paper"
-      />
     </>
   );
 }
@@ -207,15 +129,13 @@ function WholeShelf({
   );
 }
 
-function Hero({
-  cms,
-  categories,
-  pool,
-}: {
-  cms: HomeSettings;
-  categories: Category[];
-  pool: Product[];
-}) {
+/**
+ * Compact hero (Batch K): the full-screen cinematic poster is gone. One slim
+ * banner — eyebrow, headline, one line of copy, one CTA into the shop, and a
+ * quiet "shop by category" jump to the section right below. The CMS copy and
+ * the §31 visibility toggle still drive it.
+ */
+function Hero({ cms }: { cms: HomeSettings }) {
   const { hero } = cms;
   const { lang, t } = useLanguage();
 
@@ -234,7 +154,7 @@ function Hero({
   return (
     <section
       aria-labelledby="hero-heading"
-      className="cinematic-hero relative isolate flex overflow-hidden bg-forest-950 text-ivory-50"
+      className="compact-hero relative isolate flex overflow-hidden bg-forest-950 text-ivory-50"
     >
       <div className="absolute inset-0 overflow-hidden">
         <Image
@@ -243,40 +163,36 @@ function Hero({
           fill
           preload
           sizes="100vw"
-          className="hero-cinematic-image object-cover will-change-transform"
+          className="hero-compact-image object-cover will-change-transform"
           style={{ transform: "translateZ(0)" }}
         />
       </div>
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,22,17,0.97)_0%,rgba(7,25,19,0.84)_28%,rgba(8,24,18,0.30)_58%,rgba(8,20,15,0.08)_100%)] max-sm:bg-[linear-gradient(0deg,rgba(5,18,13,0.94)_0%,rgba(5,18,13,0.55)_48%,rgba(5,18,13,0.10)_78%)]"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-t from-forest-950/35 via-transparent to-forest-950/10"
+        className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,22,17,0.96)_0%,rgba(7,25,19,0.84)_34%,rgba(8,24,18,0.32)_64%,rgba(8,20,15,0.08)_100%)] max-sm:bg-[linear-gradient(0deg,rgba(5,18,13,0.93)_0%,rgba(5,18,13,0.55)_55%,rgba(5,18,13,0.16)_100%)]"
       />
 
-      <div className="relative mx-auto flex w-full max-w-7xl items-end px-5 pb-8 pt-20 sm:items-center sm:px-8 sm:py-14 lg:px-10 xl:px-8">
+      <div className="relative mx-auto flex w-full max-w-7xl items-center px-5 py-9 sm:px-8 sm:py-12 lg:px-8">
         <div className="hero-copy max-w-2xl">
-          <p className="flex items-center gap-3 text-[0.64rem] font-semibold uppercase tracking-[0.32em] text-gold-200">
-            <span aria-hidden="true" className="h-px w-8 bg-gold-300/80" />
+          <p className="flex items-center gap-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.3em] text-gold-200">
+            <span aria-hidden="true" className="h-px w-6 bg-gold-300/80" />
             {displayHero.eyebrow}
             <span aria-hidden="true" className="text-gold-300/60">/</span>
-            <span lang="bn" className="font-bengali text-sm font-medium normal-case tracking-normal">
+            <span lang="bn" className="font-bengali text-xs font-medium normal-case tracking-normal">
               {lang === "bn" ? "PROSANTI" : t("hero.prosanti")}
             </span>
           </p>
           <h1
             id="hero-heading"
-            className="mt-4 font-display text-[clamp(2.4rem,5.2vw,5rem)] font-normal leading-[0.98] tracking-[-0.045em]"
+            className="mt-3 font-display text-[clamp(1.75rem,3.8vw,3.25rem)] font-normal leading-[1.06] tracking-[-0.035em]"
           >
-            <span className="block">{displayHero.title1}</span>
-            <span className="mt-1 block italic text-gold-200">{displayHero.title2}</span>
+            {displayHero.title1}{" "}
+            <span className="italic text-gold-200">{displayHero.title2}</span>
           </h1>
-          <p className="mt-4 max-w-md text-sm leading-7 text-ivory-100/82 sm:text-base sm:leading-8">
+          <p className="mt-2.5 max-w-md text-sm leading-7 text-ivory-100/82">
             {displayHero.subtitle}
           </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <Link
               href="/shop"
               className="editorial-button bg-ivory-100 text-forest-950 hover:bg-gold-200"
@@ -285,21 +201,15 @@ function Hero({
               <IconArrowRight className="h-4 w-4" />
             </Link>
             <a
-              href="#shelf"
-              className="inline-flex min-h-[3.25rem] items-center gap-2 px-2 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-ivory-100/85 transition-colors hover:text-gold-200"
+              href="#collections"
+              className="inline-flex min-h-11 items-center gap-1.5 px-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-ivory-100/85 transition-colors hover:text-gold-200"
             >
-              {t("home.shelfEyebrow")}
+              {t("hero.categoriesCta")}
               <span aria-hidden="true">↓</span>
             </a>
           </div>
-          {/* Batch J — the first screen names what we sell. */}
-          <BrowseChips categories={categories} pool={pool} />
         </div>
       </div>
-
-      <p className="absolute bottom-7 right-8 hidden text-[0.58rem] font-medium uppercase tracking-[0.28em] text-ivory-100/70 lg:block">
-        {t("hero.badge")}
-      </p>
     </section>
   );
 }
@@ -340,6 +250,11 @@ function SectionHeading({
   );
 }
 
+/**
+ * Categories, directly under the hero: one card per active category with
+ * pieces, each card a link into the filtered shop. This is the first
+ * screen's answer to "what do you sell?" — before offers, before products.
+ */
 function CollectionsSection({
   pool,
   categories,
@@ -414,36 +329,6 @@ function CollectionsSection({
                   </div>
                 </div>
               </Link>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function BestSellersSection({ pool }: { pool: Product[] }) {
-  const { t } = useLanguage();
-  const featured = pool.filter((p) => p.featured);
-  if (featured.length === 0) return null;
-  return (
-    <section id="featured" className="border-y border-line bg-paper scroll-mt-28">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-        <SectionHeading
-          eyebrow={t("bestSellers.eyebrow")}
-          title={t("bestSellers.title")}
-          sub={t("bestSellers.subtitle")}
-          href="/shop"
-          linkLabel={t("bestSellers.shopCollection")}
-        />
-        <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7">
-          {featured.slice(0, 4).map((product, index) => (
-            <Reveal
-              key={product.id}
-              delay={index * 80}
-              className="w-[72vw] min-w-[230px] shrink-0 snap-start sm:w-auto sm:min-w-0"
-            >
-              <ProductCard product={product} />
             </Reveal>
           ))}
         </div>

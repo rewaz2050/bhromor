@@ -251,10 +251,28 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+/* Batch N — the one-at-a-time toast: it rises from the bottom edge the way
+   the bag count does, so notices and cart feedback feel like one system. */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Batch L — the low-stock dot. A slow breath, not a blink: urgency that
+   shouts ("HURRY!") reads as fake on a clothing site; a pulse reads as life. */
+@keyframes stock-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
 @media (prefers-reduced-motion: no-preference) {
   .bag-count-feedback,
   .wishlist-feedback {
     animation: storefront-feedback 200ms ease-out;
+  }
+  .stock-pulse {
+    animation: stock-pulse 2.4s ease-in-out infinite;
+  }
+  .toast-enter {
+    animation: toast-in 240ms var(--ease-refined) both;
   }
   .editorial-hero h1 {
     animation: storefront-reveal 520ms var(--ease-refined) both;
@@ -590,13 +608,14 @@ body {
 /* Premium storefront refresh ------------------------------------------------
    Full-bleed campaign imagery and quiet product cards. These are intentionally
    scoped classes so the admin surface keeps its compact utility styling. */
-/* Batch J (2026-09-19): the hero is a compact opener, not a full screen —
-   the browse chips sit inside it and the first product row must start
-   within the first scroll on a phone. */
-.cinematic-hero {
-  min-height: clamp(26rem, 62svh, 38rem);
+/* Batch K (2026-09-19): the full-screen cinematic hero is gone. The opener
+   is one slim banner — copy plus a single CTA — so the category cards start
+   right below it and the first products arrive within the first scroll on
+   a phone. Height comes from the copy and its padding, not a viewport clamp. */
+.compact-hero {
+  min-height: 12rem;
 }
-.hero-cinematic-image {
+.hero-compact-image {
   object-position: center center;
   will-change: transform;
   transform: translateZ(0);
@@ -621,10 +640,7 @@ body {
 }
 
 @media (max-width: 639px) {
-  .cinematic-hero {
-    min-height: clamp(24rem, 58svh, 34rem);
-  }
-  .hero-cinematic-image {
+  .hero-compact-image {
     object-position: 64% center;
   }
 }

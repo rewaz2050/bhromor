@@ -10,6 +10,8 @@ import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
 import FlashStrip from "@/components/promo/flash-strip";
 import CampaignStrip from "@/components/promo/campaign-strip";
 import RefCapture from "@/components/promo/ref-capture";
+import PageProgress from "@/components/ui/page-progress";
+import Toaster from "@/components/ui/toaster";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -28,6 +30,20 @@ export const metadata: Metadata = {
     "panjabi",
     "three-piece",
   ],
+  /* Batch N — the Home Screen install: icons for Android/Chrome and iOS,
+     plus the standalone window title on iOS. */
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "PROSANTI",
+    statusBarStyle: "default",
+  },
   openGraph: {
     type: "website",
     siteName: "PROSANTI",
@@ -58,6 +74,8 @@ export default function SiteLayout({
     // choice is remembered on this device.
     <LanguageProvider initialLang="bn">
       <CartProvider>
+        <PageProgress />
+        <Toaster />
         <CustomerProvider>
           <a
             href="#main"

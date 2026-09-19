@@ -308,15 +308,29 @@ export default function PurchasePanel({ product }: { product: Product }) {
         {product.shortDescription}
       </p>
 
-      {/* Stock note */}
+      {/* Stock note — Batch L: when the row carries a real count and the shop
+          has flagged it low, say the number; otherwise stay qualitative. */}
       <div className="mt-5 flex items-center gap-2 text-sm">
-        {product.inStock ? (
+        {product.inStock && product.lowStock ? (
+          <span
+            data-testid="stock-urgency"
+            className="inline-flex items-center gap-1.5 rounded-full bg-gold-100 px-2.5 py-1 text-xs font-semibold text-gold-700 ring-1 ring-gold-200"
+          >
+            <span
+              aria-hidden="true"
+              className="stock-pulse h-1.5 w-1.5 rounded-full bg-gold-500"
+            />
+            {typeof product.stock === "number" && product.stock > 0
+              ? t("purchase.lowStockCount").replace(
+                  "{n}",
+                  String(product.stock),
+                )
+              : t("product.almostGone")}
+          </span>
+        ) : product.inStock ? (
           <>
             <span className="h-2 w-2 rounded-sm bg-forest-500" />
             <span className="text-forest-800">{t("purchase.inStock")}</span>
-            {product.lowStock && (
-              <span className="text-ink-soft">{t("purchase.lowStock")}</span>
-            )}
           </>
         ) : (
           <>

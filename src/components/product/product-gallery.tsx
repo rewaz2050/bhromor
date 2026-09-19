@@ -3,6 +3,10 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Product } from "@/lib/catalog";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { IconPlus } from "@/components/ui/icons";
+import GalleryLightbox from "./gallery-lightbox";
+import { useProductCoverFlight } from "./card-flight";
 import {
   driveThumbnailUrl,
   extractDriveFileId,
@@ -89,31 +93,71 @@ function EmbedFacade({
 }
 
 export default function ProductGallery({ product }: { product: Product }) {
+  const { t } = useLanguage();
+  /* Batch M — if this page was opened from a product card, the tapped photo
+     grows into this cover (FLIP overlay); nothing happens otherwise. */
+  const coverRef = useProductCoverFlight(product.slug);
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState<string | null>(null);
+  /* Batch L — fullscreen viewer. The card is 4:5 in a phone column; the
+     weave is only judgeable blown up, so a tap on the photo opens one. */
+  const [zoomed, setZoomed] = useState(false);
   const slides = slidesOf(product);
   // Clamp: navigating between products (or an admin removing media) could
   // leave the index pointing past the end, blanking the gallery.
   const index = Math.min(Math.max(active, 0), Math.max(slides.length - 1, 0));
   const current = slides[index];
+  const stills = slides.flatMap((slide) =>
+    slide.kind === "image"
+      ? [{ key: slide.key, src: slide.src, alt: slide.alt }]
+      : [],
+  );
+  const stillIndex = Math.max(
+    0,
+    stills.findIndex((still) => still.key === current?.key),
+  );
 
   const pick = (i: number) => {
     setActive(i);
     setPlaying(null);
   };
 
+  /** The viewer navigates stills; the gallery keeps its videos in the run. */
+  const pickStill = (i: number) => {
+    const target = stills[i];
+    if (!target) return;
+    const slideIndex = slides.findIndex((slide) => slide.key === target.key);
+    if (slideIndex >= 0) pick(slideIndex);
+  };
+
   return (
     <div>
       <div className="relative aspect-[4/5] overflow-hidden bg-ivory-100 ring-1 ring-line">
         {current?.kind === "image" && (
-          <Image
-            src={current.src}
-            alt={current.alt}
-            fill
-            priority
-            sizes="(min-width: 1024px) 48vw, 100vw"
-            className="object-cover"
-          />
+          <button
+            type="button"
+            onClick={() => setZoomed(true)}
+            aria-label={`${t("gallery.openZoom")} ${current.alt}`}
+            data-testid="gallery-zoom-open"
+            className="group/zoom absolute inset-0 block cursor-zoom-in"
+          >
+            <Image
+              key={current.key}
+              ref={index === 0 ? coverRef : undefined}
+              src={current.src}
+              alt={current.alt}
+              fill
+              priority
+              sizes="(min-width: 1024px) 48vw, 100vw"
+              className="object-cover"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-forest-950/65 text-ivory-50 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover/zoom:opacity-100"
+            >
+              <IconPlus className="h-4 w-4" />
+            </span>
+          </button>
         )}
         {current?.kind === "video" && (
           <video
@@ -249,6 +293,15 @@ export default function ProductGallery({ product }: { product: Product }) {
             );
           })}
         </div>
+      )}
+      {zoomed && stills.length > 0 && (
+        <GalleryLightbox
+          images={stills}
+          index={stillIndex}
+          onIndexChange={pickStill}
+          onClose={() => setZoomed(false)}
+          title={product.name}
+        />
       )}
     </div>
   );

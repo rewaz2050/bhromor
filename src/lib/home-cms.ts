@@ -22,11 +22,12 @@ export interface HomeSettings {
 /**
  * Product campaigns, budget edits and new-arrival rails live on /shop. Keeping
  * them out of this list prevents the landing page from becoming repetitive.
+ * (Batch K: the "featured edit" block moved off the homepage too — the whole
+ * shelf below the categories already shows every piece.)
  */
 export const SECTION_KEYS = [
   "hero",
   "collections",
-  "featured",
   "brandStory",
   "trust",
   "brandJournal",
@@ -34,9 +35,8 @@ export const SECTION_KEYS = [
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
-  hero: "Cinematic hero",
-  collections: "Collections",
-  featured: "Featured edit",
+  hero: "Compact hero",
+  collections: "Categories",
   brandStory: "Brand philosophy",
   trust: "Service promise strip",
   brandJournal: "Visual journal",
@@ -57,7 +57,6 @@ export const HOME_DEFAULTS: HomeSettings = {
   sections: {
     hero: true,
     collections: true,
-    featured: true,
     brandStory: true,
     trust: true,
     brandJournal: true,
