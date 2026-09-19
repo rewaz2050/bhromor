@@ -53,6 +53,31 @@ export const translations = {
       subtitle: "The pieces our wardrobe begins with — purposeful, versatile and made to be worn often.",
       shopCollection: "Shop the collection",
     },
+    home: {
+      browseLabel: "Browse",
+      chipAll: "All pieces",
+      chipNew: "New arrivals",
+      chipBest: "Best sellers",
+      bestEyebrow: "Most ordered",
+      bestTitle: "Best sellers",
+      bestSub: "Ranked by real orders — what your neighbours are actually buying.",
+      bestAll: "See all best sellers",
+      newEyebrow: "Just in",
+      newTitle: "New arrivals",
+      newSub: "The latest pieces on the shelf.",
+      newAll: "See all new arrivals",
+      shelfEyebrow: "The whole shelf",
+      shelfTitle: "Everything, by category",
+      shelfSub: "Keep scrolling — every piece we sell is here, grouped the way you shop.",
+      seeAllIn: "See all {count} in {category}",
+      moreIn: "More in {category}",
+      pieces: "{count} pieces",
+      piece: "1 piece",
+      soldOutBadge: "Sold out",
+      lowStockBadge: "Only {count} left",
+      emptyTitle: "The shelf is being stocked.",
+      emptyBody: "Nothing is published yet — check back shortly, or message us on WhatsApp for what you need.",
+    },
     trust: {
       cashOnDelivery: "Cash on Delivery",
       instantDelivery: "Instant Delivery · 45–50 min",
@@ -595,6 +620,31 @@ export const translations = {
       subtitle: "যে পোশাকগুলো দিয়ে আমাদের ওয়ারড্রোব শুরু — উদ্দেশ্যময়, বহুমুখী আর বারবার পরার জন্য তৈরি।",
       shopCollection: "কালেকশন দেখুন",
     },
+    home: {
+      browseLabel: "দেখুন",
+      chipAll: "সব পোশাক",
+      chipNew: "নতুন এসেছে",
+      chipBest: "সবচেয়ে বিক্রিত",
+      bestEyebrow: "সবচেয়ে বেশি অর্ডার",
+      bestTitle: "সবচেয়ে বিক্রিত",
+      bestSub: "আসল অর্ডারের হিসাবে সাজানো — আপনার প্রতিবেশীরা যা সত্যিই কিনছেন।",
+      bestAll: "সব বিক্রিত পোশাক দেখুন",
+      newEyebrow: "সদ্য এসেছে",
+      newTitle: "নতুন এসেছে",
+      newSub: "শেলফে সবচেয়ে নতুন পোশাকগুলো।",
+      newAll: "সব নতুন পোশাক দেখুন",
+      shelfEyebrow: "পুরো শেলফ",
+      shelfTitle: "সব পোশাক, ক্যাটাগরি অনুযায়ী",
+      shelfSub: "স্ক্রল করতে থাকুন — আমরা যা বিক্রি করি সবই এখানে, আপনার কেনার ধরনে সাজানো।",
+      seeAllIn: "{category}-এর সব {count}টি দেখুন",
+      moreIn: "{category}-এ আরও",
+      pieces: "{count}টি পোশাক",
+      piece: "১টি পোশাক",
+      soldOutBadge: "স্টক শেষ",
+      lowStockBadge: "মাত্র {count}টি বাকি",
+      emptyTitle: "শেলফ সাজানো হচ্ছে।",
+      emptyBody: "এখনো কিছু প্রকাশ হয়নি — একটু পরে দেখুন, অথবা যা দরকার WhatsApp-এ জানান।",
+    },
     trust: {
       cashOnDelivery: "ক্যাশ অন ডেলিভারি",
       instantDelivery: "তাৎক্ষণিক ডেলিভারি · ৪৫–৫০ মিনিট",
@@ -1091,6 +1141,7 @@ export type TranslationKey =
   | `hero.${keyof typeof translations.en.hero}`
   | `collections.${keyof typeof translations.en.collections}`
   | `bestSellers.${keyof typeof translations.en.bestSellers}`
+  | `home.${keyof typeof translations.en.home}`
   | `trust.${keyof typeof translations.en.trust}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`

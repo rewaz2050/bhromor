@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import Home from "../page";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { __resetHomeSettings } from "@/lib/use-home-settings";
+import { MY_ZONE_KEY } from "@/lib/use-my-zone";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -104,16 +105,17 @@ describe("Homepage editorial journey", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "Featured." }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Heritage Green Panjabi" }),
-    ).toHaveAttribute("href", "/product/heritage-green-panjabi");
+    const links = screen.getAllByRole("link", { name: "Heritage Green Panjabi" });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/product/heritage-green-panjabi");
+    }
   });
 
-  it("keeps the homepage short and contains no launch-unsafe review proof", async () => {
+  it("contains no launch-unsafe review proof or retired promo rails", async () => {
     await renderHome();
 
     expect(screen.queryByText(/demo review/i)).toBeNull();
-    expect(screen.queryByRole("heading", { name: /new arrivals/i })).toBeNull();
     expect(screen.queryByRole("heading", { name: /under ৳500/i })).toBeNull();
     expect(
       screen.queryByRole("heading", { name: /dress for your kind of day/i }),
@@ -121,13 +123,95 @@ describe("Homepage editorial journey", () => {
     expect(screen.queryByRole("heading", { name: /customer reviews/i })).toBeNull();
   });
 
-  it("follows hero → collections → featured → trust", async () => {
+  /* Batch J (2026-09-19) — the homepage is the shelf: chips name every
+     category on the first screen, and every published piece appears under
+     its category further down. */
+  it("names every category (and the curated paths) on the first screen", async () => {
+    await renderHome();
+    const chips = await screen.findByTestId("browse-chips");
+    const names = within(chips).getAllByRole("link").map((a) => a.textContent);
+    expect(names).toEqual(
+      expect.arrayContaining(["Men", "Women", "Traditional", "New arrivals", "All pieces"]),
+    );
+    expect(within(chips).getByRole("link", { name: "Men" })).toHaveAttribute(
+      "href",
+      "/shop?category=men",
+    );
+    expect(within(chips).getByRole("link", { name: "New arrivals" })).toHaveAttribute(
+      "href",
+      "/shop?sort=newest",
+    );
+    // Launch seeds carry no real sales → no "Best sellers" chip, no rail.
+    expect(within(chips).queryByRole("link", { name: "Best sellers" })).toBeNull();
+    expect(screen.queryByTestId("rail-best")).toBeNull();
+  });
+
+  it("lists every published piece under its own category shelf", async () => {
+    await renderHome();
+    await screen.findByTestId("whole-shelf");
+    const shelves = screen.getAllByTestId("category-shelf");
+    const ids = shelves.map((s) => s.getAttribute("data-category"));
+    expect(ids).toEqual(["men", "women", "traditional"]);
+    const seen = new Set<string>();
+    for (const shelf of shelves) {
+      const cat = shelf.getAttribute("data-category");
+      for (const card of within(shelf).getAllByRole("article")) {
+        const product = PRODUCTS.find((p) =>
+          within(card).queryByRole("link", { name: p.name }),
+        );
+        expect(product).toBeDefined();
+        expect(product!.category).toBe(cat);
+        seen.add(product!.id);
+      }
+    }
+    const visible = PRODUCTS.filter((p) => p.active !== false && p.status !== "draft");
+    expect([...seen].sort()).toEqual(visible.map((p) => p.id).sort());
+    // Each shelf heading is itself the category link.
+    expect(
+      within(shelves[0]).getByRole("heading", { level: 2, name: "Men" }).closest("a"),
+    ).toHaveAttribute("href", "/shop?category=men");
+  });
+
+  it("has a new-arrivals rail that deep-links to the sorted shop", async () => {
+    await renderHome();
+    const rail = await screen.findByTestId("rail-new");
+    expect(within(rail).getByRole("heading", { level: 2, name: "New arrivals" })).toBeInTheDocument();
+    expect(within(rail).getByRole("link", { name: /see all new arrivals/i })).toHaveAttribute(
+      "href",
+      "/shop?sort=newest",
+    );
+    // in-stock pieces only
+    for (const card of within(rail).getAllByRole("article")) {
+      expect(within(card).queryByText(/sold out/i)).toBeNull();
+    }
+  });
+
+  it("says 'no shop delivers there' (with a reset) instead of 'being stocked' for an unserved zone", async () => {
+    window.localStorage.setItem(MY_ZONE_KEY, "zone-nowhere");
+    try {
+      await renderHome();
+      const empty = await screen.findByTestId("whole-shelf-empty");
+      expect(within(empty).getByRole("heading", { level: 2 })).toHaveTextContent(
+        /no shops deliver there yet/i,
+      );
+      expect(screen.queryByTestId("category-shelf")).toBeNull();
+      fireEvent.click(within(empty).getByRole("button", { name: /show all zones/i }));
+      expect(await screen.findByTestId("whole-shelf")).toBeInTheDocument();
+      expect(screen.getAllByTestId("category-shelf").length).toBeGreaterThan(0);
+    } finally {
+      window.localStorage.removeItem(MY_ZONE_KEY);
+    }
+  });
+
+  it("follows hero → rails → collections → featured → shelf → trust", async () => {
     const { container } = await renderHome();
-    await screen.findByRole("link", { name: "Heritage Green Panjabi" });
+    await screen.findByTestId("whole-shelf");
     const selectors = [
       ".cinematic-hero",
+      "#new-arrivals",
       "#collections",
       "#featured",
+      '[data-testid="category-shelf"]',
       '[aria-label="PROSANTI service promises"]',
     ];
     const positions = selectors.map((selector) => {

@@ -30,7 +30,7 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 type CategoryFilter = "all" | CategoryId;
-type SortKey = "featured" | "newest" | "best" | "price-asc" | "price-desc";
+import type { SortKey } from "@/lib/shop-sort";
 
 /** Static price band bounds — labels come from translations so BN shows pure Bangla. */
 const PRICE_BAND_DEFS: {
@@ -87,6 +87,7 @@ export default function ShopBrowser({
   initialQuery = "",
   initialMood = "",
   initialPrice = "any",
+  initialSort = "featured",
 }: {
   products: Product[];
   categories: Category[];
@@ -97,12 +98,13 @@ export default function ShopBrowser({
   initialQuery?: string;
   initialMood?: MoodId | "";
   initialPrice?: "any" | "under500";
+  initialSort?: SortKey;
 }) {
   const { t, lang } = useLanguage();
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
   const [q, setQ] = useState(initialQuery);
-  const [sort, setSort] = useState<SortKey>("featured");
+  const [sort, setSort] = useState<SortKey>(initialSort);
   const [sizes, setSizes] = useState<string[]>([]);
   const [colors, setColors] = useState<string[]>([]);
   const [mood, setMood] = useState<MoodId | "">(initialMood);
@@ -164,6 +166,7 @@ export default function ShopBrowser({
     initialQuery,
     initialMood,
     initialPrice,
+    initialSort,
   });
   useEffect(() => {
     const prev = lastUrlState.current;
@@ -172,7 +175,8 @@ export default function ShopBrowser({
       prev.initialNew !== initialNew ||
       prev.initialMood !== initialMood ||
       prev.initialPrice !== initialPrice ||
-      prev.initialQuery !== initialQuery
+      prev.initialQuery !== initialQuery ||
+      prev.initialSort !== initialSort
     ) {
       lastUrlState.current = {
         initialCategory,
@@ -180,6 +184,7 @@ export default function ShopBrowser({
         initialQuery,
         initialMood,
         initialPrice,
+        initialSort,
       };
       setCategory(initialCategory);
       setOnlyNew(initialNew);
@@ -189,9 +194,9 @@ export default function ShopBrowser({
       setPriceBand(initialPrice);
       setMood(initialMood);
       setOnlyInStock(false);
-      setSort("featured");
+      setSort(initialSort);
     }
-  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice]);
+  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice, initialSort]);
 
   const allSizes = useMemo(
     () => collectSizes(zonedProducts),

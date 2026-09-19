@@ -5,6 +5,7 @@ import {
   getStorefrontZones,
 } from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
+import { resolveSort } from "@/lib/shop-sort";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
@@ -30,6 +31,7 @@ export default async function ShopPage({
     q?: string | string[];
     mood?: string | string[];
     price?: string | string[];
+    sort?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -44,6 +46,8 @@ export default async function ShopPage({
     : ("all" as const);
   const query = typeof params.q === "string" ? params.q : "";
   const onlyNew = params.filter === "new";
+  // Batch J — the homepage rails deep-link here ("See all best sellers").
+  const initialSort = resolveSort(params.sort);
 
   return (
     <>
@@ -64,6 +68,7 @@ export default async function ShopPage({
           initialQuery={query}
           initialMood={resolveMood(params.mood)}
           initialPrice={params.price === "under500" ? "under500" : "any"}
+          initialSort={initialSort}
         />
       </div>
       {/* Visual journal retained on the shop (removed from the short homepage). */}
