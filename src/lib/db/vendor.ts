@@ -15,18 +15,20 @@ import {
   isPreTwoTapRefusal,
   legacyTwoStepReady,
   orderFlowSchemaGap,
-  readProductBundle,
 } from "./admin";
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
-import { mapCategory, mapShop } from "./mappers";
+import { mapCategory, mapProduct, mapShop } from "./mappers";
 import { toDomain, toDomainMany } from "./orders";
 import type {
   DbCategory,
+  DbMedia,
+  DbProduct,
   DbShopLedger,
   DbOrder,
   DbShopPayout,
   DbShop,
+  DbVariant,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -285,22 +287,40 @@ export async function verifyPaymentAsVendor(
 /* Products (own shop — drafts included)                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The shop's own catalog, drafts and archived rows included. Three batched
+ * reads whatever the size — until 2026-09-18 this ran three queries PER
+ * product (a 200-piece shop = 600 round trips on every visit and after
+ * every save).
+ */
 export async function listVendorProducts(
   db: SupabaseClient,
   shopId: string,
 ): Promise<Product[]> {
   const { data, error } = await db
     .from("products")
-    .select("id")
+    .select("*")
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw new Error("vendor product list failed");
-  const out: Product[] = [];
-  for (const row of ((data ?? []) as { id: string }[])) {
-    out.push(await readProductBundle(db, row.id));
-  }
-  return out;
+  const products = (data ?? []) as DbProduct[];
+  if (products.length === 0) return [];
+  const ids = products.map((p) => p.id);
+  const [vRes, mRes] = await Promise.all([
+    db.from("product_variants").select("*").in("product_id", ids),
+    db.from("product_media").select("*").in("product_id", ids).order("sort_order"),
+  ]);
+  if (vRes.error || mRes.error) throw new Error("vendor product list failed");
+  const variants = (vRes.data ?? []) as DbVariant[];
+  const media = (mRes.data ?? []) as DbMedia[];
+  return products.map((p) =>
+    mapProduct({
+      product: p,
+      variants: variants.filter((v) => v.product_id === p.id),
+      media: media.filter((m) => m.product_id === p.id),
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ */

@@ -10,6 +10,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { csvDateSuffix, downloadText, ordersCsv } from "@/lib/csv";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { useNow } from "@/lib/use-now";
 import { ageLabel, ageMinutes } from "@/lib/order-actions";
@@ -145,17 +146,10 @@ export default function AdminOrdersPage() {
   const newOrdersCount = orders.filter((o) => o.status === "pending").length;
   const actionCount = orders.filter((o) => ACTION_STATUSES.includes(o.status)).length;
 
+  // Spreadsheet export of the rows on screen (lib/csv.ts: taka not paisa,
+  // quoted fields, items + payment + rider columns, BOM for Excel).
   const exportCsv = () => {
-    const header = ["OrderID","Customer","Phone","Area","Total","Status","Created"].join(",");
-    const rows = visible.map((o) => [o.id, `"${o.customer.name}"`, o.customer.phone, `"${o.customer.area}"`, o.total, o.status, new Date(o.createdAt).toISOString()].join(","));
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `prosanti-orders-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadText(`prosanti-orders-${csvDateSuffix()}.csv`, ordersCsv(visible));
   };
 
   return (

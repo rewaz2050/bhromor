@@ -1023,13 +1023,22 @@ export async function updateProduct(
   if (readError || !existing) throw new AdminInputError("Product not found.", 404);
   const row = existing as DbProduct;
   const input = sanitizeProductInput(raw, true);
+  const rawRec = (raw ?? {}) as Record<string, unknown>;
   const { data: cats } = await db.from("categories").select("id");
-  // PATCH semantics: blank fields fall back to the stored row.
+  // PATCH semantics: blank fields fall back to the stored row. Price and
+  // compare-at too — until 2026-09-18 a body without `price` sanitised to
+  // -1 and every one-field update (Feature, Archive, Restore, the vendor
+  // quick actions) was refused with "Price must be 0 or more".
   const merged: ProductInput = {
     ...input,
     name: input.name || row.name,
     sku: input.sku || row.sku,
     category: input.category || row.category_id,
+    price: rawRec.price === undefined ? row.price : input.price,
+    compareAtPrice:
+      rawRec.compareAtPrice === undefined
+        ? row.compare_at_price
+        : input.compareAtPrice,
   };
   validateProductInput(merged, (cats ?? []) as { id: string }[]);
   const nextSlug =
@@ -1062,14 +1071,15 @@ export async function updateProduct(
     sku: merged.sku,
     category_id: merged.category,
     price: merged.price,
-    status: (raw as { status?: string })?.status ?? row.status,
+    // Sanitised (draft|published) when sent; an arbitrary string can no
+    // longer be written into the enum column.
+    status: rawRec.status === undefined ? row.status : input.status,
     active: (raw as { active?: boolean })?.active ?? row.active,
     featured: (raw as { featured?: boolean })?.featured ?? row.featured,
     is_new: (raw as { isNew?: boolean })?.isNew ?? row.is_new,
     in_stock: (raw as { inStock?: boolean })?.inStock ?? row.in_stock,
     low_stock: (raw as { lowStock?: boolean })?.lowStock ?? row.low_stock,
   };
-  const rawRec = (raw ?? {}) as Record<string, unknown>;
   // P1 #14 — warranty period: null clears it, a number sets it.
   if (rawRec.warrantyDays !== undefined) {
     patch.warranty_days = parseWarrantyDays(rawRec).days;

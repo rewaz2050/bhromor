@@ -299,6 +299,7 @@ export const useVendorProducts = (enabled: boolean) => {
     "/api/vendor/products",
     enabled,
   );
+  const { refresh, reload } = res;
   const [saveError, setSaveError] = useState<string | null>(null);
 
   /** ProductEditor-shaped save: POST for new rows, PATCH for edits. */
@@ -317,15 +318,41 @@ export const useVendorProducts = (enabled: boolean) => {
           product,
         );
       }
-      res.refresh();
+      refresh();
       return true;
     } catch (err) {
       setSaveError(vendorErrorMessage(err));
       return false;
     }
-  }, [res]);
+  }, [refresh]);
 
-  return { ...res, products: res.data?.products ?? [], saveProduct, saveError };
+  /**
+   * One-field shelf change from the list (Publish / Unpublish / Archive /
+   * Restore) — a partial PATCH, re-read in place so the list never blinks
+   * into a skeleton. Throws the API message for the row to show.
+   */
+  const patchProduct = useCallback(
+    async (
+      id: string,
+      patch: { status?: "draft" | "published"; active?: boolean },
+    ): Promise<void> => {
+      await vendorSend(
+        `/api/vendor/products/${encodeURIComponent(id)}`,
+        "PATCH",
+        patch,
+      );
+      reload();
+    },
+    [reload],
+  );
+
+  return {
+    ...res,
+    products: res.data?.products ?? [],
+    saveProduct,
+    saveError,
+    patchProduct,
+  };
 };
 
 export const useVendorCategories = (enabled: boolean) => {

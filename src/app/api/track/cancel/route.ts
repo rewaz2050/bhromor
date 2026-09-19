@@ -127,11 +127,13 @@ export async function POST(req: Request) {
       note: "Payment rejected — order cancelled by the customer (refund from the shop wallet, offline)",
     });
   }
+  // Staff detail pages read by ORDER NUMBER; the row uuid 404s (2026-09-18).
+  const orderRef = order.order_no ?? order.id;
   await notifyStaff(db, {
     kind: "order",
-    title: `Customer cancelled ${order.order_no ?? order.id}`,
+    title: `Customer cancelled ${orderRef}`,
     body: reason || "Cancelled from the track page before packing.",
-    href: `/admin/orders/${order.id}`,
+    href: `/admin/orders/${orderRef}`,
   });
 
   return json({ ok: true, status: "cancelled", paymentRejected: rejectPayment });

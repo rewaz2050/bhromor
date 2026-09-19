@@ -7,11 +7,16 @@ import { useOrders } from "@/lib/use-orders";
 import { useCatalog } from "@/lib/use-catalog";
 import { useSettings } from "@/lib/use-settings";
 import { useReviews } from "@/lib/use-reviews";
+import { useNow } from "@/lib/use-now";
 import { displayStock } from "@/lib/catalog-store";
 import {
   KIND_LABEL,
   agoLabel,
-  unreadCountOf,
+  applyInboxFilter,
+  groupByDay,
+  inboxCounts,
+  inboxHref,
+  type InboxFilter,
   type NotifKind,
 } from "@/lib/notification-store";
 import { aggregateOrders } from "@/lib/orders";
@@ -26,7 +31,14 @@ const KIND_ICON: Record<NotifKind, string> = {
   system: "bg-ivory-200 text-ink-soft",
 };
 
-const FILTERS: (NotifKind | "all")[] = ["all", "order", "review", "stock", "system"];
+const FILTERS: { id: InboxFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "unread", label: "Unread" },
+  { id: "order", label: KIND_LABEL.order },
+  { id: "review", label: KIND_LABEL.review },
+  { id: "stock", label: KIND_LABEL.stock },
+  { id: "system", label: KIND_LABEL.system },
+];
 
 /** §35 notifications — live attention summary + readable inbox. */
 export default function AdminNotificationsPage() {
@@ -35,9 +47,10 @@ export default function AdminNotificationsPage() {
   const { products } = useCatalog();
   const { settings } = useSettings();
   const { reviews } = useReviews();
-  const [filter, setFilter] = useState<NotifKind | "all">("all");
+  const [filter, setFilter] = useState<InboxFilter>("all");
+  const now = useNow(30_000);
 
-  const counts = useMemo(() => unreadCountOf(notifs), [notifs]);
+  const counts = useMemo(() => inboxCounts(notifs), [notifs]);
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const lowStockCount = useMemo(
     () =>
@@ -47,13 +60,31 @@ export default function AdminNotificationsPage() {
     [products, settings],
   );
   const pendingReviews = useMemo(() => statusCounts(reviews).pending, [reviews]);
+  const walletPending = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.payment !== "cod" &&
+          o.paymentStatus === "pending_verification" &&
+          o.status !== "cancelled",
+      ).length,
+    [orders],
+  );
 
+  // Each card opens the queue it counts, pre-filtered (same deep links the
+  // dashboard uses) — a number without a door was the old page's problem.
   const needsAttention = [
     {
-      label: "New orders awaiting action",
-      value: agg.byStatus.pending + agg.byStatus.confirmed,
-      href: "/admin/orders",
+      label: "Orders needing action",
+      value: agg.byStatus.pending + agg.byStatus.confirmed + agg.byStatus.preparing,
+      href: "/admin/orders?status=action",
       tone: "text-forest-900",
+    },
+    {
+      label: "Wallet payments to verify",
+      value: walletPending,
+      href: "/admin/payments",
+      tone: walletPending > 0 ? "text-rose-700" : "text-forest-900",
     },
     {
       label: "Reviews in the moderation queue",
@@ -69,14 +100,16 @@ export default function AdminNotificationsPage() {
     },
   ];
 
-  const visible = notifs
-    .filter((n) => (filter === "all" ? true : n.kind === filter))
-    .sort((a, b) => b.at - a.at);
+  const groups = useMemo(
+    () => groupByDay(applyInboxFilter(notifs, filter), now),
+    [notifs, filter, now],
+  );
+  const visibleCount = groups.reduce((sum, g) => sum + g.items.length, 0);
 
   return (
     <div className="space-y-6">
       {/* Live “needs attention” — derived from the real stores */}
-      <section aria-label="Needs attention" className="grid gap-4 sm:grid-cols-3">
+      <section aria-label="Needs attention" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {needsAttention.map((item) => (
           <Link
             key={item.label}
@@ -96,9 +129,9 @@ export default function AdminNotificationsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-medium text-forest-900">
           Inbox
-          {counts > 0 && (
+          {counts.unread > 0 && (
             <span className="ml-3 rounded-full bg-gold-500 px-2.5 py-1 text-[0.7rem] font-bold text-white align-middle">
-              {counts} unread
+              {counts.unread} unread
             </span>
           )}
         </h2>
@@ -106,7 +139,8 @@ export default function AdminNotificationsPage() {
           <button
             type="button"
             onClick={() => void readAll()}
-            className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+            disabled={counts.unread === 0}
+            className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-50"
           >
             <IconCheck className="h-3.5 w-3.5" /> Mark all read
           </button>
@@ -116,25 +150,23 @@ export default function AdminNotificationsPage() {
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
         {FILTERS.map((f) => (
           <button
-            key={f}
+            key={f.id}
             type="button"
-            onClick={() => setFilter(f)}
-            aria-pressed={filter === f}
+            onClick={() => setFilter(f.id)}
+            aria-pressed={filter === f.id}
             className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium transition-colors ${
-              filter === f
+              filter === f.id
                 ? "bg-forest-800 text-ivory-50"
                 : "bg-paper text-ink-soft ring-1 ring-line hover:text-forest-800"
             }`}
           >
-            {f === "all" ? "All" : KIND_LABEL[f]}
+            {f.label}
             <span
               className={`rounded-full px-1.5 text-[0.65rem] font-bold ${
-                filter === f ? "bg-white/20 text-ivory-50" : "bg-ivory-100 text-ink-soft"
+                filter === f.id ? "bg-white/20 text-ivory-50" : "bg-ivory-100 text-ink-soft"
               }`}
             >
-              {f === "all"
-                ? notifs.length
-                : notifs.filter((n) => n.kind === f).length}
+              {counts[f.id]}
             </span>
           </button>
         ))}
@@ -146,17 +178,26 @@ export default function AdminNotificationsPage() {
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">Loading your inbox…</p>
         </div>
-      ) : visible.length === 0 ? (
+      ) : visibleCount === 0 ? (
         <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
-          <p className="font-display text-lg text-forest-900">Nothing here</p>
+          <p className="font-display text-lg text-forest-900">
+            {filter === "unread" ? "All caught up" : "Nothing here"}
+          </p>
           <p className="mt-1 text-sm text-ink-soft">
-            New events will show up as orders arrive, reviews queue and stock
-            runs low.
+            {filter === "unread"
+              ? "Every notice has been read. New orders, payments and reviews land here first."
+              : "New events will show up as orders arrive, reviews queue and stock runs low."}
           </p>
         </div>
       ) : (
+        groups.map((group) => (
+        <section key={group.label} aria-label={group.label}>
+          <h3 className="mb-2 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-ink-soft">
+            {group.label}
+          </h3>
         <ul className="space-y-2.5">
-          {visible.map((n) => {
+          {group.items.map((n) => {
+            const href = inboxHref(n);
             const content = (
               <>
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${KIND_ICON[n.kind]}`}>
@@ -175,7 +216,7 @@ export default function AdminNotificationsPage() {
                     {n.body}
                   </span>
                   <span className="mt-1 block text-xs text-ink-soft/70">
-                    {agoLabel(n.at)}
+                    {agoLabel(n.at, now)}
                   </span>
                 </span>
                 {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-gold-500" aria-label="Unread" />}
@@ -186,22 +227,37 @@ export default function AdminNotificationsPage() {
             }`;
             return (
               <li key={n.id}>
-                {n.href ? (
-                  <Link href={n.href} className={cls} onClick={() => !n.read && void read(n.id)}>
+                {href ? (
+                  <Link href={href} className={cls} onClick={() => !n.read && void read(n.id)}>
                     {content}
                   </Link>
                 ) : (
-                  <div className={cls}>{content}</div>
+                  <div className={cls}>
+                    {content}
+                    {!n.read && (
+                      <button
+                        type="button"
+                        onClick={() => void read(n.id)}
+                        className="ml-2 shrink-0 self-center rounded-full px-2.5 py-1 text-[0.7rem] font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100"
+                      >
+                        Mark read
+                      </button>
+                    )}
+                  </div>
                 )}
               </li>
             );
           })}
         </ul>
+        </section>
+        ))
       )}
 
       <p className="text-xs leading-5 text-ink-soft">
-        Live inbox. Order events (new order, delivery confirmation, smart-card
-        completion) land here automatically.
+        Live inbox — new orders, customer cancellations, wallet payment
+        decisions, return and warranty requests, reviews, applications and
+        stock alerts land here for every staff member. Refreshes every 15 s
+        while this tab is open.
       </p>
     </div>
   );

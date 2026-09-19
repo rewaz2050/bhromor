@@ -6,58 +6,50 @@ import Link from "next/link";
 import { useCatalog } from "@/lib/use-catalog";
 import { formatBdt } from "@/lib/format";
 import {
+  SHELF_FILTERS,
+  SHELF_META,
+  shelfCounts,
+  shelfState,
+  type ShelfState,
+} from "@/lib/product-shelf";
+import ShelfRowActions from "@/components/admin/shelf-row-actions";
+import {
   IconPlus,
   IconSearch,
   IconStar,
 } from "@/components/ui/icons";
 
-type Vis = "all" | "published" | "draft" | "archived";
-
-const VIS: { id: Vis; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "published", label: "Published" },
-  { id: "draft", label: "Drafts" },
-  { id: "archived", label: "Archived" },
-];
-
-const visOf = (p: {
-  active?: boolean;
-  status?: "draft" | "published";
-}): Vis =>
-  p.active === false ? "archived" : p.status === "draft" ? "draft" : "published";
-
-const stockOf = (p: {
-  stock?: number;
-  inStock: boolean;
-  lowStock?: boolean;
-}): number => p.stock ?? (p.inStock ? (p.lowStock ? 3 : 12) : 0);
+type Vis = ShelfState | "all";
 
 /** §72–74 product management list. */
 export default function AdminProductsPage() {
-  const { products, categories, loading, error, clearError, toggleFlag, setProductActive } =
+  const { products, categories, loading, error, clearError, toggleFlag, patchProduct } =
     useCatalog();
   const [vis, setVis] = useState<Vis>("all");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
 
+  // Shelf state (Live / Low / Sold out / Draft / Archived) is the same
+  // model the vendor list uses (product-shelf.ts). Until 2026-09-18 a
+  // sold-out piece hid inside "Published" and the stock column guessed
+  // 3 / 12 units for rows without a count.
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products
-      .filter((p) => (vis === "all" ? true : visOf(p) === vis))
+      .filter((p) => (vis === "all" ? true : shelfState(p) === vis))
       .filter((p) => (category === "all" ? true : p.category === category))
       .filter(
         (p) =>
           q === "" ||
           p.name.toLowerCase().includes(q) ||
+          (p.nameBn ?? "").toLowerCase().includes(q) ||
           p.sku.toLowerCase().includes(q) ||
           p.subCategory.toLowerCase().includes(q),
       );
   }, [products, vis, query, category]);
 
-  const countOf = (id: Vis) =>
-    id === "all"
-      ? products.length
-      : products.filter((p) => visOf(p) === id).length;
+  const counts = useMemo(() => shelfCounts(products), [products]);
+  const countOf = (id: Vis) => counts[id];
 
   if (loading) {
     return (
@@ -122,7 +114,7 @@ export default function AdminProductsPage() {
       </div>
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by visibility">
-        {VIS.map((v) => (
+        {SHELF_FILTERS.map((v) => (
           <button
             key={v.id}
             type="button"
@@ -171,7 +163,9 @@ export default function AdminProductsPage() {
               </thead>
               <tbody className="divide-y divide-line">
                 {visible.map((p) => {
-                  const stock = stockOf(p);
+                  const state = shelfState(p);
+                  const shelf = SHELF_META[state];
+                  const stock = typeof p.stock === "number" ? p.stock : null;
                   return (
                     <tr key={p.id} className="transition-colors hover:bg-ivory-100/70">
                       <td className="px-5 py-3.5">
@@ -208,14 +202,18 @@ export default function AdminProductsPage() {
                       <td className="px-5 py-3.5">
                         <span
                           className={`rounded-full px-2.5 py-1 text-[0.7rem] font-semibold ${
-                            stock === 0
+                            state === "out"
                               ? "bg-rose-100 text-rose-800"
-                              : stock <= 5
+                              : state === "low"
                                 ? "bg-amber-100 text-amber-900"
                                 : "bg-emerald-100 text-emerald-800"
                           }`}
                         >
-                          {stock === 0 ? "Out of stock" : `${stock} in stock`}
+                          {state === "out"
+                            ? "Out of stock"
+                            : stock === null
+                              ? "In stock"
+                              : `${stock} in stock`}
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
@@ -230,19 +228,12 @@ export default function AdminProductsPage() {
                               New
                             </span>
                           )}
-                          {p.active === false ? (
-                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-rose-800">
-                              Archived
-                            </span>
-                          ) : p.status === "draft" ? (
-                            <span className="rounded-full bg-ivory-200 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-ink-soft">
-                              Draft
-                            </span>
-                          ) : (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-emerald-800">
-                              Live
-                            </span>
-                          )}
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide ring-1 ${shelf.cls}`}
+                            title={shelf.hint}
+                          >
+                            {shelf.label}
+                          </span>
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
@@ -267,23 +258,7 @@ export default function AdminProductsPage() {
                           >
                             Edit
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  p.active === false
-                                    ? `Restore “${p.name}” to the catalog?`
-                                    : `Archive “${p.name}”? It stays in history and can be restored anytime (§74).`,
-                                )
-                              ) {
-                                void setProductActive(p.id, p.active === false);
-                              }
-                            }}
-                            className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"
-                          >
-                            {p.active === false ? "Restore" : "Archive"}
-                          </button>
+                          <ShelfRowActions product={p} onPatch={patchProduct} size="sm" />
                         </div>
                       </td>
                     </tr>
