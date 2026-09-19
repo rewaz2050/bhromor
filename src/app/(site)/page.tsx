@@ -15,6 +15,7 @@ import FlashRail from "@/components/promo/flash-rail";
 import LiveBanner from "@/components/live/live-banner";
 import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import CategoryShelfBlock from "@/components/home/category-shelf";
+import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
 import { categoryShelves } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 
@@ -48,6 +49,9 @@ export default function Home() {
       <FlashRail limit={4} />
       {/* The whole shop: one block per category, every discoverable piece. */}
       <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
+      {/* Batch L — this device's own trail, resolved against the live
+          catalog; renders nothing for a first-time visitor. */}
+      <RecentlyViewedRail className="mt-14 border-t-0" />
       {/* P2 #20 — "do you come to my para, for how much?" closes the page:
           trust pills + a one-field zone check that quotes the real charge. */}
       <HomeDeliveryCheck />

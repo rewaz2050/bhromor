@@ -251,10 +251,19 @@ body {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+/* Batch L — the low-stock dot. A slow breath, not a blink: urgency that
+   shouts ("HURRY!") reads as fake on a clothing site; a pulse reads as life. */
+@keyframes stock-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
 @media (prefers-reduced-motion: no-preference) {
   .bag-count-feedback,
   .wishlist-feedback {
     animation: storefront-feedback 200ms ease-out;
+  }
+  .stock-pulse {
+    animation: stock-pulse 2.4s ease-in-out infinite;
   }
   .editorial-hero h1 {
     animation: storefront-reveal 520ms var(--ease-refined) both;

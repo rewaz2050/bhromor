@@ -1,6 +1,9 @@
 import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
+import RecentlyViewedRail, {
+  RecentlyViewedTracker,
+} from "@/components/product/recently-viewed-rail";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -136,6 +139,9 @@ export default async function ProductPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+
+      {/* Batch L — remember this look on this device (localStorage only). */}
+      <RecentlyViewedTracker product={product} />
 
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery product={product} />
@@ -304,6 +310,8 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
+      {/* Batch L — the trail this device already walked (local only). */}
+      <RecentlyViewedRail excludeId={product.id} className="mt-10" />
       {/* §30 reviews — live approved reviews + moderated submission form */}
       <ReviewsSection product={product} />
       {/* Batch K — the very last shelf is the category the shopper is

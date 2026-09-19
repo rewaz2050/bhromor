@@ -184,6 +184,23 @@ export default function ProductCard({ product }: { product: Product }) {
               {t("product.sold").replace("{count}", String(product.unitsSold))}
             </p>
           )}
+          {/* Batch L — scarcity, but only when it is real: the count comes
+              from the row's own stock field, and a row that is merely flagged
+              low (no number) says "almost gone" instead of inventing a figure. */}
+          {product.inStock && product.lowStock ? (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-[0.68rem] font-semibold text-gold-700">
+              <span
+                aria-hidden="true"
+                className="stock-pulse h-1.5 w-1.5 rounded-full bg-gold-500"
+              />
+              {typeof product.stock === "number" && product.stock > 0
+                ? t("purchase.lowStockCount").replace(
+                    "{n}",
+                    String(product.stock),
+                  )
+                : t("product.almostGone")}
+            </p>
+          ) : null}
           {/* P2 #21 — the shop ticks this per product; no tick, no chip. */}
           {product.qualityChecked === true ? (
             <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">

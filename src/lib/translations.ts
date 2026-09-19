@@ -196,6 +196,25 @@ export const translations = {
       increaseQuantity: "Increase quantity",
       decreaseQuantity: "Decrease quantity",
       addToBag: "Add to Bag →",
+      almostGone: "Almost gone",
+    },
+    gallery: {
+      viewer: "Photo viewer",
+      openZoom: "Zoom in on",
+      openImage: "Show photo",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      resetZoom: "Reset",
+      close: "Close viewer",
+      previous: "Previous photo",
+      next: "Next photo",
+      zoomHint: "Double-tap or pinch to zoom · swipe sideways for the next photo",
+    },
+    recently: {
+      eyebrow: "Your trail",
+      title: "Recently viewed",
+      subtitle: "The pieces this device stopped on — pick up where you left off.",
+      clear: "Clear",
     },
     bag: {
       yourBag: "Your Bag",
@@ -255,6 +274,7 @@ export const translations = {
     purchase: {
       inStock: "In stock",
       lowStock: "— only a few left in this size",
+      lowStockCount: "Only {n} left",
       soldOutCheckBack: "Sold out — check back soon",
       colour: "Colour",
       size: "Size",
@@ -745,6 +765,25 @@ export const translations = {
       increaseQuantity: "পরিমাণ বাড়ান",
       decreaseQuantity: "পরিমাণ কমান",
       addToBag: "ব্যাগে যোগ করুন →",
+      almostGone: "শেষ হয়ে যাচ্ছে",
+    },
+    gallery: {
+      viewer: "ছবি দেখার স্ক্রিন",
+      openZoom: "বড় করে দেখুন",
+      openImage: "ছবি দেখান",
+      zoomIn: "বড় করুন",
+      zoomOut: "ছোট করুন",
+      resetZoom: "স্বাভাবিক করুন",
+      close: "বন্ধ করুন",
+      previous: "আগের ছবি",
+      next: "পরের ছবি",
+      zoomHint: "ডাবল-ট্যাপ বা দুই আঙুলে জুম · পাশে সোয়াইপ করে পরের ছবি",
+    },
+    recently: {
+      eyebrow: "আপনার খোঁজ",
+      title: "সম্প্রতি দেখা",
+      subtitle: "এই ফোনে যে পোশাকগুলো দেখেছেন — আবার একবার চোখ বুলিয়ে নিন।",
+      clear: "মুছে ফেলুন",
     },
     bag: {
       yourBag: "আপনার ব্যাগ",
@@ -804,6 +843,7 @@ export const translations = {
     purchase: {
       inStock: "স্টকে আছে",
       lowStock: "— এই সাইজে আর অল্প কয়টি বাকি",
+      lowStockCount: "এই সাইজে মাত্র {n}টি বাকি",
       soldOutCheckBack: "স্টক শেষ — শীঘ্রই ফিরে দেখুন",
       colour: "রঙ",
       size: "সাইজ",
@@ -1112,6 +1152,8 @@ export type TranslationKey =
   | `shop.${keyof typeof translations.en.shop}`
   | `shopBrowser.${keyof typeof translations.en.shopBrowser}`
   | `product.${keyof typeof translations.en.product}`
+  | `gallery.${keyof typeof translations.en.gallery}`
+  | `recently.${keyof typeof translations.en.recently}`
   | `bag.${keyof typeof translations.en.bag}`
   | `cart.${keyof typeof translations.en.cart}`
   | `wishlist.${keyof typeof translations.en.wishlist}`

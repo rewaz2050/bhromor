@@ -1,7 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import ProductGallery from "../product-gallery";
 import { PRODUCTS } from "@/lib/catalog";
+
+/** jsdom has no PointerEvent — see gallery-lightbox.test.tsx. */
+beforeAll(() => {
+  class TestPointerEvent extends MouseEvent {
+    pointerId: number;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+    }
+  }
+  // @ts-expect-error — jsdom has no PointerEvent to assign to.
+  window.PointerEvent = TestPointerEvent;
+});
 
 afterEach(cleanup);
 
@@ -70,5 +83,44 @@ describe("ProductGallery mixed media", () => {
     expect(
       container.querySelector("iframe[src*='drive.google.com']"),
     ).not.toBeNull();
+  });
+});
+
+describe("ProductGallery zoom viewer", () => {
+  const threePhotos = () => ({
+    ...PRODUCTS[0],
+    media: [
+      { src: "/images/products/panjabi.jpg", alt: "Cover photo" },
+      { src: "/images/products/panjabi-2.jpg", alt: "Weave close-up" },
+      { src: "/images/products/panjabi-3.jpg", alt: "Back view" },
+    ],
+    video: undefined,
+  });
+
+  it("opens the fullscreen viewer from the photo, and only from the photo", () => {
+    render(<ProductGallery product={withMedia()} />);
+    // The cover is an image, so it offers the zoom stage…
+    expect(screen.getByTestId("gallery-zoom-open")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("gallery-zoom-open"));
+    expect(screen.getByTestId("gallery-lightbox")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close viewer" }));
+
+    // …while a video slide keeps its own controls and offers no zoom.
+    fireEvent.click(screen.getByRole("button", { name: /play video 2/i }));
+    expect(screen.queryByTestId("gallery-zoom-open")).toBeNull();
+  });
+
+  it("keeps the gallery and the viewer on the same photo", () => {
+    render(<ProductGallery product={threePhotos()} />);
+    fireEvent.click(screen.getByTestId("gallery-zoom-open"));
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    // Stepping in the viewer moves the gallery underneath it.
+    fireEvent.click(screen.getByRole("button", { name: "Next photo" }));
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    expect(screen.getByText("02 / 03")).toBeInTheDocument();
+    // And closing it leaves the shopper on the photo they were looking at.
+    fireEvent.click(screen.getByRole("button", { name: "Close viewer" }));
+    expect(screen.queryByTestId("gallery-lightbox")).toBeNull();
+    expect(screen.getByText("02 / 03")).toBeInTheDocument();
   });
 });
