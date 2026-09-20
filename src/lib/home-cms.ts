@@ -16,6 +16,13 @@ export interface HomeSettings {
     subtitle: string;
     primaryLabel: string;
   };
+  /**
+   * A public promo code the owner wants every visitor to see (a welcome
+   * code, an Eid code). Purely an advertisement: the code itself must exist
+   * as an active coupon — checkout validates against the coupon table, this
+   * line never discounts anything on its own.
+   */
+  promo: { enabled: boolean; code: string; text: string };
   sections: Record<SectionKey, boolean>;
 }
 
@@ -42,7 +49,9 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
 
 export const HOME_DEFAULTS: HomeSettings = {
   announcement: {
-    enabled: false,
+    // On by default (2026-09-20): the delivery promise sits at the top of
+    // every page. A published row that switched it off keeps it off.
+    enabled: true,
     text: "Cash on Delivery · Instant Delivery in 45–50 min · Easy Returns",
   },
   hero: {
@@ -51,6 +60,11 @@ export const HOME_DEFAULTS: HomeSettings = {
     title2: "Made for today.",
     subtitle: "Thoughtfully made essentials for everyday Bangladesh.",
     primaryLabel: "Explore collection",
+  },
+  promo: {
+    enabled: false,
+    code: "",
+    text: "",
   },
   sections: {
     hero: true,
@@ -67,6 +81,7 @@ export const resolveSettings = (partial?: unknown): HomeSettings => {
   const p = partial as Partial<HomeSettings>;
   const ann = { ...HOME_DEFAULTS.announcement, ...(p.announcement ?? {}) };
   const hero = { ...HOME_DEFAULTS.hero, ...(p.hero ?? {}) };
+  const promo = { ...HOME_DEFAULTS.promo, ...(p.promo ?? {}) };
   const savedSections =
     p.sections && typeof p.sections === "object" ? p.sections : {};
   const sections = SECTION_KEYS.reduce(
@@ -78,5 +93,12 @@ export const resolveSettings = (partial?: unknown): HomeSettings => {
     },
     {} as Record<SectionKey, boolean>,
   );
-  return { announcement: ann, hero, sections };
+  return { announcement: ann, hero, promo, sections };
+};
+
+/** The advertised code, normalised the way checkout matches it. */
+export const publicPromoCode = (settings: HomeSettings): string | null => {
+  if (!settings.promo.enabled) return null;
+  const code = settings.promo.code.trim().toUpperCase().replace(/\s+/g, "");
+  return code.length > 0 ? code : null;
 };

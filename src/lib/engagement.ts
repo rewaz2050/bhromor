@@ -204,6 +204,13 @@ export const sanitizeHomeSettings = (raw: unknown): HomeSettings => {
         40,
       ),
     },
+    promo: {
+      enabled: r.promo.enabled === true,
+      code: cap(r.promo.code, "", 24)
+        .toUpperCase()
+        .replace(/[^A-Z0-9_-]/g, ""),
+      text: cap(r.promo.text, "", 140),
+    },
     sections: r.sections,
   };
 };

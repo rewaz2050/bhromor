@@ -249,6 +249,21 @@ describe("Homepage editorial journey", () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
+  it("puts the owner's public promo code at the top of the offers block", async () => {
+    homepageSettings = {
+      ...HOME_DEFAULTS,
+      promo: { enabled: true, code: "WELCOME10", text: "10% off your first order" },
+    };
+    await renderHome();
+    const block = await screen.findByTestId("offers-block");
+    const card = within(block).getByTestId("promo-code-card");
+    expect(card).toHaveTextContent("WELCOME10");
+    expect(card).toHaveTextContent("10% off your first order");
+    // The card comes before the reduced-price rail.
+    const rail = within(block).getByTestId("rail-offers");
+    expect(card.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows customer stories after the shelf only when an approved review exists", async () => {
     let { container } = await renderHome();
     await screen.findByTestId("whole-shelf");

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useCms } from "@/lib/use-cms";
+import { useCoupons } from "@/lib/use-coupons";
+import { normalizeCode } from "@/lib/coupons";
 import {
   SECTION_KEYS,
   SECTION_LABELS,
@@ -18,6 +20,9 @@ const clone = (s: HomeSettings): HomeSettings =>
 /** §31 homepage CMS — announcement, hero copy, section visibility. */
 export default function AdminHomepagePage() {
   const { settings, save, loading, error } = useCms();
+  // Only to warn when the advertised code is not an active coupon — the
+  // homepage never creates or applies discounts itself.
+  const { coupons, live: couponsLive, loading: couponsLoading } = useCoupons();
   const [draft, setDraft] = useState<HomeSettings | null>(null);
   const [savedFlash, setSavedFlash] = useTransientValue(false, 1800);
   const [saving, setSaving] = useState(false);
@@ -35,6 +40,8 @@ export default function AdminHomepagePage() {
     setDraft((d) => (d ? { ...d, announcement: { ...d.announcement, ...patch } } : d));
   const setHero = (patch: Partial<HomeSettings["hero"]>) =>
     setDraft((d) => (d ? { ...d, hero: { ...d.hero, ...patch } } : d));
+  const setPromo = (patch: Partial<HomeSettings["promo"]>) =>
+    setDraft((d) => (d ? { ...d, promo: { ...d.promo, ...patch } } : d));
   const setSection = (key: SectionKey, value: boolean) =>
     setDraft((d) => (d ? { ...d, sections: { ...d.sections, [key]: value } } : d));
 
@@ -166,6 +173,69 @@ export default function AdminHomepagePage() {
             and secondary actions stay on the shop page to keep the hero quiet.
           </p>
         </div>
+      </section>
+
+      {/* Public promo code */}
+      <section aria-label="Public promo code" className={blockCls}>
+        <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          Public promo code
+        </h3>
+        <p className={hint}>
+          Advertises one coupon at the top of the homepage offers block with a
+          tap-to-copy code. It does not discount anything by itself — create the
+          code under Coupons first; checkout validates it there.
+        </p>
+        <label className="mt-3 flex items-center gap-2.5 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={draft.promo.enabled}
+            onChange={(e) => setPromo({ enabled: e.target.checked })}
+            className="h-4 w-4 rounded accent-forest-700"
+            data-testid="promo-enabled"
+          />
+          Show the promo code card on the homepage
+        </label>
+        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+          <label className="block">
+            <span className={label}>Code</span>
+            <input
+              className={`${field} font-mono uppercase`}
+              value={draft.promo.code}
+              maxLength={24}
+              onChange={(e) => setPromo({ code: normalizeCode(e.target.value) })}
+              placeholder="WELCOME10"
+              data-testid="promo-code"
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>One line — what the code gives</span>
+            <input
+              className={field}
+              value={draft.promo.text}
+              maxLength={140}
+              onChange={(e) => setPromo({ text: e.target.value })}
+              placeholder="10% off your first order · min ৳999"
+            />
+          </label>
+        </div>
+        {draft.promo.enabled &&
+        draft.promo.code.trim() !== "" &&
+        couponsLive &&
+        !couponsLoading ? (
+          coupons.some(
+            (c) => c.active && c.code === normalizeCode(draft.promo.code),
+          ) ? (
+            <p className="mt-3 text-xs text-forest-700" data-testid="promo-code-ok">
+              ✓ Active coupon found — shoppers can redeem it at checkout.
+            </p>
+          ) : (
+            <p role="alert" className="mt-3 text-xs text-rose-700" data-testid="promo-code-missing">
+              No active coupon with this code exists yet — shoppers would see
+              &ldquo;not active&rdquo; at checkout. Create it under Coupons before
+              publishing.
+            </p>
+          )
+        ) : null}
       </section>
 
       {/* Sections */}

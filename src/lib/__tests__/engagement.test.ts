@@ -92,6 +92,16 @@ describe("homepage sanitizer", () => {
     expect(s.hero.title1.length).toBeLessThanOrEqual(80);
   });
 
+  it("normalises the public promo code and caps its copy", () => {
+    const s = sanitizeHomeSettings({
+      promo: { enabled: true, code: " eid 25 ", text: "t".repeat(500) },
+    });
+    expect(s.promo).toEqual({ enabled: true, code: "EID25", text: "t".repeat(140) });
+    // Absent → the disabled default; a non-boolean flag is never truthy.
+    expect(sanitizeHomeSettings({}).promo).toEqual(HOME_DEFAULTS.promo);
+    expect(sanitizeHomeSettings({ promo: { enabled: "yes", code: "X" } }).promo.enabled).toBe(false);
+  });
+
   it("returns defaults for non-objects", () => {
     expect(sanitizeHomeSettings(null)).toEqual(HOME_DEFAULTS);
     expect(sanitizeHomeSettings("nope")).toEqual(HOME_DEFAULTS);
