@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Product } from "@/lib/catalog";
+import ZoomLightbox from "./zoom-lightbox";
+import { IconSearch } from "@/components/ui/icons";
 import {
   driveThumbnailUrl,
   extractDriveFileId,
@@ -91,6 +93,10 @@ function EmbedFacade({
 export default function ProductGallery({ product }: { product: Product }) {
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState<string | null>(null);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  /* Desktop hover magnifier: the image scales around the cursor while the
+     pointer is over it (mouse only — touch goes straight to the lightbox). */
+  const [magnify, setMagnify] = useState<{ x: number; y: number } | null>(null);
   const slides = slidesOf(product);
   // Clamp: navigating between products (or an admin removing media) could
   // leave the index pointing past the end, blanking the gallery.
@@ -106,14 +112,38 @@ export default function ProductGallery({ product }: { product: Product }) {
     <div>
       <div className="relative aspect-[4/5] overflow-hidden bg-ivory-100 ring-1 ring-line">
         {current?.kind === "image" && (
-          <Image
-            src={current.src}
-            alt={current.alt}
-            fill
-            priority
-            sizes="(min-width: 1024px) 48vw, 100vw"
-            className="object-cover"
-          />
+          <button
+            type="button"
+            data-testid="gallery-zoom-trigger"
+            aria-label={`Zoom image: ${current.alt}`}
+            onClick={() => setZoomOpen(true)}
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMagnify({
+                x: ((e.clientX - r.left) / r.width) * 100,
+                y: ((e.clientY - r.top) / r.height) * 100,
+              });
+            }}
+            onMouseLeave={() => setMagnify(null)}
+            className="group absolute inset-0 block h-full w-full cursor-zoom-in overflow-hidden"
+          >
+            <Image
+              src={current.src}
+              alt={current.alt}
+              fill
+              priority
+              sizes="(min-width: 1024px) 48vw, 100vw"
+              className="object-cover transition-transform duration-150 ease-out motion-reduce:transition-none"
+              style={
+                magnify
+                  ? { transform: "scale(1.9)", transformOrigin: `${magnify.x}% ${magnify.y}%` }
+                  : undefined
+              }
+            />
+            <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-forest-950/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-ivory-50 backdrop-blur-[2px] transition-opacity group-hover:opacity-0">
+              <IconSearch className="h-3 w-3" /> Zoom
+            </span>
+          </button>
         )}
         {current?.kind === "video" && (
           <video
@@ -170,6 +200,10 @@ export default function ProductGallery({ product }: { product: Product }) {
           </span>
         )}
       </div>
+
+      {zoomOpen && current?.kind === "image" ? (
+        <ZoomLightbox src={current.src} alt={current.alt} onClose={() => setZoomOpen(false)} />
+      ) : null}
 
       <p
         className="mt-4 text-xs tracking-widest text-ink-soft"
