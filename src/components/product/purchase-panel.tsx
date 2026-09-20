@@ -2,6 +2,7 @@
 
 import SizeGuide from "./size-guide";
 import ShareRow from "./share-row";
+import ArrivalCue from "@/components/delivery/arrival-cue";
 import SizeFinder, { useSizeSuggestion } from "./size-finder";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
@@ -491,6 +492,12 @@ export default function PurchasePanel({ product }: { product: Product }) {
           </div>
         </div>
       </div>
+
+      {/* "Order now → by about HH:MM" — derived from the checkout's own ETA
+          maths; nothing for the courier zone (no clock promises there). */}
+      {product.inStock && !hardStop ? (
+        <ArrivalCue shopPrepMinutes={shop?.prepMinutes} className="mt-6" />
+      ) : null}
 
       {/* Quantity + CTAs */}
       <div

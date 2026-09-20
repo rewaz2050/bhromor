@@ -1,5 +1,6 @@
 "use client";
 
+import ArrivalCue from "@/components/delivery/arrival-cue";
 import { coverImage } from "@/lib/catalog";
 import { getLiveProducts } from "@/lib/live-catalog";
 import { completeTheLook } from "@/lib/merchandising";
@@ -121,6 +122,7 @@ export default function BagDrawer() {
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
               {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
             </p>
+            <ArrivalCue className="mt-2" />
           </div>
           <div className="flex-1 overflow-y-auto px-6">
             <div className="pt-4">
