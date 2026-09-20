@@ -125,6 +125,17 @@ export default async function ProductPage({ params }: PageProps) {
         >
           {category.name}
         </Link>
+        {product.subCategory.trim() !== "" && (
+          <>
+            <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
+            <Link
+              href={`/shop?category=${encodeURIComponent(product.category)}&sub=${encodeURIComponent(product.subCategory)}`}
+              className="transition-colors hover:text-forest-700"
+            >
+              {product.subCategory}
+            </Link>
+          </>
+        )}
         <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
         <span aria-current="page" className="truncate text-ink">
           {product.name}

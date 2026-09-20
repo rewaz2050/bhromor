@@ -27,6 +27,7 @@ export default async function ShopPage({
 }: {
   searchParams: Promise<{
     category?: string | string[];
+    sub?: string | string[];
     filter?: string | string[];
     q?: string | string[];
     mood?: string | string[];
@@ -44,6 +45,12 @@ export default async function ShopPage({
   const category = categories.some((c) => c.id === params.category)
     ? (params.category as string)
     : ("all" as const);
+  // `?sub=Panjabi` — one garment type inside the category; ignored without a
+  // category or when no piece in that category carries the type.
+  const sub =
+    category !== "all" && typeof params.sub === "string"
+      ? (products.find((p) => p.category === category && p.subCategory === params.sub)?.subCategory ?? "")
+      : "";
   const query = typeof params.q === "string" ? params.q : "";
   const onlyNew = params.filter === "new";
   // Homepage "See all N offers" deep-links here — pieces with a struck-through price.
@@ -66,6 +73,7 @@ export default async function ShopPage({
           shops={shops}
           zones={zones}
           initialCategory={category}
+          initialSub={sub}
           initialNew={onlyNew}
           initialSale={onlySale}
           initialQuery={query}

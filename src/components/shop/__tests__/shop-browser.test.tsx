@@ -195,6 +195,58 @@ describe("ShopBrowser", () => {
     expect(resolveSort(undefined)).toBe("featured");
   });
 
+  it("filters one garment type with the sub-category chips (and drops it when the category changes)", () => {
+    renderShop({ initialCategory: "men" });
+    // No chips without a category → with one, every type in it with counts.
+    const chips = screen.getByTestId("subcategory-chips");
+    const menTypes = Array.from(
+      new Set(PRODUCTS.filter((p) => p.category === "men").map((p) => p.subCategory)),
+    );
+    for (const type of menTypes) {
+      expect(within(chips).getByRole("button", { name: new RegExp(`^${type}`) })).toBeInTheDocument();
+    }
+    fireEvent.click(within(chips).getByRole("button", { name: /^Panjabi/ }));
+    expect(gridNames()).toEqual(
+      PRODUCTS.filter((p) => p.category === "men" && p.subCategory === "Panjabi").map((p) => p.name),
+    );
+    expect(screen.getByText(/in Men · Panjabi/)).toBeInTheDocument();
+    // Removable as its own chip…
+    expect(screen.getByRole("button", { name: "Remove Panjabi filter" })).toBeInTheDocument();
+    // …and dropped when the shopper switches category (never a silent empty list).
+    fireEvent.click(within(screen.getByTestId("category-chips")).getByRole("button", { name: /^Women/ }));
+    expect(screen.queryByRole("button", { name: "Remove Panjabi filter" })).toBeNull();
+    expect(gridNames()).toEqual(PRODUCTS.filter((p) => p.category === "women").map((p) => p.name));
+  });
+
+  it("honours ?sub= from the URL and shows the category chip bar with counts", () => {
+    const { rerender } = renderShop({ initialCategory: "traditional", initialSub: "Gamcha" });
+    expect(gridNames()).toEqual(
+      PRODUCTS.filter((p) => p.subCategory === "Gamcha").map((p) => p.name),
+    );
+    const bar = screen.getByTestId("category-chips");
+    const all = within(bar).getByRole("button", { name: /^All products/ });
+    expect(all).toHaveAttribute("aria-pressed", "false");
+    expect(within(bar).getByRole("button", { name: /^Traditional/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(bar).getByRole("button", { name: /^Men/ })).toHaveTextContent(
+      String(PRODUCTS.filter((p) => p.category === "men").length),
+    );
+    // Without a category there is no garment-type row at all.
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          shops={launchShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
+          initialCategory="all"
+          initialNew={false}
+        />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("subcategory-chips")).toBeNull();
+    expect(gridNames().length).toBe(PRODUCTS.filter((p) => p.active !== false && p.status !== "draft").length);
+  });
+
   it("offers only sizes and colours that exist in the catalog", () => {
     renderShop();
     const catalogColors = new Set(PRODUCTS.flatMap((p) => p.colors));
