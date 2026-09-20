@@ -1,6 +1,7 @@
 "use client";
 
 import SizeGuide from "./size-guide";
+import ShareRow from "./share-row";
 import SizeFinder, { useSizeSuggestion } from "./size-finder";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
@@ -570,6 +571,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
           <IconCheck className="h-4 w-4" /> {feedback}
         </p>
       )}
+
+      {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
+      <ShareRow product={product} className="mt-6" />
 
       {/* Delivery trust card */}
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
