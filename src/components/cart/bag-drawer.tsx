@@ -1,6 +1,7 @@
 "use client";
 
 import ArrivalCue from "@/components/delivery/arrival-cue";
+import CodReminder from "./cod-reminder";
 import { coverImage } from "@/lib/catalog";
 import { getLiveProducts } from "@/lib/live-catalog";
 import { completeTheLook } from "@/lib/merchandising";
@@ -244,10 +245,12 @@ export default function BagDrawer() {
                 {formatBdt(subtotal)}
               </strong>
             </div>
-            <p className="mb-5 mt-1.5 text-xs text-ink-soft">
+            <p className="mt-1.5 text-xs text-ink-soft">
               {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
               {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
+            {/* What to keep ready at the door — same maths as checkout. */}
+            <CodReminder subtotal={subtotal} className="mb-5 mt-3" />
             {/* P2 #19 — ONE primary action. "View bag" and the WhatsApp
                 order used to sit as two more full-width buttons under it,
                 so three equal CTAs competed for the same thumb; they now
