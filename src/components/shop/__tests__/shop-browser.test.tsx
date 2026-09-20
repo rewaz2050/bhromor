@@ -146,6 +146,25 @@ describe("ShopBrowser", () => {
     }
   });
 
+  /* 2026-09-20 — the homepage offers rail deep-links to ?filter=sale. */
+  it("shows only marked-down pieces for ?filter=sale, as a removable chip and a checkbox", () => {
+    renderShop({ initialSale: true });
+    expect(screen.getByText(/products · on offer/i)).toBeInTheDocument();
+    const shown = gridNames();
+    expect(shown.length).toBeGreaterThan(0);
+    for (const name of shown) {
+      const p = PRODUCTS.find((item) => item.name === name)!;
+      expect(p.compareAtPrice ?? 0).toBeGreaterThan(p.price);
+    }
+    // The sidebar/drawer checkbox mirrors the URL state…
+    const boxes = screen.getAllByLabelText(/on offer only/i) as HTMLInputElement[];
+    expect(boxes.every((b) => b.checked)).toBe(true);
+    // …and removing the chip restores the full list.
+    fireEvent.click(screen.getByRole("button", { name: /remove on offer filter/i }));
+    expect(gridNames().length).toBeGreaterThan(shown.length);
+    expect(boxes.every((b) => !b.checked)).toBe(true);
+  });
+
   /* Batch J — the homepage rails deep-link into a pre-sorted shop. */
   it("honours ?sort= from a homepage rail and follows a later URL change", () => {
     const { rerender } = renderShop({ initialSort: "newest" });

@@ -12,6 +12,7 @@ import {
   MOODS,
   matchesMood,
   isDiscoverable,
+  isOnOffer,
   type MoodId,
 } from "@/lib/merchandising";
 import { matchesProduct } from "@/lib/product-search";
@@ -84,6 +85,7 @@ export default function ShopBrowser({
   zones,
   initialCategory,
   initialNew,
+  initialSale = false,
   initialQuery = "",
   initialMood = "",
   initialPrice = "any",
@@ -95,6 +97,8 @@ export default function ShopBrowser({
   zones: DeliveryZone[];
   initialCategory: CategoryFilter;
   initialNew: boolean;
+  /** `/shop?filter=sale` — only pieces with a struck-through list price. */
+  initialSale?: boolean;
   initialQuery?: string;
   initialMood?: MoodId | "";
   initialPrice?: "any" | "under500";
@@ -103,6 +107,7 @@ export default function ShopBrowser({
   const { t, lang } = useLanguage();
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [onlyNew, setOnlyNew] = useState(initialNew);
+  const [onlySale, setOnlySale] = useState(initialSale);
   const [q, setQ] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [sizes, setSizes] = useState<string[]>([]);
@@ -163,6 +168,7 @@ export default function ShopBrowser({
   const lastUrlState = useRef({
     initialCategory,
     initialNew,
+    initialSale,
     initialQuery,
     initialMood,
     initialPrice,
@@ -173,6 +179,7 @@ export default function ShopBrowser({
     if (
       prev.initialCategory !== initialCategory ||
       prev.initialNew !== initialNew ||
+      prev.initialSale !== initialSale ||
       prev.initialMood !== initialMood ||
       prev.initialPrice !== initialPrice ||
       prev.initialQuery !== initialQuery ||
@@ -181,6 +188,7 @@ export default function ShopBrowser({
       lastUrlState.current = {
         initialCategory,
         initialNew,
+        initialSale,
         initialQuery,
         initialMood,
         initialPrice,
@@ -188,6 +196,7 @@ export default function ShopBrowser({
       };
       setCategory(initialCategory);
       setOnlyNew(initialNew);
+      setOnlySale(initialSale);
       setQ(initialQuery);
       setSizes([]);
       setColors([]);
@@ -196,7 +205,7 @@ export default function ShopBrowser({
       setOnlyInStock(false);
       setSort(initialSort);
     }
-  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice, initialSort]);
+  }, [initialCategory, initialNew, initialSale, initialQuery, initialMood, initialPrice, initialSort]);
 
   const allSizes = useMemo(
     () => collectSizes(zonedProducts),
@@ -218,6 +227,7 @@ export default function ShopBrowser({
     if (category !== "all")
       list = list.filter(({ p }) => p.category === category);
     if (onlyNew) list = list.filter(({ p }) => p.isNew);
+    if (onlySale) list = list.filter(({ p }) => isOnOffer(p));
     if (onlyInStock) list = list.filter(({ p }) => p.inStock);
     if (sizes.length)
       list = list.filter(({ p }) => p.sizes.some((s) => sizes.includes(s)));
@@ -260,6 +270,7 @@ export default function ShopBrowser({
     zonedProducts,
     category,
     onlyNew,
+    onlySale,
     onlyInStock,
     sizes,
     colors,
@@ -273,6 +284,7 @@ export default function ShopBrowser({
     mood !== "" ||
     category !== "all" ||
     onlyNew ||
+    onlySale ||
     onlyInStock ||
     sizes.length > 0 ||
     colors.length > 0 ||
@@ -283,6 +295,7 @@ export default function ShopBrowser({
     setMood("");
     setCategory("all");
     setOnlyNew(false);
+    setOnlySale(false);
     setSizes([]);
     setColors([]);
     setPriceBand("any");
@@ -426,16 +439,27 @@ export default function ShopBrowser({
         </Fieldset>
       )}
 
-      {/* Availability */}
-      <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
-        <input
-          type="checkbox"
-          checked={onlyInStock}
-          onChange={(e) => setOnlyInStock(e.target.checked)}
-          className="h-4 w-4 accent-forest-700"
-        />
-        {t("shopBrowser.inStockOnly")}
-      </label>
+      {/* Availability & offers */}
+      <div className="space-y-2">
+        <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={onlyInStock}
+            onChange={(e) => setOnlyInStock(e.target.checked)}
+            className="h-4 w-4 accent-forest-700"
+          />
+          {t("shopBrowser.inStockOnly")}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={onlySale}
+            onChange={(e) => setOnlySale(e.target.checked)}
+            className="h-4 w-4 accent-forest-700"
+          />
+          {t("shopBrowser.onOfferOnly")}
+        </label>
+      </div>
     </div>
   );
 
@@ -460,6 +484,9 @@ export default function ShopBrowser({
       : []),
     ...(onlyNew
       ? [{ key: "new", label: t("shopBrowser.newArrivals"), remove: () => setOnlyNew(false) }]
+      : []),
+    ...(onlySale
+      ? [{ key: "sale", label: t("shopBrowser.onOffer"), remove: () => setOnlySale(false) }]
       : []),
     ...(priceBand !== "any"
       ? [
@@ -581,6 +608,7 @@ export default function ShopBrowser({
         {category !== "all" &&
           ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
+        {onlySale && ` · ${t("shopBrowser.onOffer")}`}
         {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
         {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name.split(" — ")[0]}`}
       </p>

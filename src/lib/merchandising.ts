@@ -42,6 +42,25 @@ export const matchesMood = (product: Product, mood: MoodId | ""): boolean =>
 export const under500 = (products: Product[]): Product[] =>
   products.filter((p) => isDiscoverable(p) && p.inStock && p.price < bdt(500));
 
+/**
+ * "On offer" = the shop struck a real list price through (compare-at above
+ * the selling price). Flash-drop pricing is a separate, time-boxed overlay
+ * (see lib/promos.ts) and is never folded in here — a badge that outlives
+ * its window is a lie.
+ */
+export const isOnOffer = (product: Pick<Product, "price" | "compareAtPrice">): boolean =>
+  typeof product.compareAtPrice === "number" && product.compareAtPrice > product.price;
+
+/** Whole-percent saving against the struck-through price (0 when not on offer). */
+export const offerPct = (product: Pick<Product, "price" | "compareAtPrice">): number =>
+  isOnOffer(product)
+    ? Math.round(
+        (((product.compareAtPrice as number) - product.price) /
+          (product.compareAtPrice as number)) *
+          100,
+      )
+    : 0;
+
 const COMPLEMENTS: Record<string, string[]> = {
   // A panjabi is sold as an occasion, not a shirt: the gamcha (and a cap, once
   // the catalog carries one) belongs with it — that pairing is what turns

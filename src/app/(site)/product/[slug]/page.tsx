@@ -1,4 +1,4 @@
-import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
+import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
 import type { Metadata } from "next";
@@ -72,9 +72,10 @@ export default async function ProductPage({ params }: PageProps) {
   if (!product) notFound();
 
   const complements = completeTheLook(product, products);
-  // Batch J — the tail of the page is the SAME shelf the shopper is on
-  // (siblings first, featured fill only when the category is short), with a
-  // scoped "See all N in <category>" link.
+  // The very last section of the page is the SAME shelf the shopper is on:
+  // siblings from this piece's category only (in stock first, never a piece
+  // already shown in "complete the look"), with a scoped "See all N in
+  // <category>" link when the category holds more than the row shows.
   const more = moreInCategory(product, products, complements);
   const category = categories.find((c) => c.id === product.category) ?? {
     id: product.category,
@@ -84,9 +85,6 @@ export default async function ProductPage({ params }: PageProps) {
     image: "",
     subCategories: [],
   };
-  const siblingsTotal = products.filter(
-    (p) => isDiscoverable(p) && p.category === product.category && p.id !== product.id,
-  ).length;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -304,15 +302,17 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
-      {/* Batch J — same-category shelf (replaces the mixed "You may also like"). */}
+      {/* §30 reviews — live approved reviews + moderated submission form */}
+      <ReviewsSection product={product} />
+      {/* Always the LAST thing on the page: the rest of this piece's own
+          category, so the shopper who reached the bottom keeps browsing the
+          shelf they came for. */}
       <MoreInCategory
         category={category}
         items={more.items}
-        sameCategory={more.sameCategory}
-        total={siblingsTotal}
+        hiddenCount={more.hiddenCount}
+        total={more.total}
       />
-      {/* §30 reviews — live approved reviews + moderated submission form */}
-      <ReviewsSection product={product} />
     </div>
   );
 }

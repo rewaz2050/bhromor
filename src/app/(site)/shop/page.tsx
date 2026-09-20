@@ -46,6 +46,8 @@ export default async function ShopPage({
     : ("all" as const);
   const query = typeof params.q === "string" ? params.q : "";
   const onlyNew = params.filter === "new";
+  // Homepage "See all N offers" deep-links here — pieces with a struck-through price.
+  const onlySale = params.filter === "sale";
   // Batch J — the homepage rails deep-link here ("See all best sellers").
   const initialSort = resolveSort(params.sort);
 
@@ -65,6 +67,7 @@ export default async function ShopPage({
           zones={zones}
           initialCategory={category}
           initialNew={onlyNew}
+          initialSale={onlySale}
           initialQuery={query}
           initialMood={resolveMood(params.mood)}
           initialPrice={params.price === "under500" ? "under500" : "any"}

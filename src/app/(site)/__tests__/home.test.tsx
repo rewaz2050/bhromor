@@ -93,23 +93,21 @@ describe("Homepage editorial journey", () => {
     expect(screen.queryByRole("link", { name: /shop men/i })).toBeNull();
   });
 
-  it("shows collections and a restrained featured edit", async () => {
+  it("is a short hero — no poster, no browse chips inside it", async () => {
     await renderHome();
-
-    expect(
-      await screen.findByRole("heading", {
-        level: 2,
-        name: "A wardrobe, thoughtfully composed.",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Featured." }),
-    ).toBeInTheDocument();
-    const links = screen.getAllByRole("link", { name: "Heritage Green Panjabi" });
-    expect(links.length).toBeGreaterThan(0);
-    for (const link of links) {
-      expect(link).toHaveAttribute("href", "/product/heritage-green-panjabi");
-    }
+    const hero = screen.getByTestId("home-hero");
+    expect(hero.querySelector(".cinematic-hero")).toBeNull();
+    expect(hero).not.toHaveClass("cinematic-hero");
+    expect(within(hero).queryByTestId("browse-chips")).toBeNull();
+    // Exactly one CTA (to the shop) and one anchor down to the shelf.
+    expect(within(hero).getByRole("link", { name: /explore collection/i })).toHaveAttribute(
+      "href",
+      "/shop",
+    );
+    expect(within(hero).getByRole("link", { name: /browse the shelf/i })).toHaveAttribute(
+      "href",
+      "#shelf",
+    );
   });
 
   it("contains no launch-unsafe review proof or retired promo rails", async () => {
@@ -121,29 +119,65 @@ describe("Homepage editorial journey", () => {
       screen.queryByRole("heading", { name: /dress for your kind of day/i }),
     ).toBeNull();
     expect(screen.queryByRole("heading", { name: /customer reviews/i })).toBeNull();
+    // 2026-09-20 — the collections poster grid, the "Featured." edit and
+    // the curated rails left the homepage; the shelf below carries every piece.
+    expect(
+      screen.queryByRole("heading", { name: "A wardrobe, thoughtfully composed." }),
+    ).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Featured." })).toBeNull();
+    expect(screen.queryByTestId("rail-new")).toBeNull();
+    expect(screen.queryByTestId("rail-best")).toBeNull();
   });
 
-  /* Batch J (2026-09-19) — the homepage is the shelf: chips name every
-     category on the first screen, and every published piece appears under
-     its category further down. */
-  it("names every category (and the curated paths) on the first screen", async () => {
+  /* 2026-09-20 — directly under the hero: one tile per category with
+     pieces, in category order, each a link into the filtered shop. */
+  it("shows the category row under the hero, one tile per stocked category", async () => {
     await renderHome();
-    const chips = await screen.findByTestId("browse-chips");
-    const names = within(chips).getAllByRole("link").map((a) => a.textContent);
-    expect(names).toEqual(
-      expect.arrayContaining(["Men", "Women", "Traditional", "New arrivals", "All pieces"]),
-    );
-    expect(within(chips).getByRole("link", { name: "Men" })).toHaveAttribute(
+    const row = await screen.findByTestId("category-row");
+    const tiles = within(row).getAllByTestId("category-tile");
+    expect(tiles.map((t) => t.getAttribute("data-category"))).toEqual([
+      "men",
+      "women",
+      "traditional",
+    ]);
+    const men = within(tiles[0]).getByRole("link");
+    expect(men).toHaveAttribute("href", "/shop?category=men");
+    expect(men).toHaveTextContent("Men");
+    expect(men).toHaveTextContent("3 pieces");
+    expect(within(tiles[1]).getByRole("link")).toHaveAttribute("href", "/shop?category=women");
+    expect(within(row).getByRole("link", { name: /all pieces/i })).toHaveAttribute(
       "href",
-      "/shop?category=men",
+      "/shop",
     );
-    expect(within(chips).getByRole("link", { name: "New arrivals" })).toHaveAttribute(
+    // The header's "Collections" link (/#collections) lands on this row.
+    expect(row).toHaveAttribute("id", "collections");
+  });
+
+  /* 2026-09-20 — offers sit between the category row and the shelf: every
+     piece with a struck-through price, biggest saving first, and a "See all
+     N offers" link into the ?filter=sale shop. */
+  it("lists the marked-down pieces in the offers rail, biggest saving first", async () => {
+    await renderHome();
+    const rail = await screen.findByTestId("rail-offers");
+    expect(
+      within(rail).getByRole("heading", { level: 2, name: "On offer right now" }),
+    ).toBeInTheDocument();
+    const cards = within(rail).getAllByRole("article");
+    const names = cards.map(
+      (card) => within(card).getAllByRole("link")[0].getAttribute("aria-label"),
+    );
+    const onOffer = PRODUCTS.filter(
+      (p) => p.active !== false && p.status !== "draft" && (p.compareAtPrice ?? 0) > p.price,
+    );
+    expect(onOffer.length).toBeGreaterThan(1);
+    // 22% off (Slate Premium T-Shirt) before 19% off (Heritage Green Panjabi).
+    expect(names).toEqual(["View Slate Premium T-Shirt", "View Heritage Green Panjabi"]);
+    expect(within(rail).getByRole("link", { name: /see all 2 offers/i })).toHaveAttribute(
       "href",
-      "/shop?sort=newest",
+      "/shop?filter=sale",
     );
-    // Launch seeds carry no real sales → no "Best sellers" chip, no rail.
-    expect(within(chips).queryByRole("link", { name: "Best sellers" })).toBeNull();
-    expect(screen.queryByTestId("rail-best")).toBeNull();
+    // No flash window is running in the test clock → no drop rail.
+    expect(screen.queryByTestId("flash-rail")).toBeNull();
   });
 
   it("lists every published piece under its own category shelf", async () => {
@@ -172,20 +206,6 @@ describe("Homepage editorial journey", () => {
     ).toHaveAttribute("href", "/shop?category=men");
   });
 
-  it("has a new-arrivals rail that deep-links to the sorted shop", async () => {
-    await renderHome();
-    const rail = await screen.findByTestId("rail-new");
-    expect(within(rail).getByRole("heading", { level: 2, name: "New arrivals" })).toBeInTheDocument();
-    expect(within(rail).getByRole("link", { name: /see all new arrivals/i })).toHaveAttribute(
-      "href",
-      "/shop?sort=newest",
-    );
-    // in-stock pieces only
-    for (const card of within(rail).getAllByRole("article")) {
-      expect(within(card).queryByText(/sold out/i)).toBeNull();
-    }
-  });
-
   it("says 'no shop delivers there' (with a reset) instead of 'being stocked' for an unserved zone", async () => {
     window.localStorage.setItem(MY_ZONE_KEY, "zone-nowhere");
     try {
@@ -203,15 +223,15 @@ describe("Homepage editorial journey", () => {
     }
   });
 
-  it("follows hero → rails → collections → featured → shelf → trust", async () => {
+  it("follows hero → categories → offers → shelf → delivery check → trust", async () => {
     const { container } = await renderHome();
     await screen.findByTestId("whole-shelf");
     const selectors = [
-      ".cinematic-hero",
-      "#new-arrivals",
-      "#collections",
-      "#featured",
+      '[data-testid="home-hero"]',
+      '[data-testid="category-row"]',
+      "#offers-rail",
       '[data-testid="category-shelf"]',
+      '[data-testid="home-delivery-check"]',
       '[aria-label="PROSANTI service promises"]',
     ];
     const positions = selectors.map((selector) => {
@@ -232,7 +252,7 @@ describe("Homepage editorial journey", () => {
         title1: "Thoughtfully made",
         title2: "for you.",
       },
-      sections: { ...HOME_DEFAULTS.sections, collections: false },
+      sections: { ...HOME_DEFAULTS.sections, collections: false, offers: false },
     };
 
     await renderHome();
@@ -243,14 +263,11 @@ describe("Homepage editorial journey", () => {
         name: "Thoughtfully made for you.",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", {
-        name: "A wardrobe, thoughtfully composed.",
-      }),
-    ).toBeNull();
-    expect(
-      await screen.findByRole("heading", { name: "Featured." }),
-    ).toBeVisible();
+    // Hidden by the CMS: the category row and the offers block…
+    expect(screen.queryByTestId("category-row")).toBeNull();
+    expect(screen.queryByTestId("rail-offers")).toBeNull();
+    // …while the shelf itself is not a toggle — it is the page.
+    expect(await screen.findByTestId("whole-shelf")).toBeInTheDocument();
   });
 
   it("links service promises to real pages", async () => {

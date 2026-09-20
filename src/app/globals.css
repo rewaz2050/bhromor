@@ -590,16 +590,11 @@ body {
 /* Premium storefront refresh ------------------------------------------------
    Full-bleed campaign imagery and quiet product cards. These are intentionally
    scoped classes so the admin surface keeps its compact utility styling. */
-/* Batch J (2026-09-19): the hero is a compact opener, not a full screen —
-   the browse chips sit inside it and the first product row must start
-   within the first scroll on a phone. */
-.cinematic-hero {
-  min-height: clamp(26rem, 62svh, 38rem);
-}
-.hero-cinematic-image {
-  object-position: center center;
-  will-change: transform;
-  transform: translateZ(0);
+/* 2026-09-20: the hero is a short band (headline, one sentence, one button)
+   — no minimum height, so the category row is on the first screen of a
+   phone. `.hero-copy` keeps the staged text reveal below. */
+.compact-hero {
+  min-height: 0;
 }
 .product-card-media {
   border-radius: 2px;
@@ -618,15 +613,6 @@ body {
 .product-card-details {
   min-height: 7.25rem;
   border-bottom-color: color-mix(in srgb, var(--color-line), transparent 12%);
-}
-
-@media (max-width: 639px) {
-  .cinematic-hero {
-    min-height: clamp(24rem, 58svh, 34rem);
-  }
-  .hero-cinematic-image {
-    object-position: 64% center;
-  }
 }
 
 /* Phones (UX audit 2026-09-18, P1 #9): the quick-add bar used to float over

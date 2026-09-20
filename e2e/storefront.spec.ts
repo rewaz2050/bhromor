@@ -43,10 +43,16 @@ for (const width of [320, 390, 768, 1024, 1440]) {
       await noOverflow(page);
       await expect(page.locator("h1")).toBeVisible();
       if (route === "/") {
-        await expect(page.locator(".cinematic-hero")).toBeVisible();
+        await expect(page.getByTestId("home-hero")).toBeVisible();
         await expect(
           page.getByRole("link", { name: "Explore collection" }),
         ).toBeVisible();
+        // The category row must sit on the first screen — the hero is a
+        // short band now, not a poster.
+        const row = page.getByTestId("category-row");
+        await expect(row).toBeVisible();
+        const top = await row.evaluate((el) => el.getBoundingClientRect().top);
+        expect(top).toBeLessThan(900);
       }
       await page.screenshot({
         path: info.outputPath(`${route.replaceAll("/", "_") || "home"}.png`),

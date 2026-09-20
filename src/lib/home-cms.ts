@@ -20,26 +20,23 @@ export interface HomeSettings {
 }
 
 /**
- * Product campaigns, budget edits and new-arrival rails live on /shop. Keeping
- * them out of this list prevents the landing page from becoming repetitive.
+ * The storefront homepage (2026-09-20) is a shelf, top to bottom:
+ * compact hero → category row → offers → every category with its pieces →
+ * service strip. Only the blocks an owner may want to hide are listed here;
+ * the category shelf itself is the page and cannot be switched off.
+ *
+ * `collections` is the category row's key (kept from the older layout so a
+ * previously published toggle still applies). Retired keys (`featured`,
+ * `brandStory`, `brandJournal`) are ignored by `resolveSettings`.
  */
-export const SECTION_KEYS = [
-  "hero",
-  "collections",
-  "featured",
-  "brandStory",
-  "trust",
-  "brandJournal",
-] as const;
+export const SECTION_KEYS = ["hero", "collections", "offers", "trust"] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
-  hero: "Cinematic hero",
-  collections: "Collections",
-  featured: "Featured edit",
-  brandStory: "Brand philosophy",
+  hero: "Compact hero (headline + button)",
+  collections: "Category row",
+  offers: "Offers (flash drop + reduced prices)",
   trust: "Service promise strip",
-  brandJournal: "Visual journal",
 };
 
 export const HOME_DEFAULTS: HomeSettings = {
@@ -57,10 +54,8 @@ export const HOME_DEFAULTS: HomeSettings = {
   sections: {
     hero: true,
     collections: true,
-    featured: true,
-    brandStory: true,
+    offers: true,
     trust: true,
-    brandJournal: true,
   },
 };
 
