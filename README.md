@@ -79,6 +79,24 @@ All motion stays inside the existing tokens (`--motion-*`, `--ease-refined`) and
 - Mobile headers keep all navigation actions within narrow screens; size/colour controls use larger touch targets and the filter drawer keeps its result action visible while scrolling.
 - Search and filters run over the live storefront catalog; no authentication is required.
 
+## Conversion & usability pass (2026-09-20)
+
+Fourteen small, real-data-only additions that make the shop easier to trust and quicker to buy from. Copy is en + bn throughout.
+
+- **Bangla product names** on product cards (Bangla-first when the shopper reads Bangla) — sourced from `Product.nameBn`, never transliterated.
+- **Share row** on every product page: WhatsApp / Facebook / copy link (uses the native share sheet on phones).
+- **Customer stories** on the home page from real published reviews (`/api/reviews`); hidden until reviews exist. CMS toggle `sections.stories`.
+- **CMS promo card + announcement bar** (`/admin/homepage`): the promo only advertises a code — checkout still validates it.
+- **Recently viewed** rail on product pages and a strip on the home page (device-local, returning visitors only).
+- **Analytics**: set `NEXT_PUBLIC_META_PIXEL_ID` and/or `NEXT_PUBLIC_GA4_ID` to load Meta Pixel / GA4 with page_view, view_item, add_to_cart, begin_checkout and purchase (amounts in taka, no personal data). Blank = nothing loads.
+- **PWA**: `/manifest.webmanifest`, icons and a gentle "Add to Home Screen" card on a visitor's second day (iOS gets the Share → Add instruction). No service worker by design.
+- **Product video**: a "▶ Video" badge on cards and an admin nudge listing published pieces still without a YouTube/Drive clip.
+- **Arrival cue** on the product page and in the bag — "Order now → at your door by about 7:55 PM" from the checkout's own ETA maths (night surcharge named; the courier zone never gets a clock).
+- **Sub-category chips** on `/shop` (`?category=men&sub=Panjabi` deep links) and a horizontal category chip bar on phones.
+- **Image zoom**: hover magnifier on desktop, full-screen pinch / wheel / double-tap lightbox with pan.
+- **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
+- **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
+
 ## Pages
 
 Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Live shopping (`/live` — the shop's own stream with the on-air pieces one tap from the bag) · Wishlist · About · Contact (channels render only when the shop configured them) · FAQ · Delivery info · Returns · Privacy · Terms · 404.
