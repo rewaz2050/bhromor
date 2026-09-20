@@ -6,6 +6,8 @@ import "@fontsource/noto-serif-bengali/500.css";
 import "@fontsource/noto-serif-bengali/600.css";
 import "./globals.css";
 import SmoothScroll from "@/components/ui/smooth-scroll";
+import AnalyticsScripts from "@/components/analytics/analytics-scripts";
+import AnalyticsRouteTracker from "@/components/analytics/analytics-route-tracker";
 import { siteBaseUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
@@ -30,6 +32,9 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">
         <SmoothScroll />
         {children}
+        {/* Meta Pixel / GA4 — nothing is loaded unless the ids are set. */}
+        <AnalyticsScripts />
+        <AnalyticsRouteTracker />
       </body>
     </html>
   );

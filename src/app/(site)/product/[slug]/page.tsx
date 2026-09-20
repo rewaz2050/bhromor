@@ -2,6 +2,7 @@ import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
 import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
+import ProductViewTracker from "@/components/analytics/product-view-tracker";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -110,6 +111,7 @@ export default async function ProductPage({ params }: PageProps) {
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       {/* P2.1 — seed the client registry from the rows already rendered. */}
       <CatalogHydrator products={products} categories={categories} shops={shops} />
+      <ProductViewTracker product={product} />
       {/* Breadcrumb */}
       <nav
         aria-label="Breadcrumb"

@@ -116,6 +116,7 @@ import {
   type DeliverySlotKey,
 } from "@/lib/delivery-slots";
 import { saveLastOrder, trackHref } from "@/lib/last-order";
+import { track, trackPurchaseOnce } from "@/lib/analytics";
 import { useNow } from "@/lib/use-now";
 
 type TimeSlot = "now" | "evening" | "scheduled";
@@ -430,6 +431,24 @@ export default function CheckoutView() {
   // the place-order RPC at confirmation; this only makes the quote honest.
   const [plusState, setPlusState] = useState<PlusState>("idle");
   const plusActive = plusState === "active";
+  // begin_checkout (pixel/GA, only when configured): once per checkout visit,
+  // as soon as the bag has resolved against the live catalog.
+  const beganCheckout = useRef(false);
+  useEffect(() => {
+    if (beganCheckout.current || !ready || detail.length === 0) return;
+    beganCheckout.current = true;
+    track({
+      type: "begin_checkout",
+      items: detail.map((l) => ({
+        id: l.product.id,
+        name: l.product.name,
+        category: l.product.category,
+        price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
+        qty: l.qty,
+      })),
+      value: subtotal,
+    });
+  }, [ready, detail, subtotal]);
   useEffect(() => {
     let live = true;
     fetch("/api/payments")
@@ -1348,6 +1367,20 @@ export default function CheckoutView() {
         phone: form.phone,
         placedAt: Date.now(),
         total: data.order.total,
+      });
+      // Conversion (pixel/GA, only when configured) — once per order id.
+      trackPurchaseOnce({
+        type: "purchase",
+        orderId: data.order.id,
+        items: detail.map((l) => ({
+          id: l.product.id,
+          name: l.product.name,
+          category: l.product.category,
+          price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
+          qty: l.qty,
+        })),
+        value: data.order.total,
+        delivery: data.order.deliveryCharge,
       });
       setPlaced({
         orderId: data.order.id,
