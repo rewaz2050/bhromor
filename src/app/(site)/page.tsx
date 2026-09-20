@@ -16,6 +16,7 @@ import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import CategoryRow from "@/components/home/category-row";
 import OffersBlock from "@/components/home/offers-block";
 import CategoryShelfBlock from "@/components/home/category-shelf";
+import CustomerStories from "@/components/reviews/customer-stories";
 import { categoryShelves } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 
@@ -26,6 +27,7 @@ import type { Category, Product, Shop } from "@/lib/catalog";
  * → category row (every category with pieces, one tap to its shop)
  * → offers (flash drop when running + every marked-down piece)
  * → EVERY category with its pieces
+ * → customer stories (approved reviews, hidden when none)
  * → delivery check → service strip.
  *
  * The shopper who lands here sees what we sell, in which category, at what
@@ -56,6 +58,9 @@ export default function Home() {
           {sections.collections && <CategoryRow pool={pool} categories={categories} />}
           {sections.offers && <OffersBlock pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
+          {/* Real approved reviews only — the block disappears when there
+              are none rather than showing an empty "be the first" card. */}
+          {sections.stories && <CustomerStories hideWhenEmpty />}
         </>
       )}
       {/* P2 #20 — "do you come to my para, for how much?": four

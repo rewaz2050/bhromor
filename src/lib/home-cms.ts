@@ -22,20 +22,21 @@ export interface HomeSettings {
 /**
  * The storefront homepage (2026-09-20) is a shelf, top to bottom:
  * compact hero → category row → offers → every category with its pieces →
- * service strip. Only the blocks an owner may want to hide are listed here;
+ * customer stories → service strip. Only the blocks an owner may want to hide are listed here;
  * the category shelf itself is the page and cannot be switched off.
  *
  * `collections` is the category row's key (kept from the older layout so a
  * previously published toggle still applies). Retired keys (`featured`,
  * `brandStory`, `brandJournal`) are ignored by `resolveSettings`.
  */
-export const SECTION_KEYS = ["hero", "collections", "offers", "trust"] as const;
+export const SECTION_KEYS = ["hero", "collections", "offers", "stories", "trust"] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
   hero: "Compact hero (headline + button)",
   collections: "Category row",
   offers: "Offers (flash drop + reduced prices)",
+  stories: "Customer stories (approved reviews only)",
   trust: "Service promise strip",
 };
 
@@ -55,6 +56,7 @@ export const HOME_DEFAULTS: HomeSettings = {
     hero: true,
     collections: true,
     offers: true,
+    stories: true,
     trust: true,
   },
 };

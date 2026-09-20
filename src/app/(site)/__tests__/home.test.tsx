@@ -28,6 +28,7 @@ const launchShop = (): Shop => ({
 const originalFetch = globalThis.fetch;
 
 let homepageSettings: unknown = HOME_DEFAULTS;
+let reviewsPayload: unknown = {};
 
 const mockFetch = (input: RequestInfo | URL) => {
   const url = String(input);
@@ -47,11 +48,15 @@ const mockFetch = (input: RequestInfo | URL) => {
   if (url.includes("/api/homepage")) {
     return Promise.resolve(jsonResponse({ settings: homepageSettings }));
   }
+  if (url.includes("/api/reviews")) {
+    return Promise.resolve(jsonResponse(reviewsPayload));
+  }
   return Promise.resolve(jsonResponse({}));
 };
 
 beforeEach(() => {
   homepageSettings = HOME_DEFAULTS;
+  reviewsPayload = {};
   // The homepage settings store is fetch-once per page lifetime (P2.2);
   // each test is a fresh page.
   __resetHomeSettings();
@@ -242,6 +247,54 @@ describe("Homepage editorial journey", () => {
       );
     });
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("shows customer stories after the shelf only when an approved review exists", async () => {
+    let { container } = await renderHome();
+    await screen.findByTestId("whole-shelf");
+    // No approved review → no block, no "be the first" card on the front page.
+    expect(screen.queryByTestId("customer-stories")).toBeNull();
+    expect(screen.queryByText(/your story could be the first/i)).toBeNull();
+
+    cleanup();
+    __resetHomeSettings();
+    reviewsPayload = {
+      reviews: [
+        {
+          id: "r1",
+          productId: PRODUCTS[0].id,
+          rating: 5,
+          body: "Fits like it was stitched for me.",
+          author: "Rahim, Sunamganj",
+          date: 1,
+          status: "approved",
+          verified: true,
+        },
+      ],
+    };
+    ({ container } = await renderHome());
+    const stories = await screen.findByTestId("customer-stories");
+    expect(within(stories).getByText(/stitched for me/)).toBeInTheDocument();
+    expect(within(stories).getByText(/verified purchase/i)).toBeInTheDocument();
+    // Order: shelf → stories → delivery check.
+    const sections = Array.from(container.querySelectorAll("section"));
+    const shelfIdx = sections.indexOf(
+      container.querySelector('[data-testid="category-shelf"]') as HTMLElement,
+    );
+    const storiesIdx = sections.indexOf(stories);
+    const deliveryIdx = sections.indexOf(
+      container.querySelector('[data-testid="home-delivery-check"]') as HTMLElement,
+    );
+    expect(shelfIdx).toBeLessThan(storiesIdx);
+    expect(storiesIdx).toBeLessThan(deliveryIdx);
+
+    // The owner can switch the block off.
+    cleanup();
+    __resetHomeSettings();
+    homepageSettings = { ...HOME_DEFAULTS, sections: { ...HOME_DEFAULTS.sections, stories: false } };
+    await renderHome();
+    await screen.findByTestId("whole-shelf");
+    expect(screen.queryByTestId("customer-stories")).toBeNull();
   });
 
   it("retains CMS hero copy and visibility controls in the shorter layout", async () => {
