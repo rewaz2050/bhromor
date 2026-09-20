@@ -106,6 +106,14 @@ export const translations = {
       recentTitle: "Recently viewed",
       recentClear: "Clear",
     },
+    install: {
+      title: "Add PROSANTI to your home screen",
+      body: "Opens like an app — one tap to the shelf, offers and your order tracking. No download from a store.",
+      iosBody: "In Safari tap Share, then “Add to Home Screen”. It opens like an app — no download from a store.",
+      cta: "Add to home screen",
+      later: "Not now",
+      close: "Close",
+    },
     trust: {
       cashOnDelivery: "Cash on Delivery",
       instantDelivery: "Instant Delivery · 45–50 min",
@@ -712,6 +720,14 @@ export const translations = {
       recentTitle: "সম্প্রতি দেখা",
       recentClear: "মুছুন",
     },
+    install: {
+      title: "PROSANTI হোম স্ক্রিনে রাখুন",
+      body: "অ্যাপের মতো খুলবে — এক ট্যাপে শেলফ, অফার আর অর্ডার ট্র্যাকিং। স্টোর থেকে কিছু ডাউনলোড লাগবে না।",
+      iosBody: "Safari-তে Share চাপুন, তারপর “Add to Home Screen”। অ্যাপের মতো খুলবে — স্টোর থেকে ডাউনলোড লাগবে না।",
+      cta: "হোম স্ক্রিনে যোগ করুন",
+      later: "এখন না",
+      close: "বন্ধ করুন",
+    },
     trust: {
       cashOnDelivery: "ক্যাশ অন ডেলিভারি",
       instantDelivery: "তাৎক্ষণিক ডেলিভারি · ৪৫–৫০ মিনিট",
@@ -1221,6 +1237,7 @@ export type TranslationKey =
   | `bestSellers.${keyof typeof translations.en.bestSellers}`
   | `home.${keyof typeof translations.en.home}`
   | `trust.${keyof typeof translations.en.trust}`
+  | `install.${keyof typeof translations.en.install}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `mobileDrawer.${keyof typeof translations.en.mobileDrawer}`

@@ -10,6 +10,7 @@ import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
 import FlashStrip from "@/components/promo/flash-strip";
 import CampaignStrip from "@/components/promo/campaign-strip";
 import RefCapture from "@/components/promo/ref-capture";
+import InstallPrompt from "@/components/layout/install-prompt";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -78,6 +79,9 @@ export default function SiteLayout({
           {/* Thumb-reach navigation on phones (§67) */}
           <BottomNav />
           <BagDrawer />
+          {/* Add-to-home-screen card: from the second visit, never in the
+              installed app, quiet for a month after "Not now". */}
+          <InstallPrompt />
           <LiveCatalogBoot />
         </CustomerProvider>
       </CartProvider>

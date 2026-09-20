@@ -16,6 +16,15 @@ export const metadata: Metadata = {
   // proshanti.rahatahmed.site, so a hard-coded origin put the wrong host in
   // every og:url and canonical tag (audit M8).
   metadataBase: new URL(siteBaseUrl()),
+  // Installable (add to home screen): manifest + iOS web-app hints. The
+  // apple touch icon is src/app/apple-icon.png (Next links it automatically).
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "PROSANTI",
+    statusBarStyle: "default",
+  },
+  applicationName: "PROSANTI",
 };
 
 export const viewport: Viewport = {
