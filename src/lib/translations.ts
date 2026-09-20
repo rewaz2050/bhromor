@@ -102,6 +102,9 @@ export const translations = {
       promoCopied: "Code copied — paste it in your bag at checkout.",
       promoCopyFailed: "Couldn't copy here — type the code in your bag at checkout.",
       promoShop: "Shop now",
+      recentEyebrow: "Continue where you left off",
+      recentTitle: "Recently viewed",
+      recentClear: "Clear",
     },
     trust: {
       cashOnDelivery: "Cash on Delivery",
@@ -703,6 +706,9 @@ export const translations = {
       promoCopied: "কোড কপি হয়েছে — চেকআউটে ব্যাগে পেস্ট করুন।",
       promoCopyFailed: "এখানে কপি করা গেল না — চেকআউটে ব্যাগে কোডটি লিখে দিন।",
       promoShop: "এখনই কিনুন",
+      recentEyebrow: "যেখানে ছেড়েছিলেন, সেখান থেকে",
+      recentTitle: "সম্প্রতি দেখা",
+      recentClear: "মুছুন",
     },
     trust: {
       cashOnDelivery: "ক্যাশ অন ডেলিভারি",

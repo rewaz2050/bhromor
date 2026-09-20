@@ -14,6 +14,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import LiveBanner from "@/components/live/live-banner";
 import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import CategoryRow from "@/components/home/category-row";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
 import CategoryShelfBlock from "@/components/home/category-shelf";
 import CustomerStories from "@/components/reviews/customer-stories";
@@ -24,6 +25,7 @@ import type { Category, Product, Shop } from "@/lib/catalog";
  * Homepage (2026-09-20) — a shelf, top to bottom.
  *
  * Compact hero (one headline, one button — no full-screen poster)
+ * → recently viewed strip (only when this device has looked at pieces)
  * → category row (every category with pieces, one tap to its shop)
  * → offers (flash drop when running + every marked-down piece)
  * → EVERY category with its pieces
@@ -55,6 +57,8 @@ export default function Home() {
         <HomeSkeleton />
       ) : (
         <>
+          {/* Returning devices only: one compact row, nothing for a first visit. */}
+          {sections.recent && <RecentlyViewedStrip pool={pool} />}
           {sections.collections && <CategoryRow pool={pool} categories={categories} />}
           {sections.offers && <OffersBlock pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />

@@ -46,10 +46,13 @@ vi.mock("next/navigation", () => ({
 import ProductPage from "../[slug]/page";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
+import { __resetRecentlyViewed, getViewed, recordView } from "@/lib/recently-viewed";
 
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
+  localStorage.clear();
+  __resetRecentlyViewed();
   // Every client probe on the page (reviews, promos, zones…) answers empty.
   globalThis.fetch = (() =>
     Promise.resolve(new Response(JSON.stringify({}), { status: 200 }))) as unknown as typeof fetch;
@@ -114,5 +117,30 @@ describe("Product page — same-category shelf at the very bottom", () => {
     expect(
       within(tail).getByRole("heading", { level: 2 }).querySelector("a"),
     ).toHaveAttribute("href", `/shop?category=${product.category}`);
+  });
+
+  it("remembers the view and shows earlier views ABOVE the same-category shelf", async () => {
+    const product = PRODUCTS.find((p) => p.slug === "heritage-green-panjabi")!;
+    const other = PRODUCTS.find((p) => p.id !== product.id && p.active !== false && p.status !== "draft")!;
+
+    // First visit on this device: nothing viewed before → no rail, but the
+    // view itself is remembered.
+    let view = await renderProduct(product.slug);
+    expect(view.container.querySelector('[data-testid="recently-viewed"]')).toBeNull();
+    expect(getViewed().map((e) => e.id)).toEqual([product.id]);
+    cleanup();
+
+    // Another piece was viewed earlier → it shows, the current piece does not,
+    // and the category shelf is still the very last section.
+    recordView(other.id, Date.now() - 1000);
+    view = await renderProduct(product.slug);
+    const rail = view.container.querySelector('[data-testid="recently-viewed"]') as HTMLElement;
+    expect(rail).not.toBeNull();
+    expect(within(rail).getByRole("link", { name: `View ${other.name}` })).toBeInTheDocument();
+    expect(within(rail).queryByRole("link", { name: `View ${product.name}` })).toBeNull();
+    const sections = Array.from(view.container.querySelectorAll("section"));
+    const tail = view.container.querySelector('[data-testid="more-in-category"]') as HTMLElement;
+    expect(sections[sections.length - 1]).toBe(tail);
+    expect(rail.compareDocumentPosition(tail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

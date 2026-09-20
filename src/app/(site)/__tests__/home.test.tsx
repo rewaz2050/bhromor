@@ -6,6 +6,7 @@ import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { __resetHomeSettings } from "@/lib/use-home-settings";
 import { MY_ZONE_KEY } from "@/lib/use-my-zone";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
+import { __resetRecentlyViewed, recordView } from "@/lib/recently-viewed";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
@@ -57,6 +58,8 @@ const mockFetch = (input: RequestInfo | URL) => {
 beforeEach(() => {
   homepageSettings = HOME_DEFAULTS;
   reviewsPayload = {};
+  localStorage.removeItem("prosanti.recently-viewed.v1");
+  __resetRecentlyViewed();
   // The homepage settings store is fetch-once per page lifetime (P2.2);
   // each test is a fresh page.
   __resetHomeSettings();
@@ -247,6 +250,35 @@ describe("Homepage editorial journey", () => {
       );
     });
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("shows a compact recently-viewed strip between hero and categories for a returning device only", async () => {
+    let { container } = await renderHome();
+    await screen.findByTestId("category-row");
+    expect(screen.queryByTestId("recently-viewed-strip")).toBeNull();
+
+    cleanup();
+    __resetHomeSettings();
+    const seen = PRODUCTS.filter((p) => p.active !== false && p.status !== "draft").slice(0, 2);
+    recordView(seen[0].id, Date.now() - 2000);
+    recordView(seen[1].id, Date.now() - 1000);
+    ({ container } = await renderHome());
+    const strip = await screen.findByTestId("recently-viewed-strip");
+    const links = within(strip).getAllByRole("link");
+    // newest first, links to the product pages
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      `/product/${seen[1].slug}`,
+      `/product/${seen[0].slug}`,
+    ]);
+    const sections = Array.from(container.querySelectorAll("section"));
+    const hero = container.querySelector('[data-testid="home-hero"]') as HTMLElement;
+    const row = container.querySelector('[data-testid="category-row"]') as HTMLElement;
+    expect(sections.indexOf(hero)).toBeLessThan(sections.indexOf(strip));
+    expect(sections.indexOf(strip)).toBeLessThan(sections.indexOf(row));
+
+    // One tap clears it.
+    fireEvent.click(within(strip).getByRole("button", { name: /clear/i }));
+    expect(screen.queryByTestId("recently-viewed-strip")).toBeNull();
   });
 
   it("puts the owner's public promo code at the top of the offers block", async () => {

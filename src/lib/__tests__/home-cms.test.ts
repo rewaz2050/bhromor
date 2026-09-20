@@ -23,7 +23,7 @@ describe("homepage CMS (§31)", () => {
     expect(merged.sections.hero).toBe(true);
     expect(merged.sections.collections).toBe(true);
     // Retired keys from older saves (featured, brandStory, brandJournal) are dropped.
-    expect(Object.keys(merged.sections).sort()).toEqual(["collections", "hero", "offers", "stories", "trust"]);
+    expect(Object.keys(merged.sections).sort()).toEqual(["collections", "hero", "offers", "recent", "stories", "trust"]);
     // An explicit "off" from an older publish survives the new default.
     expect(resolveSettings({ announcement: { enabled: false } }).announcement.enabled).toBe(false);
     // defaults never mutate

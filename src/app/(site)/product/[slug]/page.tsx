@@ -1,6 +1,7 @@
 import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
+import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -304,6 +305,9 @@ export default async function ProductPage({ params }: PageProps) {
       </div>
       {/* §30 reviews — live approved reviews + moderated submission form */}
       <ReviewsSection product={product} />
+      {/* What this device looked at before this piece (and where the view
+          itself is remembered) — above the category shelf, never below. */}
+      <RecentlyViewedRail currentId={product.id} />
       {/* Always the LAST thing on the page: the rest of this piece's own
           category, so the shopper who reached the bottom keeps browsing the
           shelf they came for. */}
