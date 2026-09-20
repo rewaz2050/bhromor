@@ -238,6 +238,7 @@ export const translations = {
       showAllZones: "Show all zones",
     },
     product: {
+      video: "Video",
       quickAdd: "Quick add",
       details: "Details",
       soldOut: "Sold out",
@@ -852,6 +853,7 @@ export const translations = {
       showAllZones: "সব এলাকা দেখুন",
     },
     product: {
+      video: "ভিডিও",
       quickAdd: "দ্রুত যোগ করুন",
       details: "বিস্তারিত",
       soldOut: "স্টক শেষ",

@@ -17,6 +17,7 @@ import { usePriceDropFor } from "@/lib/use-price-watch";
 import { FlashRibbon } from "@/components/promo/flash-timer";
 import { IconTrendDown } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
+import { hasProductVideo } from "@/lib/media";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -86,6 +87,15 @@ export default function ProductCard({ product }: { product: Product }) {
             />
           )}
           {flash.was !== null && <FlashRibbon pct={flash.pct} />}
+          {/* A video sells a garment better than any still — say it has one. */}
+          {hasProductVideo(product) && (
+            <span
+              data-testid="video-badge"
+              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-forest-950/80 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-ivory-50 backdrop-blur-[2px]"
+            >
+              <span aria-hidden="true">▶</span> {t("product.video")}
+            </span>
+          )}
           {!product.inStock && (
             <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
               {t("product.soldOut")}

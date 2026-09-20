@@ -304,3 +304,14 @@ export const normalizeMediaInput = (
     },
   };
 };
+
+/**
+ * Does this product have any video a shopper can play — a YouTube link or a
+ * hosted/Drive video in its media list? Drives the "▶ Video" cue on cards
+ * and the admin's "no video yet" nudge.
+ */
+export const hasProductVideo = (product: {
+  video?: { youtubeId: string } | null;
+  media: { kind?: "image" | "video" }[];
+}): boolean =>
+  Boolean(product.video?.youtubeId) || product.media.some((m) => m.kind === "video");

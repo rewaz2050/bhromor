@@ -100,6 +100,22 @@ describe("Editorial product cards", () => {
     expect(screen.queryByTestId("product-card-alt-name")).toBeNull();
   });
 
+  it("shows a ▶ Video cue only when the piece has a video", () => {
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, video: undefined, media: product.media.filter((m) => m.kind !== "video") }} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("video-badge")).toBeNull();
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, video: { youtubeId: "dQw4w9WgXcQ", label: "Watch" } }} />
+      </CartProvider>,
+    );
+    expect(screen.getByTestId("video-badge")).toHaveTextContent(/video/i);
+  });
+
   it("shows a sold count only when real units were sold (P2 #1)", () => {
     // No sales figure → no line; the card never invents a ranking.
     render(
