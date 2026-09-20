@@ -27,6 +27,7 @@ import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
+import ReorderButton from "@/components/orders/reorder-button";
 import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
@@ -454,6 +455,17 @@ export default function TrackView() {
                     </li>
                   ))}
                 </ul>
+                {!order.isReturn ? (
+                  <ReorderButton
+                    className="mt-4"
+                    lines={order.items.map((it) => ({
+                      productId: it.productId,
+                      variantLabel: it.variant,
+                      qty: it.qty,
+                      name: it.name,
+                    }))}
+                  />
+                ) : null}
                 <dl className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
                   <div className="flex justify-between text-ink-soft">
                     <dt>Subtotal</dt>

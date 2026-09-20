@@ -185,3 +185,8 @@ export function useCart(): CartContextValue {
   if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
   return ctx;
 }
+
+/** Same context, but null outside a <CartProvider> (optional bag surfaces). */
+export function useOptionalCart(): CartContextValue | null {
+  return useContext(CartContext);
+}

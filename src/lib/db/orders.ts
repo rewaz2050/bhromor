@@ -119,6 +119,8 @@ export interface CustomerOrderSummary {
   deliveryWindow: string | null;
   isPickup: boolean;
   isReturn: boolean;
+  /** Snapshot lines so "Order again" can re-add exactly what was bought. */
+  lines: { productId: string; variantLabel: string; qty: number; name: string }[];
 }
 
 /**
@@ -162,22 +164,24 @@ export async function listOrdersForPhone(
     .filter((row) => normalizePhone(row.customer_phone) === digits)
     .slice(0, limit);
   if (rows.length === 0) return [];
-  const items = await selectIn<Pick<DbOrderItem, "order_id" | "name" | "variant" | "qty">>(
-    db,
-    "order_items",
-    "order_id, name, variant, qty",
-    "order_id",
-    rows.map((r) => r.id),
-  );
-  const byOrder = new Map<string, { count: number; first: string | null }>();
+  const items = await selectIn<
+    Pick<DbOrderItem, "order_id" | "product_id" | "name" | "variant" | "qty">
+  >(db, "order_items", "order_id, product_id, name, variant, qty", "order_id", rows.map((r) => r.id));
+  const byOrder = new Map<
+    string,
+    { count: number; first: string | null; lines: CustomerOrderSummary["lines"] }
+  >();
   for (const it of items.data) {
-    const cur = byOrder.get(it.order_id) ?? { count: 0, first: null };
+    const cur = byOrder.get(it.order_id) ?? { count: 0, first: null, lines: [] };
     cur.count += it.qty;
     if (!cur.first) cur.first = [it.name, it.variant].filter(Boolean).join(" · ");
+    if (it.product_id) {
+      cur.lines.push({ productId: it.product_id, variantLabel: it.variant, qty: it.qty, name: it.name });
+    }
     byOrder.set(it.order_id, cur);
   }
   return rows.map((row) => {
-    const agg = byOrder.get(row.id) ?? { count: 0, first: null };
+    const agg = byOrder.get(row.id) ?? { count: 0, first: null, lines: [] };
     return {
       id: row.order_no ?? row.id,
       createdAt: new Date(row.created_at).getTime(),
@@ -191,6 +195,7 @@ export async function listOrdersForPhone(
       deliveryWindow: row.delivery_window ?? null,
       isPickup: !!row.is_pickup,
       isReturn: !!row.is_return,
+      lines: agg.lines,
     };
   });
 }

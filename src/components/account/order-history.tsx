@@ -9,6 +9,7 @@
  * the tracker (which carries cancel / return / warranty).
  */
 
+import ReorderButton from "@/components/orders/reorder-button";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -31,6 +32,8 @@ export interface HistoryRow {
   deliveryWindow: string | null;
   isPickup: boolean;
   isReturn: boolean;
+  /** Optional (older API shapes omit it) — powers "Order again". */
+  lines?: { productId: string; variantLabel: string; qty: number; name: string }[];
 }
 
 const STEP_LABEL: Record<(typeof PUBLIC_STEPS)[number]["key"], TranslationKey> = {
@@ -169,12 +172,17 @@ export default function OrderHistory({ phone }: { phone: string }) {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                   <span className="text-sm font-semibold text-ink">{formatBdt(row.total)}</span>
-                  <Link
-                    href={trackHref(row.id, phone)}
-                    className="inline-flex min-h-9 items-center rounded-full bg-forest-800 px-3.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
-                  >
-                    {t("track.historyTrack")} →
-                  </Link>
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {!row.isReturn && (row.lines?.length ?? 0) > 0 ? (
+                      <ReorderButton lines={row.lines ?? []} compact />
+                    ) : null}
+                    <Link
+                      href={trackHref(row.id, phone)}
+                      className="inline-flex min-h-9 items-center rounded-full bg-forest-800 px-3.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+                    >
+                      {t("track.historyTrack")} →
+                    </Link>
+                  </div>
                 </div>
               </li>
             );
