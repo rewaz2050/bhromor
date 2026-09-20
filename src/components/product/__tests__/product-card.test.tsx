@@ -12,6 +12,7 @@ import { CartProvider, useCart } from "@/components/cart/cart-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 
 vi.mock("@/lib/use-live-catalog", async () => {
   const { CATEGORIES, PRODUCTS } = await import("@/lib/catalog");
@@ -58,6 +59,45 @@ describe("Editorial product cards", () => {
     ).toHaveAttribute("href", `/product/${product.slug}`);
     expect(screen.queryByText(/^New$/)).toBeNull();
     expect(screen.queryByText(`(${product.reviewCount})`)).toBeNull();
+  });
+
+  it("shows the Bangla name under the title, and Bangla-first in Bangla", () => {
+    const withBn = { ...product, nameBn: "হেরিটেজ সবুজ পাঞ্জাবি" };
+    render(
+      <CartProvider>
+        <ProductCard product={withBn} />
+      </CartProvider>,
+    );
+    // English: the style name stays the heading; Bangla sits quietly under it.
+    expect(screen.getByRole("heading", { name: product.name })).toBeVisible();
+    const alt = screen.getByTestId("product-card-alt-name");
+    expect(alt).toHaveTextContent("হেরিটেজ সবুজ পাঞ্জাবি");
+    expect(alt).toHaveAttribute("lang", "bn");
+
+    cleanup();
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={withBn} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    // Bangla: the Bangla name is the heading, English becomes the second line.
+    expect(
+      screen.getByRole("heading", { name: "হেরিটেজ সবুজ পাঞ্জাবি" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("product-card-alt-name")).toHaveTextContent(
+      "Heritage Green",
+    );
+
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, nameBn: undefined }} />
+      </CartProvider>,
+    );
+    // No Bangla name on the row → no second line, nothing invented.
+    expect(screen.queryByTestId("product-card-alt-name")).toBeNull();
   });
 
   it("shows a sold count only when real units were sold (P2 #1)", () => {

@@ -38,7 +38,7 @@ export function editorialProductName(product: Product): string {
 }
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   /* Flash price + the price this device last saw — a quiet overlay; the cart
      and checkout decide the money. */
   const flash = useFlashPrice(product);
@@ -51,6 +51,12 @@ export default function ProductCard({ product }: { product: Product }) {
   const cover = coverImage(product);
   const hoverImage = secondImage(product);
   const styleName = editorialProductName(product);
+  /* Bangla-first when the shopper reads Bangla: the Bangla name becomes the
+     title and the English style name drops to a quiet second line. In
+     English the Bangla name still shows underneath so a shopper can match
+     what a relative or a shop assistant called the piece. */
+  const bnName = product.nameBn?.trim() || "";
+  const bnFirst = lang === "bn" && bnName.length > 0;
   const { shops } = useLiveCatalog();
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
 
@@ -162,15 +168,27 @@ export default function ProductCard({ product }: { product: Product }) {
             </>
           )}
         </p>
-        <h3 className="product-card-title mt-1.5 font-display text-xl font-normal leading-tight tracking-[-0.015em]">
+        <h3
+          lang={bnFirst ? "bn" : undefined}
+          className={`product-card-title mt-1.5 font-display text-xl font-normal leading-tight tracking-[-0.015em] ${bnFirst ? "font-bengali" : ""}`}
+        >
           <Link
             href={`/product/${product.slug}`}
-            aria-label={product.name}
+            aria-label={bnFirst ? bnName : product.name}
             className="text-forest-950 hover:text-forest-700"
           >
-            {styleName}
+            {bnFirst ? bnName : styleName}
           </Link>
         </h3>
+        {bnName ? (
+          <p
+            lang={bnFirst ? undefined : "bn"}
+            data-testid="product-card-alt-name"
+            className={`mt-0.5 truncate text-xs text-ink-soft ${bnFirst ? "" : "font-bengali"}`}
+          >
+            {bnFirst ? styleName : bnName}
+          </p>
+        ) : null}
         <div className="mt-auto pt-2.5">
           <Price
             value={shown}
