@@ -51,7 +51,7 @@ import {
   isNightHour,
   orderTotal,
 } from "@/lib/delivery";
-import { usePublicSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-public-settings";
 import {
   IconArrowRight,
   IconBag,

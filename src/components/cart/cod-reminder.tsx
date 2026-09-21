@@ -11,7 +11,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { codEstimate } from "@/lib/cod-estimate";
 import { formatBdt } from "@/lib/format";
 import { useMyZone } from "@/lib/use-my-zone";
-import { usePublicSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-public-settings";
 import { IconBanknote } from "@/components/ui/icons";
 
 export default function CodReminder({ subtotal, className = "" }: { subtotal: number; className?: string }) {

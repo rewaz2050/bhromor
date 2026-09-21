@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useMyZone } from "@/lib/use-my-zone";
-import { usePublicSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-public-settings";
 import { arrivalCue } from "@/lib/arrival";
 import { IconClock } from "@/components/ui/icons";
 

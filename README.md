@@ -97,6 +97,13 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Performance audit (2026-09-21)
+
+Measured on the production build (gzip on the wire): home **≈265 KB JS**, /shop ≈257 KB, /checkout ≈278 KB; CSS ≈134 KB raw; local TTFB 8–150 ms (first hit warms the dynamic shop route). Findings fixed:
+
+- **Admin code no longer ships to shoppers** — `usePublicSettings` lives in its own module; importing it from the staff settings hook had pulled the admin-auth client (admin email + the secret ops-gate path) into every customer page's bundle. Customer surfaces (checkout, referral step, price-watch strip, bag COD card, arrival cue) now use the clean module. Rebuilt and verified: no admin markers in any storefront chunk.
+- Same audit surfaced and fixed a real bug: customer surfaces were reading ops settings through the **staff hook**, so shoppers always got launch defaults regardless of what the admin saved.
+
 ## Admin-owned pricing (2026-09-21)
 
 Every money knob is now the owner's, end to end:

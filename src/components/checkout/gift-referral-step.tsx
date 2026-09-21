@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import { formatBdt } from "@/lib/format";
 import { wrapFeeFor, wrapOptions, type GiftConfig, type WrapId } from "@/lib/gift";
 import { clearStoredRef, displayRefCode, storedRef } from "@/lib/referral";
-import { useSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-public-settings";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconClose, IconGift, IconTag } from "@/components/ui/icons";
 
@@ -61,7 +61,7 @@ export function GiftStep({
   errors?: Record<string, string>;
 }) {
   const { t } = useLanguage();
-  const { settings } = useSettings();
+  const { settings } = usePublicSettings();
   const cfg = settings.gift;
   const wraps = wrapOptions(cfg);
   const fee = giftFeeFor(value, cfg);
@@ -241,7 +241,7 @@ export function ReferralField({
   error?: string;
 }) {
   const { t } = useLanguage();
-  const { settings } = useSettings();
+  const { settings } = usePublicSettings();
   const cfg = settings.referral;
   const [touched, setTouched] = useState(false);
 
