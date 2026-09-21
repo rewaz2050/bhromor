@@ -21,6 +21,7 @@ import { useMyZone } from "@/lib/use-my-zone";
 import { bdt, formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import ProductCard from "@/components/product/product-card";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import Drawer from "@/components/ui/drawer";
 import {
   IconBox,
@@ -819,6 +820,11 @@ export default function ShopBrowser({
                   {t("shopBrowser.clearFilters")}
                 </button>
               )}
+            </div>
+          )}
+          {products.length > 0 && (
+            <div className="mt-10">
+              <RecentlyViewedStrip pool={products} limit={4} />
             </div>
           )}
         </div>
