@@ -97,6 +97,14 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Menubar pass (2026-09-21)
+
+- **Offers pill** in the desktop bar and the drawer — appears only while pieces are genuinely on offer (admin-priced) and owns `/shop?filter=sale` exclusively: the sale tab never lights on the plain shop, and vice versa.
+- **"Collections" → "Categories"** (en + bn) — the link jumps to the home category shelf, and the old name oversold it.
+- **Track** joins the desktop bar (it lived only in the footer before).
+- **Active state parity** — a product page now lights the Shop pill on desktop, same ownership the phone's thumb bar already used.
+- **Drawer orientation** — the page you are on is highlighted in gold with a check, so the open menu tells you where you are.
+
 ## Performance audit (2026-09-21)
 
 Measured on the production build (gzip on the wire): home **≈265 KB JS**, /shop ≈257 KB, /checkout ≈278 KB; CSS ≈134 KB raw; local TTFB 8–150 ms (first hit warms the dynamic shop route). Findings fixed:
