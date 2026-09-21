@@ -173,6 +173,32 @@ export const translations = {
       orders: "Orders",
       bag: "Bag",
     },
+    accountHero: {
+      pageEyebrow: "A space of your own",
+      pageTitle: "Your account.",
+      welcome: "Welcome back,",
+      signedIn: "Signed in on",
+      plusActive: "PROSANTI+ · active",
+      plusPending: "PROSANTI+ · verifying",
+      trackLast: "Track your last order",
+      wishlist: "Your wishlist",
+      signOut: "Sign out on this device",
+      signingOut: "Signing out…",
+      stampNote: "Stamps land on this account with every order.",
+    },
+    accountTabs: {
+      orders: "Orders",
+      card: "Smart Card",
+      refer: "Refer & Earn",
+      plus: "PROSANTI+",
+    },
+    accountPitch: {
+      title: "A free account — no verification",
+      stamps: "Smart Card — 1 stamp per order, a free prize on the 10th",
+      refer: "Refer a friend — you both earn a coupon",
+      history: "Order history with one-tap tracking, cancel & returns",
+      plus: "PROSANTI+ — free delivery + priority handling",
+    },
     mobileDrawer: {
       discover: "Discover",
       explore: "Explore",
@@ -803,6 +829,32 @@ export const translations = {
       orders: "অর্ডার",
       bag: "ব্যাগ",
     },
+    accountHero: {
+      pageEyebrow: "আপনার নিজের একটা জায়গা",
+      pageTitle: "আপনার অ্যাকাউন্ট।",
+      welcome: "স্বাগতম,",
+      signedIn: "লগ ইন করা আছে",
+      plusActive: "PROSANTI+ · সক্রিয়",
+      plusPending: "PROSANTI+ · যাচাই চলছে",
+      trackLast: "শেষ অর্ডার ট্র্যাক করুন",
+      wishlist: "আপনার ওয়ান্টলিস্ট",
+      signOut: "এই ডিভাইস থেকে লগ আউট",
+      signingOut: "লগ আউট হচ্ছে…",
+      stampNote: "প্রতিটি অর্ডারের স্ট্যাম্প এই অ্যাকাউন্টেই জমা হচ্ছে।",
+    },
+    accountTabs: {
+      orders: "অর্ডারসমূহ",
+      card: "স্মার্ট কার্ড",
+      refer: "রেফার করুন",
+      plus: "PROSANTI+",
+    },
+    accountPitch: {
+      title: "ফ্রি অ্যাকাউন্ট — কোনো ভেরিফিকেশন নেই",
+      stamps: "স্মার্ট কার্ড — প্রতি অর্ডারে ১ স্ট্যাম্প, ১০ম অর্ডারে ফ্রি পুরস্কার",
+      refer: "বন্ধুকে রেফার করুন — দুজনেই কুপন পান",
+      history: "অর্ডার হিস্ট্রি, এক-ট্যাপ ট্র্যাকিং, ক্যানসেল ও রিটার্ন",
+      plus: "PROSANTI+ — ফ্রি ডেলিভারি + প্রায়োরিটি হ্যান্ডলিং",
+    },
     mobileDrawer: {
       discover: "আবিষ্কার করুন",
       explore: "আরও দেখুন",
@@ -1291,4 +1343,7 @@ export type TranslationKey =
   | `referral.${keyof typeof translations.en.referral}`
   | `priceDrop.${keyof typeof translations.en.priceDrop}`
   | `restock.${keyof typeof translations.en.restock}`
-  | `track.${keyof typeof translations.en.track}`;
+  | `track.${keyof typeof translations.en.track}`
+  | `accountHero.${keyof typeof translations.en.accountHero}`
+  | `accountTabs.${keyof typeof translations.en.accountTabs}`
+  | `accountPitch.${keyof typeof translations.en.accountPitch}`;

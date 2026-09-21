@@ -97,6 +97,14 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Account dashboard rebuild (2026-09-21)
+
+- **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.
+- **Four lazy tabs** — Orders (landing) · Smart Card · Refer & Earn · PROSANTI+. Each programme mounts only when its tab opens, so its fetch fires once, when needed — no 8-request card stack, no endless scroll.
+- **Guests: form first** — the signup/login form leads beside an honest "why an account" card (stamps, referral, history/tracking, PROSANTI+), teasers below. The auth flow, labels and error handling are byte-identical to the audited version.
+- **Bilingual page heading** — the hardcoded English h1/eyebrow moved into the client view and now follows the language switcher; the heading renders even while the session probe runs.
+- New copy is translation-keyed (`accountHero.*`, `accountTabs.*`, `accountPitch.*`, en+bn).
+
 ## Menubar pass (2026-09-21)
 
 - **Offers pill** in the desktop bar and the drawer — appears only while pieces are genuinely on offer (admin-priced) and owns `/shop?filter=sale` exclusively: the sale tab never lights on the plain shop, and vice versa.

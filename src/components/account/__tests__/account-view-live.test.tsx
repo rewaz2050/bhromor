@@ -92,8 +92,8 @@ describe("AccountView — live session flip (no reload needed)", () => {
     );
 
     expect(await screen.findByText(/অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন/)).toBeInTheDocument();
-    expect(screen.getByText("লগ ইন করা আছে — আপনার ড্যাশবোর্ড")).toBeInTheDocument();
-    expect(screen.getByText("করিম মিয়া")).toBeInTheDocument();
+    // The dashboard hero greets the customer by name (2026-09-21 rebuild).
+    expect(screen.getByTestId("account-hero-name")).toHaveTextContent("করিম মিয়া");
     // No separate login step is demanded: the signup form is gone.
     expect(
       screen.queryByRole("button", { name: "সাইন আপ করুন — সাথে সাথে লগ ইন" }),
