@@ -38,10 +38,13 @@ export const metadata: Metadata = {
       "Thoughtfully made essentials for everyday Bangladesh.",
     images: [
       {
-        url: "/images/editorial/hero-prosanti.jpg",
-        width: 1376,
-        height: 768,
-        alt: "PROSANTI forest-green panjabi campaign",
+        // The branded share card painted by src/app/opengraph-image.tsx
+        // (brand + door-delivery promise + hero art). Shop and product
+        // pages advertise their own cards; every other route shares this.
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "PROSANTI — premium panjabi, three-piece, lungi and gamcha, at your door in Sunamganj",
       },
     ],
   },

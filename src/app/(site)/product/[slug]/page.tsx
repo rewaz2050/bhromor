@@ -58,11 +58,22 @@ export async function generateMetadata({
   return {
     title: product.name,
     description: product.shortDescription,
+    // The branded price card (opengraph-image/route.tsx in this segment —
+    // the file convention doesn't register inside a route group, upstream
+    // NEXT-1102). Route handlers can't auto-attach, so the page advertises
+    // the URL itself.
     openGraph: {
       type: "website",
       title: `${product.name} — PROSANTI`,
       description: product.shortDescription,
-      images: [{ url: cover.src, alt: cover.alt || product.name }],
+      images: [
+        {
+          url: `/product/${slug}/opengraph-image`,
+          width: 1200,
+          height: 630,
+          alt: cover.alt || product.name,
+        },
+      ],
     },
   };
 }

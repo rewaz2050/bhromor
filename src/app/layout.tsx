@@ -25,6 +25,11 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   applicationName: "PROSANTI",
+  // Rich WhatsApp/Facebook/X previews for bare links (home, /shop, product
+  // pages each answer an opengraph-image card).
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export const viewport: Viewport = {

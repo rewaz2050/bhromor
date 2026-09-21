@@ -15,6 +15,21 @@ export const metadata: Metadata = {
   title: "Shop",
   description:
     "Browse the PROSANTI catalog — premium panjabi, shirts, three-piece, lungi and gamcha, with transparent pricing and rapid delivery.",
+  // The collection card (opengraph-image/route.tsx beside this page — file
+  // conventions don't register inside a route group, upstream NEXT-1102).
+  openGraph: {
+    title: "Shop the PROSANTI collection",
+    description:
+      "Premium panjabi, shirts, three-piece, lungi and gamcha — at your door in Sunamganj, cash on delivery.",
+    images: [
+      {
+        url: "/shop/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "The PROSANTI collection",
+      },
+    ],
+  },
 };
 
 /**
