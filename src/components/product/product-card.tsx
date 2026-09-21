@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { coverImage, secondImage, type Product } from "@/lib/catalog";
+import { useEffect, useRef, useState } from "react";
+import { cardPeekImages, coverImage, type Product } from "@/lib/catalog";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -50,7 +50,46 @@ export default function ProductCard({ product }: { product: Product }) {
   const [notice, setNotice] = useTransientValue("");
   const wished = has(product.id);
   const cover = coverImage(product);
-  const hoverImage = secondImage(product);
+  /* Press-and-hold peek (touch & mouse): holding a card cycles through the
+     piece's photos — a look inside without opening the product. A quick tap
+     still navigates; releasing after a peek swallows the click instead. */
+  const peekImages = cardPeekImages(product);
+  const [peekIndex, setPeekIndex] = useState(0);
+  const [holding, setHolding] = useState(false);
+  const holdTimer = useRef<number | null>(null);
+  const rotorTimer = useRef<number | null>(null);
+  const swallowedClick = useRef(false);
+
+  const endPeek = () => {
+    if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+    if (rotorTimer.current !== null) window.clearInterval(rotorTimer.current);
+    holdTimer.current = null;
+    rotorTimer.current = null;
+    setHolding(false);
+    setPeekIndex(0);
+  };
+
+  const beginHold = () => {
+    if (peekImages.length < 2 || holding || holdTimer.current !== null) return;
+    setHolding(true);
+    holdTimer.current = window.setTimeout(() => {
+      holdTimer.current = null;
+      swallowedClick.current = true;
+      setPeekIndex(1);
+      rotorTimer.current = window.setInterval(() => {
+        setPeekIndex((index) => (index + 1) % peekImages.length);
+      }, 950);
+    }, 280);
+  };
+
+  /* Release-held timers if the card leaves the tree mid-peek. */
+  useEffect(
+    () => () => {
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+      if (rotorTimer.current !== null) window.clearInterval(rotorTimer.current);
+    },
+    [],
+  );
   const styleName = editorialProductName(product);
   /* Bangla-first when the shopper reads Bangla: the Bangla name becomes the
      title and the English style name drops to a quiet second line. In
@@ -66,8 +105,27 @@ export default function ProductCard({ product }: { product: Product }) {
       <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
           href={`/product/${product.slug}`}
-          className="relative block aspect-[4/5]"
+          className="relative block aspect-[4/5] select-none"
           aria-label={`View ${product.name}`}
+          data-testid="card-peek"
+          data-peeking={peekIndex > 0 || undefined}
+          onPointerDown={beginHold}
+          onPointerUp={endPeek}
+          onPointerCancel={endPeek}
+          onPointerLeave={endPeek}
+          onContextMenu={(event) => {
+            /* A long-press here is a peek, not a "save image" request. */
+            if (peekIndex > 0) event.preventDefault();
+          }}
+          onClickCapture={(event) => {
+            /* Releasing a peek must not throw the shopper into the product
+               page — swallow the click that ends a hold. */
+            if (swallowedClick.current) {
+              event.preventDefault();
+              event.stopPropagation();
+              swallowedClick.current = false;
+            }
+          }}
         >
           <Image
             src={cover.src}
@@ -76,15 +134,52 @@ export default function ProductCard({ product }: { product: Product }) {
             sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
             className="product-image-primary object-cover"
           />
-          {hoverImage && (
+          {peekImages.length > 1 && (
             <Image
-              src={hoverImage.src}
+              src={peekImages[1]!.src}
               alt=""
               aria-hidden="true"
               fill
               sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
-              className="product-image-secondary absolute inset-0 h-full w-full object-cover opacity-0"
+              data-peek-slide={1}
+              data-active={peekIndex === 1}
+              className={`product-image-secondary absolute inset-0 h-full w-full object-cover ${
+                peekIndex === 1 ? "opacity-100" : "opacity-0"
+              }`}
             />
+          )}
+          {peekImages.slice(2).map((slide, offset) => {
+            const index = offset + 2;
+            return (
+              <Image
+                key={slide.src}
+                src={slide.src}
+                alt=""
+                aria-hidden="true"
+                fill
+                sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+                data-peek-slide={index}
+                data-active={peekIndex === index}
+                className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 data-[active=true]:opacity-100"
+              />
+            );
+          })}
+          {holding && peekImages.length > 1 && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-2.5 z-10 flex justify-center gap-1.5"
+            >
+              {peekImages.map((slide, index) => (
+                <span
+                  key={slide.src}
+                  data-peek-dot={index}
+                  data-active={peekIndex === index}
+                  className={`h-1 w-4 rounded-full backdrop-blur-[2px] transition-colors duration-200 ${
+                    peekIndex === index ? "bg-ivory-50" : "bg-ivory-50/45"
+                  }`}
+                />
+              ))}
+            </span>
           )}
           {flash.was !== null && <FlashRibbon pct={flash.pct} />}
           {/* A video sells a garment better than any still — say it has one. */}

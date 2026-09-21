@@ -479,6 +479,15 @@ export const secondImage = (product: Product): ProductMedia | undefined => {
   return images.length > 1 ? images[1] : undefined;
 };
 
+/**
+ * Press-and-hold peek on a card cycles these — every image the piece has,
+ * cover first, video slides skipped (those play in the gallery only).
+ * Capped at four: a card held under a finger should never pull a fifth
+ * full-size photo over mobile data.
+ */
+export const cardPeekImages = (product: Product, max = 4): ProductMedia[] =>
+  product.media.filter((m) => (m.kind ?? "image") === "image").slice(0, max);
+
 export const getCategory = (id: string): Category | undefined =>
   CATEGORIES.find((c) => c.id === id);
 

@@ -414,6 +414,10 @@ body {
 .product-card-media {
   border-radius: 4px;
   isolation: isolate;
+  /* A press-and-hold on a card is a photo peek, not the iOS "save image" sheet. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .product-card-details {
   border-bottom: 1px solid var(--color-line);
