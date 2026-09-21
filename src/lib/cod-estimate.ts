@@ -7,12 +7,13 @@
  */
 
 import {
+  DEFAULT_SURCHARGE_RATES,
   DELIVERY_CHARGE_MAX_PAISA,
   DELIVERY_CHARGE_MIN_PAISA,
   MIN_ORDER_OUTSIDE_SADAR_PAISA,
-  NIGHT_SURCHARGE_PAISA,
   isCourierZone,
   isNightHour,
+  type SurchargeRates,
 } from "./delivery";
 import { dhakaParts } from "./delivery-slots";
 import { SUNAMGANJ_ZONES } from "./sunamganj";
@@ -31,15 +32,23 @@ export interface CodEstimate {
 }
 
 export const codEstimate = (
-  opts: { subtotal: Bdt; zoneId: string | null | undefined },
+  opts: {
+    subtotal: Bdt;
+    zoneId: string | null | undefined;
+    /** The owner's rates + floor when the surface has them (defaults match launch). */
+    rates?: SurchargeRates;
+    courierMinPaisa?: Bdt;
+  },
   nowMs = Date.now(),
 ): CodEstimate => {
   const zone = opts.zoneId ? (SUNAMGANJ_ZONES.find((z) => z.id === opts.zoneId) ?? null) : null;
   const delivery = zone
     ? { min: zone.charge, max: zone.charge }
     : { min: DELIVERY_CHARGE_MIN_PAISA, max: DELIVERY_CHARGE_MAX_PAISA };
-  const night = isNightHour(dhakaParts(nowMs).hour) ? NIGHT_SURCHARGE_PAISA : 0;
+  const night =
+    isNightHour(dhakaParts(nowMs).hour) ? (opts.rates?.night ?? DEFAULT_SURCHARGE_RATES.night) : 0;
   const courier = isCourierZone(opts.zoneId);
+  const courierMin = opts.courierMinPaisa ?? MIN_ORDER_OUTSIDE_SADAR_PAISA;
   return {
     exact: !!zone,
     min: opts.subtotal + delivery.min + night,
@@ -47,6 +56,6 @@ export const codEstimate = (
     delivery,
     night,
     courier,
-    belowCourierMinimum: courier && opts.subtotal < MIN_ORDER_OUTSIDE_SADAR_PAISA,
+    belowCourierMinimum: courier && opts.subtotal < courierMin,
   };
 };

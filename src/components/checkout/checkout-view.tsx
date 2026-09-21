@@ -43,8 +43,6 @@ import {
   DELIVERY_CHARGE_PROMISE_BN,
   DELIVERY_CHARGE_PROMISE_EN,
   INSTANT_DELIVERY_TITLE,
-  MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
-  MIN_ORDER_OUTSIDE_SADAR_PAISA,
   NIGHT_SURCHARGE_PAISA,
   RAIN_SURCHARGE_PAISA,
   courierEta,
@@ -53,7 +51,7 @@ import {
   isNightHour,
   orderTotal,
 } from "@/lib/delivery";
-import { useSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-settings";
 import {
   IconArrowRight,
   IconBag,
@@ -388,7 +386,9 @@ export default function CheckoutView() {
   const nowMs = useNow(60_000);
   const { activeZones: zoneList } = useLiveZones();
   const { shops } = useLiveCatalog();
-  const { settings } = useSettings();
+  // The OWNER's numbers, read-only and public — never the staff hook
+  // (a customer is not signed in to the dashboard). Defaults while loading.
+  const { settings } = usePublicSettings();
   const bagShop =
     shopById(
       shops,
@@ -714,6 +714,7 @@ export default function CheckoutView() {
       couponFree: (couponFreeDelivery && !!activeCoupon) || plusActive,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
+      rates: settings.surcharges,
     });
     const charge = breakdown.totalCharge;
     const discount = activeCoupon ? couponCheck.discount : 0;
@@ -769,9 +770,11 @@ export default function CheckoutView() {
   const mixedBag = lineShopIds(detail, shops[0]?.id ?? "").length > 1;
 
   /* P0 #3 — the minimum outside Sunamganj Sadar, said BEFORE the tap. */
+  const courierFloor = settings.courierMinOrderPaisa;
+  const courierMinLabel = `৳${Math.round(courierFloor / 100)}`;
   const minOrderShortfall =
     summary.isOutside && !form.isPickup
-      ? Math.max(0, MIN_ORDER_OUTSIDE_SADAR_PAISA - subtotal)
+      ? Math.max(0, courierFloor - subtotal)
       : 0;
 
   /* Step completion — drives the progress rail and the sticky bar hint. */
@@ -1265,7 +1268,7 @@ export default function CheckoutView() {
     if (effectivePara.trim().length < 2)
       localErrors.area = "পাড়া / গ্রামের নাম লিখুন — please enter your village or area.";
     if (minOrderShortfall > 0)
-      localErrors.items = `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} টাকার অর্ডার করতে হবে — আরও ${formatBdt(minOrderShortfall)} যোগ করুন।`;
+      localErrors.items = `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${courierMinLabel} টাকার অর্ডার করতে হবে — আরও ${formatBdt(minOrderShortfall)} যোগ করুন।`;
     if (!form.isPickup && form.address.trim().length < 6)
       localErrors.address =
         "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
@@ -1482,7 +1485,7 @@ export default function CheckoutView() {
     minOrderShortfall > 0
       ? t("checkout.minOrderHint")
           .replace("{amount}", formatBdt(minOrderShortfall))
-          .replace("{min}", MIN_ORDER_OUTSIDE_SADAR_LABEL_BN)
+          .replace("{min}", courierMinLabel)
       : orderError
         ? orderError.bn
         : `${t("checkout.delivery")} ${summary.freeDelivery ? "FREE" : formatBdt(summary.charge)} · ${etaLabel}`;
@@ -1731,7 +1734,7 @@ export default function CheckoutView() {
               </select>
               {!sunamganjDistrict && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  অন্য জেলায় কুরিয়ারে পাঠানো হয় — চার্জ ৳১৫০, ন্যূনতম অর্ডার {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN}।
+                  অন্য জেলায় কুরিয়ারে পাঠানো হয় — চার্জ ৳১৫০, ন্যূনতম অর্ডার {courierMinLabel}।
                 </p>
               )}
             </label>
@@ -2107,7 +2110,7 @@ export default function CheckoutView() {
                   )}
                   {summary.isOutside && !form.isPickup && (
                     <span className="mt-1 block text-xs text-amber-200">
-                      সুনামগঞ্জ সদরের বাইরে — কুরিয়ার ডেলিভারি, ন্যূনতম {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} অর্ডার।
+                      সুনামগঞ্জ সদরের বাইরে — কুরিয়ার ডেলিভারি, ন্যূনতম {courierMinLabel} অর্ডার।
                     </span>
                   )}
                   {summary.isNight && !summary.freeDelivery && (
@@ -2452,7 +2455,7 @@ export default function CheckoutView() {
                 >
                   {t("checkout.minOrderHint")
                     .replace("{amount}", formatBdt(minOrderShortfall))
-                    .replace("{min}", MIN_ORDER_OUTSIDE_SADAR_LABEL_BN)}{" "}
+                    .replace("{min}", courierMinLabel)}{" "}
                   <Link href="/shop" className="font-semibold underline underline-offset-2">
                     {t("checkout.exploreProducts")} →
                   </Link>

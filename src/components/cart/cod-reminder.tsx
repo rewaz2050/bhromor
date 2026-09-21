@@ -9,9 +9,9 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { codEstimate } from "@/lib/cod-estimate";
-import { MIN_ORDER_OUTSIDE_SADAR_LABEL_BN } from "@/lib/delivery";
 import { formatBdt } from "@/lib/format";
 import { useMyZone } from "@/lib/use-my-zone";
+import { usePublicSettings } from "@/lib/use-settings";
 import { IconBanknote } from "@/components/ui/icons";
 
 export default function CodReminder({ subtotal, className = "" }: { subtotal: number; className?: string }) {
@@ -23,8 +23,19 @@ export default function CodReminder({ subtotal, className = "" }: { subtotal: nu
     const id = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(id);
   }, []);
+  // Hooks before any early return — the empty bag renders nothing, but the
+  // hook order must not change.
+  const { settings } = usePublicSettings();
   if (subtotal <= 0) return null;
-  const est = codEstimate({ subtotal, zoneId }, now);
+  const est = codEstimate(
+    {
+      subtotal,
+      zoneId,
+      rates: settings.surcharges,
+      courierMinPaisa: settings.courierMinOrderPaisa,
+    },
+    now,
+  );
   const amount = est.exact ? formatBdt(est.min) : `${formatBdt(est.min)}–${formatBdt(est.max)}`;
 
   return (
@@ -46,7 +57,10 @@ export default function CodReminder({ subtotal, className = "" }: { subtotal: nu
       <p className="mt-1 text-ink-soft">{t("bag.codPin")}</p>
       {est.belowCourierMinimum ? (
         <p className="mt-1.5 font-semibold text-rose-800" role="status">
-          {t("bag.codCourierMin").replace("{min}", MIN_ORDER_OUTSIDE_SADAR_LABEL_BN)}
+          {t("bag.codCourierMin").replace(
+            "{min}",
+            `৳${Math.round(settings.courierMinOrderPaisa / 100)}`,
+          )}
         </p>
       ) : null}
     </div>

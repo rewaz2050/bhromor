@@ -50,6 +50,24 @@ export const NIGHT_SURCHARGE_PAISA: Bdt = bdt(20); // 9PM-6AM
 export const RAIN_SURCHARGE_PAISA: Bdt = bdt(15); // when admin toggles rain
 export const EXPRESS_SURCHARGE_PAISA: Bdt = bdt(40); // 30min express
 export const WEIGHT_SURCHARGE_PER_KG: Bdt = bdt(10); // +10 per kg beyond 5kg
+
+/**
+ * The money knobs behind those constants — admin-editable since 2026-09-21
+ * (Admin → Settings → Delivery). Quotes, server pricing and the bag card
+ * all read the same rates; these defaults match the launch values.
+ */
+export interface SurchargeRates {
+  night: Bdt;
+  rain: Bdt;
+  express: Bdt;
+  weightPerKg: Bdt;
+}
+export const DEFAULT_SURCHARGE_RATES: SurchargeRates = {
+  night: NIGHT_SURCHARGE_PAISA,
+  rain: RAIN_SURCHARGE_PAISA,
+  express: EXPRESS_SURCHARGE_PAISA,
+  weightPerKg: WEIGHT_SURCHARGE_PER_KG,
+};
 export const WEIGHT_FREE_KG = 5;
 export const TIP_OPTIONS: Bdt[] = [bdt(0), bdt(10), bdt(20), bdt(30), bdt(50)];
 
@@ -57,9 +75,12 @@ export const isNightHour = (hour: number): boolean => hour >= 21 || hour < 6;
 export const isRushHour = (hour: number): boolean =>
   (hour >= 12 && hour <= 14) || (hour >= 18 && hour <= 20);
 
-export const weightExtraCharge = (weightKg?: number): Bdt => {
+export const weightExtraCharge = (
+  weightKg?: number,
+  perKg: Bdt = WEIGHT_SURCHARGE_PER_KG,
+): Bdt => {
   if (!weightKg || weightKg <= WEIGHT_FREE_KG) return 0;
-  return bdt(Math.ceil((weightKg - WEIGHT_FREE_KG) * 10));
+  return bdt(Math.ceil((weightKg - WEIGHT_FREE_KG) * (perKg / 100)));
 };
 
 /** Dynamic ETA based on shop prep + queue + time of day */
@@ -130,6 +151,8 @@ export const deliveryBreakdown = (opts: {
   couponFree?: boolean;
   shopPrepMinutes?: number;
   queueCount?: number;
+  /** Admin-editable amounts; omitted = the launch defaults. */
+  rates?: SurchargeRates;
 }): DeliveryBreakdown => {
   const {
     weightKg,
@@ -164,11 +187,12 @@ export const deliveryBreakdown = (opts: {
   // The zone is derived internally from address/distance and never exposed as a choice.
   const baseCharge = opts.zone?.charge ?? FLAT_DELIVERY_CHARGE_PAISA;
 
+  const rates = opts.rates ?? DEFAULT_SURCHARGE_RATES;
   const surcharge: DeliverySurcharge = {
-    night: night && !freeDelivery ? NIGHT_SURCHARGE_PAISA : 0,
-    rain: isRain && !freeDelivery ? RAIN_SURCHARGE_PAISA : 0,
-    express: isExpress && !freeDelivery ? EXPRESS_SURCHARGE_PAISA : 0,
-    weight: !freeDelivery ? weightExtraCharge(weightKg) : 0,
+    night: night && !freeDelivery ? rates.night : 0,
+    rain: isRain && !freeDelivery ? rates.rain : 0,
+    express: isExpress && !freeDelivery ? rates.express : 0,
+    weight: !freeDelivery ? weightExtraCharge(weightKg, rates.weightPerKg) : 0,
     tip: tipAmount ?? 0,
     total: 0,
   };

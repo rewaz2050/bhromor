@@ -166,7 +166,7 @@ describe("P0 #3 — the outside-Sadar minimum is said before the tap", () => {
     fireEvent.change(district, { target: { value: "Sylhet" } });
     await waitFor(() => expect(screen.getByTestId("min-order-hint")).toBeInTheDocument());
     expect(screen.getByTestId("min-order-hint").textContent).toMatch(/৳150/);
-    expect(screen.getByTestId("min-order-hint").textContent).toMatch(/৳৫০০/);
+    expect(screen.getByTestId("min-order-hint").textContent).toMatch(/৳500/);
     expect(screen.getByRole("button", { name: /Place Order/i })).toBeDisabled();
     // Back inside Sadar → no minimum, button live again.
     fireEvent.change(district, { target: { value: "Sunamganj" } });

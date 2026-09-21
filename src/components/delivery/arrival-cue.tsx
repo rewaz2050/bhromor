@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useMyZone } from "@/lib/use-my-zone";
+import { usePublicSettings } from "@/lib/use-settings";
 import { arrivalCue } from "@/lib/arrival";
 import { IconClock } from "@/components/ui/icons";
 
@@ -29,8 +30,18 @@ export default function ArrivalCue({
     return () => window.clearInterval(id);
   }, []);
 
+  // Hooks before the clock gate — SSR renders nothing, but the order never changes.
+  const { settings } = usePublicSettings();
   if (now === null) return null;
-  const cue = arrivalCue({ zoneId, shopPrepMinutes, lang }, now);
+  const cue = arrivalCue(
+    {
+      zoneId,
+      shopPrepMinutes,
+      lang,
+      nightSurchargePaisa: settings.surcharges.night,
+    },
+    now,
+  );
   if (!cue) return null;
   return (
     <p

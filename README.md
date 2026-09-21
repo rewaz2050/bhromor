@@ -97,6 +97,15 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Admin-owned pricing (2026-09-21)
+
+Every money knob is now the owner's, end to end:
+
+- **Surcharge amounts** (night / rain / express / per-kg) and the **courier minimum order** moved from hard-coded constants into Admin → Settings → Delivery — set them in taka, save once.
+- They flow everywhere through **one public read**: `GET /api/settings` (the sanitized ops document, nothing secret) → checkout quote, server-side order pricing (which also honours the toggles now — an older gap), the bag's cash-at-the-door card, the arrival cue and the delivery page.
+- Checkout now reads these via `usePublicSettings()` instead of the staff-only hook — previously customers silently got launch defaults no matter what the admin set.
+- Launch defaults match the old constants (৳20 / ৳15 / ৳40 / ৳10·kg, floor ৳500), so nothing changes until the owner changes it.
+
 ## UI/UX feel pass (2026-09-21)
 
 - **Skeletons on every streamed route** — account, track, wishlist and checkout now show the brand-shaped placeholder (and the collection skeleton matches the real 4:5 cards). No blank flashes.

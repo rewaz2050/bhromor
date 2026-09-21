@@ -131,6 +131,6 @@ describe("BagDrawer — arrival cue + cash-at-the-door reminder", () => {
     fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
     const dialog2 = await screen.findByRole("dialog", { name: "Your Bag" });
     expect(within(dialog2).queryByTestId("arrival-cue")).toBeNull();
-    expect(within(dialog2).getByTestId("cod-reminder")).toHaveTextContent(/minimum order is ৳৫০০/);
+    expect(within(dialog2).getByTestId("cod-reminder")).toHaveTextContent(/minimum order is ৳500/);
   });
 });

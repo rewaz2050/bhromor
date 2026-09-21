@@ -8,7 +8,12 @@
  * minutes), and at night the line says so and carries the night surcharge.
  */
 
-import { dynamicEta, isCourierZone, isNightHour, NIGHT_SURCHARGE_PAISA } from "./delivery";
+import {
+  DEFAULT_SURCHARGE_RATES,
+  dynamicEta,
+  isCourierZone,
+  isNightHour,
+} from "./delivery";
 import { dhakaParts } from "./delivery-slots";
 import { formatBdt } from "./format";
 import type { Language } from "./translations";
@@ -45,7 +50,13 @@ export const clockLabel = (ms: number, lang: Language): string => {
  * an order placed right now.
  */
 export const arrivalCue = (
-  opts: { zoneId?: string | null; shopPrepMinutes?: number; lang?: Language },
+  opts: {
+    zoneId?: string | null;
+    shopPrepMinutes?: number;
+    lang?: Language;
+    /** The owner's night rate, when the surface has it (default = launch ৳20). */
+    nightSurchargePaisa?: number;
+  },
   nowMs: number = Date.now(),
 ): ArrivalCue | null => {
   if (isCourierZone(opts.zoneId)) return null;
@@ -57,8 +68,10 @@ export const arrivalCue = (
   const arriveMs = nowMs + minutes * 60_000;
   const crossesMidnight = dhakaParts(arriveMs).day !== dhakaParts(nowMs).day;
   const night = isNightHour(hour);
+  const nightSurchargePaisa =
+    opts.nightSurchargePaisa ?? DEFAULT_SURCHARGE_RATES.night;
   const timeLabel = clockLabel(arriveMs, lang);
-  const surcharge = formatBdt(NIGHT_SURCHARGE_PAISA);
+  const surcharge = formatBdt(nightSurchargePaisa);
   const text =
     lang === "bn"
       ? night

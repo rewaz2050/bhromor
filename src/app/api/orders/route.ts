@@ -19,7 +19,8 @@ import {
   placeLiveOrder,
 } from "@/lib/db/orders";
 import { samePhone } from "@/lib/orders";
-import { notifyStaff } from "@/lib/db/engagement";
+import { notifyStaff, readOpsSettings } from "@/lib/db/engagement";
+import { sanitizeSettings } from "@/lib/settings-store";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseService } from "@/lib/supabase-server";
@@ -84,9 +85,15 @@ export async function POST(request: Request) {
         ? await isPlusMember(getSupabaseService()!, phoneRaw).catch(() => false)
         : false;
 
+    // The owner's surcharge toggles + amounts and the courier floor ride the
+    // same snapshot — server pricing honours exactly what the admin set.
+    const opsSettings = await readOpsSettings(getSupabaseService()!)
+      .then(sanitizeSettings)
+      .catch(() => null);
     const validation = validateOrderPayload(payloadForValidation, {
       ...snapshot,
       plusActive,
+      settings: opsSettings ?? undefined,
     });
     if (!validation.ok) {
       return apiError("Please fix the highlighted fields.", 422, {
