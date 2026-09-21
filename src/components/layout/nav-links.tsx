@@ -28,6 +28,19 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
       )
     )
       return false;
+    if (path === "/shop") {
+      // The sale pill owns /shop?filter=sale exclusively.
+      const isSale = params.get("filter") === "sale";
+      if (query) return isSale;
+      if (isSale) return false;
+      // Same ownership the thumb bar uses: a product page is still "shopping".
+      const owned = ["/product", "/style", "/live", "/campaign"];
+      return (
+        owned.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+        pathname === path ||
+        pathname.startsWith(`${path}/`)
+      );
+    }
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 

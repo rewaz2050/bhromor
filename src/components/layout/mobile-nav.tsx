@@ -5,16 +5,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
-import { IconArrowRight, IconClose, IconMenu } from "@/components/ui/icons";
+import { IconArrowRight, IconCheck, IconClose, IconMenu } from "@/components/ui/icons";
 import LanguageSwitcher from "./language-switcher";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { offerProducts } from "@/lib/home-shelves";
 
 export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
   const { t } = useLanguage();
+  // Mirrors the desktop bar: Offers only while a real offer runs.
+  const { products } = useLiveCatalog();
+  const hasOffers = offerProducts(products).length > 0;
   const PRIMARY = [
     { label: t("nav.shop"), href: "/shop" },
+    ...(hasOffers ? [{ label: t("nav.offers"), href: "/shop?filter=sale" }] : []),
     { label: t("nav.shops"), href: "/shops" },
-    { label: t("nav.collections"), href: "/#collections" },
+    { label: t("nav.categories"), href: "/#collections" },
+    { label: t("nav.track"), href: "/track" },
   ];
   // Secondary labels also translated where possible
   const SECONDARY_TRANSLATED = [
@@ -95,23 +102,43 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
               {t("mobileDrawer.discover")}
             </p>
             <nav aria-label="Primary mobile" className="flex flex-col gap-1">
-              {PRIMARY.map((item, i) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className="group flex items-center justify-between rounded-2xl bg-forest-950 px-4 py-4 text-[0.98rem] font-medium text-ivory-50 transition-all hover:bg-forest-900 active:scale-[0.99]"
-                  style={{
-                    animation: open ? `storefront-reveal 420ms cubic-bezier(0.22,1,0.36,1) both` : undefined,
-                    animationDelay: open ? `${80 + i * 40}ms` : undefined,
-                  } as React.CSSProperties}
-                >
-                  <span>{item.label}</span>
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ivory-50/12 text-ivory-200 transition-transform group-hover:translate-x-0.5 group-hover:bg-ivory-50 group-hover:text-forest-900">
-                    <IconArrowRight className="h-4 w-4" />
-                  </span>
-                </Link>
-              ))}
+              {PRIMARY.map((item, i) => {
+                const [path] = item.href.split("?");
+                const active =
+                  path === "/"
+                    ? pathname === "/"
+                    : pathname === path || pathname.startsWith(`${path}/`);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    aria-current={active ? "page" : undefined}
+                    className={`group flex items-center justify-between rounded-2xl px-4 py-4 text-[0.98rem] font-medium transition-all active:scale-[0.99] ${
+                      active
+                        ? "bg-gold-400 text-forest-950 ring-1 ring-gold-500"
+                        : "bg-forest-950 text-ivory-50 hover:bg-forest-900"
+                    }`}
+                    style={{
+                      animation: open ? `storefront-reveal 420ms cubic-bezier(0.22,1,0.36,1) both` : undefined,
+                      animationDelay: open ? `${80 + i * 40}ms` : undefined,
+                    } as React.CSSProperties}
+                  >
+                    <span>{item.label}</span>
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-full transition-transform group-hover:translate-x-0.5 ${
+                      active
+                        ? "bg-forest-950 text-gold-300"
+                        : "bg-ivory-50/12 text-ivory-200 group-hover:bg-ivory-50 group-hover:text-forest-900"
+                    }`}>
+                      {active ? (
+                        <IconCheck className="h-4 w-4" />
+                      ) : (
+                        <IconArrowRight className="h-4 w-4" />
+                      )}
+                    </span>
+                  </Link>
+                );
+              })}
             </nav>
 
             <div className="mt-5 px-1">

@@ -4,8 +4,10 @@ export const translations = {
   en: {
     nav: {
       shop: "Shop",
+      offers: "Offers",
       shops: "Shops",
-      collections: "Collections",
+      categories: "Categories",
+      track: "Track",
     },
     header: {
       wishlist: "Wishlist",
@@ -632,8 +634,10 @@ export const translations = {
   bn: {
     nav: {
       shop: "কেনাকাটা",
+      offers: "অফার",
       shops: "শপসমূহ",
-      collections: "সংগ্রহ",
+      categories: "ক্যাটাগরি",
+      track: "ট্র্যাক",
     },
     header: {
       wishlist: "পছন্দের তালিকা",
