@@ -97,6 +97,12 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Speed pass (2026-09-21)
+
+- **Preconnect** to `res.cloudinary.com` / `lh3.googleusercontent.com` (+ dns-prefetch for YouTube thumbs) from the root layout — the media hosts' DNS+TLS is warmed before the catalog images are discovered, which matters on mobile networks.
+- **Image optimizer**: AVIF → WebP explicitly, and `minimumCacheTTL` raised to 31 days — a photo is encoded once and served from the CDN instead of being re-encoded every week.
+- Bengali fonts were already unicode-range–subset by Fontsource (Bengali / Latin split per weight), so devices only download the glyphs they render.
+
 ## The weekly pulse (2026-09-21)
 
 Admin → Reports gains a six-number strip over the selected window — the owner's Monday-morning glance: orders + booked money, cancel rate, delivered with the **real average delivery minutes**, repeat customers (same phone, ≥2 live orders), the bKash/Nagad verification queue with its median wait, and cash actually collected at the door. All computed from the same live orders as the rest of the page; dashes when the window is empty, never invented numbers.

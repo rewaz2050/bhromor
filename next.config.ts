@@ -49,6 +49,11 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "i.ytimg.com" },
       { protocol: "https", hostname: "img.youtube.com" },
     ],
+    // Speed (2026-09-21): modern formats and a long optimizer cache — a
+    // product photo is encoded once, then served from the CDN for a month
+    // instead of being re-encoded every week.
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 2_678_400, // 31 days
   },
 };
 

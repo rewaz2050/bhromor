@@ -43,6 +43,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full antialiased">
+      <head>
+        {/* Media lives on other hosts — warm those connections before the
+            catalog images are discovered, especially on mobile networks. */}
+        <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="" />
+        <link rel="preconnect" href="https://lh3.googleusercontent.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://img.youtube.com" />
+      </head>
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">
         <SmoothScroll />
         {children}
