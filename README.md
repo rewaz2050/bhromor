@@ -97,6 +97,14 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## UI/UX feel pass (2026-09-21)
+
+- **Skeletons on every streamed route** — account, track, wishlist and checkout now show the brand-shaped placeholder (and the collection skeleton matches the real 4:5 cards). No blank flashes.
+- **Empty states that recover the shopper** — the empty cart page and the shop's no-result state carry the device's recently-viewed pieces (returning visitors only).
+- **Tap feedback** — quick add, add-to-bag and place-order acknowledge the press; the header bag icon pops when the bag changes.
+- **Sticky mobile buy bar** — photo + flash-aware price + Add docks at the bottom edge once the purchase panel scrolls away; taps scroll back to the one real CTA.
+- **Haptics** — a small vibration on added-to-bag and order-placed (Android; silently skipped elsewhere).
+
 ## Speed pass (2026-09-21)
 
 - **Preconnect** to `res.cloudinary.com` / `lh3.googleusercontent.com` (+ dns-prefetch for YouTube thumbs) from the root layout — the media hosts' DNS+TLS is warmed before the catalog images are discovered, which matters on mobile networks.
