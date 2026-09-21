@@ -97,6 +97,12 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Marketing feeds & structured data (2026-09-21)
+
+- **Facebook/Instagram catalog feed:** `GET /api/feed/facebook` — Meta Commerce CSV (id, title, price in BDT, availability, absolute links/images, brand). Paste into Commerce Manager → Catalog → Data sources as a scheduled feed.
+- **Google free listings feed:** `GET /api/feed/google` — Merchant Center RSS 2.0 (`g:` namespace, whole-taka prices). Paste into Merchant Center → Products → Feeds as a scheduled fetch. Both revalidate hourly; video slides are never submitted as images and sold-out pieces are listed as `out of stock` (history preserved).
+- **Structured data:** `Organization` + `WebSite` JSON-LD on every storefront page (facts only — logo, origin; address/phone join when the shop profile has them). Share cards: see the Conversion & usability pass above.
+
 ## Pages
 
 Public: Home (CMS-aware) · Shop · Product details (public reviews launch-gated) · Cart · Checkout (shared zone store + coupon codes) · Track order (real order-store lookup by ID + phone) · Live shopping (`/live` — the shop's own stream with the on-air pieces one tap from the bag) · Wishlist · About · Contact (channels render only when the shop configured them) · FAQ · Delivery info · Returns · Privacy · Terms · 404.

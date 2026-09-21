@@ -11,6 +11,8 @@ import FlashStrip from "@/components/promo/flash-strip";
 import CampaignStrip from "@/components/promo/campaign-strip";
 import RefCapture from "@/components/promo/ref-capture";
 import InstallPrompt from "@/components/layout/install-prompt";
+import { storefrontJsonLd } from "@/lib/marketing-feeds";
+import { siteBaseUrl } from "@/lib/site-url";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -33,6 +35,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "PROSANTI",
     locale: "en_US",
+    alternateLocale: ["bn_BD"],
     title: "PROSANTI — Rooted in Bangladesh. Designed for Today.",
     description:
       "Thoughtfully made essentials for everyday Bangladesh.",
@@ -61,6 +64,14 @@ export default function SiteLayout({
     // (header on every width, drawer, bottom sheet) flips to English and the
     // choice is remembered on this device.
     <LanguageProvider initialLang="bn">
+      {/* Search engines & Meta: who runs this storefront. Only real facts —
+          address/phone join here when the shop profile actually has them. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(storefrontJsonLd(siteBaseUrl())),
+        }}
+      />
       <CartProvider>
         <CustomerProvider>
           <a
