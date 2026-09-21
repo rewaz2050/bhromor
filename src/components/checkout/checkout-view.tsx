@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
+import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
 import BagSkeleton from "@/components/cart/bag-skeleton";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -842,6 +843,11 @@ export default function CheckoutView() {
           </button>
         </div>
         <p className="mt-2 text-xs text-ink-soft">{t("checkout.screenshotHint")}</p>
+
+        {/* P0 #7 — the referral ask lands the moment the order is placed. */}
+        <div className="mx-auto max-w-sm text-left">
+          <ReceiptReferralRow />
+        </div>
 
         {placed.cardFull && (
           <div

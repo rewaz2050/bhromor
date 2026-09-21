@@ -26,6 +26,7 @@ import {
 import { LiveDeliveryMap } from "./live-delivery-map";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
+import ReviewAsk from "@/components/track/review-ask";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
@@ -333,6 +334,9 @@ export default function TrackView() {
             {/* P1 #14: warranty claims on delivered, warranted items
                 (keyed by order — a new lookup remounts with fresh state) */}
             <WarrantyPanel key={order.id} order={order} />
+
+            {/* Delivered → ask for a one-line review of the bought pieces. */}
+            <ReviewAsk order={order} />
 
             {/* Timeline */}
             {order.status === "cancelled" && contactNumber && (

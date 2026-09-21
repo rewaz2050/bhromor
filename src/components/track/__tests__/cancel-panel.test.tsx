@@ -138,7 +138,9 @@ describe("TrackView — customer cancel", () => {
   it("renders no panel for a delivered or cancelled order", async () => {
     order = { ...baseOrder, status: "delivered" };
     mount();
-    await screen.findByText(/Cotton Panjabi/);
+    // The order line — the delivered-order review ask repeats the name too.
+    const nameNodes = await screen.findAllByText(/Cotton Panjabi/);
+    expect(nameNodes.length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByTestId("cancel-panel")).not.toBeInTheDocument();
   });
 });
