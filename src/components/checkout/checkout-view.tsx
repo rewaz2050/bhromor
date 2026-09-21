@@ -27,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
+import { haptic } from "@/lib/haptics";
 import BagSkeleton from "@/components/cart/bag-skeleton";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -1398,6 +1399,7 @@ export default function CheckoutView() {
         value: data.order.total,
         delivery: data.order.deliveryCharge,
       });
+      haptic("success");
       setPlaced({
         orderId: data.order.id,
         phone: form.phone,

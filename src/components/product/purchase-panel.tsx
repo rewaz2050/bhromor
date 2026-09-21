@@ -41,6 +41,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { haptic } from "@/lib/haptics";
 
 export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
@@ -183,6 +184,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
     setPendingBuyNow(false);
     if (add(product, variantLabel, qty)) {
       addedFeedback();
+      haptic("success");
       openBag();
     }
   };

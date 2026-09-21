@@ -2,6 +2,7 @@
 
 import { InlineSizeGuide } from "./size-guide";
 import { useState } from "react";
+import { haptic } from "@/lib/haptics";
 import Link from "next/link";
 import type { Product } from "@/lib/catalog";
 import { MAX_LINE_QTY } from "@/lib/cart";
@@ -126,6 +127,7 @@ export default function QuickAdd({
               .filter(Boolean)
               .join(" · ") || "Default";
           if (add(product, variant, qty)) {
+            haptic("tap");
             onClose();
             openBag();
           }
