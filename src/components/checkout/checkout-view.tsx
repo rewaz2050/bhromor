@@ -61,6 +61,13 @@ import {
   IconMapPin,
   IconShield,
   IconTruck,
+  IconSparkles,
+  IconMoon,
+  IconCalendar,
+  IconHome,
+  IconStore,
+  IconBriefcase,
+  IconBolt,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import {
@@ -615,7 +622,7 @@ export default function CheckoutView() {
             setCouponMsg({
               ok: true,
               text: isFree
-                ? `${data.code} — Free Delivery 🚚 ${data.description ? `· ${data.description}` : ""}`
+                ? `${data.code} — Free Delivery ${data.description ? `· ${data.description}` : ""}`
                 : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
             });
             return;
@@ -846,8 +853,11 @@ export default function CheckoutView() {
           </div>
         )}
         {placed.smartCardNote && !placed.cardFull && (
-          <p className="mt-4 text-xs text-ink-soft">
-            🎁 {placed.smartCardNote} — প্রতি অর্ডারে ১টি করে পড়বে।
+          <p className="mt-4 flex items-start gap-2 text-xs text-ink-soft">
+            <IconGift className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" />
+            <span>
+              {placed.smartCardNote} — প্রতি অর্ডারে ১টি করে পড়বে।
+            </span>
           </p>
         )}
 
@@ -891,7 +901,7 @@ export default function CheckoutView() {
           </p>
           {placed.slotNote ? (
             <p className="flex items-center gap-3" data-testid="receipt-slot">
-              <span className="text-base leading-none">🌙</span>
+              <IconMoon className="h-4 w-4 shrink-0 text-gold-300" />
               <span>
                 ডেলিভারি সময়: <strong className="text-ink">{placed.slotNote}</strong>
               </span>
@@ -905,7 +915,7 @@ export default function CheckoutView() {
             <p className="flex items-center gap-3 rounded-2xl bg-gold-50 px-4 py-3 text-forest-900 ring-1 ring-gold-200">
               <IconGift className="h-5 w-5 shrink-0 text-gold-600" />
               <span>
-                🎁 {placed.giftNote} — {t("gift.riderNote")}
+                {placed.giftNote} — {t("gift.riderNote")}
               </span>
             </p>
           ) : null}
@@ -1063,7 +1073,7 @@ export default function CheckoutView() {
   const applyBestCoupon = async () => {
     if (bestLoading || activeCoupon) return;
     setBestLoading(true);
-    setCouponMsg({ ok: true, text: "✨ সেরা অফার খুঁজছি…" });
+    setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
     try {
       const res = await fetch("/api/coupons/best", {
         method: "POST",
@@ -1509,7 +1519,9 @@ export default function CheckoutView() {
               <IconTruck className="h-4 w-4" />
             </span>
             <div className="flex-1">
-              <p className="text-sm font-bold" data-testid="delivery-promise">🚚 {deliveryPromise}</p>
+              <p className="flex items-center gap-1.5 text-sm font-bold" data-testid="delivery-promise">
+                <IconTruck className="h-4 w-4 shrink-0" /> {deliveryPromise}
+              </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
                 {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
               </p>
@@ -1536,7 +1548,7 @@ export default function CheckoutView() {
               className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
             >
               <IconMapPin className="h-3.5 w-3.5" />
-              {geoLoading ? "লোকেশন খুঁজছি…" : "📍 আমার লোকেশন ব্যবহার করুন"}
+              {geoLoading ? "লোকেশন খুঁজছি…" : "আমার লোকেশন ব্যবহার করুন"}
             </button>
             {savedAddrs.length > 0 && (
               <button
@@ -1662,7 +1674,8 @@ export default function CheckoutView() {
             >
               {!cardCustomer ? (
                 <>
-                  🎁 <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
+                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
                   <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
                     ফ্রি অ্যাকাউন্ট খুলুন
                   </Link>{" "}
@@ -1670,13 +1683,16 @@ export default function CheckoutView() {
                 </>
               ) : smartCard ? (
                 <>
-                  🎁 <strong className="text-forest-900">স্মার্ট কার্ড:</strong> {smartCard.stamps}/{smartCard.target} স্ট্যাম্প — এই অর্ডারের পরে {smartCard.afterOrderStamps}/{smartCard.target} হবে।{" "}
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
+                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> {smartCard.stamps}/{smartCard.target} স্ট্যাম্প — এই অর্ডারের পরে {smartCard.afterOrderStamps}/{smartCard.target} হবে।{" "}
                   {smartCard.revealed
                     ? `পুরস্কার: ${smartCard.rewardTitle}`
                     : "পুরস্কার সারপ্রাইজ — প্রথম অর্ডারের পরেই দেখা যাবে!"}
                 </>
               ) : (
-                <>🎁 স্মার্ট কার্ড লোড হচ্ছে…</>
+                <>
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> স্মার্ট কার্ড লোড হচ্ছে…
+                </>
               )}
             </div>
           )}
@@ -1872,7 +1888,7 @@ export default function CheckoutView() {
           <div className="mt-5">
             <div className="flex items-center justify-between gap-3">
               <span className="block text-sm font-medium text-ink">
-                📍 ম্যাপে বাড়ি পিন করুন{" "}
+                <IconMapPin className="mr-1 inline h-4 w-4 align-[-3px]" /> ম্যাপে বাড়ি পিন করুন{" "}
                 <span className="font-normal text-ink-soft">(ঐচ্ছিক — রাইডার সহজে খুঁজে পাবে)</span>
               </span>
               <button
@@ -1914,8 +1930,8 @@ export default function CheckoutView() {
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Delivery method">
               {(
                 [
-                  { pickup: false, icon: "🚚", label: "হোম ডেলিভারি", sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
-                  { pickup: true, icon: "🏪", label: "স্টোর পিকআপ", sub: `${SUNAMGANJ_HUB} · ফ্রি` },
+                  { pickup: false, icon: <IconTruck className="h-4 w-4" />, label: "হোম ডেলিভারি", sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
+                  { pickup: true, icon: <IconStore className="h-4 w-4" />, label: "স্টোর পিকআপ", sub: `${SUNAMGANJ_HUB} · ফ্রি` },
                 ] as const
               ).map((opt) => {
                 const active = form.isPickup === opt.pickup;
@@ -1932,7 +1948,7 @@ export default function CheckoutView() {
                         : "bg-paper text-ink ring-line hover:bg-ivory-100"
                     }`}
                   >
-                    <span className="block text-sm font-semibold">{opt.icon} {opt.label}</span>
+                    <span className="flex items-center justify-center gap-1.5 text-sm font-semibold">{opt.icon} {opt.label}</span>
                     <span className={`mt-0.5 block text-[11px] ${active ? "text-ivory-100/70" : "text-ink-soft"}`}>{opt.sub}</span>
                   </button>
                 );
@@ -1964,9 +1980,9 @@ export default function CheckoutView() {
                 <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery slot</span>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Delivery slot">
                   {[
-                    { id: "now" as TimeSlot, label: "এখনই", sub: etaLabel, icon: "⚡" },
-                    { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: eveningSlotHint(nowMs, lang), icon: "🌙" },
-                    { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "দিন ও সময় বাছুন", icon: "📅" },
+                    { id: "now" as TimeSlot, label: "এখনই", sub: etaLabel, icon: <IconBolt className="h-4 w-4" /> },
+                    { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: eveningSlotHint(nowMs, lang), icon: <IconMoon className="h-4 w-4" /> },
+                    { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "দিন ও সময় বাছুন", icon: <IconCalendar className="h-4 w-4" /> },
                   ].map((slot) => (
                     <button
                       key={slot.id}
@@ -1984,7 +2000,7 @@ export default function CheckoutView() {
                           : "bg-paper text-ink ring-line hover:bg-ivory-100"
                       }`}
                     >
-                      <span className="text-sm">{slot.icon} {slot.label}</span>
+                      <span className="flex items-center gap-1.5 text-sm">{slot.icon} {slot.label}</span>
                       <span className={`mt-0.5 block text-[11px] ${form.timeSlot === slot.id ? "text-ivory-100/70" : "text-ink-soft"}`}>{slot.sub}</span>
                     </button>
                   ))}
@@ -1994,7 +2010,7 @@ export default function CheckoutView() {
                 ) : null}
                 {form.timeSlot === "evening" && (
                   <p className="mt-2 text-xs text-ink-soft" data-testid="evening-note">
-                    🌙 দোকান ও রাইডার সন্ধ্যা ৬–৯টার মধ্যে পৌঁছে দেওয়ার জন্য প্ল্যান করবে।
+                    <IconMoon className="mr-1 inline h-4 w-4 align-[-3px]" /> দোকান ও রাইডার সন্ধ্যা ৬–৯টার মধ্যে পৌঁছে দেওয়ার জন্য প্ল্যান করবে।
                   </p>
                 )}
                 {form.timeSlot === "scheduled" && (
@@ -2022,7 +2038,7 @@ export default function CheckoutView() {
                             <option key={w} value={w}>{DELIVERY_SLOT_LABELS[w][lang]}</option>
                           ))}
                           {settings.expressDeliveryEnabled && (
-                            <option value="express">⚡ {DELIVERY_SLOT_LABELS.express[lang]} (+৳40)</option>
+                            <option value="express">{DELIVERY_SLOT_LABELS.express[lang]} (+৳40)</option>
                           )}
                         </select>
                       </label>
@@ -2041,13 +2057,13 @@ export default function CheckoutView() {
               <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
               <div className="flex-1 text-sm leading-6">
                 <p className="font-semibold">
-                  {form.isPickup ? `🏪 Pickup — ${SUNAMGANJ_HUB}` : zone.name}
+                  {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : zone.name}
                   {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
                 </p>
                 <p className="mt-1 text-ivory-100/70">
                   {summary.isOutside && !form.isPickup ? (
                     <>
-                      🚚 {t("purchase.courierTitle")} — কনফার্মেশনের পর{" "}
+                      <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("purchase.courierTitle")} — কনফার্মেশনের পর{" "}
                       <strong className="text-gold-300" data-testid="courier-eta">{etaLabel}</strong>{" "}
                     </>
                   ) : (
@@ -2061,9 +2077,9 @@ export default function CheckoutView() {
                     {summary.freeDelivery ? (
                       <span className="text-gold-300">
                         {summary.couponFree
-                          ? "FREE — Coupon 🚚"
+                          ? "FREE — Coupon"
                           : summary.plusFree
-                            ? "FREE — PROSANTI+ 🚚"
+                            ? "FREE — PROSANTI+"
                             : form.isPickup
                               ? "FREE — Pickup"
                               : "Free"}
@@ -2087,7 +2103,7 @@ export default function CheckoutView() {
                     </span>
                   )}
                   {summary.isNight && !summary.freeDelivery && (
-                    <span className="mt-1 block text-xs text-gold-300">🌙 Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
+                    <span className="mt-1 block text-xs text-gold-300"><IconMoon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
                   )}
                   {summary.isRain && !summary.freeDelivery && (
                     <span className="mt-1 block text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
@@ -2271,7 +2287,8 @@ export default function CheckoutView() {
                     disabled={bestLoading}
                     className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
                   >
-                    ✨ {bestLoading ? "সেরা অফার খুঁজছে…" : "সেরা অফার অটো-অ্যাপ্লাই করুন"}
+                    <IconSparkles className="h-3.5 w-3.5" />
+                    {bestLoading ? "সেরা অফার খুঁজছে…" : "সেরা অফার অটো-অ্যাপ্লাই করুন"}
                   </button>
                 </>
               )}
@@ -2358,9 +2375,9 @@ export default function CheckoutView() {
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: "home", label: "🏠 বাসা / Home" },
-                  { id: "office", label: "🏢 অফিস / Office" },
-                  { id: "other", label: "📍 অন্যান্য / Other" },
+                  { id: "home", label: "বাসা / Home", icon: <IconHome className="h-3.5 w-3.5" /> },
+                  { id: "office", label: "অফিস / Office", icon: <IconBriefcase className="h-3.5 w-3.5" /> },
+                  { id: "other", label: "অন্যান্য / Other", icon: <IconMapPin className="h-3.5 w-3.5" /> },
                 ] as const
               ).map((tag) => (
                 <button
@@ -2374,7 +2391,9 @@ export default function CheckoutView() {
                       : "bg-paper text-ink ring-line hover:bg-ivory-100"
                   }`}
                 >
-                  {tag.label}
+                  <span className="flex items-center justify-center gap-1.5">
+                    {tag.icon} {tag.label}
+                  </span>
                 </button>
               ))}
             </div>

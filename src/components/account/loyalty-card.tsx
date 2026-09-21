@@ -7,6 +7,7 @@ import {
   IconCheck,
   IconGift,
   IconStar,
+  IconSparkles,
 } from "@/components/ui/icons";
 
 /**
@@ -35,7 +36,7 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
           <IconStar className="h-3.5 w-3.5 text-gold-600" /> PROSANTI স্মার্ট কার্ড
         </span>
         <h3 className="mt-2 font-display text-xl font-medium text-forest-900 sm:text-2xl">
-          🎁 ১০টা স্ট্যাম্প পূর্ণ করলেই আকর্ষণীয় পুরস্কার একদম ফ্রি
+          <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> ১০টা স্ট্যাম্প পূর্ণ করলেই আকর্ষণীয় পুরস্কার একদম ফ্রি
         </h3>
         <p className="mt-2 text-sm leading-7 text-ink-soft">
           প্রতিটি অর্ডারে <strong>১টি করে স্ট্যাম্প</strong> পড়বে; ১০টি হলেই
@@ -109,7 +110,7 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
               className="text-xs font-bold text-forest-900 line-clamp-1 max-w-[180px]"
               data-testid="prize-chip"
             >
-              {revealed ? card.rewardTitle : "🎁 সারপ্রাইজ"}
+              {revealed ? card.rewardTitle : "সারপ্রাইজ"}
             </p>
           </div>
         </div>
@@ -143,7 +144,7 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
                 </Link>
                 {cycles > 1 && (
                   <span className="text-xs font-medium text-gold-700">
-                    🏆 ইতোমধ্যে {cycles} বার জিতেছেন!
+                    <IconSparkles className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> ইতোমধ্যে {cycles} বার জিতেছেন!
                   </span>
                 )}
               </div>
@@ -170,7 +171,7 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
           </span>
           <span>
             {unlocked
-              ? "সাইকেল সম্পূর্ণ! ✨"
+              ? "সাইকেল সম্পূর্ণ!"
               : `আর মাত্র ${target - stamps}টি অর্ডার বাকি`}
           </span>
         </div>
@@ -191,9 +192,9 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
                 }`}
                 title={
                   isFilled
-                    ? `অর্ডার #${num}: স্ট্যাম্প পড়েছে ✅`
+                    ? `অর্ডার #${num}: স্ট্যাম্প পড়েছে`
                     : isTargetSlot
-                      ? `টার্গেট #${num}: রিওয়ার্ড আনলক স্লট 🎁`
+                      ? `টার্গেট #${num}: রিওয়ার্ড আনলক স্লট`
                       : `স্ট্যাম্প #${num}`
                 }
               >

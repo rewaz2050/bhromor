@@ -12,7 +12,14 @@ import BagShopHeader from "@/components/cart/bag-shop-header";
 import BagOffers from "@/components/promo/bag-offers";
 import type { useCart } from "@/components/cart/cart-provider";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { IconBox, IconTruck } from "@/components/ui/icons";
+import {
+  IconBox,
+  IconGift,
+  IconTruck,
+  IconMoon,
+  IconBolt,
+  IconStore,
+} from "@/components/ui/icons";
 import { coverImage, type DeliveryZone } from "@/lib/catalog";
 import { INSTANT_DELIVERY_TITLE, courierEta, isCourierZone, type deliveryBreakdown } from "@/lib/delivery";
 import { formatBdt } from "@/lib/format";
@@ -162,7 +169,7 @@ export default function OrderSummaryCard({
         {summary.giftFee > 0 && (
           <div className="flex justify-between">
             <dt className="text-ink-soft">
-              🎁 {t("gift.wrap")} · {giftWrap}
+              <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> {t("gift.wrap")} · {giftWrap}
             </dt>
             <dd className="font-medium text-ink">+{formatBdt(summary.giftFee)}</dd>
           </div>
@@ -180,7 +187,7 @@ export default function OrderSummaryCard({
             {summary.freeDelivery ? (
               <span className="text-forest-700">
                 {summary.couponFree
-                  ? "FREE 🚚 Coupon"
+                  ? "FREE — Coupon"
                   : summary.plusFree
                     ? "FREE 👑 PROSANTI+"
                     : isPickup
@@ -198,16 +205,18 @@ export default function OrderSummaryCard({
         {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
           <div className="space-y-1 pl-1 text-xs text-ink-soft">
             <div className="flex justify-between"><span>Delivery</span><span>{formatBdt(summary.fullCharge)}</span></div>
-            {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span>🌙 Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
+            {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconMoon className="h-3.5 w-3.5" /> Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
             {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
-            {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span>⚡ Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
+            {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5" /> Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
             {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ Weight</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
           </div>
         )}
         {summary.couponFree && summary.discount === 0 && (
           <div className="flex justify-between">
             <dt className="text-ink-soft">{t("checkout.coupon")} · {activeCoupon?.code}</dt>
-            <dd className="font-medium text-emerald-700">🚚 Free delivery</dd>
+            <dd className="flex items-center gap-1.5 font-medium text-emerald-700">
+                <IconTruck className="h-4 w-4 shrink-0" /> Free delivery
+              </dd>
           </div>
         )}
         {summary.plusFree && !summary.couponFree && (
@@ -236,7 +245,7 @@ export default function OrderSummaryCard({
           </div>
         )}
         {isPickup && (
-          <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">🏪 Pickup at {SUNAMGANJ_HUB} — no delivery, ready in {bagShopPrep} min</p>
+          <p className="rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200"><IconStore className="mr-1 inline h-4 w-4 align-[-3px]" /> Pickup at {SUNAMGANJ_HUB} — no delivery, ready in {bagShopPrep} min</p>
         )}
         <div className="flex justify-between pt-2 text-base">
           <dt className="font-semibold text-ink">

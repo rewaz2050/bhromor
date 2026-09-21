@@ -167,7 +167,7 @@ export default function OrderHistory({ phone }: { phone: string }) {
                   </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {when(row.createdAt, lang)}
-                    {slot ? ` · 🕒 ${slot}` : ""}
+                    {slot ? ` · ${slot}` : ""}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">

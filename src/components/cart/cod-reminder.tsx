@@ -12,6 +12,7 @@ import { codEstimate } from "@/lib/cod-estimate";
 import { MIN_ORDER_OUTSIDE_SADAR_LABEL_BN } from "@/lib/delivery";
 import { formatBdt } from "@/lib/format";
 import { useMyZone } from "@/lib/use-my-zone";
+import { IconBanknote } from "@/components/ui/icons";
 
 export default function CodReminder({ subtotal, className = "" }: { subtotal: number; className?: string }) {
   const { t } = useLanguage();
@@ -33,7 +34,7 @@ export default function CodReminder({ subtotal, className = "" }: { subtotal: nu
       data-exact={est.exact ? "true" : "false"}
     >
       <p className="flex items-baseline justify-between gap-3">
-        <span className="font-semibold text-forest-900">💵 {t("bag.codTitle")}</span>
+        <span className="font-semibold text-forest-900"><IconBanknote className="h-4 w-4 shrink-0 text-forest-900" /> {t("bag.codTitle")}</span>
         <strong className="font-display text-base text-forest-900" data-testid="cod-amount">
           {amount}
         </strong>

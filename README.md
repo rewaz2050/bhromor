@@ -97,6 +97,10 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Premium icon pass (2026-09-21)
+
+No emoji in shopper-facing UI — delivery, slots, addresses, COD, gift, loyalty and map surfaces use the brand's stroke line-icon set (`src/components/ui/icons.tsx`; new: sparkles, moon, calendar, home, store, briefcase). Admin/vendor/rider tools may still use emoji internally.
+
 ## Marketing feeds & structured data (2026-09-21)
 
 - **Facebook/Instagram catalog feed:** `GET /api/feed/facebook` — Meta Commerce CSV (id, title, price in BDT, availability, absolute links/images, brand). Paste into Commerce Manager → Catalog → Data sources as a scheduled feed.

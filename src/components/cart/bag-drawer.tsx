@@ -118,7 +118,7 @@ export default function BagDrawer() {
               className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200"
               data-testid="delivery-promise"
             >
-              🚚 {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
+              <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
               {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি

@@ -214,7 +214,7 @@ export default function CartView() {
             className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200"
             data-testid="delivery-promise"
           >
-            🚚 {deliveryPromise}
+            <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{deliveryPromise}
           </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">

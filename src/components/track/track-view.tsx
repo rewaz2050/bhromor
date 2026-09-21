@@ -21,6 +21,7 @@ import {
   IconPhone,
   IconSearch,
   IconTruck,
+  IconClock,
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
 import ReturnPanel from "@/components/returns/return-panel";
@@ -494,7 +495,7 @@ export default function TrackView() {
                   )}
                   {deliverySlotSummary(order, lang) && (
                     <div className="rounded-xl bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 ring-1 ring-sky-200" data-testid="track-slot">
-                      🕒 {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
+                      <IconClock className="mr-1 inline h-4 w-4 align-[-3px]" /> {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
                     </div>
                   )}
                   {order.coupon && (
@@ -530,7 +531,7 @@ export default function TrackView() {
                   {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                   {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
                     <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
-                      🕒 {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
+                      <IconClock className="mr-1 inline h-4 w-4 align-[-3px]" /> {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
                     </span>
                   )}
                 </p>

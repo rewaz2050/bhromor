@@ -40,7 +40,7 @@ export default async function DeliveryPage() {
 
       {/* Delivery promise — the same sentence the bag and checkout show */}
       <div className="mt-8 rounded-2xl bg-gold-50 px-5 py-4 text-sm text-forest-900 ring-1 ring-gold-200">
-        🚚 <strong>{DELIVERY_CHARGE_PROMISE_BN}</strong> — {DELIVERY_CHARGE_LADDER_BN}। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
+        <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> <strong>{DELIVERY_CHARGE_PROMISE_BN}</strong> — {DELIVERY_CHARGE_LADDER_BN}। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
       </div>
 
       {/* Promise */}

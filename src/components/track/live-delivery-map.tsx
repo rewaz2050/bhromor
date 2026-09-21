@@ -5,7 +5,12 @@ import { courierEta, isCourierZone } from "@/lib/delivery";
 import { usePoll } from "@/lib/use-poll";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
-import { IconMapPin, IconPhone, IconShield, IconTruck } from "@/components/ui/icons";
+import {
+  IconMapPin,
+  IconPhone,
+  IconShield,
+  IconTruck,
+} from "@/components/ui/icons";
 
 interface RiderLivePos {
   lat: number;
@@ -205,7 +210,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                 : order.etaLabel}
           </p>
           {riderLive && (
-            <p className="mt-1 text-[10px] text-emerald-300">📍 Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
+            <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
           )}
         </div>
 

@@ -10,6 +10,7 @@ import {
   type LatLng,
 } from "@/lib/sunamganj";
 import { formatBdt } from "@/lib/format";
+import { IconMapPin } from "@/components/ui/icons";
 
 interface MapPinPickerProps {
   value: LatLng | null;
@@ -202,7 +203,8 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
           onClick={handleUseMyLocation}
           className="inline-flex items-center gap-1 rounded-full bg-paper px-3 py-1 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
         >
-          📍 Use my location
+          <IconMapPin className="h-3.5 w-3.5" />
+          Use my location
         </button>
       </div>
 
