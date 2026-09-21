@@ -377,7 +377,7 @@ body {
 }
 .nav-editorial-link {
   position: relative;
-  padding: 0.55rem 0.9rem;
+  padding: 0.65rem 1.05rem;
   border-radius: 999px;
   /* Remove old bottom padding, use pill + underline hybrid */
 }
@@ -500,6 +500,12 @@ body {
 }
 .storefront-bottom-nav > a[aria-current="page"] svg {
   stroke-width: 2;
+}
+.storefront-bottom-nav > a[aria-current="page"] {
+  font-weight: 600;
+}
+.storefront-bottom-nav > a::before {
+  transition: background-color var(--motion-standard) var(--ease-refined);
 }
 .drawer-panel {
   overscroll-behavior: contain;

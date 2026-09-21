@@ -127,12 +127,16 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Desktop nav — centered editorial pills */}
-          <Suspense>
-            <NavLinks items={NAV} />
-          </Suspense>
+          {/* Desktop nav — truly centered: brand | nav | actions share the
+              bar in three balanced zones (the old ml-auto crammed the pills
+              against the action icons). */}
+          <div className="hidden flex-1 justify-center lg:flex">
+            <Suspense>
+              <NavLinks items={NAV} />
+            </Suspense>
+          </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <span className="hidden h-6 w-px bg-line/70 sm:block" aria-hidden="true" />
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />

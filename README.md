@@ -97,6 +97,13 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
 
+## Menubar polish (2026-09-21)
+
+- **The nav is actually centered now** — the pills sat `ml-auto`, crammed against the search/wishlist/cart icons while the code comment claimed "centered". The bar is now three balanced zones: brand | nav | actions.
+- Pill rhythm: 0.66rem → 0.72rem semibold, roomier padding — the 5-item bar reads instead of squeaks.
+- **Offers gets a gold glow-dot** so the sale entry feels intentional, not like a sixth grey pill.
+- Bottom bar: the active tab's label is now semibold (the gold tick + heavier stroke were doing all the work before).
+
 ## Account dashboard rebuild (2026-09-21)
 
 - **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.
