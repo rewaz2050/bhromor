@@ -87,9 +87,12 @@ export async function POST(request: Request) {
 
     // The owner's surcharge toggles + amounts and the courier floor ride the
     // same snapshot — server pricing honours exactly what the admin set.
-    const opsSettings = await readOpsSettings(getSupabaseService()!)
-      .then(sanitizeSettings)
-      .catch(() => null);
+    const opsDb = getSupabaseService();
+    const opsSettings = opsDb
+      ? await readOpsSettings(opsDb)
+          .then(sanitizeSettings)
+          .catch(() => null)
+      : null;
     const validation = validateOrderPayload(payloadForValidation, {
       ...snapshot,
       plusActive,
