@@ -531,7 +531,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           onClick={handleAdd}
           aria-disabled={ctaDisabled || undefined}
           aria-describedby={needsSize ? "purchase-size" : undefined}
-          className={`h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
+          className={`tap-press h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
             needsSize && !hardStop ? "opacity-70" : ""
           }`}
           disabled={hardStop}

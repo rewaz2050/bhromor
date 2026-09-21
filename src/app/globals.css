@@ -247,6 +247,12 @@ body {
     transform: translateY(0);
   }
 }
+@keyframes bag-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22); }
+  70% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
@@ -255,6 +261,18 @@ body {
   .bag-count-feedback,
   .wishlist-feedback {
     animation: storefront-feedback 200ms ease-out;
+  }
+  /* The bag icon itself answers a bag change — remounted per count via key. */
+  .bag-pop {
+    animation: bag-pop 420ms var(--ease-refined);
+    transform-origin: center;
+  }
+  /* Primary taps acknowledge the press. */
+  .tap-press {
+    transition: transform 120ms ease-out;
+  }
+  .tap-press:active:not(:disabled) {
+    transform: scale(0.975);
   }
   .editorial-hero h1 {
     animation: storefront-reveal 520ms var(--ease-refined) both;

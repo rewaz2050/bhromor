@@ -2480,7 +2480,7 @@ export default function CheckoutView() {
               ref={ctaRef}
               type="submit"
               disabled={submitBlocked}
-              className="mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
+              className="tap-press mt-6 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
             >
               {form.submitting
                 ? t("checkout.placingOrder")

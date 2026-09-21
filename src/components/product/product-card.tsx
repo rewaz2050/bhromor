@@ -228,7 +228,7 @@ export default function ProductCard({ product }: { product: Product }) {
               type="button"
               onClick={() => setQuickOpen(true)}
               aria-label={`Quick add ${product.name} to cart`}
-              className="product-quick-add flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
+              className="product-quick-add tap-press flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
             >
               <IconPlus className="h-3.5 w-3.5" /> {t("product.quickAdd")}
             </button>
