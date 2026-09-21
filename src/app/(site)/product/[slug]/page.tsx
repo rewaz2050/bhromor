@@ -14,6 +14,7 @@ import {
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
+import StickyBuyBar from "@/components/product/sticky-buy-bar";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
@@ -163,6 +164,8 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery product={product} />
         <PurchasePanel product={product} />
+        {/* Phones: the compact dock that appears once this panel scrolls away. */}
+        <StickyBuyBar product={product} />
       </div>
 
       {/* Product information — accordion so the page stays short on mobile */}

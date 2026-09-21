@@ -210,7 +210,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   };
 
   return (
-    <div className="purchase-panel">
+    <div className="purchase-panel" id="purchase-panel">
       <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-ink-soft">
         {product.category} · {product.subCategory}
       </p>
