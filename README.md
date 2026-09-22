@@ -104,6 +104,18 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Offers gets a gold glow-dot** so the sale entry feels intentional, not like a sixth grey pill.
 - Bottom bar: the active tab's label is now semibold (the gold tick + heavier stroke were doing all the work before).
 
+## Realtime phone notifications for admin (2026-09-21)
+
+Orders, reviews, stock alerts and other staff notices now **buzz the owner's phone even with the admin panel closed** (Web Push + VAPID; the in-panel inbox keeps its 15s poll + beep).
+
+Setup once:
+1. Generate keys: `npx web-push generate-vapid-keys`
+2. Set env on the host: `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` (optional `PUSH_VAPID_SUBJECT`, mailto:)
+3. Apply `supabase/migrations/202609210001_push_subscriptions.sql`
+4. Admin → Notifications → **"Phone notification ON korun"** → tap **Test pathan**
+
+Notes: staff-gated end to end (`/api/admin/push`, device table service-role only). Android: any browser. iPhone: the panel must be installed via "Add to Home Screen" (iOS 16.4+). Missing keys = honest off switch, nothing throws. Dead subscriptions (404/410) are pruned automatically; fan-out is capped at 2.5s so checkout never waits on a push service. `public/sw.js` has no fetch/cache handler on purpose — live prices stay live — and is registered only from the admin surface.
+
 ## Account dashboard rebuild (2026-09-21)
 
 - **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.
