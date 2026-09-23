@@ -12,6 +12,7 @@ import {
   isServiceRoleConfigured,
   isSupabaseConfigured,
 } from "@/lib/env";
+import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
 
@@ -74,6 +75,11 @@ export async function GET(request?: Request) {
     // gets a 422 ("not allowed from here") and staff must use "More… →
     // Start preparing" first.
     twoTapFlow: false,
+    // 202609210001 + PUSH_VAPID_* — the owner's phone notifications. Not
+    // part of `live` (orders flow without it) but it is the first thing the
+    // owner asks about, so the report names it instead of staying silent.
+    pushConfigured: false,
+    pushTableReady: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -122,6 +128,12 @@ export async function GET(request?: Request) {
         // Unexpected error shape — if it is NOT "function not found", treat as installed.
         checks.placeOrderRpc = code !== undefined;
       }
+
+      // Phone notifications: VAPID keys + the device table (202609210001).
+      checks.pushConfigured = isPushConfigured();
+      const pushTable = await pushSubscriptionsReady(svc);
+      checks.pushTableReady = pushTable.ready;
+      counts.push_subscriptions = pushTable.count;
 
       // Can an order row actually be INSERTED? ps_checkout_health() ships with
       // the repair migration; a missing function IS the answer (not applied).
@@ -203,6 +215,16 @@ export async function GET(request?: Request) {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
     nextSteps.push(
       "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
+    );
+  }
+  if (checks.reachable && !checks.pushConfigured) {
+    nextSteps.push(
+      "Phone notification off — host env e PUSH_VAPID_PUBLIC_KEY + PUSH_VAPID_PRIVATE_KEY set korun (npx web-push generate-vapid-keys), tarpor Admin → Notifications → 'Phone notification ON korun'. Key chara /admin/notifications card ta ON button dey na",
+    );
+  }
+  if (checks.reachable && checks.pushConfigured && !checks.pushTableReady) {
+    nextSteps.push(
+      "Phone notification er device table nai — SQL Editor-e supabase/migrations/202609210001_push_subscriptions.sql chalaben; na chalale ON button e chap dile 'push_subscriptions table nai' asbe",
     );
   }
 

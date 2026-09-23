@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconCheck, IconShield } from "@/components/ui/icons";
+import { IconBell, IconCheck, IconShield } from "@/components/ui/icons";
 
 interface HealthResponse {
   live: boolean;
@@ -44,6 +44,11 @@ export default function LiveSetupBanner() {
     // 202609170001: the two-tap buttons ship in the app; until the RPC
     // accepts confirmed → ready-for-pickup, "Ready — call rider" is a 422.
     const twoTapPending = health.checks?.twoTapFlow === false;
+    // 2026-09-23: phone notifications are optional for `live` but they are
+    // the first thing the owner asks about — say which half is missing.
+    const pushPending =
+      health.checks?.pushConfigured === false ||
+      health.checks?.pushTableReady === false;
     return (
       <div className="mb-8 space-y-3">
         <div className="flex items-center gap-2.5 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
@@ -61,6 +66,33 @@ export default function LiveSetupBanner() {
             health report
           </Link>
         </div>
+        {pushPending && (
+          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <IconBell className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <p className="font-semibold">
+                🔔 ফোনে নোটিফিকেশন এখনো চালু হয়নি — অর্ডার এলে ফোন বাজবে না
+              </p>
+              <p className="mt-0.5 text-[13px] text-amber-900/90">
+                {health.checks?.pushConfigured === false
+                  ? "সার্ভারে VAPID key নেই (PUSH_VAPID_PUBLIC_KEY + PUSH_VAPID_PRIVATE_KEY)। "
+                  : ""}
+                {health.checks?.pushTableReady === false
+                  ? "ডেটাবেসে push_subscriptions টেবিল নেই (migration 202609210001 চালান)। "
+                  : ""}
+                ঠিক করার ধাপ আর “কেন ON হচ্ছে না” — সব লেখা আছে সেটআপ কার্ডে:
+              </p>
+              <Link
+                href="/admin/notifications"
+                className="mt-1.5 inline-block rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200"
+              >
+                Phone notification সেটআপ খুলুন
+              </Link>
+            </div>
+          </div>
+        )}
         {securityPending && (
           <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">

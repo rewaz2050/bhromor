@@ -69,21 +69,75 @@ interface PushRow {
   auth: string;
 }
 
-export const savePushSubscription = async (
+/** Why a device could not be stored — the panel turns each one into words. */
+export type PushSaveFailure = "invalid" | "missing_table" | "error";
+
+export type PushSaveResult = { ok: true } | { ok: false; reason: PushSaveFailure };
+
+/**
+ * A missing `push_subscriptions` table (migration 202609210001 never pasted)
+ * is NOT the same failure as a malformed subscription: the first is an
+ * owner-side setup step, the second is a bad request. PostgREST answers
+ * `42P01` / `PGRST205` (or the plain-English "does not exist" /
+ * "Could not find the table") — every one of those means "run the SQL".
+ */
+export const pushSaveFailureReason = (
+  error: { code?: string; message?: string } | null | undefined,
+): PushSaveFailure | null => {
+  if (!error) return null;
+  const code = typeof error.code === "string" ? error.code : "";
+  const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+  if (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.includes("does not exist") ||
+    message.includes("could not find the table") ||
+    message.includes("schema cache")
+  ) {
+    return "missing_table";
+  }
+  return "error";
+};
+
+/** Save a device subscription, with the reason when it fails. */
+export const savePushSubscriptionResult = async (
   db: SupabaseClient,
   sub: { endpoint: unknown; keys?: { p256dh?: unknown; auth?: unknown } },
-): Promise<boolean> => {
+): Promise<PushSaveResult> => {
   const endpoint = clean(sub.endpoint, 500);
   const p256dh = clean(sub.keys?.p256dh, 200);
   const auth = clean(sub.keys?.auth, 200);
   if (!endpoint.startsWith("https://") || p256dh === "" || auth === "") {
-    return false;
+    return { ok: false, reason: "invalid" };
   }
   const { error } = await db.from("push_subscriptions").upsert(
     { endpoint, p256dh, auth },
     { onConflict: "endpoint" },
   );
-  return !error;
+  const reason = pushSaveFailureReason(error);
+  return reason ? { ok: false, reason } : { ok: true };
+};
+
+export const savePushSubscription = async (
+  db: SupabaseClient,
+  sub: { endpoint: unknown; keys?: { p256dh?: unknown; auth?: unknown } },
+): Promise<boolean> => (await savePushSubscriptionResult(db, sub)).ok;
+
+/**
+ * Is the device table actually there? The status card must not report
+ * "0 devices, all good" when every save is being refused by a missing table
+ * (that is exactly how the owner's ON button failed silently on 2026-09-23).
+ */
+export const pushSubscriptionsReady = async (
+  db: SupabaseClient,
+): Promise<{ ready: boolean; count: number }> => {
+  const { count, error } = await db
+    .from("push_subscriptions")
+    .select("endpoint", { count: "exact", head: true });
+  return {
+    ready: pushSaveFailureReason(error) !== "missing_table",
+    count: count ?? 0,
+  };
 };
 
 export const removePushSubscription = async (

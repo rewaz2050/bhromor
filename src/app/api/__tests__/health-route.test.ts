@@ -17,6 +17,16 @@ const state = vi.hoisted(() => ({
   repair: null as null | { error?: { code: string }; data?: Record<string, unknown> },
   /** Whether the caller holds a staff session (audit L6: details are staff-only). */
   staff: true,
+  /** Phone-notification setup (2026-09-23): VAPID keys + device table. */
+  push: { configured: true, tableReady: true, count: 1 },
+}));
+
+vi.mock("@/lib/push", () => ({
+  isPushConfigured: () => state.push.configured,
+  pushSubscriptionsReady: async () => ({
+    ready: state.push.tableReady,
+    count: state.push.count,
+  }),
 }));
 
 vi.mock("@/lib/staff-auth", () => ({
@@ -62,6 +72,7 @@ type Health = {
 beforeEach(() => {
   state.repair = null;
   state.staff = true;
+  state.push = { configured: true, tableReady: true, count: 1 };
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -234,6 +245,46 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.live).toBe(true);
     expect(body.nextSteps).toHaveLength(1);
     expect(body.nextSteps[0]).toContain("202609170001_two_tap_order_flow.sql");
+  });
+
+  it("names the phone-notification setup in nextSteps while the keys or the table are missing", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+      },
+    };
+    // VAPID keys missing on the host → the panel can never offer the ON button.
+    state.push = { configured: false, tableReady: false, count: 0 };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushConfigured).toBe(false);
+    expect(body.checks.pushTableReady).toBe(false);
+    expect(body.live).toBe(true); // orders flow without phone notifications
+    expect(body.nextSteps.join("\n")).toContain("PUSH_VAPID_PUBLIC_KEY");
+
+    // Keys present, migration 202609210001 not pasted → every save is refused.
+    state.push = { configured: true, tableReady: false, count: 0 };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushConfigured).toBe(true);
+    expect(body.checks.pushTableReady).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("202609210001_push_subscriptions.sql");
+
+    // Both in place → no push step left.
+    state.push = { configured: true, tableReady: true, count: 2 };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushTableReady).toBe(true);
+    expect(body.nextSteps).toEqual([]);
   });
 
   it("reports twoTapFlow from ps_checkout_health().two_tap_flow_ok and clears nextSteps", async () => {

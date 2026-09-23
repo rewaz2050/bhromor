@@ -20,6 +20,7 @@ nothing here needs the sandbox.
 | Homepage CMS | This-browser-only | Published row in `site_settings`; storefront reads it live |
 | Media library “added” shelf | This-browser-only | `media_library` table shared by all staff |
 | Notifications bell + inbox | Seeded samples | Per-staff rows written by order/review/application/message/signup events |
+| Phone notifications (Web Push) | — | `push_subscriptions` + VAPID env; ON card at `/admin/notifications` (see README § “Realtime phone notifications”) |
 | Low-stock threshold | This-browser-only | `site_settings['ops']`; dashboard + inventory use it live |
 | Track page | No order lookup | Live orders tracked from the DB by id + phone |
 | Admin “Reset demo” buttons | (removed) | No demo-reset controls exist; live data is never reset |
@@ -538,6 +539,14 @@ Do these on the deployed site, in order:
 - [ ] `/api/rider/*` returns 401/403 for signed-out or unlinked visitors;
       delivery only closes when the customer's 4-digit code matches
 - [ ] `/admin/notifications` → **Mark all read** → bell count clears
+- [ ] Phone notifications: `PUSH_VAPID_PUBLIC_KEY` + `PUSH_VAPID_PRIVATE_KEY`
+      set on the host and `202609210001_push_subscriptions.sql` applied →
+      `/admin/notifications` shows a green checklist (“Server key”, “Database
+      table”, “Ei browser”, “Browser permission”, “Ei phone ta”) → tap
+      **Phone notification ON korun** → **Test pathan** → the notification
+      lands on the phone with the panel closed. Android 13+: Chrome itself
+      also needs notification permission; a browser that already answered
+      “Block” must be reset in Chrome → Site settings → Notifications.
 - [ ] `/api/products`, `/api/zones`, `/api/reviews?featured=1` return rows
 
 If any step fails, see Troubleshooting below before retrying.

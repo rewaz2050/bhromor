@@ -116,6 +116,20 @@ Setup once:
 
 Notes: staff-gated end to end (`/api/admin/push`, device table service-role only). Android: any browser. iPhone: the panel must be installed via "Add to Home Screen" (iOS 16.4+). Missing keys = honest off switch, nothing throws. Dead subscriptions (404/410) are pruned automatically; fan-out is capped at 2.5s so checkout never waits on a push service. `public/sw.js` has no fetch/cache handler on purpose — live prices stay live — and is registered only from the admin surface.
 
+### "Notification on korte partesi na" — the five checks (2026-09-23)
+
+The card on `/admin/notifications` is now a live checklist. Every row is read from the real state, so the failing one names itself:
+
+| Check | If it is red | Fix |
+|---|---|---|
+| **Server key (VAPID)** | host env has no keys → the card shows no ON button at all | `npx web-push generate-vapid-keys` → `PUSH_VAPID_PUBLIC_KEY` + `PUSH_VAPID_PRIVATE_KEY` in Vercel env → Redeploy (see `.env.example`) |
+| **Database table** | `push_subscriptions` does not exist → saving answers 503 | SQL Editor → `supabase/migrations/202609210001_push_subscriptions.sql` |
+| **Ei browser** | opened inside WhatsApp / Messenger / Facebook / TikTok / Google app (Android WebView) or over http | open the panel in **Chrome** on https |
+| **Browser permission** | `Block` was answered once → **the site can never prompt again** (Chrome auto-denies untapped prompts). The card prints hand-set steps: 🔒 site settings → Permissions → Notifications → Allow; Chrome → Settings → Site settings → Notifications → remove the site from "Not allowed" | on Android 13+ the **Chrome app** needs it too: Settings → Apps → Chrome → Notifications → ON (Nothing OS: App info → Notifications → "Sites"/"General"); battery → **Unrestricted** |
+| **Ei phone ta** | this browser holds no subscription (permission granted but nothing saved) | one tap on **Phone notification ON korun** — it subscribes and saves; opening the card with permission already granted re-saves silently, healing a rotated/lost endpoint |
+
+Also fixed here: in-panel alerts go through `ServiceWorkerRegistration.showNotification()` — `new Notification()` is an **illegal constructor on every mobile Chrome**, so the old inline call showed nothing on Android while the desktop thought it had alerted — and the beep now resumes its suspended `AudioContext` on the first tap (mobile Chrome's autoplay policy kept it silent before). `notifyStaff()` events → Web Push fan-out is unchanged.
+
 ## Account dashboard rebuild (2026-09-21)
 
 - **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.

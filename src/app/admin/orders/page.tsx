@@ -173,15 +173,16 @@ export default function AdminOrdersPage() {
                 Show what needs action
               </button>
             )}
-            {"Notification" in globalThis && Notification.permission === "default" && (
-              <button
-                type="button"
-                onClick={() => { Notification.requestPermission().catch(() => {}); }}
-                className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line"
-              >
-                Enable browser alerts
-              </button>
-            )}
+            {"Notification" in globalThis &&
+              Notification.permission !== "granted" && (
+                <Link
+                  href="/admin/notifications"
+                  className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line"
+                  title="Phone notification setup — ek tap e ON korun"
+                >
+                  🔔 Phone notification ON korun
+                </Link>
+              )}
           </div>
         </div>
       )}
