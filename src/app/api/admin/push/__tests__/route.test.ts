@@ -62,7 +62,7 @@ afterEach(() => {
 
 describe("admin push registrations", () => {
   it("status: configured true with the public key, and 503-honest when keys are missing", async () => {
-    const ok = await GET();
+    const ok = await GET(new Request("http://x/api/admin/push"));
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { configured: boolean; publicKey: string | null };
     expect(body.configured).toBe(true);
@@ -70,7 +70,7 @@ describe("admin push registrations", () => {
 
     delete process.env.PUSH_VAPID_PUBLIC_KEY;
     delete process.env.PUSH_VAPID_PRIVATE_KEY;
-    const off = (await GET()) as Response;
+    const off = (await GET(new Request("http://x/api/admin/push"))) as Response;
     expect(off.status).toBe(200);
     const offBody = (await off.json()) as { configured: boolean; publicKey: string | null };
     expect(offBody.configured).toBe(false);
