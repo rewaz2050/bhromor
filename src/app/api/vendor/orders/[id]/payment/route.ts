@@ -11,6 +11,7 @@
 import { routeId, vendorRoute } from "../../../_lib";
 import { verifyPaymentAsVendor } from "@/lib/db/vendor";
 import { notifyStaff } from "@/lib/db/engagement";
+import { notifyCustomerOfPayment } from "@/lib/customer-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -41,6 +42,13 @@ export const POST = vendorRoute(
     // do, but the decision is visible in the same feed as staff decisions.
     const service = getSupabaseService();
     if (service) {
+      if (action === "verified") {
+        await notifyCustomerOfPayment(service, {
+          phone: order.customer?.phone,
+          orderNo: order.id,
+          total: order.total,
+        });
+      }
       await notifyStaff(service, {
         kind: "order",
         title:

@@ -547,6 +547,12 @@ Do these on the deployed site, in order:
       lands on the phone with the panel closed. Android 13+: Chrome itself
       also needs notification permission; a browser that already answered
       “Block” must be reset in Chrome → Site settings → Notifications.
+- [ ] Customer notifications: `202609240001_customer_push.sql` applied →
+      `/api/health` shows `customerPushTableReady: true` → on a phone open
+      `/track` for a live order → **অর্ডারের খবর ফোনে নিন** → allow → **টেস্ট
+      পাঠান** lands → Confirm the order in the panel → the shopper's phone
+      buzzes and the tap opens that order's tracker
+      (details: `docs/customer-notifications.md`)
 - [ ] `/api/products`, `/api/zones`, `/api/reviews?featured=1` return rows
 
 If any step fails, see Troubleshooting below before retrying.

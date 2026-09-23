@@ -45,11 +45,19 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const href = (event.notification.data && event.notification.data.href) || "/admin";
+  const href = safeHref(event.notification.data && event.notification.data.href);
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      // Focus an existing panel window if one is open, else open a new one.
-      const hit = clients.find((c) => new URL(c.url).pathname.startsWith("/admin"));
+      // Focus an existing window on the same surface (the panel for staff
+      // pushes, the tracker for a shopper's order updates), else open one.
+      const target = href.split("?")[0];
+      const hit = clients.find((c) => {
+        try {
+          return new URL(c.url).pathname.startsWith(target);
+        } catch {
+          return false;
+        }
+      });
       if (hit) {
         hit.navigate?.(href).catch(() => hit.focus());
         return hit.focus();
@@ -58,3 +66,16 @@ self.addEventListener("notificationclick", (event) => {
     }),
   );
 });
+
+/**
+ * Only same-origin paths are ever navigated to. Payloads come from our own
+ * server, but a push payload is data like any other — an absolute URL or a
+ * protocol-relative "//evil.example" must never become a redirect.
+ */
+function safeHref(value) {
+  const fallback = "/track";
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  const href = value.trim();
+  if (!href.startsWith("/") || href.startsWith("//")) return fallback;
+  return href;
+}

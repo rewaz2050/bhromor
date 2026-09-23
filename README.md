@@ -130,6 +130,44 @@ The card on `/admin/notifications` is now a live checklist. Every row is read fr
 
 Also fixed here: in-panel alerts go through `ServiceWorkerRegistration.showNotification()` — `new Notification()` is an **illegal constructor on every mobile Chrome**, so the old inline call showed nothing on Android while the desktop thought it had alerted — and the beep now resumes its suspended `AudioContext` on the first tap (mobile Chrome's autoplay policy kept it silent before). `notifyStaff()` events → Web Push fan-out is unchanged.
 
+## Customer notifications — the shopper's phone buzzes too (2026-09-24)
+
+Until today the store had **no automatic customer channel at all**: shoppers
+learned nothing until they re-opened `/track`, and "order kothay?" was
+answered by the shop phoning them. Now the tracker of a live order carries
+**"অর্ডারের খবর ফোনে নিন"** — one tap, and that phone gets the four public
+milestones (plus payment verified and cancelled) in Bangla or English,
+whichever the shopper was reading.
+
+| Sent when | Customer sees |
+|---|---|
+| order placed | অর্ডার পেয়েছি ✅ |
+| confirmed | অর্ডার কনফার্ম হয়েছে |
+| rider picked it up | রাইডার আপনার পার্সেল নিয়েছে 🛵 (+ keep the 4-digit code ready) |
+| delivered | ডেলিভারি হয়েছে 🎉 |
+| cancelled | অর্ডার বাতিল হয়েছে — nothing to pay |
+| wallet payment verified (admin or shop) | পেমেন্ট ভেরিফাই হয়েছে ✅ |
+
+`preparing`, `ready-for-pickup` and `courier-assigned` stay silent on purpose:
+three useful pushes per parcel, not eight.
+
+Setup — **nothing new**: the same VAPID keys power staff and shoppers.
+1. Apply `supabase/migrations/202609240001_customer_push.sql`
+   (already appended to `supabase/bootstrap-fresh.sql`).
+2. Place a test order → open `/track` → tap **ফোনে খবর চালু করুন** → **টেস্ট পাঠান**.
+3. Confirm the order in the panel → the shopper's phone buzzes; tapping the
+   notification opens *that* order's tracker.
+
+Notes: the endpoint is public by necessity (shoppers are guests) but a device
+can only be registered with the tracker's own proof — order number **and**
+that order's phone — and only ever against the number the order carries.
+Dead endpoints (404/410) are pruned; fan-out is capped at 2.5 s so checkout
+never waits on a push service. Missing VAPID keys or a missing migration =
+honest off switch, the card says which. Full picture, plus the roadmap for
+WhatsApp automation → email sender → customer in-app inbox:
+[`docs/customer-notifications.md`](docs/customer-notifications.md).
+`/api/health` reports `customerPushTableReady` and the device count.
+
 ## Account dashboard rebuild (2026-09-21)
 
 - **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.

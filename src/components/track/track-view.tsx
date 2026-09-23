@@ -31,6 +31,7 @@ import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
 import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
+import NotifyOptIn from "./notify-opt-in";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
 
@@ -307,6 +308,12 @@ export default function TrackView() {
 
             {/* P1 #8: wallet-payment state (COD orders render nothing) */}
             <PaymentStatus order={order} />
+
+            {/* 2026-09-24: the shopper's own phone — four milestones pushed,
+                so "order kothay?" stops being a phone call. Sits above the
+                cancel panel: it is the first thing worth offering on a live
+                order. */}
+            <NotifyOptIn order={order} />
 
             {/* P1 #14: cancel online while the shop has not packed it yet */}
             <CancelPanel

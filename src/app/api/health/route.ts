@@ -13,6 +13,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/env";
 import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
+import { customerPushReady } from "@/lib/customer-push";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
 
@@ -80,6 +81,9 @@ export async function GET(request?: Request) {
     // owner asks about, so the report names it instead of staying silent.
     pushConfigured: false,
     pushTableReady: false,
+    // 202609240001 — shopper (customer) Web Push: the other half of "the phone
+    // buzzes", and the only automatic channel a customer has.
+    customerPushTableReady: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -129,11 +133,15 @@ export async function GET(request?: Request) {
         checks.placeOrderRpc = code !== undefined;
       }
 
-      // Phone notifications: VAPID keys + the device table (202609210001).
+      // Phone notifications: VAPID keys + the staff device table (202609210001).
       checks.pushConfigured = isPushConfigured();
       const pushTable = await pushSubscriptionsReady(svc);
       checks.pushTableReady = pushTable.ready;
       counts.push_subscriptions = pushTable.count;
+      // …and the shopper side (202609240001).
+      const customerPush = await customerPushReady(svc);
+      checks.customerPushTableReady = customerPush.ready;
+      counts.customer_push_subscriptions = customerPush.count;
 
       // Can an order row actually be INSERTED? ps_checkout_health() ships with
       // the repair migration; a missing function IS the answer (not applied).
@@ -225,6 +233,11 @@ export async function GET(request?: Request) {
   if (checks.reachable && checks.pushConfigured && !checks.pushTableReady) {
     nextSteps.push(
       "Phone notification er device table nai — SQL Editor-e supabase/migrations/202609210001_push_subscriptions.sql chalaben; na chalale ON button e chap dile 'push_subscriptions table nai' asbe",
+    );
+  }
+  if (checks.reachable && checks.pushConfigured && !checks.customerPushTableReady) {
+    nextSteps.push(
+      "Customer notification er table nai — SQL Editor-e supabase/migrations/202609240001_customer_push.sql chalaben; na chalale /track er 'ফোনে খবর নিন' button kaaj korbe na",
     );
   }
 

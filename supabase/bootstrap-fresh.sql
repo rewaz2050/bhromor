@@ -8005,3 +8005,26 @@ create table if not exists public.push_subscriptions (
 );
 alter table public.push_subscriptions enable row level security;
 commit;
+
+-- ============================================================================
+-- Customer (shopper) Web Push (2026-09-24) — the shopper's phone buzzes on the
+-- four delivery milestones instead of the shop calling each one. Separate
+-- table from the staff devices above: bound to the checkout phone number,
+-- written by /api/track/push behind the track proof, read only by the
+-- milestone fan-out. Service-role only; RLS denies everyone else.
+-- ============================================================================
+begin;
+create table if not exists public.customer_push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  endpoint     text not null unique,
+  p256dh       text not null,
+  auth         text not null,
+  phone        text not null,
+  lang         text not null default 'bn',
+  created_at   timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+create index if not exists idx_customer_push_phone
+  on public.customer_push_subscriptions (phone);
+alter table public.customer_push_subscriptions enable row level security;
+commit;

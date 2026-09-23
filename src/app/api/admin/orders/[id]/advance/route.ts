@@ -5,6 +5,7 @@
 import { advanceOrderAsStaff } from "@/lib/db/admin";
 import { AdminInputError } from "@/lib/db/admin";
 import { notifyStaff } from "@/lib/db/engagement";
+import { notifyCustomerOfStatus } from "@/lib/customer-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
 import { formatBdt } from "@/lib/format";
@@ -53,6 +54,16 @@ export const POST = staffRoute(
     );
     const staffDb = getSupabaseService();
     if (staffDb) {
+      // The shopper hears it too (2026-09-24): confirmed / out-for-delivery /
+      // delivered / cancelled are the four public milestones. States in
+      // between (preparing, ready-for-pickup, courier-assigned) stay silent —
+      // `notifyCustomerOfStatus` decides, not this route.
+      await notifyCustomerOfStatus(staffDb, {
+        phone: order.customer?.phone,
+        orderNo: order.id,
+        status: body.to as OrderStatus,
+        total: order.total,
+      });
       const label = (body.to as string).replace(/-/g, " ");
       await notifyStaff(staffDb, {
         kind: "order",

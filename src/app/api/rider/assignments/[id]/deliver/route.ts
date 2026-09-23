@@ -1,6 +1,8 @@
 import { apiJson } from "@/lib/api-response";
-import { deliverRiderAssignment } from "@/lib/db/riders";
+import { assignmentOrderRef, deliverRiderAssignment } from "@/lib/db/riders";
 import { RiderInputError } from "@/lib/db/riders";
+import { getSupabaseService } from "@/lib/supabase-server";
+import { notifyCustomerOfStatus } from "@/lib/customer-push";
 import { riderRoute, routeId } from "../../../_lib";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +27,20 @@ export const POST = riderRoute(
       throw new RiderInputError("Proof photo must be a valid https URL (Cloudinary).", 422);
     }
     await deliverRiderAssignment(ctx.db, assignmentId, code, proofUrl);
+    // The last milestone (2026-09-24) — sent after the RPC succeeded, so a
+    // wrong code never tells the shopper their parcel arrived.
+    const service = getSupabaseService();
+    if (service) {
+      const ref = await assignmentOrderRef(service, assignmentId);
+      if (ref) {
+        await notifyCustomerOfStatus(service, {
+          phone: ref.phone,
+          orderNo: ref.orderNo,
+          status: "delivered",
+          total: ref.total,
+        });
+      }
+    }
     return apiJson({ delivered: true, proofUrl });
   },
 );

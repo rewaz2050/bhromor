@@ -20,6 +20,7 @@ import {
 } from "@/lib/db/orders";
 import { samePhone } from "@/lib/orders";
 import { notifyStaff, readOpsSettings } from "@/lib/db/engagement";
+import { notifyCustomerOrderPlaced } from "@/lib/customer-push";
 import { sanitizeSettings } from "@/lib/settings-store";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -125,6 +126,14 @@ export async function POST(request: Request) {
         title: `নতুন অর্ডার ${order.id} — কনফার্মেশন দরকার`,
         body: details.join(" · "),
         href: `/admin/orders/${order.id}`,
+      });
+      // 2026-09-24: if this phone already opted in on /track, the shopper gets
+      // "অর্ডার পেয়েছি" with a filled-in tracker link — the receipt screen is
+      // often already closed by the time they wonder how it is going.
+      await notifyCustomerOrderPlaced(staffDb, {
+        phone: order.customer?.phone,
+        orderNo: order.id,
+        total: order.total,
       });
     }
     // Smart Card: stamps ride on the signed-in account; when the card fills,

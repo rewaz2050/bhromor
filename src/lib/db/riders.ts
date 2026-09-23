@@ -494,6 +494,50 @@ export const rejectRiderAssignment = async (
   if (error) throw new Error(error.message);
 };
 
+/**
+ * Who is on the other end of this assignment? (2026-09-24)
+ *
+ * The rider routes must tell the SHOPPER that their parcel moved, and a push
+ * payload needs the order number + the checkout phone. The delivery offer
+ * itself carries neither, so resolve it once here — with the service client,
+ * because a rider's own RLS scope deliberately cannot read other customers'
+ * rows. Returns null when the assignment is unknown (nothing to notify).
+ */
+export interface AssignmentOrderRef {
+  orderNo: string;
+  phone: string;
+  total: number;
+  status: string;
+}
+
+export const assignmentOrderRef = async (
+  db: SupabaseClient,
+  assignmentId: string,
+): Promise<AssignmentOrderRef | null> => {
+  const { data: assignment } = await db
+    .from("delivery_assignments")
+    .select("order_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  const orderId = (assignment as { order_id?: string } | null)?.order_id;
+  if (!orderId) return null;
+  const { data: order } = await db
+    .from("orders")
+    .select("order_no,customer_phone,total,status")
+    .eq("id", orderId)
+    .maybeSingle();
+  const row = order as
+    | { order_no?: string; customer_phone?: string; total?: number; status?: string }
+    | null;
+  if (!row?.order_no) return null;
+  return {
+    orderNo: row.order_no,
+    phone: typeof row.customer_phone === "string" ? row.customer_phone : "",
+    total: typeof row.total === "number" ? row.total : 0,
+    status: typeof row.status === "string" ? row.status : "",
+  };
+};
+
 export const pickupRiderAssignment = async (
   db: SupabaseClient,
   assignmentId: string,
