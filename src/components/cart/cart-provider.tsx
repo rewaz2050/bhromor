@@ -14,8 +14,10 @@ import {
   ensureLiveCatalog,
   getProductsSnapshot,
   isCatalogSettled,
+  resolveCatalogProduct,
   subscribeLiveCatalog,
 } from "@/lib/live-catalog";
+import { itemFromProduct, track } from "@/lib/analytics";
 import {
   addLine,
   CART_STORAGE_KEY,
@@ -112,8 +114,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addItem = useCallback(
-    (productId: string, variantLabel: string, qty = 1) =>
-      setLines((prev) => addLine(prev, productId, variantLabel, qty)),
+    (productId: string, variantLabel: string, qty = 1) => {
+      setLines((prev) => addLine(prev, productId, variantLabel, qty));
+      // Funnel analytics (no-op unless a pixel/GA id is configured).
+      const product = resolveCatalogProduct(productId);
+      if (product) track({ type: "add_to_cart", item: itemFromProduct(product, qty) });
+    },
     [],
   );
 
@@ -178,4 +184,9 @@ export function useCart(): CartContextValue {
   const ctx = useContext(CartContext);
   if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
   return ctx;
+}
+
+/** Same context, but null outside a <CartProvider> (optional bag surfaces). */
+export function useOptionalCart(): CartContextValue | null {
+  return useContext(CartContext);
 }

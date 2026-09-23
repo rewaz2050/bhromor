@@ -13,7 +13,10 @@ export default function CartButton() {
       aria-label={`Open bag, ${itemCount} item${itemCount === 1 ? "" : "s"}`}
       className="header-icon-btn relative flex h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:text-forest-900"
     >
-      <IconBag className="h-[1.2rem] w-[1.2rem]" />
+      {/* key per count — the CSS bag-pop replays on every bag change. */}
+      <span key={itemCount} className={itemCount > 0 ? "bag-pop flex" : "flex"}>
+        <IconBag className="h-[1.2rem] w-[1.2rem]" />
+      </span>
       {itemCount > 0 && (
         <span
           key={itemCount}

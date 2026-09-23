@@ -11,6 +11,8 @@ import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
 import LanguageSwitcher from "./language-switcher";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
+import { offerProducts } from "@/lib/home-shelves";
 import { IconUser } from "@/components/ui/icons";
 
 /**
@@ -19,10 +21,17 @@ import { IconUser } from "@/components/ui/icons";
  */
 export default function Header() {
   const { t } = useLanguage();
+  // Offers appears only while something is genuinely on offer (admin sets
+  // compare-at prices / flash windows) — the menu never advertises an empty
+  // sale. Categories jumps to the home shelf, as before.
+  const { products } = useLiveCatalog();
+  const hasOffers = offerProducts(products).length > 0;
   const NAV = [
     { label: t("nav.shop"), href: "/shop" },
+    ...(hasOffers ? [{ label: t("nav.offers"), href: "/shop?filter=sale" }] : []),
     { label: t("nav.shops"), href: "/shops" },
-    { label: t("nav.collections"), href: "/#collections" },
+    { label: t("nav.categories"), href: "/#collections" },
+    { label: t("nav.track"), href: "/track" },
   ];
   const [scrolled, setScrolled] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -118,12 +127,16 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Desktop nav — centered editorial pills */}
-          <Suspense>
-            <NavLinks items={NAV} />
-          </Suspense>
+          {/* Desktop nav — truly centered: brand | nav | actions share the
+              bar in three balanced zones (the old ml-auto crammed the pills
+              against the action icons). */}
+          <div className="hidden flex-1 justify-center lg:flex">
+            <Suspense>
+              <NavLinks items={NAV} />
+            </Suspense>
+          </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <span className="hidden h-6 w-px bg-line/70 sm:block" aria-hidden="true" />
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />

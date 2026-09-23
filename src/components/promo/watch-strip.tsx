@@ -15,7 +15,7 @@ import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { dropLabel } from "@/lib/price-drop";
 import { usePriceAlert } from "@/lib/use-price-watch";
-import { useSettings } from "@/lib/use-settings";
+import { usePublicSettings } from "@/lib/use-public-settings";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconBell, IconCheck, IconTrendDown } from "@/components/ui/icons";
 
@@ -56,7 +56,7 @@ function WatchRow({ product }: { product: Product }) {
 
 export default function PriceWatchStrip({ products }: { products: Product[] }) {
   const { t } = useLanguage();
-  const { settings } = useSettings();
+  const { settings } = usePublicSettings();
   if (!settings.priceAlertsEnabled || products.length === 0) return null;
   const drops = products.length;
   return (

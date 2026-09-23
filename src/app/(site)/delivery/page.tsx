@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getStorefrontZones } from "@/lib/db/storefront";
+import { readOpsSettings } from "@/lib/db/engagement";
+import { sanitizeSettings } from "@/lib/settings-store";
+import { getSupabaseService } from "@/lib/supabase-server";
+import { MIN_ORDER_OUTSIDE_SADAR_PAISA } from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
@@ -8,7 +12,6 @@ import {
   COURIER_ETA_BN,
   DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
-  MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
   courierEta,
   isCourierZone,
 } from "@/lib/delivery";
@@ -23,7 +26,16 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function DeliveryPage() {
-  const { zones } = await getStorefrontZones();
+  const [{ zones }, ops] = await Promise.all([
+    getStorefrontZones(),
+    readOpsSettings(getSupabaseService()!)
+      .then(sanitizeSettings)
+      .catch(() => null),
+  ]);
+  // The owner's floor when set; the launch ৳500 otherwise. A fallback-DB
+  // read answers null → the same launch label.
+  const courierMinPaisa = ops?.courierMinOrderPaisa ?? MIN_ORDER_OUTSIDE_SADAR_PAISA;
+  const courierMinLabel = `৳${Math.round(courierMinPaisa / 100)}`;
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:py-16">
       <Eyebrow>Sunamganj · জেলা → উপজেলা → পাড়া · সহজ অর্ডার</Eyebrow>
@@ -40,7 +52,7 @@ export default async function DeliveryPage() {
 
       {/* Delivery promise — the same sentence the bag and checkout show */}
       <div className="mt-8 rounded-2xl bg-gold-50 px-5 py-4 text-sm text-forest-900 ring-1 ring-gold-200">
-        🚚 <strong>{DELIVERY_CHARGE_PROMISE_BN}</strong> — {DELIVERY_CHARGE_LADDER_BN}। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
+        <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> <strong>{DELIVERY_CHARGE_PROMISE_BN}</strong> — {DELIVERY_CHARGE_LADDER_BN}। সারচার্জ: Night +৳২০ · Rain +৳১৫ · Express ৩০মিনিট +৳৪০ · ৫ কেজির পর প্রতি কেজি +৳১০। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
       </div>
 
       {/* Promise */}
@@ -87,7 +99,7 @@ export default async function DeliveryPage() {
                 </td>
                 <td className="px-5 py-4 font-semibold text-ink">
                   {formatBdt(zone.charge)}
-                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} order</span>}
+                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min {courierMinLabel} order</span>}
                 </td>
                 <td className="px-5 py-4 text-ink-soft">
                   {isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel}
@@ -140,7 +152,7 @@ export default async function DeliveryPage() {
             কোনো ডেলিভারি চার্জ লাগে না। ফ্রি-ডেলিভারি কুপনও ডেলিভারি ফ্রি করে।
           </li>
           <li>
-            <strong>Zone D-তে সর্বনিম্ন {MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} অর্ডার</strong> — সুনামগঞ্জ সদরের বাইরের
+            <strong>Zone D-তে সর্বনিম্ন {courierMinLabel} অর্ডার</strong> — সুনামগঞ্জ সদরের বাইরের
             (অন্য উপজেলা / অন্য জেলা) ডেলিভারিতে প্রযোজ্য।
           </li>
           <li>

@@ -146,6 +146,25 @@ describe("ShopBrowser", () => {
     }
   });
 
+  /* 2026-09-20 — the homepage offers rail deep-links to ?filter=sale. */
+  it("shows only marked-down pieces for ?filter=sale, as a removable chip and a checkbox", () => {
+    renderShop({ initialSale: true });
+    expect(screen.getByText(/products · on offer/i)).toBeInTheDocument();
+    const shown = gridNames();
+    expect(shown.length).toBeGreaterThan(0);
+    for (const name of shown) {
+      const p = PRODUCTS.find((item) => item.name === name)!;
+      expect(p.compareAtPrice ?? 0).toBeGreaterThan(p.price);
+    }
+    // The sidebar/drawer checkbox mirrors the URL state…
+    const boxes = screen.getAllByLabelText(/on offer only/i) as HTMLInputElement[];
+    expect(boxes.every((b) => b.checked)).toBe(true);
+    // …and removing the chip restores the full list.
+    fireEvent.click(screen.getByRole("button", { name: /remove on offer filter/i }));
+    expect(gridNames().length).toBeGreaterThan(shown.length);
+    expect(boxes.every((b) => !b.checked)).toBe(true);
+  });
+
   /* Batch J — the homepage rails deep-link into a pre-sorted shop. */
   it("honours ?sort= from a homepage rail and follows a later URL change", () => {
     const { rerender } = renderShop({ initialSort: "newest" });
@@ -174,6 +193,58 @@ describe("ShopBrowser", () => {
     expect(resolveSort(["newest", "best"])).toBe("newest");
     expect(resolveSort("drop table")).toBe("featured");
     expect(resolveSort(undefined)).toBe("featured");
+  });
+
+  it("filters one garment type with the sub-category chips (and drops it when the category changes)", () => {
+    renderShop({ initialCategory: "men" });
+    // No chips without a category → with one, every type in it with counts.
+    const chips = screen.getByTestId("subcategory-chips");
+    const menTypes = Array.from(
+      new Set(PRODUCTS.filter((p) => p.category === "men").map((p) => p.subCategory)),
+    );
+    for (const type of menTypes) {
+      expect(within(chips).getByRole("button", { name: new RegExp(`^${type}`) })).toBeInTheDocument();
+    }
+    fireEvent.click(within(chips).getByRole("button", { name: /^Panjabi/ }));
+    expect(gridNames()).toEqual(
+      PRODUCTS.filter((p) => p.category === "men" && p.subCategory === "Panjabi").map((p) => p.name),
+    );
+    expect(screen.getByText(/in Men · Panjabi/)).toBeInTheDocument();
+    // Removable as its own chip…
+    expect(screen.getByRole("button", { name: "Remove Panjabi filter" })).toBeInTheDocument();
+    // …and dropped when the shopper switches category (never a silent empty list).
+    fireEvent.click(within(screen.getByTestId("category-chips")).getByRole("button", { name: /^Women/ }));
+    expect(screen.queryByRole("button", { name: "Remove Panjabi filter" })).toBeNull();
+    expect(gridNames()).toEqual(PRODUCTS.filter((p) => p.category === "women").map((p) => p.name));
+  });
+
+  it("honours ?sub= from the URL and shows the category chip bar with counts", () => {
+    const { rerender } = renderShop({ initialCategory: "traditional", initialSub: "Gamcha" });
+    expect(gridNames()).toEqual(
+      PRODUCTS.filter((p) => p.subCategory === "Gamcha").map((p) => p.name),
+    );
+    const bar = screen.getByTestId("category-chips");
+    const all = within(bar).getByRole("button", { name: /^All products/ });
+    expect(all).toHaveAttribute("aria-pressed", "false");
+    expect(within(bar).getByRole("button", { name: /^Traditional/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(bar).getByRole("button", { name: /^Men/ })).toHaveTextContent(
+      String(PRODUCTS.filter((p) => p.category === "men").length),
+    );
+    // Without a category there is no garment-type row at all.
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          shops={launchShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
+          initialCategory="all"
+          initialNew={false}
+        />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("subcategory-chips")).toBeNull();
+    expect(gridNames().length).toBe(PRODUCTS.filter((p) => p.active !== false && p.status !== "draft").length);
   });
 
   it("offers only sizes and colours that exist in the catalog", () => {

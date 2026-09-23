@@ -7986,3 +7986,22 @@ grant execute on function ps_checkout_health() to service_role;
 notify pgrst, 'reload schema';
 
 commit;
+
+
+-- ============================================================================
+-- Staff Web Push devices (2026-09-21) — an order lands, the owner's phone
+-- buzzes even with the admin panel closed. One row per browser
+-- subscription. Service-role only (the notifyStaff fan-out and
+-- /api/admin/push both run behind staff auth); RLS denies everyone else.
+-- Runs in its own transaction because the bootstrap script ends above.
+-- ============================================================================
+begin;
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+commit;

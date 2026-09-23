@@ -9,6 +9,7 @@ import {
   salesReport,
   seriesCsv,
   seriesMax,
+  weeklyPulse,
   type ReportRange,
 } from "@/lib/reports";
 import { formatPaisa } from "@/lib/format";
@@ -76,6 +77,9 @@ export default function AdminReportsPage() {
     () => orders.filter((o) => o.createdAt >= report.from && o.createdAt < report.to),
     [orders, report.from, report.to],
   );
+  // The owner's Monday-morning glance — six numbers over this window.
+  const pulse = useMemo(() => weeklyPulse(windowOrders), [windowOrders]);
+
   const exportOrders = () => {
     downloadText(
       `prosanti-orders-${range.label.replace(/\s+/g, "")}-${csvDateSuffix(now)}.csv`,
@@ -207,6 +211,37 @@ export default function AdminReportsPage() {
           </div>
         ))}
       </section>
+
+      {/* The weekly pulse — six numbers that run the shop */}
+      {pulse.hasData && (
+        <section
+          aria-label="The weekly pulse"
+          data-testid="weekly-pulse"
+          className="rounded-2xl bg-paper p-6 ring-1 ring-line"
+        >
+          <div className="flex items-baseline justify-between">
+            <h3 className="font-display text-base font-medium text-forest-900">
+              The pulse — {range.label.toLowerCase()}
+            </h3>
+            <p className="text-xs text-ink-soft">
+              six numbers that tell you how the shop is really running
+            </p>
+          </div>
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {pulse.rows.map((row) => (
+              <div key={row.label} data-testid="pulse-row">
+                <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-ink-soft">
+                  {row.label}
+                </dt>
+                <dd className="mt-1 font-display text-xl font-medium text-forest-900">
+                  {row.value}
+                </dd>
+                <dd className="mt-0.5 text-xs text-ink-soft">{row.note}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {/* Revenue-per-day chart (dependency-free CSS bars) */}
       <section aria-label="Revenue per day" className="rounded-2xl bg-paper p-6 ring-1 ring-line">

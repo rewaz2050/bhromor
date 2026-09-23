@@ -23,6 +23,7 @@ import { aggregateOrders } from "@/lib/orders";
 import { statusCounts } from "@/lib/review-store";
 import { IconBell, IconCheck } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import PushSetup from "@/components/admin/push-setup";
 
 const KIND_ICON: Record<NotifKind, string> = {
   order: "bg-forest-100 text-forest-800",
@@ -108,6 +109,9 @@ export default function AdminNotificationsPage() {
 
   return (
     <div className="space-y-6">
+      {/* The panel no longer has to be open — enable Web Push and the
+          owner's phone buzzes with every order (2026-09-21). */}
+      <PushSetup />
       {/* Live “needs attention” — derived from the real stores */}
       <section aria-label="Needs attention" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {needsAttention.map((item) => (

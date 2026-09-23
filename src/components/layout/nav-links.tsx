@@ -28,13 +28,26 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
       )
     )
       return false;
+    if (path === "/shop") {
+      // The sale pill owns /shop?filter=sale exclusively.
+      const isSale = params.get("filter") === "sale";
+      if (query) return isSale;
+      if (isSale) return false;
+      // Same ownership the thumb bar uses: a product page is still "shopping".
+      const owned = ["/product", "/style", "/live", "/campaign"];
+      return (
+        owned.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+        pathname === path ||
+        pathname.startsWith(`${path}/`)
+      );
+    }
     return pathname === path || pathname.startsWith(`${path}/`);
   };
 
   return (
     <nav
       aria-label="Primary"
-      className="ml-auto hidden items-center gap-1.5 lg:flex"
+      className="hidden items-center gap-1.5 lg:flex"
     >
       {items.map((item, index) => {
         const active = isActive(item.href);
@@ -43,7 +56,7 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`nav-editorial-link group relative whitespace-nowrap text-[0.66rem] font-[550] uppercase tracking-[0.14em] transition-colors duration-300 ${
+            className={`nav-editorial-link group relative whitespace-nowrap text-[0.72rem] font-semibold uppercase tracking-[0.13em] transition-colors duration-300 ${
               active
                 ? "text-ivory-50"
                 : "text-ink-soft hover:text-forest-900"
@@ -53,6 +66,12 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
               animationDelay: `${index * 45}ms`,
             } as React.CSSProperties}
           >
+            {item.href === "/shop?filter=sale" ? (
+              <span
+                aria-hidden="true"
+                className="relative z-10 mr-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-gold-500 shadow-[0_0_6px_var(--color-gold-400)]"
+              />
+            ) : null}
             <span className="relative z-10">{item.label}</span>
           </Link>
         );

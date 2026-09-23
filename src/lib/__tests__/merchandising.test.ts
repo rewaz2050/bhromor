@@ -3,12 +3,24 @@ import { PRODUCTS } from "../catalog";
 import { bdt } from "../format";
 import {
   completeTheLook,
+  isOnOffer,
   matchesMood,
+  offerPct,
   resolveMood,
   under500,
 } from "../merchandising";
 
 describe("Editorial merchandising", () => {
+  it("calls a piece 'on offer' only when the list price is really struck through", () => {
+    expect(isOnOffer({ price: bdt(1490), compareAtPrice: bdt(1850) })).toBe(true);
+    expect(offerPct({ price: bdt(1490), compareAtPrice: bdt(1850) })).toBe(19);
+    expect(offerPct({ price: bdt(690), compareAtPrice: bdt(890) })).toBe(22);
+    // equal, lower, or absent compare-at → not an offer, 0%
+    expect(isOnOffer({ price: bdt(900), compareAtPrice: bdt(900) })).toBe(false);
+    expect(isOnOffer({ price: bdt(900), compareAtPrice: bdt(800) })).toBe(false);
+    expect(isOnOffer({ price: bdt(900) })).toBe(false);
+    expect(offerPct({ price: bdt(900) })).toBe(0);
+  });
   it("validates URL moods without accepting arbitrary strings or arrays", () => {
     expect(resolveMood("festive")).toBe("festive");
     expect(resolveMood("sale")).toBe("");

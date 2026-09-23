@@ -48,11 +48,11 @@ Unit/component suite: 446 tests. Browser suite: 14 Chromium checks (see `docs/br
 
 ## Premium storefront refresh
 
-The public homepage now follows one shorter editorial journey: **cinematic hero → collections → featured edit → service promise strip**. Duplicate new-arrival, mood, budget and delivery rails were removed from the landing page; those discovery paths and the owned visual journal remain available in the shop. The hero and journal use dedicated lifestyle imagery, while product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
+The public homepage is a shelf, top to bottom: **compact hero (headline + one button) → recently-viewed strip (returning devices only) → category row → offers → every category with its pieces → customer stories (approved reviews only; hidden when there are none) → delivery check → service promise strip**. There is no screen-filling poster any more — the category row is on the first screen of a phone. The offers block shows the flash drop while a window runs plus every piece with a struck-through price (`/shop?filter=sale` lists them all); with nothing on offer it stays away. Product pages end with the rest of the piece's own category (strictly the same category, never a "you may also like" mix). The curated new-arrival / best-seller paths and the owned visual journal remain available in the shop (`?sort=newest`, `?sort=best`). Product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
 
 The palette is warm ivory, deep charcoal/forest and restrained bronze-gold. English display type (Playfair), interface type (Inter) and Bengali copy (Noto Serif Bengali) have explicit roles. No seeded or fake ratings/reviews are rendered anywhere — public home and product pages only ever show real, approved customer reviews (verified badge only when a matching order exists); the moderation queue lives in admin.
 
-Existing CMS hero copy and the six launch-safe section toggles, search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
+Existing CMS hero copy and the six section toggles (hero, recently viewed, category row, offers, customer stories, service strip), search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
 
 ## Premium feel & usability pass
 
@@ -78,6 +78,108 @@ All motion stays inside the existing tokens (`--motion-*`, `--ease-refined`) and
 - Shop selections appear as individually removable chips, with a clear-all action and a live result count.
 - Mobile headers keep all navigation actions within narrow screens; size/colour controls use larger touch targets and the filter drawer keeps its result action visible while scrolling.
 - Search and filters run over the live storefront catalog; no authentication is required.
+
+## Conversion & usability pass (2026-09-20)
+
+Fourteen small, real-data-only additions that make the shop easier to trust and quicker to buy from. Copy is en + bn throughout.
+
+- **Bangla product names** on product cards (Bangla-first when the shopper reads Bangla) — sourced from `Product.nameBn`, never transliterated.
+- **Share row** on every product page: WhatsApp / Facebook / copy link (uses the native share sheet on phones).
+- **Customer stories** on the home page from real published reviews (`/api/reviews`); hidden until reviews exist. CMS toggle `sections.stories`.
+- **CMS promo card + announcement bar** (`/admin/homepage`): the promo only advertises a code — checkout still validates it.
+- **Recently viewed** rail on product pages and a strip on the home page (device-local, returning visitors only).
+- **Analytics**: set `NEXT_PUBLIC_META_PIXEL_ID` and/or `NEXT_PUBLIC_GA4_ID` to load Meta Pixel / GA4 with page_view, view_item, add_to_cart, begin_checkout and purchase (amounts in taka, no personal data). Blank = nothing loads.
+- **PWA**: `/manifest.webmanifest`, icons and a gentle "Add to Home Screen" card on a visitor's second day (iOS gets the Share → Add instruction). No service worker by design.
+- **Product video**: a "▶ Video" badge on cards and an admin nudge listing published pieces still without a YouTube/Drive clip.
+- **Arrival cue** on the product page and in the bag — "Order now → at your door by about 7:55 PM" from the checkout's own ETA maths (night surcharge named; the courier zone never gets a clock).
+- **Sub-category chips** on `/shop` (`?category=men&sub=Panjabi` deep links) and a horizontal category chip bar on phones.
+- **Image zoom**: hover magnifier on desktop, full-screen pinch / wheel / double-tap lightbox with pan.
+- **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
+- **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
+
+## Menubar polish (2026-09-21)
+
+- **The nav is actually centered now** — the pills sat `ml-auto`, crammed against the search/wishlist/cart icons while the code comment claimed "centered". The bar is now three balanced zones: brand | nav | actions.
+- Pill rhythm: 0.66rem → 0.72rem semibold, roomier padding — the 5-item bar reads instead of squeaks.
+- **Offers gets a gold glow-dot** so the sale entry feels intentional, not like a sixth grey pill.
+- Bottom bar: the active tab's label is now semibold (the gold tick + heavier stroke were doing all the work before).
+
+## Realtime phone notifications for admin (2026-09-21)
+
+Orders, reviews, stock alerts and other staff notices now **buzz the owner's phone even with the admin panel closed** (Web Push + VAPID; the in-panel inbox keeps its 15s poll + beep).
+
+Setup once:
+1. Generate keys: `npx web-push generate-vapid-keys`
+2. Set env on the host: `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` (optional `PUSH_VAPID_SUBJECT`, mailto:)
+3. Apply `supabase/migrations/202609210001_push_subscriptions.sql`
+4. Admin → Notifications → **"Phone notification ON korun"** → tap **Test pathan**
+
+Notes: staff-gated end to end (`/api/admin/push`, device table service-role only). Android: any browser. iPhone: the panel must be installed via "Add to Home Screen" (iOS 16.4+). Missing keys = honest off switch, nothing throws. Dead subscriptions (404/410) are pruned automatically; fan-out is capped at 2.5s so checkout never waits on a push service. `public/sw.js` has no fetch/cache handler on purpose — live prices stay live — and is registered only from the admin surface.
+
+## Account dashboard rebuild (2026-09-21)
+
+- **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.
+- **Four lazy tabs** — Orders (landing) · Smart Card · Refer & Earn · PROSANTI+. Each programme mounts only when its tab opens, so its fetch fires once, when needed — no 8-request card stack, no endless scroll.
+- **Guests: form first** — the signup/login form leads beside an honest "why an account" card (stamps, referral, history/tracking, PROSANTI+), teasers below. The auth flow, labels and error handling are byte-identical to the audited version.
+- **Bilingual page heading** — the hardcoded English h1/eyebrow moved into the client view and now follows the language switcher; the heading renders even while the session probe runs.
+- New copy is translation-keyed (`accountHero.*`, `accountTabs.*`, `accountPitch.*`, en+bn).
+
+## Menubar pass (2026-09-21)
+
+- **Offers pill** in the desktop bar and the drawer — appears only while pieces are genuinely on offer (admin-priced) and owns `/shop?filter=sale` exclusively: the sale tab never lights on the plain shop, and vice versa.
+- **"Collections" → "Categories"** (en + bn) — the link jumps to the home category shelf, and the old name oversold it.
+- **Track** joins the desktop bar (it lived only in the footer before).
+- **Active state parity** — a product page now lights the Shop pill on desktop, same ownership the phone's thumb bar already used.
+- **Drawer orientation** — the page you are on is highlighted in gold with a check, so the open menu tells you where you are.
+
+## Performance audit (2026-09-21)
+
+Measured on the production build (gzip on the wire): home **≈265 KB JS**, /shop ≈257 KB, /checkout ≈278 KB; CSS ≈134 KB raw; local TTFB 8–150 ms (first hit warms the dynamic shop route). Findings fixed:
+
+- **Admin code no longer ships to shoppers** — `usePublicSettings` lives in its own module; importing it from the staff settings hook had pulled the admin-auth client (admin email + the secret ops-gate path) into every customer page's bundle. Customer surfaces (checkout, referral step, price-watch strip, bag COD card, arrival cue) now use the clean module. Rebuilt and verified: no admin markers in any storefront chunk.
+- Same audit surfaced and fixed a real bug: customer surfaces were reading ops settings through the **staff hook**, so shoppers always got launch defaults regardless of what the admin saved.
+
+## Admin-owned pricing (2026-09-21)
+
+Every money knob is now the owner's, end to end:
+
+- **Surcharge amounts** (night / rain / express / per-kg) and the **courier minimum order** moved from hard-coded constants into Admin → Settings → Delivery — set them in taka, save once.
+- They flow everywhere through **one public read**: `GET /api/settings` (the sanitized ops document, nothing secret) → checkout quote, server-side order pricing (which also honours the toggles now — an older gap), the bag's cash-at-the-door card, the arrival cue and the delivery page.
+- Checkout now reads these via `usePublicSettings()` instead of the staff-only hook — previously customers silently got launch defaults no matter what the admin set.
+- Launch defaults match the old constants (৳20 / ৳15 / ৳40 / ৳10·kg, floor ৳500), so nothing changes until the owner changes it.
+
+## UI/UX feel pass (2026-09-21)
+
+- **Skeletons on every streamed route** — account, track, wishlist and checkout now show the brand-shaped placeholder (and the collection skeleton matches the real 4:5 cards). No blank flashes.
+- **Empty states that recover the shopper** — the empty cart page and the shop's no-result state carry the device's recently-viewed pieces (returning visitors only).
+- **Tap feedback** — quick add, add-to-bag and place-order acknowledge the press; the header bag icon pops when the bag changes.
+- **Sticky mobile buy bar** — photo + flash-aware price + Add docks at the bottom edge once the purchase panel scrolls away; taps scroll back to the one real CTA.
+- **Haptics** — a small vibration on added-to-bag and order-placed (Android; silently skipped elsewhere).
+
+## Speed pass (2026-09-21)
+
+- **Preconnect** to `res.cloudinary.com` / `lh3.googleusercontent.com` (+ dns-prefetch for YouTube thumbs) from the root layout — the media hosts' DNS+TLS is warmed before the catalog images are discovered, which matters on mobile networks.
+- **Image optimizer**: AVIF → WebP explicitly, and `minimumCacheTTL` raised to 31 days — a photo is encoded once and served from the CDN instead of being re-encoded every week.
+- Bengali fonts were already unicode-range–subset by Fontsource (Bengali / Latin split per weight), so devices only download the glyphs they render.
+
+## The weekly pulse (2026-09-21)
+
+Admin → Reports gains a six-number strip over the selected window — the owner's Monday-morning glance: orders + booked money, cancel rate, delivered with the **real average delivery minutes**, repeat customers (same phone, ≥2 live orders), the bKash/Nagad verification queue with its median wait, and cash actually collected at the door. All computed from the same live orders as the rest of the page; dashes when the window is empty, never invented numbers.
+
+## Referral & review asks (2026-09-21)
+
+- **On the receipt** (order placed): signed-in shoppers see their real referral code with copy-link and a prefilled WhatsApp share ("friend saves ৳50, you earn ৳50"); guests get a quiet sign-in line — codes are never mintable anonymously (`receipt-referral-row.tsx`).
+- **On /track, delivered orders** show a one-tap review ask linking each bought piece's moderated review form (`review-ask.tsx`, max three links).
+
+## Premium icon pass (2026-09-21)
+
+No emoji in shopper-facing UI — delivery, slots, addresses, COD, gift, loyalty and map surfaces use the brand's stroke line-icon set (`src/components/ui/icons.tsx`; new: sparkles, moon, calendar, home, store, briefcase). Admin/vendor/rider tools may still use emoji internally.
+
+## Marketing feeds & structured data (2026-09-21)
+
+- **Facebook/Instagram catalog feed:** `GET /api/feed/facebook` — Meta Commerce CSV (id, title, price in BDT, availability, absolute links/images, brand). Paste into Commerce Manager → Catalog → Data sources as a scheduled feed.
+- **Google free listings feed:** `GET /api/feed/google` — Merchant Center RSS 2.0 (`g:` namespace, whole-taka prices). Paste into Merchant Center → Products → Feeds as a scheduled fetch. Both revalidate hourly; video slides are never submitted as images and sold-out pieces are listed as `out of stock` (history preserved).
+- **Structured data:** `Organization` + `WebSite` JSON-LD on every storefront page (facts only — logo, origin; address/phone join when the shop profile has them). Share cards: see the Conversion & usability pass above.
 
 ## Pages
 

@@ -10,6 +10,9 @@ import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
 import FlashStrip from "@/components/promo/flash-strip";
 import CampaignStrip from "@/components/promo/campaign-strip";
 import RefCapture from "@/components/promo/ref-capture";
+import InstallPrompt from "@/components/layout/install-prompt";
+import { storefrontJsonLd } from "@/lib/marketing-feeds";
+import { siteBaseUrl } from "@/lib/site-url";
 
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
@@ -32,15 +35,19 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "PROSANTI",
     locale: "en_US",
+    alternateLocale: ["bn_BD"],
     title: "PROSANTI — Rooted in Bangladesh. Designed for Today.",
     description:
       "Thoughtfully made essentials for everyday Bangladesh.",
     images: [
       {
-        url: "/images/editorial/hero-prosanti.jpg",
-        width: 1376,
-        height: 768,
-        alt: "PROSANTI forest-green panjabi campaign",
+        // The branded share card painted by src/app/opengraph-image.tsx
+        // (brand + door-delivery promise + hero art). Shop and product
+        // pages advertise their own cards; every other route shares this.
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "PROSANTI — premium panjabi, three-piece, lungi and gamcha, at your door in Sunamganj",
       },
     ],
   },
@@ -57,6 +64,14 @@ export default function SiteLayout({
     // (header on every width, drawer, bottom sheet) flips to English and the
     // choice is remembered on this device.
     <LanguageProvider initialLang="bn">
+      {/* Search engines & Meta: who runs this storefront. Only real facts —
+          address/phone join here when the shop profile actually has them. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(storefrontJsonLd(siteBaseUrl())),
+        }}
+      />
       <CartProvider>
         <CustomerProvider>
           <a
@@ -78,6 +93,9 @@ export default function SiteLayout({
           {/* Thumb-reach navigation on phones (§67) */}
           <BottomNav />
           <BagDrawer />
+          {/* Add-to-home-screen card: from the second visit, never in the
+              installed app, quiet for a month after "Not now". */}
+          <InstallPrompt />
           <LiveCatalogBoot />
         </CustomerProvider>
       </CartProvider>

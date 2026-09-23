@@ -1,5 +1,7 @@
 "use client";
 
+import ArrivalCue from "@/components/delivery/arrival-cue";
+import CodReminder from "./cod-reminder";
 import { coverImage } from "@/lib/catalog";
 import { getLiveProducts } from "@/lib/live-catalog";
 import { completeTheLook } from "@/lib/merchandising";
@@ -116,11 +118,12 @@ export default function BagDrawer() {
               className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200"
               data-testid="delivery-promise"
             >
-              🚚 {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
+              <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
               {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
             </p>
+            <ArrivalCue className="mt-2" />
           </div>
           <div className="flex-1 overflow-y-auto px-6">
             <div className="pt-4">
@@ -242,10 +245,12 @@ export default function BagDrawer() {
                 {formatBdt(subtotal)}
               </strong>
             </div>
-            <p className="mb-5 mt-1.5 text-xs text-ink-soft">
+            <p className="mt-1.5 text-xs text-ink-soft">
               {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
               {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
+            {/* What to keep ready at the door — same maths as checkout. */}
+            <CodReminder subtotal={subtotal} className="mb-5 mt-3" />
             {/* P2 #19 — ONE primary action. "View bag" and the WhatsApp
                 order used to sit as two more full-width buttons under it,
                 so three equal CTAs competed for the same thumb; they now

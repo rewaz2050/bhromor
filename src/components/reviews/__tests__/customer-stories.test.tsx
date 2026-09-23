@@ -68,6 +68,23 @@ describe("Customer stories preview", () => {
     expect(screen.getAllByText(/Verified purchase/)).toHaveLength(2);
   });
 
+  it("renders nothing on the homepage when there is no approved review", () => {
+    const { container } = render(<CustomerStories hideWhenEmpty />);
+    expect(container).toBeEmptyDOMElement();
+
+    cleanup();
+    state.reviews = [review];
+    render(<CustomerStories hideWhenEmpty />);
+    expect(screen.getByTestId("customer-stories")).toBeInTheDocument();
+    expect(screen.getByText("Sample review body", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText(/From 1 approved review/)).toBeInTheDocument();
+    // the card links to the product's reviews anchor
+    expect(screen.getByRole("link", { name: new RegExp(PRODUCTS[0].name) })).toHaveAttribute(
+      "href",
+      `/product/${PRODUCTS[0].slug}#reviews-heading`,
+    );
+  });
+
   it("does not show a fabricated average when there are no reviews", () => {
     render(<CustomerStories />);
 

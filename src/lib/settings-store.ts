@@ -15,6 +15,7 @@ import {
   type BundleConfig,
   type FlashConfig,
 } from "./promos";
+import { DEFAULT_SURCHARGE_RATES, type SurchargeRates } from "./delivery";
 import { GIFT_DEFAULTS, sanitizeGift, type GiftConfig } from "./gift";
 import { REFERRAL_DEFAULTS, sanitizeReferral, type ReferralConfig } from "./referral";
 import {
@@ -37,6 +38,10 @@ export interface AdminSettings {
   nightSurchargeEnabled: boolean;
   expressDeliveryEnabled: boolean;
   perZoneFreeThresholdEnabled: boolean;
+  /** The amounts behind the toggles, in paisa (admin-editable, 2026-09-21). */
+  surcharges: SurchargeRates;
+  /** Courier (outside Sadar) minimum order, in paisa. */
+  courierMinOrderPaisa: number;
   // P1 #8 — wallet payment numbers (the shop's OWN bKash/Nagad number;
   // empty string = the method is not offered at checkout).
   wallets: { bkash: string; nagad: string };
@@ -68,6 +73,8 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   nightSurchargeEnabled: true,
   expressDeliveryEnabled: true,
   perZoneFreeThresholdEnabled: true,
+  surcharges: { ...DEFAULT_SURCHARGE_RATES },
+  courierMinOrderPaisa: 50_000,
   // No wallet configured → checkout offers COD only, until the shop adds
   // its bKash/Nagad number in Admin → Settings.
   wallets: { bkash: "", nagad: "" },
@@ -87,6 +94,22 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   // running" until the owner arms a real window in Admin → Growth.
   campaign: CAMPAIGN_DEFAULTS,
   plus: PLUS_DEFAULTS,
+};
+
+/** Paisa rate: any finite number 0..cap, else the default. */
+const moneyCap = (value: unknown, fallback: number, cap: number): number =>
+  typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(cap, Math.floor(value)))
+    : fallback;
+
+const intRates = (raw: unknown): SurchargeRates => {
+  const r = (raw ?? {}) as Partial<SurchargeRates>;
+  return {
+    night: moneyCap(r.night, DEFAULT_SURCHARGE_RATES.night, 50_000),
+    rain: moneyCap(r.rain, DEFAULT_SURCHARGE_RATES.rain, 50_000),
+    express: moneyCap(r.express, DEFAULT_SURCHARGE_RATES.express, 50_000),
+    weightPerKg: moneyCap(r.weightPerKg, DEFAULT_SURCHARGE_RATES.weightPerKg, 50_000),
+  };
 };
 
 export const sanitizeSettings = (raw: unknown): AdminSettings => {
@@ -189,6 +212,8 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
       whatsapp: walletNum(contactRaw.whatsapp),
       email: plausibleEmail ? emailRaw : "",
     },
+    surcharges: intRates(p.surcharges),
+    courierMinOrderPaisa: moneyCap(p.courierMinOrderPaisa, SETTINGS_DEFAULTS.courierMinOrderPaisa, 500_000),
     // Each growth lever sanitizes itself — a stored doc is never trusted raw.
     flash: sanitizeFlash(p.flash),
     bundle: sanitizeBundle(p.bundle),

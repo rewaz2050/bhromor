@@ -74,3 +74,63 @@ describe("BagDrawer — one primary CTA (P2 #19)", () => {
     expect(primary[0].textContent).toMatch(/Checkout/);
   });
 });
+
+describe("BagDrawer — arrival cue + cash-at-the-door reminder", () => {
+  it("quotes the cash to keep ready (pieces + zone delivery) and the PIN, plus the arrival clock", async () => {
+    window.localStorage.setItem("prosanti.myzone.v1", "z2");
+    render(
+      <CartProvider>
+        <OpenBag />
+        <BagDrawer />
+      </CartProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
+    const dialog = await screen.findByRole("dialog", { name: "Your Bag" });
+    const cod = within(dialog).getByTestId("cod-reminder");
+    expect(cod).toHaveAttribute("data-exact", "true");
+    // ৳ subtotal (one PRODUCTS[0]) + ৳120 for zone B (+৳20 only at night)
+    const p = PRODUCTS[0];
+    const night = (() => {
+      const h = new Date(Date.now() + 6 * 3600_000).getUTCHours();
+      return h >= 21 || h < 6 ? 2000 : 0;
+    })();
+    const expected = (p.price + 12000 + night) / 100;
+    expect(within(cod).getByTestId("cod-amount").textContent?.replace(/[^\d]/g, "")).toBe(
+      String(expected),
+    );
+    expect(cod).toHaveTextContent(/4-digit PIN/);
+    // Item 9's clock — a rider zone gets a time, never the courier zone.
+    expect(within(dialog).getByTestId("arrival-cue")).toHaveTextContent(/at your door by about/);
+  });
+
+  it("shows the ৳60–150 range until an area is chosen and never a clock for the courier zone", async () => {
+    render(
+      <CartProvider>
+        <OpenBag />
+        <BagDrawer />
+      </CartProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
+    const dialog = await screen.findByRole("dialog", { name: "Your Bag" });
+    expect(within(dialog).getByTestId("cod-reminder")).toHaveAttribute("data-exact", "false");
+    expect(within(dialog).getByTestId("cod-amount").textContent).toMatch(/–/);
+    cleanup();
+    // Courier zone with a ৳350 gamcha — under the ৳500 floor the RPC enforces.
+    window.localStorage.setItem("prosanti.myzone.v1", "z4");
+    const cheap = PRODUCTS.find((x) => x.price < 50000)!;
+    window.localStorage.setItem(
+      CART_STORAGE_KEY,
+      JSON.stringify([{ productId: cheap.id, variantLabel: `${cheap.colors[0]} · ${cheap.sizes[0]}`, qty: 1 }]),
+    );
+    render(
+      <CartProvider>
+        <OpenBag />
+        <BagDrawer />
+      </CartProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
+    const dialog2 = await screen.findByRole("dialog", { name: "Your Bag" });
+    expect(within(dialog2).queryByTestId("arrival-cue")).toBeNull();
+    expect(within(dialog2).getByTestId("cod-reminder")).toHaveTextContent(/minimum order is ৳500/);
+  });
+});

@@ -72,3 +72,32 @@ describe("ProductGallery mixed media", () => {
     ).not.toBeNull();
   });
 });
+
+describe("ProductGallery zoom", () => {
+  it("opens a pinch/wheel zoom lightbox from the photo and closes on Escape", () => {
+    render(<ProductGallery product={withMedia()} />);
+    expect(screen.queryByTestId("zoom-lightbox")).toBeNull();
+    fireEvent.click(screen.getByTestId("gallery-zoom-trigger"));
+    const box = screen.getByTestId("zoom-lightbox");
+    expect(box).toHaveAttribute("data-scale", "1.00");
+    // wheel up zooms in around the cursor; the +/- buttons step by 0.5
+    fireEvent.wheel(screen.getByTestId("zoom-stage"), { deltaY: -100, clientX: 10, clientY: 10 });
+    expect(Number(box.getAttribute("data-scale"))).toBeGreaterThan(1);
+    fireEvent.click(screen.getByRole("button", { name: /zoom out/i }));
+    fireEvent.click(screen.getByRole("button", { name: /zoom out/i }));
+    expect(box).toHaveAttribute("data-scale", "1.00");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByTestId("zoom-lightbox")).toBeNull();
+  });
+
+  it("magnifies around the cursor on hover (desktop) and resets on leave", () => {
+    render(<ProductGallery product={withMedia()} />);
+    const trigger = screen.getByTestId("gallery-zoom-trigger");
+    const img = trigger.querySelector("img") as HTMLImageElement;
+    expect(img.style.transform).toBe("");
+    fireEvent.mouseMove(trigger, { clientX: 0, clientY: 0 });
+    expect(img.style.transform).toContain("scale(1.9)");
+    fireEvent.mouseLeave(trigger);
+    expect(img.style.transform).toBe("");
+  });
+});

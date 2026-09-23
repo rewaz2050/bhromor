@@ -15,6 +15,21 @@ export const metadata: Metadata = {
   title: "Shop",
   description:
     "Browse the PROSANTI catalog — premium panjabi, shirts, three-piece, lungi and gamcha, with transparent pricing and rapid delivery.",
+  // The collection card (opengraph-image/route.tsx beside this page — file
+  // conventions don't register inside a route group, upstream NEXT-1102).
+  openGraph: {
+    title: "Shop the PROSANTI collection",
+    description:
+      "Premium panjabi, shirts, three-piece, lungi and gamcha — at your door in Sunamganj, cash on delivery.",
+    images: [
+      {
+        url: "/shop/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "The PROSANTI collection",
+      },
+    ],
+  },
 };
 
 /**
@@ -27,6 +42,7 @@ export default async function ShopPage({
 }: {
   searchParams: Promise<{
     category?: string | string[];
+    sub?: string | string[];
     filter?: string | string[];
     q?: string | string[];
     mood?: string | string[];
@@ -44,8 +60,16 @@ export default async function ShopPage({
   const category = categories.some((c) => c.id === params.category)
     ? (params.category as string)
     : ("all" as const);
+  // `?sub=Panjabi` — one garment type inside the category; ignored without a
+  // category or when no piece in that category carries the type.
+  const sub =
+    category !== "all" && typeof params.sub === "string"
+      ? (products.find((p) => p.category === category && p.subCategory === params.sub)?.subCategory ?? "")
+      : "";
   const query = typeof params.q === "string" ? params.q : "";
   const onlyNew = params.filter === "new";
+  // Homepage "See all N offers" deep-links here — pieces with a struck-through price.
+  const onlySale = params.filter === "sale";
   // Batch J — the homepage rails deep-link here ("See all best sellers").
   const initialSort = resolveSort(params.sort);
 
@@ -64,7 +88,9 @@ export default async function ShopPage({
           shops={shops}
           zones={zones}
           initialCategory={category}
+          initialSub={sub}
           initialNew={onlyNew}
+          initialSale={onlySale}
           initialQuery={query}
           initialMood={resolveMood(params.mood)}
           initialPrice={params.price === "under500" ? "under500" : "any"}

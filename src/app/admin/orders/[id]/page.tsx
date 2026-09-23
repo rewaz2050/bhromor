@@ -30,6 +30,7 @@ import {
 } from "@/components/admin/order-ui";
 import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
 import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
+import OrderWhatsAppStatus from "@/components/admin/order-whatsapp-status";
 import PaymentCard from "@/components/admin/payment-card";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
@@ -280,25 +281,7 @@ export default function AdminOrderDetailPage() {
         >
           🖨️ Print invoice
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            const payNote =
-              order.payment === "bkash"
-                ? "Total " + order.total / 100 + " taka (bKash)"
-                : order.payment === "nagad"
-                  ? "Total " + order.total / 100 + " taka (Nagad)"
-                  : "Total " + order.total / 100 + " taka COD";
-            const origin =
-              typeof window !== "undefined" ? window.location.origin : "";
-            const text = `PROSANTI Order ${order.id} - ${order.customer.name} ${order.customer.phone} ${order.customer.area} ${payNote}. Track: ${origin}/track`;
-            const url = `https://wa.me/88${order.customer.phone.replace(/[^0-9]/g,"").slice(-11)}?text=${encodeURIComponent(text)}`;
-            window.open(url, "_blank");
-          }}
-          className="rounded-full bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white"
-        >
-          WhatsApp customer
-        </button>
+        <OrderWhatsAppStatus order={order} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

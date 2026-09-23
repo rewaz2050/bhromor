@@ -12,6 +12,7 @@ import {
   MOODS,
   matchesMood,
   isDiscoverable,
+  isOnOffer,
   type MoodId,
 } from "@/lib/merchandising";
 import { matchesProduct } from "@/lib/product-search";
@@ -20,6 +21,7 @@ import { useMyZone } from "@/lib/use-my-zone";
 import { bdt, formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import ProductCard from "@/components/product/product-card";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import Drawer from "@/components/ui/drawer";
 import {
   IconBox,
@@ -83,7 +85,9 @@ export default function ShopBrowser({
   shops,
   zones,
   initialCategory,
+  initialSub = "",
   initialNew,
+  initialSale = false,
   initialQuery = "",
   initialMood = "",
   initialPrice = "any",
@@ -94,15 +98,27 @@ export default function ShopBrowser({
   shops: Shop[];
   zones: DeliveryZone[];
   initialCategory: CategoryFilter;
+  /** `/shop?category=men&sub=Panjabi` — one garment type inside a category. */
+  initialSub?: string;
   initialNew: boolean;
+  /** `/shop?filter=sale` — only pieces with a struck-through list price. */
+  initialSale?: boolean;
   initialQuery?: string;
   initialMood?: MoodId | "";
   initialPrice?: "any" | "under500";
   initialSort?: SortKey;
 }) {
   const { t, lang } = useLanguage();
-  const [category, setCategory] = useState<CategoryFilter>(initialCategory);
+  const [category, setCategoryState] = useState<CategoryFilter>(initialCategory);
+  const [subCategory, setSubCategory] = useState<string>(initialSub);
+  /* A garment type belongs to one category — changing the category always
+     drops the sub-category so the list can never be silently empty. */
+  const setCategory = (next: CategoryFilter) => {
+    setCategoryState(next);
+    setSubCategory("");
+  };
   const [onlyNew, setOnlyNew] = useState(initialNew);
+  const [onlySale, setOnlySale] = useState(initialSale);
   const [q, setQ] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [sizes, setSizes] = useState<string[]>([]);
@@ -162,7 +178,9 @@ export default function ShopBrowser({
    */
   const lastUrlState = useRef({
     initialCategory,
+    initialSub,
     initialNew,
+    initialSale,
     initialQuery,
     initialMood,
     initialPrice,
@@ -172,7 +190,9 @@ export default function ShopBrowser({
     const prev = lastUrlState.current;
     if (
       prev.initialCategory !== initialCategory ||
+      prev.initialSub !== initialSub ||
       prev.initialNew !== initialNew ||
+      prev.initialSale !== initialSale ||
       prev.initialMood !== initialMood ||
       prev.initialPrice !== initialPrice ||
       prev.initialQuery !== initialQuery ||
@@ -180,14 +200,18 @@ export default function ShopBrowser({
     ) {
       lastUrlState.current = {
         initialCategory,
+        initialSub,
         initialNew,
+        initialSale,
         initialQuery,
         initialMood,
         initialPrice,
         initialSort,
       };
-      setCategory(initialCategory);
+      setCategoryState(initialCategory);
+      setSubCategory(initialSub);
       setOnlyNew(initialNew);
+      setOnlySale(initialSale);
       setQ(initialQuery);
       setSizes([]);
       setColors([]);
@@ -196,7 +220,7 @@ export default function ShopBrowser({
       setOnlyInStock(false);
       setSort(initialSort);
     }
-  }, [initialCategory, initialNew, initialQuery, initialMood, initialPrice, initialSort]);
+  }, [initialCategory, initialSub, initialNew, initialSale, initialQuery, initialMood, initialPrice, initialSort]);
 
   const allSizes = useMemo(
     () => collectSizes(zonedProducts),
@@ -217,7 +241,10 @@ export default function ShopBrowser({
     if (mood) list = list.filter(({ p }) => matchesMood(p, mood));
     if (category !== "all")
       list = list.filter(({ p }) => p.category === category);
+    if (category !== "all" && subCategory)
+      list = list.filter(({ p }) => p.subCategory === subCategory);
     if (onlyNew) list = list.filter(({ p }) => p.isNew);
+    if (onlySale) list = list.filter(({ p }) => isOnOffer(p));
     if (onlyInStock) list = list.filter(({ p }) => p.inStock);
     if (sizes.length)
       list = list.filter(({ p }) => p.sizes.some((s) => sizes.includes(s)));
@@ -259,7 +286,9 @@ export default function ShopBrowser({
   }, [
     zonedProducts,
     category,
+    subCategory,
     onlyNew,
+    onlySale,
     onlyInStock,
     sizes,
     colors,
@@ -272,7 +301,9 @@ export default function ShopBrowser({
   const hasActiveFilters =
     mood !== "" ||
     category !== "all" ||
+    subCategory !== "" ||
     onlyNew ||
+    onlySale ||
     onlyInStock ||
     sizes.length > 0 ||
     colors.length > 0 ||
@@ -283,6 +314,7 @@ export default function ShopBrowser({
     setMood("");
     setCategory("all");
     setOnlyNew(false);
+    setOnlySale(false);
     setSizes([]);
     setColors([]);
     setPriceBand("any");
@@ -292,6 +324,30 @@ export default function ShopBrowser({
 
   const categoryCount = (id: CategoryId) =>
     zonedProducts.filter((p) => p.category === id).length;
+
+  /** Garment types inside the chosen category, with counts — the shop's own
+   *  order first (category.subCategories), then anything else the products
+   *  carry, by count. Shown only when there are at least two to choose from. */
+  const subCategoryChips = useMemo(() => {
+    if (category === "all") return [];
+    const inCategory = zonedProducts.filter((p) => isDiscoverable(p) && p.category === category);
+    const counts = new Map<string, number>();
+    for (const p of inCategory) {
+      const key = p.subCategory.trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const declared = categories.find((c) => c.id === category)?.subCategories ?? [];
+    const ordered = [
+      ...declared.filter((name) => counts.has(name)),
+      ...Array.from(counts.keys())
+        .filter((name) => !declared.includes(name))
+        .sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b)),
+    ];
+    return ordered.length >= 2
+      ? ordered.map((name) => ({ name, count: counts.get(name) ?? 0 }))
+      : [];
+  }, [category, categories, zonedProducts]);
 
   /** Rendered twice (sidebar + drawer); `scope` keeps radio groups apart so
    *  the two copies do not fight over the same browser radio group. */
@@ -426,16 +482,27 @@ export default function ShopBrowser({
         </Fieldset>
       )}
 
-      {/* Availability */}
-      <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
-        <input
-          type="checkbox"
-          checked={onlyInStock}
-          onChange={(e) => setOnlyInStock(e.target.checked)}
-          className="h-4 w-4 accent-forest-700"
-        />
-        {t("shopBrowser.inStockOnly")}
-      </label>
+      {/* Availability & offers */}
+      <div className="space-y-2">
+        <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={onlyInStock}
+            onChange={(e) => setOnlyInStock(e.target.checked)}
+            className="h-4 w-4 accent-forest-700"
+          />
+          {t("shopBrowser.inStockOnly")}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2.5 px-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={onlySale}
+            onChange={(e) => setOnlySale(e.target.checked)}
+            className="h-4 w-4 accent-forest-700"
+          />
+          {t("shopBrowser.onOfferOnly")}
+        </label>
+      </div>
     </div>
   );
 
@@ -458,8 +525,14 @@ export default function ShopBrowser({
           },
         ]
       : []),
+    ...(category !== "all" && subCategory
+      ? [{ key: "sub", label: subCategory, remove: () => setSubCategory("") }]
+      : []),
     ...(onlyNew
       ? [{ key: "new", label: t("shopBrowser.newArrivals"), remove: () => setOnlyNew(false) }]
+      : []),
+    ...(onlySale
+      ? [{ key: "sale", label: t("shopBrowser.onOffer"), remove: () => setOnlySale(false) }]
       : []),
     ...(priceBand !== "any"
       ? [
@@ -572,6 +645,93 @@ export default function ShopBrowser({
         </div>
       </div>
 
+      {/* Category chips — phones/tablets only (the desktop sidebar has the
+          radio list). One horizontal, thumb-scrollable row: the whole shelf
+          in one swipe instead of a hidden drawer. */}
+      <div
+        role="group"
+        aria-label={t("shopBrowser.categories")}
+        data-testid="category-chips"
+        className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:hidden"
+      >
+        {(["all", ...categories.filter((c) => c.active !== false).map((c) => c.id)] as CategoryFilter[]).map(
+          (id) => {
+            const cat = id === "all" ? null : categories.find((c) => c.id === id);
+            const label =
+              id === "all"
+                ? t("shopBrowser.allProducts")
+                : lang === "bn" && cat?.nameBn
+                  ? cat.nameBn
+                  : (cat?.name ?? id);
+            const count = id === "all" ? zonedProducts.length : categoryCount(id as CategoryId);
+            if (id !== "all" && count === 0) return null;
+            const active = category === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setCategory(id)}
+                lang={lang === "bn" && cat?.nameBn ? "bn" : undefined}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-xs font-semibold transition-colors ${
+                  active
+                    ? "bg-forest-900 text-ivory-50"
+                    : "bg-paper text-ink ring-1 ring-line hover:ring-forest-400"
+                } ${lang === "bn" && cat?.nameBn ? "font-bengali" : ""}`}
+              >
+                {label}
+                <span className={`text-[0.65rem] font-medium ${active ? "text-ivory-100/70" : "text-ink-soft"}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          },
+        )}
+      </div>
+
+      {/* Sub-category chips — every screen size: the sidebar has no garment-
+          type control, and "Men → Panjabi" is how shoppers actually browse. */}
+      {subCategoryChips.length > 0 && (
+        <div
+          role="group"
+          aria-label={t("shopBrowser.subCategories")}
+          data-testid="subcategory-chips"
+          className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0"
+        >
+          <button
+            type="button"
+            aria-pressed={subCategory === ""}
+            onClick={() => setSubCategory("")}
+            className={`inline-flex min-h-10 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-colors ${
+              subCategory === ""
+                ? "bg-forest-100 text-forest-900 ring-1 ring-forest-300"
+                : "bg-ivory-100 text-ink-soft hover:text-forest-900"
+            }`}
+          >
+            {t("shopBrowser.allTypes")}
+          </button>
+          {subCategoryChips.map((chip) => {
+            const active = subCategory === chip.name;
+            return (
+              <button
+                key={chip.name}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setSubCategory(active ? "" : chip.name)}
+                className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium transition-colors ${
+                  active
+                    ? "bg-forest-100 text-forest-900 ring-1 ring-forest-300"
+                    : "bg-ivory-100 text-ink-soft hover:text-forest-900"
+                }`}
+              >
+                {chip.name}
+                <span className="text-[0.65rem] text-ink-soft/80">{chip.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <p
         className="mt-5 break-words text-sm text-ink-soft"
         role="status"
@@ -580,7 +740,9 @@ export default function ShopBrowser({
         {visible.length} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
         {category !== "all" &&
           ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
+        {category !== "all" && subCategory && ` · ${subCategory}`}
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
+        {onlySale && ` · ${t("shopBrowser.onOffer")}`}
         {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
         {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name.split(" — ")[0]}`}
       </p>
@@ -658,6 +820,11 @@ export default function ShopBrowser({
                   {t("shopBrowser.clearFilters")}
                 </button>
               )}
+            </div>
+          )}
+          {products.length > 0 && (
+            <div className="mt-10">
+              <RecentlyViewedStrip pool={products} limit={4} />
             </div>
           )}
         </div>

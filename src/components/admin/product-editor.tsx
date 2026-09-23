@@ -21,6 +21,7 @@ import {
 } from "@/lib/media";
 import { field, hint, label } from "./form-ui";
 import MediaUploader from "./media-uploader";
+import PhotoStandardHint from "./photo-standard-hint";
 import { IconCheck, IconPlus, IconTrash } from "@/components/ui/icons";
 import type { Product } from "@/lib/catalog";
 
@@ -679,6 +680,7 @@ export default function ProductEditor({
                     )}
                   </span>
                   <span className="block truncate text-sm text-ink" title={m.src}>{m.src}</span>
+                  {m.kind === "image" && <PhotoStandardHint src={m.src} />}
                 </span>
                 {m.kind === "image" && i > 0 && (
                   <button

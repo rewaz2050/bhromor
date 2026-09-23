@@ -57,7 +57,11 @@ vi.mock("@/lib/db/orders", () => ({
   },
 }));
 
-vi.mock("@/lib/db/engagement", () => ({ notifyStaff: async () => undefined }));
+vi.mock("@/lib/db/engagement", () => ({
+  notifyStaff: async () => undefined,
+  // The route prices surcharges from the owner's ops settings (defaults here).
+  readOpsSettings: async () => ({}),
+}));
 
 vi.mock("@/lib/db/membership", () => ({ isPlusMember: async () => false }));
 

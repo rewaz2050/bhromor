@@ -11,6 +11,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { pushStaffNotice } from "@/lib/push";
 import type { HomeSettings } from "../home-cms";
 import { HOME_DEFAULTS } from "../home-cms";
 import type { AdminSettings } from "../settings-store";
@@ -88,6 +89,9 @@ export const notifyStaff = async (
       read: false,
     }));
     await db.from("notifications").insert(rows);
+    // Same notice out to the owner's phone (Web Push) — the panel no longer
+    // has to be open for the shop to be heard. Best-effort, never throws.
+    await pushStaffNotice(db, notice);
   } catch {
     // Notification delivery is best-effort by design.
   }

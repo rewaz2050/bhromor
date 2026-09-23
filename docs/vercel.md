@@ -51,6 +51,8 @@ If the dashboard offers **Import .env**, you can paste the block from `.env.exam
 | `CLOUDINARY_API_KEY` | Secret | Same (signed uploads) |
 | `CLOUDINARY_API_SECRET` | Secret | Same (signed uploads) |
 | `NEWSLETTER_SIGNUP_URL` | Config | Optional |
+| `NEXT_PUBLIC_META_PIXEL_ID` | Config | Optional — Meta Pixel (funnel + ad conversions). Blank = nothing loaded |
+| `NEXT_PUBLIC_GA4_ID` | Config | Optional — GA4 measurement id (`G-…`). Blank = nothing loaded |
 
 Never put the service-role key in a `NEXT_PUBLIC_` name. Without these keys the site still deploys — the storefront paints the launch catalog and every backend endpoint answers an honest 503/unavailable (`GET /api/health` → `"live": false` with a checklist of what is missing).
 

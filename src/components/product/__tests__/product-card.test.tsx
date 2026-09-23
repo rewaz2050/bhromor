@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,6 +13,7 @@ import { CartProvider, useCart } from "@/components/cart/cart-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 
 vi.mock("@/lib/use-live-catalog", async () => {
   const { CATEGORIES, PRODUCTS } = await import("@/lib/catalog");
@@ -58,6 +60,61 @@ describe("Editorial product cards", () => {
     ).toHaveAttribute("href", `/product/${product.slug}`);
     expect(screen.queryByText(/^New$/)).toBeNull();
     expect(screen.queryByText(`(${product.reviewCount})`)).toBeNull();
+  });
+
+  it("shows the Bangla name under the title, and Bangla-first in Bangla", () => {
+    const withBn = { ...product, nameBn: "হেরিটেজ সবুজ পাঞ্জাবি" };
+    render(
+      <CartProvider>
+        <ProductCard product={withBn} />
+      </CartProvider>,
+    );
+    // English: the style name stays the heading; Bangla sits quietly under it.
+    expect(screen.getByRole("heading", { name: product.name })).toBeVisible();
+    const alt = screen.getByTestId("product-card-alt-name");
+    expect(alt).toHaveTextContent("হেরিটেজ সবুজ পাঞ্জাবি");
+    expect(alt).toHaveAttribute("lang", "bn");
+
+    cleanup();
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={withBn} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    // Bangla: the Bangla name is the heading, English becomes the second line.
+    expect(
+      screen.getByRole("heading", { name: "হেরিটেজ সবুজ পাঞ্জাবি" }),
+    ).toBeVisible();
+    expect(screen.getByTestId("product-card-alt-name")).toHaveTextContent(
+      "Heritage Green",
+    );
+
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, nameBn: undefined }} />
+      </CartProvider>,
+    );
+    // No Bangla name on the row → no second line, nothing invented.
+    expect(screen.queryByTestId("product-card-alt-name")).toBeNull();
+  });
+
+  it("shows a ▶ Video cue only when the piece has a video", () => {
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, video: undefined, media: product.media.filter((m) => m.kind !== "video") }} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("video-badge")).toBeNull();
+    cleanup();
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, video: { youtubeId: "dQw4w9WgXcQ", label: "Watch" } }} />
+      </CartProvider>,
+    );
+    expect(screen.getByTestId("video-badge")).toHaveTextContent(/video/i);
   });
 
   it("shows a sold count only when real units were sold (P2 #1)", () => {
@@ -164,5 +221,105 @@ describe("Editorial product cards", () => {
       "href",
       `/product/${product.slug}`,
     );
+  });
+});
+
+describe("Press-and-hold peek", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("cycles the piece's photos while held — cover, detail, editorial — and returns to the cover on release", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    const link = screen.getByTestId("card-peek");
+    expect(link).not.toHaveAttribute("data-peeking");
+
+    // Press: nothing shows during the first 280ms (still could be a tap).
+    fireEvent.pointerDown(link, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(200));
+    expect(link).not.toHaveAttribute("data-peeking");
+
+    // Hold crosses the threshold → the second photo fades in, dots appear.
+    act(() => vi.advanceTimersByTime(100));
+    expect(link).toHaveAttribute("data-peeking");
+    expect(container.querySelector('[data-peek-slide="1"]')).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(container.querySelector('[data-peek-dot="1"]')).not.toBeNull();
+
+    // ~1s later the third photo takes its turn.
+    act(() => vi.advanceTimersByTime(950));
+    expect(container.querySelector('[data-peek-slide="2"]')).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    // …and it wraps back to the cover rather than stopping.
+    act(() => vi.advanceTimersByTime(950));
+    expect(link.getAttribute("data-peeking")).toBeNull();
+
+    // Release: back to the cover, dots gone.
+    fireEvent.pointerUp(link, { pointerId: 1 });
+    expect(link).not.toHaveAttribute("data-peeking");
+    expect(container.querySelector('[data-peek-dot="0"]')).toBeNull();
+    expect(container.querySelector('[data-peek-slide="1"]')).toHaveAttribute(
+      "data-active",
+      "false",
+    );
+  });
+
+  it("swallows the click that ends a hold (a peek never throws you into the product page), but a quick tap still navigates", () => {
+    vi.useFakeTimers();
+    render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    const link = screen.getByTestId("card-peek");
+
+    fireEvent.pointerDown(link, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(400));
+    expect(link).toHaveAttribute("data-peeking");
+    const release = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const swallow = vi.spyOn(release, "preventDefault");
+    link.dispatchEvent(release);
+    expect(swallow).toHaveBeenCalled();
+
+    cleanup();
+    vi.useRealTimers();
+
+    // A quick tap never crosses the hold threshold — navigation stands.
+    const fresh = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );    const tap = fresh.getByTestId("card-peek");
+    const passthrough = new MouseEvent("click", { bubbles: true, cancelable: true });
+    const passSpy = vi.spyOn(passthrough, "preventDefault");
+    fireEvent.pointerDown(tap, { pointerId: 1 });
+    fireEvent.pointerUp(tap, { pointerId: 1 });
+    tap.dispatchEvent(passthrough);
+    expect(passSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps single-photo pieces quiet — no hold, no dots", () => {
+    vi.useFakeTimers();
+    const single = PRODUCTS.find(
+      (item) =>
+        item.inStock && item.media.filter((m) => (m.kind ?? "image") === "image").length < 2,
+    )!;
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={single} />
+      </CartProvider>,
+    );
+    const link = screen.getByTestId("card-peek");
+    fireEvent.pointerDown(link, { pointerId: 1 });
+    act(() => vi.advanceTimersByTime(600));
+    expect(link).not.toHaveAttribute("data-peeking");
+    expect(container.querySelector("[data-peek-dot]")).toBeNull();
   });
 });

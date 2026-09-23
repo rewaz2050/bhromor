@@ -1,6 +1,8 @@
 "use client";
 
 import SizeGuide from "./size-guide";
+import ShareRow from "./share-row";
+import ArrivalCue from "@/components/delivery/arrival-cue";
 import SizeFinder, { useSizeSuggestion } from "./size-finder";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
@@ -39,6 +41,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { haptic } from "@/lib/haptics";
 
 export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
@@ -181,6 +184,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
     setPendingBuyNow(false);
     if (add(product, variantLabel, qty)) {
       addedFeedback();
+      haptic("success");
       openBag();
     }
   };
@@ -208,7 +212,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   };
 
   return (
-    <div className="purchase-panel">
+    <div className="purchase-panel" id="purchase-panel">
       <p className="text-[0.72rem] font-medium uppercase tracking-[0.24em] text-ink-soft">
         {product.category} · {product.subCategory}
       </p>
@@ -491,6 +495,12 @@ export default function PurchasePanel({ product }: { product: Product }) {
         </div>
       </div>
 
+      {/* "Order now → by about HH:MM" — derived from the checkout's own ETA
+          maths; nothing for the courier zone (no clock promises there). */}
+      {product.inStock && !hardStop ? (
+        <ArrivalCue shopPrepMinutes={shop?.prepMinutes} className="mt-6" />
+      ) : null}
+
       {/* Quantity + CTAs */}
       <div
         ref={ctaRef}
@@ -523,7 +533,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           onClick={handleAdd}
           aria-disabled={ctaDisabled || undefined}
           aria-describedby={needsSize ? "purchase-size" : undefined}
-          className={`h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
+          className={`tap-press h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
             needsSize && !hardStop ? "opacity-70" : ""
           }`}
           disabled={hardStop}
@@ -570,6 +580,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
           <IconCheck className="h-4 w-4" /> {feedback}
         </p>
       )}
+
+      {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
+      <ShareRow product={product} className="mt-6" />
 
       {/* Delivery trust card */}
       <div className="mt-8 grid gap-3 sm:grid-cols-3">

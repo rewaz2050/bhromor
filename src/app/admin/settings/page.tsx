@@ -39,6 +39,15 @@ export default function AdminSettingsPage() {
   const [rainEnabled, setRainEnabled] = useState(settings.rainSurchargeEnabled);
   const [nightEnabled, setNightEnabled] = useState(settings.nightSurchargeEnabled);
   const [expressEnabled, setExpressEnabled] = useState(settings.expressDeliveryEnabled);
+  // The amounts behind the toggles, in TAKA in the UI (paisa in the store).
+  const taka = (paisa: number) => String(Math.round(paisa / 100));
+  const [nightTaka, setNightTaka] = useState(taka(settings.surcharges.night));
+  const [rainTaka, setRainTaka] = useState(taka(settings.surcharges.rain));
+  const [expressTaka, setExpressTaka] = useState(taka(settings.surcharges.express));
+  const [weightTaka, setWeightTaka] = useState(taka(settings.surcharges.weightPerKg));
+  const [courierMinTaka, setCourierMinTaka] = useState(
+    taka(settings.courierMinOrderPaisa),
+  );
   const [contactPhone, setContactPhone] = useState(settings.contact.phone);
   const [contactWhatsapp, setContactWhatsapp] = useState(settings.contact.whatsapp);
   const [contactEmail, setContactEmail] = useState(settings.contact.email);
@@ -57,6 +66,11 @@ export default function AdminSettingsPage() {
     setRainEnabled(settings.rainSurchargeEnabled);
     setNightEnabled(settings.nightSurchargeEnabled);
     setExpressEnabled(settings.expressDeliveryEnabled);
+    setNightTaka(taka(settings.surcharges.night));
+    setRainTaka(taka(settings.surcharges.rain));
+    setExpressTaka(taka(settings.surcharges.express));
+    setWeightTaka(taka(settings.surcharges.weightPerKg));
+    setCourierMinTaka(taka(settings.courierMinOrderPaisa));
     setContactPhone(settings.contact.phone);
     setContactWhatsapp(settings.contact.whatsapp);
     setContactEmail(settings.contact.email);
@@ -70,6 +84,8 @@ export default function AdminSettingsPage() {
     settings.rainSurchargeEnabled,
     settings.nightSurchargeEnabled,
     settings.expressDeliveryEnabled,
+    settings.surcharges,
+    settings.courierMinOrderPaisa,
     settings.contact.phone,
     settings.contact.whatsapp,
     settings.contact.email,
@@ -138,6 +154,14 @@ export default function AdminSettingsPage() {
       rainSurchargeEnabled: rainEnabled,
       nightSurchargeEnabled: nightEnabled,
       expressDeliveryEnabled: expressEnabled,
+      surcharges: {
+        night: Math.max(0, Math.round(Number(nightTaka) * 100)) || 0,
+        rain: Math.max(0, Math.round(Number(rainTaka) * 100)) || 0,
+        express: Math.max(0, Math.round(Number(expressTaka) * 100)) || 0,
+        weightPerKg: Math.max(0, Math.round(Number(weightTaka) * 100)) || 0,
+      },
+      courierMinOrderPaisa:
+        Math.max(0, Math.round(Number(courierMinTaka) * 100)) || 0,
     }).then((ok) =>
       notify(ok ? "ডেলিভারি সেটিংস সংরক্ষিত হয়েছে" : "Could not save — please try again"),
     );
@@ -353,21 +377,44 @@ export default function AdminSettingsPage() {
           <div className="mt-6 rounded-xl bg-forest-900 p-4 text-ivory-100">
             <h4 className="text-sm font-semibold text-gold-300">🚚 Delivery Surcharges — Sunamganj</h4>
             <p className="mt-1 text-xs text-ivory-100/70">
-              ডেলিভারি চার্জ জোন অনুযায়ী (৳৬০ / ৳১২০ / ৳১৫০)। সারচার্জ: Night 9PM-6AM +৳20 · Rain +৳15 · Express 30min +৳40 · ৫ কেজির পর প্রতি কেজি +৳10। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
+              ডেলিভারি চার্জ জোন অনুযায়ী (৳৬০ / ৳১২০ / ৳১৫০)। সারচার্জের টাকা নিচের ঘরে ঠিক করুন — সেভ করলে সাথে সাথে চেকআউট, ব্যাগ কার্ড ও সার্ভার প্রাইসিং সব জায়গায় বদলে যাবে। স্টোর পিকআপ ও ফ্রি-ডেলিভারি কুপন ফ্রি।
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={nightEnabled} onChange={(e) => setNightEnabled(e.target.checked)} className="h-4 w-4" />
-                Night Surcharge (9PM-6AM +৳20) {nightEnabled ? "ON" : "OFF"}
+                Night Surcharge (9PM-6AM) {nightEnabled ? "ON" : "OFF"}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={rainEnabled} onChange={(e) => setRainEnabled(e.target.checked)} className="h-4 w-4" />
-                Rain Surcharge (+৳15) {rainEnabled ? "ON" : "OFF"}
+                Rain Surcharge {rainEnabled ? "ON" : "OFF"}
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={expressEnabled} onChange={(e) => setExpressEnabled(e.target.checked)} className="h-4 w-4" />
-                Express Delivery (+৳40) {expressEnabled ? "ON" : "OFF"}
+                Express Delivery {expressEnabled ? "ON" : "OFF"}
               </label>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {([
+                ["রাতের সারচার্জ (৳)", nightTaka, setNightTaka, "night-amount"],
+                ["বৃষ্টির সারচার্জ (৳)", rainTaka, setRainTaka, "rain-amount"],
+                ["এক্সপ্রেস (৳)", expressTaka, setExpressTaka, "express-amount"],
+                ["প্রতি কেজি (৫ কেজির পর, ৳)", weightTaka, setWeightTaka, "weight-amount"],
+                ["কুরিয়ার ন্যূনতম অর্ডার (৳)", courierMinTaka, setCourierMinTaka, "courier-min"],
+              ] as const).map(([labelText, value, setter, testId]) => (
+                <label key={testId} className="block text-xs">
+                  <span className="block text-ivory-100/80">{labelText}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={500}
+                    step={1}
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    data-testid={testId}
+                    className="mt-1 w-full rounded-lg border-0 bg-forest-800 px-3 py-2 text-sm text-ivory-100 ring-1 ring-ivory-100/20 focus:ring-gold-300"
+                  />
+                </label>
+              ))}
             </div>
             <button type="button" onClick={commitDeliverySurcharges} className="mt-3 rounded-xl bg-gold-400 px-4 py-2 text-xs font-semibold text-forest-900">Save Delivery Settings</button>
           </div>

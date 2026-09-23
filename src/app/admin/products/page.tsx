@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCatalog } from "@/lib/use-catalog";
 import { formatBdt } from "@/lib/format";
+import { hasProductVideo } from "@/lib/media";
 import {
   SHELF_FILTERS,
   SHELF_META,
@@ -50,6 +51,10 @@ export default function AdminProductsPage() {
 
   const counts = useMemo(() => shelfCounts(products), [products]);
   const countOf = (id: Vis) => counts[id];
+  // Video nudge: a 20-second clip on a phone sells a garment better than
+  // any still. Count the published pieces still without one.
+  const published = products.filter((p) => p.status !== "draft" && p.active !== false);
+  const withoutVideo = published.filter((p) => !hasProductVideo(p)).length;
 
   if (loading) {
     return (
@@ -85,6 +90,22 @@ export default function AdminProductsPage() {
           <IconPlus className="h-4 w-4" /> New product
         </Link>
       </div>
+
+      {published.length > 0 && withoutVideo > 0 && (
+        <p
+          data-testid="video-nudge"
+          className="rounded-xl bg-gold-100 px-4 py-3 text-sm text-ink ring-1 ring-gold-200"
+        >
+          <span className="font-semibold text-forest-900">
+            {withoutVideo === published.length
+              ? "None of your published pieces has a video yet."
+              : `${withoutVideo} of ${published.length} published pieces have no video yet.`}
+          </span>{" "}
+          A 15–30 second phone clip (fabric in daylight, how it drapes, the fit) on YouTube — paste the
+          link in the product&rsquo;s &ldquo;YouTube video&rdquo; field and it plays in the gallery and
+          earns a &ldquo;▶ Video&rdquo; badge on the card.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-xs">
@@ -183,6 +204,11 @@ export default function AdminProductsPage() {
                             </span>
                             <span className="mt-0.5 block text-xs text-ink-soft">
                               {p.sku} · {p.id}
+                              {hasProductVideo(p) ? (
+                                <span className="ml-2 rounded-full bg-forest-50 px-1.5 py-0.5 text-[0.62rem] font-semibold text-forest-700">
+                                  ▶ video
+                                </span>
+                              ) : null}
                             </span>
                           </span>
                         </Link>

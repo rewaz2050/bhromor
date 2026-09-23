@@ -10,6 +10,7 @@
  */
 
 import type { Order } from "./orders";
+import { formatPaisa } from "./format";
 import type { Bdt } from "./format";
 
 export interface ReportRange {
@@ -277,6 +278,120 @@ export const salesReport = (
     coupons,
     payments,
   };
+};
+
+/* ------------------------------------------------------------------ */
+/* The weekly pulse — six numbers that run the shop (2026-09-21)        */
+/* ------------------------------------------------------------------ */
+
+export interface PulseRow {
+  label: string;
+  value: string;
+  note: string;
+}
+
+export interface WeeklyPulse {
+  rows: PulseRow[];
+  hasData: boolean;
+}
+
+const median = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[mid]!
+    : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+};
+
+/**
+ * Six numbers over the report window — the owner's Monday morning glance:
+ * orders + booked money, cancel share, delivered with the real average
+ * delivery minutes, repeat customers, the wallet verification queue with
+ * its median wait, and the cash the riders actually brought home.
+ * Every figure is computed from the same live orders the rest of the page
+ * uses; nothing is estimated.
+ */
+export const weeklyPulse = (windowOrders: Order[]): WeeklyPulse => {
+  const live = windowOrders.filter((o) => o.status !== "cancelled");
+  const cancelled = windowOrders.length - live.length;
+  const booked = live.reduce((sum, o) => sum + o.total, 0);
+
+  const deliveredRows = live.filter(
+    (o) => o.status === "delivered" && typeof o.deliveredMinutes === "number",
+  );
+  const avgDelivery =
+    deliveredRows.length > 0
+      ? Math.round(
+          deliveredRows.reduce((sum, o) => sum + (o.deliveredMinutes ?? 0), 0) /
+            deliveredRows.length,
+        )
+      : null;
+
+  const byPhone = new Map<string, number>();
+  for (const o of live) {
+    const phone = o.customer.phone.replace(/[^0-9]/g, "").slice(-10);
+    if (!phone) continue;
+    byPhone.set(phone, (byPhone.get(phone) ?? 0) + 1);
+  }
+  const repeatCustomers = [...byPhone.values()].filter((n) => n >= 2).length;
+  const repeatPct =
+    byPhone.size > 0 ? Math.round((repeatCustomers / byPhone.size) * 100) : 0;
+
+  const walletRows = live.filter((o) => o.payment !== "cod");
+  const walletPending = walletRows.filter(
+    (o) => o.paymentStatus === "pending_verification",
+  ).length;
+  const verifiedMinutes = walletRows
+    .filter((o) => o.paymentStatus === "verified" && o.paymentVerifiedAt)
+    .map((o) => Math.round(((o.paymentVerifiedAt ?? 0) - o.createdAt) / 60_000))
+    .filter((m) => m >= 0);
+
+  const codRows = live.filter(
+    (o) => o.payment === "cod" && o.status === "delivered",
+  );
+  const codCollected = codRows.reduce((sum, o) => sum + o.total, 0);
+
+  const rows: PulseRow[] = [
+    {
+      label: "Orders",
+      value: String(live.length),
+      note: `${formatPaisa(booked)} booked`,
+    },
+    {
+      label: "Cancel rate",
+      value: windowOrders.length > 0 ? `${Math.round((cancelled / windowOrders.length) * 100)}%` : "—",
+      note: `${cancelled} cancelled`,
+    },
+    {
+      label: "Delivered",
+      value: String(live.filter((o) => o.status === "delivered").length),
+      note:
+        avgDelivery !== null
+          ? `avg ${avgDelivery} min to the door`
+          : "no timed deliveries yet",
+    },
+    {
+      label: "Repeat customers",
+      value: byPhone.size > 0 ? `${repeatPct}%` : "—",
+      note: `${repeatCustomers} came back in this window`,
+    },
+    {
+      label: "Wallet queue",
+      value: `${walletPending} pending`,
+      note:
+        verifiedMinutes.length > 0
+          ? `median verify ${median(verifiedMinutes)} min`
+          : "no verifications yet",
+    },
+    {
+      label: "COD collected",
+      value: formatPaisa(codCollected),
+      note: `${codRows.length} deliveries paid in cash`,
+    },
+  ];
+
+  return { rows, hasData: windowOrders.length > 0 };
 };
 
 /** Daily series as spreadsheet rows (taka, not paisa). */

@@ -1,18 +1,19 @@
 /**
- * Homepage shelves (Batch J, 2026-09-19) — pure helpers, client-safe.
+ * Homepage shelves (Batch J, 2026-09-19; reordered 2026-09-20) — pure
+ * helpers, client-safe.
  *
- * The storefront homepage stopped being a poster: after the compact hero the
- * shopper scrolls through the WHOLE shelf, category by category, plus two
- * curated rails (best sellers / new arrivals) that come from real data —
- * `unitsSold` (v_product_sales) and the catalog's newest-first order — not
- * from a flag someone has to remember to tick.
+ * The storefront homepage stopped being a poster: after a compact hero the
+ * shopper sees the category row, the offers, and then the WHOLE shelf,
+ * category by category. The curated pickers (best sellers / new arrivals)
+ * come from real data — `unitsSold` (v_product_sales) and the catalog's
+ * newest-first order — and still power the sorted shop links.
  *
  * Everything here is deterministic and order-stable so the server HTML and
  * the client hydration agree, and so tests can pin the exact sequence.
  */
 
 import type { Category, Product } from "./catalog";
-import { isDiscoverable } from "./merchandising";
+import { isDiscoverable, isOnOffer, offerPct } from "./merchandising";
 
 /** One category block on the homepage: heading + its pieces in shelf order. */
 export interface CategoryShelf {
@@ -100,24 +101,52 @@ export const newArrivals = (products: Product[], limit = RAIL_LENGTH): Product[]
 };
 
 /**
- * Product page — "More in <category>": the shopper who scrolled past the
- * details is still in the same mood, so the next pieces are siblings from
- * the same category (in stock first, never the current piece), and only
- * when the category cannot fill the row do featured pieces from elsewhere
- * top it up. Pieces already shown in "complete the look" are skipped.
+ * Offers = discoverable pieces whose list price is struck through
+ * (`compareAtPrice` above `price`), biggest saving first — ties keep the
+ * catalog order — with sold-out pieces at the back. The flash drop is a
+ * separate rail with its own countdown (components/promo/flash-rail).
+ */
+export const offerProducts = (products: Product[], limit = RAIL_LENGTH): Product[] => {
+  const ranked = products
+    .map((p, index) => ({ p, index }))
+    .filter(({ p }) => isDiscoverable(p) && isOnOffer(p))
+    .sort((a, b) => offerPct(b.p) - offerPct(a.p) || a.index - b.index)
+    .map(({ p }) => p);
+  const list = inStockFirst(ranked);
+  return limit > 0 ? list.slice(0, limit) : list;
+};
+
+/** How many discoverable pieces are on offer — the "See all N offers" count. */
+export const offerCount = (products: Product[]): number =>
+  products.filter((p) => isDiscoverable(p) && isOnOffer(p)).length;
+
+/**
+ * Product page tail — "More in <category>" (2026-09-20: strictly the same
+ * category). The shopper opened a panjabi, so the shelf at the foot of the
+ * page is panjabis: siblings from the SAME category, in stock first, never
+ * the current piece, never a piece already shown in "complete the look".
+ * Nothing from other categories tops the row up — an empty result means the
+ * section stays away rather than dressing strangers up as siblings.
  */
 export const moreInCategory = (
   product: Pick<Product, "id" | "category">,
   products: Product[],
   exclude: readonly Pick<Product, "id">[] = [],
   limit = 8,
-): { items: Product[]; sameCategory: number } => {
+): { items: Product[]; hiddenCount: number; total: number } => {
   const skip = new Set<string>([product.id, ...exclude.map((e) => e.id)]);
-  const pool = products.filter((p) => isDiscoverable(p) && !skip.has(p.id));
-  const siblings = inStockFirst(pool.filter((p) => p.category === product.category));
-  const fill = pool.filter((p) => p.category !== product.category && p.featured && p.inStock);
-  const items = siblings.concat(fill).slice(0, limit);
-  return { items, sameCategory: Math.min(siblings.length, limit) };
+  const category = products.filter(
+    (p) => isDiscoverable(p) && p.category === product.category,
+  );
+  const siblings = inStockFirst(category.filter((p) => !skip.has(p.id)));
+  const items = limit > 0 ? siblings.slice(0, limit) : siblings;
+  return {
+    items,
+    hiddenCount: siblings.length - items.length,
+    // Every discoverable piece in the category (the current one included) —
+    // the number the scoped shop link actually lists.
+    total: category.length,
+  };
 };
 
 /** Bangla-aware display name for a category. */

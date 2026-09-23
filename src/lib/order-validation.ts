@@ -21,15 +21,14 @@ import {
   isFreeDeliveryCoupon,
   normalizeCode,
 } from "./coupons";
+import type { AdminSettings } from "./settings-store";
 import {
+  DEFAULT_SURCHARGE_RATES,
   isNightHour,
   orderTotal,
   weightExtraCharge,
   MIN_ORDER_OUTSIDE_SADAR_LABEL_BN,
   MIN_ORDER_OUTSIDE_SADAR_PAISA,
-  NIGHT_SURCHARGE_PAISA,
-  RAIN_SURCHARGE_PAISA,
-  EXPRESS_SURCHARGE_PAISA,
 } from "./delivery";
 import { normalizePhone } from "./orders";
 import {
@@ -109,6 +108,13 @@ export interface OrderSnapshot {
   products: Product[];
   zones: DeliveryZone[];
   coupons: import("./coupons").Coupon[];
+  /**
+   * The shop's own ops settings (2026-09-21): surcharge toggles + amounts and
+   * the courier floor are the OWNER's numbers, not launch constants. Optional
+   * so every existing snapshot (and test fixture) stays valid — omitted means
+   * the launch defaults, exactly as before.
+   */
+  settings?: AdminSettings;
   /** Live shop rows (slice 4). Absent in older snapshots → skipped. */
   shops?: Shop[];
   /**
@@ -470,13 +476,19 @@ export const validateOrderPayload = (
 
   const subtotal = priced.reduce((s, it) => s + it.lineTotal, 0);
   // Orders outside Sunamganj Sadar need the SAME minimum the database RPC
-  // enforces (`Zone D requires minimum ৳500 order`) — one constant, one copy.
-  if (zone.id === "z4" && !isPickup && subtotal < MIN_ORDER_OUTSIDE_SADAR_PAISA) {
+  // enforces — the owner's floor when set, the launch ৳500 otherwise.
+  const courierMin =
+    snapshot.settings?.courierMinOrderPaisa ?? MIN_ORDER_OUTSIDE_SADAR_PAISA;
+  const courierMinLabel =
+    courierMin === MIN_ORDER_OUTSIDE_SADAR_PAISA
+      ? MIN_ORDER_OUTSIDE_SADAR_LABEL_BN
+      : `৳${Math.round(courierMin / 100)}`;
+  if (zone.id === "z4" && !isPickup && subtotal < courierMin) {
     return {
       ok: false,
       errors: [{
         field: "items",
-        message: `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${MIN_ORDER_OUTSIDE_SADAR_LABEL_BN} টাকার অর্ডার করতে হবে।`,
+        message: `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${courierMinLabel} টাকার অর্ডার করতে হবে।`,
       }],
     };
   }
@@ -488,15 +500,26 @@ export const validateOrderPayload = (
   // a client-side claim is never enough, and the quote below can never beat
   // the RPC's answer, only match it.
   const plusWaiver = snapshot.plusActive === true;
+  // The owner's toggles decide whether a surcharge EXISTS; the owner's rates
+  // decide what it COSTS. Snapshot carries both (launch defaults when absent,
+  // which keeps every older snapshot and test fixture behaving as before).
+  const ops = snapshot.settings;
+  // Without settings in the snapshot (older callers/fixtures) the launch
+  // behaviour stands: night on, rain/express charged whenever the draft
+  // claims them — exactly as before this knob existed.
+  const nightAllowed = ops ? ops.nightSurchargeEnabled : true;
+  const rainAllowed = ops ? ops.rainSurchargeEnabled : true;
+  const expressAllowed = ops ? ops.expressDeliveryEnabled : true;
+  const rates = ops?.surcharges ?? DEFAULT_SURCHARGE_RATES;
   const night = isNightHour(new Date(now).getHours());
   const surchargeNight =
-    !isPickup && night && !plusWaiver ? NIGHT_SURCHARGE_PAISA : 0;
+    !isPickup && night && nightAllowed && !plusWaiver ? rates.night : 0;
   const surchargeRain =
-    !isPickup && isRain && !plusWaiver ? RAIN_SURCHARGE_PAISA : 0;
+    !isPickup && isRain && rainAllowed && !plusWaiver ? rates.rain : 0;
   const surchargeExpress =
-    !isPickup && isExpress && !plusWaiver ? EXPRESS_SURCHARGE_PAISA : 0;
+    !isPickup && isExpress && expressAllowed && !plusWaiver ? rates.express : 0;
   const surchargeWeight =
-    !isPickup && !plusWaiver ? weightExtraCharge(weightKg) : 0;
+    !isPickup && !plusWaiver ? weightExtraCharge(weightKg, rates.weightPerKg) : 0;
 
   /* ---------------- coupons ---------------- */
   let coupon: ValidOrderDraft["coupon"];

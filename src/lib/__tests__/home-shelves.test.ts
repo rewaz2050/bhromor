@@ -6,6 +6,8 @@ import {
   inStockFirst,
   moreInCategory,
   newArrivals,
+  offerCount,
+  offerProducts,
 } from "../home-shelves";
 import type { Category, Product } from "../catalog";
 
@@ -97,16 +99,49 @@ describe("newArrivals", () => {
   });
 });
 
-describe("moreInCategory", () => {
-  it("siblings first (never the piece itself or an excluded one), featured fill last", () => {
-    const { items, sameCategory } = moreInCategory(ALL[0], ALL, [ALL[3]]);
-    expect(items.map((p) => p.id)).toEqual(["m4", "m2", "w4"]); // m3 excluded, w4 = featured fill
-    expect(sameCategory).toBe(2);
+describe("offerProducts", () => {
+  const SALE = [
+    prod("a", "men", { price: 100000, compareAtPrice: 120000 }), // 17% off
+    prod("b", "men", { price: 100000, compareAtPrice: 200000, inStock: false }), // 50% off, sold out
+    prod("c", "women", { price: 100000, compareAtPrice: 150000 }), // 33% off
+    prod("d", "women", { price: 100000, compareAtPrice: 100000 }), // not a reduction
+    prod("e", "women", { price: 100000 }), // no compare-at
+    prod("f", "men", { price: 100000, compareAtPrice: 150000, status: "draft" }), // hidden
+    prod("g", "men", { price: 100000, compareAtPrice: 150000 }), // 33% off, ties keep catalog order
+  ];
+
+  it("keeps only real reductions, biggest saving first, sold-out last", () => {
+    expect(offerProducts(SALE).map((p) => p.id)).toEqual(["c", "g", "a", "b"]);
+    expect(offerCount(SALE)).toBe(4);
   });
 
-  it("fill never includes sold-out or non-featured strangers", () => {
-    const { items } = moreInCategory(prod("solo", "home"), ALL);
-    expect(items.map((p) => p.id)).toEqual(["m4", "w4"]);
+  it("caps the rail and treats 0 as no cap", () => {
+    expect(offerProducts(SALE, 2).map((p) => p.id)).toEqual(["c", "g"]);
+    expect(offerProducts(SALE, 0)).toHaveLength(4);
+    expect(offerProducts(ALL)).toEqual([]); // nothing marked down → empty, never fake
+  });
+});
+
+describe("moreInCategory", () => {
+  it("siblings from the SAME category only — never the piece itself, an excluded one, or a stranger", () => {
+    const { items, hiddenCount, total } = moreInCategory(ALL[0], ALL, [ALL[3]]);
+    expect(items.map((p) => p.id)).toEqual(["m4", "m2"]); // m3 excluded; w4 (featured) is NOT pulled in
+    expect(hiddenCount).toBe(0);
+    expect(total).toBe(4); // m1, m2, m3, m4 — what /shop?category=men lists
+  });
+
+  it("stays empty when the category has no other piece (no fill from elsewhere)", () => {
+    const { items, hiddenCount, total } = moreInCategory(prod("solo", "home"), ALL);
+    expect(items).toEqual([]);
+    expect(hiddenCount).toBe(0);
+    expect(total).toBe(0);
+  });
+
+  it("caps the row and counts the siblings left behind for the See-all link", () => {
+    const { items, hiddenCount, total } = moreInCategory(ALL[0], ALL, [], 2);
+    expect(items.map((p) => p.id)).toEqual(["m3", "m4"]); // in stock first, m2 (sold out) waits
+    expect(hiddenCount).toBe(1);
+    expect(total).toBe(4);
   });
 });
 

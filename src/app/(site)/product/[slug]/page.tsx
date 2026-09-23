@@ -1,6 +1,8 @@
-import { completeTheLook, isDiscoverable } from "@/lib/merchandising";
+import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
+import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
+import ProductViewTracker from "@/components/analytics/product-view-tracker";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +14,7 @@ import {
 import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
+import StickyBuyBar from "@/components/product/sticky-buy-bar";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
@@ -56,11 +59,22 @@ export async function generateMetadata({
   return {
     title: product.name,
     description: product.shortDescription,
+    // The branded price card (opengraph-image/route.tsx in this segment —
+    // the file convention doesn't register inside a route group, upstream
+    // NEXT-1102). Route handlers can't auto-attach, so the page advertises
+    // the URL itself.
     openGraph: {
       type: "website",
       title: `${product.name} — PROSANTI`,
       description: product.shortDescription,
-      images: [{ url: cover.src, alt: cover.alt || product.name }],
+      images: [
+        {
+          url: `/product/${slug}/opengraph-image`,
+          width: 1200,
+          height: 630,
+          alt: cover.alt || product.name,
+        },
+      ],
     },
   };
 }
@@ -72,9 +86,10 @@ export default async function ProductPage({ params }: PageProps) {
   if (!product) notFound();
 
   const complements = completeTheLook(product, products);
-  // Batch J — the tail of the page is the SAME shelf the shopper is on
-  // (siblings first, featured fill only when the category is short), with a
-  // scoped "See all N in <category>" link.
+  // The very last section of the page is the SAME shelf the shopper is on:
+  // siblings from this piece's category only (in stock first, never a piece
+  // already shown in "complete the look"), with a scoped "See all N in
+  // <category>" link when the category holds more than the row shows.
   const more = moreInCategory(product, products, complements);
   const category = categories.find((c) => c.id === product.category) ?? {
     id: product.category,
@@ -84,9 +99,6 @@ export default async function ProductPage({ params }: PageProps) {
     image: "",
     subCategories: [],
   };
-  const siblingsTotal = products.filter(
-    (p) => isDiscoverable(p) && p.category === product.category && p.id !== product.id,
-  ).length;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -111,6 +123,7 @@ export default async function ProductPage({ params }: PageProps) {
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       {/* P2.1 — seed the client registry from the rows already rendered. */}
       <CatalogHydrator products={products} categories={categories} shops={shops} />
+      <ProductViewTracker product={product} />
       {/* Breadcrumb */}
       <nav
         aria-label="Breadcrumb"
@@ -126,6 +139,17 @@ export default async function ProductPage({ params }: PageProps) {
         >
           {category.name}
         </Link>
+        {product.subCategory.trim() !== "" && (
+          <>
+            <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
+            <Link
+              href={`/shop?category=${encodeURIComponent(product.category)}&sub=${encodeURIComponent(product.subCategory)}`}
+              className="transition-colors hover:text-forest-700"
+            >
+              {product.subCategory}
+            </Link>
+          </>
+        )}
         <IconChevron className="h-3.5 w-3.5 -rotate-90 text-ink-soft/60" />
         <span aria-current="page" className="truncate text-ink">
           {product.name}
@@ -140,6 +164,8 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery product={product} />
         <PurchasePanel product={product} />
+        {/* Phones: the compact dock that appears once this panel scrolls away. */}
+        <StickyBuyBar product={product} />
       </div>
 
       {/* Product information — accordion so the page stays short on mobile */}
@@ -304,15 +330,20 @@ export default async function ProductPage({ params }: PageProps) {
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />
       </div>
-      {/* Batch J — same-category shelf (replaces the mixed "You may also like"). */}
+      {/* §30 reviews — live approved reviews + moderated submission form */}
+      <ReviewsSection product={product} />
+      {/* What this device looked at before this piece (and where the view
+          itself is remembered) — above the category shelf, never below. */}
+      <RecentlyViewedRail currentId={product.id} />
+      {/* Always the LAST thing on the page: the rest of this piece's own
+          category, so the shopper who reached the bottom keeps browsing the
+          shelf they came for. */}
       <MoreInCategory
         category={category}
         items={more.items}
-        sameCategory={more.sameCategory}
-        total={siblingsTotal}
+        hiddenCount={more.hiddenCount}
+        total={more.total}
       />
-      {/* §30 reviews — live approved reviews + moderated submission form */}
-      <ReviewsSection product={product} />
     </div>
   );
 }

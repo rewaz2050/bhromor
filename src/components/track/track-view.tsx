@@ -21,12 +21,15 @@ import {
   IconPhone,
   IconSearch,
   IconTruck,
+  IconClock,
 } from "@/components/ui/icons";
 import { LiveDeliveryMap } from "./live-delivery-map";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
+import ReviewAsk from "@/components/track/review-ask";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
+import ReorderButton from "@/components/orders/reorder-button";
 import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
@@ -332,6 +335,9 @@ export default function TrackView() {
                 (keyed by order — a new lookup remounts with fresh state) */}
             <WarrantyPanel key={order.id} order={order} />
 
+            {/* Delivered → ask for a one-line review of the bought pieces. */}
+            <ReviewAsk order={order} />
+
             {/* Timeline */}
             {order.status === "cancelled" && contactNumber && (
               <p
@@ -454,6 +460,17 @@ export default function TrackView() {
                     </li>
                   ))}
                 </ul>
+                {!order.isReturn ? (
+                  <ReorderButton
+                    className="mt-4"
+                    lines={order.items.map((it) => ({
+                      productId: it.productId,
+                      variantLabel: it.variant,
+                      qty: it.qty,
+                      name: it.name,
+                    }))}
+                  />
+                ) : null}
                 <dl className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
                   <div className="flex justify-between text-ink-soft">
                     <dt>Subtotal</dt>
@@ -482,7 +499,7 @@ export default function TrackView() {
                   )}
                   {deliverySlotSummary(order, lang) && (
                     <div className="rounded-xl bg-sky-50 px-2.5 py-1.5 text-xs text-sky-900 ring-1 ring-sky-200" data-testid="track-slot">
-                      🕒 {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
+                      <IconClock className="mr-1 inline h-4 w-4 align-[-3px]" /> {lang === "bn" ? "ডেলিভারি সময়" : "Delivery slot"}: {deliverySlotSummary(order, lang)}
                     </div>
                   )}
                   {order.coupon && (
@@ -518,7 +535,7 @@ export default function TrackView() {
                   {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
                   {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
                     <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
-                      🕒 {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
+                      <IconClock className="mr-1 inline h-4 w-4 align-[-3px]" /> {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
                     </span>
                   )}
                 </p>

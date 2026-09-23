@@ -27,9 +27,10 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import BagOffers from "@/components/promo/bag-offers";
 import { useBagOffer } from "@/lib/use-bag-offer";
-import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 
@@ -63,6 +64,10 @@ export default function CartView() {
       )
     : null;
 
+  // Returning devices get their recent pieces under the empty state — a
+  // quiet way back in, never shown to a first visit (nothing viewed → null).
+  const { products: catalogProducts } = useLiveCatalog();
+
   // Stored lines + catalog still in flight → skeleton, not "empty" (P0 #7).
   if (!ready) {
     return <BagSkeleton />;
@@ -70,20 +75,23 @@ export default function CartView() {
 
   if (empty) {
     return (
-      <div className="flex flex-col items-center px-6 py-24 text-center">
-        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-ivory-100 text-forest-700 ring-1 ring-line">
-          <IconBag className="h-9 w-9" />
-        </span>
-        <h1 className="font-display mt-8 text-3xl font-medium text-forest-900">
-          {t("cart.yourCartIsEmpty")}
-        </h1>
-        <p className="mt-3 max-w-sm text-ink-soft">{t("cart.discoverHint")}</p>
-        <div className="mt-8">
-          <ButtonLink href="/shop" size="lg">
-            {t("cart.exploreProducts")} <IconArrowRight className="h-4 w-4" />
-          </ButtonLink>
+      <>
+        <div className="flex flex-col items-center px-6 py-24 text-center">
+          <span className="flex h-20 w-20 items-center justify-center rounded-full bg-ivory-100 text-forest-700 ring-1 ring-line">
+            <IconBag className="h-9 w-9" />
+          </span>
+          <h1 className="font-display mt-8 text-3xl font-medium text-forest-900">
+            {t("cart.yourCartIsEmpty")}
+          </h1>
+          <p className="mt-3 max-w-sm text-ink-soft">{t("cart.discoverHint")}</p>
+          <div className="mt-8">
+            <ButtonLink href="/shop" size="lg">
+              {t("cart.exploreProducts")} <IconArrowRight className="h-4 w-4" />
+            </ButtonLink>
+          </div>
         </div>
-      </div>
+        <RecentlyViewedStrip pool={catalogProducts} limit={4} />
+      </>
     );
   }
 
@@ -214,7 +222,7 @@ export default function CartView() {
             className="mt-2 rounded-xl bg-gold-50 px-3 py-2 text-xs font-bold text-forest-900 ring-1 ring-gold-200"
             data-testid="delivery-promise"
           >
-            🚚 {deliveryPromise}
+            <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{deliveryPromise}
           </p>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
