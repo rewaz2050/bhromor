@@ -116,11 +116,42 @@ for *that* order into a `wa_outbox` table (status, message, phone, created_at,
 sent_at) and show it on the order page as "Ready to send" — one tap opens
 `wa.me` with the text prefilled and marks the row sent.
 
-**Why not the official API first:** Cloud API needs a Meta business account,
-a verified number and per-message pricing; this shop's volume and margins say
-start with the draft-outbox (zero cost, zero policy risk) and revisit if
-volume justifies it. **Never** claim a message was sent when a human had to
-tap it — the outbox row records who sent it.
+**Owner asked (2026-09-24): *"WhatsApp Business er API deya lagbe ki?"*** —
+**No, not for this.** The draft route needs **no API at all**: a
+`wa.me/<number>?text=…` link opens the shop's own WhatsApp Business app with
+the message prefilled and a human taps send. No Meta app, no verification, no
+template approval, no per-message fee, and the number the shop already uses
+keeps working exactly as it does today. That is why it is first.
+
+**What the API route would require** (Meta's 2026 rules, recorded so the
+decision does not have to be researched twice):
+
+1. A Meta Business portfolio and a developer app with the WhatsApp product —
+   or a BSP doing the onboarding for you.
+2. **A phone number for the API.** The shop's current number can only be used
+   through *Coexistence*, which needs BSP/tech-partner onboarding (Embedded
+   Signup) and a number already active on the Business app for 7+ days — it
+   cannot be switched on from a plain developer app. Otherwise the API gets a
+   **new** number and the familiar one stays the manual channel.
+3. Pre-approved **utility templates**, one per message and per language — Meta
+   decides the category and may reject; business-initiated free-form text is
+   not allowed.
+4. A WhatsApp opt-in at checkout (Meta requires consent for
+   business-initiated messages).
+5. Money, per delivered message. Bangladesh sits on Meta's *Rest of Asia
+   Pacific* rate card at roughly **$0.011–0.014 per utility message
+   (≈ ৳1.4–1.7)**; this journey is ~7 messages an order → **≈ ৳10 an order**
+   (৳0 on push or the draft). A BSP platform fee (~$10/month) is extra if a
+   partner onboards the number. And from **1 October 2026** Meta's new card
+   removes the free in-window service-message / utility-template rule, so the
+   "if the customer messages first it is free" lever is closing.
+
+At this shop's volumes the API buys exactly one thing the free routes cannot:
+sending with **no human tap**. Revisit if staff minutes per order ever cost
+more than ~৳10.
+
+**Never** claim a message was sent when a human had to tap it — the outbox row
+records who sent it.
 
 ## 3. Then: an email sender (Resend / ZeptoMail free tier)
 
