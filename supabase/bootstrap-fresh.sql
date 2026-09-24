@@ -8028,3 +8028,19 @@ create index if not exists idx_customer_push_phone
   on public.customer_push_subscriptions (phone);
 alter table public.customer_push_subscriptions enable row level security;
 commit;
+
+-- ============================================================================
+-- Scheduler marks (2026-09-24) — the shop's time-based work runs from outside
+-- (a GitHub Action calls /api/cron/tick every 15 minutes; docs/automation.md).
+-- One row per one-shot job that has already happened ("reminded order X",
+-- "sent the digest for 2026-09-24"), claimed with an INSERT and released if
+-- the work failed, so a tick can retry without ever nagging twice. Service
+-- role only — RLS on, no policies.
+-- ============================================================================
+begin;
+create table if not exists public.cron_marks (
+  key    text primary key,
+  ran_at timestamptz not null default now()
+);
+alter table public.cron_marks enable row level security;
+commit;

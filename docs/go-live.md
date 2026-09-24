@@ -566,6 +566,13 @@ direct file-picker upload, add the four Cloudinary variables from
 
 ## 7. What is not automated yet
 
+- **The clock itself** (`/api/cron/tick`, docs/automation.md): stale rider
+  offers, the ~2h delivery reminder and the 9am staff digest only run while a
+  scheduler is wired — set `CRON_SECRET` in Vercel **and** as the GitHub
+  Actions secret `CRON_SECRET`, run `202609240002_cron_marks.sql`, then
+  *Actions → Shop clock → Run workflow*. `/api/health` says
+  `cronConfigured` / `cronMarksReady` / `cronLastRunAt` and names the missing
+  piece in `nextSteps`.
 - SMS/WhatsApp: order updates live in the staff inbox + track timeline;
   carrier delivery needs a gateway account (blueprint §35, future phase).
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the

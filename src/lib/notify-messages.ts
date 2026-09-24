@@ -25,6 +25,13 @@ export type CustomerEventKind =
   | "delivered"
   | "cancelled"
   | "payment-verified"
+  /**
+   * The scheduled-delivery reminder, fired about two hours before the window
+   * the shopper chose at checkout ("আজ সন্ধ্যায় আসছে") — the one push that is
+   * about the clock rather than a status change, so it comes from the
+   * scheduler (`/api/cron/tick`), not from a status write.
+   */
+  | "delivery-today"
   /** Only from the opt-in card's own "Test pathan" button. */
   | "test";
 
@@ -36,6 +43,18 @@ export const CUSTOMER_EVENTS: readonly CustomerEventKind[] = [
   "cancelled",
   "payment-verified",
 ];
+
+/**
+ * Product-level events (2026-09-24) — the other half of "tell the shopper
+ * without a phone call". A shopper who asked to be told about a price or a
+ * restock gets a push on the phone they subscribed with; the staff call list
+ * only keeps the numbers that could not be reached.
+ *
+ * Kept out of `CustomerEventKind` on purpose: these carry a product, no order
+ * number, no status machine — folding them into the order union would force
+ * order copy for every product event and vice versa.
+ */
+export type ProductEventKind = "price-drop" | "back-in-stock";
 
 /**
  * Which `OrderStatus` values are worth a push, and what they mean.
@@ -72,6 +91,8 @@ export interface MessageInput {
   phone?: string | null;
   /** Integer paisa (§69). Optional — the confirmation screen is the total's home. */
   total?: number | null;
+  /** The promised delivery window in the shopper's language (reminder only). */
+  when?: string | null;
   lang?: Language;
 }
 
@@ -105,6 +126,10 @@ const BN: Record<CustomerEventKind, EventCopy> = {
     title: "পেমেন্ট ভেরিফাই হয়েছে ✅",
     body: "{no} — আপনার bKash/Nagad পেমেন্ট দোকান যাচাই করে নিয়েছে। অর্ডার এগোচ্ছে।",
   },
+  "delivery-today": {
+    title: "আজ আপনার পার্সেল আসছে 🛵",
+    body: "{no} — {when}। ফোনটা হাতের কাছে রাখুন, ডেলিভারির সময় ৪ ডিজিটের কোডটি বলবেন।",
+  },
   test: {
     title: "PROSANTI test 🔔",
     body: "{no} — ফোনে খবর চালু আছে। এখন থেকে অর্ডারের প্রতিটি ধাপ এখানে আসবে।",
@@ -136,6 +161,10 @@ const EN: Record<CustomerEventKind, EventCopy> = {
     title: "Payment verified ✅",
     body: "{no} — the shop checked your bKash/Nagad payment. Your order is moving.",
   },
+  "delivery-today": {
+    title: "Your parcel is coming today 🛵",
+    body: "{no} — {when}. Keep the phone nearby and the 4-digit code ready for the rider.",
+  },
   test: {
     title: "PROSANTI test 🔔",
     body: "{no} — phone updates are ON. Every step of your order will land here.",
@@ -143,6 +172,79 @@ const EN: Record<CustomerEventKind, EventCopy> = {
 };
 
 const COPY: Record<Language, Record<CustomerEventKind, EventCopy>> = { bn: BN, en: EN };
+
+/* ------------------------------------------------------------------ */
+/* Product-level copy (price drop / back in stock)                     */
+/* ------------------------------------------------------------------ */
+
+const PRODUCT_BN: Record<ProductEventKind, EventCopy> = {
+  "price-drop": {
+    title: "দাম কমেছে 🎉",
+    body: "{name} এখন {price} — দাম কমার খবর চেয়েছিলেন বলেই জানানো হচ্ছে। চলে আসুন, স্টক সীমিত।",
+  },
+  "back-in-stock": {
+    title: "স্টকে ফিরে এসেছে ✅",
+    body: "{name} আবার পাওয়া যাচ্ছে {price} — খবর চেয়েছিলেন বলেই জানানো হচ্ছে।",
+  },
+};
+
+const PRODUCT_EN: Record<ProductEventKind, EventCopy> = {
+  "price-drop": {
+    title: "Price dropped 🎉",
+    body: "{name} is now {price} — you asked to be told, so here it is. Stock is limited.",
+  },
+  "back-in-stock": {
+    title: "Back in stock ✅",
+    body: "{name} is available again at {price} — you asked to be told, so here it is.",
+  },
+};
+
+const PRODUCT_COPY: Record<Language, Record<ProductEventKind, EventCopy>> = {
+  bn: PRODUCT_BN,
+  en: PRODUCT_EN,
+};
+
+/**
+ * A product page link, or the shelf if the caller had no slug — same
+ * same-origin rule the service worker enforces on a tap (`safeHref()` in
+ * `public/sw.js`), because this string is data, not a promise.
+ */
+const productHref = (href: string | null | undefined): string => {
+  const value = typeof href === "string" ? href.trim() : "";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/shop";
+  return value.slice(0, 200);
+};
+
+export interface ProductMessageInput {
+  kind: ProductEventKind;
+  productName: string;
+  /** Integer paisa (§69) — shown in the shopper's own taka formatting. */
+  pricePaisa?: number | null;
+  /** `/product/<slug>` from the caller (the shop's product URL shape). */
+  href?: string | null;
+  lang?: Language;
+}
+
+/**
+ * Build a watch notification: "Black Panjabi এখন ৳১,২৪০". The price line is
+ * only added when a price is known, so a missing number never prints `৳NaN`.
+ */
+export const customerProductMessage = (input: ProductMessageInput): CustomerMessage => {
+  const lang: Language = input.lang === "en" ? "en" : "bn";
+  const copy = PRODUCT_COPY[lang][input.kind];
+  const name = input.productName.trim().slice(0, 80) || (lang === "bn" ? "পণ্যটি" : "The item");
+  const price =
+    typeof input.pricePaisa === "number" && input.pricePaisa > 0
+      ? formatBdt(input.pricePaisa)
+      : lang === "bn"
+        ? "নতুন দামে"
+        : "at the new price";
+  return {
+    title: copy.title,
+    body: copy.body.replace("{name}", name).replace("{price}", price),
+    href: productHref(input.href),
+  };
+};
 
 /** Human label for an event — used by the opt-in card and tests. */
 export const customerEventLabel = (
@@ -161,7 +263,10 @@ export const customerPushMessage = (input: MessageInput): CustomerMessage => {
   const lang: Language = input.lang === "en" ? "en" : "bn";
   const copy = COPY[lang][input.kind];
   const orderNo = input.orderNo.trim().toUpperCase();
-  const body = copy.body.replace("{no}", orderNo);
+  // `{when}` is only used by the reminder; every other kind replaces it away.
+  const body = copy.body
+    .replace("{no}", orderNo)
+    .replace("{when}", (input.when ?? "").trim() || (lang === "bn" ? "আজ" : "today"));
   const total =
     typeof input.total === "number" && input.total > 0
       ? lang === "bn"

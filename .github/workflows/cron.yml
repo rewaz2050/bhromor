@@ -1,0 +1,65 @@
+# The shop's clock (2026-09-24) — see docs/automation.md.
+#
+# GitHub's scheduler is free for a public repository (Vercel's own cron on the
+# Hobby plan only runs once a day, and pg_cron dies with a paused database), so
+# this pokes a token-gated endpoint every 15 minutes and the app decides what is
+# due. Nothing in this repo needs a paid tier for it.
+#
+# Setup, once:
+#   1. Vercel → Project → Settings → Environment Variables: CRON_SECRET = <a long random string>
+#   2. GitHub → Settings → Secrets and variables → Actions:
+#        secret  CRON_SECRET = the same value
+#        variable SITE_URL   = https://proshanti.rahatahmed.site   (optional; the default below)
+#   3. Actions tab → "Shop clock" → Run workflow, to see the first report.
+#
+# Note for public repos: GitHub disables scheduled workflows after 60 days
+# without repository activity. Any push (even a README typo) re-arms it — and
+# `workflow_dispatch` below always works.
+
+name: Shop clock
+
+on:
+  schedule:
+    # Every 15 minutes. A tick can land late under load; the jobs are written
+    # not to care (a 2-hour reminder window, a once-a-day digest mark), so a
+    # late tick just fires a little late.
+    - cron: "*/15 * * * *"
+  # Manual run — Actions tab → "Shop clock" → Run workflow.
+  workflow_dispatch: {}
+
+concurrency:
+  group: shop-clock
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://proshanti.rahatahmed.site' }}
+        run: |
+          set -u
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET secret nai — Settings → Secrets and variables → Actions e add korun (docs/automation.md)."
+            exit 1
+          fi
+          body=$(curl -sS -m 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            "${SITE_URL%/}/api/cron/tick") || {
+              echo "::error::could not reach ${SITE_URL%/}/api/cron/tick"
+              exit 1
+            }
+          code=$(printf '%s\n' "$body" | tail -n1)
+          json=$(printf '%s\n' "$body" | sed '$d')
+          echo "HTTP ${code}"
+          echo "$json"
+          if [ "${code}" != "200" ]; then
+            echo "::error::tick answered HTTP ${code} — 401 means the CRON_SECRET differs from Vercel's, 503 means it (or the service key) is not set there."
+            exit 1
+          fi
+          if printf '%s' "$json" | grep -q '"failed"'; then
+            echo "::warning::a job reported failed — read the JSON above (the tick itself is fine)."
+          fi

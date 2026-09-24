@@ -4,6 +4,15 @@ Written 2026-09-24, after the owner asked *"User er jonno ki ki notification
 system ache?"* and chose the build order: **customer web push → WhatsApp
 automation → email sender → customer in-app inbox.**
 
+**Update (same day, second question — *"system ta automate kora jabe?"*):** the
+clock that makes the rest of this file possible shipped as
+`/api/cron/tick` (a GitHub Action every 15 minutes; **`docs/automation.md`**).
+Two things it already changed here: the scheduled-delivery reminder
+("আজ আপনার পার্সেল আসছে") is now a push rather than a phone call, and
+**price-drop / restock watches push to subscribed phones** — the staff note
+keeps only the numbers that could not be reached. WhatsApp and email are still
+the next two items (§2, §3), unchanged in order.
+
 This file is the single place that answers "how does a customer find out?"
 for the live store, so the answer cannot drift from the code.
 

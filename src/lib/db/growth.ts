@@ -3,16 +3,24 @@
  *
  * Both are deliberately small: a watch is one row per (product, phone), and a
  * referral code is one row per customer account. There is no email or SMS
- * sender in this stack, so a "price dropped" alert is a NOTE FOR STAFF with the
- * phone numbers to call — the honest version of the feature in a town where
- * orders are confirmed on the phone. Fabricating an "email sent" status would
- * be worse than not offering it.
+ * sender in this stack, so a "price dropped" alert used to be a NOTE FOR STAFF
+ * with the phone numbers to call — the honest version of the feature in a town
+ * where orders are confirmed on the phone.
+ *
+ * Since 2026-09-24 there is a second, better half: a watcher who turned phone
+ * notifications on from `/track` gets the news pushed to that phone
+ * immediately, and the staff note only names the numbers that could NOT be
+ * reached (see `pushWatchPhones`). The call list literally shrinks as more
+ * shoppers opt in — while a push failure or an unconfigured VAPID key never
+ * loses a number from the list.
  */
 
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyStaff } from "./engagement";
+import { pushProductEvent } from "../customer-push";
+import type { ProductEventKind } from "../notify-messages";
 import { normalizePhone } from "../orders";
 import { referralCodeFor } from "../referral";
 import { formatBdt } from "../format";
@@ -101,12 +109,67 @@ export async function listPriceWatches(
 }
 
 /**
- * A price went down: hand staff the list to call, once per price. Idempotent by
- * `last_notified_paisa`, so re-saving the same price does not spam the inbox.
+ * Push a watch event to the watchers who turned phone notifications on, and
+ * answer with the numbers that could NOT be reached.
+ *
+ * Never throws, never guesses: with no VAPID keys, no opt-in, or a push
+ * service having a bad day, the returned set is empty and the staff note goes
+ * out exactly as it did before this existed. A failure here must not cost the
+ * shop its call list.
+ */
+const pushWatchPhones = async (
+  db: SupabaseClient,
+  input: {
+    phones: string[];
+    kind: ProductEventKind;
+    productName: string;
+    pricePaisa?: number | null;
+    href?: string | null;
+  },
+): Promise<Set<string>> => {
+  try {
+    const { reached } = await pushProductEvent(db, input);
+    return new Set(reached);
+  } catch {
+    return new Set();
+  }
+};
+
+/**
+ * The second line of the staff note: how many numbers are actually left to
+ * call. Written as a sentence staff can act on, never as a silent difference.
+ */
+const callListLine = (
+  total: number,
+  reached: number,
+  missed: { phone: string }[],
+): string => {
+  const numbers = missed
+    .slice(0, 8)
+    .map((r) => r.phone)
+    .join(", ");
+  if (missed.length === 0) {
+    return `${total} জন অপেক্ষা করছিলেন — সবাইকে ফোনে খবর (push) পাঠানো হয়েছে, কাউকে ফোন করতে হবে না।`;
+  }
+  const sent = reached > 0 ? `${reached} জনকে ফোনে খবর পাঠানো হয়েছে · ` : "";
+  return `${sent}বাকি ${missed.length} জনকে ফোন করুন: ${numbers}`;
+};
+
+/**
+ * A price went down: push every watcher whose phone is subscribed, then hand
+ * staff only the numbers still to call. Idempotent by `last_notified_paisa`,
+ * so re-saving the same price does not spam anybody.
  */
 export async function flagPriceDropForStaff(
   db: SupabaseClient,
-  input: { productId: string; productName: string; fromPaisa: number; toPaisa: number },
+  input: {
+    productId: string;
+    productName: string;
+    fromPaisa: number;
+    toPaisa: number;
+    /** `/product/<slug>` for the push link (optional — falls back to /shop). */
+    productSlug?: string | null;
+  },
 ): Promise<number> {
   if (input.toPaisa >= input.fromPaisa) return 0;
   const { data, error } = await db
@@ -120,13 +183,23 @@ export async function flagPriceDropForStaff(
     last_notified_paisa: number | null;
   }[]).filter((r) => r.last_notified_paisa !== input.toPaisa);
   if (rows.length === 0) return 0;
+  const phones = [...new Set(rows.map((r) => r.phone))];
+  const reached = await pushWatchPhones(db, {
+    phones,
+    kind: "price-drop",
+    productName: input.productName,
+    pricePaisa: input.toPaisa,
+    href: input.productSlug ? `/product/${input.productSlug}` : null,
+  });
+  const missed = rows.filter((r) => !reached.has(r.phone));
   await notifyStaff(db, {
     kind: "system",
     title: `দাম কমেছে — ${input.productName}`,
-    body: `${formatBdt(input.fromPaisa)} → ${formatBdt(input.toPaisa)} · ${rows.length} জন কাস্টমার অপেক্ষা করছেন — ফোন করুন: ${rows
-      .slice(0, 8)
-      .map((r) => r.phone)
-      .join(", ")}`,
+    body: `${formatBdt(input.fromPaisa)} → ${formatBdt(input.toPaisa)} · ${callListLine(
+      rows.length,
+      reached.size,
+      missed,
+    )}`,
     href: "/admin/growth",
   });
   await db
@@ -209,14 +282,22 @@ export async function listStockWatches(
 }
 
 /**
- * A product came back in stock: hand staff the list to call. The caller only
- * fires this on a real out-of-stock → in-stock transition (admin.ts), so one
- * restock = one inbox note; a product that sells out again later earns a new
- * note — that is a real new event, not a nag. Never throws.
+ * A product came back in stock: push every watcher whose phone is subscribed,
+ * then hand staff only the numbers still to call. The caller only fires this
+ * on a real out-of-stock → in-stock transition (admin.ts), so one restock =
+ * one round of messages; a product that sells out again later earns a new
+ * round — that is a real new event, not a nag. Never throws.
  */
 export async function flagRestockForStaff(
   db: SupabaseClient,
-  input: { productId: string; productName: string },
+  input: {
+    productId: string;
+    productName: string;
+    /** `/product/<slug>` for the push link (optional — falls back to /shop). */
+    productSlug?: string | null;
+    /** The current price, shown in the push ("আবার পাওয়া যাচ্ছে ৳১,২৪০"). */
+    pricePaisa?: number | null;
+  },
 ): Promise<number> {
   const { data, error } = await db
     .from("stock_watches")
@@ -225,13 +306,19 @@ export async function flagRestockForStaff(
   if (error) return 0;
   const rows = (data ?? []) as { id: string; phone: string }[];
   if (rows.length === 0) return 0;
+  const phones = [...new Set(rows.map((r) => r.phone))];
+  const reached = await pushWatchPhones(db, {
+    phones,
+    kind: "back-in-stock",
+    productName: input.productName,
+    pricePaisa: input.pricePaisa ?? null,
+    href: input.productSlug ? `/product/${input.productSlug}` : null,
+  });
+  const missed = rows.filter((r) => !reached.has(r.phone));
   await notifyStaff(db, {
     kind: "system",
     title: `স্টক ফিরেছে — ${input.productName}`,
-    body: `${rows.length} জন কাস্টমার অপেক্ষা করছেন — ফোন করুন: ${rows
-      .slice(0, 8)
-      .map((r) => r.phone)
-      .join(", ")}`,
+    body: callListLine(rows.length, reached.size, missed),
     href: "/admin/growth",
   });
   await db

@@ -14,6 +14,7 @@ import {
 } from "@/lib/env";
 import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
 import { customerPushReady } from "@/lib/customer-push";
+import { cronStatus } from "@/lib/cron";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
 
@@ -84,6 +85,13 @@ export async function GET(request?: Request) {
     // 202609240001 — shopper (customer) Web Push: the other half of "the phone
     // buzzes", and the only automatic channel a customer has.
     customerPushTableReady: false,
+    // 202609240002 — the clock (docs/automation.md): stale rider offers, the
+    // ~2h delivery reminder, the 9am digest. `cronConfigured` is whether the
+    // secret is set at all; `cronMarksReady` whether the migration ran;
+    // `cronLastRunAt` when the GitHub Action last knocked.
+    cronConfigured: false,
+    cronMarksReady: false,
+    cronLastRunAt: null as string | null,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -142,6 +150,12 @@ export async function GET(request?: Request) {
       const customerPush = await customerPushReady(svc);
       checks.customerPushTableReady = customerPush.ready;
       counts.customer_push_subscriptions = customerPush.count;
+
+      // The clock (202609240002) — is a scheduler wired, and did it knock?
+      const cron = await cronStatus(svc);
+      checks.cronConfigured = cron.configured;
+      checks.cronMarksReady = cron.marksReady;
+      checks.cronLastRunAt = cron.lastRunAt;
 
       // Can an order row actually be INSERTED? ps_checkout_health() ships with
       // the repair migration; a missing function IS the answer (not applied).
@@ -238,6 +252,21 @@ export async function GET(request?: Request) {
   if (checks.reachable && checks.pushConfigured && !checks.customerPushTableReady) {
     nextSteps.push(
       "Customer notification er table nai — SQL Editor-e supabase/migrations/202609240001_customer_push.sql chalaben; na chalale /track er 'ফোনে খবর নিন' button kaaj korbe na",
+    );
+  }
+  if (checks.reachable && !checks.cronConfigured) {
+    nextSteps.push(
+      "Scheduler bondho — Vercel env e CRON_SECRET set korun, sei value-i GitHub → Secrets and variables → Actions e CRON_SECRET hisebe rakhun (docs/automation.md). Na dile rider offer expiry, 2 ghontar delivery reminder ar sokaler digest cholbe na",
+    );
+  }
+  if (checks.reachable && checks.cronConfigured && !checks.cronMarksReady) {
+    nextSteps.push(
+      "Scheduler er marks table nai — SQL Editor-e supabase/migrations/202609240002_cron_marks.sql chalaben; na chalale reminder/digest bad pore (offer sweep cholbe)",
+    );
+  }
+  if (checks.reachable && checks.cronConfigured && checks.cronMarksReady && !checks.cronLastRunAt) {
+    nextSteps.push(
+      "Scheduler ekbaro choleni — GitHub → Actions → 'Shop clock' → Run workflow, tarpor 15 minute por abar dekhun (docs/automation.md)",
     );
   }
 

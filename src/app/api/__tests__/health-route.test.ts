@@ -19,6 +19,12 @@ const state = vi.hoisted(() => ({
   staff: true,
   /** Phone-notification setup (2026-09-23): VAPID keys + device table. */
   push: { configured: true, tableReady: true, count: 1 },
+  /** The clock (2026-09-24): CRON_SECRET, the marks table, the last knock. */
+  cron: { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" as string | null },
+}));
+
+vi.mock("@/lib/cron", () => ({
+  cronStatus: async () => state.cron,
 }));
 
 vi.mock("@/lib/push", () => ({
@@ -64,7 +70,7 @@ import { GET } from "@/app/api/health/route";
 
 type Health = {
   live: boolean;
-  checks: Record<string, boolean>;
+  checks: Record<string, boolean | string | null>;
   checkoutRepair: Record<string, unknown> | null;
   nextSteps: string[];
 };
@@ -73,6 +79,7 @@ beforeEach(() => {
   state.repair = null;
   state.staff = true;
   state.push = { configured: true, tableReady: true, count: 1 };
+  state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -284,6 +291,50 @@ describe("GET /api/health — checkout repair awareness", () => {
     state.push = { configured: true, tableReady: true, count: 2 };
     body = (await (await GET()).json()) as Health;
     expect(body.checks.pushTableReady).toBe(true);
+    expect(body.nextSteps).toEqual([]);
+  });
+
+  it("names the scheduler while its secret, its marks table or its first run is missing", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+      },
+    };
+
+    // No CRON_SECRET on the host: the clock simply is not running.
+    state.cron = { configured: false, marksReady: false, lastRunAt: null };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronConfigured).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("CRON_SECRET");
+    expect(body.live).toBe(true); // orders flow without a scheduler
+
+    // Secret set, migration 202609240002 not pasted: the one-shot jobs skip.
+    state.cron = { configured: true, marksReady: false, lastRunAt: null };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronMarksReady).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("202609240002_cron_marks.sql");
+
+    // Everything in place but the Action has never knocked.
+    state.cron = { configured: true, marksReady: true, lastRunAt: null };
+    body = (await (await GET()).json()) as Health;
+    expect(body.nextSteps.join("\n")).toContain("Shop clock");
+
+    // One run recorded → nothing left to do.
+    state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronLastRunAt).toBe("2026-09-24T04:00:00.000Z");
     expect(body.nextSteps).toEqual([]);
   });
 

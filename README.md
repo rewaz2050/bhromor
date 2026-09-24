@@ -130,6 +130,36 @@ The card on `/admin/notifications` is now a live checklist. Every row is read fr
 
 Also fixed here: in-panel alerts go through `ServiceWorkerRegistration.showNotification()` — `new Notification()` is an **illegal constructor on every mobile Chrome**, so the old inline call showed nothing on Android while the desktop thought it had alerted — and the beep now resumes its suspended `AudioContext` on the first tap (mobile Chrome's autoplay policy kept it silent before). `notifyStaff()` events → Web Push fan-out is unchanged.
 
+## The shop's clock — work that happens without opening the panel (2026-09-24)
+
+The owner's question was *"system ta automate kora jabe?"* — and the honest
+answer started with what was still manual: a rider's unanswered offer expired
+only when somebody next loaded a dispatch board, "your parcel comes this
+evening" was a phone call, and yesterday's numbers required opening `/admin`.
+
+Now `.github/workflows/cron.yml` calls a token-gated **`/api/cron/tick`** every
+15 minutes (free, public repo — no Vercel Pro, no new account) and the app
+decides what is due:
+
+| Job | Effect |
+|---|---|
+| `expire-offers` | stale rider offers expire and the order returns to the dispatch board by itself |
+| `delivery-reminders` | ~2 hours before the window the shopper chose at checkout: **"আজ আপনার পার্সেল আসছে 🛵"** with the shop's own label ("সন্ধ্যায় (৬–৯ PM) · 24 Sep, 6:00 pm") |
+| `daily-digest` | at 9am Dhaka, one staff push (inbox + phone): yesterday's orders/takings, today's orders, what is still open, today's scheduled deliveries, low stock, shoppers waiting on a price/restock |
+
+Alongside it, **price-drop and restock watches now push instead of always
+calling**: a watcher whose phone is subscribed hears the news the moment the
+product is saved, and the staff note keeps only the numbers that could *not* be
+reached — "১ জনকে ফোনে খবর পাঠানো হয়েছে · বাকি ২ জনকে ফোন করুন" — or says
+plainly that there is nobody left to call. Without VAPID keys or any opt-in,
+the note is exactly the call list it was before.
+
+Nothing is required for orders to work: every job is a courtesy that saves a
+phone call. The tick answers an honest JSON report per job (`ran` / `skipped` /
+`failed` + why), and `/api/health` reports `cronConfigured`, `cronMarksReady`
+and `cronLastRunAt`. Setup (one secret, one migration, both free):
+**`docs/automation.md`**.
+
 ## Customer notifications — the shopper's phone buzzes too (2026-09-24)
 
 Until today the store had **no automatic customer channel at all**: shoppers

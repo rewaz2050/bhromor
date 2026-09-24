@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   CUSTOMER_EVENTS,
   customerEventLabel,
+  customerProductMessage,
   customerPushMessage,
   customerPushPromise,
   publicStepEvent,
@@ -89,6 +90,80 @@ describe("customer notifications — copy and milestone map", () => {
     for (const kind of CUSTOMER_EVENTS) {
       expect(customerEventLabel(kind, "bn").length).toBeGreaterThan(0);
       expect(customerEventLabel(kind, "en").length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the scheduled-delivery reminder (2026-09-24)", () => {
+  it("carries the shop's own window label, not a vague \u201csoon\u201d", () => {
+    const bn = customerPushMessage({
+      kind: "delivery-today",
+      orderNo: "ps-1",
+      phone: "01712345678",
+      when: "সন্ধ্যায় (৬–৯ PM) · 24 Sep, 6:00 pm",
+    });
+    expect(bn.title).toContain("আজ আপনার পার্সেল আসছে");
+    expect(bn.body).toContain("PS-1");
+    expect(bn.body).toContain("সন্ধ্যায় (৬–৯ PM)");
+    expect(bn.href).toBe("/track?id=PS-1&phone=01712345678");
+
+    const en = customerPushMessage({
+      kind: "delivery-today",
+      orderNo: "PS-1",
+      phone: "01712345678",
+      lang: "en",
+    });
+    // No window survived to the payload: say "today", never an empty gap.
+    expect(en.body).toContain("today");
+    expect(en.body).not.toContain("— .");
+  });
+
+  it("is not one of the four promises the opt-in card makes", () => {
+    expect(CUSTOMER_EVENTS).not.toContain("delivery-today");
+    expect(customerPushPromise("bn").map((p) => p.kind)).toEqual([
+      "placed",
+      "confirmed",
+      "picked-up",
+      "delivered",
+    ]);
+  });
+});
+
+describe("watch notifications — price drop / back in stock", () => {
+  it("names the product and the new price, in the shopper's language", () => {
+    const drop = customerProductMessage({
+      kind: "price-drop",
+      productName: "Black Panjabi",
+      pricePaisa: 124000,
+      href: "/product/black-panjabi",
+    });
+    expect(drop.title).toContain("দাম কমেছে");
+    expect(drop.body).toContain("Black Panjabi");
+    expect(drop.body).toContain("৳1,240");
+    expect(drop.href).toBe("/product/black-panjabi");
+
+    const back = customerProductMessage({
+      kind: "back-in-stock",
+      productName: "Black Panjabi",
+      pricePaisa: 124000,
+      href: "/product/black-panjabi",
+      lang: "en",
+    });
+    expect(back.title).toBe("Back in stock ✅");
+    expect(back.body).toContain("৳1,240");
+  });
+
+  it("never prints a broken price and never sends a link it did not get", () => {
+    const noPrice = customerProductMessage({ kind: "back-in-stock", productName: "Panjabi" });
+    expect(noPrice.body).not.toContain("৳");
+    expect(noPrice.body).not.toContain("NaN");
+    expect(noPrice.body).toContain("Panjabi");
+
+    // `href` is data, not a promise: only same-origin paths travel.
+    for (const evil of ["//evil.example/x", "https://evil.example/x", "", "track"]) {
+      expect(customerProductMessage({ kind: "price-drop", productName: "X", href: evil }).href).toBe(
+        "/shop",
+      );
     }
   });
 });
