@@ -16,6 +16,11 @@ import {
   type RiderAvailability,
 } from "@/lib/rider-hours";
 import {
+  fetchRiderPushStatus,
+  startRiderPushSetup,
+  stopRiderPush,
+} from "@/lib/rider-push-client";
+import {
   IconBox,
   IconCheck,
   IconMapPin,
@@ -358,6 +363,11 @@ export default function RiderPage() {
             inside it (enforced in the database, not just here), so this card
             is real scheduling, not decoration. */}
         <RiderShiftCard rider={activeRider} onSave={session.setAvailability} flash={setFlash} />
+
+        {/* 2026-09-25 — the rider's own phone must buzz for a new offer. The
+            job feed only polls while this tab is visible, so a phone in a
+            pocket never saw an offer before it expired. */}
+        <RiderPushCard />
 
         {/* Cash-in-hand safety meter card */}
         <section
@@ -865,6 +875,93 @@ export default function RiderPage() {
 }
 const SHIFT_DAYS = ["শু", "ম", "বু", "বৃ", "শু", "শ", "ছ"] as const;
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+/**
+ * "অফারের খবর ফোনে নিন" — one tap subscribes this phone. Shows the exact
+ * blocker when push cannot work here (in-app browser, http, no keys, missing
+ * table) instead of a button that silently does nothing, which is how the
+ * staff card failed on 2026-09-23.
+ */
+function RiderPushCard() {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const status = await fetchRiderPushStatus();
+        if (alive) setOn(status.count > 0);
+      } catch {
+        // No status → leave the card in its "ask" state.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const turnOn = async () => {
+    setBusy(true);
+    setNote(null);
+    const result = await startRiderPushSetup();
+    setBusy(false);
+    if (result.ok) {
+      setOn(true);
+      setNote("অন হয়ে গেছে — এখন অ্যাপ বন্ধ থাকলেও নতুন অফারের খবর আসবে।");
+      return;
+    }
+    setNote(
+      result.message ??
+        (result.reason === "unconfigured"
+          ? "সার্ভারে push key সেট করা নেই (PUSH_VAPID_PUBLIC_KEY + PUSH_VAPID_PRIVATE_KEY)।"
+          : result.reason === "denied"
+            ? "ব্রাউজারে notification ব্লক করা — সাইট সেটিংস থেকে Allow করতে হবে।"
+            : "এই ব্রাউজারে notification চালু করা যায়নি।"),
+    );
+  };
+
+  const turnOff = async () => {
+    setBusy(true);
+    await stopRiderPush();
+    setBusy(false);
+    setOn(false);
+    setNote("বন্ধ করা হলো — এখন থেকে অফার শুধু এই অ্যাপ খুললে দেখা যাবে।");
+  };
+
+  return (
+    <section
+      aria-label="Offer notification"
+      className="rounded-2xl border border-line bg-ivory-100/70 p-4 shadow-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-forest-900">
+            🔔 অফারের খবর ফোনে
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
+            অ্যাপ বন্ধ বা স্ক্রিন অফ থাকলেও নতুন ডেলিভারি অফার এলে এই ফোন বেজে উঠবে।
+            না খুললে অফার নির্দিষ্ট সময় পর শেষ হয়ে যায়।
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void (on ? turnOff() : turnOn())}
+          disabled={busy}
+          className={`shrink-0 rounded-full px-3.5 py-2 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+            on
+              ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-400"
+              : "bg-forest-800 text-ivory-50 hover:bg-forest-900"
+          }`}
+        >
+          {busy ? "…" : on ? "চালু আছে" : "চালু করুন"}
+        </button>
+      </div>
+      {note && <p className="mt-2 text-[11px] text-ink-soft">{note}</p>}
+    </section>
+  );
+}
 
 function RiderShiftCard({
   rider,

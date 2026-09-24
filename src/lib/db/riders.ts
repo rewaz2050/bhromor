@@ -391,6 +391,77 @@ export async function expireStaleAssignments(
   if (error) throw new Error(error.message);
 }
 
+/* ------------------------------------------------------------------ */
+/* Dispatch diagnosis (202609250001)                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Why an order has no rider. The counts are cumulative — the first bucket
+ * that drops to zero is the blocker — so the panel can print the real reason
+ * ("nobody online", "wrong zone", "cash cap") instead of the bare
+ * "no eligible rider" every caller used to throw.
+ */
+export interface DispatchDiagnosis {
+  dispatchable: boolean;
+  reason: string;
+  answer: string;
+  zone_id?: string;
+  riders_active?: number;
+  riders_online?: number;
+  riders_on_shift?: number;
+  riders_in_zone?: number;
+  riders_under_cash_cap?: number;
+  riders_free?: number;
+  riders_not_seen?: number;
+  live_offers?: number;
+}
+
+export async function diagnoseDispatch(
+  service: SupabaseClient,
+  orderId: string,
+): Promise<DispatchDiagnosis> {
+  const { data, error } = await service.rpc("ps_dispatch_diagnosis", {
+    p_order_id: orderId,
+  });
+  if (error) throw dispatchRpcError(error.message);
+  return data as DispatchDiagnosis;
+}
+
+/** One stranded order as the dispatch board shows it. */
+export interface StrandedOrder {
+  order_no: string;
+  status: string;
+  zone_id: string;
+  created_at: string;
+  updated_at: string;
+  diagnosis: DispatchDiagnosis;
+}
+
+/** Dispatchable orders with NO live offer, oldest first. */
+export async function listStrandedOrders(
+  service: SupabaseClient,
+  limit = 20,
+): Promise<StrandedOrder[]> {
+  const { data, error } = await service.rpc("ps_stranded_orders", {
+    p_limit: limit,
+  });
+  if (error) throw dispatchRpcError(error.message);
+  return (data ?? []) as StrandedOrder[];
+}
+
+/**
+ * Offer every stranded order to the next rider who has not seen it. Runs on
+ * the 15-minute clock (`src/lib/cron.ts`), which is what makes "the rider came
+ * online after the order went ready" self-heal instead of waiting for a human.
+ */
+export async function redispatchStrandedOrders(
+  service: SupabaseClient,
+): Promise<number> {
+  const { data, error } = await service.rpc("ps_redispatch_stranded");
+  if (error) throw dispatchRpcError(error.message);
+  return Number(data ?? 0);
+}
+
 /** Admin records a rider pay-in and zeroes their cash-in-hand. */
 export async function settleRiderCashByAdmin(
   service: SupabaseClient,

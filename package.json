@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:dispatch": "node scripts/test-dispatch-pglite.mjs",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "seed": "node scripts/seed-supabase.mjs",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",

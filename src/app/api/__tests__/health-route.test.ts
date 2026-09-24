@@ -206,6 +206,8 @@ describe("GET /api/health — checkout repair awareness", () => {
         rider_guard_ok: true,
         payment_methods_widened: true,
         place_order_rpc: true,
+        rider_dispatch_ok: true,
+        rider_push_column: true,
       },
     };
     const body = (await (await GET()).json()) as Health;
@@ -234,6 +236,8 @@ describe("GET /api/health — checkout repair awareness", () => {
       rider_guard_ok: true,
       payment_methods_widened: true,
       place_order_rpc: true,
+      rider_dispatch_ok: true,
+      rider_push_column: true,
     };
     state.repair = { data: { ...base, rpc_grants_locked: true, memberships_rls: false } };
     let body = (await (await GET()).json()) as Health;
@@ -264,6 +268,8 @@ describe("GET /api/health — checkout repair awareness", () => {
         rpc_grants_locked: true,
         memberships_rls: true,
         dispatch_reoffer_ok: true,
+        rider_dispatch_ok: true,
+        rider_push_column: true,
       },
     };
     const body = (await (await GET()).json()) as Health;
@@ -272,6 +278,33 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.live).toBe(true);
     expect(body.nextSteps).toHaveLength(1);
     expect(body.nextSteps[0]).toContain("202609170001_two_tap_order_flow.sql");
+  });
+
+  it("names the rider-dispatch migration while offers still expire in 90 s (202609250001)", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+        // Neither 202609250001 key present → the old 90-second window and no
+        // self-heal for orders that went ready while every rider was offline.
+      },
+    };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.riderDispatchReady).toBe(false);
+    expect(body.checks.riderPushColumn).toBe(false);
+    expect(body.live).toBe(true); // orders still flow; dispatch is degraded
+    expect(body.nextSteps.join("\n")).toContain("202609250001_rider_dispatch_fix.sql");
   });
 
   it("names the phone-notification setup in nextSteps while the keys or the table are missing", async () => {
@@ -290,6 +323,8 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        rider_dispatch_ok: true,
+        rider_push_column: true,
       },
     };
     // VAPID keys missing on the host → the panel can never offer the ON button.
@@ -330,6 +365,8 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        rider_dispatch_ok: true,
+        rider_push_column: true,
       },
     };
 
@@ -386,6 +423,8 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        rider_dispatch_ok: true,
+        rider_push_column: true,
       },
     };
     const body = (await (await GET()).json()) as Health;

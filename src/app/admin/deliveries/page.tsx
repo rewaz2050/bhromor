@@ -13,6 +13,7 @@ import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons"
 import AdminLiveMap from "@/components/admin/admin-live-map";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import { AdminBatchAssign } from "@/components/admin/admin-batch-assign";
+import { AdminStrandedOrders } from "@/components/admin/admin-stranded-orders";
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   offered: { label: "Offered", cls: "bg-amber-100 text-amber-900" },
@@ -118,6 +119,10 @@ export default function AdminDeliveriesPage() {
       </section>
 
       <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { /* refresh handled by hooks */ }} />
+
+      {/* "Rider offer যাচ্ছে না কেন?" — every order stuck without a rider,
+          with the actual blocker named (202609250001). */}
+      <AdminStrandedOrders />
 
       <section>
         <div className="mb-3 flex items-center gap-2">

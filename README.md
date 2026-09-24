@@ -29,6 +29,11 @@ npm run dev
 
 Open http://localhost:3000.
 
+**Who does what, and in which order:** see [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — the
+four-role reference map (customer · shop · rider · admin), the 11-step happy path with the
+file that runs each step, every place the flow stalls and what unblocks it, plus a
+three-step simplified model for a small shop.
+
 ## Scripts (quality gates)
 
 ```bash
@@ -41,6 +46,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest suite (UI smoke + catalog/cart/orders invariants) |
+| `npm run test:dispatch` | Applies `supabase/schema.sql` + every migration to an in-memory **PGlite** (real PostgreSQL 18 in WASM) and replays the rider-dispatch chain: offer window, diagnosis, expiry re-offer, stranded self-heal, accept → pickup → deliver, wrong-code refusal, grants |
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
@@ -219,6 +225,38 @@ honest off switch, the card says which. Full picture, plus the roadmap for
 WhatsApp automation → email sender → customer in-app inbox:
 [`docs/customer-notifications.md`](docs/customer-notifications.md).
 `/api/health` reports `customerPushTableReady` and the device count.
+
+## "Rider offer পaochhe না" — the dispatch fix (2026-09-25)
+
+The owner's report: *the shop taps "Ready — call rider" and nothing reaches the
+rider's phone*. Replaying the dispatch chain named four separate causes, and in
+a small town with 1–3 riders all four are real. `docs/WORKFLOW.md` is the
+reference map; `supabase/migrations/202609250001_rider_dispatch_fix.sql` is the
+fix. Nothing here is a rebuild — it is the same state machine, with the parts
+that could not be seen or answered made visible and reachable.
+
+| # | The cause | The fix |
+|---|---|---|
+| 1 | **No push channel for riders at all.** `push_subscriptions` was staff-only and `customer_push_subscriptions` shopper-only, so a rider learned about an offer only by polling `/api/rider/jobs` — and `usePoll` stops while the tab is hidden. A phone in a pocket polled nothing, so the offer was born and died unseen. | `push_subscriptions.rider_id` + `src/lib/rider-push.ts`. `/rider` has a "🔔 অফারের খবর ফোনে" card; every offer now buzzes the rider's device. Staff fan-out filters rider devices out, so neither side receives the other's notices. |
+| 2 | **90 seconds is not an answer window.** Every offer was born with `now() + interval '90 seconds'` hardcoded in four functions. | `ps_offer_window()` reads `site_settings.dispatch_offer_seconds`, default **300 s**, clamped 60–3600. Changing it later is one SQL row, not a migration. |
+| 3 | **Nobody could say why.** `ps_next_eligible_rider` returns NULL for six different reasons and every caller threw the same "no eligible rider" — which is why the panel felt broken rather than blocked. | `ps_dispatch_diagnosis(order)` counts the riders in each bucket (active → online → on shift → in zone → under the ৳5,000 cash cap → free → hasn't seen this order) and returns a one-line answer. Admin → Deliveries now shows a **⚠️ card** listing every stranded order with its real blocker and the action that clears it. |
+| 4 | **An order ready while every rider was offline was never retried.** The auto-dispatch trigger fires once, on the transition into `ready-for-pickup`; the 15-minute cron only swept *expired* offers, so an order with no offer at all waited for a human. | `ps_redispatch_stranded()` + cron job **`redispatch-stranded`** — the rider who comes online at 10:05 now receives the order that went ready at 10:00, and gets buzzed. |
+
+Also fixed while in there: `ps_assign_batch_to_rider` (Admin → Deliveries →
+Batch assign) never buzzed the rider either — it is the staff override path, so
+it bypasses the dispatch trigger entirely; and the cron's stale-offer *count*
+queried `delivery_assignments.status`, a column that does not exist (the column
+is `state`), so the digest always reported "no stale rider offers".
+
+`/api/health` gained `checks.riderDispatchReady` + `checks.riderPushColumn` and
+names the migration in `nextSteps` until it has run.
+
+**To turn it on:** apply `supabase/migrations/202609250001_rider_dispatch_fix.sql`
+in the Supabase SQL Editor, then have each rider open `/rider` in Chrome and tap
+**"🔔 অফারের খবর ফোনে" → চালু করুন** (Web Push needs the existing
+`PUSH_VAPID_*` keys; Android Chrome works as-is, iPhone needs Add to Home
+Screen). Verified by `npm run test:dispatch`, which runs the shipped SQL against
+a real PostgreSQL 18 (PGlite) and replays the whole chain — 39 checks.
 
 ## Account dashboard rebuild (2026-09-21)
 

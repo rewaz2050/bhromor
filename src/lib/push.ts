@@ -40,8 +40,12 @@ export const publicVapidKey = (): string | null =>
   nonEmpty(process.env.PUSH_VAPID_PUBLIC_KEY);
 
 let configuredOnce: boolean | null = null;
-/** Set the VAPID keys exactly once per process (idempotent, best-effort). */
-const ensureVapid = (): boolean => {
+/**
+ * Set the VAPID keys exactly once per process (idempotent, best-effort).
+ * Exported for `rider-push.ts`, which fans out to the same web-push instance
+ * (one VAPID identity serves both staff and rider devices).
+ */
+export const ensureVapid = (): boolean => {
   if (configuredOnce !== null) return configuredOnce;
   if (!isPushConfigured()) {
     configuredOnce = false;
@@ -89,9 +93,12 @@ export const pushSaveFailureReason = (
   const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
   if (
     code === "42P01" ||
+    code === "42703" ||
+    code === "PGRST204" ||
     code === "PGRST205" ||
     message.includes("does not exist") ||
     message.includes("could not find the table") ||
+    message.includes("could not find the 'rider_id' column") ||
     message.includes("schema cache")
   ) {
     return "missing_table";
@@ -149,13 +156,44 @@ export const removePushSubscription = async (
   await db.from("push_subscriptions").delete().eq("endpoint", cleanEndpoint);
 };
 
+/**
+ * Does `push_subscriptions.rider_id` exist? Cached per process: the schema
+ * does not change under a running server, and the staff fan-out runs on every
+ * order event. A failed probe means "not migrated yet" → no rider filtering,
+ * which is exactly the pre-202609250001 behaviour.
+ */
+let riderColumn: boolean | null = null;
+export const riderColumnReady = async (db: SupabaseClient): Promise<boolean> => {
+  if (riderColumn !== null) return riderColumn;
+  const { error } = await db
+    .from("push_subscriptions")
+    .select("rider_id", { head: true, count: "exact" });
+  const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+  riderColumn = !(
+    error?.code === "42703" ||
+    error?.code === "PGRST204" ||
+    message.includes("rider_id") ||
+    message.includes("does not exist")
+  );
+  return riderColumn;
+};
+
+/** Test seam — forget the cached schema probe. */
+export const resetPushSchemaCache = (): void => {
+  riderColumn = null;
+};
+
 const listPushSubscriptions = async (
   db: SupabaseClient,
 ): Promise<PushRow[]> => {
-  const { data } = await db
-    .from("push_subscriptions")
-    .select("endpoint, p256dh, auth")
-    .limit(50);
+  // Staff devices only: a rider's phone carries `rider_id` (202609250001) and
+  // must never receive the owner's order notices. The filter is applied only
+  // once that column exists, so a project that has not run the migration yet
+  // behaves exactly as it did before — filtering on a missing column would
+  // answer PGRST204 and silently stop every staff push.
+  let query = db.from("push_subscriptions").select("endpoint, p256dh, auth");
+  if (await riderColumnReady(db)) query = query.is("rider_id", null);
+  const { data } = await query.limit(50);
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     endpoint: clean(row.endpoint, 500),
     p256dh: clean(row.p256dh, 200),
