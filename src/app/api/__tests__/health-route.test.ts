@@ -17,6 +17,24 @@ const state = vi.hoisted(() => ({
   repair: null as null | { error?: { code: string }; data?: Record<string, unknown> },
   /** Whether the caller holds a staff session (audit L6: details are staff-only). */
   staff: true,
+  /** Phone-notification setup (2026-09-23): VAPID keys + device table. */
+  push: { configured: true, tableReady: true, count: 1 },
+  /** The clock (2026-09-24): CRON_SECRET, the marks table, the last knock. */
+  cron: { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" as string | null },
+  /** The free WhatsApp fallback (2026-09-24): the draft outbox table. */
+  waOutbox: { ready: true, count: 0 },
+}));
+
+vi.mock("@/lib/cron", () => ({
+  cronStatus: async () => state.cron,
+}));
+
+vi.mock("@/lib/push", () => ({
+  isPushConfigured: () => state.push.configured,
+  pushSubscriptionsReady: async () => ({
+    ready: state.push.tableReady,
+    count: state.push.count,
+  }),
 }));
 
 vi.mock("@/lib/staff-auth", () => ({
@@ -32,14 +50,31 @@ vi.mock("@/lib/env", () => ({
   isCloudinaryConfigured: () => false,
 }));
 
-const table = () => ({
-  select: async () => ({ count: 3, error: null }),
-});
+/**
+ * A chainable, awaitable table stub: the newer probes read counts with filters
+ * (`select(…).is(…).is(…)`) while older ones await `select()` directly, so the
+ * stub supports both shapes. `wa_outbox` can be made to fail, which is how the
+ * fallback's "run this migration" next step is pinned.
+ */
+const table = (name?: string) => {
+  const result =
+    name === "wa_outbox" && !state.waOutbox.ready
+      ? { count: null, error: { code: "42P01", message: "relation does not exist" } }
+      : { count: name === "wa_outbox" ? state.waOutbox.count : 3, error: null };
+  const chain: Record<string, unknown> = {};
+  for (const method of ["select", "is", "eq", "order", "limit", "not", "in"]) {
+    chain[method] = () => chain;
+  }
+  chain.then = (ok: unknown, bad: unknown) =>
+    Promise.resolve(result).then(ok as never, bad as never);
+  chain.catch = (bad: unknown) => Promise.resolve(result).catch(bad as never);
+  return chain;
+};
 
 vi.mock("@/lib/supabase-server", () => ({
   getSupabaseServer: async () => ({ from: table }),
   getSupabaseService: () => ({
-    from: table,
+    from: (name: string) => table(name),
     rpc: async (fn: string) => {
       if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
       if (fn === "ps_checkout_health") {
@@ -54,7 +89,7 @@ import { GET } from "@/app/api/health/route";
 
 type Health = {
   live: boolean;
-  checks: Record<string, boolean>;
+  checks: Record<string, boolean | string | null>;
   checkoutRepair: Record<string, unknown> | null;
   nextSteps: string[];
 };
@@ -62,6 +97,9 @@ type Health = {
 beforeEach(() => {
   state.repair = null;
   state.staff = true;
+  state.push = { configured: true, tableReady: true, count: 1 };
+  state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
+  state.waOutbox = { ready: true, count: 0 };
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -234,6 +272,102 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.live).toBe(true);
     expect(body.nextSteps).toHaveLength(1);
     expect(body.nextSteps[0]).toContain("202609170001_two_tap_order_flow.sql");
+  });
+
+  it("names the phone-notification setup in nextSteps while the keys or the table are missing", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+      },
+    };
+    // VAPID keys missing on the host → the panel can never offer the ON button.
+    state.push = { configured: false, tableReady: false, count: 0 };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushConfigured).toBe(false);
+    expect(body.checks.pushTableReady).toBe(false);
+    expect(body.live).toBe(true); // orders flow without phone notifications
+    expect(body.nextSteps.join("\n")).toContain("PUSH_VAPID_PUBLIC_KEY");
+
+    // Keys present, migration 202609210001 not pasted → every save is refused.
+    state.push = { configured: true, tableReady: false, count: 0 };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushConfigured).toBe(true);
+    expect(body.checks.pushTableReady).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("202609210001_push_subscriptions.sql");
+
+    // Both in place → no push step left.
+    state.push = { configured: true, tableReady: true, count: 2 };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.pushTableReady).toBe(true);
+    expect(body.nextSteps).toEqual([]);
+  });
+
+  it("names the scheduler while its secret, its marks table or its first run is missing", async () => {
+    state.repair = {
+      data: {
+        version: "202609170001",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+        rpc_grants_locked: true,
+        memberships_rls: true,
+        dispatch_reoffer_ok: true,
+        two_tap_flow_ok: true,
+      },
+    };
+
+    // No CRON_SECRET on the host: the clock simply is not running.
+    state.cron = { configured: false, marksReady: false, lastRunAt: null };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronConfigured).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("CRON_SECRET");
+    expect(body.live).toBe(true); // orders flow without a scheduler
+
+    // Secret set, migration 202609240002 not pasted: the one-shot jobs skip.
+    state.cron = { configured: true, marksReady: false, lastRunAt: null };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronMarksReady).toBe(false);
+    expect(body.nextSteps.join("\n")).toContain("202609240002_cron_marks.sql");
+
+    // Everything in place but the Action has never knocked.
+    state.cron = { configured: true, marksReady: true, lastRunAt: null };
+    body = (await (await GET()).json()) as Health;
+    expect(body.nextSteps.join("\n")).toContain("Shop clock");
+
+    // One run recorded → nothing left to do.
+    state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.cronLastRunAt).toBe("2026-09-24T04:00:00.000Z");
+    expect(body.nextSteps).toEqual([]);
+  });
+
+  it("names the free WhatsApp fallback (202609240003) while its draft table is missing", async () => {
+    state.waOutbox = { ready: false, count: 0 };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.waOutboxReady).toBe(false);
+    expect(body.nextSteps.join(" ")).toContain("202609240003_wa_outbox.sql");
+
+    state.waOutbox = { ready: true, count: 0 };
+    const healthy = (await (await GET()).json()) as Health;
+    expect(healthy.checks.waOutboxReady).toBe(true);
+    expect(healthy.nextSteps.join(" ")).not.toContain("202609240003_wa_outbox.sql");
   });
 
   it("reports twoTapFlow from ps_checkout_health().two_tap_flow_ok and clears nextSteps", async () => {

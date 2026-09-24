@@ -1125,8 +1125,9 @@ export async function updateProduct(
     throw new Error("product update failed");
   }
   if (merged.price < row.price) {
-    // A price drop is a promise kept: everyone who asked to be told gets a
-    // line in the staff inbox with their numbers. Never fatal to the save.
+    // A price drop is a promise kept: a watcher whose phone has the shopper
+    // push on hears it instantly, and the rest go in the staff inbox as a
+    // call list with their numbers. Never fatal to the save.
     try {
       const { flagPriceDropForStaff } = await import("./growth");
       await flagPriceDropForStaff(db, {
@@ -1134,20 +1135,26 @@ export async function updateProduct(
         productName: merged.name,
         fromPaisa: row.price,
         toPaisa: merged.price,
+        productSlug: nextSlug,
       });
     } catch {
       // the product is saved; the alert can wait for the next price change
     }
   }
   if (!row.in_stock && patch.in_stock) {
-    // A restock is a promise kept, too: everyone who asked to be told gets a
-    // line in the staff inbox with their numbers. Fires only on a real
-    // out-of-stock → in-stock transition, so one restock = one note (a piece
-    // that sells out again later earns a new one — a real new event). Never
-    // fatal to the save.
+    // A restock is a promise kept, too: subscribed phones are pushed the
+    // moment the piece is back, the rest become a call list in the staff
+    // inbox. Fires only on a real out-of-stock → in-stock transition, so one
+    // restock = one round of messages (a piece that sells out again later
+    // earns a new one — a real new event). Never fatal to the save.
     try {
       const { flagRestockForStaff } = await import("./growth");
-      await flagRestockForStaff(db, { productId: id, productName: merged.name });
+      await flagRestockForStaff(db, {
+        productId: id,
+        productName: merged.name,
+        productSlug: nextSlug,
+        pricePaisa: merged.price,
+      });
     } catch {
       // the product is saved; the alert can wait for the next restock
     }

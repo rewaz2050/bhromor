@@ -31,6 +31,7 @@ import {
 import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
 import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
 import OrderWhatsAppStatus from "@/components/admin/order-whatsapp-status";
+import WaDraftPanel from "@/components/admin/wa-draft-panel";
 import PaymentCard from "@/components/admin/payment-card";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
@@ -283,6 +284,11 @@ export default function AdminOrderDetailPage() {
         </button>
         <OrderWhatsAppStatus order={order} />
       </div>
+
+      {/* The free fallback (2026-09-24): when the shopper's phone could not be
+          pushed (no opt-in / dead device), the step is waiting here as a
+          WhatsApp draft — one tap opens the shop's own app prefilled. */}
+      <WaDraftPanel orderNo={order.id} status={order.status} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Items + totals */}

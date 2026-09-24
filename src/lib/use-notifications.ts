@@ -5,6 +5,7 @@ import { unreadCountOf, type Notif } from "./notification-store";
 import { useStaffLive } from "./use-staff-live";
 import { usePoll } from "./use-poll";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
+import { showPanelNotice } from "./push-client";
 
 /** Inbox refresh cadence while the tab is visible (paused when hidden). */
 export const NOTIFICATIONS_POLL_MS = 15_000;
@@ -36,6 +37,22 @@ export function useNotifications() {
   const prevUnreadRef = React.useRef(0);
   const audioContextRef = React.useRef<AudioContext | null>(null);
 
+  /**
+   * Mobile Chrome starts every AudioContext "suspended" until the page has
+   * had a user gesture (autoplay policy, Chrome 71+). The old beep created
+   * the context on the first new order and played into a suspended graph —
+   * a phone that never heard a thing. Create/resume it on the first tap so
+   * the very first order can actually ring.
+   */
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = audioContextRef.current;
+      if (ctx && ctx.state === "suspended") void ctx.resume().catch(() => {});
+    };
+    window.addEventListener("pointerdown", unlock, { passive: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
   const playBeep = React.useCallback(() => {
     try {
       if (!audioContextRef.current) {
@@ -47,6 +64,7 @@ export function useNotifications() {
       }
       const ctx = audioContextRef.current;
       if (!ctx) return;
+      if (ctx.state === "suspended") void ctx.resume().catch(() => {});
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
@@ -67,15 +85,16 @@ export function useNotifications() {
       const latest = notifs.find((n) => !n.read) || notifs[0];
       if (latest) {
         playBeep();
-        // Browser Notification (free)
-        if ("Notification" in window && Notification.permission === "granted") {
-          try {
-            new Notification(latest.title || "PROSANTI New Order", {
-              body: latest.body || "New order received — check admin panel",
-              icon: "/icon-192.png",
-            });
-          } catch {}
-        }
+        // Browser notification (free). `showPanelNotice` goes through the
+        // service worker first: `new Notification()` is an illegal
+        // constructor on every mobile Chrome, so the old inline call showed
+        // nothing on the owner's Android phone while the desktop thought it
+        // had alerted.
+        void showPanelNotice(
+          latest.title || "PROSANTI New Order",
+          latest.body || "New order received — check the admin panel",
+          latest.href || "/admin",
+        );
         // Also vibrate if supported
         if ("vibrate" in navigator) {
           try {
@@ -95,11 +114,12 @@ export function useNotifications() {
     if (!live) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
-    // Ask for browser notifications once, so a new order can beep even when
-    // staff are in another tab.
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
+    // NOTE (2026-09-23): this hook used to call Notification.requestPermission()
+    // on mount — an untapped prompt, which Chrome penalises: it silently
+    // auto-denies, and `denied` is sticky, so the owner's later tap on
+    // "Phone notification ON" answered "browser ta permission dey nai" for
+    // good. Permission is now asked from exactly one place, by tap: the
+    // setup card on /admin/notifications (the orders banner links there).
   }, [live, refresh]);
   // Visibility-aware poll (see use-poll.ts): stops in a hidden tab, refreshes
   // on return, so the unread counter is current the moment staff look.

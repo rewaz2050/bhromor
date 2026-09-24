@@ -20,6 +20,7 @@ nothing here needs the sandbox.
 | Homepage CMS | This-browser-only | Published row in `site_settings`; storefront reads it live |
 | Media library “added” shelf | This-browser-only | `media_library` table shared by all staff |
 | Notifications bell + inbox | Seeded samples | Per-staff rows written by order/review/application/message/signup events |
+| Phone notifications (Web Push) | — | `push_subscriptions` + VAPID env; ON card at `/admin/notifications` (see README § “Realtime phone notifications”) |
 | Low-stock threshold | This-browser-only | `site_settings['ops']`; dashboard + inventory use it live |
 | Track page | No order lookup | Live orders tracked from the DB by id + phone |
 | Admin “Reset demo” buttons | (removed) | No demo-reset controls exist; live data is never reset |
@@ -538,6 +539,24 @@ Do these on the deployed site, in order:
 - [ ] `/api/rider/*` returns 401/403 for signed-out or unlinked visitors;
       delivery only closes when the customer's 4-digit code matches
 - [ ] `/admin/notifications` → **Mark all read** → bell count clears
+- [ ] Phone notifications: `PUSH_VAPID_PUBLIC_KEY` + `PUSH_VAPID_PRIVATE_KEY`
+      set on the host and `202609210001_push_subscriptions.sql` applied →
+      `/admin/notifications` shows a green checklist (“Server key”, “Database
+      table”, “Ei browser”, “Browser permission”, “Ei phone ta”) → tap
+      **Phone notification ON korun** → **Test pathan** → the notification
+      lands on the phone with the panel closed. Android 13+: Chrome itself
+      also needs notification permission; a browser that already answered
+      “Block” must be reset in Chrome → Site settings → Notifications.
+- [ ] Customer notifications: `202609240001_customer_push.sql` applied →
+      `/api/health` shows `customerPushTableReady: true` → on a phone open
+      `/track` for a live order → **অর্ডারের খবর ফোনে নিন** → allow → **টেস্ট
+      পাঠান** lands → Confirm the order in the panel → the shopper's phone
+      buzzes and the tap opens that order's tracker
+      (details: `docs/customer-notifications.md`)
+- [ ] WhatsApp drafts: `202609240003_wa_outbox.sql` applied → `/api/health`
+      shows `waOutboxReady: true` → advance an order whose shopper never turned
+      phone notifications on → the order page shows **WhatsApp message ready**,
+      one tap opens WhatsApp prefilled, and the orders list counts the queue
 - [ ] `/api/products`, `/api/zones`, `/api/reviews?featured=1` return rows
 
 If any step fails, see Troubleshooting below before retrying.
@@ -551,8 +570,19 @@ direct file-picker upload, add the four Cloudinary variables from
 
 ## 7. What is not automated yet
 
-- SMS/WhatsApp: order updates live in the staff inbox + track timeline;
-  carrier delivery needs a gateway account (blueprint §35, future phase).
+- **The clock itself** (`/api/cron/tick`, docs/automation.md): stale rider
+  offers, the ~2h delivery reminder and the 9am staff digest only run while a
+  scheduler is wired — set `CRON_SECRET` in Vercel **and** as the GitHub
+  Actions secret `CRON_SECRET`, run `202609240002_cron_marks.sql`, then
+  *Actions → Shop clock → Run workflow*. `/api/health` says
+  `cronConfigured` / `cronMarksReady` / `cronLastRunAt` and names the missing
+  piece in `nextSteps`.
+- SMS: order updates live in the staff inbox, the track timeline and (for
+  opted-in phones) Web Push; a carrier/SMS gateway needs a paid account
+  (blueprint §35, future phase). WhatsApp needs **no** gateway: the free draft
+  outbox (`202609240003_wa_outbox.sql`) writes the prefilled message and a
+  staff tap sends it — the paid Cloud API is deliberately not used (why not:
+  `docs/customer-notifications.md` §2).
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the
   footer form when set — for teams that outgrow the table.
 

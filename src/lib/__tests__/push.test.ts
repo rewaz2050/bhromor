@@ -116,6 +116,33 @@ describe("staff web push", () => {
     expect(table.deleted).toEqual([]); // nothing pruned — all delivered
   });
 
+  it("tells a missing device table apart from a malformed subscription (503 vs 422)", async () => {
+    const push = await freshPush();
+    // Migration 202609210001 never pasted → PostgREST's shapes for one thing.
+    expect(push.pushSaveFailureReason(null)).toBeNull();
+    expect(push.pushSaveFailureReason({ code: "42P01" })).toBe("missing_table");
+    expect(push.pushSaveFailureReason({ code: "PGRST205" })).toBe("missing_table");
+    expect(
+      push.pushSaveFailureReason({ message: 'relation "public.push_subscriptions" does not exist' }),
+    ).toBe("missing_table");
+    expect(
+      push.pushSaveFailureReason({ message: "Could not find the table 'public.push_subscriptions' in the schema cache" }),
+    ).toBe("missing_table");
+    // A bad request stays a bad request.
+    expect(push.pushSaveFailureReason({ code: "23505", message: "duplicate key" })).toBe("error");
+
+    const deadDb = {
+      from: () => ({
+        upsert: async () => ({ error: { code: "42P01", message: "does not exist" } }),
+        select: async () => ({ count: null, error: { code: "42P01", message: "does not exist" } }),
+      }),
+    } as unknown as import("@supabase/supabase-js").SupabaseClient;
+    expect(
+      await push.savePushSubscriptionResult(deadDb, { endpoint: "https://push/x", keys: { p256dh: "k", auth: "a" } }),
+    ).toEqual({ ok: false, reason: "missing_table" });
+    expect(await push.pushSubscriptionsReady(deadDb)).toEqual({ ready: false, count: 0 });
+  });
+
   it("prunes subscriptions the push service reports gone (404/410)", async () => {
     const push = await freshPush();
     const table = {

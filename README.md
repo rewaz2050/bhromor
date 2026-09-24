@@ -116,6 +116,110 @@ Setup once:
 
 Notes: staff-gated end to end (`/api/admin/push`, device table service-role only). Android: any browser. iPhone: the panel must be installed via "Add to Home Screen" (iOS 16.4+). Missing keys = honest off switch, nothing throws. Dead subscriptions (404/410) are pruned automatically; fan-out is capped at 2.5s so checkout never waits on a push service. `public/sw.js` has no fetch/cache handler on purpose — live prices stay live — and is registered only from the admin surface.
 
+### "Notification on korte partesi na" — the five checks (2026-09-23)
+
+The card on `/admin/notifications` is now a live checklist. Every row is read from the real state, so the failing one names itself:
+
+| Check | If it is red | Fix |
+|---|---|---|
+| **Server key (VAPID)** | host env has no keys → the card shows no ON button at all | `npx web-push generate-vapid-keys` → `PUSH_VAPID_PUBLIC_KEY` + `PUSH_VAPID_PRIVATE_KEY` in Vercel env → Redeploy (see `.env.example`) |
+| **Database table** | `push_subscriptions` does not exist → saving answers 503 | SQL Editor → `supabase/migrations/202609210001_push_subscriptions.sql` |
+| **Ei browser** | opened inside WhatsApp / Messenger / Facebook / TikTok / Google app (Android WebView) or over http | open the panel in **Chrome** on https |
+| **Browser permission** | `Block` was answered once → **the site can never prompt again** (Chrome auto-denies untapped prompts). The card prints hand-set steps: 🔒 site settings → Permissions → Notifications → Allow; Chrome → Settings → Site settings → Notifications → remove the site from "Not allowed" | on Android 13+ the **Chrome app** needs it too: Settings → Apps → Chrome → Notifications → ON (Nothing OS: App info → Notifications → "Sites"/"General"); battery → **Unrestricted** |
+| **Ei phone ta** | this browser holds no subscription (permission granted but nothing saved) | one tap on **Phone notification ON korun** — it subscribes and saves; opening the card with permission already granted re-saves silently, healing a rotated/lost endpoint |
+
+Also fixed here: in-panel alerts go through `ServiceWorkerRegistration.showNotification()` — `new Notification()` is an **illegal constructor on every mobile Chrome**, so the old inline call showed nothing on Android while the desktop thought it had alerted — and the beep now resumes its suspended `AudioContext` on the first tap (mobile Chrome's autoplay policy kept it silent before). `notifyStaff()` events → Web Push fan-out is unchanged.
+
+## The shop's clock — work that happens without opening the panel (2026-09-24)
+
+The owner's question was *"system ta automate kora jabe?"* — and the honest
+answer started with what was still manual: a rider's unanswered offer expired
+only when somebody next loaded a dispatch board, "your parcel comes this
+evening" was a phone call, and yesterday's numbers required opening `/admin`.
+
+Now `.github/workflows/cron.yml` calls a token-gated **`/api/cron/tick`** every
+15 minutes (free, public repo — no Vercel Pro, no new account) and the app
+decides what is due:
+
+| Job | Effect |
+|---|---|
+| `expire-offers` | stale rider offers expire and the order returns to the dispatch board by itself |
+| `delivery-reminders` | ~2 hours before the window the shopper chose at checkout: **"আজ আপনার পার্সেল আসছে 🛵"** with the shop's own label ("সন্ধ্যায় (৬–৯ PM) · 24 Sep, 6:00 pm") |
+| `daily-digest` | at 9am Dhaka, one staff push (inbox + phone): yesterday's orders/takings, today's orders, what is still open, today's scheduled deliveries, low stock, shoppers waiting on a price/restock |
+
+Alongside it, **price-drop and restock watches now push instead of always
+calling**: a watcher whose phone is subscribed hears the news the moment the
+product is saved, and the staff note keeps only the numbers that could *not* be
+reached — "১ জনকে ফোনে খবর পাঠানো হয়েছে · বাকি ২ জনকে ফোন করুন" — or says
+plainly that there is nobody left to call. Without VAPID keys or any opt-in,
+the note is exactly the call list it was before.
+
+Nothing is required for orders to work: every job is a courtesy that saves a
+phone call. The tick answers an honest JSON report per job (`ran` / `skipped` /
+`failed` + why), and `/api/health` reports `cronConfigured`, `cronMarksReady`
+and `cronLastRunAt`. Setup (one secret, one migration, both free):
+**`docs/automation.md`**.
+
+## Customer notifications — the shopper's phone buzzes too (2026-09-24)
+
+Until today the store had **no automatic customer channel at all**: shoppers
+learned nothing until they re-opened `/track`, and "order kothay?" was
+answered by the shop phoning them. Now **the receipt itself** carries
+**"অর্ডারের খবর ফোনে নিন"** — the one moment a shopper is certainly looking —
+and so does the tracker of a live order. One tap, and that phone follows the
+whole journey (plus payment verified and cancelled) in Bangla or English,
+whichever the shopper was reading.
+
+| Sent when | Customer sees |
+|---|---|
+| order placed | অর্ডার পেয়েছি ✅ |
+| confirmed (staff **or** the shop's own panel) | অর্ডার কনফার্ম হয়েছে ✅ |
+| the shop starts packing | প্যাকিং চলছে 📦 |
+| packing done | প্যাকিং শেষ — রাইডার ডাকা হচ্ছে 🛵 |
+| a rider accepts the delivery | রাইডার নিয়োগ হয়েছে 🛵 |
+| rider picked it up | রাইডার আপনার পার্সেল নিয়েছে 🛵 (+ keep the 4-digit code ready) |
+| delivered | ডেলিভারি হয়েছে 🎉 |
+| cancelled | অর্ডার বাতিল হয়েছে — nothing to pay |
+| wallet payment verified (admin or shop) | পেমেন্ট ভেরিফাই হয়েছে ✅ |
+
+One message per real step, and a step the shop skips sends nothing — the
+two-tap flow may never touch `preparing`, and batch-assigning an order to a
+rider is only an offer (90 s, may expire untaken), so the "rider assigned"
+message waits for the rider's own accept.
+
+**The free fallback for the shoppers push cannot reach** (2026-09-24): when a
+step's push reaches **no device** — the shopper never tapped the opt-in card,
+or every device is dead — the same message is written to `wa_outbox` as a
+draft. The order page shows it under the status buttons as *"WhatsApp message
+ready"* and the orders list carries a strip with a count; **one tap opens the
+shop's own WhatsApp Business app with the text already written**, and the
+staff member presses send. No Meta account, no template approval, no
+per-message fee — and the row records `opened_at`, never a claim that WhatsApp
+delivered it. A newer step supersedes a draft that has not been opened, so a
+shopper can never be sent "confirmed" after "out for delivery".
+
+Setup — **nothing new**: the same VAPID keys power staff and shoppers.
+1. Apply `supabase/migrations/202609240001_customer_push.sql` (shopper push)
+   and `supabase/migrations/202609240003_wa_outbox.sql` (the draft fallback)
+   — both already appended to `supabase/bootstrap-fresh.sql`.
+2. Place a test order → the receipt offers **ফোনে খবর চালু করুন** (or open
+   `/track`) → tap it → **টেস্ট পাঠান**.
+3. Confirm the order in the panel → the shopper's phone buzzes; tapping the
+   notification opens *that* order's tracker. Every later step — packing,
+   rider assigned, picked up, delivered — buzzes on its own.
+4. Advance an order whose shopper never opted in → the same page shows the
+   WhatsApp draft instead; tap **Open in WhatsApp** and press send.
+
+Notes: the endpoint is public by necessity (shoppers are guests) but a device
+can only be registered with the tracker's own proof — order number **and**
+that order's phone — and only ever against the number the order carries.
+Dead endpoints (404/410) are pruned; fan-out is capped at 2.5 s so checkout
+never waits on a push service. Missing VAPID keys or a missing migration =
+honest off switch, the card says which. Full picture, plus the roadmap for
+WhatsApp automation → email sender → customer in-app inbox:
+[`docs/customer-notifications.md`](docs/customer-notifications.md).
+`/api/health` reports `customerPushTableReady` and the device count.
+
 ## Account dashboard rebuild (2026-09-21)
 
 - **Hero up top** — greeting by name, phone chip, PROSANTI+ status chip (best-effort read, hides on failure), one-tap "track your last order" (the device's remembered receipt), wishlist count, and sign-out. The identity block used to sit at the BOTTOM of the card stack; logout was effectively undiscoverable.

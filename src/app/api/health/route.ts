@@ -12,6 +12,10 @@ import {
   isServiceRoleConfigured,
   isSupabaseConfigured,
 } from "@/lib/env";
+import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
+import { customerPushReady } from "@/lib/customer-push";
+import { waOutboxReady } from "@/lib/wa-outbox";
+import { cronStatus } from "@/lib/cron";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
 
@@ -74,6 +78,24 @@ export async function GET(request?: Request) {
     // gets a 422 ("not allowed from here") and staff must use "More… →
     // Start preparing" first.
     twoTapFlow: false,
+    // 202609210001 + PUSH_VAPID_* — the owner's phone notifications. Not
+    // part of `live` (orders flow without it) but it is the first thing the
+    // owner asks about, so the report names it instead of staying silent.
+    pushConfigured: false,
+    pushTableReady: false,
+    // 202609240001 — shopper (customer) Web Push: the other half of "the phone
+    // buzzes", and the only automatic channel a customer has.
+    customerPushTableReady: false,
+    // 202609240002 — the clock (docs/automation.md): stale rider offers, the
+    // ~2h delivery reminder, the 9am digest. `cronConfigured` is whether the
+    // secret is set at all; `cronMarksReady` whether the migration ran;
+    // `cronLastRunAt` when the GitHub Action last knocked.
+    cronConfigured: false,
+    cronMarksReady: false,
+    cronLastRunAt: null as string | null,
+    // 202609240003 — the free WhatsApp fallback: when no push reached the
+    // shopper, the step waits in `wa_outbox` as a one-tap draft.
+    waOutboxReady: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -122,6 +144,26 @@ export async function GET(request?: Request) {
         // Unexpected error shape — if it is NOT "function not found", treat as installed.
         checks.placeOrderRpc = code !== undefined;
       }
+
+      // Phone notifications: VAPID keys + the staff device table (202609210001).
+      checks.pushConfigured = isPushConfigured();
+      const pushTable = await pushSubscriptionsReady(svc);
+      checks.pushTableReady = pushTable.ready;
+      counts.push_subscriptions = pushTable.count;
+      // …and the shopper side (202609240001).
+      const customerPush = await customerPushReady(svc);
+      checks.customerPushTableReady = customerPush.ready;
+      counts.customer_push_subscriptions = customerPush.count;
+      // …and the free fallback for the shoppers push cannot reach (202609240003).
+      const waOutbox = await waOutboxReady(svc);
+      checks.waOutboxReady = waOutbox.ready;
+      counts.wa_outbox_pending = waOutbox.count;
+
+      // The clock (202609240002) — is a scheduler wired, and did it knock?
+      const cron = await cronStatus(svc);
+      checks.cronConfigured = cron.configured;
+      checks.cronMarksReady = cron.marksReady;
+      checks.cronLastRunAt = cron.lastRunAt;
 
       // Can an order row actually be INSERTED? ps_checkout_health() ships with
       // the repair migration; a missing function IS the answer (not applied).
@@ -203,6 +245,41 @@ export async function GET(request?: Request) {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
     nextSteps.push(
       "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
+    );
+  }
+  if (checks.reachable && !checks.pushConfigured) {
+    nextSteps.push(
+      "Phone notification off — host env e PUSH_VAPID_PUBLIC_KEY + PUSH_VAPID_PRIVATE_KEY set korun (npx web-push generate-vapid-keys), tarpor Admin → Notifications → 'Phone notification ON korun'. Key chara /admin/notifications card ta ON button dey na",
+    );
+  }
+  if (checks.reachable && checks.pushConfigured && !checks.pushTableReady) {
+    nextSteps.push(
+      "Phone notification er device table nai — SQL Editor-e supabase/migrations/202609210001_push_subscriptions.sql chalaben; na chalale ON button e chap dile 'push_subscriptions table nai' asbe",
+    );
+  }
+  if (checks.reachable && checks.pushConfigured && !checks.customerPushTableReady) {
+    nextSteps.push(
+      "Customer notification er table nai — SQL Editor-e supabase/migrations/202609240001_customer_push.sql chalaben; na chalale /track er 'ফোনে খবর নিন' button kaaj korbe na",
+    );
+  }
+  if (checks.reachable && !checks.waOutboxReady) {
+    nextSteps.push(
+      "WhatsApp draft table nai — SQL Editor-e supabase/migrations/202609240003_wa_outbox.sql chalaben; na chalale je customer phone-e notification ON koreni take kono step er message draft hisebe o pabe na (order page e 'Ready to send' asbe na)",
+    );
+  }
+  if (checks.reachable && !checks.cronConfigured) {
+    nextSteps.push(
+      "Scheduler bondho — Vercel env e CRON_SECRET set korun, sei value-i GitHub → Secrets and variables → Actions e CRON_SECRET hisebe rakhun (docs/automation.md). Na dile rider offer expiry, 2 ghontar delivery reminder ar sokaler digest cholbe na",
+    );
+  }
+  if (checks.reachable && checks.cronConfigured && !checks.cronMarksReady) {
+    nextSteps.push(
+      "Scheduler er marks table nai — SQL Editor-e supabase/migrations/202609240002_cron_marks.sql chalaben; na chalale reminder/digest bad pore (offer sweep cholbe)",
+    );
+  }
+  if (checks.reachable && checks.cronConfigured && checks.cronMarksReady && !checks.cronLastRunAt) {
+    nextSteps.push(
+      "Scheduler ekbaro choleni — GitHub → Actions → 'Shop clock' → Run workflow, tarpor 15 minute por abar dekhun (docs/automation.md)",
     );
   }
 

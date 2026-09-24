@@ -5,6 +5,7 @@
 import { advanceOrderAsStaff } from "@/lib/db/admin";
 import { AdminInputError } from "@/lib/db/admin";
 import { notifyStaff } from "@/lib/db/engagement";
+import { notifyCustomerOfStatus } from "@/lib/customer-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
 import { formatBdt } from "@/lib/format";
@@ -53,6 +54,16 @@ export const POST = staffRoute(
     );
     const staffDb = getSupabaseService();
     if (staffDb) {
+      // The shopper hears it too (2026-09-24): every real transition has its
+      // own message now, so this route notifies on EVERY advance and lets
+      // `notifyCustomerOfStatus` decide the copy (a status the shop skips
+      // simply produces no push).
+      await notifyCustomerOfStatus(staffDb, {
+        phone: order.customer?.phone,
+        orderNo: order.id,
+        status: body.to as OrderStatus,
+        total: order.total,
+      });
       const label = (body.to as string).replace(/-/g, " ");
       await notifyStaff(staffDb, {
         kind: "order",

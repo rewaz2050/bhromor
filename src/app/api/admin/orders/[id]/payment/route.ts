@@ -11,6 +11,7 @@
 import { verifyPaymentAsStaff } from "@/lib/db/admin";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { notifyStaff } from "@/lib/db/engagement";
+import { notifyCustomerOfPayment } from "@/lib/customer-push";
 import { apiJson } from "@/lib/api-response";
 import { routeId, staffRoute } from "../../../_lib";
 
@@ -43,6 +44,17 @@ export const POST = staffRoute(
     );
     const staffDb = getSupabaseService();
     if (staffDb) {
+      // A verified wallet payment is the one thing a bKash/Nagad payer has no
+      // way to see in Bangla anywhere else — and it is the question the shop
+      // gets phoned about. Rejections stay silent: the order is cancelled and
+      // the cancelled milestone already carries the honest message.
+      if (action === "verified") {
+        await notifyCustomerOfPayment(staffDb, {
+          phone: order.customer?.phone,
+          orderNo: order.id,
+          total: order.total,
+        });
+      }
       await notifyStaff(staffDb, {
         kind: "order",
         title:

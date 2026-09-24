@@ -173,6 +173,22 @@ export const translations = {
       orders: "Orders",
       bag: "Bag",
     },
+    // Shopper phone notifications (2026-09-24) — the opt-in card on /track.
+    trackPush: {
+      title: "Get order updates on your phone",
+      subtitle:
+        "One tap and this phone buzzes at every step — order confirmed, packing, rider assigned, on the way, delivered. No need to keep checking this page, and no need for the shop to call you.",
+      enable: "Turn on phone updates",
+      working: "Working…",
+      test: "Send a test",
+      disable: "Turn off",
+      on: "Phone updates are ON — the first one arrives the moment the order moves.",
+      testSent: "Test sent — check your phone's notification shade.",
+      off: "Phone updates turned off on this device.",
+      failed: "Could not turn it on — please try again.",
+      brBlocked: "This browser has already blocked notifications. Hand-set steps:",
+      notReady: "Phone updates are not available yet — the shop has not finished setting them up.",
+    },
     accountHero: {
       pageEyebrow: "A space of your own",
       pageTitle: "Your account.",
@@ -829,6 +845,22 @@ export const translations = {
       orders: "অর্ডার",
       bag: "ব্যাগ",
     },
+    // ফোনে অর্ডার আপডেট (2026-09-24) — /track পেজের কার্ড।
+    trackPush: {
+      title: "অর্ডারের খবর ফোনে নিন",
+      subtitle:
+        "এক ট্যাপেই এই ফোনে খবর আসবে — অর্ডার কনফার্ম, প্যাকিং, রাইডার নিয়োগ, পথে, ডেলিভারি — প্রতিটি ধাপেই। প্রতিবার এই পেজ খুলে দেখতে হবে না, দোকানকেও ফোন করতে হবে না।",
+      enable: "ফোনে খবর চালু করুন",
+      working: "কাজ হচ্ছে…",
+      test: "টেস্ট পাঠান",
+      disable: "বন্ধ করুন",
+      on: "ফোনে খবর চালু আছে — অর্ডার এগোলেই প্রথম খবরটি আসবে।",
+      testSent: "টেস্ট পাঠানো হয়েছে — ফোনের নোটিফিকেশন দেখুন।",
+      off: "এই ফোনে খবর বন্ধ করা হলো।",
+      failed: "চালু করা গেল না — আবার চেষ্টা করুন।",
+      brBlocked: "এই ব্রাউজার আগেই নোটিফিকেশন ব্লক করে রেখেছে। হাতে করে করুন:",
+      notReady: "ফোনে খবর এখনো চালু হয়নি — দোকান সেটআপ শেষ করেনি।",
+    },
     accountHero: {
       pageEyebrow: "আপনার নিজের একটা জায়গা",
       pageTitle: "আপনার অ্যাকাউন্ট।",
@@ -1344,6 +1376,7 @@ export type TranslationKey =
   | `priceDrop.${keyof typeof translations.en.priceDrop}`
   | `restock.${keyof typeof translations.en.restock}`
   | `track.${keyof typeof translations.en.track}`
+  | `trackPush.${keyof typeof translations.en.trackPush}`
   | `accountHero.${keyof typeof translations.en.accountHero}`
   | `accountTabs.${keyof typeof translations.en.accountTabs}`
   | `accountPitch.${keyof typeof translations.en.accountPitch}`;
