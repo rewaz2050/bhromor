@@ -177,7 +177,7 @@ export const translations = {
     trackPush: {
       title: "Get order updates on your phone",
       subtitle:
-        "One tap and this phone buzzes at each step — no need to keep checking this page, and no need for the shop to call you.",
+        "One tap and this phone buzzes at every step — order confirmed, packing, rider assigned, on the way, delivered. No need to keep checking this page, and no need for the shop to call you.",
       enable: "Turn on phone updates",
       working: "Working…",
       test: "Send a test",
@@ -849,7 +849,7 @@ export const translations = {
     trackPush: {
       title: "অর্ডারের খবর ফোনে নিন",
       subtitle:
-        "এক ট্যাপেই এই ফোনে খবর আসবে — প্রতিবার এই পেজ খুলে দেখতে হবে না, দোকানকেও ফোন করতে হবে না।",
+        "এক ট্যাপেই এই ফোনে খবর আসবে — অর্ডার কনফার্ম, প্যাকিং, রাইডার নিয়োগ, পথে, ডেলিভারি — প্রতিটি ধাপেই। প্রতিবার এই পেজ খুলে দেখতে হবে না, দোকানকেও ফোন করতে হবে না।",
       enable: "ফোনে খবর চালু করুন",
       working: "কাজ হচ্ছে…",
       test: "টেস্ট পাঠান",

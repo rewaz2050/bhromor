@@ -7,6 +7,12 @@ automation → email sender → customer in-app inbox.**
 **Update (same day, second question — *"system ta automate kora jabe?"*):** the
 clock that makes the rest of this file possible shipped as
 `/api/cron/tick` (a GitHub Action every 15 minutes; **`docs/automation.md`**).
+
+**Update (same day, third question — *"order confirmed theke baki process ektar
+por ektar complete hole auto messages jabe"*):** the milestones-only design was
+too quiet. §1's map now sends **one message per real status change** — packing
+and rider-assignment included — so the shopper follows the whole journey from
+the phone they ordered with, without opening the tracker.
 Two things it already changed here: the scheduled-delivery reminder
 ("আজ আপনার পার্সেল আসছে") is now a push rather than a phone call, and
 **price-drop / restock watches push to subscribed phones** — the staff note
@@ -34,26 +40,43 @@ time, one call per parcel. Staff already had push (`push_subscriptions`,
 | Fan-out | `src/lib/customer-push.ts` | `pushOrderMilestone()` — VAPID Web Push to every device registered on that phone; prunes 404/410; capped at 2.5 s so it can never delay a status write |
 | Copy | `src/lib/notify-messages.ts` | Pure Bangla/English templates + the milestone map |
 | Public API | `src/app/api/track/push` (+ `/test`) | GET status for the card, POST register (order id **+** that order's phone = the tracker's own proof), DELETE forget, POST test push |
-| Card | `src/components/track/notify-opt-in.tsx` | "অর্ডারের খবর ফোনে নিন" on the tracker of a live order, with the four milestones listed |
+| Card | `src/components/track/notify-opt-in.tsx` | "অর্ডারের খবর ফোনে নিন" — on **the receipt, right after an order is placed** (the one moment the shopper is certainly looking), and on the tracker of a live order; the seven journey steps are listed on the card |
 | Hook | `src/lib/use-order-push.ts` | Permission from the tap, subscribe through the existing `/sw.js`, remember the endpoint locally |
 | Triggers | admin advance · vendor advance · rider pickup/deliver · payment verify · order placement | see below |
 
-**Three pushes per parcel, not eight.** `CUSTOMER_PUSH_STATUS` maps the
-internal states onto the four public milestones (`PUBLIC_STEPS`), so the
-promise on the card and the messages sent cannot drift apart:
+**One message per real step.** `CUSTOMER_PUSH_STATUS` maps each internal state
+onto exactly one customer sentence, and the card promises the same seven steps
+(`CUSTOMER_JOURNEY`) — the promise and the messages cannot drift apart:
 
 | Sent when | Customer sees |
 |---|---|
 | order placed (`/api/orders`) | অর্ডার পেয়েছি ✅ + tracker link |
-| `confirmed` (admin/vendor advance) | অর্ডার কনফার্ম হয়েছে |
+| `confirmed` (admin/vendor advance) | অর্ডার কনফার্ম হয়েছে ✅ |
+| `preparing` (shop starts packing) | প্যাকিং চলছে 📦 |
+| `ready-for-pickup` (packing done) | প্যাকিং শেষ — রাইডার ডাকা হচ্ছে 🛵 |
+| `courier-assigned` (**rider accepts** the offer) | রাইডার নিয়োগ হয়েছে 🛵 — a rider took the delivery |
 | `out-for-delivery` (rider pickup) | রাইডার আপনার পার্সেল নিয়েছে 🛵 + "keep the 4-digit code ready" |
 | `delivered` (rider deliver) | ডেলিভারি হয়েছে 🎉 |
-| `cancelled` (advance to cancelled) | অর্ডার বাতিল হয়েছে — nothing to pay |
+| `cancelled` (staff advance, or the shopper's own cancel) | অর্ডার বাতিল হয়েছে — nothing to pay |
 | wallet payment **verified** (admin or vendor) | পেমেন্ট ভেরিফাই হয়েছে ✅ |
 
-Silent on purpose: `pending`, `preparing`, `ready-for-pickup`,
-`courier-assigned` — internal steps the shopper cannot act on (and the shop's
-own two-tap flow often skips them).
+A status the shop skips sends nothing (the `preparing` step is optional in the
+state machine — confirmed may go straight to ready-for-pickup), and `pending`
+has no message of its own because placement already sent `placed`. `returned`
+stays silent (returns are a different product flow).
+
+**Who rings the bell.** Every writer of `orders.status` now calls
+`notifyCustomerOfStatus` on the service client: staff advance
+(`/api/admin/orders/[id]/advance`), **the vendor's own advance**
+(`/api/vendor/orders/[id]/advance` — a shop confirming from its own panel used
+to send nothing), **the rider's accept** (`/api/rider/assignments/[id]/accept`,
+which is the moment `ps_rider_accept` sets `courier-assigned`), rider
+pickup/deliver, payment verified (admin + vendor), and order placement.
+
+Deliberately *not* a step: `/api/admin/deliveries/batch` offers the order to a
+rider for 90 seconds. The order status does not change, the offer can expire
+untaken, and a shopper told "rider assigned" would have been told a guess —
+the message fires when the **rider accepts**.
 
 **Security posture.** The endpoint is public because shoppers are guests.
 What can it do? Register a device *only* for a phone number the caller can

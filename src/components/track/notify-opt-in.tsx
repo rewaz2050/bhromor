@@ -3,13 +3,15 @@
 /**
  * "খবর ফোনে নিন" — the shopper's one-tap order notifications (2026-09-24).
  *
- * Sits on the tracker of a live order. Before this card existed the only way
- * a shopper learned their parcel had moved was to re-open `/track` (or wait
- * for the shop to call): the store had no customer channel at all.
+ * Shown twice, deliberately: on the receipt the moment an order is placed
+ * (the one moment a shopper is certainly looking) and on the tracker of a
+ * live order. Before this card the only way a shopper learned their parcel
+ * had moved was to re-open `/track` — or wait for the shop to call.
  *
  * The card never oversells:
- *   • it lists the four milestones it will announce, from the same
- *     `PUBLIC_STEPS` the tracker draws (three pushes a parcel, not eight);
+ *   • it lists every step it will announce, from the same `CUSTOMER_JOURNEY`
+ *     the fan-out walks (one message per real transition, skip a step and
+ *     nothing is sent);
  *   • an in-app browser (WhatsApp/Facebook WebView) is told plainly that push
  *     cannot work there, with the Chrome instruction — the single most common
  *     way a Sunamganj shopper would otherwise tap a dead button;
@@ -23,22 +25,35 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { IconBell, IconCheck } from "@/components/ui/icons";
 import { customerPushPromise } from "@/lib/notify-messages";
 import { useOrderPush } from "@/lib/use-order-push";
-import type { Order } from "@/lib/orders";
 
-/** Only live orders can still produce a milestone. */
-const isLive = (order: Order): boolean =>
-  order.status !== "delivered" && order.status !== "cancelled";
+/**
+ * Only live orders can still produce a step. `status` is optional so the
+ * receipt (which knows the order is brand new) can render the card without
+ * carrying the whole order shape.
+ */
+const isLive = (status?: string): boolean =>
+  status !== "delivered" && status !== "cancelled";
 
-export default function NotifyOptIn({ order }: { order: Order }) {
+export default function NotifyOptIn({
+  orderId,
+  phone,
+  status,
+}: {
+  orderId: string;
+  /** The checkout phone — the tracker's own proof, and what the row binds to. */
+  phone: string;
+  /** Order status, when the caller knows it (the tracker does). */
+  status?: string;
+}) {
   const { t, lang } = useLanguage();
-  const { state, enable, disable, sendTest } = useOrderPush(order.id, order.customer?.phone ?? "");
+  const { state, enable, disable, sendTest } = useOrderPush(orderId, phone);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!isLive(order)) return null;
+  if (!isLive(status)) return null;
 
-  const milestones = customerPushPromise(lang);
+  const journey = customerPushPromise(lang);
 
   const onEnable = async () => {
     if (busy) return;
@@ -122,14 +137,14 @@ export default function NotifyOptIn({ order }: { order: Order }) {
         </div>
       </div>
 
-      {/* The four milestones, from the same source the tracker renders. */}
+      {/* Every step, from the same journey the fan-out walks. */}
       <ul className="mt-3 flex flex-wrap gap-2" data-testid="track-notify-milestones">
-        {milestones.map((m) => (
+        {journey.map((m) => (
           <li
             key={m.kind}
             className="rounded-full bg-ivory-100 px-3 py-1 text-[0.7rem] font-medium text-ink-soft"
           >
-            {m.title}
+            {m.label}
           </li>
         ))}
       </ul>

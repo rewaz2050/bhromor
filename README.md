@@ -164,29 +164,37 @@ and `cronLastRunAt`. Setup (one secret, one migration, both free):
 
 Until today the store had **no automatic customer channel at all**: shoppers
 learned nothing until they re-opened `/track`, and "order kothay?" was
-answered by the shop phoning them. Now the tracker of a live order carries
-**"অর্ডারের খবর ফোনে নিন"** — one tap, and that phone gets the four public
-milestones (plus payment verified and cancelled) in Bangla or English,
+answered by the shop phoning them. Now **the receipt itself** carries
+**"অর্ডারের খবর ফোনে নিন"** — the one moment a shopper is certainly looking —
+and so does the tracker of a live order. One tap, and that phone follows the
+whole journey (plus payment verified and cancelled) in Bangla or English,
 whichever the shopper was reading.
 
 | Sent when | Customer sees |
 |---|---|
 | order placed | অর্ডার পেয়েছি ✅ |
-| confirmed | অর্ডার কনফার্ম হয়েছে |
+| confirmed (staff **or** the shop's own panel) | অর্ডার কনফার্ম হয়েছে ✅ |
+| the shop starts packing | প্যাকিং চলছে 📦 |
+| packing done | প্যাকিং শেষ — রাইডার ডাকা হচ্ছে 🛵 |
+| a rider accepts the delivery | রাইডার নিয়োগ হয়েছে 🛵 |
 | rider picked it up | রাইডার আপনার পার্সেল নিয়েছে 🛵 (+ keep the 4-digit code ready) |
 | delivered | ডেলিভারি হয়েছে 🎉 |
 | cancelled | অর্ডার বাতিল হয়েছে — nothing to pay |
 | wallet payment verified (admin or shop) | পেমেন্ট ভেরিফাই হয়েছে ✅ |
 
-`preparing`, `ready-for-pickup` and `courier-assigned` stay silent on purpose:
-three useful pushes per parcel, not eight.
+One message per real step, and a step the shop skips sends nothing — the
+two-tap flow may never touch `preparing`, and batch-assigning an order to a
+rider is only an offer (90 s, may expire untaken), so the "rider assigned"
+message waits for the rider's own accept.
 
 Setup — **nothing new**: the same VAPID keys power staff and shoppers.
 1. Apply `supabase/migrations/202609240001_customer_push.sql`
    (already appended to `supabase/bootstrap-fresh.sql`).
-2. Place a test order → open `/track` → tap **ফোনে খবর চালু করুন** → **টেস্ট পাঠান**.
+2. Place a test order → the receipt offers **ফোনে খবর চালু করুন** (or open
+   `/track`) → tap it → **টেস্ট পাঠান**.
 3. Confirm the order in the panel → the shopper's phone buzzes; tapping the
-   notification opens *that* order's tracker.
+   notification opens *that* order's tracker. Every later step — packing,
+   rider assigned, picked up, delivered — buzzes on its own.
 
 Notes: the endpoint is public by necessity (shoppers are guests) but a device
 can only be registered with the tracker's own proof — order number **and**

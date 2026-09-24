@@ -309,11 +309,15 @@ export default function TrackView() {
             {/* P1 #8: wallet-payment state (COD orders render nothing) */}
             <PaymentStatus order={order} />
 
-            {/* 2026-09-24: the shopper's own phone — four milestones pushed,
-                so "order kothay?" stops being a phone call. Sits above the
+            {/* 2026-09-24: the shopper's own phone — every step pushed, so
+                "order kothay?" stops being a phone call. Sits above the
                 cancel panel: it is the first thing worth offering on a live
                 order. */}
-            <NotifyOptIn order={order} />
+            <NotifyOptIn
+              orderId={order.id}
+              phone={order.customer?.phone ?? ""}
+              status={order.status}
+            />
 
             {/* P1 #14: cancel online while the shop has not packed it yet */}
             <CancelPanel

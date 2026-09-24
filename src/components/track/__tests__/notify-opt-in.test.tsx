@@ -77,17 +77,15 @@ vi.mock("@/components/i18n/language-provider", () => ({
 }));
 
 import NotifyOptIn from "../notify-opt-in";
-import type { Order } from "@/lib/orders";
 
-const order = (over: Partial<Order> = {}): Order =>
-  ({
-    id: "PS-20260924-0007",
-    status: "confirmed",
-    total: 124000,
-    customer: { name: "Rahim", phone: "01712345678" },
-    items: [],
-    ...over,
-  }) as unknown as Order;
+/** The three facts the card needs (the tracker and the receipt both have them). */
+const card = (over: { orderId?: string; phone?: string; status?: string } = {}) => (
+  <NotifyOptIn
+    orderId={over.orderId ?? "PS-20260924-0007"}
+    phone={over.phone ?? "01712345678"}
+    status={over.status ?? "confirmed"}
+  />
+);
 
 const reset = () => {
   state.supported = true;
@@ -110,13 +108,16 @@ afterEach(() => {
 });
 
 describe("NotifyOptIn (track page)", () => {
-  it("offers the four milestones it will send, then turns them on with one tap", async () => {
+  it("offers every step it will send, then turns them on with one tap", async () => {
     reset();
-    render(<NotifyOptIn order={order()} />);
+    render(card());
 
     const milestones = screen.getByTestId("track-notify-milestones").textContent ?? "";
+    // The journey, not just the four tracker milestones — packing and rider
+    // assignment are announced too now (2026-09-24).
     expect(milestones).toContain("অর্ডার পেয়েছি");
     expect(milestones).toContain("কনফার্ম");
+    expect(milestones).toContain("প্যাকিং");
     expect(milestones).toContain("রাইডার");
     expect(milestones).toContain("ডেলিভারি");
 
@@ -132,7 +133,7 @@ describe("NotifyOptIn (track page)", () => {
   it("sends a real test push and reports it", async () => {
     reset();
     state.subscribed = true;
-    render(<NotifyOptIn order={order()} />);
+    render(card());
     fireEvent.click(screen.getByTestId("track-notify-test"));
     await waitFor(() => expect(state.testCalls).toBe(1));
     expect(screen.getByTestId("track-notify-note").textContent).toContain("টেস্ট পাঠানো হয়েছে");
@@ -143,7 +144,7 @@ describe("NotifyOptIn (track page)", () => {
     state.supported = false;
     state.blocker =
       "Ei page ta WhatsApp er bhitore khulche. In-app browser e notification kono din asbe na — Chrome (ba Firefox) e kholun.";
-    render(<NotifyOptIn order={order()} />);
+    render(card());
 
     expect(screen.getByTestId("track-notify-blocker").textContent).toContain("WhatsApp");
     // No dead button: the only honest action is to leave for a real browser.
@@ -157,7 +158,7 @@ describe("NotifyOptIn (track page)", () => {
       "Address bar-er 🔒 (site settings) → Notifications → Allow.",
       "Phone Settings → Apps → Chrome → Notifications → ON.",
     ];
-    render(<NotifyOptIn order={order()} />);
+    render(card());
 
     const recovery = screen.getByTestId("track-notify-recovery").textContent ?? "";
     expect(recovery).toContain("ব্লক"); // the heading says what happened
@@ -168,21 +169,21 @@ describe("NotifyOptIn (track page)", () => {
   it("waits for the shop's setup instead of failing on the tap", async () => {
     reset();
     state.ready = false;
-    render(<NotifyOptIn order={order()} />);
+    render(card());
     expect(screen.getByTestId("track-notify-notready")).toBeInTheDocument();
     expect(screen.getByTestId("track-notify-enable")).toBeDisabled();
 
     cleanup();
     reset();
     state.configured = false;
-    render(<NotifyOptIn order={order()} />);
+    render(card());
     expect(screen.getByTestId("track-notify-enable")).toBeDisabled();
   });
 
   it("surfaces a refusal instead of pretending it worked", async () => {
     reset();
     state.enableResult = { ok: false, message: "Browser block kore diyeche — nicher steps follow korun." };
-    render(<NotifyOptIn order={order()} />);
+    render(card());
     fireEvent.click(screen.getByTestId("track-notify-enable"));
     await waitFor(() =>
       expect(screen.getByTestId("track-notify-error").textContent).toContain("block"),
@@ -192,10 +193,21 @@ describe("NotifyOptIn (track page)", () => {
 
   it("renders nothing once the order is delivered or cancelled", () => {
     reset();
-    const { container } = render(<NotifyOptIn order={order({ status: "delivered" })} />);
+    const { container } = render(card({ status: "delivered" }));
     expect(container).toBeEmptyDOMElement();
     cleanup();
-    const { container: c2 } = render(<NotifyOptIn order={order({ status: "cancelled" })} />);
+    const { container: c2 } = render(card({ status: "cancelled" }));
     expect(c2).toBeEmptyDOMElement();
+  });
+
+  it("renders on the receipt, where there is no order status to check yet", () => {
+    reset();
+    // The receipt passes no status — a freshly placed order is always live,
+    // and this is the one moment the shopper is certainly looking.
+    const { container } = render(
+      <NotifyOptIn orderId="PS-20260924-0007" phone="01712345678" />,
+    );
+    expect(container).not.toBeEmptyDOMElement();
+    expect(screen.getByTestId("track-notify-enable")).toBeInTheDocument();
   });
 });

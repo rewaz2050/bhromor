@@ -54,10 +54,10 @@ export const POST = staffRoute(
     );
     const staffDb = getSupabaseService();
     if (staffDb) {
-      // The shopper hears it too (2026-09-24): confirmed / out-for-delivery /
-      // delivered / cancelled are the four public milestones. States in
-      // between (preparing, ready-for-pickup, courier-assigned) stay silent —
-      // `notifyCustomerOfStatus` decides, not this route.
+      // The shopper hears it too (2026-09-24): every real transition has its
+      // own message now, so this route notifies on EVERY advance and lets
+      // `notifyCustomerOfStatus` decide the copy (a status the shop skips
+      // simply produces no push).
       await notifyCustomerOfStatus(staffDb, {
         phone: order.customer?.phone,
         orderNo: order.id,

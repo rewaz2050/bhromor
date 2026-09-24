@@ -6,21 +6,29 @@
  *
  * Copy rules (same posture as the rest of the storefront):
  *   • Bangla first for a Sunamganj shopper (`lang: "bn"`), English second;
- *   • only public milestones — never internal states (`preparing`,
- *     `courier-assigned` are the shop's business, not the shopper's);
+ *   • one message per REAL transition — the owner asked for every step to be
+ *     announced ("prottek dhap e nijei message jaak"), so packing, rider
+ *     assignment and pickup each have their own sentence rather than being
+ *     folded into "confirmed" (2026-09-24). A status the shop skips sends
+ *     nothing — the two-tap flow may never touch `preparing`;
  *   • a cancelled order says so plainly and says there is nothing to pay;
  *   • the body always carries the order number so a shopper with two
  *     parcels can tell them apart on a lock screen.
  */
 
 import { formatBdt } from "./format";
-import { PUBLIC_STEPS } from "./orders";
 import type { Language } from "./translations";
 
-/** What a shopper is pushed about. Public milestones only. */
+/** What a shopper is pushed about. */
 export type CustomerEventKind =
   | "placed"
   | "confirmed"
+  /** The shop started packing (2026-09-24: every step is now announced). */
+  | "preparing"
+  /** Packed and waiting for a rider. */
+  | "ready-for-pickup"
+  /** A rider accepted the delivery — distinct from "the rider has it". */
+  | "rider-assigned"
   | "picked-up"
   | "delivered"
   | "cancelled"
@@ -38,10 +46,32 @@ export type CustomerEventKind =
 export const CUSTOMER_EVENTS: readonly CustomerEventKind[] = [
   "placed",
   "confirmed",
+  "preparing",
+  "ready-for-pickup",
+  "rider-assigned",
   "picked-up",
   "delivered",
   "cancelled",
   "payment-verified",
+];
+
+/**
+ * The journey as the SHOPPER experiences it (2026-09-24) — the order of the
+ * chips on the opt-in card, and the order messages actually arrive in.
+ *
+ * Every status the shop can move an order to has a message now, one per real
+ * transition (the owner asked for exactly that: "prottek dhap e nijei message
+ * jaak"). A tap the shop skips simply produces no message — the admin can
+ * still go confirmed → ready-for-pickup in the two-tap flow.
+ */
+export const CUSTOMER_JOURNEY: readonly CustomerEventKind[] = [
+  "placed",
+  "confirmed",
+  "preparing",
+  "ready-for-pickup",
+  "rider-assigned",
+  "picked-up",
+  "delivered",
 ];
 
 /**
@@ -59,16 +89,21 @@ export type ProductEventKind = "price-drop" | "back-in-stock";
 /**
  * Which `OrderStatus` values are worth a push, and what they mean.
  *
- * Deliberately narrow: `pending`/`confirmed`/`preparing` collapse to
- * "confirmed", and `ready-for-pickup`/`courier-assigned` stay silent because
- * the shopper-visible milestone ("rider took it") is `out-for-delivery` —
- * `PUBLIC_STEPS[2].doneAt`. Three pushes per parcel, not eight.
+ * As of 2026-09-24 every real transition has its own message, so the shopper
+ * follows the parcel step by step. `pending` has no message of its own — the
+ * placement path already sends `placed` — and a status the shop skips simply
+ * produces nothing. "Returned" stays silent: returns are their own
+ * conversation, not a delivery milestone.
  */
 export const CUSTOMER_PUSH_STATUS: Partial<Record<string, CustomerEventKind>> = {
-  // `confirmed` only: `preparing` is an internal step the two-tap flow often
-  // skips entirely, and firing the same "confirmed" event twice would make the
-  // notification look broken.
+  // Every real transition has its own message — never the same event twice.
+  // (`preparing` and `ready-for-pickup` used to stay silent because the
+  // two-tap flow can skip them; when the shop does tap them, the shopper is
+  // told, and a skipped tap simply sends nothing.)
   confirmed: "confirmed",
+  preparing: "preparing",
+  "ready-for-pickup": "ready-for-pickup",
+  "courier-assigned": "rider-assigned",
   "out-for-delivery": "picked-up",
   delivered: "delivered",
   cancelled: "cancelled",
@@ -107,8 +142,20 @@ const BN: Record<CustomerEventKind, EventCopy> = {
     body: "আপনার অর্ডার {no} আমরা পেয়েছি। দোকান কনফার্ম করলেই খবর পাবেন।",
   },
   confirmed: {
-    title: "অর্ডার কনফার্ম হয়েছে",
-    body: "{no} কনফার্ম — দোকান এখন প্যাক করছে। রাইডার বের হলে আবার জানাব।",
+    title: "অর্ডার কনফার্ম হয়েছে ✅",
+    body: "{no} কনফার্ম — দোকান এখন আপনার অর্ডার নিয়ে কাজ শুরু করেছে। প্রতিটি ধাপে খবর পাবেন।",
+  },
+  preparing: {
+    title: "প্যাকিং চলছে 📦",
+    body: "{no} — দোকান আপনার অর্ডার গুছিয়ে প্যাক করছে। প্যাক শেষ হলেই জানাব।",
+  },
+  "ready-for-pickup": {
+    title: "প্যাকিং শেষ — রাইডার ডাকা হচ্ছে",
+    body: "{no} তৈরি — এখন রাইডার নিয়োগের কাজ চলছে। রাইডার নিলেই জানাব।",
+  },
+  "rider-assigned": {
+    title: "রাইডার নিয়োগ হয়েছে 🛵",
+    body: "{no} — একজন রাইডার ডেলিভারিটি নিয়েছেন, শীঘ্রই দোকান থেকে রওনা দেবেন।",
   },
   "picked-up": {
     title: "রাইডার আপনার পার্সেল নিয়েছে 🛵",
@@ -142,8 +189,20 @@ const EN: Record<CustomerEventKind, EventCopy> = {
     body: "We have your order {no}. You will hear from us the moment the shop confirms it.",
   },
   confirmed: {
-    title: "Order confirmed",
-    body: "{no} is confirmed — the shop is packing it now. We will tell you when the rider leaves.",
+    title: "Order confirmed ✅",
+    body: "{no} is confirmed — the shop has started on it. Every step from here lands here.",
+  },
+  preparing: {
+    title: "Being packed 📦",
+    body: "{no} — the shop is packing your order now. You will hear as soon as it is ready.",
+  },
+  "ready-for-pickup": {
+    title: "Packed — finding a rider",
+    body: "{no} is packed and ready. We are arranging the rider now and will tell you the moment one takes it.",
+  },
+  "rider-assigned": {
+    title: "Rider assigned 🛵",
+    body: "{no} — a rider has taken your delivery and will leave the shop shortly.",
   },
   "picked-up": {
     title: "The rider has your parcel 🛵",
@@ -286,30 +345,37 @@ export const customerPushMessage = (input: MessageInput): CustomerMessage => {
 export const statusToEventKind = (status: string): CustomerEventKind | null =>
   CUSTOMER_PUSH_STATUS[status] ?? null;
 
-/**
- * The four milestone titles an opted-in shopper will receive — the opt-in
- * card lists exactly these, so the promise shown and the promise kept cannot
- * drift apart.
- */
-export const publicStepEvent = (
-  stepKey: (typeof PUBLIC_STEPS)[number]["key"],
-): CustomerEventKind => {
-  switch (stepKey) {
-    case "placed":
-      return "placed";
-    case "confirmed":
-      return "confirmed";
-    case "picked-up":
-      return "picked-up";
-    default:
-      return "delivered";
-  }
+/** One-line chip labels for the journey (a lock screen gets the full title). */
+const SHORT: Record<Language, Partial<Record<CustomerEventKind, string>>> = {
+  bn: {
+    placed: "অর্ডার পেয়েছি",
+    confirmed: "কনফার্ম",
+    preparing: "প্যাকিং",
+    "ready-for-pickup": "রাইডার ডাকা হচ্ছে",
+    "rider-assigned": "রাইডার নিয়োগ",
+    "picked-up": "পথে",
+    delivered: "ডেলিভারি",
+  },
+  en: {
+    placed: "Ordered",
+    confirmed: "Confirmed",
+    preparing: "Packing",
+    "ready-for-pickup": "Ready",
+    "rider-assigned": "Rider assigned",
+    "picked-up": "On the way",
+    delivered: "Delivered",
+  },
 };
 
+export const customerEventShort = (kind: CustomerEventKind, lang: Language = "bn"): string =>
+  SHORT[lang][kind] ?? COPY[lang][kind].title;
+
+/**
+ * The steps an opted-in shopper will receive, in the order they arrive — the
+ * opt-in card lists exactly these, built from the same journey the fan-out
+ * walks, so the promise shown and the promise kept cannot drift apart.
+ */
 export const customerPushPromise = (
   lang: Language = "bn",
-): { kind: CustomerEventKind; title: string }[] =>
-  PUBLIC_STEPS.map((step) => {
-    const kind = publicStepEvent(step.key);
-    return { kind, title: COPY[lang][kind].title };
-  });
+): { kind: CustomerEventKind; label: string }[] =>
+  CUSTOMER_JOURNEY.map((kind) => ({ kind, label: customerEventShort(kind, lang) }));

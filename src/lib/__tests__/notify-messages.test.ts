@@ -6,29 +6,28 @@
 import { describe, expect, it } from "vitest";
 import {
   CUSTOMER_EVENTS,
+  CUSTOMER_JOURNEY,
   customerEventLabel,
+  customerEventShort,
   customerProductMessage,
   customerPushMessage,
   customerPushPromise,
-  publicStepEvent,
   statusToEventKind,
 } from "../notify-messages";
 
 describe("customer notifications — copy and milestone map", () => {
-  it("maps only the four public milestones, and nothing else", () => {
+  it("gives every real transition its own message (2026-09-24: the whole journey)", () => {
     expect(statusToEventKind("confirmed")).toBe("confirmed");
+    expect(statusToEventKind("preparing")).toBe("preparing");
+    expect(statusToEventKind("ready-for-pickup")).toBe("ready-for-pickup");
+    expect(statusToEventKind("courier-assigned")).toBe("rider-assigned");
     expect(statusToEventKind("out-for-delivery")).toBe("picked-up");
     expect(statusToEventKind("delivered")).toBe("delivered");
     expect(statusToEventKind("cancelled")).toBe("cancelled");
 
-    for (const silent of [
-      "pending",
-      "preparing",
-      "ready-for-pickup",
-      "courier-assigned",
-      "returned",
-      "",
-    ]) {
+    // `pending` has no message of its own (placement already sends `placed`),
+    // and a status the shop skips simply sends nothing.
+    for (const silent of ["pending", "returned", ""]) {
       expect(statusToEventKind(silent), silent).toBeNull();
     }
   });
@@ -70,20 +69,26 @@ describe("customer notifications — copy and milestone map", () => {
     expect(msg.href).toBe("/track?id=PS-1&phone=");
   });
 
-  it("lists exactly the four milestones the card promises, in order", () => {
+  it("lists every step the card promises, in the order they arrive", () => {
     const promise = customerPushPromise("bn");
+    expect(promise.map((p) => p.kind)).toEqual([...CUSTOMER_JOURNEY]);
     expect(promise.map((p) => p.kind)).toEqual([
       "placed",
       "confirmed",
+      "preparing",
+      "ready-for-pickup",
+      "rider-assigned",
       "picked-up",
       "delivered",
     ]);
-    expect(promise[0].title).toContain("অর্ডার পেয়েছি");
-    expect(promise[3].title).toContain("ডেলিভারি");
-    // Each promise is a real event the fan-out can send.
-    for (const p of promise) expect(CUSTOMER_EVENTS).toContain(p.kind);
-    expect(publicStepEvent("placed")).toBe("placed");
-    expect(publicStepEvent("picked-up")).toBe("picked-up");
+    expect(promise[0].label).toContain("অর্ডার পেয়েছি");
+    expect(promise[2].label).toContain("প্যাকিং");
+    expect(promise[6].label).toContain("ডেলিভারি");
+    // Each promise is a real event the fan-out can send, with copy both ways.
+    for (const p of promise) {
+      expect(CUSTOMER_EVENTS).toContain(p.kind);
+      expect(customerEventShort(p.kind, "en").length).toBeGreaterThan(0);
+    }
   });
 
   it("names every event for the operator-side logs and tests", () => {
@@ -118,14 +123,10 @@ describe("the scheduled-delivery reminder (2026-09-24)", () => {
     expect(en.body).not.toContain("— .");
   });
 
-  it("is not one of the four promises the opt-in card makes", () => {
+  it("is not one of the journey steps the opt-in card promises", () => {
     expect(CUSTOMER_EVENTS).not.toContain("delivery-today");
-    expect(customerPushPromise("bn").map((p) => p.kind)).toEqual([
-      "placed",
-      "confirmed",
-      "picked-up",
-      "delivered",
-    ]);
+    expect(CUSTOMER_JOURNEY).not.toContain("delivery-today");
+    expect(customerPushPromise("bn")).toHaveLength(CUSTOMER_JOURNEY.length);
   });
 });
 

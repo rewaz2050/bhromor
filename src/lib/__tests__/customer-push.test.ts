@@ -197,19 +197,48 @@ describe("customer push — subscription storage", () => {
 });
 
 describe("customer push — milestones", () => {
-  it("stays silent for the internal states a shopper should never be told about", async () => {
+  it("sends nothing for `pending` (placement already sent that one)", async () => {
     const push = await freshPush();
     const log = table({ rows: [row()] });
-    for (const status of ["pending", "preparing", "ready-for-pickup", "courier-assigned"] as const) {
+    expect(
+      await push.notifyCustomerOfStatus(fakeDb(log), {
+        phone: "01712345678",
+        orderNo: "PS-1",
+        status: "pending",
+      }),
+    ).toBe(0);
+    expect(sendCalls).toHaveLength(0);
+  });
+
+  it("walks the whole journey — one distinct message per real step (2026-09-24)", async () => {
+    const push = await freshPush();
+    const log = table({ rows: [row()] });
+    const steps = [
+      ["confirmed", "কনফার্ম"],
+      ["preparing", "প্যাকিং"],
+      ["ready-for-pickup", "রাইডার"],
+      ["courier-assigned", "রাইডার নিয়োগ"],
+      ["out-for-delivery", "রাইডার আপনার পার্সেল"],
+      ["delivered", "ডেলিভারি"],
+    ] as const;
+    for (const [status] of steps) {
       expect(
         await push.notifyCustomerOfStatus(fakeDb(log), {
           phone: "01712345678",
           orderNo: "PS-1",
           status,
         }),
-      ).toBe(0);
+        status,
+      ).toBe(1);
     }
-    expect(sendCalls).toHaveLength(0);
+    expect(sendCalls).toHaveLength(steps.length);
+    const titles = sendCalls.map((c) => (JSON.parse(c.payload) as { title: string }).title);
+    steps.forEach(([status, fragment], i) => {
+      expect(titles[i], status).toContain(fragment);
+    });
+    // Packing and "rider assigned" are their own sentence — never the same
+    // notification twice, which is what made "confirmed" look broken before.
+    expect(new Set(titles).size).toBe(steps.length);
   });
 
   it("pushes the four public milestones with the tracker link and the total", async () => {
@@ -252,7 +281,7 @@ describe("customer push — milestones", () => {
 
     expect(sendCalls).toHaveLength(6);
     const payloads = sendCalls.map((c) => JSON.parse(c.payload) as { title: string; body: string; href: string });
-    expect(payloads[0].title).toBe("অর্ডার কনফার্ম হয়েছে");
+    expect(payloads[0].title).toContain("অর্ডার কনফার্ম হয়েছে");
     expect(payloads[1].title).toContain("রাইডার");
     expect(payloads[2].title).toContain("ডেলিভারি");
     expect(payloads[3].title).toBe("অর্ডার পেয়েছি ✅");
