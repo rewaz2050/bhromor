@@ -14,6 +14,7 @@ import {
 } from "@/lib/env";
 import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
 import { customerPushReady } from "@/lib/customer-push";
+import { waOutboxReady } from "@/lib/wa-outbox";
 import { cronStatus } from "@/lib/cron";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
@@ -92,6 +93,9 @@ export async function GET(request?: Request) {
     cronConfigured: false,
     cronMarksReady: false,
     cronLastRunAt: null as string | null,
+    // 202609240003 — the free WhatsApp fallback: when no push reached the
+    // shopper, the step waits in `wa_outbox` as a one-tap draft.
+    waOutboxReady: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -150,6 +154,10 @@ export async function GET(request?: Request) {
       const customerPush = await customerPushReady(svc);
       checks.customerPushTableReady = customerPush.ready;
       counts.customer_push_subscriptions = customerPush.count;
+      // …and the free fallback for the shoppers push cannot reach (202609240003).
+      const waOutbox = await waOutboxReady(svc);
+      checks.waOutboxReady = waOutbox.ready;
+      counts.wa_outbox_pending = waOutbox.count;
 
       // The clock (202609240002) — is a scheduler wired, and did it knock?
       const cron = await cronStatus(svc);
@@ -252,6 +260,11 @@ export async function GET(request?: Request) {
   if (checks.reachable && checks.pushConfigured && !checks.customerPushTableReady) {
     nextSteps.push(
       "Customer notification er table nai — SQL Editor-e supabase/migrations/202609240001_customer_push.sql chalaben; na chalale /track er 'ফোনে খবর নিন' button kaaj korbe na",
+    );
+  }
+  if (checks.reachable && !checks.waOutboxReady) {
+    nextSteps.push(
+      "WhatsApp draft table nai — SQL Editor-e supabase/migrations/202609240003_wa_outbox.sql chalaben; na chalale je customer phone-e notification ON koreni take kono step er message draft hisebe o pabe na (order page e 'Ready to send' asbe na)",
     );
   }
   if (checks.reachable && !checks.cronConfigured) {

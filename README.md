@@ -187,14 +187,28 @@ two-tap flow may never touch `preparing`, and batch-assigning an order to a
 rider is only an offer (90 s, may expire untaken), so the "rider assigned"
 message waits for the rider's own accept.
 
+**The free fallback for the shoppers push cannot reach** (2026-09-24): when a
+step's push reaches **no device** — the shopper never tapped the opt-in card,
+or every device is dead — the same message is written to `wa_outbox` as a
+draft. The order page shows it under the status buttons as *"WhatsApp message
+ready"* and the orders list carries a strip with a count; **one tap opens the
+shop's own WhatsApp Business app with the text already written**, and the
+staff member presses send. No Meta account, no template approval, no
+per-message fee — and the row records `opened_at`, never a claim that WhatsApp
+delivered it. A newer step supersedes a draft that has not been opened, so a
+shopper can never be sent "confirmed" after "out for delivery".
+
 Setup — **nothing new**: the same VAPID keys power staff and shoppers.
-1. Apply `supabase/migrations/202609240001_customer_push.sql`
-   (already appended to `supabase/bootstrap-fresh.sql`).
+1. Apply `supabase/migrations/202609240001_customer_push.sql` (shopper push)
+   and `supabase/migrations/202609240003_wa_outbox.sql` (the draft fallback)
+   — both already appended to `supabase/bootstrap-fresh.sql`.
 2. Place a test order → the receipt offers **ফোনে খবর চালু করুন** (or open
    `/track`) → tap it → **টেস্ট পাঠান**.
 3. Confirm the order in the panel → the shopper's phone buzzes; tapping the
    notification opens *that* order's tracker. Every later step — packing,
    rider assigned, picked up, delivered — buzzes on its own.
+4. Advance an order whose shopper never opted in → the same page shows the
+   WhatsApp draft instead; tap **Open in WhatsApp** and press send.
 
 Notes: the endpoint is public by necessity (shoppers are guests) but a device
 can only be registered with the tracker's own proof — order number **and**

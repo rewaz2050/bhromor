@@ -8044,3 +8044,35 @@ create table if not exists public.cron_marks (
 );
 alter table public.cron_marks enable row level security;
 commit;
+
+-- ============================================================================
+-- WhatsApp draft outbox (2026-09-24) — the FREE fallback when Web Push reached
+-- nobody. The WhatsApp Business API is not needed for order messages (Meta
+-- business account + pre-approved templates + ~$0.011 per utility message);
+-- a `wa.me` deep link opens the shop's own WhatsApp Business app with the text
+-- prefilled, and a human taps send. One draft per order per step, written when
+-- the push fan-out reached no device; the admin order page shows it as "Ready
+-- to send". `opened_at` records the tap that OPENED WhatsApp — never a claim
+-- that a human sent it. Service role only — RLS on, no policies.
+-- ============================================================================
+begin;
+create table if not exists public.wa_outbox (
+  id            uuid primary key default gen_random_uuid(),
+  order_no      text not null,
+  phone         text not null,
+  kind          text not null,
+  lang          text not null default 'bn',
+  message       text not null,
+  created_at    timestamptz not null default now(),
+  opened_at     timestamptz,
+  superseded_at timestamptz,
+  dismissed_at  timestamptz,
+  unique (order_no, kind)
+);
+create index if not exists idx_wa_outbox_pending
+  on public.wa_outbox (created_at desc)
+  where opened_at is null and superseded_at is null and dismissed_at is null;
+create index if not exists idx_wa_outbox_order
+  on public.wa_outbox (order_no, created_at desc);
+alter table public.wa_outbox enable row level security;
+commit;

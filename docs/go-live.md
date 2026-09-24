@@ -553,6 +553,10 @@ Do these on the deployed site, in order:
       পাঠান** lands → Confirm the order in the panel → the shopper's phone
       buzzes and the tap opens that order's tracker
       (details: `docs/customer-notifications.md`)
+- [ ] WhatsApp drafts: `202609240003_wa_outbox.sql` applied → `/api/health`
+      shows `waOutboxReady: true` → advance an order whose shopper never turned
+      phone notifications on → the order page shows **WhatsApp message ready**,
+      one tap opens WhatsApp prefilled, and the orders list counts the queue
 - [ ] `/api/products`, `/api/zones`, `/api/reviews?featured=1` return rows
 
 If any step fails, see Troubleshooting below before retrying.
@@ -573,8 +577,12 @@ direct file-picker upload, add the four Cloudinary variables from
   *Actions → Shop clock → Run workflow*. `/api/health` says
   `cronConfigured` / `cronMarksReady` / `cronLastRunAt` and names the missing
   piece in `nextSteps`.
-- SMS/WhatsApp: order updates live in the staff inbox + track timeline;
-  carrier delivery needs a gateway account (blueprint §35, future phase).
+- SMS: order updates live in the staff inbox, the track timeline and (for
+  opted-in phones) Web Push; a carrier/SMS gateway needs a paid account
+  (blueprint §35, future phase). WhatsApp needs **no** gateway: the free draft
+  outbox (`202609240003_wa_outbox.sql`) writes the prefilled message and a
+  staff tap sends it — the paid Cloud API is deliberately not used (why not:
+  `docs/customer-notifications.md` §2).
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the
   footer form when set — for teams that outgrow the table.
 

@@ -19,6 +19,7 @@ import { PaymentChip } from "@/components/admin/payment-chip";
 import { OrderRowActions } from "@/components/admin/order-row-actions";
 import { IconSearch } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import WaDraftPanel from "@/components/admin/wa-draft-panel";
 
 /**
  * Filter chips follow the four public phases (+ cancelled): eight internal
@@ -186,6 +187,9 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
+      {/* The free WhatsApp fallback (2026-09-24): shoppers who never turned
+          on phone notifications get their step drafted here instead. */}
+      <WaDraftPanel mode="queue" />
       <AdminDataError
         label="Orders"
         error={error}

@@ -16,8 +16,9 @@ the phone they ordered with, without opening the tracker.
 Two things it already changed here: the scheduled-delivery reminder
 ("আজ আপনার পার্সেল আসছে") is now a push rather than a phone call, and
 **price-drop / restock watches push to subscribed phones** — the staff note
-keeps only the numbers that could not be reached. WhatsApp and email are still
-the next two items (§2, §3), unchanged in order.
+keeps only the numbers that could not be reached. WhatsApp automation
+(§2) then followed the same day as the **free draft outbox**; email is still
+the next item (§3).
 
 This file is the single place that answers "how does a customer find out?"
 for the live store, so the answer cannot drift from the code.
@@ -103,18 +104,29 @@ tracker and the shop's call remain the source of truth.
 
 ---
 
-## 2. Next: WhatsApp status automation (draft → one tap)
+## 2. WhatsApp automation — the free draft outbox (*shipped 2026-09-24*)
 
-**Already in the repo:** `src/lib/admin-wa.ts` builds the five pre-written
-Bangla status messages (Confirmed / Ready-pickup / On the way / Courier /
-Delivered) including a `/track?id=…&phone=…` link, and
+**Already in the repo (before this):** `src/lib/admin-wa.ts` builds five
+pre-written Bangla status messages (Confirmed / Ready-pickup / On the way /
+Courier / Delivered) including a `/track?id=…&phone=…` link, and
 `src/components/admin/order-whatsapp-status.tsx` renders them as chips on the
-admin order page. Today a human must open the order and tap.
+admin order page — a human had to open the order and tap.
 
-**The build:** after the same status hooks the push uses, write the message
-for *that* order into a `wa_outbox` table (status, message, phone, created_at,
-sent_at) and show it on the order page as "Ready to send" — one tap opens
-`wa.me` with the text prefilled and marks the row sent.
+**What shipped now (the free half of the notification layer):**
+
+| Piece | Where | What it does |
+|---|---|---|
+| Table | `supabase/migrations/202609240003_wa_outbox.sql` | `wa_outbox`: one draft per **order + step** (`unique (order_no, kind)`), the prefilled text, and three honest timestamps — `opened_at`, `superseded_at`, `dismissed_at`. Service-role only (RLS on, no policies) |
+| Copy | `src/lib/wa-outbox.ts` | `waDraftText()` reuses the SAME `notify-messages.ts` copy the push used, plus an absolute track link — so the phone and the draft can never disagree |
+| Queue | `src/lib/customer-push.ts` | `pushOrderMilestone()` now returns how many devices accepted; when that is **0**, the step is queued here. A push that reached a phone queues nothing |
+| API | `src/app/api/admin/wa-outbox` | GET the queue (`?order=` scopes it; server builds the chip label + the `wa.me` link), POST `{id, action: opened \| dismissed}` |
+| Panel | `src/components/admin/wa-draft-panel.tsx` | **Order page**: the draft under the status actions, one tap "Open in WhatsApp" + "Not needed". **Orders list**: a strip saying how many messages are waiting, linking each order |
+
+**Why this, and not the API** — the owner asked, and it needs **no API at
+all**: a `wa.me` link opens the shop's OWN WhatsApp Business app with the text
+written and a human taps send. No Meta app, no verification, no template
+approval, no per-message fee, and the familiar number keeps working exactly as
+today.
 
 **Owner asked (2026-09-24): *"WhatsApp Business er API deya lagbe ki?"*** —
 **No, not for this.** The draft route needs **no API at all**: a
@@ -150,8 +162,18 @@ At this shop's volumes the API buys exactly one thing the free routes cannot:
 sending with **no human tap**. Revisit if staff minutes per order ever cost
 more than ~৳10.
 
-**Never** claim a message was sent when a human had to tap it — the outbox row
-records who sent it.
+**Never** claim a message was sent when a human had to tap it — which is why
+the outbox has no `sent_at` at all. Tapping "Open in WhatsApp" writes
+`opened_at`: the browser opened a link, and what happens inside the WhatsApp
+app is invisible to us. The panel says that in words under every draft, and a
+newer step **supersedes** whatever is still pending for the same order, so
+nobody can send "order confirmed" after "the rider has your parcel".
+
+**Owner steps.** One SQL file: `202609240003_wa_outbox.sql` (also appended to
+`supabase/bootstrap-fresh.sql`). Nothing else — no account, no key, no fee.
+`/api/health` reports `checks.waOutboxReady` and
+`counts.wa_outbox_pending`, and its Banglish `nextSteps` names the file while
+it is missing.
 
 ## 3. Then: an email sender (Resend / ZeptoMail free tier)
 
@@ -196,6 +218,10 @@ who are signed in — which is why it comes last: push covers guests today.
 
 ## 6. Verification checklist (after merging + SQL)
 
+- [ ] `supabase/migrations/202609240003_wa_outbox.sql` applied → `/api/health`
+      shows `waOutboxReady: true`; advance an order whose shopper never opted in
+      → the order page shows "WhatsApp message ready" and one tap opens
+      WhatsApp prefilled
 - [ ] `supabase/migrations/202609240001_customer_push.sql` applied →
       `/api/health` shows `customerPushTableReady: true`
 - [ ] On a phone: place a test order → open `/track` → the card lists four

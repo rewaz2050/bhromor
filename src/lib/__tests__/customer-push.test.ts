@@ -51,9 +51,17 @@ const table = (over: Partial<TableLog> = {}): TableLog => ({
   ...over,
 });
 
+const waOutbox: Row[] = [];
 const fakeDb = (log: TableLog) =>
   ({
     from: (name: string) => ({
+      // The free WhatsApp fallback (2026-09-24) — the same fan-out writes a
+      // draft here when the push reached no device (see wa-outbox.test.ts).
+      insert: async (row: Row) => {
+        if (name !== "wa_outbox") return { error: { message: "wrong table" } };
+        waOutbox.push(row);
+        return { error: null };
+      },
       upsert: async (row: Row) => {
         if (name !== "customer_push_subscriptions") return { error: { message: "wrong table" } };
         log.upserted.push(row);
@@ -66,6 +74,12 @@ const fakeDb = (log: TableLog) =>
           return { error: null };
         },
       }),
+      update: () => {
+        const chain: Record<string, unknown> = {};
+        for (const method of ["eq", "is", "neq"]) chain[method] = () => chain;
+        chain.then = (ok: unknown) => Promise.resolve({ error: null }).then(ok as never);
+        return chain;
+      },
       select: () => ({
         eq: (col: string, value: string) => ({
           limit: async () => {
@@ -114,6 +128,7 @@ const row = (over: Row = {}): Row => ({
 });
 
 beforeEach(() => {
+  waOutbox.length = 0;
   sendCalls.length = 0;
   sendError = null;
   vi.resetModules();
@@ -197,6 +212,44 @@ describe("customer push — subscription storage", () => {
 });
 
 describe("customer push — milestones", () => {
+  it("writes the free WhatsApp draft when the push reached NO device (2026-09-24)", async () => {
+    const push = await freshPush();
+    // No subscribed devices for this phone — the shopper never opted in.
+    const log = table({ rows: [] });
+    expect(
+      await push.notifyCustomerOfStatus(fakeDb(log), {
+        phone: "01712345678",
+        orderNo: "PS-20260924-0007",
+        // A status, not an event kind: the map decides the sentence.
+        status: "out-for-delivery",
+      }),
+    ).toBe(0);
+    expect(sendCalls).toHaveLength(0);
+    // …so the same message waits in the outbox, one tap away for the shop.
+    expect(waOutbox).toHaveLength(1);
+    expect(waOutbox[0]).toMatchObject({
+      order_no: "PS-20260924-0007",
+      phone: "01712345678",
+      kind: "picked-up",
+      lang: "bn",
+    });
+    expect(String(waOutbox[0].message)).toContain("রাইডার আপনার পার্সেল নিয়েছে");
+  });
+
+  it("writes NO draft when a device accepted the push — the shopper was told", async () => {
+    const push = await freshPush();
+    const log = table({ rows: [row()] });
+    expect(
+      await push.notifyCustomerOfStatus(fakeDb(log), {
+        phone: "01712345678",
+        orderNo: "PS-1",
+        status: "delivered",
+      }),
+    ).toBe(1);
+    expect(sendCalls).toHaveLength(1);
+    expect(waOutbox).toHaveLength(0);
+  });
+
   it("sends nothing for `pending` (placement already sent that one)", async () => {
     const push = await freshPush();
     const log = table({ rows: [row()] });

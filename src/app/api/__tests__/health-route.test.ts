@@ -21,6 +21,8 @@ const state = vi.hoisted(() => ({
   push: { configured: true, tableReady: true, count: 1 },
   /** The clock (2026-09-24): CRON_SECRET, the marks table, the last knock. */
   cron: { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" as string | null },
+  /** The free WhatsApp fallback (2026-09-24): the draft outbox table. */
+  waOutbox: { ready: true, count: 0 },
 }));
 
 vi.mock("@/lib/cron", () => ({
@@ -48,14 +50,31 @@ vi.mock("@/lib/env", () => ({
   isCloudinaryConfigured: () => false,
 }));
 
-const table = () => ({
-  select: async () => ({ count: 3, error: null }),
-});
+/**
+ * A chainable, awaitable table stub: the newer probes read counts with filters
+ * (`select(…).is(…).is(…)`) while older ones await `select()` directly, so the
+ * stub supports both shapes. `wa_outbox` can be made to fail, which is how the
+ * fallback's "run this migration" next step is pinned.
+ */
+const table = (name?: string) => {
+  const result =
+    name === "wa_outbox" && !state.waOutbox.ready
+      ? { count: null, error: { code: "42P01", message: "relation does not exist" } }
+      : { count: name === "wa_outbox" ? state.waOutbox.count : 3, error: null };
+  const chain: Record<string, unknown> = {};
+  for (const method of ["select", "is", "eq", "order", "limit", "not", "in"]) {
+    chain[method] = () => chain;
+  }
+  chain.then = (ok: unknown, bad: unknown) =>
+    Promise.resolve(result).then(ok as never, bad as never);
+  chain.catch = (bad: unknown) => Promise.resolve(result).catch(bad as never);
+  return chain;
+};
 
 vi.mock("@/lib/supabase-server", () => ({
   getSupabaseServer: async () => ({ from: table }),
   getSupabaseService: () => ({
-    from: table,
+    from: (name: string) => table(name),
     rpc: async (fn: string) => {
       if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
       if (fn === "ps_checkout_health") {
@@ -80,6 +99,7 @@ beforeEach(() => {
   state.staff = true;
   state.push = { configured: true, tableReady: true, count: 1 };
   state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
+  state.waOutbox = { ready: true, count: 0 };
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -336,6 +356,18 @@ describe("GET /api/health — checkout repair awareness", () => {
     body = (await (await GET()).json()) as Health;
     expect(body.checks.cronLastRunAt).toBe("2026-09-24T04:00:00.000Z");
     expect(body.nextSteps).toEqual([]);
+  });
+
+  it("names the free WhatsApp fallback (202609240003) while its draft table is missing", async () => {
+    state.waOutbox = { ready: false, count: 0 };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.waOutboxReady).toBe(false);
+    expect(body.nextSteps.join(" ")).toContain("202609240003_wa_outbox.sql");
+
+    state.waOutbox = { ready: true, count: 0 };
+    const healthy = (await (await GET()).json()) as Health;
+    expect(healthy.checks.waOutboxReady).toBe(true);
+    expect(healthy.nextSteps.join(" ")).not.toContain("202609240003_wa_outbox.sql");
   });
 
   it("reports twoTapFlow from ps_checkout_health().two_tap_flow_ok and clears nextSteps", async () => {

@@ -14,10 +14,17 @@
  *     registers from `/track` after proving it knows the order number *and*
  *     that number's phone — the same proof the tracker already demands.
  *
- *   • **Milestones only.** `statusToEventKind()` maps the eight internal
- *     states onto four promises a shopper can check. `preparing` and
- *     `ready-for-pickup` deliberately map to nothing: three useful pushes
- *     beat eight notifications.
+ *   • **Every real step, one message each.** `statusToEventKind()` maps each
+ *     internal state onto its own sentence (confirmed → preparing →
+ *     ready-for-pickup → rider assigned → picked up → delivered): the owner
+ *     asked for the whole journey, and a status the shop skips simply sends
+ *     nothing.
+ *
+ *   • **Push first, then the free WhatsApp draft.** When a push reached NO
+ *     device — the shopper never tapped "ফোনে খবর নিন", or every device is
+ *     dead — `pushOrderMilestone()` writes the same message into `wa_outbox`
+ *     so the shop can send it with one tap from the order page. No Meta
+ *     account, no per-message fee: see `wa-outbox.ts`.
  *
  *   • **Never throws, never stalls.** Every entry point is best-effort and
  *     capped at ~2.5 s (same rule as the staff fan-out): a sleepy push
@@ -40,6 +47,7 @@ import {
   type CustomerEventKind,
   type ProductEventKind,
 } from "@/lib/notify-messages";
+import { queueWaDraft } from "@/lib/wa-outbox";
 
 /** Same VAPID pair the staff devices use — one key for the whole site. */
 const nonEmpty = (value: string | undefined | null, max = 500): string | null => {
@@ -316,10 +324,15 @@ export const customerDevicesForPhone = async (
 };
 
 /**
- * Push one order event to every device the shopper registered on this phone.
+ * Tell a shopper about one order event — push first, then the free WhatsApp
+ * draft when the push reached nobody.
  *
  * Returns how many devices the push service accepted (0 when the shopper
  * never opted in, when VAPID keys are missing, or when every device is dead).
+ * A 0 result is also what queues the one-tap WhatsApp draft (`wa_outbox`), so
+ * the shop can still reach that shopper by hand — one tap, no Meta account, no
+ * per-message fee. If a push got through, NO draft is queued: the shopper has
+ * already been told, and a second message would only be noise.
  */
 export const pushOrderMilestone = async (
   db: SupabaseClient,
@@ -338,7 +351,7 @@ export const pushOrderMilestone = async (
   const orderNo = clean(input.orderNo, 40);
   const kind = input.kind ?? (input.status ? statusToEventKind(input.status) : null);
   if (!orderNo || !kind) return 0;
-  return pushCustomerMessage(db, {
+  const reached = await pushCustomerMessage(db, {
     phone: input.phone,
     build: (lang) =>
       customerPushMessage({
@@ -350,6 +363,23 @@ export const pushOrderMilestone = async (
         lang,
       }),
   });
+  if (reached === 0) {
+    const outcome = await queueWaDraft(db, {
+      orderNo,
+      phone: input.phone,
+      kind,
+      total: input.total ?? null,
+      // Drafts are Bangla: the shop's own customers read Bangla, and a single
+      // stored text cannot follow a device's language the way a push can.
+      lang: "bn",
+    });
+    if (outcome === "missing_table") {
+      console.warn(
+        "[customer-push] no push reached the shopper and the WhatsApp draft table is missing — run supabase/migrations/202609240003_wa_outbox.sql",
+      );
+    }
+  }
+  return reached;
 };
 
 /**
