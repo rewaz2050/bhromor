@@ -10,6 +10,7 @@ import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
+import type { Rider } from "@/lib/catalog";
 import {
   availabilityLabel,
   isOnShift,
@@ -358,6 +359,12 @@ export default function RiderPage() {
             </button>
           </div>
         )}
+
+        <RiderProfileCard
+          rider={activeRider}
+          email={session.email}
+          onSaved={session.refresh}
+        />
 
         {/* P2 #22 — the rider's own shift. Auto-dispatch only offers jobs
             inside it (enforced in the database, not just here), so this card
@@ -875,6 +882,132 @@ export default function RiderPage() {
 }
 const SHIFT_DAYS = ["শু", "ম", "বু", "বৃ", "শু", "শ", "ছ"] as const;
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+/** Identity first: the rider can check and correct the details customers see. */
+function RiderProfileCard({
+  rider,
+  email,
+  onSaved,
+}: {
+  rider: Rider;
+  email: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [name, setName] = useState(rider.name);
+  const [phone, setPhone] = useState(rider.phone);
+  const [vehicle, setVehicle] = useState<Rider["vehicle"]>(rider.vehicle);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/rider/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone, vehicle }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error || "প্রোফাইল সেভ করা যায়নি।");
+      await onSaved();
+      setEditing(false);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "প্রোফাইল সেভ করা যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const vehicleLabel =
+    rider.vehicle === "bicycle" ? "সাইকেল" : rider.vehicle === "scooter" ? "স্কুটার" : "বাইক";
+
+  return (
+    <section aria-label="Rider profile" className="rounded-2xl border border-line bg-paper p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-forest-900">আমার প্রোফাইল</p>
+          <h2 className="mt-1 truncate font-display text-xl font-semibold text-forest-900">{rider.name}</h2>
+          <p className="mt-1 text-xs text-ink-soft">{rider.phone} · {vehicleLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setEditing((value) => !value);
+            setError(null);
+            setSaved(false);
+          }}
+          className="min-h-10 shrink-0 rounded-full px-4 text-xs font-semibold text-forest-800 ring-1 ring-forest-300"
+        >
+          {editing ? "বন্ধ করুন" : "এডিট করুন"}
+        </button>
+      </div>
+
+      {editing ? (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <label className="block text-xs font-semibold text-ink-soft">
+            নাম
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={80}
+              autoComplete="name"
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-ink-soft">
+            মোবাইল নম্বর
+            <input
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              maxLength={14}
+              inputMode="tel"
+              autoComplete="tel"
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-ink-soft">
+            যানবাহন
+            <select
+              value={vehicle}
+              onChange={(event) => setVehicle(event.target.value as Rider["vehicle"])}
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            >
+              <option value="bicycle">সাইকেল</option>
+              <option value="bike">বাইক</option>
+              <option value="scooter">স্কুটার</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={busy || name.trim().length < 2 || phone.trim().length < 11}
+            onClick={() => void save()}
+            className="min-h-11 w-full rounded-xl bg-forest-800 px-4 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-xl bg-cream p-3 ring-1 ring-line">
+            <p className="text-ink-soft">লগইন ইমেইল</p>
+            <p className="mt-1 truncate font-medium text-forest-900">{email || "—"}</p>
+          </div>
+          <div className="rounded-xl bg-cream p-3 ring-1 ring-line">
+            <p className="text-ink-soft">ডেলিভারি zone</p>
+            <p className="mt-1 truncate font-medium text-forest-900">{rider.zoneIds.join(", ") || "এখনো দেওয়া হয়নি"}</p>
+          </div>
+        </div>
+      )}
+      {saved && <p role="status" className="mt-3 text-xs font-semibold text-emerald-800">✓ প্রোফাইল আপডেট হয়েছে।</p>}
+      {error && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{error}</p>}
+    </section>
+  );
+}
 
 /**
  * "অফারের খবর ফোনে নিন" — one tap subscribes this phone. Shows the exact
