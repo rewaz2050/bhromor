@@ -6,6 +6,7 @@
  * sign + prep. Platform fields (commission/zones) are read-only.
  */
 
+import Image from "next/image";
 import { useState } from "react";
 import { useVendor } from "@/components/vendor/vendor-shell";
 import { ErrorBox, PageHeader } from "@/components/vendor/vendor-ui";
@@ -26,6 +27,7 @@ export default function VendorSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   if (!current) return null;
   const values: Record<string, string> = form ?? {
@@ -36,6 +38,21 @@ export default function VendorSettingsPage() {
     logoUrl: current.logoUrl ?? "",
     prepMinutes: String(current.prepMinutes),
   };
+  const profileFields = [values.name, values.tagline, values.phone, values.address, values.logoUrl];
+  const completed = profileFields.filter((value) => value.trim() !== "").length;
+  const completion = Math.round((completed / profileFields.length) * 100);
+  const initial = values.name.trim().charAt(0).toUpperCase() || "S";
+  const logoPreview = /^https?:\/\/\S+$/i.test(values.logoUrl.trim()) ? values.logoUrl.trim() : null;
+  const prepMinutes = Number(values.prepMinutes);
+  const valid = values.name.trim().length >= 2 && Number.isFinite(prepMinutes) && prepMinutes >= 0 && prepMinutes <= 240;
+  const dirty = isStaff
+    ? values.prepMinutes !== String(current.prepMinutes)
+    : values.name !== current.name ||
+      values.tagline !== (current.tagline ?? "") ||
+      values.phone !== current.phone ||
+      values.address !== (current.address ?? "") ||
+      values.logoUrl !== (current.logoUrl ?? "") ||
+      values.prepMinutes !== String(current.prepMinutes);
 
   const set = (key: string, value: string) => {
     setForm({ ...values, [key]: value });
@@ -61,6 +78,7 @@ export default function VendorSettingsPage() {
       const updated = await patchVendorShop(patch);
       setShop(updated);
       setForm(null);
+      setLogoFailed(false);
       setSaved(true);
     } catch (err) {
       setError(vendorErrorMessage(err));
@@ -83,11 +101,59 @@ export default function VendorSettingsPage() {
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-3xl">
       <PageHeader
-        title="Shop settings"
-        sub={isStaff ? "Staff account — you can manage the sign and prep time." : "How customers see your shop."}
+        title="দোকানের প্রোফাইল"
+        sub={isStaff ? "Staff account — আপনি দোকান খোলা/বন্ধ ও preparation time সামলাতে পারবেন।" : "Customer আপনার দোকান যেভাবে দেখবে, এখানে সেভাবেই সাজান।"}
       />
+
+      <section className="mb-5 overflow-hidden rounded-2xl border border-line bg-paper shadow-sm">
+        <div className="bg-gradient-to-r from-forest-950 to-forest-800 p-5 text-ivory-50 sm:p-6">
+          <div className="flex items-start gap-4">
+            <span className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gold-400 text-xl font-bold text-forest-950 shadow-sm">
+              {logoPreview && !logoFailed ? (
+                <Image
+                  src={logoPreview}
+                  alt="দোকানের logo preview"
+                  fill
+                  unoptimized
+                  sizes="56px"
+                  className="object-cover"
+                  onError={() => setLogoFailed(true)}
+                />
+              ) : initial}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate font-display text-2xl">{values.name || "দোকানের নাম"}</h2>
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                  current.isOpen ? "bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-300/40" : "bg-rose-400/20 text-rose-100 ring-1 ring-rose-300/40"
+                }`}>
+                  {current.isOpen ? "খোলা" : "বন্ধ"}
+                </span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-sm text-ivory-200">
+                {values.tagline || "এক লাইনে আপনার দোকানের বিশেষত্ব লিখুন"}
+              </p>
+              <p className="mt-2 text-xs text-ivory-200/80">
+                {values.phone || "ফোন দেওয়া হয়নি"} · প্রস্তুতি {values.prepMinutes || "0"} মিনিট
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="font-semibold text-forest-900">Profile completeness</span>
+            <span className="font-bold text-forest-800">{completion}%</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-ivory-200">
+            <div className="h-full rounded-full bg-gold-500 transition-[width]" style={{ width: `${completion}%` }} />
+          </div>
+          {completion < 100 && (
+            <p className="mt-2 text-[11px] text-ink-soft">Logo, tagline, phone ও address পূরণ করলে customer-এর কাছে দোকান বেশি বিশ্বাসযোগ্য দেখাবে।</p>
+          )}
+        </div>
+      </section>
 
       {error && (
         <div className="mb-4">
@@ -96,17 +162,17 @@ export default function VendorSettingsPage() {
       )}
       {saved && (
         <p className="mb-4 rounded-xl bg-forest-50 px-4 py-3 text-sm font-medium text-forest-900 ring-1 ring-forest-200">
-          Saved.
+          ✓ দোকানের প্রোফাইল সেভ হয়েছে।
         </p>
       )}
 
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-paper p-5 ring-1 ring-line">
         <div>
           <p className="text-sm font-semibold text-forest-900">
-            Shop is {current.isOpen ? "open" : "closed"}
+            দোকান এখন {current.isOpen ? "খোলা" : "বন্ধ"}
           </p>
           <p className="text-xs text-ink-soft">
-            Closed shops stop receiving new orders immediately.
+            বন্ধ করলে নতুন order আসবে না; আগের order-গুলোর কাজ চলবে।
           </p>
         </div>
         <button
@@ -119,7 +185,7 @@ export default function VendorSettingsPage() {
               : "bg-forest-800 text-white hover:bg-forest-900"
           }`}
         >
-          {current.isOpen ? "Close shop" : "Open shop"}
+          {current.isOpen ? "দোকান বন্ধ করুন" : "দোকান খুলুন"}
         </button>
       </div>
 
@@ -129,27 +195,32 @@ export default function VendorSettingsPage() {
       >
         <fieldset disabled={isStaff} className="space-y-4 disabled:opacity-60">
           <label className="block">
-            <span className={label}>Shop name *</span>
+            <span className={label}>দোকানের নাম *</span>
             <input
               className={field}
               value={values.name}
               onChange={(e) => set("name", e.target.value)}
+              minLength={2}
               maxLength={80}
+              required
             />
+            {values.name.trim().length < 2 && (
+              <span className="mt-1 block text-xs text-rose-700">নাম অন্তত ২ অক্ষরের হতে হবে।</span>
+            )}
           </label>
           <label className="block">
-            <span className={label}>Tagline</span>
+            <span className={label}>এক লাইনের পরিচয় (Tagline)</span>
             <input
               className={field}
               value={values.tagline}
               onChange={(e) => set("tagline", e.target.value)}
               maxLength={200}
-              placeholder="e.g. Premium panjabis from Sylhet"
+              placeholder="যেমন: সিলেটের প্রিমিয়াম পাঞ্জাবি"
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className={label}>Phone</span>
+              <span className={label}>Customer-এর যোগাযোগ নম্বর</span>
               <input
                 className={field}
                 value={values.phone}
@@ -158,17 +229,27 @@ export default function VendorSettingsPage() {
               />
             </label>
             <label className="block">
-              <span className={label}>Logo URL</span>
+              <span className={label}>Logo link</span>
               <input
                 className={field}
                 value={values.logoUrl}
-                onChange={(e) => set("logoUrl", e.target.value)}
-                placeholder="https://…"
+                onChange={(e) => {
+                  setLogoFailed(false);
+                  set("logoUrl", e.target.value);
+                }}
+                inputMode="url"
+                placeholder="https://… (Media-তে upload করা logo-এর link)"
               />
+              {values.logoUrl.trim() && !logoPreview && (
+                <span className="mt-1 block text-xs text-rose-700">সম্পূর্ণ http:// বা https:// link দিন।</span>
+              )}
+              {logoFailed && (
+                <span className="mt-1 block text-xs text-rose-700">এই link থেকে logo load হচ্ছে না—linkটি পরীক্ষা করুন।</span>
+              )}
             </label>
           </div>
           <label className="block">
-            <span className={label}>Address</span>
+            <span className={label}>দোকানের ঠিকানা</span>
             <textarea
               className={field}
               rows={2}
@@ -181,7 +262,7 @@ export default function VendorSettingsPage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className={label}>Prep time (minutes)</span>
+            <span className={label}>Order প্রস্তুত করতে সময় (মিনিট)</span>
             <input
               type="number"
               min={0}
@@ -189,7 +270,11 @@ export default function VendorSettingsPage() {
               className={field}
               value={values.prepMinutes}
               onChange={(e) => set("prepMinutes", e.target.value)}
+              required
             />
+            {(!Number.isFinite(prepMinutes) || prepMinutes < 0 || prepMinutes > 240) && (
+              <span className="mt-1 block text-xs text-rose-700">০ থেকে ২৪০ মিনিটের মধ্যে দিন।</span>
+            )}
           </label>
           <div className="rounded-xl bg-cream px-4 py-3 text-xs text-ink-soft ring-1 ring-line">
             <p>
@@ -203,18 +288,34 @@ export default function VendorSettingsPage() {
                 : "—"}
             </p>
             <p className="mt-1">
-              Set by PROSANTI — ask support to change them.
+              Commission ও delivery zone Admin ঠিক করে; পরিবর্তন দরকার হলে support-এ বলুন।
             </p>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60"
-        >
-          {saving ? "Saving…" : "Save changes"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            disabled={saving || !dirty || !valid || Boolean(values.logoUrl.trim() && !logoPreview)}
+            className="min-h-11 rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-50"
+          >
+            {saving ? "সেভ হচ্ছে…" : dirty ? "পরিবর্তন সেভ করুন" : "সব পরিবর্তন সেভ আছে"}
+          </button>
+          {dirty && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setForm(null);
+                setLogoFailed(false);
+                setError(null);
+              }}
+              className="min-h-11 rounded-xl px-5 text-sm font-semibold text-ink-soft ring-1 ring-line disabled:opacity-50"
+            >
+              পরিবর্তন বাতিল
+            </button>
+          )}
+        </div>
       </form>
     </div>
   );

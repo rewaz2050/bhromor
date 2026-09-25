@@ -10,11 +10,17 @@ import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
+import type { Rider } from "@/lib/catalog";
 import {
   availabilityLabel,
   isOnShift,
   type RiderAvailability,
 } from "@/lib/rider-hours";
+import {
+  fetchRiderPushStatus,
+  startRiderPushSetup,
+  stopRiderPush,
+} from "@/lib/rider-push-client";
 import {
   IconBox,
   IconCheck,
@@ -354,10 +360,21 @@ export default function RiderPage() {
           </div>
         )}
 
+        <RiderProfileCard
+          rider={activeRider}
+          email={session.email}
+          onSaved={session.refresh}
+        />
+
         {/* P2 #22 — the rider's own shift. Auto-dispatch only offers jobs
             inside it (enforced in the database, not just here), so this card
             is real scheduling, not decoration. */}
         <RiderShiftCard rider={activeRider} onSave={session.setAvailability} flash={setFlash} />
+
+        {/* 2026-09-25 — the rider's own phone must buzz for a new offer. The
+            job feed only polls while this tab is visible, so a phone in a
+            pocket never saw an offer before it expired. */}
+        <RiderPushCard />
 
         {/* Cash-in-hand safety meter card */}
         <section
@@ -865,6 +882,243 @@ export default function RiderPage() {
 }
 const SHIFT_DAYS = ["শু", "ম", "বু", "বৃ", "শু", "শ", "ছ"] as const;
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+/** Identity first: the rider can check and correct the details customers see. */
+function RiderProfileCard({
+  rider,
+  email,
+  onSaved,
+}: {
+  rider: Rider;
+  email: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [name, setName] = useState(rider.name);
+  const [phone, setPhone] = useState(rider.phone);
+  const [vehicle, setVehicle] = useState<Rider["vehicle"]>(rider.vehicle);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const res = await fetch("/api/rider/me", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone, vehicle }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error || "প্রোফাইল সেভ করা যায়নি।");
+      await onSaved();
+      setEditing(false);
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "প্রোফাইল সেভ করা যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const vehicleLabel =
+    rider.vehicle === "bicycle" ? "সাইকেল" : rider.vehicle === "scooter" ? "স্কুটার" : "বাইক";
+  const dirty =
+    name.trim().replace(/\s+/g, " ") !== rider.name ||
+    phone.trim() !== rider.phone ||
+    vehicle !== rider.vehicle;
+  const cancel = () => {
+    setName(rider.name);
+    setPhone(rider.phone);
+    setVehicle(rider.vehicle);
+    setEditing(false);
+    setError(null);
+  };
+
+  return (
+    <section aria-label="Rider profile" className="rounded-2xl border border-line bg-paper p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wider text-forest-900">আমার প্রোফাইল</p>
+          <h2 className="mt-1 truncate font-display text-xl font-semibold text-forest-900">{rider.name}</h2>
+          <p className="mt-1 text-xs text-ink-soft">{rider.phone} · {vehicleLabel}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (editing) cancel();
+            else {
+              setEditing(true);
+              setError(null);
+              setSaved(false);
+            }
+          }}
+          className="min-h-10 shrink-0 rounded-full px-4 text-xs font-semibold text-forest-800 ring-1 ring-forest-300"
+        >
+          {editing ? "বন্ধ করুন" : "এডিট করুন"}
+        </button>
+      </div>
+
+      {editing ? (
+        <div className="mt-4 space-y-3 border-t border-line pt-4">
+          <label className="block text-xs font-semibold text-ink-soft">
+            নাম
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={80}
+              autoComplete="name"
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-ink-soft">
+            মোবাইল নম্বর
+            <input
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              maxLength={14}
+              inputMode="tel"
+              autoComplete="tel"
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-ink-soft">
+            যানবাহন
+            <select
+              value={vehicle}
+              onChange={(event) => setVehicle(event.target.value as Rider["vehicle"])}
+              className="mt-1.5 h-12 w-full rounded-xl border border-line bg-ivory-50 px-3 text-base text-ink outline-none focus:border-forest-600"
+            >
+              <option value="bicycle">সাইকেল</option>
+              <option value="bike">বাইক</option>
+              <option value="scooter">স্কুটার</option>
+            </select>
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={busy || !dirty || name.trim().length < 2 || phone.trim().length < 11}
+              onClick={() => void save()}
+              className="min-h-11 flex-1 rounded-xl bg-forest-800 px-4 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={cancel}
+              className="min-h-11 rounded-xl px-4 text-sm font-semibold text-ink-soft ring-1 ring-line disabled:opacity-50"
+            >
+              বাতিল
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+          <div className="rounded-xl bg-cream p-3 ring-1 ring-line">
+            <p className="text-ink-soft">লগইন ইমেইল</p>
+            <p className="mt-1 truncate font-medium text-forest-900">{email || "—"}</p>
+          </div>
+          <div className="rounded-xl bg-cream p-3 ring-1 ring-line">
+            <p className="text-ink-soft">ডেলিভারি zone</p>
+            <p className="mt-1 truncate font-medium text-forest-900">{rider.zoneIds.join(", ") || "এখনো দেওয়া হয়নি"}</p>
+          </div>
+        </div>
+      )}
+      {saved && <p role="status" className="mt-3 text-xs font-semibold text-emerald-800">✓ প্রোফাইল আপডেট হয়েছে।</p>}
+      {error && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * "অফারের খবর ফোনে নিন" — one tap subscribes this phone. Shows the exact
+ * blocker when push cannot work here (in-app browser, http, no keys, missing
+ * table) instead of a button that silently does nothing, which is how the
+ * staff card failed on 2026-09-23.
+ */
+function RiderPushCard() {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const status = await fetchRiderPushStatus();
+        if (alive) setOn(status.count > 0);
+      } catch {
+        // No status → leave the card in its "ask" state.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const turnOn = async () => {
+    setBusy(true);
+    setNote(null);
+    const result = await startRiderPushSetup();
+    setBusy(false);
+    if (result.ok) {
+      setOn(true);
+      setNote("অন হয়ে গেছে — এখন অ্যাপ বন্ধ থাকলেও নতুন অফারের খবর আসবে।");
+      return;
+    }
+    setNote(
+      result.message ??
+        (result.reason === "unconfigured"
+          ? "সার্ভারে push key সেট করা নেই (PUSH_VAPID_PUBLIC_KEY + PUSH_VAPID_PRIVATE_KEY)।"
+          : result.reason === "denied"
+            ? "ব্রাউজারে notification ব্লক করা — সাইট সেটিংস থেকে Allow করতে হবে।"
+            : "এই ব্রাউজারে notification চালু করা যায়নি।"),
+    );
+  };
+
+  const turnOff = async () => {
+    setBusy(true);
+    await stopRiderPush();
+    setBusy(false);
+    setOn(false);
+    setNote("বন্ধ করা হলো — এখন থেকে অফার শুধু এই অ্যাপ খুললে দেখা যাবে।");
+  };
+
+  return (
+    <section
+      aria-label="Offer notification"
+      className="rounded-2xl border border-line bg-ivory-100/70 p-4 shadow-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-forest-900">
+            🔔 অফারের খবর ফোনে
+          </p>
+          <p className="mt-1 text-[11px] leading-relaxed text-ink-soft">
+            অ্যাপ বন্ধ বা স্ক্রিন অফ থাকলেও নতুন ডেলিভারি অফার এলে এই ফোন বেজে উঠবে।
+            না খুললে অফার নির্দিষ্ট সময় পর শেষ হয়ে যায়।
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void (on ? turnOff() : turnOn())}
+          disabled={busy}
+          className={`shrink-0 rounded-full px-3.5 py-2 text-[11px] font-semibold transition-colors disabled:opacity-60 ${
+            on
+              ? "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-400"
+              : "bg-forest-800 text-ivory-50 hover:bg-forest-900"
+          }`}
+        >
+          {busy ? "…" : on ? "চালু আছে" : "চালু করুন"}
+        </button>
+      </div>
+      {note && <p className="mt-2 text-[11px] text-ink-soft">{note}</p>}
+    </section>
+  );
+}
 
 function RiderShiftCard({
   rider,

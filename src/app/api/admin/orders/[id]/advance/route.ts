@@ -6,6 +6,7 @@ import { advanceOrderAsStaff } from "@/lib/db/admin";
 import { AdminInputError } from "@/lib/db/admin";
 import { notifyStaff } from "@/lib/db/engagement";
 import { notifyCustomerOfStatus } from "@/lib/customer-push";
+import { notifyRiderOfOffer } from "@/lib/rider-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
 import { formatBdt } from "@/lib/format";
@@ -74,6 +75,13 @@ export const POST = staffRoute(
             : `${order.id} moved to ${label}.`,
         href: `/admin/orders/${order.id}`,
       });
+      // "Ready — call rider" is the tap that summons a rider, and until
+      // 2026-09-25 the offer it created reached the rider ONLY through their
+      // job poll — which stops while the phone is in a pocket. Buzz the
+      // rider's device too. Best-effort: the offer exists either way.
+      if (body.to === "ready-for-pickup") {
+        await notifyRiderOfOffer(staffDb, id);
+      }
     }
     // P0 #7 — a delivered friend order is the moment the referral is earned:
     // the referrer's ৳50 is minted as a real single-use coupon. The SQL

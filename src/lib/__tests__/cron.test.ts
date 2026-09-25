@@ -34,6 +34,12 @@ const state = vi.hoisted(() => ({
   staleOffers: 0,
   expireCalls: 0,
   expireError: null as null | { message: string },
+  /** 202609250001 — the stranded-order self-heal job. */
+  redispatchCalls: 0,
+  strandedOffered: 0,
+  redispatchError: null as null | { message: string },
+  riderOfferPushes: [] as string[],
+  liveOffers: [] as { order_id: string }[],
   reminderRows: [] as Record<string, unknown>[],
   digestRows: [] as Record<string, unknown>[],
   digestReadError: null as null | { message: string },
@@ -45,6 +51,18 @@ vi.mock("@/lib/db/riders", () => ({
   expireStaleAssignments: async () => {
     state.expireCalls += 1;
     if (state.expireError) throw new Error(state.expireError.message);
+  },
+  redispatchStrandedOrders: async () => {
+    state.redispatchCalls += 1;
+    if (state.redispatchError) throw new Error(state.redispatchError.message);
+    return state.strandedOffered;
+  },
+}));
+
+vi.mock("@/lib/rider-push", () => ({
+  notifyRiderOfOffer: async (_db: unknown, orderRef: string) => {
+    state.riderOfferPushes.push(orderRef);
+    return { sent: 1 };
   },
 }));
 
@@ -103,13 +121,23 @@ const chain = (result: unknown) => {
 const fakeService = () =>
   ({
     rpc: async (fn: string) => {
-      if (fn !== "ps_expire_stale_offers") return { data: null, error: { message: "unknown rpc" } };
-      return { data: null, error: state.expireError };
+      if (fn === "ps_expire_stale_offers") {
+        return { data: null, error: state.expireError };
+      }
+      if (fn === "ps_redispatch_stranded") {
+        return { data: state.strandedOffered, error: state.redispatchError };
+      }
+      return { data: null, error: { message: "unknown rpc" } };
     },
     from: (name: string) => {
       switch (name) {
         case "delivery_assignments":
-          return { select: () => chain({ count: state.staleOffers, error: null }) };
+          // `count` answers the stale-offer probe; `data` answers the
+          // post-redispatch "who did the offers go to" read.
+          return {
+            select: () =>
+              chain({ count: state.staleOffers, data: state.liveOffers, error: null }),
+          };
         case "orders":
           return {
             select: (cols: unknown, opts?: { count?: boolean }) => {
@@ -198,6 +226,11 @@ beforeEach(() => {
   state.upserts.length = 0;
   state.lastRunRows = [];
   state.pushes.length = 0;
+  state.redispatchCalls = 0;
+  state.strandedOffered = 0;
+  state.redispatchError = null;
+  state.riderOfferPushes.length = 0;
+  state.liveOffers = [];
   state.pushAccepted = 1;
   state.staleOffers = 0;
   state.expireCalls = 0;
@@ -252,6 +285,48 @@ describe("expire-offers", () => {
     expect(job.status).toBe("failed");
     expect(job.detail).toContain("not installed");
     // The other jobs still ran — one broken job must not stop the clock.
+    expect(jobOf(result, "daily-digest").status).toBe("ran");
+  });
+});
+
+describe("redispatch-stranded (202609250001)", () => {
+  it("re-offers stranded orders and buzzes the riders they went to", async () => {
+    state.strandedOffered = 2;
+    state.liveOffers = [{ order_id: "order-a" }, { order_id: "order-b" }, { order_id: "order-a" }];
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    expect(jobOf(result, "redispatch-stranded")).toMatchObject({ status: "ran", did: 2 });
+    // One buzz per DISTINCT order, not one per assignment row.
+    expect(state.riderOfferPushes.sort()).toEqual(["order-a", "order-b"]);
+  });
+
+  it("reports 'no stranded orders' and stays quiet when nothing was offered", async () => {
+    state.strandedOffered = 0;
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    expect(jobOf(result, "redispatch-stranded")).toMatchObject({
+      status: "ran",
+      did: 0,
+      detail: "no stranded orders",
+    });
+    expect(state.riderOfferPushes).toEqual([]);
+  });
+
+  it("SKIPS with the migration name when the database predates the function", async () => {
+    state.redispatchError = { message: 'function ps_redispatch_stranded() does not exist' };
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    const job = jobOf(result, "redispatch-stranded");
+    expect(job.status).toBe("skipped");
+    expect(job.detail).toContain("202609250001_rider_dispatch_fix.sql");
+  });
+
+  it("reports a real failure as failed, without taking the rest of the tick down", async () => {
+    state.redispatchError = { message: "connection terminated" };
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    expect(jobOf(result, "redispatch-stranded")).toMatchObject({
+      status: "failed",
+      detail: "connection terminated",
+    });
+    // The other jobs still ran.
+    expect(jobOf(result, "expire-offers").status).toBe("ran");
     expect(jobOf(result, "daily-digest").status).toBe("ran");
   });
 });

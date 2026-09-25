@@ -231,7 +231,12 @@ export const hasLocalSubscription = async (): Promise<boolean> =>
  * old row. Detect the mismatch, drop the stale subscription and make a new
  * one instead of surfacing a cryptic DOM exception.
  */
-const ensureSubscription = async (
+/**
+ * Subscribe this browser (registering /sw.js if needed). Exported for
+ * `rider-push-client.ts`, which stores the endpoint against a rider instead of
+ * the staff inbox — the browser side is identical.
+ */
+export const ensureSubscription = async (
   publicKey: string,
 ): Promise<{ sub: PushSubscription; resubscribed: boolean }> => {
   const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
@@ -252,7 +257,7 @@ const ensureSubscription = async (
   return { sub, resubscribed: true };
 };
 
-const subscriptionJson = (
+export const subscriptionJson = (
   sub: PushSubscription,
 ): { endpoint?: string; keys?: { p256dh?: string; auth?: string } } =>
   sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };

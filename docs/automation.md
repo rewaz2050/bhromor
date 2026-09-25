@@ -7,6 +7,7 @@ housekeeping ran lazily, whenever a human happened to load a page:
 | Work | Before | Now |
 |---|---|---|
 | A rider offer nobody answered | expired only when an admin/rider next loaded a board | `expire-offers` every 15 min |
+| An order became ready while every rider was offline | waited on Admin → Deliveries until a human tapped Assign | `redispatch-stranded` retries every 15 min, then buzzes the rider's phone |
 | "Your parcel comes this evening" | a phone call, or nothing | `delivery-reminders` ~2h before the window |
 | Yesterday's takings / what is piling up | open `/admin` and read | `daily-digest` at 9am Dhaka |
 | Price-drop / restock news | staff call list (a phone call each) | watched phones get a **push** at the moment of the save; only the unreachable numbers stay on the call list |
@@ -26,8 +27,9 @@ and answers with an honest report:
 {
   "at": "2026-09-24T04:00:00.000Z",
   "jobs": [
-    { "job": "expire-offers",      "status": "ran",     "did": 2, "detail": "2 stale rider offer(s) expired and re-offered" },
-    { "job": "delivery-reminders", "status": "ran",     "did": 1, "detail": "1 reminder push(es) sent · 0 already reminded · 1 in window" },
+    { "job": "expire-offers",       "status": "ran",     "did": 2, "detail": "2 stale rider offer(s) expired and re-offered" },
+    { "job": "redispatch-stranded", "status": "ran",     "did": 1, "detail": "1 stranded order(s) re-offered to a rider" },
+    { "job": "delivery-reminders",  "status": "ran",     "did": 1, "detail": "1 reminder push(es) sent · 0 already reminded · 1 in window" },
     { "job": "daily-digest",       "status": "skipped", "did": 0, "detail": "already sent today" }
   ]
 }
@@ -39,7 +41,8 @@ read the jobs, not just the HTTP code.
 
 | Job | What it does | Safe to repeat? |
 |---|---|---|
-| `expire-offers` | counts offers with `status='offered'` past `expires_at`, then calls `ps_expire_stale_offers` (the RPC that re-offers the order) | yes — idempotent, runs even without the marks table |
+| `expire-offers` | counts offers with `state='offered'` past `expires_at`, then calls `ps_expire_stale_offers` (the RPC that re-offers the order) | yes — idempotent, runs even without the marks table |
+| `redispatch-stranded` | `ready-for-pickup` / `courier-assigned` orders with **no live offer** → `ps_redispatch_stranded`, then Web Push to the rider who received it | yes — the one-live-offer index makes it idempotent; missing `202609250001_rider_dispatch_fix.sql` is reported as `skipped`, never a broken clock |
 | `delivery-reminders` | orders with a `scheduled_at` inside the next 2 hours → push **"আজ আপনার পার্সেল আসছে 🛵"** with the shop's own window label | claimed per order (`delivery-soon:<order id>`); the claim is **released** when nobody could be reached, so a shopper who turns notifications on later in that window still gets it |
 | `daily-digest` | once per Dhaka day, after 9am: one staff push (inbox row + phone) with yesterday's orders/takings, today's orders, what is still open, today's scheduled deliveries, low stock, and how many shoppers are waiting on a price/restock | claimed once per day (`digest:<YYYY-MM-DD>`) |
 
