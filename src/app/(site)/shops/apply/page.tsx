@@ -20,6 +20,8 @@ export default function ShopApplyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** false → no signed-in account matched, the vendor login still has to be created. */
+  const [linked, setLinked] = useState(true);
 
   const toggleZone = (id: string) => {
     setSelectedZones((prev) =>
@@ -45,6 +47,10 @@ export default function ShopApplyPage() {
       setError("সঠিক ইমেইল অ্যাড্রেস দিন।");
       return;
     }
+    if (selectedZones.length === 0) {
+      setError("অন্তত একটি ডেলিভারি এলাকা সিলেক্ট করুন।");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -66,11 +72,13 @@ export default function ShopApplyPage() {
 
       const data = (await res.json().catch(() => null)) as {
         error?: string;
+        linked?: boolean;
       } | null;
       if (!res.ok) {
         throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
       }
 
+      setLinked(data?.linked !== false);
       setSubmitted(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "আবেদন প্রক্রিয়া ব্যর্থ হয়েছে।");
@@ -91,6 +99,23 @@ export default function ShopApplyPage() {
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">
           ধন্যবাদ <strong>{name}</strong>! আপনার শপ রেজিস্ট্রেশন আবেদন আমাদের পেন্ডিং কিউতে জমা হয়েছে। আমাদের টিম খুব দ্রুত তথ্য যাচাই করে অ্যাকাউন্ট অনুমোদন (Approve) করবে।
         </p>
+
+        {!linked && (
+          <div className="mx-auto mt-6 max-w-md rounded-2xl bg-gold-100/70 p-4 text-left ring-1 ring-gold-300">
+            <p className="text-xs font-semibold text-forest-900">
+              শেষ ধাপ: ভেন্ডর লগইন অ্যাকাউন্ট খুলুন
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+              আপনার আবেদনটি ইমেইল <strong>{email}</strong>-এর সাথে যুক্ত আছে। এই একই ইমেইল ও নিজের একটি পাসওয়ার্ড দিয়ে <strong>/vendor/login</strong> থেকে অ্যাকাউন্ট না খুললে অনুমোদনের পরেও ড্যাশবোর্ডে ঢুকতে পারবেন না।
+            </p>
+            <Link
+              href={`/vendor/login?mode=up&email=${encodeURIComponent(email.trim().toLowerCase())}`}
+              className="mt-3 inline-flex h-10 items-center rounded-full bg-forest-800 px-5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            >
+              এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →
+            </Link>
+          </div>
+        )}
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link

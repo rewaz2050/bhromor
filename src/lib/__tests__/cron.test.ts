@@ -34,6 +34,8 @@ const state = vi.hoisted(() => ({
   staleOffers: 0,
   expireCalls: 0,
   expireError: null as null | { message: string },
+  /** The filter chain of the stale-count read (asserted to use `state`). */
+  assignmentsChain: null as { calls: [string, unknown[]][] } | null,
   reminderRows: [] as Record<string, unknown>[],
   digestRows: [] as Record<string, unknown>[],
   digestReadError: null as null | { message: string },
@@ -108,8 +110,11 @@ const fakeService = () =>
     },
     from: (name: string) => {
       switch (name) {
-        case "delivery_assignments":
-          return { select: () => chain({ count: state.staleOffers, error: null }) };
+        case "delivery_assignments": {
+          const assignments = chain({ count: state.staleOffers, error: null });
+          state.assignmentsChain = assignments as unknown as { calls: [string, unknown[]][] };
+          return { select: () => assignments };
+        }
         case "orders":
           return {
             select: (cols: unknown, opts?: { count?: boolean }) => {
@@ -202,6 +207,7 @@ beforeEach(() => {
   state.staleOffers = 0;
   state.expireCalls = 0;
   state.expireError = null;
+  state.assignmentsChain = null;
   state.reminderRows = [];
   state.digestRows = [];
   state.digestReadError = null;
@@ -243,6 +249,13 @@ describe("expire-offers", () => {
     expect(job.status).toBe("ran");
     expect(job.did).toBe(3);
     expect(job.detail).toContain("3");
+  });
+
+  it("filters the stale count by `state` — the real column (`status` would 42703)", async () => {
+    await runCronTick({ service: fakeService(), now: MORNING });
+    const eq = state.assignmentsChain?.calls.find(([name]) => name === "eq");
+    expect(eq?.[1][0]).toBe("state");
+    expect(eq?.[1][1]).toBe("offered");
   });
 
   it("a failing sweep is reported, not thrown", async () => {

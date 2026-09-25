@@ -435,3 +435,25 @@ rider sees nothing. Full write-up + the 2-minute SQL-Editor repair list:
 
 Tests: `rider-degrade` (9), `rider-route-degrade` (2), `settle-claim-routes` +1;
 `tsc` 0, `eslint` 0, full suite green, production build green.
+
+## 2026-09-25 (evening) — pre-merge scan: rider/user/shop connections & dashboards
+
+Full audit of the four dashboards and their connections before merging PR #35:
+rider (apply→login→approve→jobs→deliver→settle), customer (login→checkout→track→
+account), shop/vendor (apply→login→orders→settings), admin (riders queue, claims,
+deliveries board), plus the cross-links (area broadcast, per-step customer push,
+WA drafts, realtime offers, the scheduler). Two real defects found and fixed:
+
+| # | Fix |
+|---|-----|
+| 143 | **The scheduler's report lied on every tick.** `runExpireOffers` counted stale offers with `.eq("status","offered")`, but `delivery_assignments` has no `status` column — it is `state` (checked against the schema). PostgREST answered 42703, the catch swallowed it, and every 15-minute tick reported "0 stale offers expired" no matter how many actually expired (the sweep RPC itself ran fine, so dispatch kept moving — only the report was wrong, which is exactly the report the owner reads). Fixed to `.eq("state","offered")` and pinned by a test that asserts the filter column (cron 16 tests). |
+| 144 | **Shop onboarding had the same dead-ends the rider flow had.** `/shops/apply` submitted happily with zero delivery zones — the server's English "Choose at least one delivery zone." arrived only after a wasted submit (now pre-validated in Bangla before submit, mirroring the rider form). Worse, the success screen never told an unlinked applicant to create the vendor login — the exact gap that left approved riders/shopkeepers locked out ("account open kora jacce na"). It now reads `linked:false` and shows the one-tap "এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →" card (prefilled email). `/vendor/login` accepts `?mode=up&email=…` (opens the signup tab with a notice), maps Supabase's blocking auth errors to next-step hints ("Email not confirmed" → confirm the mail; "already registered" → use Sign in), and gains a "Send the shop application →" button under the account-created notice. |
+
+Audited and left as-is (working as designed): per-step customer push (accept/
+pickup/deliver all notify), WA draft fallback, area broadcast eligibility
+(zone overlap + online + shift + load + cash cap), realtime offers with the
+15 s poll backup, admin settle-claim approve/reject, customer phone+password
+login (own API, Bangla errors), PIN lockout two-step deliver, vendor two-tap
+order flow with wallet gate, `ps_expire_stale_offers` default-force call from
+the cron (signature-compatible). `tsc` 0, `eslint` 0, 1,287 tests green,
+production build green.
