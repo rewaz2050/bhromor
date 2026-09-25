@@ -21,6 +21,7 @@ import {
   friendlyWhen,
 } from "@/components/admin/order-ui";
 import LiveSetupBanner from "@/components/admin/live-setup-banner";
+import AdminDashboardSkeleton from "@/components/admin/admin-skeleton";
 import AdminDataError from "@/components/admin/admin-data-error";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import {
@@ -34,7 +35,7 @@ import {
 
 /** §32 operational overview + §88 delivery performance. */
 export default function AdminDashboard() {
-  const { orders, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
+  const { orders, loading: ordersLoading, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
 
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const perf = useMemo(() => deliveryStats(orders), [orders]);
@@ -127,6 +128,11 @@ export default function AdminDashboard() {
       <AdminDataError label="Orders" error={ordersError} onRetry={reloadOrders} onDismiss={clearOrdersError} />
       <AdminDataError label="Catalog" error={catalogError} onRetry={reloadCatalog} onDismiss={clearCatalogError} />
       <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
+      {/* Skeleton while the orders feed loads — the KPIs must never flash zeros */}
+      {ordersLoading ? (
+        <AdminDashboardSkeleton />
+      ) : (
+        <>
       {/* KPI cards — each one is the door to its queue */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c) => {
@@ -358,6 +364,8 @@ export default function AdminDashboard() {
 
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

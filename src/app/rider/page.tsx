@@ -9,6 +9,7 @@ import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
+import { shouldSendFix, type SentFix } from "@/lib/location-throttle";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -112,6 +113,7 @@ export default function RiderPage() {
   // Ticks once a second only while an offer is on screen (the countdown);
   // otherwise once a minute for the "ago" labels.
   const hasOffer = tasks.some((t) => t.state === "offered");
+  const hasActiveTrip = tasks.some((t) => t.state !== "offered");
   const now = useNow(hasOffer ? 1000 : 60_000);
 
   const deliveredCount = useMemo(
@@ -140,13 +142,19 @@ export default function RiderPage() {
     }
   };
 
-  // Auto location tracking when online (every 30s)
+  // Adaptive location tracking when online: a rider standing still used to
+  // PATCH every watchPosition twitch + every 30 s. Now an update only goes
+  // out when the rider moved ≥50 m or the 2-minute heartbeat is due; the
+  // fallback ping is 30 s on an active trip, 2 min while idle-online.
+  const lastFixSent = useRef<SentFix | null>(null);
   useEffect(() => {
     if (!isLive || !isOnline) return;
     let watchId: number | null = null;
     let intervalId: number | null = null;
 
     const sendLocation = (lat: number, lng: number) => {
+      if (!shouldSendFix(lastFixSent.current, lat, lng)) return;
+      lastFixSent.current = { lat, lng, at: Date.now() };
       void riderJobsApi.updateLocation(lat, lng);
     };
 
@@ -157,13 +165,16 @@ export default function RiderPage() {
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
       );
       // Fallback interval
-      intervalId = window.setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
-          () => {},
-          { enableHighAccuracy: false, timeout: 8000 },
-        );
-      }, 30000);
+      intervalId = window.setInterval(
+        () => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+            () => {},
+            { enableHighAccuracy: false, timeout: 8000 },
+          );
+        },
+        hasActiveTrip ? 30000 : 120000,
+      );
     }
 
     return () => {
@@ -171,7 +182,7 @@ export default function RiderPage() {
       if (intervalId !== null) window.clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLive, isOnline]);
+  }, [isLive, isOnline, hasActiveTrip]);
 
   const handleAccept = async (task: RiderTask) => {
     if (accepting) return;
