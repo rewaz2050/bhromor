@@ -1,4 +1,4 @@
--- PASTE 6/23 · 06_dispatch_withdraw_resume-sql.sql
+-- PASTE 6/24 · 06_dispatch_withdraw_resume-sql.sql
 -- Source: supabase/migrations/202609250003_dispatch_withdraw_resume.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

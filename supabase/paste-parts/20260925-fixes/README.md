@@ -5,26 +5,13 @@ top-level SQL and reports `ERROR: 42P01: relation "v_order" does not exist`
 (v_order is a plpgsql **variable**, not a table — that error always means a
 paste got truncated, never that a migration is wrong).
 
-Paste the 23 files here **in order** (01 → 23), one whole
+Paste the 24 files here **in order** (01 → 24), one whole
 file per paste, RUN after each. Parts marked **base64 chunk** must land whole
 (the assembler refuses to run until every chunk checks out). Every part is
 repeat-safe: not sure how far a previous attempt got? Start again from 01.
 
-**Unsure how far you got, or saw `ERROR: 42P01: relation "v_order" does not
-exist` again?** Run `00_check-status.sql` first (tiny, changes nothing): every
-column `true` → you are DONE, paste nothing. A `false` column names the
-migration whose parts you still need:
-
-| probe column false | paste these parts |
-|---|---|
-| m01_area_broadcast | 01–03 |
-| m03_withdraw_resume | 05–08 |
-| m04_settle_claims | 09–10 |
-| m05_pin_lockout | 11–12 |
-| m06_health_probe | 13–16 |
-| m07_realtime_* | 18–23 (17 harmless) |
-
-`supabase/diagnose.sql` (rows 37…37i) gives the same answer in detail.
+After the last part, run `supabase/diagnose.sql` — rows **37…37i must all
+show `present = true`**.
 
 | # | paste file | source migration | what |
 |---|---|---|---|
@@ -51,3 +38,4 @@ migration whose parts you still need:
 | 21 | 21_realtime_offers-ps_checkout_health-chunk-3-3.sql | 202609250007_realtime_offers.sql | ps_checkout_health chunk 3/3 |
 | 22 | 22_realtime_offers-ps_checkout_health-assembler.sql | 202609250007_realtime_offers.sql | ps_checkout_health assembler |
 | 23 | 23_realtime_offers-sql.sql | 202609250007_realtime_offers.sql | readable SQL |
+| 24 | 24_202609250008_delivery_ratings-sql.sql | 202609250008_delivery_ratings.sql | readable SQL |

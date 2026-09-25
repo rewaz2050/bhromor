@@ -1,4 +1,4 @@
--- PASTE 22/23 · 22_realtime_offers-ps_checkout_health-assembler.sql
+-- PASTE 22/24 · 22_realtime_offers-ps_checkout_health-assembler.sql
 -- Source: supabase/migrations/202609250007_realtime_offers.sql
 -- Assembler: decodes the base64 chunks and CREATEs the function.
 -- Repeat-safe: re-running any part is harmless.

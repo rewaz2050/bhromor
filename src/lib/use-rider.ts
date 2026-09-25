@@ -335,3 +335,42 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
 
   return { jobs, settlements, pendingClaim, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
 };
+
+export interface RiderStatsView {
+  totalDeliveries: number;
+  weekDeliveries: number;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+/**
+ * The rider's scoreboard (202609250008). Fetched once per app open (not with
+ * the 15 s job poll — these numbers do not change that fast); `refresh`
+ * re-reads after a delivery or a settle, when the numbers actually move.
+ */
+export const useRiderStats = (enabled: boolean) => {
+  const [stats, setStats] = useState<RiderStatsView | null>(null);
+  const [loading, setLoading] = useState(enabled);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (!enabled) return;
+    try {
+      const data = await riderFetch<{ stats: RiderStatsView }>("/api/rider/stats");
+      setStats(data.stats);
+    } catch {
+      // The scoreboard is decoration on top of real work — never an error
+      // banner; the last known numbers stay on screen.
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
+    setLoading(true);
+    void refresh();
+  }, [enabled, refresh]);
+
+  return { stats, loading, refresh };
+};

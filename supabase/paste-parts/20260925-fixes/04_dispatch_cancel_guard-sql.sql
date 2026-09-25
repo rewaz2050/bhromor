@@ -1,4 +1,4 @@
--- PASTE 4/23 · 04_dispatch_cancel_guard-sql.sql
+-- PASTE 4/24 · 04_dispatch_cancel_guard-sql.sql
 -- Source: supabase/migrations/202609250002_dispatch_cancel_guard.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

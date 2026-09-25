@@ -457,3 +457,37 @@ login (own API, Bangla errors), PIN lockout two-step deliver, vendor two-tap
 order flow with wallet gate, `ps_expire_stale_offers` default-force call from
 the cron (signature-compatible). `tsc` 0, `eslint` 0, 1,287 tests green,
 production build green.
+
+## 2026-09-25 (night) — rider scoreboard + customer delivery rating (ideas #1+#2)
+
+New mini-feature bundle for the rider experience — the rider finally sees their
+own record, and the customer closes the loop by rating the delivery.
+
+### What shipped
+- **`202609250008_delivery_ratings.sql`** — new table `delivery_ratings`
+  (order_id PK → orders ON DELETE CASCADE, rider_id → riders, stars 1–5,
+  created_at). RLS on, no policies: service-role only, ratings move through
+  the API. **Must be pasted in Supabase before ratings are used** (paste part
+  24 of the 20260925-fixes set; 596 B — safe to run whole).
+- **`GET /api/rider/stats`** — the rider's scoreboard: lifetime
+  `total_deliveries`, a real 7-day delivered count (`delivery_assignments`
+  delivered joined to orders' delivery timestamp), and own rating avg/count
+  recomputed from `delivery_ratings`. Works even before the migration runs
+  (rating reads as 0); the rest of the rider app never blocks on it.
+- **`POST /api/track/rate`** — customer rates the delivery 1–5 stars on the
+  track page, only after delivery, only with the tracking phone. One rating
+  per order (PK + 23505 → `{ok:true,already:true}` — a re-tap never skews
+  the average). Vague 404 like /api/track; 409 before delivery; 429 at
+  10/min/IP; Bangla 503s when the DB is unreachable. Riders stay anonymous:
+  only the display name is ever shown to the customer.
+- **Rider dashboard** — Quick Stats Strip grew from 2 to 4 cards:
+  চলমান ডেলিভারি / ফিডে সম্পন্ন / মোট ডেলিভারি (lifetime) / ৭ দিনে + ⭐ rating.
+  Scoreboard refreshes after a successful delivery, not on the 15 s poll.
+- **Track page** — `RiderRatingAsk` under the delivered order: "তানভীর-এর
+  ডেলিভারি কেমন হয়েছিল?" with a 1–5 star picker (bn/en bilingual). Hidden
+  entirely for pickup/courier orders — no rider, no rating.
+
+### Notes
+- `applyDeliveryRating` recomputes avg from the table on every new rating —
+  the `riders.rating_avg` column is derived state, never accumulated, so a
+  failed insert can never drift the number.

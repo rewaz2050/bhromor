@@ -1,4 +1,4 @@
--- PASTE 16/23 · 16_dispatch_health-ps_checkout_health-assembler.sql
+-- PASTE 16/24 · 16_dispatch_health-ps_checkout_health-assembler.sql
 -- Source: supabase/migrations/202609250006_dispatch_health.sql
 -- Assembler: decodes the base64 chunks and CREATEs the function.
 -- Repeat-safe: re-running any part is harmless.

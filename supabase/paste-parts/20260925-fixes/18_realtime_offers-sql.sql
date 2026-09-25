@@ -1,4 +1,4 @@
--- PASTE 18/23 · 18_realtime_offers-sql.sql
+-- PASTE 18/24 · 18_realtime_offers-sql.sql
 -- Source: supabase/migrations/202609250007_realtime_offers.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

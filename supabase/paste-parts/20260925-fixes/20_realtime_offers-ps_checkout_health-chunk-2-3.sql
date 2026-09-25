@@ -1,4 +1,4 @@
--- PASTE 20/23 · 20_realtime_offers-ps_checkout_health-chunk-2-3.sql
+-- PASTE 20/24 · 20_realtime_offers-ps_checkout_health-chunk-2-3.sql
 -- Source: supabase/migrations/202609250007_realtime_offers.sql
 -- Base64 chunk — copy the WHOLE insert; nothing may be dropped.
 -- Repeat-safe: re-running any part is harmless.

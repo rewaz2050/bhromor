@@ -1,4 +1,4 @@
--- PASTE 3/23 · 03_area_broadcast_dispatch-sql.sql
+-- PASTE 3/24 · 03_area_broadcast_dispatch-sql.sql
 -- Source: supabase/migrations/202609250001_area_broadcast_dispatch.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

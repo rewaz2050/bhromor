@@ -46,6 +46,7 @@ const FILES = [
   "202609250005_delivery_pin_lockout.sql",
   "202609250006_dispatch_health.sql",
   "202609250007_realtime_offers.sql",
+  "202609250008_delivery_ratings.sql",
 ];
 
 const FN = /create or replace function ([a-z0-9_]+)\(/i;

@@ -1,4 +1,4 @@
--- PASTE 11/23 · 11_delivery_pin_lockout-sql.sql
+-- PASTE 11/24 · 11_delivery_pin_lockout-sql.sql
 -- Source: supabase/migrations/202609250005_delivery_pin_lockout.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

@@ -1,4 +1,4 @@
--- PASTE 10/23 · 10_settle_claims-sql.sql
+-- PASTE 10/24 · 10_settle_claims-sql.sql
 -- Source: supabase/migrations/202609250004_settle_claims.sql
 -- Paste this WHOLE file into the Supabase SQL Editor and press RUN.
 -- Repeat-safe: re-running any part is harmless.

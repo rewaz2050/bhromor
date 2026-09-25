@@ -814,6 +814,79 @@ export const settleClaimsReady = async (
   return !error;
 };
 
+/* ------------------------------------------------------------------ */
+/* Rider stats (202609250008): lifetime + 7-day deliveries, rating     */
+/* ------------------------------------------------------------------ */
+
+export interface RiderStats {
+  /** Lifetime completed deliveries (maintained by the dispatch trigger). */
+  totalDeliveries: number;
+  /** Deliveries completed in the last 7 days (order delivery time). */
+  weekDeliveries: number;
+  /** Customer delivery ratings (202609250008), 0 when not yet rated. */
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+/**
+ * The rider's own scoreboard. Server-side only reads: the feed's 60-item
+ * window cannot answer "how am I doing", and a rider must never see another
+ * rider's numbers.
+ */
+export async function getRiderStats(
+  service: SupabaseClient,
+  riderId: string,
+): Promise<RiderStats> {
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const [riderRow, week] = await Promise.all([
+    service
+      .from("riders")
+      .select("total_deliveries,rating_avg,rating_count")
+      .eq("id", riderId)
+      .single(),
+    service
+      .from("delivery_assignments")
+      .select("order_id,orders!inner(updated_at)", { count: "exact", head: true })
+      .eq("rider_id", riderId)
+      .eq("state", "delivered")
+      .gte("orders.updated_at", since),
+  ]);
+  const rider = (riderRow.data ?? {}) as {
+    total_deliveries?: number | null;
+    rating_avg?: number | string | null;
+    rating_count?: number | null;
+  };
+  return {
+    totalDeliveries: Number(rider.total_deliveries ?? 0),
+    weekDeliveries: week.count ?? 0,
+    ratingAvg: Number(rider.rating_avg ?? 0),
+    ratingCount: Number(rider.rating_count ?? 0),
+  };
+}
+
+/**
+ * Roll a new delivery rating into the rider's average (202609250008).
+ * Recomputed from the ratings table, not incremented in place — a recompute
+ * can never drift, and it heals any historical rounding.
+ */
+export async function applyDeliveryRating(
+  service: SupabaseClient,
+  riderId: string,
+): Promise<void> {
+  const { data } = await service
+    .from("delivery_ratings")
+    .select("stars")
+    .eq("rider_id", riderId);
+  const stars = ((data ?? []) as { stars: number }[]).map((r) => r.stars);
+  const count = stars.length;
+  const avg = count > 0 ? stars.reduce((a, b) => a + b, 0) / count : 0;
+  const rounded = Math.round(avg * 10) / 10;
+  await service
+    .from("riders")
+    .update({ rating_avg: rounded, rating_count: count })
+    .eq("id", riderId);
+}
+
 /**
  * The rider files a settle CLAIM (202609250004): the hand balance stays
  * untouched until staff settle the rider. Returns the pending claim.
