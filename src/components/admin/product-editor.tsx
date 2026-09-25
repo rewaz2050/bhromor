@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { optimizedMediaUrl } from "@/lib/media-url";
 import { useCatalog } from "@/lib/use-catalog";
 import { nextProductId, slugify } from "@/lib/catalog-store";
 import { bdt } from "@/lib/format";
@@ -652,7 +653,7 @@ export default function ProductEditor({
                 <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-ivory-100 ring-1 ring-line">
                   {m.kind === "image" ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={m.src} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <img src={optimizedMediaUrl(m.src, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : driveId ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={driveThumbnailUrl(driveId, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />

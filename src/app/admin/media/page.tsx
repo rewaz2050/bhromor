@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMedia } from "@/lib/use-media";
 import { useCatalog } from "@/lib/use-catalog";
+import { optimizedMediaUrl } from "@/lib/media-url";
 import {
   KIND_LABEL,
   contentOf,
@@ -36,7 +37,7 @@ function MediaPreview({ item }: { item: MediaItem }) {
   if (content === "image") {
     return (
       /* eslint-disable-next-line @next/next/no-img-element */
-      <img src={item.url} alt={item.alt || item.label} className="h-full w-full object-cover" loading="lazy" />
+      <img src={optimizedMediaUrl(item.url, 400)} alt={item.alt || item.label} className="h-full w-full object-cover" loading="lazy" />
     );
   }
   if (content === "youtube") {

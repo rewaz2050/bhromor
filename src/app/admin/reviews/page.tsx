@@ -10,6 +10,7 @@ import {
   type ReviewStatus,
 } from "@/lib/review-store";
 import { IconCheck, IconFlag, IconStar, IconTrash } from "@/components/ui/icons";
+import { optimizedMediaUrl } from "@/lib/media-url";
 import AdminDataError from "@/components/admin/admin-data-error";
 
 const FILTERS: (ReviewStatus | "all")[] = ["all", "pending", "flagged", "approved", "hidden"];
@@ -159,7 +160,7 @@ export default function AdminReviewsPage() {
                         {(r.photos ?? []).map((src, i) => (
                           <a key={`${r.id}-p${i}`} href={src} target="_blank" rel="noreferrer" aria-label={`Open customer photo ${i + 1}`}>
                             {/* eslint-disable-next-line @next/next/no-img-element -- data URLs can't go through next/image */}
-                            <img src={src} alt={`Customer photo ${i + 1}`} loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-line" />
+                            <img src={optimizedMediaUrl(src, 200)} alt={`Customer photo ${i + 1}`} loading="lazy" className="h-20 w-20 rounded-xl object-cover ring-1 ring-line" />
                           </a>
                         ))}
                       </div>
