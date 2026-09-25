@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
@@ -12,8 +12,38 @@ const VEHICLES = [
   { id: "scooter", label: "স্কুটার (Scooter)" },
 ] as const;
 
+/** Server-side English → Bangla the applicant can act on. */
+const friendlyApplyError = (raw: string): string => {
+  const msg = raw.toLowerCase();
+  if (msg.includes("already a rider")) {
+    return "এই অ্যাকাউন্ট already রাইডার — /rider পোর্টালে লগইন করুন।";
+  }
+  if (msg.includes("already has a rider application")) {
+    return "এই ফোন/ইমেইলে already একটি আবেদন আছে — আমরা শিগগিরই যোগাযোগ করব।";
+  }
+  if (msg.includes("at least one delivery zone")) {
+    return "কমপক্ষে একটি ডেলিভারি জোন সিলেক্ট করুন।";
+  }
+  if (msg.includes("not available") && msg.includes("zone")) {
+    return "একটি জোন এখন available নেই — পেজ রিফ্রেশ করে আবার সিলেক্ট করুন।";
+  }
+  if (msg.includes("mobile number")) {
+    return "সঠিক ১১-সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।";
+  }
+  if (msg.includes("valid email")) {
+    return "সঠিক ইমেইল অ্যাড্রেস দিন — এটাই আপনার রাইডার লগইন হবে।";
+  }
+  if (msg.includes("too many")) {
+    return "অনেকবার চেষ্টা করা হয়েছে — একটু পরে আবার চেষ্টা করুন।";
+  }
+  if (msg.includes("not open yet") || msg.includes("503") || msg.includes("unavailable")) {
+    return "রাইডার আবেদন এখনো চালু হয়নি — কিছুক্ষণ পর আবার চেষ্টা করুন।";
+  }
+  return raw || "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।";
+};
+
 export default function RiderApplyPage() {
-  const { activeZones: zones } = useLiveZones();
+  const { activeZones: zones, live: zonesLive, loading: zonesLoading } = useLiveZones();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -23,7 +53,23 @@ export default function RiderApplyPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [linkedLogin, setLinkedLogin] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill from the signup handoff (?email=) — same email must own the
+  // login AND the application or the rider can never sign in.
+  useEffect(() => {
+    try {
+      const prefill = new URLSearchParams(window.location.search).get("email")?.trim() ?? "";
+      if (prefill && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(prefill)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time prefill
+        setEmail(prefill);
+      }
+    } catch {
+      /* no query — blank form */
+    }
+  }, []);
 
   const toggleZone = (id: string) => {
     setSelectedZones((prev) =>
@@ -35,18 +81,27 @@ export default function RiderApplyPage() {
     e.preventDefault();
     const cleanName = name.trim();
     const cleanPhone = phone.trim().replace(/[\s-]/g, "");
+    const normalizedPhone = cleanPhone.startsWith("+88")
+      ? cleanPhone.slice(3)
+      : cleanPhone.startsWith("88")
+        ? cleanPhone.slice(2)
+        : cleanPhone;
     const cleanEmail = email.trim().toLowerCase();
 
     if (cleanName.length < 2) {
       setError("আপনার পুরো নাম লিখুন।");
       return;
     }
-    if (!/^(\+?88)?01[0-9]{9}$/.test(cleanPhone)) {
+    if (!/^01[0-9]{9}$/.test(normalizedPhone)) {
       setError("সঠিক ১১-সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setError("সঠিক ইমেইল অ্যাড্রেস দিন।");
+      return;
+    }
+    if (selectedZones.length === 0) {
+      setError("কমপক্ষে একটি ডেলিভারি জোন সিলেক্ট করুন (যে এলাকায় ডেলিভারি করবেন)।");
       return;
     }
 
@@ -59,7 +114,7 @@ export default function RiderApplyPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: cleanName,
-          phone: cleanPhone,
+          phone: normalizedPhone,
           contactEmail: cleanEmail,
           vehicle,
           zoneIds: selectedZones,
@@ -68,14 +123,17 @@ export default function RiderApplyPage() {
 
       const data = (await res.json().catch(() => null)) as {
         error?: string;
+        linked?: boolean;
       } | null;
       if (!res.ok) {
-        throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
+        throw new Error(friendlyApplyError(data?.error ?? ""));
       }
 
+      setLinkedLogin(data?.linked === true);
+      setSubmittedEmail(cleanEmail);
       setSubmitted(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "আবেদন প্রক্রিয়া ব্যর্থ হয়েছে।");
+      setError(err instanceof Error ? friendlyApplyError(err.message) : "আবেদন প্রক্রিয়া ব্যর্থ হয়েছে।");
     } finally {
       setSubmitting(false);
     }
@@ -88,19 +146,49 @@ export default function RiderApplyPage() {
           <IconCheck className="h-8 w-8 stroke-[2.5]" />
         </div>
         <h1 className="font-display mt-6 text-2xl font-bold text-forest-900 sm:text-3xl">
-          রাইডার আবেদন গৃহীত হয়েছে!
+          রাইডার আবেদন গৃহীত হয়েছে!
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-          ধন্যবাদ <strong>{name}</strong>! আপনার আবেদনটি আমাদের পেন্ডিং কিউতে জমা হয়েছে। তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই আপনি <strong>/rider</strong> পোর্টাল থেকে ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
-        </p>
+        {linkedLogin ? (
+          <p className="mt-3 text-sm leading-relaxed text-ink-soft">
+            ধন্যবাদ <strong>{name}</strong>! আপনার লগইনের সাথে আবেদনটি যুক্ত হয়েছে।
+            তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই <strong>/rider</strong> পোর্টাল থেকে
+            ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
+          </p>
+        ) : (
+          <div className="mt-3 space-y-3 text-sm leading-relaxed text-ink-soft">
+            <p>
+              ধন্যবাদ <strong>{name}</strong>! আবেদনটি পেন্ডিং কিউতে জমা হয়েছে।
+            </p>
+            <p className="mx-auto max-w-md rounded-2xl bg-gold-100/60 p-4 text-xs font-semibold text-forest-900 ring-1 ring-gold-300">
+              পরের ধাপ (জরুরি): <strong>{submittedEmail || "আবেদনের ইমেইল"}</strong> দিয়ে{" "}
+              <Link
+                href={`/rider/login?signup=1&email=${encodeURIComponent(submittedEmail)}`}
+                className="underline"
+              >
+                রাইডার অ্যাকাউন্ট খুলুন
+              </Link>{" "}
+              — একই ইমেইলে লগইন করলেই আবেদনটি আপনার অ্যাকাউন্টের সাথে যুক্ত হবে,
+              তারপর অ্যাডমিন অনুমোদন দিলে ড্যাশবোর্ড খুলবে।
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
-          <Link
-            href="/rider"
-            className="rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
-          >
-            রাইডার পোর্টালে যান →
-          </Link>
+          {linkedLogin ? (
+            <Link
+              href="/rider"
+              className="rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            >
+              রাইডার পোর্টালে যান →
+            </Link>
+          ) : (
+            <Link
+              href={`/rider/login?signup=1&email=${encodeURIComponent(submittedEmail)}`}
+              className="rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            >
+              অ্যাকাউন্ট খুলুন →
+            </Link>
+          )}
           <Link
             href="/"
             className="rounded-full border border-line bg-paper px-6 py-2.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
@@ -122,7 +210,7 @@ export default function RiderApplyPage() {
           রাইডার হিসেবে যোগ দিন
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-soft">
-          নিজের সুবিধাজনক সময়ে পোশাকের ইনস্ট্যান্ট ডেলিভারি সম্পন্ন করুন এবং আকর্ষণীয় আয় করুন।
+          নিজের সুবিধাজনক সময়ে পোশাকের ইনস্ট্যান্ট ডেলিভারি সম্পন্ন করুন এবং আকর্ষণীয় আয় করুন।
         </p>
       </div>
 
@@ -148,6 +236,7 @@ export default function RiderApplyPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="যেমন: তানভীর আহমেদ"
+              autoComplete="name"
             />
           </label>
 
@@ -160,6 +249,8 @@ export default function RiderApplyPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="017XXXXXXXX"
+              autoComplete="tel-national"
+              inputMode="tel"
             />
           </label>
 
@@ -172,7 +263,11 @@ export default function RiderApplyPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@example.com"
+              autoComplete="email"
             />
+            <span className={hint}>
+              এই ইমেইলেই রাইডার লগইন হবে — অ্যাকাউন্ট খোলার সময় একই ইমেইল ব্যবহার করুন।
+            </span>
           </label>
 
           <label className="block sm:col-span-2">
@@ -189,39 +284,57 @@ export default function RiderApplyPage() {
               ))}
             </select>
             <span className={hint}>
-              আপনার নিজস্ব বাহন সিলেক্ট করুন যা দিয়ে ডেলিভারি করবেন।
+              আপনার নিজস্ব বাহন সিলেক্ট করুন যা দিয়ে ডেলিভারি করবেন।
             </span>
           </label>
         </div>
 
         {/* Preferred Delivery Zones */}
         <div>
-          <span className={label}>কাজের পছন্দের এলাকা / জোন</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {zones.map((z) => {
-              const checked = selectedZones.includes(z.id);
-              return (
-                <button
-                  type="button"
-                  key={z.id}
-                  onClick={() => toggleZone(z.id)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
-                    checked
-                      ? "bg-forest-800 text-ivory-50 ring-1 ring-forest-800"
-                      : "bg-ivory-100 text-ink-soft ring-1 ring-line hover:border-line-strong"
-                  }`}
-                >
-                  {checked ? `✓ ${z.name}` : z.name}
-                </button>
-              );
-            })}
-          </div>
+          <span className={label}>কাজের পছন্দের এলাকা / জোন *</span>
+          {zonesLoading ? (
+            <p className="mt-2 text-xs text-ink-soft">জোন লোড হচ্ছে…</p>
+          ) : (
+            <>
+              <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Delivery zones">
+                {zones.map((z) => {
+                  const checked = selectedZones.includes(z.id);
+                  return (
+                    <button
+                      type="button"
+                      key={z.id}
+                      onClick={() => toggleZone(z.id)}
+                      aria-pressed={checked}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
+                        checked
+                          ? "bg-forest-800 text-ivory-50 ring-1 ring-forest-800"
+                          : "bg-ivory-100 text-ink-soft ring-1 ring-line hover:border-line-strong"
+                      }`}
+                    >
+                      {checked ? `✓ ${z.name}` : z.name}
+                    </button>
+                  );
+                })}
+              </div>
+              {!zonesLive && (
+                <p className="mt-2 text-[11px] text-amber-800">
+                  লাইভ জোন তালিকা লোড হয়নি — নিচের তালিকা থেকে বেছে নিন, সমস্যা হলে পেজ রিফ্রেশ করুন।
+                </p>
+              )}
+              <p className="mt-1 text-[11px] text-ink-soft">
+                {selectedZones.length === 0
+                  ? "কমপক্ষে ১টি জোন সিলেক্ট করুন (একাধিকও পারবেন)।"
+                  : `${selectedZones.length}টি জোন সিলেক্ট হয়েছে।`}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line text-xs leading-relaxed text-ink-soft flex items-start gap-2.5">
           <IconShield className="h-5 w-5 shrink-0 text-gold-600 mt-0.5" />
           <p>
-            আবেদনের পর অ্যাডমিন আপনার তথ্য ভেরিফাই করে অনুমোদন দেবে। আপনার অ্যাকাউন্টে কোনো পাসওয়ার্ডের ঝামেলা নেই — সরাসরি ওটিপি/ইমেইল লগইন সাপোর্ট।
+            আবেদনের পর অ্যাডমিন আপনার তথ্য ভেরিফাই করে অনুমোদন দেবে। লগইন ইমেইল
+            + পাসওয়ার্ড দিয়ে — আবেদনের ইমেইল আর লগইনের ইমেইল <strong>একই</strong> হতে হবে।
           </p>
         </div>
 

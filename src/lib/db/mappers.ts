@@ -231,6 +231,7 @@ export const mapRider = (row: DbRider): Rider => ({
   cashInHand: row.cash_in_hand,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
+  linked: row.user_id != null,
   lat: row.lat ?? undefined,
   lng: row.lng ?? undefined,
   lastLocationAt: row.last_location_at ? Date.parse(row.last_location_at) : undefined,

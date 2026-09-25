@@ -6,6 +6,32 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { IconTruck } from "@/components/ui/icons";
 
+/** Raw Supabase Auth errors → Bangla the rider can act on. */
+const friendlyAuthError = (raw: string, mode: "in" | "up"): string => {
+  const msg = raw.toLowerCase();
+  if (msg.includes("invalid login credentials") || msg.includes("invalid email or password")) {
+    return "ইমেইল বা পাসওয়ার্ড মিলেনি। সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।";
+  }
+  if (msg.includes("email not confirmed") || msg.includes("not confirmed")) {
+    return "ইমেইল এখনো কনফার্ম হয়নি — ইনবক্সের (ও স্প্যামের) কনফার্মেশন লিংকে ক্লিক করে আবার লগইন করুন।";
+  }
+  if (msg.includes("user already registered") || msg.includes("already exists")) {
+    return "এই ইমেইলে অ্যাকাউন্ট already আছে — উপরের “সাইন ইন” ট্যাবে লগইন করুন।";
+  }
+  if (msg.includes("password") && msg.includes("6")) {
+    return "পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many")) {
+    return "অনেকবার চেষ্টা করা হয়েছে — একটু পরে আবার চেষ্টা করুন।";
+  }
+  if (msg.includes("network") || msg.includes("fetch")) {
+    return "ইন্টারনেট সংযোগে সমস্যা — নেট চেক করে আবার চেষ্টা করুন।";
+  }
+  return mode === "in"
+    ? "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।"
+    : "অ্যাকাউন্ট খোলা যায়নি। একটু পরে আবার চেষ্টা করুন।";
+};
+
 export default function RiderLoginPage() {
   const router = useRouter();
   const supabase = getSupabaseBrowser();
@@ -16,11 +42,33 @@ export default function RiderLoginPage() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // After signup-with-confirmation the rider must log in with the same email.
+  const [pendingSignupEmail, setPendingSignupEmail] = useState<string | null>(null);
+
+  // Pre-fill from /rider/apply handoff (?email=) or the norider gate.
+  // window.location (not useSearchParams) — no Suspense boundary needed.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const prefill = params.get("email")?.trim() ?? "";
+      if (prefill && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(prefill)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time query prefill
+        setEmail(prefill);
+      }
+      if (params.get("signup") === "1") {
+        setMode("up");
+      }
+    } catch {
+      /* no query — defaults stand */
+    }
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
+        // Signed in — /rider itself decides: dashboard (active), "awaiting
+        // approval" (pending), or "apply first" (no rider row).
         router.replace("/rider");
       }
     });
@@ -42,7 +90,9 @@ export default function RiderLoginPage() {
     }
 
     if (!supabase) {
-      router.replace("/rider");
+      setFormError(
+        "লগইন সার্ভার এখনো চালু হয়নি — কিছুক্ষণ পর আবার চেষ্টা করুন বা সাপোর্টে জানান।",
+      );
       return;
     }
 
@@ -53,21 +103,40 @@ export default function RiderLoginPage() {
           email: cleanEmail,
           password,
         });
-        if (error) throw error;
+        if (error) {
+          setFormError(friendlyAuthError(error.message, "in"));
+          return;
+        }
         router.replace("/rider");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password,
         });
-        if (error) throw error;
-        setNotice(
-          "অ্যাকাউন্ট তৈরি হয়েছে! আপনি এবার রাইডার আবেদন করতে পারেন বা অ্যাডমিন অনুমোদনের অপেক্ষা করুন।",
-        );
+        if (error) {
+          setFormError(friendlyAuthError(error.message, "up"));
+          // "Already registered" → flip to login so one more tap signs in.
+          if (error.message.toLowerCase().includes("already")) setMode("in");
+          return;
+        }
+        if (!data.session) {
+          // Email confirmation is ON: no session until the inbox link is clicked.
+          setPendingSignupEmail(cleanEmail);
+          setMode("in");
+          setNotice(
+            "অ্যাকাউন্ট তৈরি হয়েছে! 📧 ইমেইলের কনফার্মেশন লিংকে ক্লিক করে তারপর এখানে লগইন করুন — তারপর রাইডার আবেদন করুন।",
+          );
+          return;
+        }
+        // Instant session (confirmation OFF): hand off to the application
+        // with the email prefilled — signup alone creates NO rider row.
+        router.replace(`/rider/apply?email=${encodeURIComponent(cleanEmail)}`);
       }
     } catch (err: unknown) {
       setFormError(
-        err instanceof Error ? err.message : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।",
+        err instanceof Error
+          ? friendlyAuthError(err.message, mode)
+          : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।",
       );
     } finally {
       setBusy(false);
@@ -86,12 +155,16 @@ export default function RiderLoginPage() {
         <p className="mt-1 text-xs text-ink-soft sm:text-sm">
           ডেলিভারি ট্রিপ গ্রহণ, কাস্টমার পিন ভেরিফিকেশন ও ক্যাশ কালেকশন পোর্টাল
         </p>
+        <p className="mx-auto mt-3 max-w-sm rounded-xl bg-ivory-100/70 px-3 py-2 text-[11px] leading-relaxed text-ink-soft ring-1 ring-line">
+          নতুন রাইডার? ধাপ ৩টি: ① নিচে অ্যাকাউন্ট খুলুন ② রাইডার আবেদন করুন ③
+          অ্যাডমিন অনুমোদনের পর ড্যাশবোর্ড খুলবে। আবেদন আর লগইনে <strong>একই ইমেইল</strong> ব্যবহার করুন।
+        </p>
       </div>
 
-      
+
         <form
           onSubmit={handleSubmit}
-          className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
+          className="mt-6 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
         >
           <div className="grid grid-cols-2 gap-1 rounded-xl bg-ivory-100 p-1 text-xs font-semibold">
             <button
@@ -130,7 +203,7 @@ export default function RiderLoginPage() {
             </p>
           )}
           {notice && (
-            <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 ring-1 ring-emerald-200">
+            <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-900 ring-1 ring-emerald-200">
               {notice}
             </p>
           )}
@@ -145,6 +218,7 @@ export default function RiderLoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@example.com"
+              autoComplete="email"
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
             />
           </div>
@@ -160,6 +234,7 @@ export default function RiderLoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
             />
           </div>
@@ -171,6 +246,17 @@ export default function RiderLoginPage() {
           >
             {busy ? "যাচাই হচ্ছে…" : mode === "in" ? "লগইন করুন" : "অ্যাকাউন্ট খুলুন"}
           </button>
+          {pendingSignupEmail && mode === "in" && (
+            <p className="text-center text-[11px] text-ink-soft">
+              {pendingSignupEmail} — এই ইমেইলেই লগইন করুন, তারপর{" "}
+              <Link
+                href={`/rider/apply?email=${encodeURIComponent(pendingSignupEmail)}`}
+                className="font-semibold text-forest-800 underline"
+              >
+                আবেদন করুন
+              </Link>
+            </p>
+          )}
       </form>
 
       <div className="mt-8 text-center space-y-2 text-xs text-ink-soft">

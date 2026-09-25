@@ -110,6 +110,14 @@ function RiderCard({
                 {rider.isOnline ? "Online" : "Offline"}
               </span>
             )}
+            {rider.linked === false && (
+              <span
+                title="No Auth login linked — approving alone still locks this rider out of /rider. Link first (Edit → Rider login)."
+                className="rounded-full bg-rose-50 px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide text-rose-700 ring-1 ring-rose-200"
+              >
+                No login
+              </span>
+            )}
           </div>
           <p className="mt-1 truncate text-xs text-ink-soft">
             {rider.contactEmail ?? "no email"} · {rider.phone} ·{" "}
@@ -149,7 +157,17 @@ function RiderCard({
         {rider.status === "pending" && (
           <button
             type="button"
-            onClick={() => onStatus(rider.id, "active")}
+            onClick={() => {
+              if (
+                rider.linked === false &&
+                !window.confirm(
+                  `“${rider.name}” has NO linked login yet — approving alone still locks them out of /rider. Approve anyway and link the login after (Edit → Rider login)?`,
+                )
+              ) {
+                return;
+              }
+              onStatus(rider.id, "active");
+            }}
             className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
           >
             <IconCheck className="h-3.5 w-3.5" /> Approve

@@ -123,9 +123,9 @@ export default function RiderPage() {
 
   const toggleOnline = async () => {
     const nextState = !isOnline;
-    const ok = await riderJobsApi.setOnline(nextState);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
+    const errMsg = await riderJobsApi.setOnline(nextState);
+    if (errMsg) {
+      setActionError(errMsg);
       return;
     }
     setActionError(null);
@@ -187,10 +187,10 @@ export default function RiderPage() {
   const handleAccept = async (task: RiderTask) => {
     if (accepting) return;
     setAccepting(task.id);
-    const ok = await riderJobsApi.accept(task.id);
+    const errMsg = await riderJobsApi.accept(task.id);
     setAccepting(null);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
+    if (errMsg) {
+      setActionError(errMsg);
       return;
     }
     setActionError(null);
@@ -198,9 +198,9 @@ export default function RiderPage() {
   };
 
   const handleReject = async (task: RiderTask) => {
-    const ok = await riderJobsApi.reject(task.id);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
+    const errMsg = await riderJobsApi.reject(task.id);
+    if (errMsg) {
+      setActionError(errMsg);
       return;
     }
     setActionError(null);
@@ -208,9 +208,9 @@ export default function RiderPage() {
   };
 
   const handlePickup = async (task: RiderTask) => {
-    const ok = await riderJobsApi.pickup(task.id);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
+    const errMsg = await riderJobsApi.pickup(task.id);
+    if (errMsg) {
+      setActionError(errMsg);
       return;
     }
     setActionError(null);
@@ -270,9 +270,9 @@ export default function RiderPage() {
   };
 
   const handleVerifyPin = async (task: RiderTask) => {
-    const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
-    if (!ok) {
-      setPinError(riderJobsApi.error ?? "ভুল কোড!");
+    const errMsg = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
+    if (errMsg) {
+      setPinError(errMsg);
       return;
     }
     setActionError(null);
@@ -291,9 +291,9 @@ export default function RiderPage() {
       setActionError("bKash/bank-এর জন্য reference/TRXID দিন।");
       return;
     }
-    const ok = await riderJobsApi.settle(settleMethod, settleRef.trim());
-    if (!ok) {
-      setActionError(riderJobsApi.error);
+    const errMsg = await riderJobsApi.settle(settleMethod, settleRef.trim());
+    if (errMsg) {
+      setActionError(errMsg);
       return;
     }
     setActionError(null);

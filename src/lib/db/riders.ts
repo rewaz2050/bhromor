@@ -154,7 +154,13 @@ export async function applyRider(
   if (zoneIds.length === 0) {
     throw new RiderInputError("Choose at least one delivery zone.");
   }
-  const { data: zones } = await db.from("delivery_zones").select("id,active");
+  const { data: zones, error: zonesError } = await db
+    .from("delivery_zones")
+    .select("id,active");
+  if (zonesError || !zones || zones.length === 0) {
+    // Unseeded backend — a 503 ("not open yet"), never a 422 blaming the rider.
+    throw new Error("delivery zones unavailable");
+  }
   const live = new Set(
     ((zones ?? []) as { id: string; active: boolean }[])
       .filter((z) => z.active)

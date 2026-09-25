@@ -122,6 +122,13 @@ export interface Rider {
   lastLocationAt?: number;
   currentLoad?: number;
   totalDeliveries?: number;
+  /**
+   * True when an Auth login is linked (riders.user_id is set). Staff-only
+   * signal for the Admin → Riders queue: approving an unlinked rider still
+   * leaves them locked out of /rider until Link rider runs. Always true for
+   * the rider reading their own row through /api/rider/me.
+   */
+  linked?: boolean;
   /** P2 #22 — the rider's own shift; drives auto-dispatch (see lib/rider-hours.ts). */
   availability?: import("./rider-hours").RiderAvailability;
 }

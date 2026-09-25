@@ -33,12 +33,19 @@ export const POST = staffRoute(
     if (!service) {
       throw new AdminInputError("Service key is not configured.", 503);
     }
-    const { data: listed, error: listError } =
-      await service.auth.admin.listUsers({ page: 1, perPage: 200 });
-    if (listError) throw new Error("user lookup failed");
-    const match = listed.users.find(
-      (u) => (u.email ?? "").toLowerCase() === email,
-    );
+    // Admin listUsers is paginated (no get-by-email): page through until the
+    // address is found. The old code read only page 1, so rider #201+ could
+    // never be linked ("No account uses that email yet" for a real account).
+    let match: { id: string; email?: string } | undefined;
+    for (let page = 1; page <= 10 && !match; page++) {
+      const { data: listed, error: listError } =
+        await service.auth.admin.listUsers({ page, perPage: 200 });
+      if (listError) throw new Error("user lookup failed");
+      match = listed.users.find(
+        (u) => (u.email ?? "").toLowerCase() === email,
+      );
+      if (listed.users.length < 200) break;
+    }
     if (!match) {
       throw new AdminInputError(
         "No account uses that email yet — ask the rider to sign up first.",

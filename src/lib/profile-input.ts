@@ -17,7 +17,8 @@ export function riderProfileInput(raw: unknown) {
   const patch: { name?: string; phone?: string; vehicle?: "bicycle" | "bike" | "scooter" } = {};
   if (body.name !== undefined) patch.name = profileName(body.name);
   if (body.phone !== undefined) {
-    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    const phone =
+      typeof body.phone === "string" ? body.phone.trim().replace(/[\s-]/g, "") : "";
     if (!/^01[0-9]{9}$/.test(phone)) throw new ProfileInputError("১১ সংখ্যার বাংলাদেশি মোবাইল নম্বর দিন।");
     patch.phone = phone;
   }

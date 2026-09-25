@@ -39,7 +39,11 @@ export const riderRoute = (
       rider = await requireRider();
     } catch (err) {
       if (err instanceof RiderAuthError) {
-        return apiError(err.message, err.status);
+        return apiError(
+          err.message,
+          err.status,
+          err.code ? { code: err.code } : undefined,
+        );
       }
       return apiError("Rider check failed.", 503);
     }

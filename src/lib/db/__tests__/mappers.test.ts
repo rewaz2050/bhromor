@@ -359,6 +359,7 @@ describe("mapRider (marketplace slice 6)", () => {
       lastLocationAt: undefined,
       currentLoad: 0,
       totalDeliveries: 0,
+      linked: false,
       // P2 #22 — no shift on the row means ALWAYS available (explicit, not undefined)
       availability: { days: null, fromHour: null, toHour: null },
     });

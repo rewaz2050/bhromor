@@ -27,20 +27,42 @@ export const RIDER_JOBS_POLL_MS = 15_000;
  */
 export const RIDER_JOBS_POLL_BACKUP_MS = 120_000;
 
+/**
+ * Session states (2026-09-25): "guest" is strictly "no Supabase session".
+ * A signed-in account carries its own state so the shell never bounces a
+ * pending applicant back to /rider/login (the old infinite loop):
+ * - authed: active rider, dashboard unlocked
+ * - pending: application awaiting admin approval
+ * - suspended: account suspended, contact support
+ * - norider: signed in but no rider row — point at /rider/apply
+ */
+export type RiderSessionStatus =
+  | "checking"
+  | "authed"
+  | "pending"
+  | "suspended"
+  | "norider"
+  | "guest";
+
 export class RiderApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
-const readError = async (res: Response): Promise<string> => {
+const readError = async (res: Response): Promise<{ message: string; code?: string }> => {
   try {
-    const data = (await res.json()) as { error?: string };
-    return data.error || "Something went wrong — please try again.";
+    const data = (await res.json()) as { error?: string; code?: string };
+    return {
+      message: data.error || "Something went wrong — please try again.",
+      code: typeof data.code === "string" ? data.code : undefined,
+    };
   } catch {
-    return "Something went wrong — please try again.";
+    return { message: "Something went wrong — please try again." };
   }
 };
 
@@ -60,7 +82,10 @@ const riderFetch = async <T,>(
   } catch {
     throw new RiderApiError("Could not reach the server.", 0);
   }
-  if (!res.ok) throw new RiderApiError(await readError(res), res.status);
+  if (!res.ok) {
+    const { message, code } = await readError(res);
+    throw new RiderApiError(message, res.status, code);
+  }
   return (await res.json()) as T;
 };
 
@@ -72,13 +97,15 @@ export const riderErrorMessage = (err: unknown): string =>
 export const useRiderSession = () => {
   const [rider, setRider] = useState<Rider | null>(null);
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<
-    "checking" | "authed" | "guest"
-  >("checking");
+  const [status, setStatus] = useState<RiderSessionStatus>("checking");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
-    setStatus((prev) => (prev === "authed" ? prev : "checking"));
+    setStatus((prev) =>
+      prev === "authed" || prev === "pending" || prev === "suspended" || prev === "norider"
+        ? prev
+        : "checking",
+    );
     setError(null);
     try {
       const data = await riderFetch<{ rider: Rider; email: string }>(
@@ -86,13 +113,26 @@ export const useRiderSession = () => {
       );
       setRider(data.rider);
       setEmail(data.email);
-      setStatus("authed");
+      setStatus(
+        data.rider.status === "active"
+          ? "authed"
+          : data.rider.status === "suspended"
+            ? "suspended"
+            : "pending",
+      );
     } catch (err) {
       setRider(null);
       setEmail("");
-      setStatus("guest");
       if (err instanceof RiderApiError && err.status === 403) {
+        // Signed in, but this login owns no rider row — the shell points at
+        // /rider/apply instead of bouncing back to /rider/login.
+        setStatus("norider");
         setError(err.message);
+      } else {
+        setStatus("guest");
+        if (err instanceof RiderApiError && err.status !== 401) {
+          setError(err.message);
+        }
       }
     }
   }, []);
@@ -239,20 +279,28 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
   // to see a new offer (or an offer that had expired under them).
   usePoll(refresh, live ? RIDER_JOBS_POLL_BACKUP_MS : RIDER_JOBS_POLL_MS, enabled);
 
+  /**
+   * Mutations return the failure message (null on success) instead of a
+   * bare boolean: the page used to read `riderJobsApi.error` from its render
+   * closure right after `await`, which is always one render stale — every
+   * failed accept/pickup/deliver painted the PREVIOUS error (or nothing).
+   */
   const run = async (
     path: string,
     body?: unknown,
-  ): Promise<boolean> => {
+  ): Promise<string | null> => {
     try {
       await riderFetch<unknown>(path, "POST", body);
       await refresh();
-      return true;
+      setError(null);
+      return null;
     } catch (err) {
       // Another rider may have won. Remove stale offers, then retain the
       // conflict message (refresh normally clears errors).
       if (err instanceof RiderApiError && err.status === 409) await refresh();
-      setError(riderErrorMessage(err));
-      return false;
+      const message = riderErrorMessage(err);
+      setError(message);
+      return message;
     }
   };
 
@@ -279,14 +327,15 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
   const setOnline = useCallback(
-    async (isOnline: boolean): Promise<boolean> => {
+    async (isOnline: boolean): Promise<string | null> => {
       try {
         await riderFetch("/api/rider/online", "PATCH", { isOnline });
         setError(null);
-        return true;
+        return null;
       } catch (err) {
-        setError(riderErrorMessage(err));
-        return false;
+        const message = riderErrorMessage(err);
+        setError(message);
+        return message;
       }
     },
     [],
@@ -305,15 +354,16 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [],
   );
   const settle = useCallback(
-    async (method: string, reference: string): Promise<boolean> => {
+    async (method: string, reference: string): Promise<string | null> => {
       try {
         await riderFetch("/api/rider/settle", "POST", { method, reference });
         setError(null);
         await refresh();
-        return true;
+        return null;
       } catch (err) {
-        setError(riderErrorMessage(err));
-        return false;
+        const message = riderErrorMessage(err);
+        setError(message);
+        return message;
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
