@@ -73,7 +73,7 @@ export async function GET(request?: Request) {
     // soon as one offer lapses with a second rider online.
     dispatchRepair: false,
     // 202609170001 — two-tap order flow: ps_advance_order accepts
-    // confirmed → ready-for-pickup, so admin/vendor "Ready — call rider"
+    // confirmed → ready-for-pickup, so admin/vendor "Ready — request riders"
     // works without a "preparing" tap in between. Without it the button
     // gets a 422 ("not allowed from here") and staff must use "More… →
     // Start preparing" first.
@@ -244,7 +244,7 @@ export async function GET(request?: Request) {
   }
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
     nextSteps.push(
-      "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
+      "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — request riders' button 422 dibe, age 'More… → Start preparing' chapte hobe",
     );
   }
   if (checks.reachable && !checks.pushConfigured) {

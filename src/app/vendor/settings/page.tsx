@@ -44,6 +44,7 @@ export default function VendorSettingsPage() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -70,6 +71,8 @@ export default function VendorSettingsPage() {
   };
 
   const flipOpen = async () => {
+    if (saving) return;
+    setSaved(false);
     setSaving(true);
     setError(null);
     try {
@@ -85,9 +88,16 @@ export default function VendorSettingsPage() {
   return (
     <div className="max-w-2xl">
       <PageHeader
-        title="Shop settings"
-        sub={isStaff ? "Staff account — you can manage the sign and prep time." : "How customers see your shop."}
+        title="দোকানের প্রোফাইল"
+        sub={isStaff ? "Staff হিসেবে দোকান খোলা/বন্ধ ও প্রস্তুতির সময় বদলাতে পারবেন।" : "Customer ও Rider যেন সহজে আপনার দোকান খুঁজে পায়—তথ্য সঠিক রাখুন।"}
       />
+
+      <section className="mb-4 rounded-2xl border border-line bg-paper p-5">
+        <h2 className="font-semibold text-forest-900">{current.name}</h2>
+        <p className="mt-1 text-sm text-ink-soft">{current.status === "active" ? "অনুমোদিত দোকান" : current.status === "pending" ? "অনুমোদনের অপেক্ষায়" : "দোকান স্থগিত"} · {isStaff ? "Staff" : "Owner"}</p>
+        <p className="mt-3 text-xs text-ink-soft">অর্ডার গ্রহণ → প্যাকিং → Ready → এলাকার রাইডারদের অনুরোধ → পিকআপ। নিচের ফোন ও ঠিকানা Rider পিকআপের জন্য ব্যবহার করবেন।</p>
+        {(!current.address?.trim() || !current.phone?.trim()) && <p className="mt-3 text-sm text-amber-800">পিকআপ সহজ করতে দোকানের ফোন ও পূর্ণ ঠিকানা যোগ করুন।</p>}
+      </section>
 
       {error && (
         <div className="mb-4">
@@ -95,8 +105,8 @@ export default function VendorSettingsPage() {
         </div>
       )}
       {saved && (
-        <p className="mb-4 rounded-xl bg-forest-50 px-4 py-3 text-sm font-medium text-forest-900 ring-1 ring-forest-200">
-          Saved.
+        <p role="status" className="mb-4 rounded-xl bg-forest-50 px-4 py-3 text-sm font-medium text-forest-900 ring-1 ring-forest-200">
+          তথ্য সেভ হয়েছে।
         </p>
       )}
 
@@ -127,11 +137,14 @@ export default function VendorSettingsPage() {
         onSubmit={save}
         className="space-y-4 rounded-2xl bg-paper p-6 ring-1 ring-line"
       >
-        <fieldset disabled={isStaff} className="space-y-4 disabled:opacity-60">
+        <fieldset disabled={isStaff || saving} className="space-y-4 disabled:opacity-60">
           <label className="block">
-            <span className={label}>Shop name *</span>
+            <span className={label}>দোকানের নাম *</span>
             <input
               className={field}
+              required
+              minLength={2}
+              autoComplete="organization"
               value={values.name}
               onChange={(e) => set("name", e.target.value)}
               maxLength={80}
@@ -149,9 +162,12 @@ export default function VendorSettingsPage() {
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className={label}>Phone</span>
+              <span className={label}>দোকানের ফোন *</span>
               <input
                 className={field}
+                required
+                type="tel"
+                autoComplete="tel"
                 value={values.phone}
                 onChange={(e) => set("phone", e.target.value)}
                 maxLength={20}
@@ -168,10 +184,13 @@ export default function VendorSettingsPage() {
             </label>
           </div>
           <label className="block">
-            <span className={label}>Address</span>
+            <span className={label}>পিকআপের ঠিকানা *</span>
             <textarea
               className={field}
-              rows={2}
+              required
+              minLength={6}
+              placeholder="দোকান নম্বর, মার্কেট/রাস্তা, এলাকা ও পরিচিত landmark"
+              rows={3}
               value={values.address}
               onChange={(e) => set("address", e.target.value)}
               maxLength={300}
@@ -184,6 +203,8 @@ export default function VendorSettingsPage() {
             <span className={label}>Prep time (minutes)</span>
             <input
               type="number"
+              required
+              disabled={saving}
               min={0}
               max={240}
               className={field}
@@ -213,7 +234,7 @@ export default function VendorSettingsPage() {
           disabled={saving}
           className="rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
         </button>
       </form>
     </div>

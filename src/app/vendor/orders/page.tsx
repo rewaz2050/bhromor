@@ -91,6 +91,9 @@ function Queue() {
             : "Confirm new orders fast — the kitchen clock starts with you. This list refreshes itself."
         }
       />
+      <p className="mb-4 rounded-xl border border-line bg-paper p-3 text-sm text-ink-soft">
+        অর্ডার গ্রহণ করুন → প্যাকিং শেষে Ready করুন → এলাকার অনলাইন রাইডারদের অনুরোধ যাবে। যিনি আগে গ্রহণ করবেন, তিনিই পিকআপ করবেন—Admin-এর অপেক্ষা করতে হবে না।
+      </p>
       <div className="mb-4 flex flex-wrap gap-1.5">
         {FILTERS.map((f) => {
           const active = status === f.id;

@@ -387,6 +387,17 @@ select count(*) from customers;
 
 All statements must run without “relation does not exist”.
 
+### Area dispatch follow-up (2026-09-25)
+
+After the existing migrations, apply in order:
+- `supabase/migrations/202609250001_area_broadcast_dispatch.sql`
+- `supabase/migrations/202609250002_dispatch_cancel_guard.sql`
+
+Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
+Fresh bootstrap/paste-parts now include it and both area-dispatch migrations.
+Never run the entire bootstrap on an existing database. Verification evidence
+and remaining live checks: `docs/VERIFICATION-2026-09-25.md`.
+
 ## 2. Environment
 
 Vercel project → Settings → Environment Variables (project settings, not

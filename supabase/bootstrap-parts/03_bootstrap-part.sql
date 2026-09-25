@@ -1,4 +1,4 @@
--- PART 3/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 3/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 8/23 — dispatch auto-offer  (source: supabase/migrations/202609090008_dispatch_auto.sql)
 -- ============================================================================
@@ -1081,4 +1081,3 @@ create index if not exists idx_orders_lat_lng on orders (lat, lng) where lat is 
 create index if not exists idx_orders_proof on orders (delivery_proof_url) where delivery_proof_url is not null;
 
 commit;
-

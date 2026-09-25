@@ -24,6 +24,7 @@ import { ReferralCard } from "./referral-card";
 import PlusCard from "./plus-card";
 import OrderHistory from "./order-history";
 import DashboardHero from "./dashboard-hero";
+import { CustomerProfile } from "./customer-profile";
 
 /**
  * Account panel — signup/login with NO verification: phone + password and
@@ -55,7 +56,7 @@ const nextFromQuery = (): string | null => {
   }
 };
 
-type AccountTab = "orders" | "card" | "refer" | "plus";
+type AccountTab = "orders" | "profile" | "card" | "refer" | "plus";
 
 export default function AccountView() {
   const { t } = useLanguage();
@@ -176,6 +177,7 @@ export default function AccountView() {
   if (customer) {
     const TABS: { key: AccountTab; label: string; icon: React.ReactNode }[] = [
       { key: "orders", label: t("accountTabs.orders"), icon: <IconGift className="h-4 w-4" /> },
+      { key: "profile", label: "আমার তথ্য ও ঠিকানা", icon: <IconCheck className="h-4 w-4" /> },
       { key: "card", label: t("accountTabs.card"), icon: <IconStar className="h-4 w-4" /> },
       { key: "refer", label: t("accountTabs.refer"), icon: <IconSend className="h-4 w-4" /> },
       { key: "plus", label: t("accountTabs.plus"), icon: <IconStar className="h-4 w-4" /> },
@@ -239,6 +241,7 @@ export default function AccountView() {
           data-testid={`account-panel-${tab}`}
         >
           {tab === "orders" ? <OrderHistory phone={customer.phone} /> : null}
+          {tab === "profile" ? <CustomerProfile key={customer.id} customer={customer} onSaved={refresh} /> : null}
           {tab === "card" ? <LoyaltyCard /> : null}
           {tab === "refer" ? <ReferralCard /> : null}
           {tab === "plus" ? <PlusCard /> : null}

@@ -88,7 +88,7 @@ export const vendorShopPatch = (
       throw new AdminInputError("Only the shop owner can edit that.", 403);
     }
   }
-  take("name", body.name === undefined ? undefined : clean(body.name, 80) || undefined);
+  take("name", body.name === undefined ? undefined : clean(body.name, 80));
   take("tagline", body.tagline === undefined ? undefined : clean(body.tagline, 200));
   take(
     "logo_url",

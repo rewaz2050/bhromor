@@ -527,11 +527,11 @@ export default function CheckoutView() {
   const { customer: cardCustomer, checked: cardChecked } = useCustomer();
   const { card: smartCard } = useSmartCard();
   useEffect(() => {
-    if (cardCustomer?.phone && !form.phone) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- prefill once on session resolve
-      setForm((f) => (f.phone ? f : { ...f, phone: cardCustomer.phone }));
+    if (cardCustomer && (!form.phone || !form.name)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- prefill empty fields after session resolve
+      setForm((f) => ({ ...f, phone: f.phone || cardCustomer.phone, name: f.name || cardCustomer.name }));
     }
-  }, [cardCustomer?.phone, form.phone]);
+  }, [cardCustomer, form.phone, form.name]);
 
   useEffect(() => {
     let cancelled = false;

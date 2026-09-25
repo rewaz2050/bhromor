@@ -28,12 +28,12 @@ describe("primaryAction", () => {
     expect(primaryAction(o({ status: "pending" }), "vendor")).toMatchObject({ kind: "action", to: "confirmed" });
   });
 
-  it("confirmed / preparing → Ready — call rider (two-tap flow)", () => {
+  it("confirmed / preparing → Ready — request riders (two-tap flow)", () => {
     for (const status of ["confirmed", "preparing"] as OrderStatus[]) {
       expect(primaryAction(o({ status }))).toMatchObject({
         kind: "action",
         to: "ready-for-pickup",
-        label: "Ready — call rider",
+        label: "Ready — request riders",
       });
     }
   });

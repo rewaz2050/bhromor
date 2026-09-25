@@ -75,12 +75,12 @@ export const STATUS_META: Record<
 /**
  * What the button that moves an order TO this status should say. The
  * internal names stay on the badges; the buttons speak the shop's language
- * ("Ready — call rider" is one tap that packs + summons the rider).
+ * ("Ready — request riders" is one tap that packs + summons the rider).
  */
 export const ACTION_LABEL: Record<Exclude<OrderStatus, "pending">, string> = {
   confirmed: "Confirm order",
   preparing: "Start preparing",
-  "ready-for-pickup": "Ready — call rider",
+  "ready-for-pickup": "Ready — request riders",
   "courier-assigned": "Rider assigned (manual)",
   "out-for-delivery": "Picked up by rider",
   delivered: "Mark delivered",

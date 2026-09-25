@@ -55,7 +55,7 @@ let authKey = "";
 
 const getAuthSnapshot = (): AuthSnapshot => {
   const customer = liveAuth.customer;
-  const key = `${liveAuth.checked}|${liveAuth.mode ?? ""}|${customer?.id ?? ""}`;
+  const key = JSON.stringify([liveAuth.checked, liveAuth.mode, customer?.id, customer?.name, customer?.phone]);
   if (key !== authKey) {
     authKey = key;
     authSnapshot = {

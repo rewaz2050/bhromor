@@ -124,7 +124,7 @@ export default function AdminOrderDetailPage() {
     }
   };
 
-  // Two-tap flow (2026-09-17): Confirm → Ready — call rider. The primary
+  // Two-tap flow (2026-09-17): Confirm → Ready — request riders. The primary
   // action is the first legal step; any other legal step (the optional
   // "Start preparing") sits behind an "Advanced" disclosure. Rider states
   // (courier-assigned → out-for-delivery → delivered) belong to the rider

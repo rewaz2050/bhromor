@@ -73,7 +73,7 @@ export function useAdminDeliveries() {
     async (id: string): Promise<boolean> => {
       if (!live) return false;
       const target = liveJobs?.find((j) => j.id === id);
-      if (!target || target.state === "delivered") return false;
+      if (!target || target.state !== "offered") return false;
       setBusyId(id);
       try {
         await apiSend<{ ok: boolean }>(

@@ -19,13 +19,12 @@ export function AdminBatchAssign({
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Mirrors ps_assign_batch_to_rider (202609160005): only orders that are
-  // ready to leave the shop (or offered/accepted but not yet picked up) can
-  // be routed. Listing confirmed/preparing here would just get them skipped.
+  // Mirrors area dispatch (202609250001): manual offers are only for Ready
+  // orders. Never offer to take an already accepted trip from its rider.
   // Counter pickups never ride (the customer collects at Traffic Point).
   const pendingOrders = orders.filter(
     (o) =>
-      (o.status === "ready-for-pickup" || o.status === "courier-assigned") &&
+      o.status === "ready-for-pickup" &&
       !o.isPickup,
   );
   const onlineRiders = riders.filter((r) => r.isOnline && r.status === "active");
@@ -69,7 +68,7 @@ export function AdminBatchAssign({
     <div className="rounded-2xl bg-paper p-5 ring-1 ring-line space-y-4">
       <h3 className="text-sm font-bold uppercase tracking-wider">📦 Batch Assign — Multi-order route (Sunamganj Sadar)</h3>
       <p className="text-xs text-ink-soft">
-        Select 2-5 ready-for-pickup orders close to each other and offer them to one online rider in a single call. Any live offer to another rider is withdrawn; orders already picked up are left alone.
+        Choose ready orders and an online rider for an exclusive request. Other pending invitations are withdrawn. Already accepted trips are left alone; a rider can accept at most two active orders.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
