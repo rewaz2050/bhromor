@@ -675,32 +675,51 @@ const RIDER_VISIBLE_STATUSES = new Set(["courier-assigned", "out-for-delivery", 
 export const toDomainMany = async (
   db: SupabaseClient,
   orders: readonly DbOrder[],
+  opts?: { slim?: boolean },
 ): Promise<(Order | null)[]> => {
   if (orders.length === 0) return [];
+  // Slim feeds (rider jobs, dispatch board — both poll every 15 s) need
+  // items + zone names only: no timeline (the rider view clears it
+  // anyway), no coupons, no return linkage, no rider/product enrichment.
+  // 10 queries → 2, and the items read drops from * to 7 columns.
+  // selectIn short-circuits empty id lists, so emptied lists skip queries.
+  const slim = opts?.slim === true;
+  const skipped = <Row,>(): { data: Row[]; error: null } => ({ data: [], error: null });
   const ids = orders.map((o) => o.id);
+  const historyIds = slim ? ([] as string[]) : ids;
   const zoneIds = [...new Set(orders.map((o) => o.zone_id).filter(Boolean))];
-  const couponIds = [
-    ...new Set(orders.map((o) => o.coupon_id).filter((id): id is string => !!id)),
-  ];
+  const couponIds = slim
+    ? []
+    : [
+        ...new Set(orders.map((o) => o.coupon_id).filter((id): id is string => !!id)),
+      ];
   // P1 #13: a delivered parent carries its linked return/exchange pickup.
-  const parentCandidateIds = orders.filter((o) => !o.is_return).map((o) => o.id);
+  const parentCandidateIds = slim ? [] : orders.filter((o) => !o.is_return).map((o) => o.id);
   // A return pickup shows the public number of the order it returns.
-  const parentIds = [
-    ...new Set(
-      orders
-        .filter((o) => o.is_return && o.return_parent_id)
-        .map((o) => o.return_parent_id as string),
-    ),
-  ];
+  const parentIds = slim
+    ? []
+    : [
+        ...new Set(
+          orders
+            .filter((o) => o.is_return && o.return_parent_id)
+            .map((o) => o.return_parent_id as string),
+        ),
+      ];
   // Slice 9 rider-leg: attach the assigned rider once dispatch has started.
-  const dispatchedIds = orders
-    .filter((o) => RIDER_VISIBLE_STATUSES.has(o.status))
-    .map((o) => o.id);
+  const dispatchedIds = slim
+    ? []
+    : orders.filter((o) => RIDER_VISIBLE_STATUSES.has(o.status)).map((o) => o.id);
 
   const [itemsRes, historyRes, zonesRes, couponsRes, childrenRes, parentsRes, assignmentsRes] =
     await Promise.all([
-      selectIn<DbOrderItem>(db, "order_items", "*", "order_id", ids),
-      selectIn<DbOrderHistory>(db, "order_status_history", "*", "order_id", ids, (q) =>
+      selectIn<DbOrderItem>(
+        db,
+        "order_items",
+        slim ? "order_id,product_id,name,sku,variant,qty,unit_price" : "*",
+        "order_id",
+        ids,
+      ),
+      selectIn<DbOrderHistory>(db, "order_status_history", "*", "order_id", historyIds, (q) =>
         q.order("created_at"),
       ),
       selectIn<{ id: string; name: string; eta_label: string }>(
@@ -758,7 +777,20 @@ export const toDomainMany = async (
     ...new Set(itemsRes.data.map((it) => it.product_id).filter((id): id is string => !!id)),
   ];
   const riderIds = [...new Set(latestRiderByOrder.values())];
-  const [pRes, mRes, rRes] = await Promise.all([
+  const [pRes, mRes, rRes] =
+    slim
+      ? [
+          skipped<{ id: string; slug: string; warranty_days: number | null }>(),
+          skipped<{ product_id: string; url: string }>(),
+          skipped<{
+            id: string;
+            name: string;
+            phone: string;
+            rating_avg: number;
+            rating_count: number;
+          }>(),
+        ]
+      : await Promise.all([
     selectIn<{ id: string; slug: string; warranty_days: number | null }>(
       db,
       "products",

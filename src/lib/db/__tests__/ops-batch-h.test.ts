@@ -303,7 +303,7 @@ describe("job feeds carry Order.id (order number), not the row uuid", () => {
   it("listRiderJobs: same identity for the rider app", async () => {
     vi.spyOn(await import("../orders"), "toDomainMany").mockImplementation(domainStub);
     const [job] = await listRiderJobs(service, RIDER_UUID);
-    expect(rpc).toHaveBeenCalledWith("ps_expire_stale_offers");
+    expect(rpc).toHaveBeenCalledWith("ps_expire_stale_offers", { p_force: false });
     expect(job.orderId).toBe("PS-20260918-0042");
     expect(job.id).toBe("asg-1");
   });

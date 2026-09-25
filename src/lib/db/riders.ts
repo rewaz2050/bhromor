@@ -24,6 +24,7 @@ import type {
   DbOrder,
   DbRider,
   DbRiderSettlement,
+  DbSettleClaim,
 } from "./types";
 import type { Order } from "../orders";
 import { riderOrderView } from "../rider-order";
@@ -50,6 +51,20 @@ export interface RiderSettlement {
   method: string;
   reference: string;
   at: number;
+}
+
+/** A COD pay-in CLAIM: the rider paid and waits for staff approval. */
+export interface SettleClaim {
+  id: string;
+  riderId: string;
+  riderName?: string;
+  riderPhone?: string;
+  amount: number;
+  method: string;
+  reference: string;
+  status: DbSettleClaim["status"];
+  at: number;
+  note?: string;
 }
 
 /** Admin dispatcher row: assignment + rider + full order (slice 7 board). */
@@ -213,8 +228,9 @@ export async function listRiderSettlements(
 const mapOrdersById = async (
   service: SupabaseClient,
   rows: DbOrder[],
+  slim = false,
 ): Promise<Map<string, Order>> => {
-  const mapped = await toDomainMany(service, rows);
+  const mapped = await toDomainMany(service, rows, slim ? { slim: true } : undefined);
   const out = new Map<string, Order>();
   rows.forEach((row, i) => {
     const order = mapped[i];
@@ -223,16 +239,84 @@ const mapOrdersById = async (
   return out;
 };
 
+export async function listRiderSettleClaim(
+  service: SupabaseClient,
+  riderId: string,
+): Promise<SettleClaim | null> {
+  const { data, error } = await service
+    .from("rider_settle_claims")
+    .select("*")
+    .eq("rider_id", riderId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error("settle claim read failed");
+  if (!data) return null;
+  const row = data as DbSettleClaim;
+  return {
+    id: row.id,
+    riderId: row.rider_id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    status: row.status,
+    at: epoch(row.created_at),
+    note: row.note ?? undefined,
+  };
+}
+
+/** Every pending claim with its rider — the staff approval queue. */
+export async function listPendingSettleClaims(
+  service: SupabaseClient,
+): Promise<SettleClaim[]> {
+  const { data, error } = await service
+    .from("rider_settle_claims")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(100);
+  if (error) throw new Error("settle claims read failed");
+  const rows = (data ?? []) as DbSettleClaim[];
+  if (rows.length === 0) return [];
+  const riderIds = [...new Set(rows.map((r) => r.rider_id))];
+  const { data: riderRows } = await service
+    .from("riders")
+    .select("id,name,phone")
+    .in("id", riderIds);
+  const names = new Map(
+    ((riderRows ?? []) as { id: string; name: string; phone: string }[]).map(
+      (r) => [r.id, r] as const,
+    ),
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    riderId: row.rider_id,
+    riderName: names.get(row.rider_id)?.name,
+    riderPhone: names.get(row.rider_id)?.phone,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    status: row.status,
+    at: epoch(row.created_at),
+    note: row.note ?? undefined,
+  }));
+}
+
 export async function listRiderJobs(
   service: SupabaseClient,
   riderId: string,
 ): Promise<RiderJob[]> {
   await expireStaleAssignments(service);
+  // Bounded: the feed polls every 15s, so an unbounded history would grow
+  // every response with the rider's whole career. Live jobs sort newest
+  // first and always fit; older history stays in the database, not the feed.
   const { data: assignments, error } = await service
     .from("delivery_assignments")
-    .select("*")
+    .select("id,order_id,rider_id,state,offered_at,expires_at")
     .eq("rider_id", riderId)
-    .order("offered_at", { ascending: false });
+    .order("offered_at", { ascending: false })
+    .limit(60);
   if (error) throw new Error("rider jobs read failed");
   const rows = (assignments ?? []) as DbDeliveryAssignment[];
   if (rows.length === 0) return [];
@@ -244,7 +328,8 @@ export async function listRiderJobs(
     .in("id", orderIds);
   if (orderError) throw new Error("rider jobs order read failed");
   // P1.3: one batched mapping for every order on the board, not one per job.
-  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[]);
+  // Slim: the feed card needs items + zone names, not the 10-query domain.
+  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[], true);
 
   const shopIds = [...new Set([...orderMap.values()].flatMap((o) => o.shopId ? [o.shopId] : []))];
   const shops = new Map<string, { name: string; address: string; phone: string }>();
@@ -282,10 +367,12 @@ export async function listRiderJobs(
 export async function listDispatchJobs(
   service: SupabaseClient,
 ): Promise<RiderDispatchJob[]> {
+  // Bounded like the rider feed: the board polls every 15s.
   const { data: assignments, error } = await service
     .from("delivery_assignments")
-    .select("*")
-    .order("offered_at", { ascending: false });
+    .select("id,order_id,rider_id,state,offered_at,expires_at")
+    .order("offered_at", { ascending: false })
+    .limit(200);
   if (error) throw new Error("dispatch board read failed");
   const rows = (assignments ?? []) as DbDeliveryAssignment[];
   if (rows.length === 0) return [];
@@ -299,7 +386,8 @@ export async function listDispatchJobs(
   if (orderResult.error) throw new Error("dispatch board order read failed");
   if (riderResult.error) throw new Error("dispatch board rider read failed");
 
-  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[]);
+  // Slim like the rider feed: the board card reads a fraction of Order.
+  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[], true);
   const riderMap = new Map<string, Pick<DbRider, "id" | "name" | "phone">>();
   for (const r of (riderResult.data ?? []) as Pick<DbRider, "id" | "name" | "phone">[])
     riderMap.set(r.id, r);
@@ -368,9 +456,15 @@ export async function resolveOrderRowIds(
 const dispatchRpcError = (message: string): AdminInputError => {
   const msg = message.toLowerCase();
   if (msg.includes("forbidden")) return new AdminInputError(message, 403);
-  if (msg.includes("not found")) return new AdminInputError(message, 404);
+  if (msg.includes("not found") || msg.includes("no pending claim"))
+    return new AdminInputError(message, 404);
   if (msg.includes("no eligible rider") || msg.includes("already active"))
     return new AdminInputError(message, 409);
+  if (msg.includes("payment not verified"))
+    return new AdminInputError(
+      "Verify the customer's wallet payment first — unverified bKash/Nagad orders cannot be dispatched.",
+      422,
+    );
   return new AdminInputError(message, 422);
 };
 
@@ -396,11 +490,17 @@ export async function cancelDispatchAssignment(
 }
 
 /** Mark stale offered assignments as expired (no background worker). */
-/** Service-only RPC (202609160004): expire timed-out offers and re-offer. */
+/**
+ * Service-only RPC: expire timed-out offers and re-offer. Throttled in the
+ * database (one real sweep per 10s) since every rider feed polls every 15s.
+ */
 export async function expireStaleAssignments(
   service: SupabaseClient,
+  force = false,
 ): Promise<void> {
-  const { error } = await service.rpc("ps_expire_stale_offers");
+  const { error } = await service.rpc("ps_expire_stale_offers", {
+    p_force: force,
+  });
   if (error) throw new Error(error.message);
 }
 
@@ -415,6 +515,19 @@ export async function settleRiderCashByAdmin(
     p_rider_id: riderId,
     p_method: method,
     p_reference: reference,
+  });
+  if (error) throw dispatchRpcError(error.message);
+}
+
+/** Admin rejects a rider's pending settle claim (money never arrived). */
+export async function rejectSettleClaimByAdmin(
+  service: SupabaseClient,
+  riderId: string,
+  note?: string,
+): Promise<void> {
+  const { error } = await service.rpc("ps_admin_reject_settle", {
+    p_rider_id: riderId,
+    p_note: note?.trim() ? note.trim().slice(0, 300) : null,
   });
   if (error) throw dispatchRpcError(error.message);
 }
@@ -501,6 +614,9 @@ export const acceptRiderAssignment = async (
     if (error.message.includes("rider not available")) {
       throw new RiderInputError("এখন গ্রহণ করা যাচ্ছে না। Online অবস্থা, শিফট, চলমান ট্রিপ ও ক্যাশ সীমা দেখুন।", 409);
     }
+    if (error.message.includes("order not ready for dispatch")) {
+      throw new RiderInputError("এই অর্ডার এখনো ডিসপ্যাচের জন্য প্রস্তুত নয় (পেমেন্ট যাচাই বাকি থাকতে পারে)।", 409);
+    }
     throw new Error(error.message);
   }
 };
@@ -566,7 +682,12 @@ export const pickupRiderAssignment = async (
   const { error } = await db.rpc("ps_rider_pickup", {
     p_assignment_id: assignmentId,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message.includes("pickup not allowed") || error.message.includes("order not ready for pickup")) {
+      throw new RiderInputError("এই অবস্থায় পিকআপ করা যাবে না — ফিড রিফ্রেশ করুন।", 409);
+    }
+    throw new Error(error.message);
+  }
 };
 
 export const deliverRiderAssignment = async (
@@ -575,6 +696,26 @@ export const deliverRiderAssignment = async (
   code: string,
   proofUrl?: string | null,
 ): Promise<void> => {
+  // Count the attempt first: ps_rider_deliver_check commits the counter
+  // (a raise would roll it back), then ps_rider_deliver re-verifies and
+  // completes. Falls back to deliver-only on a pre-lockout database.
+  const check = await db.rpc("ps_rider_deliver_check", {
+    p_assignment_id: assignmentId,
+    p_code: code,
+  });
+  if (!check.error) {
+    if (check.data === "locked") {
+      throw new RiderInputError("অনেকবার ভুল কোড দেওয়া হয়েছে — ১৫ মিনিট পর আবার চেষ্টা করুন।", 429);
+    }
+    if (check.data === "mismatch") {
+      throw new RiderInputError("ভুল কোড! কাস্টমারের কাছ থেকে সঠিক ৪-সংখ্যার কোড নিন।", 422);
+    }
+  } else if ((check.error as { code?: string }).code !== "PGRST202") {
+    if (check.error.message.includes("delivery not allowed")) {
+      throw new RiderInputError("এই অবস্থায় ডেলিভারি করা যাবে না — আগে পিকআপ কনফার্ম করুন।", 409);
+    }
+    throw new Error(check.error.message);
+  }
   const { error } = await db.rpc("ps_rider_deliver", {
     p_assignment_id: assignmentId,
     p_code: code,
@@ -588,6 +729,15 @@ export const deliverRiderAssignment = async (
       "[rider] ps_rider_deliver failed",
       JSON.stringify({ assignmentId, code: error.code ?? null, message: error.message }),
     );
+    if (error.message.includes("delivery code locked")) {
+      throw new RiderInputError("অনেকবার ভুল কোড দেওয়া হয়েছে — ১৫ মিনিট পর আবার চেষ্টা করুন।", 429);
+    }
+    if (error.message.includes("delivery code mismatch")) {
+      throw new RiderInputError("ভুল কোড! কাস্টমারের কাছ থেকে সঠিক ৪-সংখ্যার কোড নিন।", 422);
+    }
+    if (error.message.includes("delivery not allowed")) {
+      throw new RiderInputError("এই অবস্থায় ডেলিভারি করা যাবে না — আগে পিকআপ কনফার্ম করুন।", 409);
+    }
     throw new Error(error.message);
   }
 };
@@ -604,14 +754,36 @@ export const failedRiderAttempt = async (
   if (error) throw new Error(error.message);
 };
 
+/**
+ * The rider files a settle CLAIM (202609250004): the hand balance stays
+ * untouched until staff settle the rider. Returns the pending claim.
+ */
 export const settleRiderCash = async (
   db: SupabaseClient,
   method: string,
   reference: string,
-): Promise<void> => {
-  const { error } = await db.rpc("ps_rider_settle", {
+): Promise<SettleClaim> => {
+  const { data, error } = await db.rpc("ps_rider_settle", {
     p_method: method,
     p_reference: reference,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message.includes("settle already pending")) {
+      throw new RiderInputError("আপনার সেটেলমেন্ট দাবি ইতিমধ্যে Admin-এর কাছে অপেক্ষায় আছে।", 409);
+    }
+    if (error.message.includes("nothing to settle")) {
+      throw new RiderInputError("সেটেল করার মতো ক্যাশ নেই।", 422);
+    }
+    throw new Error(error.message);
+  }
+  const row = data as DbSettleClaim;
+  return {
+    id: row.id,
+    riderId: row.rider_id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    status: row.status,
+    at: epoch(row.created_at),
+  };
 };

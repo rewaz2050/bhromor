@@ -9,6 +9,7 @@ import {
 } from "@/lib/review-store";
 import type { Product } from "@/lib/catalog";
 import { IconCheck, IconStar } from "@/components/ui/icons";
+import { optimizedMediaUrl } from "@/lib/media-url";
 import { compressReviewPhoto, MAX_PHOTOS } from "@/lib/review-photos";
 
 const dayLabel = (ms: number): string =>
@@ -39,7 +40,7 @@ function BuyerPhoto({
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- next/image can't take data URLs */}
       <img
-        src={src}
+        src={optimizedMediaUrl(src, 400)}
         alt={alt}
         loading="lazy"
         className={`${className} rounded-2xl object-cover ring-1 ring-line transition-transform group-hover:scale-[1.03]`}
@@ -381,7 +382,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                     <li key={`${i}-${src.length}`} className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element -- next/image can't take data URLs */}
                       <img
-                        src={src}
+                        src={optimizedMediaUrl(src, 200)}
                         alt={`Review photo ${i + 1}`}
                         className="h-16 w-16 rounded-xl object-cover ring-1 ring-line"
                       />

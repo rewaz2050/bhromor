@@ -6,7 +6,7 @@ import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
 import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
 import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
-import { cashToCollect } from "@/lib/payment-labels";
+import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { friendlyWhen } from "@/components/admin/order-ui";
 import { PaymentChip } from "@/components/admin/payment-chip";
 import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons";
@@ -163,15 +163,24 @@ export default function AdminDeliveriesPage() {
                 >
                   Open order
                 </Link>
-                <button
-                  type="button"
-                  disabled={busyId === order.id}
-                  onClick={() => void offer(order.id)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
-                >
-                  <IconTruck className="h-3.5 w-3.5" />
-                  {busyId === order.id ? "Offering…" : "Send area requests"}
-                </button>
+                {paymentSummary(order).awaitingVerification ? (
+                  <Link
+                    href={`/admin/orders/${order.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-200"
+                  >
+                    Verify payment first
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busyId === order.id}
+                    onClick={() => void offer(order.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
+                  >
+                    <IconTruck className="h-3.5 w-3.5" />
+                    {busyId === order.id ? "Offering…" : "Send area requests"}
+                  </button>
+                )}
               </div>
             ))}
           </div>

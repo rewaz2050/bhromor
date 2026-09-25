@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useVendor } from "@/components/vendor/vendor-shell";
 import { ErrorBox, PageHeader } from "@/components/vendor/vendor-ui";
 import { patchVendorShop, vendorErrorMessage } from "@/lib/use-vendor";
+import { useLiveZones } from "@/lib/use-live-zones";
 import type { Shop } from "@/lib/catalog";
 
 const field =
@@ -26,6 +27,7 @@ export default function VendorSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { zones } = useLiveZones();
 
   if (!current) return null;
   const values: Record<string, string> = form ?? {
@@ -220,7 +222,9 @@ export default function VendorSettingsPage() {
             <p className="mt-1">
               <span className="font-semibold text-forest-900">Zones:</span>{" "}
               {current.zoneIds.length > 0
-                ? current.zoneIds.join(", ")
+                ? current.zoneIds
+                    .map((id) => zones.find((z) => z.id === id)?.name ?? id)
+                    .join(", ")
                 : "—"}
             </p>
             <p className="mt-1">

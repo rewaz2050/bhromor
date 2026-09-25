@@ -17,6 +17,7 @@ import { readOpsSettings } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
+import { publicJson } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,10 @@ export async function GET() {
   const db = getSupabaseService();
   if (!db) return apiJson({ source: "none", promos: off });
   const settings = await readOpsSettings(db);
-  return apiJson({
+  // Edge-cached 60 s (speed pass): identical for every visitor, and the
+  // checkout recomputes every taka server-side, so a ≤60 s stale flag can
+  // never mist-price an order. Unconfigured fallbacks above stay no-store.
+  return publicJson({
     source: "live",
     promos: promoView({ flash: settings.flash, bundle: settings.bundle }, Date.now()),
     // P2 #20 — the campaign state rides the same poll, so the strip and the

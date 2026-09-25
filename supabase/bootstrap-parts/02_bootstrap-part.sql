@@ -1,4 +1,4 @@
--- PART 2/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 2/12 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 4/23 — marketplace shops  (source: supabase/migrations/202609090004_marketplace_shops.sql)
 -- ============================================================================
@@ -941,3 +941,4 @@ begin
 end $$;
 
 commit;
+

@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 /**
  * PROSANTI brand emblem — official artwork.
  *
@@ -12,8 +14,7 @@ export default function LogoMark({
   className?: string;
 }) {
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src="/brand/logo-emblem.png"
       alt=""
       width={433}

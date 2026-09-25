@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+// Bengali serif, storefront-only (see root layout): the rider/vendor/admin
+// apps never render font-bengali, so they skip these ~3 weights.
+import "@fontsource/noto-serif-bengali/400.css";
+import "@fontsource/noto-serif-bengali/500.css";
+import "@fontsource/noto-serif-bengali/600.css";
 import { CartProvider } from "@/components/cart/cart-provider";
 import BagDrawer from "@/components/cart/bag-drawer";
 import CustomerProvider from "@/components/account/customer-provider";

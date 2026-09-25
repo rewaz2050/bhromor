@@ -1,4 +1,4 @@
--- PART 11/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 11/12 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: two-tap order flow (202609170001) ====
 -- ============================================================================
 -- 202609170001 — two-tap order flow (audit #2, 2026-09-17, §2)
@@ -472,3 +472,4 @@ revoke all on function ps_cancel_assignment(uuid) from public, anon;
 grant execute on function ps_cancel_assignment(uuid) to authenticated;
 notify pgrst, 'reload schema';
 commit;
+

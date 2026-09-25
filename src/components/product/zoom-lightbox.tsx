@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconClose, IconMinus, IconPlus } from "@/components/ui/icons";
+import { optimizedMediaUrl } from "@/lib/media-url";
 
 const MIN = 1;
 const MAX = 4;
@@ -182,7 +183,7 @@ export default function ZoomLightbox({
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- transform-driven zoom needs the raw element */}
         <img
-          src={src}
+          src={optimizedMediaUrl(src, 1600)}
           alt=""
           draggable={false}
           className="absolute inset-0 h-full w-full object-contain will-change-transform"

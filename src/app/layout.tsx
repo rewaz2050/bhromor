@@ -1,9 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/playfair-display";
-import "@fontsource/noto-serif-bengali/400.css";
-import "@fontsource/noto-serif-bengali/500.css";
-import "@fontsource/noto-serif-bengali/600.css";
+// Noto Serif Bengali lives in (site)/layout: only the storefront uses
+// font-bengali — the rider/vendor/admin apps must not pay for 3 weights.
 import "./globals.css";
 import SmoothScroll from "@/components/ui/smooth-scroll";
 import AnalyticsScripts from "@/components/analytics/analytics-scripts";

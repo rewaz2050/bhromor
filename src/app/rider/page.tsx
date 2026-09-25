@@ -9,6 +9,7 @@ import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
+import { shouldSendFix, type SentFix } from "@/lib/location-throttle";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -49,8 +50,8 @@ const secondsLeft = (expiresAt: number, now: number): number =>
 export default function RiderPage() {
   const session = useRiderSession();
   const isLive = session.status === "authed";
-  const riderJobsApi = useRiderJobs(isLive);
   const activeRider = session.rider;
+  const riderJobsApi = useRiderJobs(isLive, activeRider?.id);
 
   const [onlineOverride, setOnlineOverride] = useState<boolean | null>(null);
   const isOnline = onlineOverride ?? activeRider?.isOnline ?? false;
@@ -59,6 +60,8 @@ export default function RiderPage() {
   const [pinError, setPinError] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
   const [settle, setSettle] = useState(false);
+  const [settleMethod, setSettleMethod] = useState("cash");
+  const [settleRef, setSettleRef] = useState("");
   const flashTimer = useRef<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
@@ -110,6 +113,7 @@ export default function RiderPage() {
   // Ticks once a second only while an offer is on screen (the countdown);
   // otherwise once a minute for the "ago" labels.
   const hasOffer = tasks.some((t) => t.state === "offered");
+  const hasActiveTrip = tasks.some((t) => t.state !== "offered");
   const now = useNow(hasOffer ? 1000 : 60_000);
 
   const deliveredCount = useMemo(
@@ -138,13 +142,19 @@ export default function RiderPage() {
     }
   };
 
-  // Auto location tracking when online (every 30s)
+  // Adaptive location tracking when online: a rider standing still used to
+  // PATCH every watchPosition twitch + every 30 s. Now an update only goes
+  // out when the rider moved ≥50 m or the 2-minute heartbeat is due; the
+  // fallback ping is 30 s on an active trip, 2 min while idle-online.
+  const lastFixSent = useRef<SentFix | null>(null);
   useEffect(() => {
     if (!isLive || !isOnline) return;
     let watchId: number | null = null;
     let intervalId: number | null = null;
 
     const sendLocation = (lat: number, lng: number) => {
+      if (!shouldSendFix(lastFixSent.current, lat, lng)) return;
+      lastFixSent.current = { lat, lng, at: Date.now() };
       void riderJobsApi.updateLocation(lat, lng);
     };
 
@@ -155,13 +165,16 @@ export default function RiderPage() {
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
       );
       // Fallback interval
-      intervalId = window.setInterval(() => {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
-          () => {},
-          { enableHighAccuracy: false, timeout: 8000 },
-        );
-      }, 30000);
+      intervalId = window.setInterval(
+        () => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+            () => {},
+            { enableHighAccuracy: false, timeout: 8000 },
+          );
+        },
+        hasActiveTrip ? 30000 : 120000,
+      );
     }
 
     return () => {
@@ -169,7 +182,7 @@ export default function RiderPage() {
       if (intervalId !== null) window.clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLive, isOnline]);
+  }, [isLive, isOnline, hasActiveTrip]);
 
   const handleAccept = async (task: RiderTask) => {
     if (accepting) return;
@@ -274,23 +287,57 @@ export default function RiderPage() {
   };
 
   const handleSettleCash = async () => {
-    if (
-      !window.confirm(
-        `আপনি কি অফিসে/bKash-এ ${formatBdt(cashInHand)} টাকা জমা দিয়ে ক্যাশ সেটেল করতে চান?`,
-      )
-    )
+    if (settleMethod !== "cash" && settleRef.trim().length < 3) {
+      setActionError("bKash/bank-এর জন্য reference/TRXID দিন।");
       return;
-    const ok = await riderJobsApi.settle("cash", "");
+    }
+    const ok = await riderJobsApi.settle(settleMethod, settleRef.trim());
     if (!ok) {
       setActionError(riderJobsApi.error);
-      setSettle(false);
       return;
     }
     setActionError(null);
     void session.refresh();
     setSettle(false);
-    showFlash("ক্যাশ সেটেলমেন্ট সম্পন্ন হয়েছে! নতুন ট্রিপ একসেপ্ট করতে পারবেন।");
+    setSettleRef("");
+    showFlash("টাকা জমার দাবি Admin-এর কাছে পাঠানো হয়েছে। Approve হলে balance কমবে।");
   };
+
+  const pendingClaim = riderJobsApi.pendingClaim;
+  // Unaccepted invitations are not trips — the "চলমান" counter must only
+  // count work this rider actually holds.
+  const activeTrips = tasks.filter((t) => t.state !== "offered").length;
+
+  // A new 90-second offer is easy to miss while riding: beep + vibrate the
+  // moment one appears in the feed (in-app alert, not background push).
+  const knownOffers = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const offered = tasks.filter((t) => t.state === "offered").map((t) => t.id);
+    const fresh = offered.filter((id) => !knownOffers.current.has(id));
+    knownOffers.current = new Set(offered);
+    if (fresh.length === 0) return;
+    try {
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 880;
+        gain.gain.value = 0.12;
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+        window.setTimeout(() => void ctx.close().catch(() => {}), 700);
+      }
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    } catch {
+      /* silent devices stay silent */
+    }
+  }, [tasks]);
 
   if (!activeRider) {
     return (
@@ -311,7 +358,20 @@ export default function RiderPage() {
           </span>
           <div>
             <h1 className="font-display text-base font-semibold">PROSANTI রাইডার</h1>
-            <p className="text-[11px] text-ivory-100/70">{activeRider.name}</p>
+            <p className="flex items-center gap-1.5 text-[11px] text-ivory-100/70">
+              {activeRider.name}
+              {/* Realtime socket state — offers arrive instantly while Live. */}
+              <span
+                role="status"
+                title={riderJobsApi.live ? "Live — নতুন অফার সাথে সাথে আসবে" : "পোলিং মোড — ১৫ সেকেন্ড পর পর আপডেট"}
+                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] font-semibold ${
+                  riderJobsApi.live ? "bg-emerald-500/20 text-emerald-300" : "bg-forest-800 text-ivory-100/50"
+                }`}
+              >
+                <span className={`h-1 w-1 rounded-full ${riderJobsApi.live ? "bg-emerald-400 animate-pulse" : "bg-gray-500"}`} />
+                {riderJobsApi.live ? "Live" : "Polling"}
+              </span>
+            </p>
           </div>
         </div>
 
@@ -390,7 +450,7 @@ export default function RiderPage() {
             <p className="font-display text-2xl font-bold text-forest-900">
               {formatBdt(cashInHand)}
             </p>
-            {cashInHand > 0 && (
+            {cashInHand > 0 && !pendingClaim && (
               <button
                 type="button"
                 onClick={() => setSettle(true)}
@@ -400,6 +460,13 @@ export default function RiderPage() {
               </button>
             )}
           </div>
+          {pendingClaim && (
+            <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
+              ⏳ {formatBdt(pendingClaim.amount)} জমার দাবি Admin-এর কাছে অপেক্ষায় আছে
+              ({pendingClaim.method.toUpperCase()}
+              {pendingClaim.reference ? ` · ${pendingClaim.reference}` : ""})। Approve হলে balance কমবে।
+            </p>
+          )}
 
           {/* Progress bar toward ৳5,000 cap */}
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ivory-200 ring-1 ring-line/40">
@@ -463,7 +530,7 @@ export default function RiderPage() {
               চলমান ডেলিভারি
             </p>
             <p className="font-display mt-1 text-2xl font-bold text-forest-900">
-              {tasks.length}
+              {activeTrips}
             </p>
           </div>
           <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
@@ -839,7 +906,7 @@ export default function RiderPage() {
         </div>
       )}
 
-      {/* Cash settlement confirm */}
+      {/* Cash pay-in claim: money first, then staff approve the claim */}
       {settle && (
         <div
           role="dialog"
@@ -852,17 +919,43 @@ export default function RiderPage() {
                 <IconShield className="h-6 w-6" />
               </span>
               <h3 className="font-display mt-3 text-lg font-bold text-forest-900">
-                ক্যাশ সেটেলমেন্ট
+                টাকা জমার দাবি
               </h3>
               <p className="mt-1 text-xs text-ink-soft">
-                {formatBdt(cashInHand)} অফিসে বা bKash-এ জমা দিয়ে
-                নিশ্চিত করুন।
+                {formatBdt(cashInHand)} অফিসে / bKash-এ / bank-এ জমা দিয়ে
+                নিচে দাবি পাঠান — Admin approve করলে balance কমবে।
               </p>
+            </div>
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-forest-900">
+                কীভাবে জমা দিয়েছেন?
+                <select
+                  value={settleMethod}
+                  onChange={(e) => setSettleMethod(e.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-line bg-ivory-50 px-3 text-sm font-normal"
+                >
+                  <option value="cash">অফিসে নগদ (Cash)</option>
+                  <option value="bkash">bKash</option>
+                  <option value="bank">Bank</option>
+                </select>
+              </label>
+              {settleMethod !== "cash" && (
+                <label className="block text-xs font-semibold text-forest-900">
+                  Reference / TRXID *
+                  <input
+                    value={settleRef}
+                    onChange={(e) => setSettleRef(e.target.value)}
+                    placeholder="যেমন: 9HXK2LM4PQ"
+                    maxLength={120}
+                    className="mt-1 h-11 w-full rounded-xl border border-line bg-ivory-50 px-3 text-sm font-normal"
+                  />
+                </label>
+              )}
             </div>
             <div className="flex gap-2.5">
               <button
                 type="button"
-                onClick={() => setSettle(false)}
+                onClick={() => { setSettle(false); setSettleRef(""); }}
                 className="h-12 flex-1 rounded-full border border-line bg-paper text-xs font-semibold text-ink-soft hover:bg-ivory-100"
               >
                 বাতিল
@@ -872,7 +965,7 @@ export default function RiderPage() {
                 onClick={handleSettleCash}
                 className="h-12 flex-1 rounded-full bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
               >
-                নিশ্চিত করুন
+                দাবি পাঠান
               </button>
             </div>
           </div>

@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Rider } from "./catalog";
+import type { SettleClaim } from "./db/riders";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 import { usePoll } from "./use-poll";
@@ -20,12 +21,16 @@ export const RIDERS_POLL_MS = 30_000;
 export function useRiders(pollMs = 0) {
   const { live, checked } = useStaffLive();
   const [liveRiders, setLiveRiders] = useState<Rider[] | null>(null);
+  const [settleClaims, setSettleClaims] = useState<SettleClaim[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const data = await apiGet<{ riders: Rider[] }>("/api/admin/riders");
+      const data = await apiGet<{ riders: Rider[]; settleClaims?: SettleClaim[] }>(
+        "/api/admin/riders",
+      );
       setLiveRiders(data.riders);
+      setSettleClaims(data.settleClaims ?? []);
       setError(null);
       return true;
     } catch (err) {
@@ -38,6 +43,7 @@ export function useRiders(pollMs = 0) {
     if (!live) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveRiders(null);
+      setSettleClaims([]);
       setError(null);
       return;
     }
@@ -117,13 +123,36 @@ export function useRiders(pollMs = 0) {
     [live],
   );
 
+  /** Staff reject a rider's pending settle claim (money never arrived). */
+  const rejectClaim = useCallback(
+    async (id: string, note: string): Promise<boolean> => {
+      if (!live) return false;
+      try {
+        await apiSend(
+          `/api/admin/riders/${encodeURIComponent(id)}/settle-claim`,
+          "POST",
+          { action: "reject", note },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [live, refresh],
+  );
+
   const riders: Rider[] = liveRiders ?? [];
   return {
     riders,
     pending: riders.filter((r) => r.status === "pending"),
+    settleClaims,
     saveRider,
     setStatus,
     settleCash,
+    rejectClaim,
     linkRider,
     reset: refresh,
     live,

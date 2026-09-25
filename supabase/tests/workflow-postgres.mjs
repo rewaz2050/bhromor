@@ -21,6 +21,7 @@ try {
  const root=await connect();
  await root.query(`create schema auth; create table auth.users(id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}');
  create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;`);
+ await root.query('create publication supabase_realtime'); // mirrors Supabase (007 publishes into it)
  await root.query(readFileSync(new URL('../bootstrap-fresh.sql',import.meta.url),'utf8'));
  await root.query(`grant usage on schema public,auth to authenticated;
  grant select on all tables in schema public to authenticated;`);
@@ -78,6 +79,40 @@ try {
  await assert.rejects(winner.query('select ps_rider_deliver($1,$2,null)',[win.id,first.delivery_code]),/delivery not allowed/);
  assert.equal(Number((await row(root,'select cash_in_hand from riders where id=$1',[win.rider_id])).cash_in_hand),10000);
  console.log('PASS pickup, wrong-code rejection, delivery, COD balance, shop ledger and duplicate delivery guard');
+ const claim=await row(winner,"select * from ps_rider_settle('bkash','WALLET-TRX-1')");
+ assert.equal(claim.status,'pending');
+ assert.equal(Number((await row(root,'select cash_in_hand from riders where id=$1',[win.rider_id])).cash_in_hand),10000);
+ await assert.rejects(winner.query("select ps_rider_settle('cash','')"),/settle already pending/);
+ await staff.query("select ps_admin_settle_rider($1,'cash','')",[win.rider_id]);
+ assert.equal(Number((await row(root,'select cash_in_hand from riders where id=$1',[win.rider_id])).cash_in_hand),0);
+ assert.equal((await row(root,"select status from rider_settle_claims where rider_id=$1 order by created_at desc limit 1",[win.rider_id])).status,'approved');
+ console.log('PASS rider settle files a claim; staff approval moves the cash');
+ const walletOrder=await order('bkash'); await ready(walletOrder);
+ await root.query("update orders set payment_status='pending_verification' where id=$1",[walletOrder.id]);
+ // Batch assign is service-only (the app calls it on the service client
+ // after staffRoute verifies the session), so the superuser issues it here.
+ assert.equal((await row(root,'select ps_assign_batch_to_rider($1,$2)',[rb,[walletOrder.id]])).ps_assign_batch_to_rider,0);
+ console.log('PASS manual dispatch skips orders whose wallet payment is unverified');
+ const pin=await order(); await ready(pin);
+ const pinOffer=await row(root,"select id from delivery_assignments where order_id=$1 and rider_id=$2 and state='offered'",[pin.id,win.rider_id]);
+ await winner.query('select ps_rider_accept($1)',[pinOffer.id]);
+ await winner.query('select ps_rider_pickup($1)',[pinOffer.id]);
+ const pinCheck=async code=>(await row(winner,'select ps_rider_deliver_check($1,$2)',[pinOffer.id,code])).ps_rider_deliver_check;
+ for(let i=0;i<4;i++) assert.equal(await pinCheck('xxxx'),'mismatch');
+ assert.equal(await pinCheck('xxxx'),'locked');
+ assert.equal(await pinCheck(pin.delivery_code),'locked');
+ await root.query("update orders set delivery_code_locked_until=now()-interval '1 minute' where id=$1",[pin.id]);
+ assert.equal(await pinCheck(pin.delivery_code),'ok');
+ await winner.query('select ps_rider_deliver($1,$2,null)',[pinOffer.id,pin.delivery_code]);
+ assert.equal((await row(root,'select status from orders where id=$1',[pin.id])).status,'delivered');
+ console.log('PASS PIN check counts wrong codes, locks on the 5th, resets on success');
+ const probe=(await row(root,'select ps_checkout_health() h')).h;
+ assert.equal(probe.version,'202609250007');
+ assert.equal(probe.broadcast_resume_ok,true);
+ assert.equal(probe.settle_claims_ok,true);
+ assert.equal(probe.pin_lockout_ok,true);
+ assert.equal(probe.realtime_offers_ok,true);
+ console.log('PASS dispatch health probe flags the new migrations');
  // Same rider races for two jobs with one remaining slot. Both invitations
  // are created while eligible; capacity is rechecked under the rider lock.
  const warm=await order();await ready(warm);

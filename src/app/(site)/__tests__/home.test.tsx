@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import Home from "../page";
+import Home from "../home-client";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { __resetHomeSettings } from "@/lib/use-home-settings";

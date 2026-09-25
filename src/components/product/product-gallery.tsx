@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Product } from "@/lib/catalog";
 import ZoomLightbox from "./zoom-lightbox";
 import { IconSearch } from "@/components/ui/icons";
+import { optimizedMediaUrl } from "@/lib/media-url";
 import {
   driveThumbnailUrl,
   extractDriveFileId,
@@ -77,7 +78,7 @@ function EmbedFacade({
       className="group relative block h-full w-full text-left"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" />
+      <img src={optimizedMediaUrl(thumb, 800)} alt="" className="h-full w-full object-cover" loading="lazy" />
       <span className="absolute inset-0 flex items-center justify-center bg-forest-950/25 transition-colors group-hover:bg-forest-950/35">
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ivory-50/95 text-xl text-forest-900 shadow-lg transition-transform group-hover:scale-105" aria-hidden="true">
           ▶

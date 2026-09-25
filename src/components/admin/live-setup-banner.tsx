@@ -44,6 +44,25 @@ export default function LiveSetupBanner() {
     // 202609170001: the two-tap buttons ship in the app; until the RPC
     // accepts confirmed → ready-for-pickup, "Ready — request riders" is a 422.
     const twoTapPending = health.checks?.twoTapFlow === false;
+    // 202609250001–007: area broadcast, withdraw/resume, settle-claim
+    // approval, PIN lockout and realtime offers. Orders flow without them,
+    // but dispatch either misbehaves (dead broadcast pool, self-settle,
+    // guessable PIN) or hammers the database (unthrottled sweep, 15 s
+    // polling instead of instant push).
+    const dispatchRepairFiles = [
+      health.checks?.broadcastResume === false
+        ? "supabase/migrations/202609250003_dispatch_withdraw_resume.sql"
+        : null,
+      health.checks?.settleClaims === false
+        ? "supabase/migrations/202609250004_settle_claims.sql"
+        : null,
+      health.checks?.pinLockout === false
+        ? "supabase/migrations/202609250005_delivery_pin_lockout.sql"
+        : null,
+      health.checks?.realtimeOffers === false
+        ? "supabase/migrations/202609250007_realtime_offers.sql"
+        : null,
+    ].filter((f): f is string => f !== null);
     // 2026-09-23: phone notifications are optional for `live` but they are
     // the first thing the owner asks about — say which half is missing.
     const pushPending =
@@ -144,6 +163,26 @@ export default function LiveSetupBanner() {
               <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
                 supabase/migrations/202609170001_two_tap_order_flow.sql
               </code>
+            </div>
+          </div>
+        )}
+        {dispatchRepairFiles.length > 0 && (
+          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <IconShield className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
+              <p className="font-semibold">
+                🛵 ডিসপ্যাচ ফিক্স বাকি — manual request expire হলে এলাকায় আর request যাবে না, rider নিজেই balance zero করতে পারবে, আর PIN guess করা যাবে
+              </p>
+              <p className="mt-0.5 text-[13px] text-amber-900/90">
+                নিচের SQL ফাইলগুলো Supabase → SQL Editor-এ ক্রমানুসারে পেস্ট করে Run করুন (প্রতিটা repeat-safe):
+              </p>
+              {dispatchRepairFiles.map((f) => (
+                <code key={f} className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
+                  {f}
+                </code>
+              ))}
             </div>
           </div>
         )}

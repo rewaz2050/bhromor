@@ -217,10 +217,16 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.checks.dispatchRepair).toBe(false);
     expect(body.checks.twoTapFlow).toBe(false);
     expect(body.live).toBe(true);
-    expect(body.nextSteps).toHaveLength(3);
+    // …plus the four 2026-09-25 dispatch steps (a 0003-era probe has
+    // neither the flags nor the migrations behind them).
+    expect(body.nextSteps).toHaveLength(7);
     expect(body.nextSteps[0]).toContain("202609160004_rpc_grants_rls_repair.sql");
     expect(body.nextSteps[1]).toContain("202609160005_dispatch_reoffer_repair.sql");
     expect(body.nextSteps[2]).toContain("202609170001_two_tap_order_flow.sql");
+    expect(body.nextSteps[3]).toContain("202609250003_dispatch_withdraw_resume.sql");
+    expect(body.nextSteps[4]).toContain("202609250004_settle_claims.sql");
+    expect(body.nextSteps[5]).toContain("202609250005_delivery_pin_lockout.sql");
+    expect(body.nextSteps[6]).toContain("202609250007_realtime_offers.sql");
   });
 
   it("reports securityRepair only when BOTH the grants and memberships RLS are in place", async () => {
@@ -234,6 +240,10 @@ describe("GET /api/health — checkout repair awareness", () => {
       rider_guard_ok: true,
       payment_methods_widened: true,
       place_order_rpc: true,
+      broadcast_resume_ok: true,
+      settle_claims_ok: true,
+      pin_lockout_ok: true,
+      realtime_offers_ok: true,
     };
     state.repair = { data: { ...base, rpc_grants_locked: true, memberships_rls: false } };
     let body = (await (await GET()).json()) as Health;
@@ -264,6 +274,10 @@ describe("GET /api/health — checkout repair awareness", () => {
         rpc_grants_locked: true,
         memberships_rls: true,
         dispatch_reoffer_ok: true,
+        broadcast_resume_ok: true,
+        settle_claims_ok: true,
+        pin_lockout_ok: true,
+        realtime_offers_ok: true,
       },
     };
     const body = (await (await GET()).json()) as Health;
@@ -290,6 +304,10 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        broadcast_resume_ok: true,
+        settle_claims_ok: true,
+        pin_lockout_ok: true,
+        realtime_offers_ok: true,
       },
     };
     // VAPID keys missing on the host → the panel can never offer the ON button.
@@ -330,6 +348,10 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        broadcast_resume_ok: true,
+        settle_claims_ok: true,
+        pin_lockout_ok: true,
+        realtime_offers_ok: true,
       },
     };
 
@@ -386,11 +408,58 @@ describe("GET /api/health — checkout repair awareness", () => {
         memberships_rls: true,
         dispatch_reoffer_ok: true,
         two_tap_flow_ok: true,
+        broadcast_resume_ok: true,
+        settle_claims_ok: true,
+        pin_lockout_ok: true,
+        realtime_offers_ok: true,
       },
     };
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.twoTapFlow).toBe(true);
     expect(body.live).toBe(true);
     expect(body.nextSteps).toEqual([]);
+  });
+
+  it("reports the 2026-09-25 dispatch P0 flags and names each missing file", async () => {
+    const base = {
+      version: "202609170001",
+      gift_wrap_nullable: true,
+      totals_guard_current: true,
+      insert_guard_current: true,
+      status_update_ok: true,
+      payment_verify_ok: true,
+      rider_guard_ok: true,
+      payment_methods_widened: true,
+      place_order_rpc: true,
+      rpc_grants_locked: true,
+      memberships_rls: true,
+      dispatch_reoffer_ok: true,
+      two_tap_flow_ok: true,
+    };
+    // A pre-20260925 probe has none of the flags: all four checks fail and
+    // each names its own migration file.
+    state.repair = { data: { ...base } };
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.broadcastResume).toBe(false);
+    expect(body.checks.settleClaims).toBe(false);
+    expect(body.checks.pinLockout).toBe(false);
+    expect(body.checks.realtimeOffers).toBe(false);
+    expect(body.live).toBe(true); // orders flow; these gate abuse, not orders
+    expect(body.nextSteps.join("\n")).toContain("202609250003_dispatch_withdraw_resume.sql");
+    expect(body.nextSteps.join("\n")).toContain("202609250004_settle_claims.sql");
+    expect(body.nextSteps.join("\n")).toContain("202609250005_delivery_pin_lockout.sql");
+    expect(body.nextSteps.join("\n")).toContain("202609250007_realtime_offers.sql");
+
+    // Three of four applied: only the realtime step is left.
+    state.repair = {
+      data: { ...base, broadcast_resume_ok: true, settle_claims_ok: true, pin_lockout_ok: true },
+    };
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.broadcastResume).toBe(true);
+    expect(body.checks.settleClaims).toBe(true);
+    expect(body.checks.pinLockout).toBe(true);
+    expect(body.checks.realtimeOffers).toBe(false);
+    expect(body.nextSteps).toHaveLength(1);
+    expect(body.nextSteps[0]).toContain("202609250007_realtime_offers.sql");
   });
 });

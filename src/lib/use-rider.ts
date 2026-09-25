@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { usePoll } from "./use-poll";
 import type { Rider } from "./catalog";
-import type { RiderJob, RiderSettlement } from "./db/riders";
+import type { RiderJob, RiderSettlement, SettleClaim } from "./db/riders";
 
 /**
  * Job feed refresh while the app is on screen. A dispatch offer lives 90 s,
@@ -20,6 +20,12 @@ import type { RiderJob, RiderSettlement } from "./db/riders";
  * the instant the rider looks again.
  */
 export const RIDER_JOBS_POLL_MS = 15_000;
+/**
+ * Backup poll while the realtime socket is connected — offers arrive over
+ * the channel in under a second, so this only heals a dropped message.
+ * Socket down (or realtime unpublished) → back to the 15 s poll.
+ */
+export const RIDER_JOBS_POLL_BACKUP_MS = 120_000;
 
 export class RiderApiError extends Error {
   status: number;
@@ -154,11 +160,13 @@ export const useRiderSession = () => {
   return { rider, email, status, error, refresh, signIn, signUp, signOut, setAvailability };
 };
 
-export const useRiderJobs = (enabled: boolean) => {
+export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
   const [jobs, setJobs] = useState<RiderJob[]>([]);
   const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
+  const [pendingClaim, setPendingClaim] = useState<SettleClaim | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
 
   // One in-flight read at a time: a poll tick that lands while an accept →
   // refresh is running would otherwise race it and paint the older answer.
@@ -173,10 +181,13 @@ export const useRiderJobs = (enabled: boolean) => {
       try {
         const [jobsData, settlementsData] = await Promise.all([
           riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
-          riderFetch<{ settlements: RiderSettlement[] }>("/api/rider/settlements"),
+          riderFetch<{ settlements: RiderSettlement[]; pendingClaim: SettleClaim | null }>(
+            "/api/rider/settlements",
+          ),
         ]);
         setJobs(jobsData.jobs);
         setSettlements(settlementsData.settlements);
+        setPendingClaim(settlementsData.pendingClaim ?? null);
         return true;
       } catch (err) {
         setError(riderErrorMessage(err));
@@ -194,9 +205,39 @@ export const useRiderJobs = (enabled: boolean) => {
     if (!enabled) return;
     void refresh();
   }, [enabled, refresh]);
+  // Instant offers over Realtime: refresh the moment this rider's
+  // assignment rows change. RLS ("assignments rider read own") limits the
+  // channel to their rows; the filter additionally scopes socket traffic.
+  // No socket (unpublished table, flaky net, signed out) → poll backup.
+  useEffect(() => {
+    if (!enabled || !riderId) return;
+    const client = getSupabaseBrowser();
+    if (!client) return;
+    const channel = client
+      .channel(`rider-jobs:${riderId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "delivery_assignments",
+          filter: `rider_id=eq.${riderId}`,
+        },
+        () => {
+          void refresh();
+        },
+      )
+      .subscribe((status) => {
+        setLive(status === "SUBSCRIBED");
+      });
+    return () => {
+      setLive(false);
+      void client.removeChannel(channel);
+    };
+  }, [enabled, riderId, refresh]);
   // Background feed refresh — before this the rider had to reload the page
   // to see a new offer (or an offer that had expired under them).
-  usePoll(refresh, RIDER_JOBS_POLL_MS, enabled);
+  usePoll(refresh, live ? RIDER_JOBS_POLL_BACKUP_MS : RIDER_JOBS_POLL_MS, enabled);
 
   const run = async (
     path: string,
@@ -279,5 +320,5 @@ export const useRiderJobs = (enabled: boolean) => {
     [enabled],
   );
 
-  return { jobs, settlements, loading, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+  return { jobs, settlements, pendingClaim, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
 };

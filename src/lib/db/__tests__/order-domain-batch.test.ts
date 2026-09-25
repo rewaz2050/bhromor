@@ -18,6 +18,7 @@ import type { DbOrder } from "../types";
 interface Call {
   table: string;
   filters: Record<string, unknown>;
+  columns?: string;
 }
 
 const order = (over: Partial<DbOrder> & { id: string }): DbOrder =>
@@ -53,7 +54,10 @@ const recordingDb = (fixtures: Record<string, (filters: Record<string, unknown>)
     const call: Call = { table, filters };
     calls.push(call);
     const chain = {
-      select: () => chain,
+      select: (columns: string) => {
+        call.columns = columns;
+        return chain;
+      },
       in: (col: string, values: unknown[]) => {
         filters[col] = values;
         return chain;
@@ -153,6 +157,27 @@ describe("toDomainMany (batched order mapper)", () => {
     expect(calls.find((c) => c.table === "riders")?.filters.id).toEqual(["r-new"]);
     // a bounded total: 7 in round one + 3 in round two, whatever N is
     expect(calls.length).toBeLessThanOrEqual(10);
+  });
+
+  it("slim feeds read items + zones only — no history/coupons/returns/products/riders", async () => {
+    const { db, calls } = recordingDb(FIXTURES);
+    const [o1, o2, , o4] = await toDomainMany(db, ORDERS, { slim: true });
+
+    const tables = calls.map((c) => c.table).sort();
+    expect(tables).toEqual(["delivery_zones", "order_items"]);
+    expect(calls.find((c) => c.table === "order_items")?.columns).toBe(
+      "order_id,product_id,name,sku,variant,qty,unit_price",
+    );
+
+    // Everything the 15 s feed cards render survives the slimming.
+    expect(o1?.id).toBe("PS-o1");
+    expect(o1?.zoneName).toBe("Sadar");
+    expect(o2?.items).toHaveLength(1);
+    expect(o2?.items[0]).toMatchObject({ name: "Panjabi", qty: 1, unitPrice: 50000 });
+    expect(o4?.isReturn).toBe(true);
+    expect(o2?.timeline).toEqual([
+      { status: "pending", at: Date.parse("2026-09-17T00:00:00.000Z") },
+    ]);
   });
 
   it("only asks about riders for orders that are actually in the rider leg", async () => {

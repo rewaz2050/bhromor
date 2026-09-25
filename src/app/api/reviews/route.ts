@@ -20,6 +20,7 @@ import type { DbReview } from "@/lib/db/types";
 import { isServiceRoleConfigured, isSupabaseConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
+import { publicJson } from "@/lib/public-cache";
 import { isUuid } from "@/lib/db/order-lookup";
 import {
   attachReviewPhotos,
@@ -98,7 +99,10 @@ export async function GET(request: Request) {
     if (error) return apiError("Reviews are temporarily unavailable.", 503);
     const reviews = ((data ?? []) as DbReview[]).map(mapReview);
     const photos = await photosForReviews(db, reviews);
-    return apiJson({ reviews: attachReviewPhotos(reviews, photos) });
+    // Edge-cached 60 s per URL (speed pass): approved reviews are public
+    // and identical for every visitor; each ?product=/featured combo is its
+    // own cache key. Submissions (POST below) stay uncached.
+    return publicJson({ reviews: attachReviewPhotos(reviews, photos) });
   } catch {
     return apiError("Reviews are temporarily unavailable.", 503);
   }

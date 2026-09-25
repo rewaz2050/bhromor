@@ -303,7 +303,7 @@ function RiderCard({
 
 /** Marketplace phase 3 — staff rider queue: approve / suspend / zones. */
 export default function AdminRidersPage() {
-  const { riders, live, loading, error, clearError, saveRider, setStatus, settleCash, linkRider, reset } =
+  const { riders, live, loading, error, clearError, saveRider, setStatus, settleCash, rejectClaim, settleClaims, linkRider, reset } =
     useRiders();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
@@ -420,6 +420,69 @@ export default function AdminRidersPage() {
             {formatBdt(totalCashHeld)}
           </div>
         </div>
+      )}
+
+      {/* Settle claims: riders file a claim after paying in; staff approve
+          (settle) only after actually receiving the money, or reject it. */}
+      {settleClaims.length > 0 && (
+        <section aria-label="Pending settle claims" className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+          <h3 className="font-display text-base font-semibold text-forest-900">
+            টাকা জমার দাবি ({settleClaims.length})
+          </h3>
+          <p className="mt-1 text-xs text-ink-soft">
+            টাকা হাতে পাওয়ার পরেই Approve (Settle) করুন — rider-এর দাবি মানেই টাকা পৌঁছেছে, এমন নয়।
+          </p>
+          <ul className="mt-3 space-y-2">
+            {settleClaims.map((claim) => (
+              <li
+                key={claim.id}
+                className="flex flex-wrap items-center gap-3 rounded-xl bg-ivory-50 p-3 ring-1 ring-line"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-forest-900">
+                    {claim.riderName ?? claim.riderId} · {formatBdt(claim.amount)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-soft">
+                    {claim.method.toUpperCase()}
+                    {claim.reference ? ` · ${claim.reference}` : ""}
+                    {" · "}
+                    {new Date(claim.at).toLocaleString("bn-BD", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `${formatBdt(claim.amount)} টাকা কি আসলেই পেয়েছেন? Approve করলে ${claim.riderName ?? "rider"}-এর balance শূন্য হবে।`,
+                      )
+                    ) {
+                      void settleCash(claim.riderId, claim.method, claim.reference);
+                    }
+                  }}
+                  className="rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+                >
+                  Approve (Settle)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const note = window.prompt("দাবি বাতিলের কারণ (rider দেখবে না, রেকর্ডে থাকবে):", "টাকা পৌঁছায়নি");
+                    if (note !== null) void rejectClaim(claim.riderId, note);
+                  }}
+                  className="rounded-full border border-rose-200 px-4 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                >
+                  Reject
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
