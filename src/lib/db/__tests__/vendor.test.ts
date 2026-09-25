@@ -33,8 +33,8 @@ describe("vendorShopPatch (slice 3)", () => {
           name: "  New Name ",
           tagline: "tag",
           logoUrl: "https://x/y.png",
-          phone: "01700",
-          address: "road",
+          phone: "01700000000",
+          address: "House 1, Road 2",
           prepMinutes: 30,
           isOpen: true,
           status: "active",
@@ -48,8 +48,8 @@ describe("vendorShopPatch (slice 3)", () => {
       name: "New Name",
       tagline: "tag",
       logo_url: "https://x/y.png",
-      phone: "01700",
-      address: "road",
+      phone: "01700000000",
+      address: "House 1, Road 2",
       prep_minutes: 30,
       is_open: true,
     });
@@ -79,6 +79,18 @@ describe("vendorShopPatch (slice 3)", () => {
       /between 0 and 240/,
     );
     expect(() => vendorShopPatch({ name: "x" }, "owner")).toThrow(/too short/);
+  });
+
+  it("rejects a bad phone number and a stub address", () => {
+    expect(() => vendorShopPatch({ phone: "01700" }, "owner")).toThrow(
+      /সঠিক ফোন/,
+    );
+    expect(() => vendorShopPatch({ phone: "not-a-number" }, "owner")).toThrow(
+      /সঠিক ফোন/,
+    );
+    expect(() => vendorShopPatch({ address: "road" }, "owner")).toThrow(
+      /ঠিকানা/,
+    );
   });
 
   it("returns an empty patch when nothing was sent", () => {

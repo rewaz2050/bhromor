@@ -1,4 +1,4 @@
--- PART 5/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 5/12 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 17/23 — delivery remaining  (source: supabase/migrations/202609090017_delivery_remaining.sql)
 -- ============================================================================
@@ -713,3 +713,4 @@ create trigger trg_orders_release_on_cancel
   for each row execute function ps_release_on_cancel();
 
 commit;
+

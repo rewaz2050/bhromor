@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Rider } from "@/lib/catalog";
+import { useLiveZones } from "@/lib/use-live-zones";
 
 export function RiderProfile({ rider, onSaved }: { rider: Rider; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(rider.name);
@@ -9,10 +10,12 @@ export function RiderProfile({ rider, onSaved }: { rider: Rider; onSaved: () => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const { zones } = useLiveZones();
+  const zoneNames = rider.zoneIds.map((id) => zones.find((z) => z.id === id)?.name ?? id);
   const field = "mt-1 w-full rounded-xl border border-line bg-paper p-3 text-sm";
   return <details className="rounded-2xl border border-line bg-paper p-4">
     <summary className="cursor-pointer text-sm font-semibold text-forest-900">আমার রাইডার প্রোফাইল</summary>
-    <p className="mt-3 text-xs text-ink-soft">অনুমোদিত রাইডার · এলাকা: {rider.zoneIds.join(", ") || "এলাকা নির্ধারণ বাকি"}</p>
+    <p className="mt-3 text-xs text-ink-soft">অনুমোদিত রাইডার · এলাকা: {zoneNames.join(", ") || "এলাকা নির্ধারণ বাকি"}</p>
     <form className="mt-4 space-y-3" onChange={() => setSaved(false)} onSubmit={async e => {
       e.preventDefault(); if (busy) return; setBusy(true); setError(""); setSaved(false);
       try {

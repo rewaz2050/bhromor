@@ -113,6 +113,17 @@ export const vendorShopPatch = (
   if (patch.name !== undefined && patch.name.length < 2) {
     throw new AdminInputError("Shop name is too short.");
   }
+  // The form marks phone/address required, but a direct API call could save
+  // garbage — riders navigate by these, so validate them server-side too.
+  if (
+    patch.phone !== undefined &&
+    !/^\+?\d{6,15}$/.test(patch.phone.replace(/[\s-]/g, ""))
+  ) {
+    throw new AdminInputError("দোকানের সঠিক ফোন নম্বর দিন।");
+  }
+  if (patch.address !== undefined && patch.address.length < 6) {
+    throw new AdminInputError("পিকআপের পূর্ণ ঠিকানা দিন (কমপক্ষে ৬ অক্ষর)।");
+  }
   return patch;
 };
 

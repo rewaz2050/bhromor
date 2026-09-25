@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Rider } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { paymentSummary } from "@/lib/payment-labels";
+
+/** Mirrors the dispatch SQL gates (202609250001): cash cap + 2-trip load. */
+const CASH_LIMIT_PAISA = 500000;
+const LOAD_LIMIT = 2;
 
 export function AdminBatchAssign({
   riders,
@@ -21,13 +26,34 @@ export function AdminBatchAssign({
 
   // Mirrors area dispatch (202609250001): manual offers are only for Ready
   // orders. Never offer to take an already accepted trip from its rider.
-  // Counter pickups never ride (the customer collects at Traffic Point).
+  // Counter pickups never ride (the customer collects at Traffic Point),
+  // and unverified wallet orders cannot dispatch until payment is verified.
   const pendingOrders = orders.filter(
     (o) =>
       o.status === "ready-for-pickup" &&
-      !o.isPickup,
+      !o.isPickup &&
+      !paymentSummary(o).awaitingVerification,
   );
-  const onlineRiders = riders.filter((r) => r.isOnline && r.status === "active");
+  const byId = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
+  const selectedZones = useMemo(() => {
+    const zones = new Set<string>();
+    for (const id of selectedOrders) {
+      const zone = byId.get(id)?.zoneId;
+      if (zone) zones.add(zone);
+    }
+    return zones;
+  }, [selectedOrders, byId]);
+  // Once orders are picked, only show riders who can actually take them:
+  // online + active + serving one of the orders' zones + under the cash
+  // cap + under the 2-trip load cap. (The RPC re-checks; this just stops
+  // staff picking a rider who is guaranteed to fail.)
+  const onlineRiders = riders.filter((r) => {
+    if (!r.isOnline || r.status !== "active") return false;
+    if (selectedZones.size > 0 && !r.zoneIds.some((z) => selectedZones.has(z))) return false;
+    if ((r.cashInHand ?? 0) >= CASH_LIMIT_PAISA) return false;
+    if ((r.currentLoad ?? 0) >= LOAD_LIMIT) return false;
+    return true;
+  });
 
   const toggleOrder = (id: string) => {
     setSelectedOrders((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -106,11 +132,11 @@ export function AdminBatchAssign({
                   className="h-4 w-4"
                 />
                 <span className="text-sm font-medium">{r.name}</span>
-                <span className="text-xs text-ink-soft">{r.vehicle} · {r.currentLoad ?? 0} load · {r.ratingAvg}★</span>
+                <span className="text-xs text-ink-soft">{r.vehicle} · {r.currentLoad ?? 0} load · {formatBdt(r.cashInHand ?? 0)} held · {r.ratingAvg}★</span>
                 {r.lat && r.lng && <span className="text-[10px] text-emerald-700">📍 live</span>}
               </label>
             ))}
-            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No online riders — ask riders to go online in rider app.</p>}
+            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No eligible riders — need online + in the orders&apos; zone + under ৳5,000 cash + under 2 active trips.</p>}
           </div>
         </div>
       </div>

@@ -78,6 +78,21 @@ export async function GET(request?: Request) {
     // gets a 422 ("not allowed from here") and staff must use "More… →
     // Start preparing" first.
     twoTapFlow: false,
+    // 202609250001+003 — area broadcast + withdraw/decline resume: many
+    // invitations, first accept wins, manual requests resume to the area.
+    // Without the resume repair a lapsed manual request never re-invites
+    // the area, and every rider poll runs a full-table expiry sweep.
+    broadcastResume: false,
+    // 202609250004 — rider settle claims need staff approval. Without it a
+    // rider's own Settle tap zeroes their COD balance with no review.
+    settleClaims: false,
+    // 202609250005 — the 4-digit delivery PIN locks for 15 minutes after 5
+    // wrong codes. Without it the code can be guessed indefinitely.
+    pinLockout: false,
+    // 202609250007 — delivery_assignments published to Realtime: offers
+    // reach the rider app in under a second. Without it the app still
+    // works (15 s poll backup) but burns far more reads per rider.
+    realtimeOffers: false,
     // 202609210001 + PUSH_VAPID_* — the owner's phone notifications. Not
     // part of `live` (orders flow without it) but it is the first thing the
     // owner asks about, so the report names it instead of staying silent.
@@ -183,6 +198,10 @@ export async function GET(request?: Request) {
           r.rpc_grants_locked === true && r.memberships_rls === true;
         checks.dispatchRepair = r.dispatch_reoffer_ok === true;
         checks.twoTapFlow = r.two_tap_flow_ok === true;
+        checks.broadcastResume = r.broadcast_resume_ok === true;
+        checks.settleClaims = r.settle_claims_ok === true;
+        checks.pinLockout = r.pin_lockout_ok === true;
+        checks.realtimeOffers = r.realtime_offers_ok === true;
       }
     }
   }
@@ -245,6 +264,26 @@ export async function GET(request?: Request) {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
     nextSteps.push(
       "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — request riders' button 422 dibe, age 'More… → Start preparing' chapte hobe",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.broadcastResume) {
+    nextSteps.push(
+      "Area-dispatch resume — SQL Editor-e krome supabase/migrations/202609250001_area_broadcast_dispatch.sql, 202609250002_dispatch_cancel_guard.sql ar 202609250003_dispatch_withdraw_resume.sql chalaben; na chalale manual request expire hole elakay ar request jabe na, ar protita rider poll-e full-table sweep cholbe",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.settleClaims) {
+    nextSteps.push(
+      "Settle-claim approval — SQL Editor-e supabase/migrations/202609250004_settle_claims.sql chalaben; na chalale rider nijer Settle tap-e COD balance zero kore dite pare (staff approval chara)",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.pinLockout) {
+    nextSteps.push(
+      "Delivery PIN lockout — SQL Editor-e supabase/migrations/202609250005_delivery_pin_lockout.sql chalaben; na chalale 4-digit code vul diye diye guess kora jabe (5-bar lockout chara)",
+    );
+  }
+  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.realtimeOffers) {
+    nextSteps.push(
+      "Instant rider offers — SQL Editor-e supabase/migrations/202609250007_realtime_offers.sql chalaben; na chalale offer 15s poll-e asbe (realtime-e <1s), ar protita rider 8-gun beshi read korbe",
     );
   }
   if (checks.reachable && !checks.pushConfigured) {

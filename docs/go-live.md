@@ -392,11 +392,17 @@ All statements must run without “relation does not exist”.
 After the existing migrations, apply in order:
 - `supabase/migrations/202609250001_area_broadcast_dispatch.sql`
 - `supabase/migrations/202609250002_dispatch_cancel_guard.sql`
+- `supabase/migrations/202609250003_dispatch_withdraw_resume.sql`
+- `supabase/migrations/202609250004_settle_claims.sql`
+- `supabase/migrations/202609250005_delivery_pin_lockout.sql`
+- `supabase/migrations/202609250006_dispatch_health.sql`
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
-Fresh bootstrap/paste-parts now include it and both area-dispatch migrations.
-Never run the entire bootstrap on an existing database. Verification evidence
-and remaining live checks: `docs/VERIFICATION-2026-09-25.md`.
+Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
+migrations. Never run the entire bootstrap on an existing database.
+`diagnose.sql` rows 37–37g confirm each P0 piece; `/api/health` (staff view)
+names any missing file in Bengali nextSteps. Verification evidence and
+remaining live checks: `docs/VERIFICATION-2026-09-25.md`.
 
 ## 2. Environment
 

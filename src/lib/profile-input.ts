@@ -14,9 +14,17 @@ export function profileName(raw: unknown): string {
 }
 export function riderProfileInput(raw: unknown) {
   const body = profileBody(raw, ["name", "phone", "vehicle"]);
-  const name = profileName(body.name);
-  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-  if (!/^01[0-9]{9}$/.test(phone)) throw new ProfileInputError("১১ সংখ্যার বাংলাদেশি মোবাইল নম্বর দিন।");
-  if (!["bicycle", "bike", "scooter"].includes(String(body.vehicle))) throw new ProfileInputError("যানবাহন বেছে নিন।");
-  return { name, phone, vehicle: body.vehicle as "bicycle" | "bike" | "scooter" };
+  const patch: { name?: string; phone?: string; vehicle?: "bicycle" | "bike" | "scooter" } = {};
+  if (body.name !== undefined) patch.name = profileName(body.name);
+  if (body.phone !== undefined) {
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    if (!/^01[0-9]{9}$/.test(phone)) throw new ProfileInputError("১১ সংখ্যার বাংলাদেশি মোবাইল নম্বর দিন।");
+    patch.phone = phone;
+  }
+  if (body.vehicle !== undefined) {
+    if (!["bicycle", "bike", "scooter"].includes(String(body.vehicle))) throw new ProfileInputError("যানবাহন বেছে নিন।");
+    patch.vehicle = body.vehicle as "bicycle" | "bike" | "scooter";
+  }
+  if (Object.keys(patch).length === 0) throw new ProfileInputError("বদলানোর মতো তথ্য দিন।");
+  return patch;
 }

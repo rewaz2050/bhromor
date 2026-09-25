@@ -51,6 +51,24 @@ export interface DbDeliveryAssignment {
   state: "offered" | "accepted" | "picked_up" | "delivered" | "cancelled" | "expired";
   offered_at: string;
   expires_at: string;
+  /** 202609250003: why a cancelled row ended — decline (permanent),
+   * withdrawn (cooldown) or superseded (immediately re-invitable). */
+  cancelled_by?: "rider_decline" | "withdrawn" | "superseded" | null;
+  is_broadcast?: boolean | null;
+}
+
+/** A rider's COD pay-in claim — staff approve (settle) or reject it. */
+export interface DbSettleClaim {
+  id: string;
+  rider_id: string;
+  amount: number;
+  method: string;
+  reference: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  note: string | null;
 }
 
 export interface DbRiderSettlement {

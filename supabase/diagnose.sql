@@ -72,7 +72,16 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('36',  'DISPATCH REPAIR: offers can be re-issued (no UNIQUE order_id on delivery_assignments)', '202609160005_dispatch_reoffer_repair.sql', 'constraint_absent', 'delivery_assignments.delivery_assignments_order_id_key'),
   ('36b', 'DISPATCH REPAIR: one live offer per order (partial unique index)',                    '202609160005_dispatch_reoffer_repair.sql', 'index', 'delivery_assignments.delivery_assignments_one_live_offer'),
   ('36c', 'DISPATCH REPAIR: batch assign has no phantom dependencies',                            '202609160005_dispatch_reoffer_repair.sql', 'function_src_absent', 'ps_assign_batch_to_rider|rider_assignments'),
-  ('36d', 'DISPATCH REPAIR: /api/health probe knows it',                                          '202609160005_dispatch_reoffer_repair.sql', 'function_src', 'ps_checkout_health|dispatch_reoffer_ok')
+  ('36d', 'DISPATCH REPAIR: /api/health probe knows it',                                          '202609160005_dispatch_reoffer_repair.sql', 'function_src', 'ps_checkout_health|dispatch_reoffer_ok'),
+  ('37',  'P0: withdraw cools down, manual expiry resumes the area at once', '202609250003_dispatch_withdraw_resume.sql', 'function_src', 'ps_cancel_assignment|withdrawn — cooling down'),
+  ('37b', 'P0: expiry sweep is throttled (force flag, one run per 10s)',      '202609250003_dispatch_withdraw_resume.sql', 'function_src', 'ps_expire_stale_offers|dispatch_sweep_state'),
+  ('37c', 'P0: settle claims table (rider self-settle needs approval)',       '202609250004_settle_claims.sql', 'table', 'rider_settle_claims'),
+  ('37d', 'P0: ps_rider_settle files a claim instead of zeroing cash',        '202609250004_settle_claims.sql', 'function_src', 'ps_rider_settle|settle already pending'),
+  ('37e', 'P0: PIN attempt counter RPC (wrong codes persist)',                '202609250005_delivery_pin_lockout.sql', 'function', 'ps_rider_deliver_check'),
+  ('37f', 'P0: PIN lockout columns on orders',                                '202609250005_delivery_pin_lockout.sql', 'column', 'orders.delivery_code_locked_until'),
+  ('37g', 'P0: /api/health probe knows all four dispatch migrations',         '202609250006_dispatch_health.sql', 'function_src', 'ps_checkout_health|pin_lockout_ok'),
+  ('37h', 'SPEED: delivery_assignments published for instant offers',         '202609250007_realtime_offers.sql', 'publication', 'supabase_realtime.delivery_assignments'),
+  ('37i', 'SPEED: /api/health probe knows the realtime flag',                '202609250007_realtime_offers.sql', 'function_src', 'ps_checkout_health|realtime_offers_ok')
 )
 select step as ord,
        label,
@@ -136,6 +145,14 @@ select step as ord,
            select c.relrowsecurity from pg_class c
            where c.relnamespace = 'public'::regnamespace and c.relname = obj
          ), true)
+         -- publication: obj = 'pubname.tablename' — true when the table is
+         -- a member (Realtime only streams published tables).
+         when 'publication' then exists (
+           select 1 from pg_publication_tables
+           where pubname = split_part(obj, '.', 1)
+             and schemaname = 'public'
+             and tablename = split_part(obj, '.', 2)
+         )
          when 'column' then exists (
            select 1 from information_schema.columns c
            where c.table_schema = 'public'

@@ -21,7 +21,12 @@
 | Pickup ও delivery code | PASS | অন্য Rider pickup করতে পারে না; pickup-এর আগে delivery ও ভুল code প্রত্যাখ্যাত |
 | Delivery ও হিসাব | PASS | order delivered, rider cash +৳100, load মুক্ত, shop ledger-এ একবার entry; duplicate delivery-তে cash দ্বিগুণ হয় না |
 | Admin cancellation guard | PASS | pending invitation withdraw করা যায়; accepted/picked-up trip এই action দিয়ে বাতিল করা যায় না |
-| Automated suite | PASS | ১৮৭টি test file, ১,২৪০টি test |
+| Withdraw বনাম decline | PASS (PGlite) | withdraw ৫ মিনিট cool-down-এর পর আবার offer পায়; decline কখনোই পায় না; manual request lapse হলে এলাকায় তৎক্ষণাৎ resume |
+| Settle claim | PASS (PGlite + PG) | rider Settle-এ claim file হয়, cash অপরিবর্তিত; staff Approve-এ পুরো balance settle, Reject-এ balance থাকে |
+| PIN lockout | PASS (PGlite + PG) | ৫টি ভুল code-এ ১৫ মিনিট lock; সঠিক code-এও lock খোলে না; মেয়াদ শেষে সঠিক code-এ delivery ও counter reset |
+| Wallet gate | PASS (PGlite + PG) | unverified bKash/Nagad order-এ manual dispatch ০ ফেরায়; verify-first 422 |
+| Sweep throttle + health probe | PASS (PGlite + PG) | পরপর দুটি unforced sweep-এ দ্বিতীয়টি no-op; probe `broadcast_resume_ok/settle_claims_ok/pin_lockout_ok` true দেখায় |
+| Automated suite | PASS | ১৮৯টি test file, ১,২৫৮টি test |
 | Build / TypeScript / lint | PASS | production build, typecheck ও ESLint |
 
 ### পরীক্ষার সীমা—গুরুত্বপূর্ণ
@@ -49,6 +54,10 @@
 
 `Ready — call rider` পরিবর্তন করে `Ready — request riders` করা হয়েছে, যাতে auto-request থাকলেও দোকানকে ফোন করতে হবে—এমন ধারণা না হয়।
 
+### ৪. P0 audit fix (একই দিনের follow-up)
+
+E2E audit-এ পাওয়া সমস্যাগুলো ঠিক করা হয়েছে: (ক) manual request lapse হলে area broadcast আর resume হতো না — এখন তৎক্ষণাৎ resume হয়; withdraw ও decline আলাদা (`cancelled_by`); (খ) প্রতিটি rider poll-এ full-table sweep চলত — এখন 10s throttle + force flag; (গ) rider Settle tap-এ নিজেই cash zero করতে পারত — এখন staff-approved claim; (ঘ) delivery PIN-এ brute-force guard ছিল না — এখন 5 ভুল code-এ 15 মিনিট lock (দুই ধাপ: `ps_rider_deliver_check` তারপর `ps_rider_deliver`, কারণ RAISE হলে counter rollback হয়ে যেত); (ঙ) manual dispatch unverified wallet order পাঠাতে পারত — এখন refused। নতুন migration: `202609250003…006` (+ `diagnose.sql` row 37–37g, `/api/health` বাংলা nextSteps)।
+
 ## Live চালুর আগে
 
 সুরক্ষিত deployment/environment settings-এ Supabase configuration যুক্ত করতে হবে; chat-এ secret পাঠানোর প্রয়োজন নেই। বিদ্যমান database-এর আগের migration-গুলো প্রয়োগ করা থাকলে নিচের ফাইলগুলো ক্রমমতো নিশ্চিত করুন:
@@ -56,6 +65,10 @@
 1. `supabase/migrations/202609170001_two_tap_order_flow.sql` — আগে বাদ পড়ে থাকলে।
 2. `supabase/migrations/202609250001_area_broadcast_dispatch.sql`
 3. `supabase/migrations/202609250002_dispatch_cancel_guard.sql`
+4. `supabase/migrations/202609250003_dispatch_withdraw_resume.sql`
+5. `supabase/migrations/202609250004_settle_claims.sql`
+6. `supabase/migrations/202609250005_delivery_pin_lockout.sql`
+7. `supabase/migrations/202609250006_dispatch_health.sql`
 
 বিদ্যমান database-এ পুরো bootstrap চালাবেন না। তারপর staging/test accounts দিয়ে actual Customer checkout → Shop Ready → দুই Rider Accept → বিজয়ীর delivery → চার dashboard-এর status/হিসাব মিলিয়ে দেখতে হবে।
 

@@ -16,11 +16,13 @@ acceptance. Invitations themselves do not consume capacity.
 
 ## Deploy (required)
 
-Apply `supabase/migrations/202609250001_area_broadcast_dispatch.sql`, then
-`supabase/migrations/202609250002_dispatch_cancel_guard.sql` after the existing
-migrations, then deploy the application. Ensure the existing two-tap migration
-`202609170001_two_tap_order_flow.sql` has been applied as well.
-For fresh installations the migration is also appended to `bootstrap-fresh.sql`.
+Apply `supabase/migrations/202609250001_area_broadcast_dispatch.sql` through
+`supabase/migrations/202609250006_dispatch_health.sql` in numeric order after
+the existing migrations, then deploy the application. Ensure the existing
+two-tap migration `202609170001_two_tap_order_flow.sql` has been applied as
+well. For fresh installations the migrations are also appended to
+`bootstrap-fresh.sql` (regenerate `bootstrap-parts/` with
+`node scripts/split-bootstrap.mjs`).
 Do not run the entire bootstrap against an existing database.
 
 No production database migration was executed by this coding session.
@@ -40,13 +42,28 @@ assignment**. Do not re-apply the older dispatch repair after it.
   orders with newly eligible riders. Rider feed reads and the existing
   `/api/cron/tick` call it; no admin page load is necessary.
 - Expired invitations can be repeated after a five-minute per-rider cooldown.
-  An explicit decline is not automatically offered to that rider again.
+  An explicit decline is never re-offered to that rider for that order; an
+  admin **withdrawal** is different — it cools down for five minutes and is
+  then re-offered (`cancelled_by` records which side cancelled).
 - If nobody is eligible the order stays Ready on the admin waiting board.
 - Admin batch assignment replaces pending invitations with one exclusive
   90-second invitation. It cannot take work from an accepted/picked-up rider.
-  If the manual invitation lapses or is declined, automatic broadcasting
-  resumes. Manual assignment may override zone/shift, but not approval,
-  online state, cash or accepted-load limits.
+  If the manual invitation **is declined**, automatic broadcasting resumes at
+  once (the superseded riders are re-invited immediately, the decliner is
+  not); if it **lapses unanswered**, the area resumes at once while the
+  lapsed recipient cools down. Manual assignment may override zone/shift,
+  but not approval, online state, cash, accepted-load limits — and never an
+  unverified wallet payment (`payment not verified` is refused outright).
+- The expiry sweep is throttled in the database: at most one real run per
+  10 seconds unless forced (`p_force`). Every rider-feed poll calls the
+  unforced sweep; it is a cheap no-op when nothing is due.
+- Delivery needs the 4-digit code in two steps: `ps_rider_deliver_check`
+  counts the attempt (5 wrong codes lock code entry for 15 minutes), then
+  `ps_rider_deliver` verifies and completes. A success resets the counter.
+- Rider **Settle no longer zeroes cash**: it files a claim
+  (`rider_settle_claims`, one pending per rider) and staff approve it from
+  the admin riders page (Approve settles the full hand balance, Reject keeps
+  it with a note).
 
 ## Consistency and privacy
 
@@ -65,10 +82,13 @@ Public shop name/address/phone are available for pickup planning.
 
 ## Validation
 
-- `npm run test:dispatch`: executes the actual migration twice in embedded
-  PostgreSQL (PGlite), then tests eligibility, multiple invitations, ownership,
-  losing acceptance, strict expiry, retry cooldown, declines, manual fallback,
-  late riders, RPC grants, pickup/payment exclusion and load bookkeeping.
+- `npm run test:dispatch`: executes the actual migrations twice each in
+  embedded PostgreSQL (PGlite), then tests eligibility, multiple invitations,
+  ownership, losing acceptance, strict expiry, retry cooldown, declines,
+  manual fallback, late riders, RPC grants, pickup/payment exclusion, load
+  bookkeeping, manual-expiry resume, withdraw cooldown, unverified-wallet
+  refusal, settle claims, the 5-strike PIN lockout, sweep throttling and the
+  dispatch health probe (11 scenarios).
 - `npm test -- src/lib/__tests__/rider-order.test.ts`: response privacy.
 - `npm run typecheck` and the rider UI/API/domain tests.
 
@@ -102,15 +122,16 @@ assignment racing acceptance, and one rider accepting two orders at capacity.
   invitation count, deduplicates map orders and only shows actual assignments
   on rider map links. Manual assignment only lists Ready orders.
 
-Background rider push, cloud-synced customer address books, profile photos,
-refund overhaul and a new settlement flow are not part of this build.
-Existing delivery-code verification and settlement APIs remain in place.
+Background rider push, cloud-synced customer address books, profile photos and
+a refund overhaul are not part of this build. Delivery-code verification now
+locks for 15 minutes after 5 wrong codes, and settlement is a staff-approved
+claim flow (see above) instead of an instant rider self-zero.
 
 ### Build validation
 
 - `npm run build` — production build passed.
 - `npm run typecheck` and `npm run lint` — passed.
-- `npm test` — 187 files, 1,240 tests passed (some pre-existing React act warnings).
+- `npm test` — 189 files, 1,258 tests passed (some pre-existing React act warnings).
 - `npm run test:dispatch` — SQL scenarios passed.
 - Follow-up verification: 5 Chromium browser contract tests passed (fixture
   APIs plus unmocked signed-out API checks). Full-bootstrap workflow and
