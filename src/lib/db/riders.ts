@@ -96,6 +96,25 @@ export class RiderInputError extends Error {
   }
 }
 
+/**
+ * PostgREST signals for "this database is behind the deployed app" — a
+ * function or table the app calls has not been created yet (the owner has
+ * not run the latest `supabase/migrations/*` in the SQL editor). Postgres
+ * reports undefined_function/undefined_table (42883/42P01) and PostgREST
+ * wraps stale-cache misses as PGRST202/PGRST205.
+ */
+export const isMissingDbObject = (
+  err: { code?: string | null; message?: string | null } | null | undefined,
+): boolean => {
+  if (!err) return false;
+  if (["42883", "42P01", "PGRST202", "PGRST205", "42704"].includes(err.code ?? "")) {
+    return true;
+  }
+  return /does not exist|could not find the (table|function)|schema cache/i.test(
+    err.message ?? "",
+  );
+};
+
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
@@ -251,8 +270,12 @@ export async function listRiderSettleClaim(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error("settle claim read failed");
-  if (!data) return null;
+  if (error && !isMissingDbObject(error)) {
+    throw new Error("settle claim read failed");
+  }
+  // Claims table not migrated yet → the claim feature is simply off; the
+  // settlements feed must keep working (202609250004 pending).
+  if (error || !data) return null;
   const row = data as DbSettleClaim;
   return {
     id: row.id,
@@ -276,7 +299,13 @@ export async function listPendingSettleClaims(
     .eq("status", "pending")
     .order("created_at", { ascending: true })
     .limit(100);
-  if (error) throw new Error("settle claims read failed");
+  if (error && !isMissingDbObject(error)) {
+    throw new Error("settle claims read failed");
+  }
+  // Pre-202609250004 database → no claims table → an empty queue (the
+  // riders board keeps working; the settlement tap settles immediately,
+  // the legacy behaviour, until the migration lands).
+  if (error) return [];
   const rows = (data ?? []) as DbSettleClaim[];
   if (rows.length === 0) return [];
   const riderIds = [...new Set(rows.map((r) => r.rider_id))];
@@ -493,6 +522,11 @@ export async function cancelDispatchAssignment(
 /**
  * Service-only RPC: expire timed-out offers and re-offer. Throttled in the
  * database (one real sweep per 10s) since every rider feed polls every 15s.
+ *
+ * On a database where the new `p_force` signature is not installed yet
+ * (202609250003 pending) the sweep is skipped, never fatal — the feed read
+ * and every rider action keep working; stale offers simply expire client-
+ * side and the database refuses to accept them.
  */
 export async function expireStaleAssignments(
   service: SupabaseClient,
@@ -501,6 +535,12 @@ export async function expireStaleAssignments(
   const { error } = await service.rpc("ps_expire_stale_offers", {
     p_force: force,
   });
+  if (error && isMissingDbObject(error)) {
+    console.warn(
+      "[rider] ps_expire_stale_offers(p_force) missing — run supabase/migrations/202609250003_dispatch_withdraw_resume.sql; sweep skipped",
+    );
+    return;
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -710,7 +750,10 @@ export const deliverRiderAssignment = async (
     if (check.data === "mismatch") {
       throw new RiderInputError("ভুল কোড! কাস্টমারের কাছ থেকে সঠিক ৪-সংখ্যার কোড নিন।", 422);
     }
-  } else if ((check.error as { code?: string }).code !== "PGRST202") {
+  } else if (!isMissingDbObject(check.error)) {
+    // A pre-lockout database (202609250005 pending) answers "function does
+    // not exist" (Postgres 42883, not just PostgREST's PGRST202) — deliver
+    // falls back to the direct RPC there instead of failing the PIN flow.
     if (check.error.message.includes("delivery not allowed")) {
       throw new RiderInputError("এই অবস্থায় ডেলিভারি করা যাবে না — আগে পিকআপ কনফার্ম করুন।", 409);
     }
@@ -752,6 +795,23 @@ export const failedRiderAttempt = async (
     p_reason: reason,
   });
   if (error) throw new Error(error.message);
+};
+
+/**
+ * Is the staff-approved claim backend installed? (202609250004)
+ *
+ * On a pre-claims database the old `ps_rider_settle` still answers — and it
+ * zeroes `cash_in_hand` IMMEDIATELY, with no staff approval. The settle route
+ * must probe this before calling the RPC so a rider's money is never moved
+ * by the legacy path the claims migration was written to replace.
+ */
+export const settleClaimsReady = async (
+  service: SupabaseClient,
+): Promise<boolean> => {
+  const { error } = await service
+    .from("rider_settle_claims")
+    .select("id", { head: true, count: "exact" });
+  return !error;
 };
 
 /**

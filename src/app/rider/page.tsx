@@ -450,7 +450,7 @@ export default function RiderPage() {
             <p className="font-display text-2xl font-bold text-forest-900">
               {formatBdt(cashInHand)}
             </p>
-            {cashInHand > 0 && !pendingClaim && (
+            {cashInHand > 0 && !pendingClaim && riderJobsApi.claimsReady && (
               <button
                 type="button"
                 onClick={() => setSettle(true)}
@@ -460,6 +460,11 @@ export default function RiderPage() {
               </button>
             )}
           </div>
+          {cashInHand > 0 && !riderJobsApi.claimsReady && (
+            <p className="mt-2 rounded-xl bg-ivory-100 p-2.5 text-xs font-medium text-ink-soft ring-1 ring-line">
+              টাকা জমার অনুরোধ সাময়িকভাবে বন্ধ আছে — অ্যাডমিন দ্রুত হিসাব মিলিয়ে নেবেন।
+            </p>
+          )}
           {pendingClaim && (
             <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
               ⏳ {formatBdt(pendingClaim.amount)} জমার দাবি Admin-এর কাছে অপেক্ষায় আছে

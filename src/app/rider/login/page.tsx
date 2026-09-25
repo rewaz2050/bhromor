@@ -6,6 +6,39 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { IconTruck } from "@/components/ui/icons";
 
+/**
+ * Supabase returns raw English auth errors ("Email not confirmed", "Invalid
+ * login credentials"). Riders get the cause plus the next step, in Bangla.
+ */
+const supabaseSignInError = (err: { message?: string }): string => {
+  const m = err.message ?? "";
+  if (/email not confirmed/i.test(m)) {
+    return "ইমেইলটি এখনো কনফার্ম হয়নি — ইনবক্সে (স্প্যামসহ) পাঠানো কনফার্মেশন লিংকে ক্লিক করুন, তারপর আবার লগইন করুন।";
+  }
+  if (/invalid login credentials/i.test(m)) {
+    return "ইমেইল বা পাসওয়ার্ড মিলছে না। নতুন অ্যাকাউন্ট খুলতে উপরের \u201cনতুন অ্যাকাউন্ট\u201d ট্যাব ব্যবহার করুন।";
+  }
+  if (/rate limit|too many/i.test(m)) {
+    return "অনেকবার চেষ্টা হয়েছে — এক মিনিট পর আবার করুন।";
+  }
+  return m ? `লগইন করা যায়নি: ${m}` : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।";
+};
+
+const supabaseSignUpError = (err: { message?: string }): string => {
+  const m = err.message ?? "";
+  if (/already registered|already exists/i.test(m)) {
+    return "এই ইমেইলে অ্যাকাউন্ট আছে — \u201cসাইন ইন (Login)\u201d ট্যাব দিয়ে লগইন করুন। পাসওয়ার্ড ভুলে গেলে অ্যাডমিনকে জানান।";
+  }
+  if (/rate limit|too many/i.test(m)) {
+    return "অনেকবার চেষ্টা হয়েছে — এক মিনিট পর আবার করুন।";
+  }
+  if (/password/i.test(m) && /weak|short|at least/i.test(m)) {
+    return "পাসওয়ার্ড অন্তত ৬ অক্ষরের দিন।";
+  }
+  return m ? `অ্যাকাউন্ট খোলা যায়নি: ${m}` : "অ্যাকাউন্ট খোলা যায়নি। আবার চেষ্টা করুন।";
+};
+
+
 export default function RiderLoginPage() {
   const router = useRouter();
   const supabase = getSupabaseBrowser();
@@ -26,6 +59,24 @@ export default function RiderLoginPage() {
     });
   }, [supabase, router]);
 
+  // The apply success screen sends applicants here to create the login
+  // (?mode=up&email=…). Window read (not useSearchParams) so the page needs
+  // no Suspense boundary; runs once on mount.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("mode") === "up") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption of the URL on mount
+      setMode("up");
+      setNotice(
+        "আবেদন পেওয়া গেছে! একই ইমেইল দিয়ে নিচের অ্যাকাউন্ট খুলুন — অনুমোদনের পর এই অ্যাকাউন্টেই রাইডার পোর্টাল খুলবে।",
+      );
+    }
+    const prefill = q.get("email");
+    if (prefill) {
+      setEmail(prefill.slice(0, 160));
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -42,7 +93,10 @@ export default function RiderLoginPage() {
     }
 
     if (!supabase) {
-      router.replace("/rider");
+      // Never bounce the rider into the guest loop — say what is missing.
+      setFormError(
+        "সার্ভারে লগইন সিস্টেম এখনো কনফিগার হয়নি (Supabase key নেই)। একটু পরে আবার চেষ্টা করুন।",
+      );
       return;
     }
 
@@ -53,17 +107,30 @@ export default function RiderLoginPage() {
           email: cleanEmail,
           password,
         });
-        if (error) throw error;
+        if (error) {
+          setFormError(supabaseSignInError(error));
+          return;
+        }
         router.replace("/rider");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password,
         });
-        if (error) throw error;
-        setNotice(
-          "অ্যাকাউন্ট তৈরি হয়েছে! আপনি এবার রাইডার আবেদন করতে পারেন বা অ্যাডমিন অনুমোদনের অপেক্ষা করুন।",
-        );
+        if (error) {
+          setFormError(supabaseSignUpError(error));
+          return;
+        }
+        if (data.session) {
+          // Email confirmation is off → the rider is signed in already:
+          // take them straight to the application (profile) form.
+          router.replace("/rider/apply");
+        } else {
+          // Email confirmation is on → no session until they tap the link.
+          setNotice(
+            "অ্যাকাউন্ট তৈরি হয়েছে! এখন ইমেইলে পাঠানো কনফার্মেশন লিংকে ক্লিক করুন (স্প্যাম ফোল্ডারও দেখুন), তারপর এখানে লগইন করে রাইডার আবেদন সম্পূর্ণ করুন।",
+          );
+        }
       }
     } catch (err: unknown) {
       setFormError(

@@ -6,8 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+const riderService = { from: vi.fn(() => ({ select: vi.fn().mockResolvedValue({ count: 0, error: null }) })) };
 vi.mock("@/lib/rider-auth", () => ({
-  requireRider: async () => ({ user: { id: "user-1" }, db: { rpc: vi.fn() } }),
+  requireRider: async () => ({ user: { id: "user-1" }, db: { rpc: vi.fn() }, service: riderService }),
   RiderAuthError: class extends Error {},
 }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: () => ({ allowed: true }) }));
@@ -24,6 +25,7 @@ vi.mock("@/lib/db/riders", async (importOriginal) => {
       status: "pending",
     })),
     rejectSettleClaimByAdmin: vi.fn(async () => undefined),
+    settleClaimsReady: vi.fn(async () => true),
   };
 });
 vi.mock("../admin/_lib", async (importOriginal) => {
@@ -42,7 +44,7 @@ vi.mock("../admin/_lib", async (importOriginal) => {
 
 import { POST as settlePost } from "../rider/settle/route";
 import { POST as rejectPost } from "../admin/riders/[id]/settle-claim/route";
-import { rejectSettleClaimByAdmin } from "@/lib/db/riders";
+import { rejectSettleClaimByAdmin, settleClaimsReady } from "@/lib/db/riders";
 
 const post = (path: string, body: unknown): Request =>
   new Request(`http://localhost${path}`, {
@@ -55,6 +57,14 @@ describe("POST /api/rider/settle — claim filing", () => {
   it("422s an unknown method", async () => {
     const res = await settlePost(post("/api/rider/settle", { method: "rocket" }));
     expect(res.status).toBe(422);
+  });
+
+  it("503s WITHOUT calling ps_rider_settle when the claims backend is missing", async () => {
+    vi.mocked(settleClaimsReady).mockResolvedValueOnce(false);
+    const res = await settlePost(post("/api/rider/settle", { method: "cash" }));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toContain("বন্ধ");
   });
 
   it("422s a wallet claim without a reference", async () => {

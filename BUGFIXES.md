@@ -410,3 +410,28 @@ client each RPC runs on.
 - `src/lib/__tests__/delivery.test.ts` — zone charge, free-delivery threshold, cheapest active zone, non-negative totals
 - `src/lib/__tests__/store-snapshots.test.ts` — snapshot identity stability (the infinite-render class)
 - plus phone-normalisation and cart-clamping cases in the existing suites
+
+## 2026-09-25 — rider dashboard ও account fix (PROD: migrations pending)
+
+Reported: *"Rider profile creation, dashboard kicui tik nai, accaunt o open kora jacce na."*
+
+**Root cause:** PR #33/#34 deployed to `proshanti.rahatahmed.site` while the production
+Supabase database had NOT received the day's seven migrations — the deployed rider code
+calls `ps_expire_stale_offers(p_force)`, `rider_settle_claims`, `ps_rider_deliver_check`
+and the realtime publication, none of which exist there. Proven on a disposable PGlite
+with old-vs-new schema: on the old schema the job feed 503s (`function … does not
+exist`), the settlements read 503s (`relation … does not exist`), delivery dies, and —
+worst — the OLD `ps_rider_settle` still answers the new call and **zeroes the rider's
+cash with no staff approval**. Both halves of the dashboard's `Promise.all` fail, so the
+rider sees nothing. Full write-up + the 2-minute SQL-Editor repair list:
+`docs/prod-fix-2026-09-25.md`.
+
+| # | Fix |
+|---|-----|
+| 139 | **Rider app survives a database that has not caught up.** `isMissingDbObject()` (42883/42P01/PGRST202/PGRST205 + message fallback) drives three degradations: the stale-offer sweep skips with a `console.warn` naming `202609250003` instead of 503-ing the job feed; `listRiderSettleClaim` answers `null` and `listPendingSettleClaims` an empty queue so the rider settlements panel and the admin riders queue keep loading; the PIN-deliver fallback to direct `ps_rider_deliver` now also fires on 42883 (it only matched PGRST202, so on a truly missing function the rider's Delivered button failed with raw SQL text). |
+| 140 | **A rider's COD money can no longer move without staff approval, even on the un-migrated database.** `POST /api/rider/settle` probes `rider_settle_claims` first (`settleClaimsReady()`): missing table → 503 in Bangla, legacy `ps_rider_settle` (which zeroes `cash_in_hand` immediately) never runs. `GET /api/rider/settlements` reports `claimsReady:false`; the dashboard hides the Settle button and shows a short notice instead of a control that would eat the rider's money. `useRiderJobs` now reads jobs and settlements with `Promise.allSettled` — a settlements failure keeps every live job on screen (this `Promise.all` is what made the whole dashboard look dead). |
+| 141 | **No raw SQL errors on a rider's phone.** The shared `/api/rider/*` wrapper maps missing-object failures to an honest 503 ("ব্যাকএন্ড আপডেট এখনো প্রয়োগ হয়নি…") — "function ps_expire_stale_offers(p_force => boolean) does not exist" never reaches the UI again. |
+| 142 | **Rider login/account dead-ends (the "account open kora jacce na" half).** `/rider/login` with an unconfigured Supabase no longer redirects into the guest loop — it says the backend is not configured. Supabase's raw English auth errors are translated with the next step ("Email not confirmed" → confirm the mail incl. spam; "Invalid login credentials" → use নতুন অ্যাকাউন্ট). Sign-up now reads the returned session: with confirmation off the rider is signed in and taken straight to `/rider/apply`; with confirmation on they get a clear confirm-your-email notice instead of a dead "now apply" line. `/rider/apply` validates the zone selection in Bangla BEFORE submit (the old English "Choose at least one delivery zone." came only from the server), fixes the wrong "no password needed, OTP login" copy, and the success screen gains a one-tap "এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →" (prefilled email, signup tab) whenever the application was saved WITHOUT a linked login (`linked:false`) — the exact gap that left approved riders with no usable account. |
+
+Tests: `rider-degrade` (9), `rider-route-degrade` (2), `settle-claim-routes` +1;
+`tsc` 0, `eslint` 0, full suite green, production build green.
