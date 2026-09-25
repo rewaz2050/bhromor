@@ -228,8 +228,9 @@ export async function listRiderSettlements(
 const mapOrdersById = async (
   service: SupabaseClient,
   rows: DbOrder[],
+  slim = false,
 ): Promise<Map<string, Order>> => {
-  const mapped = await toDomainMany(service, rows);
+  const mapped = await toDomainMany(service, rows, slim ? { slim: true } : undefined);
   const out = new Map<string, Order>();
   rows.forEach((row, i) => {
     const order = mapped[i];
@@ -312,7 +313,7 @@ export async function listRiderJobs(
   // first and always fit; older history stays in the database, not the feed.
   const { data: assignments, error } = await service
     .from("delivery_assignments")
-    .select("*")
+    .select("id,order_id,rider_id,state,offered_at,expires_at")
     .eq("rider_id", riderId)
     .order("offered_at", { ascending: false })
     .limit(60);
@@ -327,7 +328,8 @@ export async function listRiderJobs(
     .in("id", orderIds);
   if (orderError) throw new Error("rider jobs order read failed");
   // P1.3: one batched mapping for every order on the board, not one per job.
-  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[]);
+  // Slim: the feed card needs items + zone names, not the 10-query domain.
+  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[], true);
 
   const shopIds = [...new Set([...orderMap.values()].flatMap((o) => o.shopId ? [o.shopId] : []))];
   const shops = new Map<string, { name: string; address: string; phone: string }>();
@@ -368,7 +370,7 @@ export async function listDispatchJobs(
   // Bounded like the rider feed: the board polls every 15s.
   const { data: assignments, error } = await service
     .from("delivery_assignments")
-    .select("*")
+    .select("id,order_id,rider_id,state,offered_at,expires_at")
     .order("offered_at", { ascending: false })
     .limit(200);
   if (error) throw new Error("dispatch board read failed");
@@ -384,7 +386,8 @@ export async function listDispatchJobs(
   if (orderResult.error) throw new Error("dispatch board order read failed");
   if (riderResult.error) throw new Error("dispatch board rider read failed");
 
-  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[]);
+  // Slim like the rider feed: the board card reads a fraction of Order.
+  const orderMap = await mapOrdersById(service, (orderResult.data ?? []) as DbOrder[], true);
   const riderMap = new Map<string, Pick<DbRider, "id" | "name" | "phone">>();
   for (const r of (riderResult.data ?? []) as Pick<DbRider, "id" | "name" | "phone">[])
     riderMap.set(r.id, r);
