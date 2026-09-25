@@ -6,7 +6,6 @@ import { advanceVendorOrder } from "@/lib/db/vendor";
 
 import { apiJson } from "@/lib/api-response";
 import { notifyCustomerOfStatus } from "@/lib/customer-push";
-import { notifyRiderOfOffer } from "@/lib/rider-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import type { OrderStatus } from "@/lib/orders";
 
@@ -36,12 +35,6 @@ export const POST = vendorRoute(
         status: to as OrderStatus,
         total: order.total,
       });
-      // The shop's own "Ready — call rider" summons a rider exactly like the
-      // staff tap does, so the rider's phone must buzz for it too
-      // (2026-09-25). Best-effort — the dispatch trigger already ran.
-      if (to === "ready-for-pickup") {
-        await notifyRiderOfOffer(service, order.id);
-      }
     }
     return apiJson({ order });
   },

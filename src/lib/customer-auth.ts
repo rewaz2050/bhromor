@@ -89,15 +89,13 @@ export const validCustomerPhone = (raw: unknown): string | null => {
   return /^01[0-9]{9}$/.test(phone) ? phone : null;
 };
 
-export const checkCustomerName = (raw: unknown): string => {
+const checkName = (raw: unknown): string => {
   const name = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
   if (name.length < 2 || name.length > 80) {
     throw new CustomerAuthError("নাম ২–৮০ অক্ষরের হতে হবে।", 422);
   }
   return name;
 };
-
-const checkName = checkCustomerName;
 
 const checkPassword = (raw: unknown): string => {
   if (typeof raw !== "string" || raw.length < 6 || raw.length > 72) {

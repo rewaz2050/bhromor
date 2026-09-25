@@ -36,8 +36,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dhakaDayEndMs, dhakaDayStartMs } from "@/lib/campaign";
-import { expireStaleAssignments, redispatchStrandedOrders } from "@/lib/db/riders";
-import { notifyRiderOfOffer } from "@/lib/rider-push";
+import { expireStaleAssignments } from "@/lib/db/riders";
 import { notifyStaff } from "@/lib/db/engagement";
 import { pushCustomerMessage } from "@/lib/customer-push";
 import { customerPushMessage } from "@/lib/notify-messages";
@@ -45,11 +44,7 @@ import { dhakaDateString, dhakaParts, deliverySlotSummary } from "@/lib/delivery
 import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/digest";
 import type { Language } from "@/lib/translations";
 
-export type CronJobName =
-  | "expire-offers"
-  | "redispatch-stranded"
-  | "delivery-reminders"
-  | "daily-digest";
+export type CronJobName = "expire-offers" | "delivery-reminders" | "daily-digest";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -156,7 +151,7 @@ const runExpireOffers = async (service: SupabaseClient, nowMs: number): Promise<
     const { count } = await service
       .from("delivery_assignments")
       .select("id", { count: "exact", head: true })
-      .eq("state", "offered")
+      .eq("status", "offered")
       .lt("expires_at", iso(nowMs));
     stale = count ?? 0;
   } catch {
@@ -180,46 +175,6 @@ const runExpireOffers = async (service: SupabaseClient, nowMs: number): Promise<
       stale > 0
         ? `${stale} stale rider offer(s) expired and re-offered`
         : "no stale rider offers",
-  };
-};
-
-/**
- * Stranded orders (2026-09-25) — dispatchable, no live offer, nobody retried.
- *
- * The auto-dispatch trigger fires exactly once, on the transition INTO
- * ready-for-pickup. If every rider was offline at that moment the order sat on
- * the awaiting board until a human tapped Assign; the expiry sweep could not
- * help because there was no offer to expire. `ps_redispatch_stranded` offers
- * each one to the next rider who has not seen it, so the rider who came online
- * at 10:05 receives the order that went ready at 10:00 — and gets buzzed.
- */
-const runRedispatchStranded = async (service: SupabaseClient): Promise<CronJobReport> => {
-  let offered = 0;
-  try {
-    offered = await redispatchStrandedOrders(service);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "ps_redispatch_stranded failed";
-    // A database that predates 202609250001 simply has no such function:
-    // report it as skipped, never as a failing clock.
-    if (/does not exist|PGRST202|42883/i.test(message)) {
-      return {
-        job: "redispatch-stranded",
-        status: "skipped",
-        did: 0,
-        detail:
-          "ps_redispatch_stranded nai — supabase/migrations/202609250001_rider_dispatch_fix.sql chalaben",
-      };
-    }
-    return { job: "redispatch-stranded", status: "failed", did: 0, detail: message };
-  }
-  return {
-    job: "redispatch-stranded",
-    status: "ran",
-    did: offered,
-    detail:
-      offered > 0
-        ? `${offered} stranded order(s) re-offered to a rider`
-        : "no stranded orders",
   };
 };
 
@@ -466,31 +421,6 @@ export const runCronTick = async (input: {
       status: "failed",
       did: 0,
       detail: err instanceof Error ? err.message : "expire sweep failed",
-    });
-  }
-
-  try {
-    const stranded = await runRedispatchStranded(input.service);
-    jobs.push(stranded);
-    // Buzz the riders the offers went to (best-effort, capped per fan-out).
-    if (stranded.did > 0) {
-      const { data } = await input.service
-        .from("delivery_assignments")
-        .select("order_id")
-        .eq("state", "offered")
-        .gte("offered_at", iso(nowMs - 60_000))
-        .limit(10);
-      const orderIds = [
-        ...new Set(((data ?? []) as { order_id: string }[]).map((r) => r.order_id)),
-      ];
-      await Promise.all(orderIds.map((id) => notifyRiderOfOffer(input.service, id)));
-    }
-  } catch (err) {
-    jobs.push({
-      job: "redispatch-stranded",
-      status: "failed",
-      did: 0,
-      detail: err instanceof Error ? err.message : "stranded sweep failed",
     });
   }
 

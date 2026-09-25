@@ -23,11 +23,7 @@ vi.mock("web-push", () => ({
 
 type Row = Record<string, unknown>;
 
-/**
- * Tiny fake supabase client for the push_subscriptions table. The builder is
- * real enough to honour `.is("rider_id", null)`, which is what keeps a rider's
- * phone out of the STAFF fan-out (202609250001).
- */
+/** Tiny fake supabase client for the push_subscriptions table. */
 const fakeDb = (table: { rows: Row[]; upserted: Row[]; deleted: string[] }) =>
   ({
     from: (name: string) => ({
@@ -36,27 +32,15 @@ const fakeDb = (table: { rows: Row[]; upserted: Row[]; deleted: string[] }) =>
         table.upserted.push(row);
         return { error: null };
       },
-      delete: () => {
-        const obj: Record<string, unknown> = {};
-        obj.eq = async (_col: string, endpoint: string) => {
+      delete: () => ({
+        eq: async (_col: string, endpoint: string) => {
           table.deleted.push(endpoint);
           return { error: null };
-        };
-        return obj;
-      },
-      select: (cols?: unknown, opts?: { head?: boolean }) => {
-        let rows = table.rows;
-        const obj: Record<string, unknown> = {};
-        obj.is = (col: string, value: unknown) => {
-          rows = rows.filter((r) => (r[col] ?? null) === value);
-          return obj;
-        };
-        obj.limit = async () =>
-          opts?.head ? { data: null, error: null } : { data: rows, error: null };
-        obj.then = (onF: unknown, onR: unknown) =>
-          Promise.resolve({ data: rows, error: null }).then(onF as never, onR as never);
-        return obj;
-      },
+        },
+      }),
+      select: () => ({
+        limit: async () => ({ data: table.rows, error: null }),
+      }),
     }),
   }) as unknown as import("@supabase/supabase-js").SupabaseClient;
 
@@ -173,21 +157,5 @@ describe("staff web push", () => {
     // The fake throws for every endpoint — both get pruned, nothing throws out.
     await push.pushStaffNotice(fakeDb(table), { kind: "system", title: "n" });
     expect(table.deleted).toEqual(["https://push/dead", "https://push/alive"]);
-  });
-
-  it("never sends a staff notice to a RIDER device (202609250001)", async () => {
-    const push = await freshPush();
-    const table = {
-      rows: [
-        { endpoint: "https://push/owner", p256dh: "k", auth: "a" },
-        { endpoint: "https://push/rider", p256dh: "k", auth: "a", rider_id: "rider-1" },
-      ],
-      upserted: [],
-      deleted: [],
-    };
-    await push.pushStaffNotice(fakeDb(table), { kind: "order", title: "New order PS-9" });
-    // A rider's phone buzzes for dispatch offers only — never for the
-    // owner's order notices.
-    expect(sendCalls.map((c) => c.endpoint)).toEqual(["https://push/owner"]);
   });
 });

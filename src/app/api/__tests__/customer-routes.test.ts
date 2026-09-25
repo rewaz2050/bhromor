@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -24,7 +23,7 @@ vi.mock("@/lib/env", () => ({
 }));
 
 import { hashPassword } from "@/lib/customer-auth";
-import { GET as meGet, PATCH as mePatch } from "@/app/api/account/me/route";
+import { GET as meGet, } from "@/app/api/account/me/route";
 import { POST as signupPost } from "@/app/api/account/signup/route";
 import { POST as loginPost } from "@/app/api/account/login/route";
 import { POST as logoutPost } from "@/app/api/account/logout/route";
@@ -63,26 +62,14 @@ const makeDb = () => {
             error: null,
           };
         },
-        single: async () => {
-          if (chain._updated && table === "customers") {
-            const row = rows.find((candidate) => candidate.id === chain._eq) ?? null;
-            if (row) Object.assign(row, chain._updated);
-            return { data: row, error: null };
-          }
-          return { data: chain._inserted, error: null };
-        },
+        single: async () => ({ data: chain._inserted, error: null }),
         _inserted: null as unknown,
-        _updated: null as Record<string, unknown> | null,
         insert: (input: Record<string, unknown>) => {
           const row = table === "customers"
             ? { id: `cust-${customers.length + 1}`, ...input }
             : { ...input };
           chain._inserted = row;
           rows.push(row);
-          return chain;
-        },
-        update: (input: Record<string, unknown>) => {
-          chain._updated = input;
           return chain;
         },
         delete: () => ({
@@ -245,29 +232,6 @@ describe("customer account routes — no verification, instant session", () => {
     const body0 = (await res0.json()) as { card: { revealed: boolean } };
     expect(body0.card.revealed).toBe(false);
     spy0.mockRestore();
-  });
-
-  it("signed-in customer can update their name, but not their login phone", async () => {
-    state.db!.__customers.push({ id: "profile-customer", name: "পুরনো নাম", phone: "01712345678" });
-    state.db!.__sessions.push({
-      token: createHash("sha256").update("profile-session").digest("hex"),
-      customer_id: "profile-customer",
-      expires_at: new Date(Date.now() + 60_000).toISOString(),
-    });
-    const cookie = "ps_customer=profile-session";
-    const res = await mePatch(send("/api/account/me", { name: "  নতুন   নাম  " }, cookie));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { customer: { name: string; phone: string } };
-    expect(body.customer).toEqual(expect.objectContaining({
-      name: "নতুন নাম",
-      phone: "01712345678",
-    }));
-    expect(state.db!.__customers[0].name).toBe("নতুন নাম");
-
-    const bad = await mePatch(send("/api/account/me", { name: "x" }, cookie));
-    expect(bad.status).toBe(422);
-    const guest = await mePatch(send("/api/account/me", { name: "অতিথি" }));
-    expect(guest.status).toBe(401);
   });
 
   it("no Supabase keys → 503, never a local session", async () => {

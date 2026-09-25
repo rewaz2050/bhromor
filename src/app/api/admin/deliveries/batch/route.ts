@@ -11,7 +11,6 @@ import { apiError, apiJson } from "@/lib/api-response";
 import { staffRoute } from "../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { isOrderRowId, resolveOrderRowIds } from "@/lib/db/riders";
-import { notifyRiderOfOffer } from "@/lib/rider-push";
 
 export const dynamic = "force-dynamic";
 
@@ -58,17 +57,7 @@ export const POST = staffRoute(
       }
       return apiError(error.message || "batch assign failed", 409);
     }
-    // Batch assign is the staff override path, so it never went through the
-    // dispatch trigger — before 2026-09-25 the rider found out only by polling.
-    // Buzz once per order actually assigned (best-effort, capped by the caller).
-    const assigned = typeof data === "number" ? data : 0;
-    if (assigned > 0) {
-      // The RPC may skip the first ref and assign a later one, so inspect all
-      // (max 5), not `slice(0, assigned)`. `notifyRiderOfOffer` is a no-op for
-      // a ref with no live offer.
-      await Promise.all(orderIds.map((id) => notifyRiderOfOffer(supa, id)));
-    }
-    return apiJson({ assigned });
+    return apiJson({ assigned: typeof data === "number" ? data : 0 });
   },
   { limit: 20 },
 );

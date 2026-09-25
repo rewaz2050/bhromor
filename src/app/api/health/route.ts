@@ -96,13 +96,6 @@ export async function GET(request?: Request) {
     // 202609240003 — the free WhatsApp fallback: when no push reached the
     // shopper, the step waits in `wa_outbox` as a one-tap draft.
     waOutboxReady: false,
-    // 202609250001 — "rider offer paochhe na": the offer window is a setting
-    // (not a hardcoded 90 s), stranded orders self-heal on the clock, and
-    // `ps_dispatch_diagnosis` can name WHY an order got no rider.
-    riderDispatchReady: false,
-    // 202609250001 — riders can register a push device, so an offer buzzes a
-    // phone in a pocket instead of expiring unseen.
-    riderPushColumn: false,
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -190,8 +183,6 @@ export async function GET(request?: Request) {
           r.rpc_grants_locked === true && r.memberships_rls === true;
         checks.dispatchRepair = r.dispatch_reoffer_ok === true;
         checks.twoTapFlow = r.two_tap_flow_ok === true;
-        checks.riderDispatchReady = r.rider_dispatch_ok === true;
-        checks.riderPushColumn = r.rider_push_column === true;
       }
     }
   }
@@ -254,16 +245,6 @@ export async function GET(request?: Request) {
   if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.twoTapFlow) {
     nextSteps.push(
       "Two-tap order flow — SQL Editor-e supabase/migrations/202609170001_two_tap_order_flow.sql chalaben (ps_advance_order: confirmed → ready-for-pickup allow); na chalale admin/vendor-er 'Ready — call rider' button 422 dibe, age 'More… → Start preparing' chapte hobe",
-    );
-  }
-  if (checks.placeOrderRpc && checks.orderFlowRepair && !checks.riderDispatchReady) {
-    nextSteps.push(
-      "Rider dispatch fix — SQL Editor-e supabase/migrations/202609250001_rider_dispatch_fix.sql chalaben (offer window = setting, default 5 min; stranded order gulo 15-minute clock-e nije re-offer hoy; Admin → Deliveries-e 'rider paochhe na'-r আসল কারন দেখায়); na chalale offer 90 second-e ses hoye jay ar rider jodi tokhon online na thake order ta board-e atke thake",
-    );
-  }
-  if (checks.reachable && checks.riderDispatchReady && !checks.riderPushColumn) {
-    nextSteps.push(
-      "Rider notification er column nai — supabase/migrations/202609250001_rider_dispatch_fix.sql (push_subscriptions.rider_id); na chalale /rider-er 'অফারের খবর ফোনে' button kaj korbe na",
     );
   }
   if (checks.reachable && !checks.pushConfigured) {
