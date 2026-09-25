@@ -207,6 +207,9 @@ export const useRiderJobs = (enabled: boolean) => {
       await refresh();
       return true;
     } catch (err) {
+      // Another rider may have won. Remove stale offers, then retain the
+      // conflict message (refresh normally clears errors).
+      if (err instanceof RiderApiError && err.status === 409) await refresh();
       setError(riderErrorMessage(err));
       return false;
     }

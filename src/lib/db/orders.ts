@@ -616,6 +616,7 @@ const chunk = <T>(list: readonly T[]): T[][] => {
  */
 interface SelectBuilder extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
   eq: (col: string, value: unknown) => SelectBuilder;
+  in: (col: string, values: readonly unknown[]) => SelectBuilder;
   order: (col: string, opts?: { ascending?: boolean }) => SelectBuilder;
 }
 
@@ -730,7 +731,7 @@ export const toDomainMany = async (
         "order_id,rider_id",
         "order_id",
         dispatchedIds,
-        (q) => q.order("offered_at", { ascending: false }),
+        (q) => q.in("state", ["accepted", "picked_up", "delivered"]).order("offered_at", { ascending: false }),
       ),
     ]);
   if (itemsRes.error || historyRes.error) return orders.map(() => null);

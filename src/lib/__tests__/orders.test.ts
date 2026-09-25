@@ -133,10 +133,10 @@ describe("order status state machine (§34)", () => {
     expect(transitionAllowed("preparing", "ready-for-pickup")).toBe(true);
   });
 
-  it("offers 'Ready — call rider' as the PRIMARY action from confirmed, preparing second", () => {
+  it("offers 'Ready — request riders' as the PRIMARY action from confirmed, preparing second", () => {
     expect(nextActions("confirmed")).toEqual(["ready-for-pickup", "preparing"]);
     expect(nextActions("pending")).toEqual(["confirmed"]);
-    expect(ACTION_LABEL["ready-for-pickup"]).toBe("Ready — call rider");
+    expect(ACTION_LABEL["ready-for-pickup"]).toBe("Ready — request riders");
     expect(ACTION_LABEL.confirmed).toBe("Confirm order");
   });
 

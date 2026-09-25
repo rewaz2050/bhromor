@@ -420,7 +420,7 @@ export async function counterHandover(
 }
 
 /**
- * Two-tap flow (2026-09-17): "Ready — call rider" moves confirmed →
+ * Two-tap flow (2026-09-17): "Ready — request riders" moves confirmed →
  * ready-for-pickup in one RPC once 202609170001 is applied. Before that the
  * RPC answers exactly "illegal transition confirmed -> ready-for-pickup".
  */

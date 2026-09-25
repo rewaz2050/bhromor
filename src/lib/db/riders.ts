@@ -26,6 +26,7 @@ import type {
   DbRiderSettlement,
 } from "./types";
 import type { Order } from "../orders";
+import { riderOrderView } from "../rider-order";
 import {
   sanitizeAvailability,
   type RiderAvailability,
@@ -39,6 +40,7 @@ export interface RiderJob {
   offeredAt: number;
   expiresAt: number;
   order: Order;
+  pickupShop?: { name: string; address: string; phone: string };
 }
 
 /** A rider pay-in. Shown to the rider so they can reconcile COD vs deposit. */
@@ -244,6 +246,16 @@ export async function listRiderJobs(
   // P1.3: one batched mapping for every order on the board, not one per job.
   const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[]);
 
+  const shopIds = [...new Set([...orderMap.values()].flatMap((o) => o.shopId ? [o.shopId] : []))];
+  const shops = new Map<string, { name: string; address: string; phone: string }>();
+  if (shopIds.length) {
+    const { data: shopRows, error: shopError } = await service
+      .from("shops").select("id,name,address,phone").in("id", shopIds);
+    if (shopError) throw new Error("pickup shop read failed");
+    for (const shop of shopRows ?? []) {
+      shops.set(shop.id, { name: shop.name, address: shop.address ?? "", phone: shop.phone ?? "" });
+    }
+  }
   const jobs: RiderJob[] = [];
   for (const assignment of rows) {
     const order = orderMap.get(assignment.order_id);
@@ -254,7 +266,8 @@ export async function listRiderJobs(
       state: assignment.state,
       offeredAt: epoch(assignment.offered_at),
       expiresAt: epoch(assignment.expires_at),
-      order,
+      order: riderOrderView(order, assignment.state),
+      pickupShop: order.shopId ? shops.get(order.shopId) : undefined,
     });
   }
   return jobs;
@@ -481,7 +494,15 @@ export const acceptRiderAssignment = async (
   const { error } = await db.rpc("ps_rider_accept", {
     p_assignment_id: assignmentId,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message.includes("offer no longer available")) {
+      throw new RiderInputError("অফারটি আর খালি নেই—অন্য রাইডার নিয়েছেন বা সময় শেষ হয়েছে।", 409);
+    }
+    if (error.message.includes("rider not available")) {
+      throw new RiderInputError("এখন গ্রহণ করা যাচ্ছে না। Online অবস্থা, শিফট, চলমান ট্রিপ ও ক্যাশ সীমা দেখুন।", 409);
+    }
+    throw new Error(error.message);
+  }
 };
 
 export const rejectRiderAssignment = async (

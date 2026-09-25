@@ -63,7 +63,7 @@ function PrepTimer({ createdAt, prepMinutes = 15 }: { createdAt: number; prepMin
           <p className="text-xs text-ink-soft">
             {isOverdue
               ? "দ্রুত পার্সেল রেডি করুন যাতে ৪৫-৬০ মিনিটে কাস্টমারকে দেওয়া যায়"
-              : `লক্ষ্য: ${prepMinutes} মিনিটের মধ্যে পার্সেল রেডি করে 'Ready — call rider' চাপুন`}
+              : `লক্ষ্য: ${prepMinutes} মিনিটের মধ্যে পার্সেল রেডি করে 'Ready — request riders' চাপুন`}
           </p>
         </div>
       </div>

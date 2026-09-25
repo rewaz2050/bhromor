@@ -159,6 +159,7 @@ describe("toDomainMany (batched order mapper)", () => {
     const { db, calls } = recordingDb(FIXTURES);
     await toDomainMany(db, ORDERS);
     const assignments = calls.find((c) => c.table === "delivery_assignments");
+    expect(assignments?.filters.state).toEqual(["accepted", "picked_up", "delivered"]);
     expect(assignments?.filters.order_id).toEqual(["o1", "o2"]); // delivered + out-for-delivery
   });
 

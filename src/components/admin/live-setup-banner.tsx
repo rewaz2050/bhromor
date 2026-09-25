@@ -42,7 +42,7 @@ export default function LiveSetupBanner() {
     // an offer lapses/rejects with a second rider online.
     const dispatchPending = health.checks?.dispatchRepair === false;
     // 202609170001: the two-tap buttons ship in the app; until the RPC
-    // accepts confirmed → ready-for-pickup, "Ready — call rider" is a 422.
+    // accepts confirmed → ready-for-pickup, "Ready — request riders" is a 422.
     const twoTapPending = health.checks?.twoTapFlow === false;
     // 2026-09-23: phone notifications are optional for `live` but they are
     // the first thing the owner asks about — say which half is missing.
@@ -136,10 +136,10 @@ export default function LiveSetupBanner() {
             </span>
             <div className="min-w-0 flex-1 text-sm leading-6 text-amber-900">
               <p className="font-semibold">
-                ⚡ ২-ট্যাপ অর্ডার ফ্লো বাকি — “Ready — call rider” বোতাম এখনো ডেটাবেসে আটকাবে
+                ⚡ ২-ট্যাপ অর্ডার ফ্লো বাকি — “Ready — request riders” বোতাম এখনো ডেটাবেসে আটকাবে
               </p>
               <p className="mt-0.5 text-[13px] text-amber-900/90">
-                অ্যাপে এখন Confirm → Ready — call rider, দুই ট্যাপেই রাইডার ডাকা যায়। কিন্তু ডেটাবেসের নিয়ম এখনো মাঝখানে “Start preparing” চায়, তাই Ready চাপলে “not allowed from here” আসবে (আপাতত <strong>More… → Start preparing</strong> চেপে নিন)। ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন (২টা <strong>OK</strong> দেখাবে):
+                অ্যাপে এখন Confirm → Ready — request riders, দুই ট্যাপেই রাইডার ডাকা যায়। কিন্তু ডেটাবেসের নিয়ম এখনো মাঝখানে “Start preparing” চায়, তাই Ready চাপলে “not allowed from here” আসবে (আপাতত <strong>More… → Start preparing</strong> চেপে নিন)। ঠিক করতে <strong>একটা</strong> SQL ফাইল Supabase → SQL Editor-এ পেস্ট করে Run করুন (২টা <strong>OK</strong> দেখাবে):
               </p>
               <code className="mt-1.5 block rounded-xl bg-white/80 px-3.5 py-2 text-xs font-mono text-amber-900 ring-1 ring-amber-200">
                 supabase/migrations/202609170001_two_tap_order_flow.sql

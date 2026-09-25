@@ -33,6 +33,7 @@ export default function AdminDeliveriesPage() {
     busyId,
     offer,
     cancel,
+    refresh,
   } = useAdminDeliveries();
   const { riders } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
@@ -73,8 +74,8 @@ export default function AdminDeliveriesPage() {
           </h2>
           <p className="mt-1 max-w-xl text-sm leading-6 text-ink-soft">
             Orders that reach <strong>ready-for-pickup</strong> are offered to
-            an eligible rider automatically. Use this board to assign manually
-            when nobody was free, or cancel a wrong offer.
+            all eligible online riders in the delivery area. First acceptance wins.
+            Use manual dispatch only when help is needed; accepted trips are not reassigned.
           </p>
         </div>
       </div>
@@ -88,6 +89,10 @@ export default function AdminDeliveriesPage() {
         </p>
       )}
 
+      <p className="rounded-xl bg-sky-50 p-4 text-sm text-sky-900">
+        {new Set(deliveries.filter(d => d.state === "offered").map(d => d.orderId)).size} orders requesting riders · {counts.offered} invitations.
+        One order can have several invitations, but only one assigned rider.
+      </p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {(["offered", "accepted", "picked_up", "delivered", "cancelled"] as const).map(
           (state) => (
@@ -105,19 +110,19 @@ export default function AdminDeliveriesPage() {
 
       {/* SLA Alerts + Live Dispatch Map - Serial 3-6 */}
       <section className="rounded-2xl bg-paper p-5 ring-1 ring-line space-y-4">
-        <h3 className="font-display text-base font-semibold text-forest-900">🗺️ Live Dispatch Map — Sunamganj Sadar (Nearest Rider Auto-Assign) + SLA</h3>
+        <h3 className="font-display text-base font-semibold text-forest-900">🗺️ Area requests · Live deliveries</h3>
         <AdminSlaAlerts orders={orders} />
         <AdminLiveMap
           riders={riders}
-          orders={awaitingOrders.concat(deliveries.map((d) => d.order))}
-          deliveries={deliveries.map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
+          orders={[...new Map(awaitingOrders.concat(deliveries.map((d) => d.order)).map(o => [o.id, o])).values()]}
+          deliveries={deliveries.filter(d => ["accepted", "picked_up", "delivered"].includes(d.state)).map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
-          Auto-assign picks the nearest online rider (rating, then lightest load); each offer lasts 90 s and rolls to the next rider. Riders carry at most 2 orders and ৳5,000 cash. Counter pickups never enter dispatch — the customer collects at Traffic Point.
+          Ready orders send 90-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most 2 active orders; riders at the ৳5,000 cash limit cannot accept more. Customer pickups never enter dispatch.
         </p>
       </section>
 
-      <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { /* refresh handled by hooks */ }} />
+      <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
 
       <section>
         <div className="mb-3 flex items-center gap-2">
@@ -165,7 +170,7 @@ export default function AdminDeliveriesPage() {
                   className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
                 >
                   <IconTruck className="h-3.5 w-3.5" />
-                  {busyId === order.id ? "Offering…" : "Assign rider"}
+                  {busyId === order.id ? "Offering…" : "Send area requests"}
                 </button>
               </div>
             ))}
@@ -232,7 +237,7 @@ export default function AdminDeliveriesPage() {
                         <IconPhone className="h-3.5 w-3.5" />
                         Call rider
                       </a>
-                      <button
+                      {job.state === "offered" && <button
                         type="button"
                         disabled={busyId === job.id}
                         onClick={() => {
@@ -247,7 +252,7 @@ export default function AdminDeliveriesPage() {
                         className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                       >
                         {busyId === job.id ? "Working…" : "Cancel"}
-                      </button>
+                      </button>}
                       {job.state === "accepted" && (
                         <span className="ml-auto inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-emerald-700">
                           <IconCheck className="h-3.5 w-3.5" />

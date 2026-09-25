@@ -101,3 +101,11 @@ export const formatFullAddress = (parts: {
   if (parts.latLng) segs.push(`Pin: ${parts.latLng.lat.toFixed(5)},${parts.latLng.lng.toFixed(5)}`);
   return segs.join(", ");
 };
+
+/** Checkout restores the first saved address; keep all address data intact. */
+export const preferAddress = (id: string): void => {
+  const all = getSavedAddresses();
+  const preferred = all.find(a => a.id === id);
+  if (!preferred) throw new Error("Address not found");
+  localStorage.setItem(KEY, JSON.stringify([preferred, ...all.filter(a => a.id !== id)]));
+};

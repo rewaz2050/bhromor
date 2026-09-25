@@ -139,4 +139,26 @@ describe("Rider Mobile Portal (/rider)", () => {
     render(<RiderPage />);
     expect(screen.getByTestId("rider-cash")).toHaveTextContent(/রিটার্ন — কোনো টাকা নিবেন না/);
   });
+  it("shows the shared-request explanation and shop pickup details without customer call/map actions", () => {
+    state.isOnline = true;
+    state.jobs = [{
+      ...job("offered", order({})),
+      pickupShop: { name: "Town Shop", address: "Market Road", phone: "01812345678" },
+    }];
+    render(<RiderPage />);
+    expect(screen.getByText(/যিনি আগে গ্রহণ করবেন/)).toBeInTheDocument();
+    expect(screen.getByText(/পিকআপের দোকান: Town Shop/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "দোকানে কল" })).toHaveAttribute("href", "tel:01812345678");
+    expect(screen.queryByTestId("rider-maps")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "কল দিন" })).not.toBeInTheDocument();
+  });
+
+  it("keeps accepted work visible when the rider goes offline", () => {
+    state.isOnline = false;
+    state.jobs = [job("accepted", order({}))];
+    render(<RiderPage />);
+    expect(screen.getByText("পিকআপ কনফার্ম করুন")).toBeInTheDocument();
+    expect(screen.getByText("আমার রাইডার প্রোফাইল")).toBeInTheDocument();
+  });
+
 });

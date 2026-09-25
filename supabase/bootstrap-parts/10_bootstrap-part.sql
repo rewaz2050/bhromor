@@ -1,4 +1,4 @@
--- PART 10/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 10/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Admin repair: order status updates, payment verify, rider guard (202609160003) ====
 -- ============================================================================
 -- Checkout repair 3 (2026-09-16): NO order status could be changed, no
@@ -683,3 +683,92 @@ notify pgrst, 'reload schema';
 
 commit;
 
+
+-- ============================================================================
+-- Staff Web Push devices (2026-09-21) — an order lands, the owner's phone
+-- buzzes even with the admin panel closed. One row per browser
+-- subscription. Service-role only (the notifyStaff fan-out and
+-- /api/admin/push both run behind staff auth); RLS denies everyone else.
+-- Runs in its own transaction because the bootstrap script ends above.
+-- ============================================================================
+begin;
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+commit;
+
+-- ============================================================================
+-- Customer (shopper) Web Push (2026-09-24) — the shopper's phone buzzes on the
+-- four delivery milestones instead of the shop calling each one. Separate
+-- table from the staff devices above: bound to the checkout phone number,
+-- written by /api/track/push behind the track proof, read only by the
+-- milestone fan-out. Service-role only; RLS denies everyone else.
+-- ============================================================================
+begin;
+create table if not exists public.customer_push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  endpoint     text not null unique,
+  p256dh       text not null,
+  auth         text not null,
+  phone        text not null,
+  lang         text not null default 'bn',
+  created_at   timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+create index if not exists idx_customer_push_phone
+  on public.customer_push_subscriptions (phone);
+alter table public.customer_push_subscriptions enable row level security;
+commit;
+
+-- ============================================================================
+-- Scheduler marks (2026-09-24) — the shop's time-based work runs from outside
+-- (a GitHub Action calls /api/cron/tick every 15 minutes; docs/automation.md).
+-- One row per one-shot job that has already happened ("reminded order X",
+-- "sent the digest for 2026-09-24"), claimed with an INSERT and released if
+-- the work failed, so a tick can retry without ever nagging twice. Service
+-- role only — RLS on, no policies.
+-- ============================================================================
+begin;
+create table if not exists public.cron_marks (
+  key    text primary key,
+  ran_at timestamptz not null default now()
+);
+alter table public.cron_marks enable row level security;
+commit;
+
+-- ============================================================================
+-- WhatsApp draft outbox (2026-09-24) — the FREE fallback when Web Push reached
+-- nobody. The WhatsApp Business API is not needed for order messages (Meta
+-- business account + pre-approved templates + ~$0.011 per utility message);
+-- a `wa.me` deep link opens the shop's own WhatsApp Business app with the text
+-- prefilled, and a human taps send. One draft per order per step, written when
+-- the push fan-out reached no device; the admin order page shows it as "Ready
+-- to send". `opened_at` records the tap that OPENED WhatsApp — never a claim
+-- that a human sent it. Service role only — RLS on, no policies.
+-- ============================================================================
+begin;
+create table if not exists public.wa_outbox (
+  id            uuid primary key default gen_random_uuid(),
+  order_no      text not null,
+  phone         text not null,
+  kind          text not null,
+  lang          text not null default 'bn',
+  message       text not null,
+  created_at    timestamptz not null default now(),
+  opened_at     timestamptz,
+  superseded_at timestamptz,
+  dismissed_at  timestamptz,
+  unique (order_no, kind)
+);
+create index if not exists idx_wa_outbox_pending
+  on public.wa_outbox (created_at desc)
+  where opened_at is null and superseded_at is null and dismissed_at is null;
+create index if not exists idx_wa_outbox_order
+  on public.wa_outbox (order_no, created_at desc);
+alter table public.wa_outbox enable row level security;
+commit;

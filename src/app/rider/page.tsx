@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { RiderProfile } from "@/components/rider/rider-profile";
 import Link from "next/link";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
@@ -31,6 +32,7 @@ interface RiderTask {
   state: "offered" | "accepted" | "picked_up" | "delivered";
   /** When an OFFER lapses (epoch ms) — the rider has until then to accept. */
   expiresAt: number;
+  pickupShop?: RiderJob["pickupShop"];
 }
 
 /** Google Maps deep link — opens the app on a phone, the site on a desktop. */
@@ -50,7 +52,8 @@ export default function RiderPage() {
   const riderJobsApi = useRiderJobs(isLive);
   const activeRider = session.rider;
 
-  const [isOnline, setIsOnline] = useState(activeRider?.isOnline ?? false);
+  const [onlineOverride, setOnlineOverride] = useState<boolean | null>(null);
+  const isOnline = onlineOverride ?? activeRider?.isOnline ?? false;
   const [selectedPinTask, setSelectedPinTask] = useState<string | null>(null);
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
@@ -58,6 +61,7 @@ export default function RiderPage() {
   const [settle, setSettle] = useState(false);
   const flashTimer = useRef<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState<string | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
   const [failedReason, setFailedReason] = useState("");
@@ -99,6 +103,7 @@ export default function RiderPage() {
                 ? "picked_up"
                 : "accepted",
           expiresAt: job.expiresAt,
+          pickupShop: job.pickupShop,
         })),
     [riderJobsApi.jobs],
   );
@@ -120,7 +125,7 @@ export default function RiderPage() {
       return;
     }
     setActionError(null);
-    setIsOnline(nextState);
+    setOnlineOverride(nextState);
     void session.refresh();
     if (nextState && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -167,7 +172,10 @@ export default function RiderPage() {
   }, [isLive, isOnline]);
 
   const handleAccept = async (task: RiderTask) => {
+    if (accepting) return;
+    setAccepting(task.id);
     const ok = await riderJobsApi.accept(task.id);
+    setAccepting(null);
     if (!ok) {
       setActionError(riderJobsApi.error);
       return;
@@ -338,21 +346,23 @@ export default function RiderPage() {
             <span>{flash}</span>
           </div>
         )}
-        {actionError && (
+        {(actionError || riderJobsApi.error) && (
           <div
             role="alert"
             className="flex items-center gap-2 rounded-2xl bg-rose-50 p-4 text-xs font-semibold text-rose-900 ring-1 ring-rose-300"
           >
-            <span>{actionError}</span>
+            <span>{actionError || riderJobsApi.error}</span>
             <button
               type="button"
-              onClick={() => setActionError(null)}
+              onClick={() => { setActionError(null); void riderJobsApi.refresh(); }}
               className="ml-auto rounded-full px-2 py-0.5 text-rose-700 underline"
             >
               বন্ধ
             </button>
           </div>
         )}
+
+        <RiderProfile key={activeRider.id} rider={activeRider} onSaved={session.refresh} />
 
         {/* P2 #22 — the rider's own shift. Auto-dispatch only offers jobs
             inside it (enforced in the database, not just here), so this card
@@ -475,7 +485,7 @@ export default function RiderPage() {
             <span className="text-xs text-ink-soft">৪৫-৬০ মিনিট ডেলিভারি</span>
           </div>
 
-          {!isOnline ? (
+          {!isOnline && tasks.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-ivory-100/50 p-8 text-center">
               <p className="text-sm font-semibold text-ink-soft">
                 আপনি অফলাইনে আছেন
@@ -491,7 +501,7 @@ export default function RiderPage() {
                 বর্তমানে কোনো সক্রিয় ট্রিপ নেই
               </p>
               <p className="mt-1 text-xs text-ink-soft">
-                দোকানদার পার্সেল রেডি করলেই এখানে নোটিফিকেশন আসবে।
+                দোকান পার্সেল প্রস্তুত করলে আপনার এলাকার অনলাইন রাইডারদের এখানে অনুরোধ দেখাবে। অ্যাপ খোলা রাখুন—প্রতি ১৫ সেকেন্ডে আপডেট হয়।
               </p>
             </div>
           ) : (
@@ -503,7 +513,7 @@ export default function RiderPage() {
                 const order = task.order;
                 const cash = cashToCollect(order);
                 const pay = paymentSummary(order);
-                const maps = mapsHref(order);
+                const maps = task.state === "offered" ? null : mapsHref(order);
                 const left = task.state === "offered" ? secondsLeft(task.expiresAt, now) : null;
 
                 return (
@@ -545,6 +555,23 @@ export default function RiderPage() {
                         <span className="font-mono text-sm tabular-nums">
                           {left > 0 ? `${left} সেকেন্ড` : "সময় শেষ — রিফ্রেশ হচ্ছে…"}
                         </span>
+                      </div>
+                    )}
+
+                    {task.state === "offered" && (
+                      <p className="rounded-xl bg-sky-50 p-3 text-xs text-sky-900">
+                        এলাকার রাইডারদের অনুরোধ—যিনি আগে গ্রহণ করবেন, তিনিই ডেলিভারি পাবেন। গ্রহণের পর কাস্টমারের যোগাযোগের তথ্য দেখাবে।
+                      </p>
+                    )}
+
+                    {task.pickupShop && (
+                      <div className="rounded-xl border border-line p-3 text-xs space-y-2">
+                        <p className="font-semibold text-forest-900">{order.isReturn ? "দোকানে ফেরত দিন" : "পিকআপের দোকান"}: {task.pickupShop.name}</p>
+                        <p className="text-ink-soft">{task.pickupShop.address || "দোকানে কল করে পিকআপ ঠিকানা নিশ্চিত করুন"}</p>
+                        <div className="flex flex-wrap gap-3">
+                          {task.pickupShop.phone && <a className="underline min-h-11 inline-flex items-center" href={`tel:${task.pickupShop.phone}`}>দোকানে কল</a>}
+                          {task.pickupShop.address && <a className="underline min-h-11 inline-flex items-center" target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.pickupShop.address)}`}>দোকানের ম্যাপ</a>}
+                        </div>
                       </div>
                     )}
 
@@ -608,12 +635,12 @@ export default function RiderPage() {
                     {/* Action Controls */}
                     <div className="flex flex-col gap-2 pt-1">
                       <div className="flex items-center gap-2">
-                        <a
+                        {task.state !== "offered" && order.customer.phone && <a
                           href={`tel:${order.customer.phone}`}
                           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
                         >
                           <IconPhone className="h-4 w-4 text-forest-700" /> কল দিন
-                        </a>
+                        </a>}
                         {maps && !order.isPickup && (
                           <a
                             href={maps}
@@ -638,9 +665,10 @@ export default function RiderPage() {
                           <button
                             type="button"
                             onClick={() => handleAccept(task)}
-                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500"
+                            disabled={!isOnline || left === 0 || isCashLimitReached || accepting !== null}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            অর্ডার একসেপ্ট করুন
+                            {accepting === task.id ? "গ্রহণ হচ্ছে…" : "অর্ডার একসেপ্ট করুন"}
                           </button>
                         </>
                       ) : isReady ? (

@@ -1,4 +1,4 @@
--- PART 8/10 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 8/11 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 27/27 — wallet-aware delivery cash (P1 #8 follow-up)  (source: supabase/migrations/202609140006_wallet_delivery_cash.sql)
 -- ===========================================================================
@@ -899,4 +899,3 @@ begin
   return v_rider_id;
 end $$;
 commit;
-
