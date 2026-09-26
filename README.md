@@ -175,6 +175,30 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R5 — checkout one-minute cue, "same as last time", post-order rail (2026-09-26)
+
+Round 5 of `docs/ux-sales-plan.md` (§6 checkout). No migration.
+
+- **"About a minute" chip** in the checkout page header (`checkout-minute`,
+  en/bn) — the form is three short steps on one page and now says so.
+- **"Same as last time — go to order"** (`same-as-last`): when the last
+  saved address has pre-filled the form, a one-tap button under the
+  pre-fill note scrolls to the review step and focuses the Place Order
+  button. It never submits by itself; the shopper still confirms the total.
+- **Receipt rail** (`receipt-rail`, `src/components/checkout/receipt-rail.tsx`):
+  below Track / Continue shopping, "You may also like" shows complements
+  of the pieces just bought (`completeTheLook`) and then the same shelf's
+  in-stock siblings (`moreInCategory`) — never the ordered pieces, in-stock
+  only, up to 8, hidden below 2 candidates. Cards fire the usual funnel
+  events with `src="receipt-rail"`.
+- Push opt-in and the referral row already lived on the receipt; the
+  "phone-only one-tap account" idea is dropped (no SMS/email verification
+  by design — addresses are saved on the device anyway).
+- Tests: `receipt-rail.test.tsx` (suggestions contract, Bengali rail,
+  header cue in both languages), `checkout-batch-f` (one-tap jump focuses
+  the CTA without an order request). The free-delivery suite pins
+  `isNight: false` so it no longer flakes after 9 PM.
+
 ## UX plan R4 — the listing remembers: URL state, back-restore, sticky filter bar (2026-09-26)
 
 §3 of `docs/ux-sales-plan.md` — the listing page's biggest time-killer was starting over after every product page:

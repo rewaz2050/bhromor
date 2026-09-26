@@ -27,11 +27,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
+import ReceiptRail from "@/components/checkout/receipt-rail";
 import NotifyOptIn from "@/components/track/notify-opt-in";
 import { haptic } from "@/lib/haptics";
 import BagSkeleton from "@/components/cart/bag-skeleton";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
+import type { Product } from "@/lib/catalog";
 import {
   isShopOrderable,
   lineShopIds,
@@ -416,6 +418,8 @@ export default function CheckoutView() {
     /** P2 #18 — the "what happens next" list is built from THIS order. */
     isPickup?: boolean;
     isCourier?: boolean;
+    /** UX plan §6 (R5) — what was bought, for the "you may also like" rail. */
+    ordered?: Product[];
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -1036,6 +1040,13 @@ export default function CheckoutView() {
             {t("checkout.continueShopping")}
           </Link>
         </div>
+
+        {/* UX plan §6 (R5) — the session need not end on the receipt. */}
+        {placed.ordered && placed.ordered.length > 0 && (
+          <div className="-mx-6 mt-12 text-left">
+            <ReceiptRail ordered={placed.ordered} />
+          </div>
+        )}
       </div>
     );
   }
@@ -1429,6 +1440,7 @@ export default function CheckoutView() {
       setPlaced({
         orderId: data.order.id,
         phone: form.phone,
+        ordered: detail.map((l) => l.product),
         eta: form.isPickup
           ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
           : isCourierZone(derivedZoneId)
@@ -1600,16 +1612,33 @@ export default function CheckoutView() {
             </p>
           ) : null}
           {prefilledFrom ? (
-            <p
+            <div
               role="status"
               data-testid="address-prefilled"
-              className="mb-4 flex items-start gap-2 rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200"
+              className="mb-4 rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200"
             >
-              <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                {prefilledFrom.label} — {t("checkout.savedAddressUsed")}
-              </span>
-            </p>
+              <p className="flex items-start gap-2">
+                <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {prefilledFrom.label} — {t("checkout.savedAddressUsed")}
+                </span>
+              </p>
+              {/* UX plan §6 — the repeat customer's one tap: nothing to retype,
+                  jump straight to the review step and the Place Order button.
+                  It never submits by itself. */}
+              <button
+                type="button"
+                data-testid="same-as-last"
+                onClick={() => {
+                  jumpToStep(3);
+                  ctaRef.current?.focus({ preventScroll: true });
+                }}
+                className="tap-press mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 focus-visible:ring-offset-2"
+              >
+                {t("checkout.sameAsLast")}
+                <IconArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : null}
           {showSaved && savedAddrs.length > 0 && (
             <div className="mb-5 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
