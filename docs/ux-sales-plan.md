@@ -1,6 +1,6 @@
 # UI/UX পাস — বেশি সময়, বেশি অর্ডার (পেজ ধরে ধরে ব্রিফিং)
 
-তারিখ: 2026-09-26 · অবস্থা: **পরিকল্পনা** (কোনো কোড বদলানো হয়নি) · ভাষা: ব্রিফিং বাংলায়, UI-টার্ম ইংরেজিতে।
+তারিখ: 2026-09-26 · অবস্থা: **চলমান** — ✅ চিহ্নিত আইটেমগুলো শিপড (R0, R1/R2 আংশিক), বাকিটা পরিকল্পনা · ভাষা: ব্রিফিং বাংলায়, UI-টার্ম ইংরেজিতে।
 
 লক্ষ্য দুটো, আর প্রতিটি আইটেম এর একটাতে সরাসরি লাগে:
 
@@ -11,12 +11,13 @@
 
 ---
 
-## ০. সবার আগে: মাপার ব্যবস্থা (S) 🔴
+## ০. সবার আগে: মাপার ব্যবস্থা (S) 🔴 — ✅ শিপড ২০২৬-০৯-২৬
 
-যা মাপা যায় না তা ঠিক হয় না। `src/lib/analytics.ts`-এ `add_to_cart`, `begin_checkout` আছে (✅); বাকিটা যোগ করে একটা সাপ্তাহিক ফানেল দেখার জায়গা বানানো:
+যা মাপা যায় না তা ঠিক হয় না। এখন দোকানের **নিজস্ব** (first-party, নাম-পরিচয়হীন) ফানেল আছে — GA4/Meta আইডি না থাকলেও চলে:
 
-- ইভেন্ট: `view_item_list` (কোন rail/section থেকে ক্লিক), `select_item`, `view_item`, `add_to_cart` (কোথা থেকে — card quick-add / PDP / bundle), `begin_checkout`, `purchase`, `search` (query + result count), `scroll_depth` (home ২৫/৫০/৭৫/১০০%)।
-- Admin → Reports-এ ৬টা সংখ্যা: bounce, pages/session, PDP→ATC%, ATC→checkout%, checkout→order%, AOV, repeat-rate। প্রতিটি পরের রাউন্ডের আগে-পরে এই সংখ্যাই বলবে কাজ হলো কি না।
+- ✅ ইভেন্ট: `page_view` (প্রথমটাসহ), `view_item_list` (কোন rail/section চোখে পড়ল), `select_item` (কোন rail থেকে ক্লিক), `view_item`, `add_to_cart` (কোথা থেকে — card quick-add / PDP / bundle / live), `begin_checkout`, `purchase`, `search` (query + result count; ০ ফলাফল = যে চাহিদা আমরা মেটাই না), `scroll_depth` (home ২৫/৫০/৭৫/১০০%)। ব্রাউজার ৪ সেকেন্ড পরপর / ট্যাব বন্ধের সময় `POST /api/events`-এ পাঠায়; সেশন = একটা ট্যাব (কুকি নেই, ইউজার-আইডি নেই)।
+- ✅ Admin → Reports → **Funnel** কার্ড (৭/২৮ দিন): sessions, bounce, pages/session, PDP→ATC%, ATC→checkout%, checkout→order% (অর্ডার `orders` টেবিল থেকে — বাতিল/রিটার্ন বাদ), AOV, repeat-rate, add-to-bag কোথা থেকে, top searches (*no results* ফ্ল্যাগ), home স্ক্রল-গভীরতা। প্রতিটি পরের রাউন্ডের আগে-পরে এই সংখ্যাই বলবে কাজ হলো কি না।
+- চালু করতে: মাইগ্রেশন `202609260004_storefront_events.sql` (শেষে `STOREFRONT EVENTS OK`)। না চালানো পর্যন্ত স্টোরফ্রন্ট পাঠাতে থাকে (২০৪, ফেলে দেওয়া হয়) আর Reports কার্ড ফাইলের নাম বলে।
 
 ---
 
@@ -173,9 +174,9 @@
 
 | রাউন্ড | কাজ | কেন আগে |
 |---|---|---|
-| R0 (S) | §০ মাপার ইভেন্ট + Reports-এ ফানেল | পরের সব কাজের আগে-পরে তুলনা |
-| R1 (M–L) | §১.১ প্রোডাক্ট কার্ড + §৪ PDP প্রথম পর্দা + ব্যক্তিগত ডেলিভারি লাইন + Complete-the-look অবস্থান | PDP→ATC হারে সবচেয়ে বড় প্রভাব |
-| R2 (M) | §৫ ব্যাগ: থ্রেশহোল্ড বার, add-on rail, sticky checkout, কুপন অটো-অ্যাপ্লাই | AOV + ATC→checkout |
+| R0 (S) ✅ | §০ মাপার ইভেন্ট + Reports-এ ফানেল (শিপড ২০২৬-০৯-২৬) | পরের সব কাজের আগে-পরে তুলনা |
+| R1 (M–L) ◐ | §১.১ প্রোডাক্ট কার্ড + §৪ PDP প্রথম পর্দা + ব্যক্তিগত ডেলিভারি লাইন + Complete-the-look অবস্থান (দাম-ব্লক, ডেলিভারি লাইন শিপড; দ্বিতীয় ছবি/swatch বাকি) | PDP→ATC হারে সবচেয়ে বড় প্রভাব |
+| R2 (M) ◐ | §৫ ব্যাগ: থ্রেশহোল্ড বার, add-on rail, sticky checkout, কুপন অটো-অ্যাপ্লাই (কুপন অটো-অ্যাপ্লাই বাকি) | AOV + ATC→checkout |
 | R3 (M) | §২ হোম: best sellers/new rails, campaign hero, shelf ছোট, pattern-interrupt, হেডার zone-পিল | প্রথম পর্দা থেকে ক্লিক, স্ক্রল-গভীরতা |
 | R4 (M) | §৩ লিস্টিং: URL-স্টেট + back-restore, mobile ফিল্টার বার, sold-out শেষে | লিস্টিংয়ে থাকা সময় |
 | R5 (S–M) | §৬ চেকআউট ফর্ম + অর্ডার-শেষ পেজ (push অপ্ট-ইন, referral, rail) | checkout→order, repeat |

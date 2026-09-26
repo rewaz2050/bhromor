@@ -123,7 +123,7 @@ function PieceCard({
           type="button"
           disabled={!piece.inStock}
           onClick={() => {
-            addItem(piece.productId, piece.defaultVariantLabel);
+            addItem(piece.productId, piece.defaultVariantLabel, 1, "live");
             openBag();
           }}
           className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-forest-800 px-3 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-ink-soft"

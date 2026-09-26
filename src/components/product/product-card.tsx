@@ -19,6 +19,8 @@ import { IconTrendDown } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import { hasProductVideo } from "@/lib/media";
 import { bnDigits } from "@/lib/arrival";
+import { itemFromProduct, track } from "@/lib/analytics";
+import { listNameFor } from "@/components/analytics/list-impression";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -121,8 +123,20 @@ export default function ProductCard({ product }: { product: Product }) {
   const { shops } = useLiveCatalog();
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
 
+  /* UX plan §0 — `select_item`: any tap that leads to the product page,
+     credited to the rail / grid the card sits in (nearest data-list). */
+  const onCardClick = (event: React.MouseEvent<HTMLElement>) => {
+    const anchor = (event.target as Element | null)?.closest?.("a[href^='/product/']");
+    if (!anchor) return;
+    track({
+      type: "select_item",
+      item: itemFromProduct(product),
+      list: listNameFor(event.currentTarget, typeof window === "undefined" ? "/" : window.location.pathname),
+    });
+  };
+
   return (
-    <article className="product-card group relative flex min-w-0 flex-col">
+    <article className="product-card group relative flex min-w-0 flex-col" onClick={onCardClick}>
       <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
           href={`/product/${product.slug}`}

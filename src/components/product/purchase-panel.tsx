@@ -49,7 +49,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
   const { openBag } = useCart();
   const { products, shops } = useLiveCatalog();
-  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("pdp");
   const router = useRouter();
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
   /* P1 #16: the stylist chat hands off to these drawers — one at a time,

@@ -14,6 +14,8 @@
  */
 
 import type { Product } from "./catalog";
+import { currentLang, record } from "./events-sink";
+import type { WireEvent } from "./funnel-events";
 
 export const CURRENCY = "BDT";
 
@@ -45,6 +47,8 @@ export interface AnalyticsItem {
   /** Paisa. */
   price: number;
   qty: number;
+  /** Owning shop (marketplace) — for the shop-wise funnel; never sent to vendors. */
+  shopId?: string;
 }
 
 export const itemFromProduct = (product: Product, qty = 1): AnalyticsItem => ({
@@ -53,15 +57,58 @@ export const itemFromProduct = (product: Product, qty = 1): AnalyticsItem => ({
   category: product.category,
   price: product.price,
   qty,
+  shopId: product.shopId,
 });
 
 export type FunnelEvent =
   | { type: "page_view"; path: string }
   | { type: "view_item"; item: AnalyticsItem }
-  | { type: "add_to_cart"; item: AnalyticsItem }
+  /** `source`: where the add came from — 'card' | 'pdp' | 'bundle' | 'live' | a rail name. */
+  | { type: "add_to_cart"; item: AnalyticsItem; source?: string }
   | { type: "begin_checkout"; items: AnalyticsItem[]; value: number }
   | { type: "purchase"; orderId: string; items: AnalyticsItem[]; value: number; delivery: number }
-  | { type: "search"; query: string };
+  /** `results`: how many products the shopper saw for the query. */
+  | { type: "search"; query: string; results?: number }
+  /** UX plan §0 — a rail / grid was shown (`list` names it). */
+  | { type: "view_item_list"; list: string; count: number }
+  /** UX plan §0 — a product was tapped from a list. */
+  | { type: "select_item"; item: AnalyticsItem; list: string }
+  /** UX plan §0 — the shopper scrolled past `depth` % of `path`. */
+  | { type: "scroll_depth"; path: string; depth: number };
+
+/**
+ * The first-party copy of one event (`POST /api/events`) — short keys, no
+ * personal data. Pure so it can be asserted in tests.
+ */
+export const wireEvent = (ev: FunnelEvent, path?: string): WireEvent => {
+  const base: WireEvent = { t: ev.type };
+  if (path) base.p = path;
+  switch (ev.type) {
+    case "page_view":
+      return { ...base, p: ev.path.split(/[?#]/)[0] };
+    case "view_item":
+      return { ...base, pid: ev.item.id, shop: ev.item.shopId, v: ev.item.price };
+    case "add_to_cart":
+      return { ...base, pid: ev.item.id, shop: ev.item.shopId, src: ev.source, v: ev.item.price * ev.item.qty };
+    case "begin_checkout":
+      return { ...base, v: ev.value, meta: { items: ev.items.reduce((n, i) => n + i.qty, 0) } };
+    case "purchase":
+      return {
+        ...base,
+        v: ev.value,
+        shop: ev.items[0]?.shopId,
+        meta: { items: ev.items.reduce((n, i) => n + i.qty, 0), delivery: ev.delivery },
+      };
+    case "search":
+      return { ...base, v: ev.results, meta: { q: ev.query.trim().slice(0, 80).toLowerCase() } };
+    case "view_item_list":
+      return { ...base, src: ev.list, v: ev.count };
+    case "select_item":
+      return { ...base, pid: ev.item.id, shop: ev.item.shopId, src: ev.list };
+    case "scroll_depth":
+      return { ...base, p: ev.path.split(/[?#]/)[0], v: ev.depth };
+  }
+};
 
 type Fbq = (...args: unknown[]) => void;
 type Gtag = (...args: unknown[]) => void;
@@ -171,11 +218,30 @@ export const vendorPayloads = (
         meta: ["Search", { search_string: ev.query }],
         ga: ["search", { search_term: ev.query }],
       };
+    case "view_item_list":
+      return { meta: null, ga: ["view_item_list", { item_list_name: ev.list }] };
+    case "select_item":
+      return { meta: null, ga: ["select_item", { item_list_name: ev.list, items: gaItems([ev.item]) }] };
+    case "scroll_depth":
+      return { meta: null, ga: ["scroll", { percent_scrolled: ev.depth, page_path: ev.path }] };
   }
 };
 
-/** Fire one funnel event at whichever vendors are loaded. Never throws. */
+/**
+ * Fire one funnel event: the shop's own copy always (first-party sink →
+ * Admin → Reports), then whichever vendors are loaded. Never throws.
+ */
 export const track = (ev: FunnelEvent): void => {
+  try {
+    if (typeof window !== "undefined") {
+      const path = window.location?.pathname;
+      const wire = wireEvent(ev, path);
+      const lang = currentLang();
+      record(lang ? { ...wire, lang } : wire);
+    }
+  } catch {
+    /* the shop's own sink must be as harmless as the vendors' */
+  }
   const { meta, ga } = vendorPayloads(ev);
   try {
     const f = fbq();

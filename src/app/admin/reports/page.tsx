@@ -18,6 +18,7 @@ import { useStaffLive } from "@/lib/use-staff-live";
 import { apiErrorMessage, apiGet } from "@/lib/admin-api";
 import type { BestSellerRow } from "@/lib/db/reports";
 import { IconArrowRight, IconBanknote, IconChart } from "@/components/ui/icons";
+import FunnelCard from "@/components/admin/funnel-card";
 import { WEEKDAY_LABELS, hourLabel, hourProfile, zoneDemand } from "@/lib/insights";
 
 /** Sales reports over live orders (pure math in lib/reports.ts). */
@@ -312,6 +313,9 @@ export default function AdminReportsPage() {
           </>
         )}
       </section>
+
+      {/* UX plan §0 — the shop's own funnel, first-party */}
+      <FunnelCard live={live} />
 
       {/* Best sellers — the storefront's numbers, server-side (P2 #4) */}
       <section aria-label="Best sellers" className="rounded-2xl bg-paper p-6 ring-1 ring-line">

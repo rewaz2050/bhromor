@@ -428,6 +428,14 @@ After the existing migrations, apply in order:
   (PROSANTI pays) and/or Vendor → Settings → *ফ্রি ডেলিভারি অফার* (the shop
   pays). Until it is applied, saving a minimum answers 503 naming this file
   and checkout charges exactly as before.
+- `supabase/migrations/202609260004_storefront_events.sql` — **first-party
+  funnel** (UX plan §0): the `storefront_events` table (service-role only;
+  RLS on, no policies, grants revoked), `ps_funnel_report(p_days)` behind
+  Admin → Reports → *Funnel*, and `ps_prune_storefront_events(days)` for
+  retention. Pure `create … if not exists`; safe to re-run; nothing to
+  back-fill. **Verify:** the run ends with `NOTICE: STOREFRONT EVENTS OK`.
+  Until it is applied the storefront keeps sending (the API answers 204 and
+  drops the batch) and the Reports card says which file to run.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
@@ -680,6 +688,7 @@ direct file-picker upload, add the four Cloudinary variables from
 | Admin → Shops / Riders → Approve or Reject → "Application review is not set up on this database yet" (503) | Migration `202609260002_application_review.sql` not applied → step 1. Meanwhile **Edit → Save** on the card still changes the status (no audit stamp) |
 | Rider's KYC card says "কাগজপত্র আপলোড এখনো চালু হয়নি" / "ছবি আপলোড এখনো কনফিগার করা হয়নি" | First message: migration `202609260002` missing → step 1. Second: Cloudinary env not set → step 6. The application is filed either way; approve after a phone/WhatsApp check of the NID instead |
 | Vendor → Settings → free delivery → "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি" (503), or Admin → Shops → Save → "Free delivery is not set up on this database yet" | Migration `202609260003_free_delivery.sql` not applied → step 1 (look for `FREE DELIVERY OK`). Profile saves without the field still work |
+| Admin → Reports → *Funnel* says "Not installed yet — run `202609260004_storefront_events.sql`" | Migration `202609260004_storefront_events.sql` not applied → step 1 (look for `STOREFRONT EVENTS OK`). The storefront keeps sending in the meantime (`/api/events` answers 204 and drops the batch); numbers start from the moment the table exists |
 | Bag shows "delivery is free" but the order was charged | The RPC is authoritative: either the migration is missing (see above — the storefront reads the rule from settings, the database cannot price it yet), the address resolved to the courier zone (z4 is never free), or a coupon / PROSANTI+ already waived it. Check `orders.free_delivery_by` on the row |
 | Shop asks why a payout is lower than subtotal − commission | Its own free-delivery offer paid that order's rider charge: Vendor → Orders → the order shows "আপনার ফ্রি ডেলিভারি অফার (পেআউট থেকে কাটা হবে) −৳60". Platform-funded waivers (`free_delivery_by = 'platform'`) never change the payout |
 | Applicant has no e-mail | Leave the e-mail field empty on the apply form: the login is the **mobile number** + password (the server stores `01XXXXXXXXX@phone.prosanti.app` internally; nothing is sent there). Staff screens show it as "01… (phone login)". The reset panel works the same way — mobile number, e-mail left empty |

@@ -96,6 +96,8 @@ src/lib/
 ├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (live only)
 ├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
 ├── free-delivery.ts       # pure free-delivery threshold rules: platform + shop offers, lowest target, payer precedence (mirrors ps_place_order)
+├── funnel-events.ts       # first-party funnel wire model: event names, sanitizers (≤25/batch), FunnelReport parser + step rates (pure)
+├── events-sink.ts         # browser batch sink → POST /api/events (4 s / 25 events / pagehide sendBeacon); per-tab session id
 ├── use-free-delivery.ts   # shopper hook: platform rule (/api/settings) + shop.freeDeliveryMinPaisa → progress / payer
 ├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
 ├── use-my-zone.ts         # persisted customer "deliver to" zone for discovery
@@ -133,6 +135,7 @@ supabase/
     ├── 202609090007_rider_dispatch.sql        # delivery_code trigger + rider accept/pickup/deliver/settle RPCs
     ├── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
     └── 202609260003_free_delivery.sql         # shops.free_delivery_min + orders.free_delivery_by/_waived; patches ps_place_order in place; ledger deducts shop-funded waivers
+    └── 202609260004_storefront_events.sql     # first-party funnel: storefront_events (service-role only) + ps_funnel_report(days) + ps_prune_storefront_events
 scripts/seed-supabase.mjs  # store skeleton seed: shop, categories, zones, settings (never products)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
@@ -294,6 +297,16 @@ invented data (and no launch-catalog fallback — that is gone too).
 - **Media signing is staff-only.** `POST /api/media/sign` requires a staff
   session (quota abuse vector otherwise) and returns short-lived signature
   material; uploads go browser → Cloudinary directly.
+- **Funnel events are anonymous and write-only from the public side.**
+  `POST /api/events` accepts only whitelisted event names with trimmed,
+  capped fields (`lib/funnel-events.ts`), 60 batches per minute per IP,
+  and inserts with the service role; `storefront_events` has RLS enabled
+  with no policies and every grant revoked from `anon` / `authenticated`,
+  so nothing can read it from a browser. The only identifier is a random
+  per-tab session token — no user id, no IP, no cookie. Reading is a staff
+  route (`/api/admin/reports/funnel`) calling `ps_funnel_report`, whose
+  execute grant is likewise revoked from public roles. The endpoint always
+  answers 204 so a missing table or backend can never surface in the shop.
 - **Vendor routes verify JWT + shop link + active status on every call**
   (`requireVendor` in `src/lib/vendor-auth.ts`). Suspended shops lose API
   access immediately. Vendors advance only their own orders through early

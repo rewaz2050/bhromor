@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,10 @@ import { formatBdt } from "@/lib/format";
 import { matchesProduct, shopSearchHref } from "@/lib/product-search";
 import { coverImage } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { track } from "@/lib/analytics";
+
+/** UX plan §0 — a typed query counts once it has rested for this long. */
+const SEARCH_SETTLE_MS = 800;
 
 export default function ProductSearch() {
   const { t, lang } = useLanguage();
@@ -28,7 +32,28 @@ export default function ProductSearch() {
     : PRODUCTS.filter((product) => product.featured).slice(0, 3);
   const close = () => setOpen(false);
 
+  /* `search` event: the settled query + how many products it found, so the
+     Reports funnel can list zero-result searches (= demand we don't stock).
+     Deduped per opened overlay; the form submit flushes the pending one. */
+  const lastTracked = useRef("");
+  const matchCount = matches.length;
+  const trimmed = query.trim().toLowerCase();
+  useEffect(() => {
+    if (!open || trimmed.length < 2 || trimmed === lastTracked.current) return;
+    const timer = window.setTimeout(() => {
+      lastTracked.current = trimmed;
+      track({ type: "search", query: trimmed, results: matchCount });
+    }, SEARCH_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, trimmed, matchCount]);
+  const trackSubmit = () => {
+    if (trimmed.length < 2 || trimmed === lastTracked.current) return;
+    lastTracked.current = trimmed;
+    track({ type: "search", query: trimmed, results: matchCount });
+  };
+
   const openSearch = () => {
+    lastTracked.current = "";
     setQuery("");
     setOpen(true);
   };
@@ -80,6 +105,7 @@ export default function ProductSearch() {
             role="search"
             onSubmit={(event) => {
               event.preventDefault();
+              trackSubmit();
               router.push(shopSearchHref(query));
               close();
             }}

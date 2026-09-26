@@ -25,7 +25,11 @@ export interface ShopConflict {
   qty: number;
 }
 
-export function useGuardedAdd() {
+/**
+ * @param source where adds from this surface come from (UX plan §0 funnel):
+ *   'card' | 'pdp' | 'bundle' | 'live' | a rail name.
+ */
+export function useGuardedAdd(source?: string) {
   const { detail, addItem, clear } = useCart();
   const { shops } = useLiveCatalog();
   const [conflict, setConflict] = useState<ShopConflict | null>(null);
@@ -62,20 +66,20 @@ export function useGuardedAdd() {
         });
         return false;
       }
-      addItem(product.id, variantLabel, qty);
+      addItem(product.id, variantLabel, qty, source);
       return true;
     },
-    [addItem, bagShopIds, fallbackShopId, shopName],
+    [addItem, bagShopIds, fallbackShopId, shopName, source],
   );
 
   const confirmConflict = useCallback((): ShopConflict | null => {
     if (!conflict) return null;
     clear();
-    addItem(conflict.productId, conflict.variantLabel, conflict.qty);
+    addItem(conflict.productId, conflict.variantLabel, conflict.qty, source);
     const done = conflict;
     setConflict(null);
     return done;
-  }, [addItem, clear, conflict]);
+  }, [addItem, clear, conflict, source]);
 
   const dismissConflict = useCallback(() => setConflict(null), []);
 

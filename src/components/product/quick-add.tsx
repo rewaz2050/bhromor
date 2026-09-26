@@ -28,7 +28,7 @@ export default function QuickAdd({
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
   const { openBag } = useCart();
-  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("card");
   const ready = product.inStock && (product.sizes.length === 0 || !!size);
   return (
     <Drawer

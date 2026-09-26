@@ -38,7 +38,9 @@ afterEach(() => {
 describe("Reports — best sellers section (R5)", () => {
   it("stays quiet for a signed-out view: no fetch, no error, no spinner", async () => {
     render(<AdminReportsPage />);
-    expect(await screen.findByText(/Sign in as staff to load/)).toBeVisible();
+    expect(await screen.findByText(/Sign in as staff to load the all-time/)).toBeVisible();
+    // UX plan §0 — the funnel card follows the same rule.
+    expect(screen.getByText(/Sign in as staff to load the funnel/)).toBeVisible();
     expect(apiGetMock).not.toHaveBeenCalled();
     expect(screen.queryByText("Loading…")).toBeNull();
   });
@@ -52,5 +54,7 @@ describe("Reports — best sellers section (R5)", () => {
       ),
     ).toBeVisible();
     expect(apiGetMock).toHaveBeenCalledWith("/api/admin/reports/best-sellers");
+    expect(apiGetMock).toHaveBeenCalledWith("/api/admin/reports/funnel?days=7");
+    expect(await screen.findByText(/No sessions recorded in the last 7 days/)).toBeVisible();
   });
 });

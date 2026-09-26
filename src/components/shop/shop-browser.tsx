@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import ListImpression from "@/components/analytics/list-impression";
 import type {
   Category,
   CategoryId,
@@ -783,7 +784,8 @@ export default function ShopBrowser({
 
         <div className="min-w-0">
           {visible.length > 0 ? (
-            <div className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3" data-list="shop-grid">
+              <ListImpression list="shop-grid" count={visible.length} />
               {visible.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}

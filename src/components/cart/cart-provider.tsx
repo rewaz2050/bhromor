@@ -43,7 +43,8 @@ interface CartContextValue {
    * skeleton, never "your bag is empty" (audit 2026-09-18, P0 #7).
    */
   ready: boolean;
-  addItem: (productId: string, variantLabel: string, qty?: number) => void;
+  /** `source` (UX plan §0): where the add came from — 'card' | 'pdp' | 'bundle' | 'live' … */
+  addItem: (productId: string, variantLabel: string, qty?: number, source?: string) => void;
   updateQty: (productId: string, variantLabel: string, qty: number) => void;
   removeItem: (productId: string, variantLabel: string) => void;
   clear: () => void;
@@ -114,11 +115,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addItem = useCallback(
-    (productId: string, variantLabel: string, qty = 1) => {
+    (productId: string, variantLabel: string, qty = 1, source?: string) => {
       setLines((prev) => addLine(prev, productId, variantLabel, qty));
-      // Funnel analytics (no-op unless a pixel/GA id is configured).
+      // Funnel analytics: the shop's own copy always, vendors when configured.
       const product = resolveCatalogProduct(productId);
-      if (product) track({ type: "add_to_cart", item: itemFromProduct(product, qty) });
+      if (product) track({ type: "add_to_cart", item: itemFromProduct(product, qty), source });
     },
     [],
   );

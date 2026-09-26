@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import ListImpression from "@/components/analytics/list-impression";
 import Link from "next/link";
 import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
@@ -37,8 +38,10 @@ export default function CategoryShelfBlock({
       aria-labelledby={headingId}
       data-testid="category-shelf"
       data-category={category.id}
+      data-list={`shelf-${category.id}`}
       className={`scroll-mt-24 ${index % 2 === 0 ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
     >
+      <ListImpression list={`shelf-${category.id}`} count={products.length} />
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <Reveal>
           <Link

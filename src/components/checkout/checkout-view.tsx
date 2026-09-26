@@ -456,6 +456,7 @@ export default function CheckoutView() {
         category: l.product.category,
         price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
         qty: l.qty,
+        shopId: l.product.shopId,
       })),
       value: subtotal,
     });
@@ -1419,6 +1420,7 @@ export default function CheckoutView() {
           category: l.product.category,
           price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
           qty: l.qty,
+          shopId: l.product.shopId,
         })),
         value: data.order.total,
         delivery: data.order.deliveryCharge,

@@ -41,7 +41,7 @@ export default function BundleOffer({ product }: { product: Product }) {
   const { products } = useLiveCatalog();
   const { promos } = usePromos();
   const { profile } = useSizeProfile();
-  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("bundle");
   const { openBag } = useCart();
   const [justAdded, setJustAdded] = useState(false);
 

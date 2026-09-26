@@ -18,6 +18,7 @@ import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
 import CategoryShelfBlock from "@/components/home/category-shelf";
 import CustomerStories from "@/components/reviews/customer-stories";
+import ScrollDepthTracker from "@/components/analytics/scroll-depth-tracker";
 import { categoryShelves } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 
@@ -56,6 +57,8 @@ export default function HomeClient() {
 
   return (
     <>
+      {/* UX plan §0 — how far down the home page people actually get. */}
+      <ScrollDepthTracker />
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
       {sections.hero && <Hero cms={settings} />}

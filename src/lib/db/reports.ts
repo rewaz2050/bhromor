@@ -149,3 +149,42 @@ export async function bestSellers(
     })
     .filter((r): r is BestSellerRow => r !== null);
 }
+
+/* ------------------------------------------------------------------ */
+/* First-party funnel (UX plan §0)                                     */
+/* ------------------------------------------------------------------ */
+
+import { parseFunnelReport, type FunnelReport } from "../funnel-events";
+
+/** Thrown when migration 202609260004 (ps_funnel_report) is not installed. */
+export class FunnelReportMissingError extends Error {
+  constructor() {
+    super("ps_funnel_report is not installed — run migration 202609260004_storefront_events.sql");
+    this.name = "FunnelReportMissingError";
+  }
+}
+
+/**
+ * One call to ps_funnel_report(p_days) → the typed report the Reports page
+ * prints. The SQL does all the counting (distinct sessions per step, real
+ * orders from `orders`), so this is cheap even with a few hundred thousand
+ * event rows.
+ */
+export async function funnelReport(db: SupabaseClient, days: 7 | 28): Promise<FunnelReport> {
+  const { data, error } = await db.rpc("ps_funnel_report", { p_days: days });
+  if (error) {
+    const code = (error as { code?: string }).code ?? "";
+    const message = (error as { message?: string }).message ?? "";
+    if (
+      code === "PGRST202" ||
+      code === "42883" ||
+      code === "42P01" ||
+      /function .*ps_funnel_report.* does not exist/i.test(message) ||
+      /relation .*storefront_events.* does not exist/i.test(message)
+    ) {
+      throw new FunnelReportMissingError();
+    }
+    throw new Error(message || "funnel report failed");
+  }
+  return parseFunnelReport(data, days);
+}
