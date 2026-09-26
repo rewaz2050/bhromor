@@ -396,6 +396,16 @@ After the existing migrations, apply in order:
 - `supabase/migrations/202609250004_settle_claims.sql`
 - `supabase/migrations/202609250005_delivery_pin_lockout.sql`
 - `supabase/migrations/202609250006_dispatch_health.sql`
+- `supabase/migrations/202609250007_realtime_offers.sql`
+- `supabase/migrations/202609250008_delivery_ratings.sql`
+- `supabase/migrations/202609260001_password_reset_requests.sql` — password
+  reset **requests** for vendor / rider logins (no SMS, no e-mail): the
+  login page files a request, staff verify by phone and approve under
+  Admin → Access requests, and the person sets a new password themselves
+  within 24 h. One table + one staff RLS policy; safe to re-run. Until it
+  is applied, "পাসওয়ার্ড ভুলে গেছেন?" answers 503 and Admin → Access
+  requests explains what to run; the card-level **Reset password** keeps
+  working regardless.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
@@ -555,10 +565,17 @@ Do these on the deployed site, in order:
       "Awaiting approval" → `/admin/shops` approve → the dashboard opens
       (leave the login tab open: it lets the applicant in by itself within
       30 s of the approval; the admin nav showed the pending count meanwhile)
-- [ ] Password reset without e-mail: Admin → Shops → the test shop →
-      **Reset password** → the temporary password shows once → sign in
-      with it at `/vendor/login` → Shop settings → **পাসওয়ার্ড বদলান** →
-      sign out / in with the new one. Repeat once for the test rider.
+- [ ] Password reset without e-mail (self-service request): `/rider/login`
+      → **পাসওয়ার্ড ভুলে গেছেন?** → the test rider's email + phone → "অপেক্ষায়"
+      → the admin bell and dashboard banner show *1 password reset request*
+      → Admin → **Access requests** → Call (tick "they confirmed") →
+      **Approve** → within 20 s the rider's login page shows the
+      new-password form by itself → set it → sign in with it. Repeat once
+      for the test shop at `/vendor/login`.
+- [ ] Password reset without e-mail (staff-issued): Admin → Shops → the
+      test shop → **Reset password** → the temporary password shows once →
+      sign in with it at `/vendor/login` → Shop settings → **পাসওয়ার্ড বদলান**
+      → sign out / in with the new one.
 - [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
       **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
       for the auto-offer trigger) → the linked rider sees the offer → accept
@@ -623,7 +640,9 @@ direct file-picker upload, add the four Cloudinary variables from
 | `/rider/login` or `/vendor/login` shows "awaiting approval" | Expected until staff approves: Admin → Riders / Shops → **Approve** (status → active); the same email + password then open the app |
 | Apply form → "This email already has a PROSANTI login" (409) | The email has an account with a different password → use that password in the form, or sign in first and apply again |
 | Apply form → "this phone number already has an application" (409) | A shop row with that phone exists (pending or active) → find it in Admin → Shops; approve / edit it instead of creating a second one |
-| Vendor or rider forgot the password (no reset e-mail is ever sent) | Admin → Shops / Riders → open the card → **Reset password** → read the temporary password out or paste it into the WhatsApp chat the button opens (the link itself never carries it). They sign in with it and change it in Shop settings / আমার রাইডার প্রোফাইল → পাসওয়ার্ড বদলান |
+| Vendor or rider forgot the password (no reset e-mail is ever sent) | Tell them to tap **পাসওয়ার্ড ভুলে গেছেন? / Forgot your password?** on their login page and enter the application email + phone. The request lands in Admin → **Access requests** (bell + dashboard banner): **call the number on file**, tick the confirmation, **Approve** → their login page switches to a new-password form by itself (24 h window). Can't reach them / no smartphone: the shop / rider card's **Reset password** gives a temporary password to read out |
+| "পাসওয়ার্ড রিসেট সার্ভিস এখনো চালু হয়নি" (503) on the login page | Migration `202609260001_password_reset_requests.sql` not applied → step 1; meanwhile use the card's **Reset password** |
+| Reset request says "এই ইমেইল ও ফোন নম্বরের কোনো … লগইন পাওয়া যায়নি" | The pair must match the shop's `contact_email` + `phone` / the rider's row exactly (legacy rows linked by a different email won't match) → fix the row in Admin → Shops / Riders, or use the card's **Reset password** |
 | Approved someone — how do they know? | The card's **WhatsApp: approved, sign in →** button opens a prefilled Bangla message with the login URL. Their login page also re-checks every 30 s on its own while the "awaiting approval" card is open |
 | New applications go unnoticed | The Shops / Riders links in the admin nav carry the pending count and the dashboard shows a banner; both refresh every 30 s while the tab is visible |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |

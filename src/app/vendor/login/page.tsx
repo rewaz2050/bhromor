@@ -18,6 +18,7 @@ import LogoMark from "@/components/logo-mark";
 import { useVendorSession } from "@/lib/use-vendor";
 import PasswordInput from "@/components/ui/password-input";
 import { usePoll } from "@/lib/use-poll";
+import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -185,9 +186,7 @@ export default function VendorLoginPage() {
           </button>
           <p className="text-center text-xs text-ink-soft">
             Use the email and password from your shop application — the
-            dashboard opens once PROSANTI approves it. Forgot the password?
-            Message support: staff issue a temporary one you change in
-            Settings.
+            dashboard opens once PROSANTI approves it.
           </p>
           <p className="border-t border-line pt-4 text-center text-sm text-ink">
             New shop?{" "}
@@ -199,6 +198,10 @@ export default function VendorLoginPage() {
             </Link>
           </p>
         </form>
+      )}
+      {status !== "checking" && !denied && (
+        // Reset without e-mail: request → staff phone check → set it here.
+        <ForgotPasswordPanel kind="vendor" lang="en" onDone={setEmail} className="mt-4" />
       )}
     </div>
   );

@@ -61,7 +61,8 @@ export default function ChangePasswordCard({ className = "" }: { className?: str
       <h2 className="text-sm font-semibold text-forest-900">পাসওয়ার্ড বদলান</h2>
       <p className="mt-1 text-xs leading-relaxed text-ink-soft">
         আবেদনের সময় দেওয়া পাসওয়ার্ড বা সাপোর্টের দেওয়া অস্থায়ী পাসওয়ার্ড এখানে বদলে নিন।
-        ভুলে গেলে সাপোর্টে (WhatsApp) জানালে নতুন অস্থায়ী পাসওয়ার্ড দেওয়া হবে।
+        ভুলে গেলে লগইন পেইজের “পাসওয়ার্ড ভুলে গেছেন?” থেকে অনুরোধ করুন — অ্যাডমিন ফোনে
+        নিশ্চিত হয়ে অনুমোদন দিলে সেখানেই নতুন পাসওয়ার্ড দিতে পারবেন (এসএমএস/ইমেইল লাগে না)।
       </p>
 
       <form onSubmit={(e) => void submit(e)} className="mt-4 grid gap-3 sm:grid-cols-2" noValidate>

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   live: true,
-  counts: { shops: 2, riders: 1 } as { shops: number; riders: number } | Error,
+  counts: { shops: 2, riders: 1, resets: 1 } as { shops: number; riders: number; resets?: number } | Error,
   calls: 0,
   polls: [] as { intervalMs: number; enabled: boolean }[],
 }));
@@ -33,7 +33,7 @@ import { APPLICATIONS_POLL_MS, useApplicationsPending } from "../use-application
 
 beforeEach(() => {
   state.live = true;
-  state.counts = { shops: 2, riders: 1 };
+  state.counts = { shops: 2, riders: 1, resets: 1 };
   state.calls = 0;
   state.polls = [];
 });
@@ -42,15 +42,16 @@ afterEach(cleanup);
 describe("useApplicationsPending", () => {
   it("loads the counts once live and exposes the total", async () => {
     const { result } = renderHook(() => useApplicationsPending());
-    await waitFor(() => expect(result.current.total).toBe(3));
+    await waitFor(() => expect(result.current.total).toBe(4));
     expect(result.current.shops).toBe(2);
     expect(result.current.riders).toBe(1);
+    expect(result.current.resets).toBe(1);
     expect(state.calls).toBe(1);
   });
 
   it("arms the visibility-aware poll at the documented cadence while live", async () => {
     const { result } = renderHook(() => useApplicationsPending());
-    await waitFor(() => expect(result.current.total).toBe(3));
+    await waitFor(() => expect(result.current.total).toBe(4));
     expect(state.polls.at(-1)).toEqual({ intervalMs: APPLICATIONS_POLL_MS, enabled: true });
     expect(APPLICATIONS_POLL_MS).toBeGreaterThanOrEqual(15_000);
   });
@@ -59,7 +60,7 @@ describe("useApplicationsPending", () => {
     state.live = false;
     const { result } = renderHook(() => useApplicationsPending());
     await new Promise((r) => setTimeout(r, 10));
-    expect(result.current).toEqual({ shops: 0, riders: 0, total: 0 });
+    expect(result.current).toEqual({ shops: 0, riders: 0, resets: 0, total: 0 });
     expect(state.calls).toBe(0);
     expect(state.polls.at(-1)?.enabled).toBe(false);
   });
@@ -69,5 +70,14 @@ describe("useApplicationsPending", () => {
     const { result } = renderHook(() => useApplicationsPending());
     await waitFor(() => expect(state.calls).toBe(1));
     expect(result.current.total).toBe(0);
+  });
+});
+
+describe("useApplicationsPending — older API without a resets count", () => {
+  it("treats a missing resets figure as zero", async () => {
+    state.counts = { shops: 1, riders: 0 };
+    const { result } = renderHook(() => useApplicationsPending());
+    await waitFor(() => expect(result.current.total).toBe(1));
+    expect(result.current.resets).toBe(0);
   });
 });

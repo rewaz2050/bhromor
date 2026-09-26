@@ -9,6 +9,9 @@ import {
   approvalWhatsAppLink,
   passwordResetMessage,
   passwordResetWhatsAppLink,
+  resetApprovedMessage,
+  resetApprovedWhatsAppLink,
+  resetRejectedMessage,
 } from "../onboarding-messages";
 
 describe("applicantLoginUrl", () => {
@@ -55,5 +58,25 @@ describe("wa.me links", () => {
   it("returns null for a phone that is not a BD mobile", () => {
     expect(approvalWhatsAppLink({ kind: "vendor", name: "Arian", phone: "12345" })).toBeNull();
     expect(passwordResetWhatsAppLink({ kind: "rider", name: "T", phone: null })).toBeNull();
+  });
+});
+
+describe("reset REQUEST decisions (no SMS / e-mail)", () => {
+  it("tells an approved requester where to set the password and how long they have", () => {
+    const text = resetApprovedMessage({ kind: "vendor", name: "Arian" });
+    expect(text).toContain(applicantLoginUrl("vendor"));
+    expect(text).toContain("পাসওয়ার্ড ভুলে গেছেন?");
+    expect(text).toContain("২৪ ঘণ্টা");
+    expect(text).not.toMatch(/[0-9]{2} ?h/);
+  });
+
+  it("carries the staff note on a rejection, with a fallback", () => {
+    expect(resetRejectedMessage({ kind: "rider", name: "T", note: "ফোনে মেলেনি" })).toContain("কারণ: ফোনে মেলেনি");
+    expect(resetRejectedMessage({ kind: "rider", name: "T" })).toContain("আবার অনুরোধ");
+  });
+
+  it("links wa.me for a BD mobile only", () => {
+    expect(resetApprovedWhatsAppLink({ kind: "rider", name: "T", phone: "01811111111" })).toMatch(/^https:\/\/wa\.me\/8801811111111\?text=/);
+    expect(resetApprovedWhatsAppLink({ kind: "rider", name: "T", phone: "" })).toBeNull();
   });
 });

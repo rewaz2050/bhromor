@@ -156,7 +156,9 @@ export function ApplicantLoginBox({
               </p>
               <p className="mt-1.5 leading-relaxed">
                 Pass it on by phone or paste it into the chat (the link never carries it).
-                They sign in at {loginPath} and change it in their own settings.
+                They sign in at {loginPath} and change it in their own settings. (If they can
+                reach the login page themselves, “Forgot password?” there files a request you
+                approve under Access requests — no password to read out.)
               </p>
             </div>
           )}

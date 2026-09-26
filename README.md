@@ -44,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 1,428 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
+Unit/component suite: 1,465 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -128,7 +128,17 @@ There is deliberately **no SMS and no e-mail** anywhere in this flow, so the pie
 - **Duplicate applications** are refused on the shop's phone number as well as its email (409 with a specific message).
 - **Forms.** Both application forms are split into three numbered fieldsets (details · login · zones) under a "what happens next" strip, password fields have show/hide toggles (also on both login pages), phone inputs use the numeric keypad, zone chips are real `aria-pressed` toggles at 44 px, the error banner scrolls into view and takes focus, and an "already applied? sign in" link closes the loop. Shared pieces: `src/components/apply/apply-form-ui.tsx`, `src/components/ui/password-input.tsx`, `src/components/admin/applicant-login-box.tsx`.
 
-Still no database migration required. Tests: `src/app/api/__tests__/admin-onboarding-routes.test.ts`, `src/lib/__tests__/{onboarding-messages,use-applications-pending}.test.ts(x)`, `src/components/{admin,account,apply,ui}/__tests__/*` for the new components, plus the extended login/dashboard/admin-gate tests.
+Still no database migration required for the above. Tests: `src/app/api/__tests__/admin-onboarding-routes.test.ts`, `src/lib/__tests__/{onboarding-messages,use-applications-pending}.test.ts(x)`, `src/components/{admin,account,apply,ui}/__tests__/*` for the new components, plus the extended login/dashboard/admin-gate tests.
+
+### Round 3 — "Forgot password?" as a request the admin approves (2026-09-26)
+
+The one thing round 2 still needed a phone call *to start* was a forgotten password. It is now self-service on the applicant's side and a decision on the admin's side — still with no SMS and no e-mail:
+
+1. **Request.** `/vendor/login` and `/rider/login` have **পাসওয়ার্ড ভুলে গেছেন? / Forgot your password?** → email + phone as they appear on the shop / rider row → `POST /api/auth/reset-request`. The server resolves the login behind that pair (shop `contact_email` + `phone` → `vendor_users` owner; rider `contact_email` + `phone` → `riders.user_id`), files one open request per login (`password_reset_requests`, migration `202609260001`), and pings the staff inbox + Web Push. Unknown pair → a plain 404 message; 5/15 min per IP, 3/h per email.
+2. **Decide.** Admin → **Access requests** (`/admin/access`, counted on the nav badge and the dashboard banner with the applications) shows each request with **Call** (`tel:`) and a WhatsApp "did you ask for this?" button. **Approve** stays disabled until the admin ticks *"I spoke to them on … and they confirmed"* — the phone call is the identity check, because a shop's email and phone are semi-public. Approve opens a 24-hour window; **Reject with note** leaves a note the requester sees. Both then offer a prefilled WhatsApp message (`resetApprovedMessage` / `resetRejectedMessage`). Admin / super_admin only.
+3. **Set.** The login page keeps polling `GET /api/auth/reset-request` every 20 s (and remembers the request in `localStorage`, so closing the tab is fine). When the status turns `approved` it switches to a new-password form by itself; `POST /api/auth/reset-complete` sets the password with the service role **only** while an approved, unused, unexpired request exists for exactly that email + phone pair, then marks it `used`. The login form is prefilled with the email. `rejected` shows the note with *Request again*; `expired` (24 h passed) says so and lets them re-file.
+
+Nothing secret is ever generated or transported in this path: identity is the email + phone pair the requester already knew, the staff phone call, and the window. Status derivation (`effectiveStatus`), matching, the one-open-request rule and the full request → approve → complete → reuse-refused machine are covered in `src/lib/db/__tests__/password-reset.test.ts`; routes in `src/app/api/__tests__/reset-request-routes.test.ts`; the panel in `src/components/auth/__tests__/forgot-password-panel.test.tsx`; the queue page in `src/app/admin/access/__tests__/admin-access.test.tsx`. **Requires** `supabase/migrations/202609260001_password_reset_requests.sql` (one table, one staff RLS policy); until it is applied the login page answers 503 with a Bangla note and Admin → Access requests tells you what to run — the card-level *Reset password* from round 2 keeps working meanwhile.
 
 ## Menubar redesign (2026-09-26)
 

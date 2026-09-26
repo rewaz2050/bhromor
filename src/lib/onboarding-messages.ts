@@ -53,6 +53,39 @@ export const passwordResetMessage = (input: {
   ].join("\n");
 };
 
+/**
+ * Reset REQUEST approved: the person sets the new password themselves from
+ * the login page within 24 h. Nothing secret to carry — just where to go.
+ */
+export const resetApprovedMessage = (input: {
+  kind: ApplicantKind;
+  name: string;
+}): string => {
+  const login = applicantLoginUrl(input.kind);
+  const who = input.name.trim() || "আপনি";
+  return [
+    `PROSANTI: ${who}, আপনার পাসওয়ার্ড রিসেটের অনুরোধ অনুমোদিত হয়েছে।`,
+    `এখানে যান: ${login}`,
+    "“পাসওয়ার্ড ভুলে গেছেন?” চাপুন → আবেদনের ইমেইল ও ফোন দিন → নতুন পাসওয়ার্ড লিখুন।",
+    "২৪ ঘণ্টার মধ্যে করে নিন; পরে আবার অনুরোধ করতে হবে।",
+  ].join("\n");
+};
+
+/** Reset request rejected — tell them why and what to do. */
+export const resetRejectedMessage = (input: {
+  kind: ApplicantKind;
+  name: string;
+  note?: string | null;
+}): string => {
+  const who = input.name.trim() || "আপনি";
+  const note = input.note?.trim();
+  return [
+    `PROSANTI: ${who}, আপনার পাসওয়ার্ড রিসেটের অনুরোধটি অনুমোদন করা যায়নি।`,
+    note ? `কারণ: ${note}` : "আবেদনের সময়ের ইমেইল ও ফোন নম্বর মিলিয়ে আবার অনুরোধ করুন।",
+    "সমস্যা হলে এই নম্বরে উত্তর দিন।",
+  ].join("\n");
+};
+
 /** wa.me link for the approval message — null when the phone is not a BD mobile. */
 export const approvalWhatsAppLink = (input: {
   kind: ApplicantKind;
@@ -66,3 +99,16 @@ export const passwordResetWhatsAppLink = (input: {
   name: string;
   phone: string | null | undefined;
 }): string | null => waLink(input.phone, passwordResetMessage(input));
+
+export const resetApprovedWhatsAppLink = (input: {
+  kind: ApplicantKind;
+  name: string;
+  phone: string | null | undefined;
+}): string | null => waLink(input.phone, resetApprovedMessage(input));
+
+export const resetRejectedWhatsAppLink = (input: {
+  kind: ApplicantKind;
+  name: string;
+  phone: string | null | undefined;
+  note?: string | null;
+}): string | null => waLink(input.phone, resetRejectedMessage(input));

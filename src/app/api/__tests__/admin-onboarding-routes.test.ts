@@ -70,10 +70,10 @@ beforeEach(() => {
 });
 
 describe("GET /api/admin/applications", () => {
-  it("answers the two pending head-counts", async () => {
+  it("answers the pending head-counts, including password-reset requests", async () => {
     const res = await pendingGet(new Request("http://localhost/api/admin/applications"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ shops: 3, riders: 1 });
+    expect(await res.json()).toEqual({ shops: 3, riders: 1, resets: 1 });
   });
 });
 

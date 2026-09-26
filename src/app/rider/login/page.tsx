@@ -19,6 +19,7 @@ import { useRiderSession } from "@/lib/use-rider";
 import { IconTruck } from "@/components/ui/icons";
 import PasswordInput from "@/components/ui/password-input";
 import { usePoll } from "@/lib/use-poll";
+import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
 
 /**
  * Supabase returns raw English auth errors ("Email not confirmed", "Invalid
@@ -228,10 +229,13 @@ export default function RiderLoginPage() {
           </button>
           <p className="text-center text-[11px] leading-relaxed text-ink-soft">
             রাইডার আবেদনের সময় দেওয়া ইমেইল ও পাসওয়ার্ড দিন — অ্যাডমিন অনুমোদন
-            করলেই অ্যাপ খুলবে। পাসওয়ার্ড ভুলে গেলে সাপোর্টে জানান — নতুন অস্থায়ী
-            পাসওয়ার্ড দেওয়া হবে, ঢুকে নিজেরটা বদলে নেবেন।
+            করলেই অ্যাপ খুলবে।
           </p>
         </form>
+      )}
+      {status !== "checking" && !denied && (
+        // এসএমএস/ইমেইল ছাড়া রিসেট: অনুরোধ → অ্যাডমিনের ফোন-যাচাই → এখানেই নতুন পাসওয়ার্ড।
+        <ForgotPasswordPanel kind="rider" lang="bn" onDone={setEmail} className="mt-4" />
       )}
 
       <div className="mt-8 text-center space-y-2 text-xs text-ink-soft">

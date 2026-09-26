@@ -67,6 +67,7 @@ const NAV = [
   { href: "/admin/payouts", label: "Payouts", icon: IconCard, match: (p: string) => p === "/admin/payouts" },
   { href: "/admin/deliveries", label: "Deliveries", icon: IconTruck, match: (p: string) => p === "/admin/deliveries" },
   { href: "/admin/riders", label: "Riders", icon: IconTruck, match: (p: string) => p === "/admin/riders" },
+  { href: "/admin/access", label: "Access requests", icon: IconShield, match: (p: string) => p === "/admin/access" },
   { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
   { href: "/admin/coupons", label: "Coupons", icon: IconTag, match: (p: string) => p === "/admin/coupons" },
   { href: "/admin/inventory", label: "Inventory", icon: IconBox, match: (p: string) => p === "/admin/inventory" },
@@ -92,6 +93,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/admin\/shops$/, "Shops"],
   [/^\/admin\/payouts$/, "Payouts"],
   [/^\/admin\/riders$/, "Riders"],
+  [/^\/admin\/access$/, "Access requests"],
   [/^\/admin\/deliveries$/, "Deliveries"],
   [/^\/admin\/reviews$/, "Reviews"],
   [/^\/admin\/coupons$/, "Coupons"],
@@ -131,7 +133,9 @@ export default function AdminGate({
       ? applications.shops
       : href === "/admin/riders"
         ? applications.riders
-        : 0;
+        : href === "/admin/access"
+          ? applications.resets
+          : 0;
   // Header date: a clock read in render is impure (hydration mismatch and a
   // date that never rolls over on a tab left open past midnight).
   const now = useNow(60_000);
@@ -229,7 +233,7 @@ export default function AdminGate({
                 {waiting > 0 && (
                   <span
                     className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.62rem] font-bold leading-none text-white"
-                    aria-label={`${waiting} application${waiting === 1 ? "" : "s"} waiting`}
+                    aria-label={`${waiting} ${item.href === "/admin/access" ? "request" : "application"}${waiting === 1 ? "" : "s"} waiting`}
                   >
                     {waiting > 99 ? "99+" : waiting}
                   </span>

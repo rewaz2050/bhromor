@@ -6,7 +6,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  applications: { shops: 0, riders: 0, total: 0 },
+  applications: { shops: 0, riders: 0, resets: 0, total: 0 },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -42,7 +42,7 @@ import AdminGate from "../admin-gate";
 
 afterEach(() => {
   cleanup();
-  state.applications = { shops: 0, riders: 0, total: 0 };
+  state.applications = { shops: 0, riders: 0, resets: 0, total: 0 };
 });
 
 describe("AdminGate — application badges", () => {
@@ -57,7 +57,7 @@ describe("AdminGate — application badges", () => {
   });
 
   it("puts the pending counts on the Shops and Riders links", () => {
-    state.applications = { shops: 2, riders: 1, total: 3 };
+    state.applications = { shops: 2, riders: 1, resets: 4, total: 7 };
     render(
       <AdminGate>
         <p>content</p>
@@ -70,5 +70,9 @@ describe("AdminGate — application badges", () => {
     expect(riders).toHaveTextContent(/1$/);
     expect(screen.getAllByLabelText("2 applications waiting").length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText("1 application waiting").length).toBeGreaterThan(0);
+    const access = screen.getAllByRole("link", { name: /Access requests/ })[0];
+    expect(access).toHaveAttribute("href", "/admin/access");
+    expect(access).toHaveTextContent(/4$/);
+    expect(screen.getAllByLabelText("4 requests waiting").length).toBeGreaterThan(0);
   });
 });

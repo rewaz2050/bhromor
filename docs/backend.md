@@ -32,6 +32,8 @@ src/app/api/
 ├── reviews/route.ts       # GET approved-only (?product, ?featured) / POST pending
 ├── coupons/validate/route.ts  # POST: honest { valid, discount?, reason? }
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
+├── auth/reset-request/route.ts   # POST {kind,email,phone}: file a password-reset REQUEST (no SMS/e-mail; 5/15min/IP, 3/h/email) · GET ?kind&email&phone: its status for the login page poll
+├── auth/reset-complete/route.ts  # POST {kind,email,phone,password}: set the new password inside a staff-approved 24 h window, then close the request (5/15min/IP)
 ├── shops/apply/route.ts   # POST public intake = sign-up: creates the login (email+password) + pending shop + owner link (5/min/IP)
 ├── riders/apply/route.ts  # POST rider intake = sign-up: creates the login + pending rider row linked by user_id (5/min/IP)
 ├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors
@@ -54,7 +56,9 @@ src/app/api/
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
 ├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner (legacy rows only — applications arrive linked)
 ├── admin/shops/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the owner login, returned once (admin/super_admin, 10/min; no e-mail reset exists)
-├── admin/applications/route.ts  # GET {shops, riders}: pending application head-counts for the nav badge + dashboard banner (30 s client poll)
+├── admin/applications/route.ts  # GET {shops, riders, resets}: pending application + reset-request head-counts for the nav badges + dashboard banner (30 s client poll)
+├── admin/access-requests/route.ts       # GET {pending, recent, ready}: password-reset request queue (staff RLS; ready=false until migration 202609260001)
+├── admin/access-requests/[id]/route.ts  # POST {action: approve|reject, note?}: opens the requester's 24 h self-set window / leaves them a note (admin/super_admin, 30/min)
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
 ├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
 ├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login (legacy rows only — applications arrive linked)

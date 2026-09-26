@@ -57,6 +57,6 @@ describe("ChangePasswordCard", () => {
     const toggle = screen.getByRole("button", { name: "পাসওয়ার্ড দেখুন" });
     fireEvent.click(toggle);
     expect(screen.getByLabelText(/নতুন পাসওয়ার্ড/)).toHaveAttribute("type", "text");
-    expect(screen.getByText(/সাপোর্টে/)).toBeInTheDocument();
+    expect(screen.getByText(/পাসওয়ার্ড ভুলে গেছেন\?/)).toBeInTheDocument();
   });
 });

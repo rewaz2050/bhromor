@@ -105,11 +105,12 @@ describe("Rider Login Page — pending auto re-check (apply = sign up)", () => {
     expect(poll.calls.at(-1)?.enabled).toBe(false);
   });
 
-  it("has a show/hide toggle on the password and no e-mail reset promise", () => {
+  it("has a show/hide toggle on the password and an in-app reset request instead of an e-mail promise", () => {
     render(<RiderLoginPage />);
     const password = screen.getByLabelText(/পাসওয়ার্ড/);
     fireEvent.click(screen.getByRole("button", { name: "দেখুন" }));
     expect(password).toHaveAttribute("type", "text");
-    expect(screen.getByText(/অস্থায়ী\s*পাসওয়ার্ড/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "পাসওয়ার্ড ভুলে গেছেন?" })).toBeInTheDocument();
+    expect(screen.queryByText(/ইমেইল.*লিংক/)).not.toBeInTheDocument();
   });
 });

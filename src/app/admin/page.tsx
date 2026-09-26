@@ -182,25 +182,32 @@ export default function AdminDashboard() {
         </Link>
       )}
 
-      {/* Apply = sign up (2026-09-26): applications wait for a human Approve;
-          the applicant cannot sign in until then, so they must not sit unseen. */}
+      {/* Apply = sign up (2026-09-26): applications and password-reset
+          requests wait for a human decision; the person on the other side
+          cannot sign in until then, so they must not sit unseen. */}
       {applications.total > 0 && (
         <div
           role="status"
           className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-forest-50 px-5 py-3 text-sm font-semibold text-forest-900 ring-1 ring-forest-200"
         >
           <span>
-            📋 {applications.total} application{applications.total === 1 ? "" : "s"} waiting for approval
-            {" — "}
+            📋 Waiting for you:{" "}
             {[
-              applications.shops > 0 ? `${applications.shops} shop${applications.shops === 1 ? "" : "s"}` : null,
-              applications.riders > 0 ? `${applications.riders} rider${applications.riders === 1 ? "" : "s"}` : null,
+              applications.shops > 0
+                ? `${applications.shops} shop application${applications.shops === 1 ? "" : "s"}`
+                : null,
+              applications.riders > 0
+                ? `${applications.riders} rider application${applications.riders === 1 ? "" : "s"}`
+                : null,
+              applications.resets > 0
+                ? `${applications.resets} password reset request${applications.resets === 1 ? "" : "s"}`
+                : null,
             ]
               .filter(Boolean)
               .join(" · ")}
-            . They can sign in the moment you approve.
+            . They can sign in the moment you decide.
           </span>
-          <span className="flex gap-2">
+          <span className="flex flex-wrap gap-2">
             {applications.shops > 0 && (
               <Link
                 href="/admin/shops"
@@ -215,6 +222,14 @@ export default function AdminDashboard() {
                 className="inline-flex items-center gap-1 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-forest-700"
               >
                 Riders <IconArrowRight className="h-3 w-3" />
+              </Link>
+            )}
+            {applications.resets > 0 && (
+              <Link
+                href="/admin/access"
+                className="inline-flex items-center gap-1 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-forest-700"
+              >
+                Access requests <IconArrowRight className="h-3 w-3" />
               </Link>
             )}
           </span>

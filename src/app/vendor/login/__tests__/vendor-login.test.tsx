@@ -110,12 +110,14 @@ describe("Vendor Login Page — pending auto re-check (apply = sign up)", () => 
     expect(poll.calls.at(-1)?.enabled).toBe(false);
   });
 
-  it("has a show/hide password toggle and points a forgotten password at support", () => {
+  it("has a show/hide password toggle and an in-app reset request", () => {
     render(<VendorLoginPage />);
     const password = screen.getByLabelText(/Password/);
     expect(password).toHaveAttribute("type", "password");
     fireEvent.click(screen.getByRole("button", { name: "Show" }));
     expect(password).toHaveAttribute("type", "text");
-    expect(screen.getByText(/Forgot the password\?/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Forgot your password?" }));
+    expect(screen.getByText("Request a password reset")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mobile number")).toBeInTheDocument();
   });
 });
