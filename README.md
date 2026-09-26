@@ -175,6 +175,13 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R3 — best-seller / new-arrival rails, area pill (2026-09-26)
+
+§2 + §1.2 of `docs/ux-sales-plan.md`, the first-screen items:
+
+- **Curated rails after the category row** — `components/home/curated-rails.tsx`. *Best sellers* is ranked by real orders (`unitsSold` from `v_product_sales`, in stock only) and stays away until the shop has **two** genuine sellers; *New arrivals* leads with the shop's `isNew` flag, then the newest rows, needs a real row (**4+**) and never repeats a best seller. Both are plain `ProductRail`s (`data-list` `best-sellers-rail` / `new-arrivals-rail` for the funnel) linking to `/shop?sort=best` / `?sort=newest`, and both have Admin → Homepage section toggles (`sections.bestSellers`, `sections.newArrivals`, default on). Test `curated-rails.test.tsx`.
+- **"Area: Borpara ▾" pill** — `components/layout/zone-pill.tsx`: a native `<select>` dressed as a pill (works on every phone, no popover to trap focus) that reads/writes the one remembered zone (`useMyZone`) the home delivery check, the PDP delivery line, the shop browser and checkout already share. In the header from `sm` up; inside the hero on phones. en + bn (`zonePill.*`). Test `zone-pill.test.tsx`.
+
 ## UX plan R1/R2 — card price block, personal delivery line, bag mini-bar, add-ons first (2026-09-26)
 
 The first items of `docs/ux-sales-plan.md` after the free-delivery decision, each small and measurable:

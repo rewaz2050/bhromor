@@ -10,6 +10,7 @@ import WishlistButton from "./wishlist-button";
 import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
 import LanguageSwitcher from "./language-switcher";
+import ZonePill from "./zone-pill";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { offerProducts } from "@/lib/home-shelves";
@@ -144,6 +145,10 @@ export default function Header() {
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+            {/* UX plan §1.2 (R3) — remembered delivery area, one tap to change. */}
+            <div className="hidden sm:flex">
+              <ZonePill />
+            </div>
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />
             </div>

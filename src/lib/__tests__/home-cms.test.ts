@@ -23,7 +23,19 @@ describe("homepage CMS (§31)", () => {
     expect(merged.sections.hero).toBe(true);
     expect(merged.sections.collections).toBe(true);
     // Retired keys from older saves (featured, brandStory, brandJournal) are dropped.
-    expect(Object.keys(merged.sections).sort()).toEqual(["collections", "hero", "offers", "recent", "stories", "trust"]);
+    expect(Object.keys(merged.sections).sort()).toEqual([
+      "bestSellers",
+      "collections",
+      "hero",
+      "newArrivals",
+      "offers",
+      "recent",
+      "stories",
+      "trust",
+    ]);
+    // UX plan R3 rails default on for saves that predate them.
+    expect(merged.sections.bestSellers).toBe(true);
+    expect(merged.sections.newArrivals).toBe(true);
     // An explicit "off" from an older publish survives the new default.
     expect(resolveSettings({ announcement: { enabled: false } }).announcement.enabled).toBe(false);
     // defaults never mutate

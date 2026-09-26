@@ -314,6 +314,10 @@ export const translations = {
       decreaseQuantity: "Decrease quantity",
       addToBag: "Add to Bag →",
     },
+    zonePill: {
+      prefix: "Area: ",
+      choose: "Your area?",
+    },
     deliveryLine: {
       toZone: "Delivery to {zone}: {charge}",
       cod: "cash on delivery",
@@ -1020,6 +1024,10 @@ export const translations = {
       decreaseQuantity: "পরিমাণ কমান",
       addToBag: "ব্যাগে যোগ করুন →",
     },
+    zonePill: {
+      prefix: "এলাকা: ",
+      choose: "আপনার এলাকা?",
+    },
     deliveryLine: {
       toZone: "{zone}-এ ডেলিভারি {charge}",
       cod: "ক্যাশ অন ডেলিভারি",
@@ -1427,6 +1435,7 @@ export type TranslationKey =
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
   | `deliveryLine.${keyof typeof translations.en.deliveryLine}`
+  | `zonePill.${keyof typeof translations.en.zonePill}`
   | `mobileDrawer.${keyof typeof translations.en.mobileDrawer}`
   | `shop.${keyof typeof translations.en.shop}`
   | `shopBrowser.${keyof typeof translations.en.shopBrowser}`

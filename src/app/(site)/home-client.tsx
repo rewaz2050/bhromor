@@ -16,6 +16,8 @@ import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import CategoryRow from "@/components/home/category-row";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
+import CuratedRails from "@/components/home/curated-rails";
+import ZonePill from "@/components/layout/zone-pill";
 import CategoryShelfBlock from "@/components/home/category-shelf";
 import CustomerStories from "@/components/reviews/customer-stories";
 import ScrollDepthTracker from "@/components/analytics/scroll-depth-tracker";
@@ -69,6 +71,10 @@ export default function HomeClient() {
           {/* Returning devices only: one compact row, nothing for a first visit. */}
           {sections.recent && <RecentlyViewedStrip pool={pool} />}
           {sections.collections && <CategoryRow pool={pool} categories={categories} />}
+          {/* UX plan §2 (R3) — social proof + freshness right after the row. */}
+          {(sections.bestSellers || sections.newArrivals) && (
+            <CuratedRails pool={pool} showBest={sections.bestSellers} showNew={sections.newArrivals} />
+          )}
           {sections.offers && <OffersBlock pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
           {/* Real approved reviews only — the block disappears when there
@@ -147,6 +153,9 @@ function Hero({ cms }: { cms: HomeSettings }) {
               {t("home.heroShelf")}
               <span aria-hidden="true">↓</span>
             </a>
+            {/* UX plan §1.2 (R3) — "do you deliver to me?" answered on the
+                first screen; phones only here, the header carries it wider. */}
+            <ZonePill tone="dark" className="sm:hidden" />
           </div>
         </div>
         <div className="relative hidden aspect-[4/5] w-36 shrink-0 overflow-hidden rounded-md ring-1 ring-ivory-50/15 sm:block lg:w-44">
