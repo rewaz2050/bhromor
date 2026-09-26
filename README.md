@@ -44,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 1,316 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
+Unit/component suite: 1,379 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -96,6 +96,26 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Image zoom**: hover magnifier on desktop, full-screen pinch / wheel / double-tap lightbox with pan.
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
+
+## Apply = sign up: shops and riders (2026-09-26)
+
+Opening a shop or joining as a rider used to be three steps that people kept getting stuck between: send the application, then separately "Create account" on the login page with the same email, then wait for staff to approve **and** link the two by email. It is now one step, and the admin's approval is the only gate.
+
+**What the applicant does**
+
+- `/shops/apply` and `/rider/apply` collect the details **plus the login email and a password** (min 6, typed twice). Submitting creates the login and the pending row together — no email confirmation link, no second form. The success screen says exactly what happens next: *after approval, sign in at `/vendor/login` (or `/rider/login`) with this email and password.*
+- Signing in **before** approval works but opens an "Awaiting approval" card (Check again · Sign out) instead of the dashboard; a suspended account gets a "suspended — contact support" card; a login that has no shop / rider profile is pointed at the application form. Nothing bounces between the login page and the dashboard any more.
+- The moment staff approves (status → active), the same email + password open `/vendor` / `/rider`.
+- The login pages are sign-in only (the "Create account" tabs are gone; "New here? Apply" links replace them).
+
+**How it works**
+
+- `POST /api/shops/apply` and `POST /api/riders/apply` still refuse without the service role (503) and are rate-limited 5/min/IP. The intake validates the fields **and the password** first, then `createApplicantAccount()` (`src/lib/db/applicant-account.ts`) calls `auth.admin.createUser({ email_confirm: true })`; then the row is inserted already linked (`vendor_users` owner row / `riders.user_id`). If the row cannot be written the fresh login is deleted again, so a failed submit never leaves a stray account.
+- An email that **already has a PROSANTI login** (a vendor from the old two-step flow, or a rider also opening a shop) is reused when the given password matches it — verified with a throwaway sign-in — otherwise the form gets a 409 that says to use that account's password or sign in first. A signed-in applicant links the current login and needs no password.
+- `requireVendor()` / `requireRider()` answer 403 with a `reason` (`pending` · `suspended` · `none`) that the login pages and shells read; the pending message is English for vendors and Bangla for riders.
+- Admin → Shops / Riders show **Linked — {email} signs in … once approved** for applications (new shop rows carry `vendorLinked`, riders `hasLogin`); the manual "Link vendor / Link rider" boxes remain only for legacy or manually created rows. No database migration is needed.
+
+Tests: `src/lib/__tests__/{applicant-password,apply-approval-gate}.test.ts`, `src/lib/db/__tests__/{applicant-account,apply-signup}.test.ts`, `src/app/api/__tests__/apply-signup-routes.test.ts`, and the apply/login page tests under `src/app/(site)/shops/apply`, `src/app/rider/{apply,login}`, `src/app/vendor/login`.
 
 ## Menubar redesign (2026-09-26)
 
@@ -409,7 +429,7 @@ Live project: [bhromor-zeta.vercel.app](https://bhromor-zeta.vercel.app). `verce
 
 ## Next phases (in order)
 
-1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply the SQL migrations, `npm run seed`, approve + link the first rider, grant the first staff role (`npm run grant-admin -- rahatbd2050@gmail.com super_admin`), run the verify checklist. The storefront serves the launch catalog out of the box, but the database must be seeded before live checkout, admin, and tracking work.
+1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply the SQL migrations, `npm run seed`, approve the first rider (the application already carries the login), grant the first staff role (`npm run grant-admin -- rahatbd2050@gmail.com super_admin`), run the verify checklist. The storefront serves the launch catalog out of the box, but the database must be seeded before live checkout, admin, and tracking work.
 2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) once a gateway account exists; Cloudinary keys enable direct media upload (§48) — both optional, everything else is already real.
 
 

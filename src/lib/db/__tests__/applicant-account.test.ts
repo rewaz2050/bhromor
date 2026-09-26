@@ -18,6 +18,7 @@ import {
   assertApplicantPassword,
   createApplicantAccount,
   deleteApplicantAccount,
+  linksSession,
 } from "../applicant-account";
 
 const serviceWith = (createUser: (...args: unknown[]) => unknown) =>
@@ -29,6 +30,22 @@ const anonWith = (signIn: (...args: unknown[]) => unknown) =>
   ({
     auth: { signInWithPassword: vi.fn(signIn), signOut: vi.fn(async () => ({ error: null })) },
   }) as never;
+
+describe("linksSession", () => {
+  it("links a session only without a password or when its email is the application's", () => {
+    expect(linksSession({}, "a@b.co")).toBe(false);
+    expect(linksSession({ applicantUserId: "u1" }, "a@b.co")).toBe(true);
+    expect(
+      linksSession({ applicantUserId: "u1", applicantEmail: " A@b.co ", password: "secret1" }, "a@b.co"),
+    ).toBe(true);
+    expect(
+      linksSession({ applicantUserId: "u1", applicantEmail: "staff@x.co", password: "secret1" }, "a@b.co"),
+    ).toBe(false);
+    expect(linksSession({ applicantUserId: "u1", applicantEmail: null, password: "secret1" }, "a@b.co")).toBe(
+      false,
+    );
+  });
+});
 
 describe("assertApplicantPassword", () => {
   it("returns the password when it is long enough", () => {

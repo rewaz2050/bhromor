@@ -546,9 +546,13 @@ Do these on the deployed site, in order:
 - [ ] `/checkout` → place a real test order (COD) → confirmation shows the
       4-digit delivery PIN → `/track` finds it by ID + phone →
       `/admin/orders` shows it → advance it → bell notice
-- [ ] Rider network: `/admin/riders` approve a rider → `/admin/riders` →
-      **link rider** with the rider's Auth email → open `/rider` in an
-      incognito window → sign in → `/rider` shows their job queue
+- [ ] Rider network: open `/rider/apply` in an incognito window → send an
+      application with an email + password → `/rider/login` with it shows
+      **"অনুমোদনের অপেক্ষায়"** (not the app) → `/admin/riders` shows the
+      rider as **Linked** → approve → sign in again → `/rider` shows their
+      job queue. (**Link rider** is only for legacy / manually created rows.)
+- [ ] Shop network: same with `/shops/apply` → `/vendor/login` shows
+      "Awaiting approval" → `/admin/shops` approve → the dashboard opens
 - [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
       **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
       for the auto-offer trigger) → the linked rider sees the offer → accept
@@ -609,7 +613,9 @@ direct file-picker upload, add the four Cloudinary variables from
 |---|---|
 | `/api/products` → `NOT_SEEDED` | No published products yet → add them in Admin → Catalog & Products (step 3 only seeds the skeleton) |
 | Homepage publish “works” but `/` unchanged | Migration 006 not applied → public read policy missing; apply step 1.7 |
-| `/rider` shows only login | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
+| `/rider` shows only login | Not signed in, or a legacy `riders` row with no Auth user → step 5 rider check + Admin → Riders → link (applications since 2026-09-26 arrive linked) |
+| `/rider/login` or `/vendor/login` shows "awaiting approval" | Expected until staff approves: Admin → Riders / Shops → **Approve** (status → active); the same email + password then open the app |
+| Apply form → "This email already has a PROSANTI login" (409) | The email has an account with a different password → use that password in the form, or sign in first and apply again |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |
 | Admin sign-in → “not a staff member” | Auth user exists but no `admin_users` row → step 4.2 |
 | Admin API → 401 right after sign-in | Session cookie lost (private window / clock skew) → sign in again |

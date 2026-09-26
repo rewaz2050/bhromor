@@ -40,16 +40,19 @@ export async function POST(request: Request) {
     // A signed-in applicant (an account made under the old two-step flow)
     // links that login instead of creating a new one.
     let applicantUserId: string | undefined;
+    let applicantEmail: string | null = null;
     try {
       const session = await getSupabaseServer();
       const { data } = (await session?.auth.getUser()) ?? { data: null };
       applicantUserId = data?.user?.id;
+      applicantEmail = data?.user?.email ?? null;
     } catch {
       applicantUserId = undefined;
     }
     const fields = (body ?? {}) as Record<string, unknown>;
     const { id, accountCreated } = await applyShop(body, {
       applicantUserId,
+      applicantEmail,
       password: typeof fields.password === "string" ? fields.password : undefined,
     });
     const staffDb = getSupabaseService();

@@ -32,8 +32,8 @@ src/app/api/
 ├── reviews/route.ts       # GET approved-only (?product, ?featured) / POST pending
 ├── coupons/validate/route.ts  # POST: honest { valid, discount?, reason? }
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
-├── shops/apply/route.ts   # POST public intake → pending row (5/min/IP)
-├── riders/apply/route.ts  # POST rider intake → pending row (5/min/IP)
+├── shops/apply/route.ts   # POST public intake = sign-up: creates the login (email+password) + pending shop + owner link (5/min/IP)
+├── riders/apply/route.ts  # POST rider intake = sign-up: creates the login + pending rider row linked by user_id (5/min/IP)
 ├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors
 ├── rider/me/route.ts      # rider session probe (rider + linked email)
 ├── rider/jobs/route.ts    # own delivery assignments with full order snapshots
@@ -52,10 +52,10 @@ src/app/api/
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
-├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner
+├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner (legacy rows only — applications arrive linked)
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
 ├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
-├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login
+├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login (legacy rows only — applications arrive linked)
 ├── admin/deliveries/route.ts       # GET dispatch board (assignments + awaiting orders)
 ├── admin/deliveries/offer/route.ts # POST {orderId}: staff re-offers an order
 ├── admin/deliveries/[id]/cancel/route.ts # POST: staff cancels a live assignment

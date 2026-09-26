@@ -198,6 +198,28 @@ describe("applyShop — apply = sign up", () => {
     expect(inserted("vendor_users")).toMatchObject({ user_id: "u-session" });
   });
 
+  it("links the session when its email is the application email, even with a password", async () => {
+    state.respond = shopHappy;
+    const result = await applyShop(SHOP, {
+      applicantUserId: "u-session",
+      applicantEmail: "Shop@example.com",
+      password: "secret1",
+    });
+    expect(result.userId).toBe("u-session");
+    expect(state.createAccount).not.toHaveBeenCalled();
+  });
+
+  it("uses the form's credentials when a different account is signed in", async () => {
+    state.respond = shopHappy;
+    const result = await applyShop(SHOP, {
+      applicantUserId: "u-staff",
+      applicantEmail: "admin@prosanti.example",
+      password: "secret1",
+    });
+    expect(result).toEqual({ id: "shop-1", userId: "u-new", accountCreated: true });
+    expect(inserted("vendor_users")).toMatchObject({ user_id: "u-new" });
+  });
+
   it("still validates the shop fields first", async () => {
     state.respond = shopHappy;
     await expect(applyShop({ ...SHOP, phone: "123" }, { password: "secret1" })).rejects.toBeInstanceOf(

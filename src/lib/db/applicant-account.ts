@@ -41,6 +41,21 @@ export type ApplicantKind = "vendor" | "rider";
 
 const EMAIL_EXISTS_RE = /already (been )?registered|already exists|email_exists/i;
 
+/**
+ * Whether a signed-in applicant's session should be linked instead of the
+ * form's credentials: yes when no password was given (legacy two-step
+ * callers) or when the session's email IS the application email. Otherwise
+ * the form's email + password win, so the credentials on the success screen
+ * are always the ones that open the dashboard (a staff member testing the
+ * form while signed in does not become the shop's owner by accident).
+ */
+export const linksSession = (
+  opts: { applicantUserId?: string; applicantEmail?: string | null; password?: string },
+  email: string,
+): boolean =>
+  !!opts.applicantUserId &&
+  (!opts.password || (opts.applicantEmail ?? "").trim().toLowerCase() === email);
+
 /** Length rules the forms also enforce; the server never trusts the form. */
 export const assertApplicantPassword = (password: unknown): string => {
   if (typeof password !== "string" || password.length < APPLICANT_PASSWORD_MIN) {

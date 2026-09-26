@@ -15,6 +15,7 @@ import {
   assertApplicantPassword,
   createApplicantAccount,
   deleteApplicantAccount,
+  linksSession,
 } from "./applicant-account";
 import { toPublicShop } from "../shop-utils";
 import { mapShop } from "./mappers";
@@ -58,8 +59,14 @@ export async function listPublicShops(zoneId?: string): Promise<Shop[] | null> {
 
 /** What an application needs besides the form fields. */
 export interface ApplyOptions {
-  /** A signed-in applicant (legacy two-step flow) links that login. */
+  /**
+   * A signed-in applicant (legacy two-step flow). That login is linked when
+   * no password was given, or when its email is the application's email;
+   * otherwise the form's email + password win, so the credentials on the
+   * success screen are always the ones that open the dashboard.
+   */
   applicantUserId?: string;
+  applicantEmail?: string | null;
   /** Otherwise the application IS the sign-up: this becomes the login. */
   password?: string;
 }
@@ -112,9 +119,8 @@ export async function applyShop(
   }
   // The password is checked before anything is written so a typo never
   // leaves a half-made application behind.
-  const password = opts.applicantUserId
-    ? null
-    : assertApplicantPassword(opts.password);
+  const sessionUserId = linksSession(opts, email) ? opts.applicantUserId : undefined;
+  const password = sessionUserId ? null : assertApplicantPassword(opts.password);
 
   const { data: zones } = await db.from("delivery_zones").select("id,active");
   const live = new Set(
@@ -148,14 +154,14 @@ export async function applyShop(
       .limit(1);
     return !!existing && existing.length > 0;
   };
-  if (opts.applicantUserId && (await alreadyVendor(opts.applicantUserId))) {
+  if (sessionUserId && (await alreadyVendor(sessionUserId))) {
     throw new ShopInputError(
       "This account already has a shop — sign in to the vendor dashboard instead.",
       409,
     );
   }
 
-  let userId = opts.applicantUserId ?? "";
+  let userId = sessionUserId ?? "";
   let accountCreated = false;
   if (!userId) {
     const account = await createApplicantAccount(db, {

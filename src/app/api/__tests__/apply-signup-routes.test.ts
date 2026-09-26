@@ -82,7 +82,7 @@ describe("POST /api/shops/apply (apply = sign up)", () => {
     });
     expect(state.shopApply).toHaveBeenCalledWith(
       { name: "Arian Fashion", password: "secret1" },
-      { applicantUserId: undefined, password: "secret1" },
+      { applicantUserId: undefined, applicantEmail: null, password: "secret1" },
     );
     expect(state.notified[0]).toMatchObject({ href: "/admin/shops" });
   });
@@ -125,7 +125,7 @@ describe("POST /api/riders/apply (apply = sign up)", () => {
     });
     expect(state.riderApply).toHaveBeenCalledWith(
       { name: "Tanvir", password: "secret1" },
-      { applicantUserId: undefined, password: "secret1" },
+      { applicantUserId: undefined, applicantEmail: null, password: "secret1" },
     );
     expect(state.notified[0]).toMatchObject({ href: "/admin/riders" });
   });
