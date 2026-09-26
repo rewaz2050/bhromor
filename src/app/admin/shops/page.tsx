@@ -7,6 +7,7 @@ import type { Shop } from "@/lib/catalog";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
 
 type Filter = Shop["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
@@ -24,6 +25,7 @@ function ShopCard({
   onSave,
   onStatus,
   onLinkVendor,
+  onResetPassword,
 }: {
   shop: AdminShopClient;
   zones: { id: string; name: string }[];
@@ -31,6 +33,7 @@ function ShopCard({
   onSave: (s: Shop) => Promise<boolean>;
   onStatus: (id: string, status: Shop["status"]) => void;
   onLinkVendor: (id: string, email: string) => Promise<boolean>;
+  onResetPassword: (id: string) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(shop.name);
@@ -43,9 +46,6 @@ function ShopCard({
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [linkEmail, setLinkEmail] = useState(shop.contactEmail ?? "");
-  const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState(shop.vendorLinked === true);
 
   const save = async () => {
     const pct = Number(commission);
@@ -222,41 +222,17 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
-          <div className="rounded-xl bg-cream/70 p-3 ring-1 ring-line sm:col-span-2">
-            <span className={label}>Vendor login</span>
-            {linked ? (
-              <p className="text-xs font-medium text-forest-800">
-                Linked — {shop.contactEmail ? <strong>{shop.contactEmail}</strong> : "the vendor"} signs
-                in at /vendor with the password from the application the moment the shop is
-                approved (active).
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  className={`${field} flex-1`}
-                  value={linkEmail}
-                  onChange={(e) => setLinkEmail(e.target.value)}
-                  placeholder="vendor account email"
-                  aria-label="Vendor account email"
-                  disabled={!live}
-                />
-                <button
-                  type="button"
-                  disabled={linking || !live || linkEmail.trim() === ""}
-                  onClick={() => {
-                    setLinking(true);
-                    void onLinkVendor(shop.id, linkEmail.trim()).then((ok) => {
-                      setLinking(false);
-                      if (ok) setLinked(true);
-                    });
-                  }}
-                  className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-800 hover:text-ivory-50 disabled:opacity-60"
-                >
-                  {linking ? "Linking…" : "Link vendor"}
-                </button>
-              </div>
-            )}
-          </div>
+          <ApplicantLoginBox
+            kind="vendor"
+            name={shop.name}
+            phone={shop.phone}
+            email={shop.contactEmail}
+            status={shop.status}
+            linked={shop.vendorLinked === true}
+            live={live}
+            onLink={(email) => onLinkVendor(shop.id, email)}
+            onResetPassword={() => onResetPassword(shop.id)}
+          />
         </div>
       )}
     </li>
@@ -265,8 +241,18 @@ function ShopCard({
 
 /** Marketplace phase 2 — staff shops queue: approve / suspend / commission. */
 export default function AdminShopsPage() {
-  const { shops, live, loading, error, clearError, saveShop, setStatus, linkVendor, reset } =
-    useShops();
+  const {
+    shops,
+    live,
+    loading,
+    error,
+    clearError,
+    saveShop,
+    setStatus,
+    linkVendor,
+    resetVendorPassword,
+    reset,
+  } = useShops();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
@@ -432,6 +418,7 @@ export default function AdminShopsPage() {
               onSave={saveShop}
               onStatus={(id, status) => void setStatus(id, status)}
               onLinkVendor={linkVendor}
+              onResetPassword={resetVendorPassword}
             />
           ))}
         </ul>

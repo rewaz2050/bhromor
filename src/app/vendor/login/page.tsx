@@ -16,6 +16,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import { useVendorSession } from "@/lib/use-vendor";
+import PasswordInput from "@/components/ui/password-input";
+import { usePoll } from "@/lib/use-poll";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,10 +28,16 @@ const primaryClass =
 const secondaryClass =
   "inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-forest-900 ring-1 ring-line hover:bg-cream";
 
+/** Pending-approval re-check cadence (visible tab only). */
+const PENDING_RECHECK_MS = 30_000;
+
 export default function VendorLoginPage() {
   const router = useRouter();
   const { status, error, denyReason, refresh, signIn, signOut } =
     useVendorSession();
+  // Apply = sign up: a pending applicant usually leaves this tab open, so
+  // re-check every 30 s while visible and send them in the moment staff approves.
+  usePoll(refresh, PENDING_RECHECK_MS, status === "guest" && denyReason === "pending");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -109,7 +117,8 @@ export default function VendorLoginPage() {
             <p className="text-sm text-ink-soft">
               You are signed in. Our team reviews every application by hand;
               the moment it is confirmed, this same email and password open
-              the dashboard — check back here or reload.
+              the dashboard. This page re-checks every 30 seconds while it is
+              open — or tap “Check again”.
             </p>
           )}
           {denyReason === "none" && (
@@ -163,8 +172,7 @@ export default function VendorLoginPage() {
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
               Password
             </span>
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -177,7 +185,9 @@ export default function VendorLoginPage() {
           </button>
           <p className="text-center text-xs text-ink-soft">
             Use the email and password from your shop application — the
-            dashboard opens once PROSANTI approves it.
+            dashboard opens once PROSANTI approves it. Forgot the password?
+            Message support: staff issue a temporary one you change in
+            Settings.
           </p>
           <p className="border-t border-line pt-4 text-center text-sm text-ink">
             New shop?{" "}

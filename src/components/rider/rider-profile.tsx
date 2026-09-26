@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { Rider } from "@/lib/catalog";
 import { useLiveZones } from "@/lib/use-live-zones";
+import ChangePasswordCard from "@/components/account/change-password-card";
 
 export function RiderProfile({ rider, onSaved }: { rider: Rider; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(rider.name);
@@ -37,5 +38,6 @@ export function RiderProfile({ rider, onSaved }: { rider: Rider; onSaved: () => 
       {saved && <p role="status" className="text-xs text-forest-800">প্রোফাইল সেভ হয়েছে।</p>}
     </form>
     <p className="mt-3 text-xs text-ink-soft">এলাকা, অনুমোদন ও হিসাব শুধু Admin বদলাতে পারবেন। কাজের সময় নিচে বেছে নিন।</p>
+    <ChangePasswordCard className="mt-4" />
   </details>;
 }

@@ -132,15 +132,20 @@ export async function applyShop(
     throw new ShopInputError("One of the chosen zones is not available.");
   }
 
+  // One shop per email AND per phone — the same shop used to be able to
+  // apply twice under two emails.
   const { data: dupe } = await db
     .from("shops")
-    .select("id,status")
-    .eq("contact_email", email)
+    .select("id,status,contact_email")
+    .or(`contact_email.eq.${email},phone.eq.${phone}`)
     .neq("status", "suspended")
     .limit(1);
   if (dupe && dupe.length > 0) {
+    const sameEmail = (dupe[0] as { contact_email?: string }).contact_email === email;
     throw new ShopInputError(
-      "This email already has a shop application — sign in at /vendor/login once it is approved.",
+      sameEmail
+        ? "This email already has a shop application — sign in at /vendor/login once it is approved."
+        : "This phone number already belongs to a shop application — sign in at /vendor/login, or use the shop's own number.",
       409,
     );
   }

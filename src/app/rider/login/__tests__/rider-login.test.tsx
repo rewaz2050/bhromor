@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 const nav = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -21,11 +21,18 @@ vi.mock("@/lib/use-rider", () => ({
 vi.mock("@/lib/supabase-browser", () => ({
   getSupabaseBrowser: () => null,
 }));
+const poll = vi.hoisted(() => ({ calls: [] as { intervalMs: number; enabled: boolean }[] }));
+vi.mock("@/lib/use-poll", () => ({
+  usePoll: (_fn: unknown, intervalMs: number, enabled: boolean) => {
+    poll.calls.push({ intervalMs, enabled });
+  },
+}));
 
 import RiderLoginPage from "../page";
 
 beforeEach(() => {
   nav.replace.mockReset();
+  poll.calls = [];
   session.value = {
     status: "guest",
     error: null,
@@ -78,5 +85,31 @@ describe("Rider Login Page (/rider/login)", () => {
     session.value.status = "authed";
     render(<RiderLoginPage />);
     expect(nav.replace).toHaveBeenCalledWith("/rider");
+  });
+});
+
+describe("Rider Login Page — pending auto re-check (apply = sign up)", () => {
+  it("re-checks the session every 30 s only while the applicant is pending", () => {
+    session.value = { ...session.value, error: "অনুমোদনের অপেক্ষায়", denyReason: "pending" };
+    render(<RiderLoginPage />);
+    expect(poll.calls.at(-1)).toEqual({ intervalMs: 30_000, enabled: true });
+    expect(screen.getByText(/৩০\s*সেকেন্ডে/)).toBeInTheDocument();
+  });
+
+  it("does not poll for a plain guest or a suspended rider", () => {
+    render(<RiderLoginPage />);
+    expect(poll.calls.at(-1)?.enabled).toBe(false);
+    poll.calls = [];
+    session.value = { ...session.value, error: "সাসপেন্ড", denyReason: "suspended" };
+    render(<RiderLoginPage />);
+    expect(poll.calls.at(-1)?.enabled).toBe(false);
+  });
+
+  it("has a show/hide toggle on the password and no e-mail reset promise", () => {
+    render(<RiderLoginPage />);
+    const password = screen.getByLabelText(/পাসওয়ার্ড/);
+    fireEvent.click(screen.getByRole("button", { name: "দেখুন" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(screen.getByText(/অস্থায়ী\s*পাসওয়ার্ড/)).toBeInTheDocument();
   });
 });

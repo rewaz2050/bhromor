@@ -10,6 +10,7 @@ import { formatBdt } from "@/lib/format";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
 
 type Filter = Rider["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
@@ -39,6 +40,7 @@ function RiderCard({
   onSave,
   onStatus,
   onLinkRider,
+  onResetPassword,
   onSettle,
 }: {
   rider: Rider;
@@ -47,6 +49,7 @@ function RiderCard({
   onSave: (r: Rider) => Promise<boolean>;
   onStatus: (id: string, status: Rider["status"]) => void;
   onLinkRider: (id: string, email: string) => Promise<boolean>;
+  onResetPassword: (id: string) => Promise<string | null>;
   onSettle: (r: Rider) => Promise<boolean>;
 }) {
   // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
@@ -59,9 +62,6 @@ function RiderCard({
   const [zoneIds, setZoneIds] = useState<string[]>([...rider.zoneIds]);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [linkEmail, setLinkEmail] = useState(rider.contactEmail ?? "");
-  const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState(rider.hasLogin === true);
 
   const save = async () => {
     const cleanedName = name.trim();
@@ -262,41 +262,17 @@ function RiderCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
-          <div className="rounded-xl bg-cream/70 p-3 ring-1 ring-line sm:col-span-2">
-            <span className={label}>Rider login</span>
-            {linked ? (
-              <p className="text-xs font-medium text-forest-800">
-                Linked — {rider.contactEmail ? <strong>{rider.contactEmail}</strong> : "the rider"} signs
-                in at /rider with the password from the application the moment the account is
-                approved (active).
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  className={`${field} flex-1`}
-                  value={linkEmail}
-                  onChange={(e) => setLinkEmail(e.target.value)}
-                  placeholder="rider account email"
-                  aria-label="Rider account email"
-                  disabled={!live}
-                />
-                <button
-                  type="button"
-                  disabled={linking || !live || linkEmail.trim() === ""}
-                  onClick={() => {
-                    setLinking(true);
-                    void onLinkRider(rider.id, linkEmail.trim()).then((ok) => {
-                      setLinking(false);
-                      if (ok) setLinked(true);
-                    });
-                  }}
-                  className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-800 hover:text-ivory-50 disabled:opacity-60"
-                >
-                  {linking ? "Linking…" : "Link rider"}
-                </button>
-              </div>
-            )}
-          </div>
+          <ApplicantLoginBox
+            kind="rider"
+            name={rider.name}
+            phone={rider.phone}
+            email={rider.contactEmail}
+            status={rider.status}
+            linked={rider.hasLogin === true}
+            live={live}
+            onLink={(email) => onLinkRider(rider.id, email)}
+            onResetPassword={() => onResetPassword(rider.id)}
+          />
         </div>
       )}
     </li>
@@ -305,8 +281,21 @@ function RiderCard({
 
 /** Marketplace phase 3 — staff rider queue: approve / suspend / zones. */
 export default function AdminRidersPage() {
-  const { riders, live, loading, error, clearError, saveRider, setStatus, settleCash, rejectClaim, settleClaims, linkRider, reset } =
-    useRiders();
+  const {
+    riders,
+    live,
+    loading,
+    error,
+    clearError,
+    saveRider,
+    setStatus,
+    settleCash,
+    rejectClaim,
+    settleClaims,
+    linkRider,
+    resetRiderPassword,
+    reset,
+  } = useRiders();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
@@ -581,6 +570,7 @@ export default function AdminRidersPage() {
               onSave={saveRider}
               onStatus={(id, status) => void setStatus(id, status)}
               onLinkRider={linkRider}
+              onResetPassword={resetRiderPassword}
               onSettle={(r) => settleCash(r.id, "cash", "")}
             />
           ))}

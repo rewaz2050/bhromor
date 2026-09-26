@@ -123,6 +123,29 @@ export function useRiders(pollMs = 0) {
     [live],
   );
 
+  /**
+   * Staff password reset for the rider's linked login — answers the
+   * temporary password once (apply = sign up, 2026-09-26: no e-mail reset).
+   */
+  const resetRiderPassword = useCallback(
+    async (id: string): Promise<string | null> => {
+      if (!live) return null;
+      try {
+        const data = await apiSend<{ password: string }>(
+          `/api/admin/riders/${encodeURIComponent(id)}/reset-password`,
+          "POST",
+          {},
+        );
+        setError(null);
+        return data.password;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return null;
+      }
+    },
+    [live],
+  );
+
   /** Staff reject a rider's pending settle claim (money never arrived). */
   const rejectClaim = useCallback(
     async (id: string, note: string): Promise<boolean> => {
@@ -154,6 +177,7 @@ export function useRiders(pollMs = 0) {
     settleCash,
     rejectClaim,
     linkRider,
+    resetRiderPassword,
     reset: refresh,
     live,
     loading: live && (!checked || liveRiders === null),

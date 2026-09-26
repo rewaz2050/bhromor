@@ -17,6 +17,8 @@ import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useRiderSession } from "@/lib/use-rider";
 import { IconTruck } from "@/components/ui/icons";
+import PasswordInput from "@/components/ui/password-input";
+import { usePoll } from "@/lib/use-poll";
 
 /**
  * Supabase returns raw English auth errors ("Email not confirmed", "Invalid
@@ -39,10 +41,16 @@ const supabaseSignInError = (err: { message?: string }): string => {
 const secondaryClass =
   "inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-4 text-xs font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100";
 
+/** Pending-approval re-check cadence (visible tab only). */
+const PENDING_RECHECK_MS = 30_000;
+
 export default function RiderLoginPage() {
   const router = useRouter();
   const supabase = getSupabaseBrowser();
   const { status, error, denyReason, refresh, signOut } = useRiderSession();
+  // Apply = sign up: a pending applicant usually leaves this tab open, so
+  // re-check every 30 s while visible and send them in the moment staff approves.
+  usePoll(refresh, PENDING_RECHECK_MS, status === "guest" && denyReason === "pending");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -149,7 +157,8 @@ export default function RiderLoginPage() {
           {denyReason === "pending" && (
             <p className="text-xs text-ink-soft">
               আপনি লগইন অবস্থায় আছেন। অনুমোদন হয়ে গেলে এই ইমেইল ও
-              পাসওয়ার্ডেই রাইডার অ্যাপ খুলবে — পরে এখানে এসে “আবার দেখুন” চাপুন।
+              পাসওয়ার্ডেই রাইডার অ্যাপ খুলবে — এই পেইজ খোলা থাকলে প্রতি ৩০
+              সেকেন্ডে নিজে থেকেই দেখে নেবে, চাইলে “আবার দেখুন” চাপুন।
             </p>
           )}
           {denyReason === "none" && (
@@ -200,14 +209,14 @@ export default function RiderLoginPage() {
             <label htmlFor="rider-login-password" className="mb-1 block text-xs font-semibold text-forest-900">
               পাসওয়ার্ড
             </label>
-            <input
+            <PasswordInput
               id="rider-login-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
               placeholder="••••••••"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
             />
           </div>
           <button
@@ -219,7 +228,8 @@ export default function RiderLoginPage() {
           </button>
           <p className="text-center text-[11px] leading-relaxed text-ink-soft">
             রাইডার আবেদনের সময় দেওয়া ইমেইল ও পাসওয়ার্ড দিন — অ্যাডমিন অনুমোদন
-            করলেই অ্যাপ খুলবে।
+            করলেই অ্যাপ খুলবে। পাসওয়ার্ড ভুলে গেলে সাপোর্টে জানান — নতুন অস্থায়ী
+            পাসওয়ার্ড দেওয়া হবে, ঢুকে নিজেরটা বদলে নেবেন।
           </p>
         </form>
       )}

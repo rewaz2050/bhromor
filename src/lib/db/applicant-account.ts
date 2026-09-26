@@ -16,6 +16,7 @@
 
 import "server-only";
 
+import { randomInt } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAnon } from "../supabase-server";
 import {
@@ -139,4 +140,36 @@ export async function deleteApplicantAccount(
     // The row insert already failed; a stray login is the lesser problem and
     // the retry path reuses it via the matching-password branch above.
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Staff password reset (no e-mail, no SMS)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Readable one-time password for staff to pass on by phone: three groups
+ * of three from an alphabet without look-alikes (no 0/O, 1/l/I). ~47 bits.
+ */
+const TEMP_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
+export const generateTemporaryPassword = (): string => {
+  const group = () =>
+    Array.from({ length: 3 }, () => TEMP_ALPHABET[randomInt(TEMP_ALPHABET.length)]).join("");
+  return `${group()}-${group()}-${group()}`;
+};
+
+/**
+ * Overwrite an applicant's password with the service role. There is no
+ * e-mail step in this onboarding, so a forgotten password is fixed by staff
+ * from Admin → Shops / Riders; the temporary value is shown once and the
+ * person changes it from their own settings afterwards.
+ */
+export async function setApplicantPassword(
+  service: SupabaseClient,
+  userId: string,
+  password: string,
+): Promise<void> {
+  const { error } = await service.auth.admin.updateUserById(userId, {
+    password: assertApplicantPassword(password),
+  });
+  if (error) throw new Error(`password reset failed: ${error.message}`);
 }

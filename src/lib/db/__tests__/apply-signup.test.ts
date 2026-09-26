@@ -151,12 +151,33 @@ describe("applyShop — apply = sign up", () => {
 
   it("rejects a duplicate application email before creating any login", async () => {
     state.respond = (table, ops, payload) => {
-      if (table === "shops" && ops.includes("neq")) return { data: [{ id: "shop-0", status: "pending" }], error: null };
+      if (table === "shops" && ops.includes("neq")) {
+        return { data: [{ id: "shop-0", status: "pending", contact_email: "shop@example.com" }], error: null };
+      }
       return shopHappy(table, ops, payload);
     };
-    await expect(applyShop(SHOP, { password: "secret1" })).rejects.toMatchObject({ status: 409 });
+    await expect(applyShop(SHOP, { password: "secret1" })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/email already has a shop application/),
+    });
     expect(state.createAccount).not.toHaveBeenCalled();
     expect(inserted("shops")).toBeUndefined();
+  });
+
+  it("rejects a duplicate shop phone under a different email", async () => {
+    state.respond = (table, ops, payload) => {
+      if (table === "shops" && ops.includes("neq")) {
+        return { data: [{ id: "shop-0", status: "active", contact_email: "other@example.com" }], error: null };
+      }
+      return shopHappy(table, ops, payload);
+    };
+    await expect(applyShop(SHOP, { password: "secret1" })).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/phone number already belongs/),
+    });
+    const dupeCall = state.calls.find((c) => c.table === "shops" && c.op === "or");
+    expect(dupeCall?.args[0]).toBe("contact_email.eq.shop@example.com,phone.eq.01712345678");
+    expect(state.createAccount).not.toHaveBeenCalled();
   });
 
   it("deletes the fresh login when the shop row cannot be written", async () => {

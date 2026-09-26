@@ -24,11 +24,18 @@ const session = vi.hoisted(() => ({
 vi.mock("@/lib/use-vendor", () => ({
   useVendorSession: () => session.value,
 }));
+const poll = vi.hoisted(() => ({ calls: [] as { intervalMs: number; enabled: boolean }[] }));
+vi.mock("@/lib/use-poll", () => ({
+  usePoll: (_fn: unknown, intervalMs: number, enabled: boolean) => {
+    poll.calls.push({ intervalMs, enabled });
+  },
+}));
 
 import VendorLoginPage from "../page";
 
 beforeEach(() => {
   nav.replace.mockReset();
+  poll.calls = [];
   session.value = {
     status: "guest",
     error: null,
@@ -87,5 +94,28 @@ describe("Vendor login page (/vendor/login)", () => {
     session.value.status = "authed";
     render(<VendorLoginPage />);
     expect(nav.replace).toHaveBeenCalledWith("/vendor");
+  });
+});
+
+describe("Vendor Login Page — pending auto re-check (apply = sign up)", () => {
+  it("re-checks the session every 30 s only while the applicant is pending", () => {
+    session.value = { ...session.value, error: "Waiting for approval.", denyReason: "pending" };
+    render(<VendorLoginPage />);
+    expect(poll.calls.at(-1)).toEqual({ intervalMs: 30_000, enabled: true });
+    expect(screen.getByText(/re-checks every 30 seconds/)).toBeInTheDocument();
+  });
+
+  it("does not poll for a plain guest", () => {
+    render(<VendorLoginPage />);
+    expect(poll.calls.at(-1)?.enabled).toBe(false);
+  });
+
+  it("has a show/hide password toggle and points a forgotten password at support", () => {
+    render(<VendorLoginPage />);
+    const password = screen.getByLabelText(/Password/);
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(screen.getByText(/Forgot the password\?/)).toBeInTheDocument();
   });
 });

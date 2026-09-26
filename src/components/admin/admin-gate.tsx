@@ -15,6 +15,7 @@ import { useSyncExternalStore } from "react";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
 import { useNotifications } from "@/lib/use-notifications";
+import { useApplicationsPending } from "@/lib/use-applications-pending";
 import { useStaffLive } from "@/lib/use-staff-live";
 import { useNow } from "@/lib/use-now";
 import AdminDataError from "@/components/admin/admin-data-error";
@@ -122,6 +123,15 @@ export default function AdminGate({
 
   const onLogin = pathname.startsWith(ADMIN_LOGIN_PATH);
   const { unread } = useNotifications();
+  // Apply = sign up (2026-09-26): new shop / rider applications wait for a
+  // human Approve, so their count sits on the two queue links.
+  const applications = useApplicationsPending();
+  const pendingFor = (href: string): number =>
+    href === "/admin/shops"
+      ? applications.shops
+      : href === "/admin/riders"
+        ? applications.riders
+        : 0;
   // Header date: a clock read in render is impure (hydration mismatch and a
   // date that never rolls over on a tab left open past midnight).
   const now = useNow(60_000);
@@ -202,6 +212,7 @@ export default function AdminGate({
         <nav aria-label="Admin" className="flex-1 space-y-1 px-3 py-4">
           {NAV.map((item) => {
             const active = item.match(pathname);
+            const waiting = pendingFor(item.href);
             return (
               <Link
                 key={item.href}
@@ -214,7 +225,15 @@ export default function AdminGate({
                 }`}
               >
                 <item.icon className="h-[1.1rem] w-[1.1rem]" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {waiting > 0 && (
+                  <span
+                    className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.62rem] font-bold leading-none text-white"
+                    aria-label={`${waiting} application${waiting === 1 ? "" : "s"} waiting`}
+                  >
+                    {waiting > 99 ? "99+" : waiting}
+                  </span>
+                )}
               </Link>
             );
           })}

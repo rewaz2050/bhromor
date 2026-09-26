@@ -18,7 +18,9 @@ import {
   assertApplicantPassword,
   createApplicantAccount,
   deleteApplicantAccount,
+  generateTemporaryPassword,
   linksSession,
+  setApplicantPassword,
 } from "../applicant-account";
 
 const serviceWith = (createUser: (...args: unknown[]) => unknown) =>
@@ -172,5 +174,47 @@ describe("createApplicantAccount", () => {
       },
     } as never;
     await expect(deleteApplicantAccount(service, "u-1")).resolves.toBeUndefined();
+  });
+});
+
+describe("generateTemporaryPassword (staff reset, no e-mail)", () => {
+  it("is three readable groups without look-alike characters", () => {
+    for (let i = 0; i < 50; i += 1) {
+      const pw = generateTemporaryPassword();
+      expect(pw).toMatch(/^[a-z2-9]{3}-[a-z2-9]{3}-[a-z2-9]{3}$/);
+      expect(pw).not.toMatch(/[01ilo]/);
+      expect(pw.length).toBeGreaterThanOrEqual(6);
+    }
+  });
+
+  it("does not repeat itself", () => {
+    const seen = new Set(Array.from({ length: 20 }, () => generateTemporaryPassword()));
+    expect(seen.size).toBeGreaterThan(15);
+  });
+});
+
+describe("setApplicantPassword", () => {
+  const serviceWithUpdate = (update: (...args: unknown[]) => unknown) =>
+    ({ auth: { admin: { updateUserById: vi.fn(update) } } }) as never;
+
+  it("overwrites the login password with the service role", async () => {
+    const update = vi.fn(async () => ({ error: null }));
+    await setApplicantPassword(serviceWithUpdate(update), "user-1", "abc-def-ghk");
+    expect(update).toHaveBeenCalledWith("user-1", { password: "abc-def-ghk" });
+  });
+
+  it("refuses a short password before touching Auth", async () => {
+    const update = vi.fn(async () => ({ error: null }));
+    await expect(setApplicantPassword(serviceWithUpdate(update), "user-1", "abc")).rejects.toBeInstanceOf(
+      ApplicantAccountError,
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an Auth failure as a plain error", async () => {
+    const update = vi.fn(async () => ({ error: { message: "user not found" } }));
+    await expect(setApplicantPassword(serviceWithUpdate(update), "user-x", "abc-def-ghk")).rejects.toThrow(
+      /user not found/,
+    );
   });
 });

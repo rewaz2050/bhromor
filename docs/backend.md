@@ -53,9 +53,12 @@ src/app/api/
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
 ├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
 ├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner (legacy rows only — applications arrive linked)
+├── admin/shops/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the owner login, returned once (admin/super_admin, 10/min; no e-mail reset exists)
+├── admin/applications/route.ts  # GET {shops, riders}: pending application head-counts for the nav badge + dashboard banner (30 s client poll)
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
 ├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
 ├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login (legacy rows only — applications arrive linked)
+├── admin/riders/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the rider login, returned once (admin/super_admin, 10/min)
 ├── admin/deliveries/route.ts       # GET dispatch board (assignments + awaiting orders)
 ├── admin/deliveries/offer/route.ts # POST {orderId}: staff re-offers an order
 ├── admin/deliveries/[id]/cancel/route.ts # POST: staff cancels a live assignment

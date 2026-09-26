@@ -44,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 1,379 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
+Unit/component suite: 1,428 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -116,6 +116,19 @@ Opening a shop or joining as a rider used to be three steps that people kept get
 - Admin → Shops / Riders show **Linked — {email} signs in … once approved** for applications (new shop rows carry `vendorLinked`, riders `hasLogin`); the manual "Link vendor / Link rider" boxes remain only for legacy or manually created rows. No database migration is needed.
 
 Tests: `src/lib/__tests__/{applicant-password,apply-approval-gate}.test.ts`, `src/lib/db/__tests__/{applicant-account,apply-signup}.test.ts`, `src/app/api/__tests__/apply-signup-routes.test.ts`, and the apply/login page tests under `src/app/(site)/shops/apply`, `src/app/rider/{apply,login}`, `src/app/vendor/login`.
+
+### Round 2 — running the onboarding without SMS or e-mail (2026-09-26)
+
+There is deliberately **no SMS and no e-mail** anywhere in this flow, so the pieces that normally depend on them are done by people and WhatsApp instead:
+
+- **Forgot password → staff reset.** `POST /api/admin/shops/[id]/reset-password` and `POST /api/admin/riders/[id]/reset-password` (admin / super_admin only, 10/min) generate a readable temporary password (`xxx-xxx-xxx`, no look-alike characters), set it with the service role and return it **once**. Admin → Shops / Riders → *Reset password* shows it with a Copy button and an "Open WhatsApp chat" link whose prefilled text never contains the password — staff read it out or paste it into the chat. Vendors change it in **Shop settings → পাসওয়ার্ড বদলান**, riders in **আমার রাইডার প্রোফাইল**, both through `auth.updateUser({ password })` on their own session (`src/components/account/change-password-card.tsx`). The login pages say so instead of promising a reset e-mail.
+- **Approval hand-off by WhatsApp.** Once a row is active, the same card offers *WhatsApp: approved, sign in →* — a `wa.me` link with a Bangla message naming the login email and the absolute `/vendor/login` / `/rider/login` URL (`src/lib/onboarding-messages.ts`). Non-BD phones get a note instead of a dead link.
+- **Applications are seen.** `GET /api/admin/applications` returns the two pending head-counts; `useApplicationsPending()` polls it every 30 s while the admin tab is visible and puts the numbers on the **Shops / Riders** nav links and a dashboard banner ("3 applications waiting for approval — 2 shops · 1 rider") with one-tap links into each queue.
+- **Pending applicants get let in automatically.** `/vendor/login` and `/rider/login` re-check the session every 30 s (visible tab only) while the "awaiting approval" card is showing, so the dashboard opens the moment staff taps Approve — no reload, no message needed.
+- **Duplicate applications** are refused on the shop's phone number as well as its email (409 with a specific message).
+- **Forms.** Both application forms are split into three numbered fieldsets (details · login · zones) under a "what happens next" strip, password fields have show/hide toggles (also on both login pages), phone inputs use the numeric keypad, zone chips are real `aria-pressed` toggles at 44 px, the error banner scrolls into view and takes focus, and an "already applied? sign in" link closes the loop. Shared pieces: `src/components/apply/apply-form-ui.tsx`, `src/components/ui/password-input.tsx`, `src/components/admin/applicant-login-box.tsx`.
+
+Still no database migration required. Tests: `src/app/api/__tests__/admin-onboarding-routes.test.ts`, `src/lib/__tests__/{onboarding-messages,use-applications-pending}.test.ts(x)`, `src/components/{admin,account,apply,ui}/__tests__/*` for the new components, plus the extended login/dashboard/admin-gate tests.
 
 ## Menubar redesign (2026-09-26)
 

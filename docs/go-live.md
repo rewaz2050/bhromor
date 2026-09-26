@@ -553,6 +553,12 @@ Do these on the deployed site, in order:
       job queue. (**Link rider** is only for legacy / manually created rows.)
 - [ ] Shop network: same with `/shops/apply` → `/vendor/login` shows
       "Awaiting approval" → `/admin/shops` approve → the dashboard opens
+      (leave the login tab open: it lets the applicant in by itself within
+      30 s of the approval; the admin nav showed the pending count meanwhile)
+- [ ] Password reset without e-mail: Admin → Shops → the test shop →
+      **Reset password** → the temporary password shows once → sign in
+      with it at `/vendor/login` → Shop settings → **পাসওয়ার্ড বদলান** →
+      sign out / in with the new one. Repeat once for the test rider.
 - [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
       **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
       for the auto-offer trigger) → the linked rider sees the offer → accept
@@ -616,6 +622,10 @@ direct file-picker upload, add the four Cloudinary variables from
 | `/rider` shows only login | Not signed in, or a legacy `riders` row with no Auth user → step 5 rider check + Admin → Riders → link (applications since 2026-09-26 arrive linked) |
 | `/rider/login` or `/vendor/login` shows "awaiting approval" | Expected until staff approves: Admin → Riders / Shops → **Approve** (status → active); the same email + password then open the app |
 | Apply form → "This email already has a PROSANTI login" (409) | The email has an account with a different password → use that password in the form, or sign in first and apply again |
+| Apply form → "this phone number already has an application" (409) | A shop row with that phone exists (pending or active) → find it in Admin → Shops; approve / edit it instead of creating a second one |
+| Vendor or rider forgot the password (no reset e-mail is ever sent) | Admin → Shops / Riders → open the card → **Reset password** → read the temporary password out or paste it into the WhatsApp chat the button opens (the link itself never carries it). They sign in with it and change it in Shop settings / আমার রাইডার প্রোফাইল → পাসওয়ার্ড বদলান |
+| Approved someone — how do they know? | The card's **WhatsApp: approved, sign in →** button opens a prefilled Bangla message with the login URL. Their login page also re-checks every 30 s on its own while the "awaiting approval" card is open |
+| New applications go unnoticed | The Shops / Riders links in the admin nav carry the pending count and the dashboard shows a banner; both refresh every 30 s while the tab is visible |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |
 | Admin sign-in → “not a staff member” | Auth user exists but no `admin_users` row → step 4.2 |
 | Admin API → 401 right after sign-in | Session cookie lost (private window / clock skew) → sign in again |

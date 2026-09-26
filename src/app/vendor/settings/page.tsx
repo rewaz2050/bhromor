@@ -12,6 +12,7 @@ import { ErrorBox, PageHeader } from "@/components/vendor/vendor-ui";
 import { patchVendorShop, vendorErrorMessage } from "@/lib/use-vendor";
 import { useLiveZones } from "@/lib/use-live-zones";
 import type { Shop } from "@/lib/catalog";
+import ChangePasswordCard from "@/components/account/change-password-card";
 
 const field =
   "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
@@ -241,6 +242,10 @@ export default function VendorSettingsPage() {
           {saving ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
         </button>
       </form>
+
+      {/* Apply = sign up (2026-09-26): the owner's own password lives here;
+          staff accounts change theirs from the admin side. */}
+      {!isStaff && <ChangePasswordCard className="mt-4" />}
     </div>
   );
 }

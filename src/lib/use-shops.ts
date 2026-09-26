@@ -90,6 +90,29 @@ export function useShops() {
     [live],
   );
 
+  /**
+   * Staff password reset for the shop's linked login — answers the
+   * temporary password once (apply = sign up, 2026-09-26: no e-mail reset).
+   */
+  const resetVendorPassword = useCallback(
+    async (id: string): Promise<string | null> => {
+      if (!live) return null;
+      try {
+        const data = await apiSend<{ password: string }>(
+          `/api/admin/shops/${encodeURIComponent(id)}/reset-password`,
+          "POST",
+          {},
+        );
+        setError(null);
+        return data.password;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return null;
+      }
+    },
+    [live],
+  );
+
   const shops: AdminShopClient[] = liveShops ?? [];
   return {
     shops,
@@ -97,6 +120,7 @@ export function useShops() {
     saveShop,
     setStatus,
     linkVendor,
+    resetVendorPassword,
     reset: refresh,
     live,
     loading: live && (!checked || liveShops === null),

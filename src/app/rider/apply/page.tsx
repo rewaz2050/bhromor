@@ -15,6 +15,14 @@ import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
+import PasswordInput from "@/components/ui/password-input";
+import {
+  AlreadyAppliedLink,
+  ApplySteps,
+  FormAlert,
+  FormSection,
+  ZoneChips,
+} from "@/components/apply/apply-form-ui";
 
 const VEHICLES = [
   { id: "bike", label: "মোটরসাইকেল (Motorbike)" },
@@ -169,24 +177,20 @@ export default function RiderApplyPage() {
         </p>
       </div>
 
+      <ApplySteps kind="rider" />
+
       <form
         onSubmit={handleSubmit}
-        className="mt-8 rounded-3xl border border-line bg-paper p-6 sm:p-8 shadow-sm space-y-5"
+        className="mt-6 space-y-6 rounded-3xl border border-line bg-paper p-6 shadow-sm sm:p-8"
       >
-        {error && (
-          <div
-            role="alert"
-            className="rounded-2xl bg-rose-50 p-4 text-xs font-semibold text-rose-800 ring-1 ring-rose-200"
-          >
-            {error}
-          </div>
-        )}
+        <FormAlert message={error} />
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <FormSection step={1} title="আপনার তথ্য">
           <label className="block sm:col-span-2">
             <span className={label}>আপনার পুরো নাম (Full Name) *</span>
             <input
               required
+              autoComplete="name"
               className={field}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -199,58 +203,17 @@ export default function RiderApplyPage() {
             <input
               required
               type="tel"
+              inputMode="numeric"
+              autoComplete="tel-national"
               className={field}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="017XXXXXXXX"
             />
+            <span className={hint}>দোকান ও কাস্টমার এই নম্বরে কল করবেন; পেমেন্টও এখানেই।</span>
           </label>
 
           <label className="block">
-            <span className={label}>লগইন ইমেইল অ্যাড্রেস *</span>
-            <input
-              required
-              type="email"
-              autoComplete="email"
-              className={field}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="rider@example.com"
-            />
-          </label>
-
-          <label className="block">
-            <span className={label}>লগইন পাসওয়ার্ড *</span>
-            <input
-              required
-              type="password"
-              autoComplete="new-password"
-              minLength={APPLICANT_PASSWORD_MIN}
-              className={field}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="অন্তত ৬ অক্ষর"
-            />
-            <span className={hint}>
-              অনুমোদনের পর এই ইমেইল ও পাসওয়ার্ড দিয়েই রাইডার অ্যাপে ঢুকবেন।
-            </span>
-          </label>
-
-          <label className="block">
-            <span className={label}>পাসওয়ার্ড আবার লিখুন *</span>
-            <input
-              required
-              type="password"
-              autoComplete="new-password"
-              minLength={APPLICANT_PASSWORD_MIN}
-              className={field}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="একই পাসওয়ার্ড"
-            />
-          </label>
-
-          <label className="block sm:col-span-2">
             <span className={label}>বাহনের ধরন (Vehicle) *</span>
             <select
               className={field}
@@ -263,38 +226,68 @@ export default function RiderApplyPage() {
                 </option>
               ))}
             </select>
-            <span className={hint}>
-              আপনার নিজস্ব বাহন সিলেক্ট করুন যা দিয়ে ডেলিভারি করবেন।
-            </span>
+            <span className={hint}>যে বাহনে ডেলিভারি করবেন, সেটি বেছে নিন।</span>
           </label>
-        </div>
+        </FormSection>
 
-        {/* Preferred Delivery Zones */}
-        <div>
-          <span className={label}>কাজের পছন্দের এলাকা / জোন *</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {zones.map((z) => {
-              const checked = selectedZones.includes(z.id);
-              return (
-                <button
-                  type="button"
-                  key={z.id}
-                  onClick={() => toggleZone(z.id)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
-                    checked
-                      ? "bg-forest-800 text-ivory-50 ring-1 ring-forest-800"
-                      : "bg-ivory-100 text-ink-soft ring-1 ring-line hover:border-line-strong"
-                  }`}
-                >
-                  {checked ? `✓ ${z.name}` : z.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <FormSection
+          step={2}
+          title="লগইন তথ্য"
+          hint="অনুমোদনের পর এই ইমেইল ও পাসওয়ার্ড দিয়েই রাইডার অ্যাপে ঢুকবেন — মনে রাখার মতো পাসওয়ার্ড দিন।"
+        >
+          <label className="block sm:col-span-2">
+            <span className={label}>লগইন ইমেইল অ্যাড্রেস *</span>
+            <input
+              required
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              className={field}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="rider@example.com"
+            />
+          </label>
 
-        <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line text-xs leading-relaxed text-ink-soft flex items-start gap-2.5">
-          <IconShield className="h-5 w-5 shrink-0 text-gold-600 mt-0.5" />
+          <label className="block">
+            <span className={label}>লগইন পাসওয়ার্ড *</span>
+            <PasswordInput
+              required
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="অন্তত ৬ অক্ষর"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
+            />
+          </label>
+
+          <label className="block">
+            <span className={label}>পাসওয়ার্ড আবার লিখুন *</span>
+            <PasswordInput
+              required
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="একই পাসওয়ার্ড"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
+            />
+          </label>
+        </FormSection>
+
+        <FormSection
+          step={3}
+          title="কাজের এলাকা"
+          hint="যেসব এলাকায় ট্রিপ নিতে চান, অন্তত একটি বেছে নিন — পরে অ্যাডমিন বাড়াতে বা কমাতে পারবেন।"
+        >
+          <ZoneChips zones={zones} selected={selectedZones} onToggle={toggleZone} />
+        </FormSection>
+
+        <div className="flex items-start gap-2.5 rounded-2xl bg-ivory-100/70 p-4 text-xs leading-relaxed text-ink-soft ring-1 ring-line">
+          <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-gold-600" />
           <p>
             আবেদন জমা দিলেই আপনার রাইডার লগইন (উপরের ইমেইল ও পাসওয়ার্ড) তৈরি হয়ে যায়। অ্যাডমিন তথ্য ভেরিফাই করে অনুমোদন দিলে সেই লগইনেই /rider অ্যাপ খুলবে — অনুমোদনের আগে সাইন ইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে।
           </p>
@@ -303,10 +296,12 @@ export default function RiderApplyPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full h-12 rounded-full bg-forest-800 font-semibold text-xs text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
+          className="h-12 w-full rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
         >
           {submitting ? "জমা হচ্ছে…" : "আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন"}
         </button>
+
+        <AlreadyAppliedLink href="/rider/login" />
       </form>
     </div>
   );
