@@ -175,6 +175,17 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R4 — the listing remembers: URL state, back-restore, sticky filter bar (2026-09-26)
+
+§3 of `docs/ux-sales-plan.md` — the listing page's biggest time-killer was starting over after every product page:
+
+- **The filters are the URL** — `lib/shop-url.ts` (`shopSearchString`, `parseList`, `resolvePriceBand`, price bands) + `ShopBrowser`: every change to category / sub-category / new / sale / query / mood / price / sort / **sizes / colours / in-stock** is written with `history.replaceState` (no server round-trip, no history spam; foreign params like `utm_*` survive), and `app/(site)/shop/page.tsx` parses the same params (`?size=M,L&color=Ivory&stock=1&price=<band>`), so reload, a shared link and **Back** all show the same list. The first render never rewrites the URL the server just produced.
+- **Scroll restore** — before a card opens a product page the grid stamps `scrollY` on the current history entry (`SHOP_SCROLL_KEY`); when that entry is revisited the browser restores it once the grid is tall enough (rAF, ≤ 20 tries), then clears the stamp. A push navigation to `/shop` never inherits it.
+- **Sticky compact bar** — *Filters (n) · N products · Sort* stays under the condensed header (`top-14` / `sm:top-[4.1rem]`) on every breakpoint; the search field and deliver-to select stay in the toolbar above.
+- **Sold-out last** in the default *Featured* order (in stock → featured → catalog order); the result line now carries the zone's charge and time (*Deliver to Zone A · ৳60 · 40–50 min*).
+
+Tests: `src/lib/__tests__/shop-url.test.ts`, `shop-browser.test.tsx` (URL writes + foreign params, `?size/stock/price` start state, sold-out last, scroll stamp/restore).
+
 ## UX plan R3 — best-seller / new-arrival rails, area pill (2026-09-26)
 
 §2 + §1.2 of `docs/ux-sales-plan.md`, the first-screen items:

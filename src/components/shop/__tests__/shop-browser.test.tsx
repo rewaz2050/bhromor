@@ -67,6 +67,81 @@ describe("ShopBrowser", () => {
   beforeEach(() => {
     cleanup();
     window.localStorage.removeItem("prosanti.myzone.v1");
+    window.history.replaceState(null, "", "/shop");
+  });
+
+  /* UX plan §3 (R4) — the filters are the URL. */
+  it("writes every filter change to the URL (replaceState), keeps foreign params, and clears back to /shop", () => {
+    window.history.replaceState(null, "", "/shop?utm_source=fb");
+    renderShop();
+    // First render never rewrites the URL the server just produced.
+    expect(window.location.search).toBe("?utm_source=fb");
+    fireEvent.change(screen.getByLabelText(/sort products/i), { target: { value: "price-asc" } });
+    expect(window.location.search).toBe("?utm_source=fb&sort=price-asc");
+    fireEvent.click(screen.getByRole("button", { name: "M" }));
+    fireEvent.click(screen.getByLabelText("In stock only"));
+    expect(window.location.search).toBe("?utm_source=fb&sort=price-asc&size=M&stock=1");
+    fireEvent.change(screen.getByLabelText(/sort products/i), { target: { value: "featured" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear all filters" }));
+    expect(window.location.pathname).toBe("/shop");
+    expect(window.location.search).toBe("?utm_source=fb");
+  });
+
+  it("starts from ?size= / ?color= / ?stock= / ?price= the server parsed, and follows a later URL change", () => {
+    const size = PRODUCTS[0].sizes[0];
+    const { rerender } = renderShop({ initialSizes: [size], initialInStock: true, initialPrice: "above2500" });
+    expect(screen.getByRole("button", { name: `Remove Size: ${size} filter` })).toBeInTheDocument();
+    expect(screen.getByLabelText("In stock only")).toBeChecked();
+    expect(screen.getByRole("button", { name: "Remove Above ৳2,500 filter" })).toBeInTheDocument();
+    rerender(
+      <CartProvider>
+        <ShopBrowser
+          products={PRODUCTS}
+          categories={CATEGORIES}
+          shops={launchShops().map(toPublicShop)}
+          zones={DELIVERY_ZONES}
+          initialCategory="all"
+          initialNew={false}
+          initialSizes={[]}
+          initialInStock={false}
+          initialPrice="any"
+        />
+      </CartProvider>,
+    );
+    expect(screen.queryByRole("group", { name: "Active filters" })).not.toBeInTheDocument();
+  });
+
+  it("keeps sold-out pieces at the end of the default (featured) order", () => {
+    const soldOut = { ...PRODUCTS[0], id: "sold-out-1", slug: "sold-out-1", name: "Sold Out Piece", inStock: false, featured: true };
+    renderShop({ products: [soldOut, ...PRODUCTS.slice(1)] });
+    const names = screen.getAllByRole("article").map((card) => within(card).getAllByRole("link")[0].getAttribute("href"));
+    expect(names[names.length - 1]).toBe("/product/sold-out-1");
+  });
+
+  it("stamps the scroll offset on the history entry when a card opens, and restores it on return", () => {
+    const scrollTo = vi.fn();
+    vi.stubGlobal("scrollTo", scrollTo);
+    Object.defineProperty(window, "scrollY", { value: 640, configurable: true, writable: true });
+    Object.defineProperty(document.documentElement, "scrollHeight", { value: 5000, configurable: true });
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+    try {
+      renderShop();
+      expect(scrollTo).not.toHaveBeenCalled(); // nothing stamped yet
+      const link = within(screen.getAllByRole("article")[0]).getAllByRole("link")[0];
+      link.addEventListener("click", (e) => e.preventDefault(), { once: true }); // jsdom cannot navigate
+      fireEvent.click(link);
+      expect((window.history.state as { psShopScroll?: number }).psShopScroll).toBe(640);
+      cleanup();
+      renderShop(); // "Back" — same history entry, same stamp
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 640 }));
+      expect((window.history.state as { psShopScroll?: number } | null)?.psShopScroll).toBeUndefined();
+    } finally {
+      raf.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("respects BOTH bounds of a price band", () => {

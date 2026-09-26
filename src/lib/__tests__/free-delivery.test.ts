@@ -138,7 +138,8 @@ describe("free delivery — deliveryBreakdown mirror", () => {
   });
 
   it("does not apply on the courier zone or when a coupon / PROSANTI+ already paid", () => {
-    const courier = deliveryBreakdown({ zone: z4, subtotal: 150_000, thresholdFree: "platform" });
+    // `isNight: false` — the default reads the wall clock (৳20 after 9 PM).
+    const courier = deliveryBreakdown({ zone: z4, subtotal: 150_000, thresholdFree: "platform", isNight: false });
     expect(courier.thresholdFree).toBeNull();
     expect(courier.freeDelivery).toBe(false);
     expect(courier.totalCharge).toBe(z4.charge);
@@ -152,7 +153,7 @@ describe("free delivery — deliveryBreakdown mirror", () => {
   });
 
   it("without a threshold nothing changes — ৳60 city charge as before", () => {
-    const b = deliveryBreakdown({ zone: z1, subtotal: 150_000 });
+    const b = deliveryBreakdown({ zone: z1, subtotal: 150_000, isNight: false });
     expect(b.thresholdFree).toBeNull();
     expect(b.totalCharge).toBe(z1.charge);
   });

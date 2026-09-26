@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import ListImpression from "@/components/analytics/list-impression";
 import type {
   Category,
@@ -19,7 +20,7 @@ import {
 import { matchesProduct } from "@/lib/product-search";
 import { filterProductsForZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
-import { bdt, formatBdt } from "@/lib/format";
+import { formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import ProductCard from "@/components/product/product-card";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
@@ -31,31 +32,16 @@ import {
   IconChevron,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import type { SortKey } from "@/lib/shop-sort";
+import {
+  PRICE_BAND_DEFS,
+  SHOP_SCROLL_KEY,
+  inPriceBand as inBand,
+  shopSearchString,
+  type PriceBandKey,
+} from "@/lib/shop-url";
 
 type CategoryFilter = "all" | CategoryId;
-import type { SortKey } from "@/lib/shop-sort";
-
-/** Static price band bounds — labels come from translations so BN shows pure Bangla. */
-const PRICE_BAND_DEFS: {
-  key: string;
-  min?: number;
-  max?: number;
-}[] = [
-  { key: "any" },
-  { key: "under500", max: 500 },
-  { key: "under1000", max: 1000 },
-  { key: "1000-1500", min: 1000, max: 1500 },
-  { key: "1500-2500", min: 1500, max: 2500 },
-  { key: "above2500", min: 2500 },
-];
-
-const inBand = (price: number, key: string): boolean => {
-  const band = PRICE_BAND_DEFS.find((b) => b.key === key);
-  if (!band || band.key === "any") return true;
-  if (band.min !== undefined && price < bdt(band.min)) return false;
-  if (band.max !== undefined && price >= bdt(band.max)) return false;
-  return true;
-};
 
 /** Sizes/colours are derived from the catalog, so a filter never offers an
  *  option nothing matches (and never misses a colour a new product adds). */
@@ -93,6 +79,9 @@ export default function ShopBrowser({
   initialMood = "",
   initialPrice = "any",
   initialSort = "featured",
+  initialSizes = [],
+  initialColors = [],
+  initialInStock = false,
 }: {
   products: Product[];
   categories: Category[];
@@ -106,8 +95,12 @@ export default function ShopBrowser({
   initialSale?: boolean;
   initialQuery?: string;
   initialMood?: MoodId | "";
-  initialPrice?: "any" | "under500";
+  initialPrice?: PriceBandKey;
   initialSort?: SortKey;
+  /** UX plan §3 (R4) — `?size=M,L`, `?color=Ivory`, `?stock=1`. */
+  initialSizes?: string[];
+  initialColors?: string[];
+  initialInStock?: boolean;
 }) {
   const { t, lang } = useLanguage();
   const [category, setCategoryState] = useState<CategoryFilter>(initialCategory);
@@ -122,11 +115,11 @@ export default function ShopBrowser({
   const [onlySale, setOnlySale] = useState(initialSale);
   const [q, setQ] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
-  const [sizes, setSizes] = useState<string[]>([]);
-  const [colors, setColors] = useState<string[]>([]);
+  const [sizes, setSizes] = useState<string[]>(initialSizes);
+  const [colors, setColors] = useState<string[]>(initialColors);
   const [mood, setMood] = useState<MoodId | "">(initialMood);
   const [priceBand, setPriceBand] = useState<string>(initialPrice);
-  const [onlyInStock, setOnlyInStock] = useState(false);
+  const [onlyInStock, setOnlyInStock] = useState(initialInStock);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   /** Zone-scoped discovery (marketplace slice 4): the persisted "deliver
@@ -177,6 +170,8 @@ export default function ShopBrowser({
    * `/shop?category=men` to `/shop?filter=new` (header/footer links) left the
    * old filters on screen — the page looked frozen.
    */
+  const sizesKey = initialSizes.join(",");
+  const colorsKey = initialColors.join(",");
   const lastUrlState = useRef({
     initialCategory,
     initialSub,
@@ -186,6 +181,9 @@ export default function ShopBrowser({
     initialMood,
     initialPrice,
     initialSort,
+    sizesKey,
+    colorsKey,
+    initialInStock,
   });
   useEffect(() => {
     const prev = lastUrlState.current;
@@ -197,7 +195,10 @@ export default function ShopBrowser({
       prev.initialMood !== initialMood ||
       prev.initialPrice !== initialPrice ||
       prev.initialQuery !== initialQuery ||
-      prev.initialSort !== initialSort
+      prev.initialSort !== initialSort ||
+      prev.sizesKey !== sizesKey ||
+      prev.colorsKey !== colorsKey ||
+      prev.initialInStock !== initialInStock
     ) {
       lastUrlState.current = {
         initialCategory,
@@ -208,20 +209,112 @@ export default function ShopBrowser({
         initialMood,
         initialPrice,
         initialSort,
+        sizesKey,
+        colorsKey,
+        initialInStock,
       };
       setCategoryState(initialCategory);
       setSubCategory(initialSub);
       setOnlyNew(initialNew);
       setOnlySale(initialSale);
       setQ(initialQuery);
-      setSizes([]);
-      setColors([]);
+      setSizes(sizesKey ? sizesKey.split(",") : []);
+      setColors(colorsKey ? colorsKey.split(",") : []);
       setPriceBand(initialPrice);
       setMood(initialMood);
-      setOnlyInStock(false);
+      setOnlyInStock(initialInStock);
       setSort(initialSort);
     }
-  }, [initialCategory, initialSub, initialNew, initialSale, initialQuery, initialMood, initialPrice, initialSort]);
+  }, [
+    initialCategory,
+    initialSub,
+    initialNew,
+    initialSale,
+    initialQuery,
+    initialMood,
+    initialPrice,
+    initialSort,
+    sizesKey,
+    colorsKey,
+    initialInStock,
+  ]);
+
+  /**
+   * UX plan §3 (R4) — the filters ARE the URL. Every change is written with
+   * `history.replaceState` (no server round-trip, no new history entry), so
+   * the list can be shared as it looks and Back from a product page returns
+   * to the same list: the server page reads the params this wrote. Foreign
+   * params (utm_*, fbclid) are kept. Skipped on the first render — the URL
+   * already produced this state.
+   */
+  const pathname = usePathname() ?? "/shop";
+  const firstUrlSync = useRef(true);
+  const urlState = shopSearchString(
+    { category, sub: subCategory, onlyNew, onlySale, q, mood, price: priceBand, sort, sizes, colors, inStock: onlyInStock },
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+  useEffect(() => {
+    if (firstUrlSync.current) {
+      firstUrlSync.current = false;
+      return;
+    }
+    const next = `${pathname}${urlState}`;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (next === current) return;
+    try {
+      // `null` state lets Next copy its own internals and pick up the new URL.
+      window.history.replaceState(null, "", next);
+    } catch {
+      /* history blocked (sandboxed iframe) — the list still works */
+    }
+  }, [pathname, urlState]);
+
+  /**
+   * Scroll restore (UX plan §3): before a card opens a product page the
+   * list stamps its scroll offset on the current history entry; when that
+   * entry is revisited (Back), the offset is restored once the grid is
+   * there. A push navigation creates a new entry, so it never inherits it.
+   */
+  const rememberScroll = (event: React.MouseEvent<HTMLElement>) => {
+    const anchor = (event.target as Element | null)?.closest?.("a[href^='/product/']");
+    if (!anchor) return;
+    try {
+      window.history.replaceState({ ...(window.history.state ?? {}), [SHOP_SCROLL_KEY]: window.scrollY }, "");
+    } catch {
+      /* ignore */
+    }
+  };
+  useEffect(() => {
+    let y: unknown;
+    try {
+      y = (window.history.state as Record<string, unknown> | null)?.[SHOP_SCROLL_KEY];
+    } catch {
+      return;
+    }
+    if (typeof y !== "number" || y <= 0) return;
+    const target = y;
+    let tries = 0;
+    let frame = 0;
+    const attempt = () => {
+      tries += 1;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (max >= target || tries >= 20) {
+        window.scrollTo({ top: Math.min(target, Math.max(0, max)), behavior: "instant" as ScrollBehavior });
+        try {
+          const rest = { ...(window.history.state ?? {}) } as Record<string, unknown>;
+          delete rest[SHOP_SCROLL_KEY];
+          window.history.replaceState(rest, "");
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      frame = window.requestAnimationFrame(attempt);
+    };
+    frame = window.requestAnimationFrame(attempt);
+    return () => window.cancelAnimationFrame(frame);
+    // Once, on mount: the stamped offset belongs to this history entry only.
+  }, []);
 
   const allSizes = useMemo(
     () => collectSizes(zonedProducts),
@@ -278,9 +371,13 @@ export default function ShopBrowser({
         sorted.sort((a, b) => b.p.price - a.p.price || a.index - b.index);
         break;
       default:
+        // UX plan §3 — the shop's merchandising order, in-stock first;
+        // sold-out pieces close the list instead of opening it.
         sorted.sort(
           (a, b) =>
-            Number(b.p.featured) - Number(a.p.featured) || a.index - b.index,
+            Number(b.p.inStock) - Number(a.p.inStock) ||
+            Number(b.p.featured) - Number(a.p.featured) ||
+            a.index - b.index,
         );
     }
     return sorted.map(({ p }) => p);
@@ -573,8 +670,8 @@ export default function ShopBrowser({
 
   return (
     <div>
-      {/* Toolbar */}
-      <div className="flex flex-col gap-4 border-b border-line pb-6 md:flex-row md:items-center md:justify-between">
+      {/* Toolbar — search + deliver-to; sort/filters live in the sticky bar below. */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="relative w-full md:max-w-sm">
           <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
           <input
@@ -611,39 +708,51 @@ export default function ShopBrowser({
               <IconChevron className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
             </span>
           </label>
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            aria-haspopup="dialog"
-            aria-expanded={drawerOpen}
-            className="inline-flex h-12 shrink-0 items-center gap-2 rounded-sm bg-paper px-4 sm:px-5 text-sm font-medium ring-1 ring-line lg:hidden"
-          >
-            {t("shopBrowser.filters")}
-            {activeFilterCount > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-700 px-1.5 text-[0.65rem] font-bold text-white">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-ink-soft sm:flex-none">
-            <span className="hidden sm:inline">{t("shopBrowser.sort")}</span>
-            <span className="relative min-w-0 flex-1 sm:flex-none">
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-                aria-label={t("shopBrowser.sortAria")}
-                className="h-12 w-full min-w-0 appearance-none rounded-sm bg-paper pl-4 pr-9 text-sm sm:pl-5 sm:pr-10 font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
-              >
-                {SORTS.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <IconChevron className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
-            </span>
-          </label>
         </div>
+      </div>
+
+      {/* UX plan §3 (R4) — sticky compact bar: Filters (n) · count · Sort.
+          Stays under the condensed header while the grid scrolls, so
+          sorting or opening the filters never means scrolling back up. */}
+      <div
+        data-testid="shop-sticky-bar"
+        className="sticky top-14 z-20 -mx-4 mt-4 flex items-center gap-2 border-b border-line/70 bg-ivory-50/92 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-ivory-50/80 sm:top-[4.1rem] sm:gap-3 lg:mx-0 lg:px-0"
+      >
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={drawerOpen}
+          className="inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-paper px-4 text-sm font-medium ring-1 ring-line lg:hidden"
+        >
+          {t("shopBrowser.filters")}
+          {activeFilterCount > 0 && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-700 px-1.5 text-[0.65rem] font-bold text-white">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <span aria-hidden="true" className="min-w-0 flex-1 truncate text-xs text-ink-soft sm:text-sm">
+          {visible.length} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
+        </span>
+        <label className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
+          <span className="hidden sm:inline">{t("shopBrowser.sort")}</span>
+          <span className="relative min-w-0">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label={t("shopBrowser.sortAria")}
+              className="h-11 w-full min-w-0 max-w-[11rem] appearance-none rounded-full bg-paper pl-4 pr-9 text-sm font-medium text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500 sm:max-w-none sm:pl-5 sm:pr-10"
+            >
+              {SORTS.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <IconChevron className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
+          </span>
+        </label>
       </div>
 
       {/* Category chips — phones/tablets only (the desktop sidebar has the
@@ -745,7 +854,10 @@ export default function ShopBrowser({
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
         {onlySale && ` · ${t("shopBrowser.onOffer")}`}
         {q.trim() && ` ${t("shopBrowser.matching")} “${q.trim()}”`}
-        {scopedZone && ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name.split(" — ")[0]}`}
+        {scopedZone &&
+          ` · ${t("shopBrowser.deliverTo")} ${scopedZone.name.split(" — ")[0]} · ${formatBdt(scopedZone.charge)} · ${
+            isCourierZone(scopedZone.id) ? courierEta(lang) : scopedZone.etaLabel
+          }`}
       </p>
 
       {hasActiveFilters && (
@@ -784,7 +896,11 @@ export default function ShopBrowser({
 
         <div className="min-w-0">
           {visible.length > 0 ? (
-            <div className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3" data-list="shop-grid">
+            <div
+              className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3"
+              data-list="shop-grid"
+              onClickCapture={rememberScroll}
+            >
               <ListImpression list="shop-grid" count={visible.length} />
               {visible.map((product) => (
                 <ProductCard key={product.id} product={product} />
