@@ -1709,6 +1709,11 @@ export async function deleteReviewRow(
 
 export interface AdminShop extends Shop {
   productCount: number;
+  /**
+   * A vendor login is attached (apply = sign up, 2026-09-26: every new
+   * application arrives linked; only legacy rows still need "Link vendor").
+   */
+  vendorLinked: boolean;
 }
 
 export async function listShopsFull(
@@ -1733,7 +1738,24 @@ export async function listShopsFull(
       counts.set(r.shop_id, (counts.get(r.shop_id) ?? 0) + 1);
     }
   }
-  return shops.map((s) => ({ ...s, productCount: counts.get(s.id) ?? 0 }));
+  const linked = new Set<string>();
+  if (shops.length > 0) {
+    // Staff read every link (policy "vendor_users admin all"); a failure
+    // here only hides the "Linked" badge, never the queue.
+    const { data: links } = await db
+      .from("vendor_users")
+      .select("shop_id")
+      .in(
+        "shop_id",
+        shops.map((s) => s.id),
+      );
+    for (const l of ((links ?? []) as { shop_id: string }[])) linked.add(l.shop_id);
+  }
+  return shops.map((s) => ({
+    ...s,
+    productCount: counts.get(s.id) ?? 0,
+    vendorLinked: linked.has(s.id),
+  }));
 }
 
 /**

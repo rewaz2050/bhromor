@@ -17,20 +17,33 @@ import type { Category, Product, Shop } from "./catalog";
 import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
 
+/** Why a signed-in user was refused (mirrors VendorDenyReason server-side). */
+export type VendorDenyReason = "none" | "pending" | "suspended";
+
 export class VendorApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  reason?: VendorDenyReason;
+  constructor(message: string, status: number, reason?: VendorDenyReason) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
-const readError = async (res: Response): Promise<string> => {
+const FALLBACK = "Something went wrong — please try again.";
+
+const readError = async (
+  res: Response,
+): Promise<{ message: string; reason?: VendorDenyReason }> => {
   try {
-    const data = (await res.json()) as { error?: string };
-    return data.error || "Something went wrong — please try again.";
+    const data = (await res.json()) as { error?: string; reason?: string };
+    const reason =
+      data.reason === "pending" || data.reason === "suspended" || data.reason === "none"
+        ? data.reason
+        : undefined;
+    return { message: data.error || FALLBACK, reason };
   } catch {
-    return "Something went wrong — please try again.";
+    return { message: FALLBACK };
   }
 };
 
@@ -41,7 +54,10 @@ export const vendorGet = async <T,>(path: string): Promise<T> => {
   } catch {
     throw new VendorApiError("Could not reach the server.", 0);
   }
-  if (!res.ok) throw new VendorApiError(await readError(res), res.status);
+  if (!res.ok) {
+    const { message, reason } = await readError(res);
+    throw new VendorApiError(message, res.status, reason);
+  }
   return (await res.json()) as T;
 };
 
@@ -60,7 +76,10 @@ export const vendorSend = async <T,>(
   } catch {
     throw new VendorApiError("Could not reach the server.", 0);
   }
-  if (!res.ok) throw new VendorApiError(await readError(res), res.status);
+  if (!res.ok) {
+    const { message, reason } = await readError(res);
+    throw new VendorApiError(message, res.status, reason);
+  }
   return (await res.json()) as T;
 };
 
@@ -79,12 +98,20 @@ export interface VendorMe {
 /* Session                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Session probe for the vendor dashboard. `status` is "guest" both for a
+ * signed-out visitor and for a signed-in account the API refused; the
+ * latter also carries `error` (+ `denyReason` — "pending" while the shop
+ * application awaits approval, since apply = sign up as of 2026-09-26) so
+ * the login page can show what to do next instead of a blank form.
+ */
 export const useVendorSession = () => {
   const [me, setMe] = useState<VendorMe | null>(null);
   const [status, setStatus] = useState<"checking" | "authed" | "guest">(
     "checking",
   );
   const [error, setError] = useState<string | null>(null);
+  const [denyReason, setDenyReason] = useState<VendorDenyReason | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!isSupabaseConfigured()) {
@@ -94,6 +121,7 @@ export const useVendorSession = () => {
     }
     setStatus("checking");
     setError(null);
+    setDenyReason(null);
     try {
       const data = await vendorGet<VendorMe>("/api/vendor/me");
       setMe(data);
@@ -103,6 +131,7 @@ export const useVendorSession = () => {
       setStatus("guest");
       if (err instanceof VendorApiError && err.status === 403) {
         setError(err.message);
+        setDenyReason(err.reason ?? "none");
       }
     }
   }, []);
@@ -127,28 +156,15 @@ export const useVendorSession = () => {
     [refresh],
   );
 
-  const signUp = useCallback(
-    async (email: string, password: string): Promise<string | null> => {
-      const client = getSupabaseBrowser();
-      if (!client) return "Vendor sign-up needs Supabase to be configured.";
-      const { error: authError } = await client.auth.signUp({
-        email: email.trim(),
-        password,
-      });
-      if (authError) return authError.message;
-      await refresh();
-      return null;
-    },
-    [refresh],
-  );
-
   const signOut = useCallback(async (): Promise<void> => {
     await getSupabaseBrowser()?.auth.signOut().catch(() => undefined);
     setMe(null);
     setStatus("guest");
+    setError(null);
+    setDenyReason(null);
   }, []);
 
-  return { me, status, error, refresh, signIn, signUp, signOut };
+  return { me, status, error, denyReason, refresh, signIn, signOut };
 };
 
 /* ------------------------------------------------------------------ */

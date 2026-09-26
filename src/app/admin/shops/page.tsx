@@ -45,7 +45,7 @@ function ShopCard({
   const [saving, setSaving] = useState(false);
   const [linkEmail, setLinkEmail] = useState(shop.contactEmail ?? "");
   const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState(false);
+  const [linked, setLinked] = useState(shop.vendorLinked === true);
 
   const save = async () => {
     const pct = Number(commission);
@@ -226,7 +226,9 @@ function ShopCard({
             <span className={label}>Vendor login</span>
             {linked ? (
               <p className="text-xs font-medium text-forest-800">
-                Linked — the vendor can sign in at /vendor once the shop is active.
+                Linked — {shop.contactEmail ? <strong>{shop.contactEmail}</strong> : "the vendor"} signs
+                in at /vendor with the password from the application the moment the shop is
+                approved (active).
               </p>
             ) : (
               <div className="flex flex-col gap-2 sm:flex-row">

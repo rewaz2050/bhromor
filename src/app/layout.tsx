@@ -41,7 +41,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full antialiased">
+    // `lang` is corrected before first paint by the storefront's inline
+    // script (src/app/(site)/layout.tsx) so Bangla typography rules apply
+    // from the very first frame; suppress the attribute-mismatch warning.
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* Media lives on other hosts — warm those connections before the
             catalog images are discovered, especially on mobile networks. */}

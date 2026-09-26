@@ -1,12 +1,16 @@
 /**
- * POST /api/shops/apply — public shop application intake (slice 2).
+ * POST /api/shops/apply — public shop application intake (slice 2; 2026-09-26
+ * apply = sign up).
  *
- * Creates a pending, closed row for the staff queue. Tight rate limit:
- * applications are rare and the endpoint writes to the database. An
- * unconfigured backend answers 503.
+ * The application carries the email + password that become the vendor
+ * login: the account, the pending shop row and the owner link are created
+ * together, and the admin's approval is what opens the dashboard. Tight
+ * rate limit: applications are rare and the endpoint writes to the
+ * database and to Auth. An unconfigured backend answers 503.
  */
 
 import { ShopInputError, applyShop } from "@/lib/db/marketplace";
+import { ApplicantAccountError } from "@/lib/db/applicant-account";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -33,8 +37,8 @@ export async function POST(request: Request) {
     return apiError("Shop applications are not open yet.", 503);
   }
   try {
-    // Signed-in applicants link their login to the application (slice 3):
-    // the staff queue can approve straight into an active vendor account.
+    // A signed-in applicant (an account made under the old two-step flow)
+    // links that login instead of creating a new one.
     let applicantUserId: string | undefined;
     try {
       const session = await getSupabaseServer();
@@ -43,17 +47,21 @@ export async function POST(request: Request) {
     } catch {
       applicantUserId = undefined;
     }
-    const { id } = await applyShop(body, applicantUserId);
+    const fields = (body ?? {}) as Record<string, unknown>;
+    const { id, accountCreated } = await applyShop(body, {
+      applicantUserId,
+      password: typeof fields.password === "string" ? fields.password : undefined,
+    });
     const staffDb = getSupabaseService();
     if (staffDb) {
       const shopName =
-        typeof (body as Record<string, unknown>)?.name === "string"
-          ? String((body as Record<string, unknown>).name).trim().slice(0, 80)
+        typeof fields.name === "string"
+          ? fields.name.trim().slice(0, 80)
           : "A shop";
       await notifyStaff(staffDb, {
         kind: "system",
         title: "New shop application",
-        body: `${shopName} applied to sell on PROSANTI.`,
+        body: `${shopName} applied to sell on PROSANTI — approve it to open their dashboard.`,
         href: "/admin/shops",
       });
     }
@@ -61,14 +69,15 @@ export async function POST(request: Request) {
       {
         applied: true as const,
         id,
-        linked: applicantUserId !== undefined,
+        linked: true as const,
+        account: accountCreated ? ("created" as const) : ("existing" as const),
         message:
-          "Application received — we'll call you back after verification.",
+          "Application received — sign in with this email and password as soon as PROSANTI approves it.",
       },
       201,
     );
   } catch (err) {
-    if (err instanceof ShopInputError) {
+    if (err instanceof ShopInputError || err instanceof ApplicantAccountError) {
       return apiError(err.message, err.status);
     }
     return apiError("Could not save the application.", 503);

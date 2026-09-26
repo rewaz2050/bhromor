@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import NavLinks from "@/components/nav-links-testable";
+import { isNavActive } from "@/components/layout/nav-links";
 
 const mockPathname = vi.fn(() => "/");
 const mockParams = vi.fn(() => new URLSearchParams());
@@ -55,12 +56,34 @@ describe("NavLinks — the desktop menubar", () => {
     expect(current).not.toHaveTextContent("Offers");
   });
 
-  it("keeps Home exact and Sections (categories) home-only", () => {
-    mockPathname.mockReturnValue("/shop");
-    const { container } = renderNav();
-    const links = [...container.querySelectorAll("a")];
-    const categories = links.find((a) => a.textContent === "Categories")!;
-    expect(categories).not.toHaveAttribute("aria-current");
+  it("never marks the Categories jump link as the current page (2026-09-26)", () => {
+    // `/#collections` is an in-page anchor to the home shelf. Lighting it on
+    // the home page read as "you are on the categories page".
+    for (const path of ["/", "/shop"]) {
+      cleanup();
+      mockPathname.mockReturnValue(path);
+      const { container } = renderNav();
+      const links = [...container.querySelectorAll("a")];
+      const categories = links.find((a) => a.textContent === "Categories")!;
+      expect(categories, path).not.toHaveAttribute("aria-current");
+    }
+    // …and nothing at all is current on the home page: the logo is Home.
+    mockPathname.mockReturnValue("/");
+    cleanup();
+    const home = renderNav();
+    expect(home.container.querySelector('[aria-current="page"]')).toBeNull();
+  });
+
+  it("isNavActive — the ownership rules in one place", () => {
+    const params = (q = "") => new URLSearchParams(q);
+    expect(isNavActive("/shop", "/product/x", params())).toBe(true);
+    expect(isNavActive("/shop", "/shop", params("filter=sale"))).toBe(false);
+    expect(isNavActive("/shop?filter=sale", "/shop", params("filter=sale"))).toBe(true);
+    expect(isNavActive("/shop?filter=sale", "/shop", params())).toBe(false);
+    expect(isNavActive("/#collections", "/", params())).toBe(false);
+    expect(isNavActive("/track", "/track/abc", params())).toBe(true);
+    expect(isNavActive("/shops", "/shop", params())).toBe(false);
+    expect(isNavActive("/shop", null, params())).toBe(false);
   });
 
   it("renders Track — reachable from the menubar, not just the footer", () => {

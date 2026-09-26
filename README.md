@@ -44,7 +44,7 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 446 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 1,316 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
@@ -96,6 +96,36 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Image zoom**: hover magnifier on desktop, full-screen pinch / wheel / double-tap lightbox with pan.
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
+
+## Menubar redesign (2026-09-26)
+
+A UI/UX pass on the storefront chrome — the parts every page shares — so it reads like a professional shop and is easier to use, in both languages.
+
+**Desktop header**
+
+- **Categories is a real menu.** Hover or click opens a panel of every category that has pieces (thumbnail, count), the garment types inside each as chips (`/shop?category=…&sub=…`), and an "All products / Offers" footer. Keyboard: `Escape` closes and returns focus; clicking elsewhere or navigating closes it. Until the live catalog answers it is the plain jump to the home shelf it used to be. Data comes from `src/lib/category-menu.ts` (`categoryMenuEntries`), which only lists discoverable pieces and follows the shop's declared sub-category order.
+- **Search you can see.** From 1280px the search trigger is a field-shaped button showing the placeholder ("Panjabi, shirts, gamcha…") instead of a lone magnifier; below that it is the round icon. It is still one button (`aria-label` "Search products") opening the same full-screen search.
+- **Quieter wayfinding.** Nav labels lost their pill boxes; the current section is marked by colour and a gold hairline. The in-page `Categories` jump (`/#collections`) is never marked "current" (it lit up on the home page before, reading as a page you were on). Account is one tap from every desktop page.
+- Language switch is a light hairline pill; the actions read left-to-right as language · search · wishlist · account · bag.
+
+**Phone**
+
+- Announcement bar is always one line (truncates with a title tooltip, no more two-line wrap); the wordmark steps aside below 360px instead of colliding with the language toggle.
+- **Drawer rebuilt:** language row first (P1 #8 stays), Account / Wishlist (with count) / Track Order tiles, Shop · Offers · Shops rows, then **every category with a thumbnail and count** linking into the filtered shop, then Help. Panel is ivory, 88% wide, sticky header with the brand and a close button.
+- Bottom bar: the active tab sits in a soft pill; the bag count is a badge (99+ cap) with a spoken label ("Open bag, 3 items").
+
+**Bengali typography (systemic)**
+
+- `--font-display` now falls back to Noto Serif Bengali, so the 129 `font-display` headings render Bangla in a serif instead of a fallback sans; `:lang(bn)` drops the letter-spacing that spread Bengali conjuncts apart (`tracking-*` and uppercase eyebrows) and removes synthetic italics.
+- `<html lang>` is set **before first paint** by a tiny inline script in the site layout (stored choice, else `bn`), so these rules apply from frame one instead of flipping after hydration. Latin wordmarks/announcements carry `lang="en"` and keep their tracking.
+
+**Found and fixed on the way**
+
+- **The whole storefront remounted about a second after every page load.** `AccountWishlistProvider` switched wrapper element types when the customer-session probe answered, so React threw away the header, page and footer: a search or menu opened in that first second vanished, typed text was dropped, and every entrance animation replayed (the "blink" after load). It now keeps one element and only changes the context value; a device without a cloud client is a guest immediately (no blank-then-jump wishlist count). Regression test: `src/components/account/__tests__/account-wishlist-stability.test.tsx`.
+- The Playwright storefront suite had gone stale against the Bangla-default storefront (English locators, an old dialog name). It now pins the remembered language to English per test, uses the current names and tolerates pages that nest their own `<header>`. It still needs a configured catalog to pass end to end — see `docs/browser-qa.md`.
+- `npm run lint` no longer trips over Playwright's generated report under `.cache/`.
+
+New strings are keyed in en + bn (`header.search`, `categoryMenu.*`, `mobileDrawer.*`). Tests: `src/lib/__tests__/category-menu.test.ts`, `src/components/layout/__tests__/{category-menu,mobile-nav-catalog,nav-links}.test.tsx`.
 
 ## Menubar polish (2026-09-21)
 

@@ -46,7 +46,7 @@ export default function VendorShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLogin = pathname === "/vendor/login";
-  const { me, status, error, signOut } = useVendorSession();
+  const { me, status, error, denyReason, signOut } = useVendorSession();
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -66,21 +66,40 @@ export default function VendorShell({ children }: { children: ReactNode }) {
   }
 
   if (status === "guest") {
+    // A signed-in but refused account (application pending / suspended /
+    // no shop) is told so, with Sign out next to the status link (apply =
+    // sign up, 2026-09-26 — the login page shows the same status card).
+    const denied = error !== null;
     return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center">
         <LogoMark className="mx-auto h-10 w-10" />
         <h1 className="mt-4 font-display text-2xl text-forest-900">
-          Vendor sign-in required
+          {denyReason === "pending"
+            ? "Awaiting approval"
+            : denied
+              ? "No vendor access"
+              : "Vendor sign-in required"}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           {error ?? "Please sign in with your vendor account to continue."}
         </p>
-        <Link
-          href="/vendor/login"
-          className="mt-6 inline-flex items-center rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900"
-        >
-          Go to sign-in
-        </Link>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/vendor/login"
+            className="inline-flex min-h-11 items-center rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900"
+          >
+            {denied ? "See status" : "Go to sign-in"}
+          </Link>
+          {denied && (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="inline-flex min-h-11 items-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line hover:bg-cream"
+            >
+              Sign out
+            </button>
+          )}
+        </div>
       </div>
     );
   }

@@ -17,6 +17,11 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
+import {
+  assertApplicantPassword,
+  createApplicantAccount,
+  deleteApplicantAccount,
+} from "./applicant-account";
 import { toDomainMany } from "./orders";
 import { AdminInputError } from "./admin";
 import type {
@@ -122,26 +127,33 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BD_PHONE_RE = /^01\d{9}$/;
 const VEHICLES = new Set(["bicycle", "bike", "scooter"]);
 
-/** A rider application → a `pending` row. One account owns one rider. */
+/** What an application needs besides the form fields. */
+export interface RiderApplyOptions {
+  /** A signed-in applicant (legacy two-step flow) links that login. */
+  applicantUserId?: string;
+  /** Otherwise the application IS the sign-up: this becomes the login. */
+  password?: string;
+}
+
+export interface RiderApplyResult {
+  id: string;
+  userId: string;
+  /** False when an existing login with the same email + password was reused. */
+  accountCreated: boolean;
+}
+
+/**
+ * A rider application → a `pending` row WITH its login (2026-09-26: apply =
+ * sign up). The email + password from the form become the account, linked
+ * as `user_id` right away; staff approval (status → active) is what opens
+ * the rider app. One account owns one rider.
+ */
 export async function applyRider(
   raw: unknown,
-  applicantUserId?: string,
-): Promise<{ id: string }> {
+  opts: RiderApplyOptions = {},
+): Promise<RiderApplyResult> {
   const db = getSupabaseService();
   if (!db) throw new Error("rider intake unavailable");
-  if (applicantUserId) {
-    const { data: existing } = await db
-      .from("riders")
-      .select("id")
-      .eq("user_id", applicantUserId)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      throw new RiderInputError(
-        "This account is already a rider — sign in to the rider app instead.",
-        409,
-      );
-    }
-  }
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
@@ -173,6 +185,12 @@ export async function applyRider(
   if (zoneIds.length === 0) {
     throw new RiderInputError("Choose at least one delivery zone.");
   }
+  // Checked before anything is written so a typo never leaves a half-made
+  // application behind.
+  const password = opts.applicantUserId
+    ? null
+    : assertApplicantPassword(opts.password);
+
   const { data: zones } = await db.from("delivery_zones").select("id,active");
   const live = new Set(
     ((zones ?? []) as { id: string; active: boolean }[])
@@ -191,15 +209,50 @@ export async function applyRider(
     .limit(1);
   if (dupe && dupe.length > 0) {
     throw new RiderInputError(
-      "This phone or email already has a rider application — we'll be in touch.",
+      "This phone or email already has a rider application — sign in at /rider/login once it is approved.",
       409,
     );
+  }
+
+  // One login is one rider.
+  const alreadyRider = async (userId: string): Promise<boolean> => {
+    const { data: existing } = await db
+      .from("riders")
+      .select("id")
+      .eq("user_id", userId)
+      .limit(1);
+    return !!existing && existing.length > 0;
+  };
+  if (opts.applicantUserId && (await alreadyRider(opts.applicantUserId))) {
+    throw new RiderInputError(
+      "This account is already a rider — sign in to the rider app instead.",
+      409,
+    );
+  }
+
+  let userId = opts.applicantUserId ?? "";
+  let accountCreated = false;
+  if (!userId) {
+    const account = await createApplicantAccount(db, {
+      email,
+      password: password as string,
+      name,
+      kind: "rider",
+    });
+    userId = account.userId;
+    accountCreated = account.created;
+    if (!accountCreated && (await alreadyRider(userId))) {
+      throw new RiderInputError(
+        "This login is already a rider — sign in to the rider app instead.",
+        409,
+      );
+    }
   }
 
   const { data, error } = await db
     .from("riders")
     .insert({
-      user_id: applicantUserId ?? null,
+      user_id: userId,
       name,
       phone,
       contact_email: email,
@@ -210,8 +263,11 @@ export async function applyRider(
     })
     .select("id")
     .single();
-  if (error || !data) throw new Error("rider application failed");
-  return { id: (data as { id: string }).id };
+  if (error || !data) {
+    if (accountCreated) await deleteApplicantAccount(db, userId);
+    throw new Error("rider application failed");
+  }
+  return { id: (data as { id: string }).id, userId, accountCreated };
 }
 
 /* ------------------------------------------------------------------ */

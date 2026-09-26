@@ -110,6 +110,12 @@ export interface Rider {
   phone: string;
   /** Login email — STAFF ONLY. Never sent to riders or the storefront. */
   contactEmail?: string;
+  /**
+   * A login account is attached (`riders.user_id`). Applications arrive
+   * linked since 2026-09-26 (apply = sign up); only legacy or manually
+   * created rows still need the admin "Link rider" step.
+   */
+  hasLogin?: boolean;
   vehicle: "bicycle" | "bike" | "scooter";
   zoneIds: string[];
   status: "pending" | "active" | "suspended";

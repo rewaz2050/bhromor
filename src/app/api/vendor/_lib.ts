@@ -29,7 +29,11 @@ export const vendorRoute = (
       vendor = await requireVendor();
     } catch (err) {
       if (err instanceof VendorAuthError) {
-        return apiError(err.message, err.status);
+        return apiError(
+          err.message,
+          err.status,
+          err.reason ? { reason: err.reason } : undefined,
+        );
       }
       return apiError("Vendor check failed.", 503);
     }

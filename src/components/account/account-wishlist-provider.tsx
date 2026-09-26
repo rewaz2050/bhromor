@@ -41,10 +41,18 @@ export function AccountWishlistProvider({
   authLoading: boolean;
   children: React.ReactNode;
 }) {
-  if (!authLoading && (!client || !userId))
-    return <Context.Provider value={null}>{children}</Context.Provider>;
+  // Guest (device list) when there is no cloud client at all — nothing to
+  // wait for — or once the session probe has answered without a user.
+  // While a cloud client is still resolving the session, the account list
+  // stays authoritative so a signed-in shopper never sees guest data flash.
+  const guest = !client || (!authLoading && !userId);
+  // One element type at this position, always. This used to switch between
+  // a bare provider and <CloudWishlist> when the probe settled, which
+  // remounted the entire storefront under it (header, page, footer) about a
+  // second after load — closing whatever the shopper had just opened,
+  // dropping typed text and replaying every entrance animation.
   return (
-    <CloudWishlist client={client} userId={userId}>
+    <CloudWishlist client={client} userId={userId} guest={guest}>
       {children}
     </CloudWishlist>
   );
@@ -53,10 +61,12 @@ export function AccountWishlistProvider({
 function CloudWishlist({
   client,
   userId,
+  guest,
   children,
 }: {
   client: SupabaseClient | null;
   userId: string | null;
+  guest: boolean;
   children: React.ReactNode;
 }) {
   const [ids, setIds] = useState<string[]>([]);
@@ -136,16 +146,20 @@ function CloudWishlist({
 
   return (
     <Context.Provider
-      value={{
-        ids,
-        ready,
-        busy,
-        error,
-        toggle,
-        clear,
-        importGuest,
-        refresh: run,
-      }}
+      value={
+        guest
+          ? null
+          : {
+              ids,
+              ready,
+              busy,
+              error,
+              toggle,
+              clear,
+              importGuest,
+              refresh: run,
+            }
+      }
     >
       {children}
     </Context.Provider>

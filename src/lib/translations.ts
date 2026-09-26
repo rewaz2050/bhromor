@@ -32,6 +32,10 @@ export const translations = {
       noMatches: "No matches just yet",
       noMatchesText: "Try a product name like panjabi or gamcha, or explore the full collection.",
       browseAll: "Browse all products",
+      search: "Search",
+    },
+    categoryMenu: {
+      label: "Browse by category",
     },
     hero: {
       eyebrow: "PROSANTI",
@@ -218,6 +222,13 @@ export const translations = {
     mobileDrawer: {
       discover: "Discover",
       explore: "Explore",
+      shopByCategory: "Shop by category",
+      help: "Help & information",
+      account: "Account",
+      wishlist: "Wishlist",
+      language: "Language",
+      sellWithUs: "Sell with us",
+      becomeRider: "Become a rider",
       rooted: "Rooted in Bangladesh. Designed for today.",
       premium: "Premium essentials, calm delivery.",
       customerCare: "Customer care",
@@ -704,6 +715,10 @@ export const translations = {
       noMatches: "এখনো কোনো ফলাফল নেই",
       noMatchesText: "পাঞ্জাবি বা গামছার মতো নাম দিয়ে চেষ্টা করুন, অথবা পুরো কালেকশন দেখুন।",
       browseAll: "সব পণ্য দেখুন",
+      search: "খুঁজুন",
+    },
+    categoryMenu: {
+      label: "ক্যাটাগরি অনুযায়ী দেখুন",
     },
     hero: {
       eyebrow: "প্রশান্তি",
@@ -890,6 +905,13 @@ export const translations = {
     mobileDrawer: {
       discover: "আবিষ্কার করুন",
       explore: "আরও দেখুন",
+      shopByCategory: "ক্যাটাগরি অনুযায়ী কিনুন",
+      help: "সহায়তা ও তথ্য",
+      account: "অ্যাকাউন্ট",
+      wishlist: "পছন্দের তালিকা",
+      language: "ভাষা",
+      sellWithUs: "দোকানদার রেজিস্ট্রেশন",
+      becomeRider: "রাইডার হোন",
       rooted: "বাংলাদেশের শেকড়ে, আজকের জন্য ডিজাইন।",
       premium: "প্রিমিয়াম অপরিহার্য, নির্ভরযোগ্য ডেলিভারি।",
       customerCare: "কাস্টমার কেয়ার",
@@ -1348,6 +1370,7 @@ export const translations = {
 export type TranslationKey =
   | `nav.${keyof typeof translations.en.nav}`
   | `header.${keyof typeof translations.en.header}`
+  | `categoryMenu.${keyof typeof translations.en.categoryMenu}`
   | `hero.${keyof typeof translations.en.hero}`
   | `collections.${keyof typeof translations.en.collections}`
   | `bestSellers.${keyof typeof translations.en.bestSellers}`

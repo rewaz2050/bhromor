@@ -12,6 +12,8 @@ import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export interface AdminShopClient extends Shop {
   productCount: number;
+  /** A vendor login is attached (applications arrive linked since 2026-09-26). */
+  vendorLinked?: boolean;
 }
 
 export function useShops() {

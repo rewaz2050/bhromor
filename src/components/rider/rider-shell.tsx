@@ -16,7 +16,7 @@ import { useRiderSession } from "@/lib/use-rider";
 export default function RiderShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { status, error, signOut } = useRiderSession();
+  const { status, error, denyReason, signOut } = useRiderSession();
   const isLogin = pathname === "/rider/login";
   const isApply = pathname === "/rider/apply";
 
@@ -38,13 +38,21 @@ export default function RiderShell({ children }: { children: ReactNode }) {
   }
 
   if (status === "guest") {
+    // A signed-in but refused account (application pending / suspended /
+    // no rider row) is told so, with Sign out instead of a login link that
+    // would only show the same status again (apply = sign up, 2026-09-26).
+    const denied = error !== null;
     return (
       <div className="mx-auto max-w-md px-6 py-16 text-center">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-forest-800 text-gold-300 ring-2 ring-gold-400/30">
           <LogoMark className="h-7 w-7" />
         </span>
         <h1 className="font-display mt-4 text-2xl font-bold text-forest-900">
-          রাইডার লগইন প্রয়োজন
+          {denyReason === "pending"
+            ? "অনুমোদনের অপেক্ষায়"
+            : denied
+              ? "রাইডার অ্যাক্সেস নেই"
+              : "রাইডার লগইন প্রয়োজন"}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           {error ?? "এই পেইজ দেখতে রাইডার অ্যাকাউন্ট দিয়ে সাইন ইন করুন।"}
@@ -54,8 +62,17 @@ export default function RiderShell({ children }: { children: ReactNode }) {
             href="/rider/login"
             className="inline-flex h-11 items-center rounded-full bg-forest-800 px-5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
           >
-            লগইন করুন
+            {denied ? "স্ট্যাটাস দেখুন" : "লগইন করুন"}
           </Link>
+          {denied && (
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="inline-flex h-11 items-center rounded-full border border-line bg-paper px-5 text-xs font-semibold text-ink-soft hover:bg-ivory-100"
+            >
+              সাইন আউট
+            </button>
+          )}
           <button
             type="button"
             onClick={() => router.replace("/")}

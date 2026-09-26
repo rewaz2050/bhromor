@@ -11,6 +11,11 @@ import "server-only";
 
 import { getSupabaseService } from "../supabase-server";
 import type { Shop } from "../catalog";
+import {
+  assertApplicantPassword,
+  createApplicantAccount,
+  deleteApplicantAccount,
+} from "./applicant-account";
 import { toPublicShop } from "../shop-utils";
 import { mapShop } from "./mappers";
 import type { DbShop } from "./types";
@@ -51,37 +56,46 @@ export async function listPublicShops(zoneId?: string): Promise<Shop[] | null> {
   return shops.filter((s) => s.zoneIds.includes(zoneId));
 }
 
+/** What an application needs besides the form fields. */
+export interface ApplyOptions {
+  /** A signed-in applicant (legacy two-step flow) links that login. */
+  applicantUserId?: string;
+  /** Otherwise the application IS the sign-up: this becomes the login. */
+  password?: string;
+}
+
+export interface ApplyResult {
+  id: string;
+  userId: string;
+  /** False when an existing login with the same email + password was reused. */
+  accountCreated: boolean;
+}
+
 /**
- * Shop application intake. Creates a pending, closed row for the staff
- * queue — never active, never open, no vendor login (slice 3 links the
- * vendor account at approval time via contact_email).
+ * Shop application intake (2026-09-26: apply = sign up).
+ *
+ * One form: shop details + email + password. Creates the login (email
+ * pre-confirmed), the pending, closed shop row and the owner link in one
+ * go — so the moment staff approves, the same email + password opens the
+ * vendor dashboard. Never active, never open. A signed-in applicant skips
+ * the account step and links the current login instead.
  */
 export async function applyShop(
   raw: unknown,
-  applicantUserId?: string,
-): Promise<{ id: string }> {
+  opts: ApplyOptions = {},
+): Promise<ApplyResult> {
   const db = getSupabaseService();
   if (!db) throw new Error("shop intake unavailable");
-  // A signed-in applicant links their login to the application immediately —
-  // one account owns at most one shop, so an existing link rejects early.
-  if (applicantUserId) {
-    const { data: existing } = await db
-      .from("vendor_users")
-      .select("shop_id")
-      .eq("user_id", applicantUserId)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      throw new ShopInputError(
-        "This account already has a shop — sign in to the vendor dashboard instead.",
-        409,
-      );
-    }
-  }
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
+  const tagline = clean(b.tagline, 200);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
   const email = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const address = clean(b.address, 300);
+  const prepRaw = Number(b.prepMinutes ?? b.prep_minutes);
+  const prepMinutes = Number.isFinite(prepRaw)
+    ? Math.max(5, Math.min(240, Math.floor(prepRaw)))
+    : 15;
   const zoneIds = Array.isArray(b.zoneIds)
     ? [...new Set(b.zoneIds.filter((z): z is string => typeof z === "string").map((z) => z.trim()).filter(Boolean))].slice(0, 12)
     : [];
@@ -91,11 +105,17 @@ export async function applyShop(
     throw new ShopInputError("A valid Bangladeshi mobile number is required.");
   }
   if (!EMAIL_RE.test(email)) {
-    throw new ShopInputError("A valid contact email is required.");
+    throw new ShopInputError("A valid email is required — it becomes your dashboard login.");
   }
   if (zoneIds.length === 0) {
     throw new ShopInputError("Choose at least one delivery zone.");
   }
+  // The password is checked before anything is written so a typo never
+  // leaves a half-made application behind.
+  const password = opts.applicantUserId
+    ? null
+    : assertApplicantPassword(opts.password);
+
   const { data: zones } = await db.from("delivery_zones").select("id,active");
   const live = new Set(
     ((zones ?? []) as { id: string; active: boolean }[])
@@ -114,10 +134,48 @@ export async function applyShop(
     .limit(1);
   if (dupe && dupe.length > 0) {
     throw new ShopInputError(
-      "This email already has a shop application — we'll be in touch.",
+      "This email already has a shop application — sign in at /vendor/login once it is approved.",
       409,
     );
   }
+
+  // One login owns at most one shop.
+  const alreadyVendor = async (userId: string): Promise<boolean> => {
+    const { data: existing } = await db
+      .from("vendor_users")
+      .select("shop_id")
+      .eq("user_id", userId)
+      .limit(1);
+    return !!existing && existing.length > 0;
+  };
+  if (opts.applicantUserId && (await alreadyVendor(opts.applicantUserId))) {
+    throw new ShopInputError(
+      "This account already has a shop — sign in to the vendor dashboard instead.",
+      409,
+    );
+  }
+
+  let userId = opts.applicantUserId ?? "";
+  let accountCreated = false;
+  if (!userId) {
+    const account = await createApplicantAccount(db, {
+      email,
+      password: password as string,
+      name,
+      kind: "vendor",
+    });
+    userId = account.userId;
+    accountCreated = account.created;
+    if (!accountCreated && (await alreadyVendor(userId))) {
+      throw new ShopInputError(
+        "This login already runs a shop — sign in to the vendor dashboard instead.",
+        409,
+      );
+    }
+  }
+  const undoAccount = async () => {
+    if (accountCreated) await deleteApplicantAccount(db, userId);
+  };
 
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "shop";
   let slug = base;
@@ -131,28 +189,32 @@ export async function applyShop(
     .insert({
       slug,
       name,
+      tagline,
       phone,
       contact_email: email,
       address,
       zone_ids: zoneIds,
-      prep_minutes: 15,
+      prep_minutes: prepMinutes,
       commission_pct: 15,
       status: "pending",
       is_open: false,
     })
     .select("id")
     .single();
-  if (error || !data) throw new Error("shop application failed");
-  const shopId = (data as { id: string }).id;
-  if (applicantUserId) {
-    const { error: linkError } = await db.from("vendor_users").insert({
-      user_id: applicantUserId,
-      shop_id: shopId,
-      role: "owner",
-    });
-    if (linkError && linkError.code !== "23505") {
-      throw new Error("shop application link failed");
-    }
+  if (error || !data) {
+    await undoAccount();
+    throw new Error("shop application failed");
   }
-  return { id: shopId };
+  const shopId = (data as { id: string }).id;
+  const { error: linkError } = await db.from("vendor_users").insert({
+    user_id: userId,
+    shop_id: shopId,
+    role: "owner",
+  });
+  if (linkError && linkError.code !== "23505") {
+    await db.from("shops").delete().eq("id", shopId);
+    await undoAccount();
+    throw new Error("shop application link failed");
+  }
+  return { id: shopId, userId, accountCreated };
 }

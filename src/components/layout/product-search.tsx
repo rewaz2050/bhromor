@@ -28,20 +28,26 @@ export default function ProductSearch() {
     : PRODUCTS.filter((product) => product.featured).slice(0, 3);
   const close = () => setOpen(false);
 
+  const openSearch = () => {
+    setQuery("");
+    setOpen(true);
+  };
+
   return (
     <>
+      {/* One trigger, two looks (CSS): a round icon where the bar is tight,
+          and from xl up a field-shaped button showing the placeholder —
+          people recognise an input at a glance; a lone magnifier is a guess. */}
       <button
         type="button"
         aria-label={t("header.searchProducts")}
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => {
-          setQuery("");
-          setOpen(true);
-        }}
-        className="header-icon-btn flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft hover:text-forest-900"
+        onClick={openSearch}
+        className="header-search-trigger"
       >
-        <IconSearch className="h-[1.15rem] w-[1.15rem]" />
+        <IconSearch className="h-[1.15rem] w-[1.15rem] shrink-0" />
+        <span className="header-search-label">{t("header.searchPlaceholder")}</span>
       </button>
       <Drawer
         open={open}

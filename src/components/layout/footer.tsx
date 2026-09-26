@@ -53,7 +53,7 @@ export default function Footer() {
               </p>
               <h2 className="mt-4 font-display text-3xl font-normal sm:text-4xl">
                 {t("footer.stayClose")}{" "}
-                <span className="italic text-gold-200">PROSANTI.</span>
+                <span lang="en" className="italic text-gold-200">PROSANTI.</span>
               </h2>
               <p className="mt-3 max-w-md text-sm leading-7 text-ivory-100/65">
                 {t("footer.newsletterText")}
@@ -109,7 +109,7 @@ export default function Footer() {
               <LogoMark className="h-[2.15rem] w-auto" />
             </span>
             <span className="flex flex-col leading-none">
-              <span className="font-display text-2xl font-semibold tracking-[0.14em]">
+              <span lang="en" className="font-display text-2xl font-semibold tracking-[0.14em]">
                 PROSANTI
               </span>
               <span className="font-bengali mt-1 text-[0.65rem] tracking-wide text-ivory-100/60">

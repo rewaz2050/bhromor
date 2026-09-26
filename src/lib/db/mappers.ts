@@ -224,6 +224,7 @@ export const mapRider = (row: DbRider): Rider => ({
   name: row.name,
   phone: row.phone,
   contactEmail: row.contact_email || undefined,
+  hasLogin: typeof row.user_id === "string" && row.user_id.length > 0,
   vehicle: row.vehicle,
   zoneIds: [...row.zone_ids],
   status: row.status,

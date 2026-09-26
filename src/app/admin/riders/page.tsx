@@ -61,7 +61,7 @@ function RiderCard({
   const [saving, setSaving] = useState(false);
   const [linkEmail, setLinkEmail] = useState(rider.contactEmail ?? "");
   const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState(false);
+  const [linked, setLinked] = useState(rider.hasLogin === true);
 
   const save = async () => {
     const cleanedName = name.trim();
@@ -266,7 +266,9 @@ function RiderCard({
             <span className={label}>Rider login</span>
             {linked ? (
               <p className="text-xs font-medium text-forest-800">
-                Linked — the rider can sign in to /rider once the account is active.
+                Linked — {rider.contactEmail ? <strong>{rider.contactEmail}</strong> : "the rider"} signs
+                in at /rider with the password from the application the moment the account is
+                approved (active).
               </p>
             ) : (
               <div className="flex flex-col gap-2 sm:flex-row">

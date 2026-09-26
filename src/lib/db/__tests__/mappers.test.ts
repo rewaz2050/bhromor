@@ -347,6 +347,8 @@ describe("mapRider (marketplace slice 6)", () => {
       name: "Tanvir Rahman",
       phone: "01811111111",
       contactEmail: undefined,
+      // apply = sign up (2026-09-26): an unlinked legacy row shows no login
+      hasLogin: false,
       vehicle: "bicycle",
       zoneIds: ["z1", "z2"],
       status: "pending",
@@ -363,6 +365,26 @@ describe("mapRider (marketplace slice 6)", () => {
       availability: { days: null, fromHour: null, toHour: null },
     });
     expect(rider.zoneIds).not.toBe(row.zone_ids);
+  });
+
+  it("flags a linked login from user_id (apply = sign up, 2026-09-26)", () => {
+    expect(
+      mapRider({
+        id: "rider-uuid-2",
+        user_id: "auth-user-1",
+        name: "Tanvir Rahman",
+        phone: "01811111112",
+        contact_email: "tanvir@example.com",
+        vehicle: "bike",
+        zone_ids: [],
+        status: "pending",
+        is_online: false,
+        cash_in_hand: 0,
+        rating_avg: 0,
+        rating_count: 0,
+        created_at: "2026-09-26T00:00:00.000Z",
+      }).hasLogin,
+    ).toBe(true);
   });
 
   it("maps a saved night shift onto the rider (P2 #22)", () => {

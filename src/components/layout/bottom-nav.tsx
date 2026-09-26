@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/components/cart/cart-provider";
-import { IconBag, IconBox, IconClock } from "@/components/ui/icons";
+import { IconBag, IconBox, IconClock, IconHome } from "@/components/ui/icons";
 import MobileNav from "./mobile-nav";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useCustomer } from "@/lib/use-customer";
@@ -32,6 +32,11 @@ export const activeTab = (path: string | null, href: string): boolean => {
   return false;
 };
 
+/**
+ * Thumb-reach navigation on phones and tablets (§67). Menubar redesign
+ * 2026-09-26: the current tab wears a soft pill behind its icon and the bag
+ * count is a badge on the icon instead of "(2)" glued to the label.
+ */
 export default function BottomNav() {
   const { t } = useLanguage();
   const path = usePathname();
@@ -45,27 +50,10 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Quick navigation"
-      className="storefront-bottom-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-ivory-50 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="storefront-bottom-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-ivory-50/95 pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-ivory-50/85 lg:hidden"
     >
       {[
-        {
-          href: "/",
-          label: t("bottomNav.home"),
-          icon: (
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-5 w-5"
-            >
-              <path d="m3 10 9-7 9 7v10H15v-7H9v7H3Z" />
-            </svg>
-          ),
-        },
+        { href: "/", label: t("bottomNav.home"), icon: <IconHome className="h-5 w-5" /> },
         { href: "/shop", label: t("bottomNav.shop"), icon: <IconBox className="h-5 w-5" /> },
         {
           href: ordersHref,
@@ -76,26 +64,33 @@ export default function BottomNav() {
       ].map((item) => {
         const active = activeTab(path, item.href);
         return (
-        <Link
-          key={item.href}
-          href={item.href}
-          aria-current={active ? "page" : undefined}
-          data-testid={"testId" in item ? item.testId : undefined}
-          className={`flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] ${active ? "text-forest-900" : "text-ink-soft"}`}
-        >
-          {item.icon}
-          {item.label}
-        </Link>
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            data-testid={"testId" in item ? item.testId : undefined}
+            className="flex min-h-16 flex-col items-center justify-center gap-1"
+          >
+            <span className="tab-icon">{item.icon}</span>
+            <span>{item.label}</span>
+          </Link>
         );
       })}
       <button
         onClick={openBag}
         aria-label={`Open bag, ${itemCount} items`}
         aria-haspopup="dialog"
-        className="flex min-h-16 flex-col items-center justify-center gap-1 text-[10px] text-ink-soft"
+        className="flex min-h-16 flex-col items-center justify-center gap-1"
       >
-        <IconBag className="h-5 w-5" />
-        {t("bottomNav.bag")}{itemCount > 0 ? ` (${itemCount})` : ""}
+        <span className="tab-icon">
+          <IconBag className="h-5 w-5" />
+          {itemCount > 0 && (
+            <span className="tab-badge" aria-hidden="true">
+              {itemCount > 99 ? "99+" : itemCount}
+            </span>
+          )}
+        </span>
+        <span>{t("bottomNav.bag")}</span>
       </button>
       <MobileNav bottom />
     </nav>

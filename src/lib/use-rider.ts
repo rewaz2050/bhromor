@@ -27,20 +27,33 @@ export const RIDER_JOBS_POLL_MS = 15_000;
  */
 export const RIDER_JOBS_POLL_BACKUP_MS = 120_000;
 
+/** Why a signed-in user was refused (mirrors RiderDenyReason server-side). */
+export type RiderDenyReason = "none" | "pending" | "suspended";
+
 export class RiderApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  reason?: RiderDenyReason;
+  constructor(message: string, status: number, reason?: RiderDenyReason) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
-const readError = async (res: Response): Promise<string> => {
+const FALLBACK = "Something went wrong — please try again.";
+
+const readError = async (
+  res: Response,
+): Promise<{ message: string; reason?: RiderDenyReason }> => {
   try {
-    const data = (await res.json()) as { error?: string };
-    return data.error || "Something went wrong — please try again.";
+    const data = (await res.json()) as { error?: string; reason?: string };
+    const reason =
+      data.reason === "pending" || data.reason === "suspended" || data.reason === "none"
+        ? data.reason
+        : undefined;
+    return { message: data.error || FALLBACK, reason };
   } catch {
-    return "Something went wrong — please try again.";
+    return { message: FALLBACK };
   }
 };
 
@@ -60,7 +73,10 @@ const riderFetch = async <T,>(
   } catch {
     throw new RiderApiError("Could not reach the server.", 0);
   }
-  if (!res.ok) throw new RiderApiError(await readError(res), res.status);
+  if (!res.ok) {
+    const { message, reason } = await readError(res);
+    throw new RiderApiError(message, res.status, reason);
+  }
   return (await res.json()) as T;
 };
 
@@ -69,6 +85,13 @@ export const riderErrorMessage = (err: unknown): string =>
     ? err.message
     : "Something went wrong — please try again.";
 
+/**
+ * Session probe for the rider app. `status` is "guest" both for a signed-out
+ * visitor and for a signed-in account the API refused; the latter also
+ * carries `error` (+ `denyReason` — "pending" while the application awaits
+ * approval, since apply = sign up as of 2026-09-26) so the login page can
+ * show what to do next instead of bouncing between /rider and /rider/login.
+ */
 export const useRiderSession = () => {
   const [rider, setRider] = useState<Rider | null>(null);
   const [email, setEmail] = useState("");
@@ -76,10 +99,12 @@ export const useRiderSession = () => {
     "checking" | "authed" | "guest"
   >("checking");
   const [error, setError] = useState<string | null>(null);
+  const [denyReason, setDenyReason] = useState<RiderDenyReason | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     setStatus((prev) => (prev === "authed" ? prev : "checking"));
     setError(null);
+    setDenyReason(null);
     try {
       const data = await riderFetch<{ rider: Rider; email: string }>(
         "/api/rider/me",
@@ -93,6 +118,7 @@ export const useRiderSession = () => {
       setStatus("guest");
       if (err instanceof RiderApiError && err.status === 403) {
         setError(err.message);
+        setDenyReason(err.reason ?? "none");
       }
     }
   }, []);
@@ -117,26 +143,13 @@ export const useRiderSession = () => {
     [refresh],
   );
 
-  const signUp = useCallback(
-    async (loginEmail: string, password: string): Promise<string | null> => {
-      const client = getSupabaseBrowser();
-      if (!client) return "Rider sign-up needs Supabase to be configured.";
-      const { error: authError } = await client.auth.signUp({
-        email: loginEmail.trim(),
-        password,
-      });
-      if (authError) return authError.message;
-      await refresh();
-      return null;
-    },
-    [refresh],
-  );
-
   const signOut = useCallback(async (): Promise<void> => {
     await getSupabaseBrowser()?.auth.signOut().catch(() => undefined);
     setRider(null);
     setEmail("");
     setStatus("guest");
+    setError(null);
+    setDenyReason(null);
   }, []);
 
   /** P2 #22 — save the rider's own shift; auto-dispatch honours it. */
@@ -157,7 +170,17 @@ export const useRiderSession = () => {
     [refresh],
   );
 
-  return { rider, email, status, error, refresh, signIn, signUp, signOut, setAvailability };
+  return {
+    rider,
+    email,
+    status,
+    error,
+    denyReason,
+    refresh,
+    signIn,
+    signOut,
+    setAvailability,
+  };
 };
 
 export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {

@@ -19,6 +19,14 @@ import InstallPrompt from "@/components/layout/install-prompt";
 import { storefrontJsonLd } from "@/lib/marketing-feeds";
 import { siteBaseUrl } from "@/lib/site-url";
 
+/**
+ * Runs before hydration; mirrors LanguageProvider's lookup (localStorage,
+ * then cookie, else Bangla). The key is spelled out because importing it
+ * from the "use client" provider would hand this server file a client
+ * reference, not the string. Keep in step with LANGUAGE_STORAGE_KEY.
+ */
+const LANG_BOOTSTRAP = `try{var s=localStorage.getItem("prosanti-lang");var m=/(?:^|;\\s*)prosanti-lang=(en|bn)/.exec(document.cookie);document.documentElement.lang=s==="en"||s==="bn"?s:m?m[1]:"bn"}catch(e){document.documentElement.lang="bn"}`;
+
 /** Public PROSANTI storefront chrome (route group `(site)`). */
 export const metadata: Metadata = {
   title: {
@@ -69,6 +77,13 @@ export default function SiteLayout({
     // (header on every width, drawer, bottom sheet) flips to English and the
     // choice is remembered on this device.
     <LanguageProvider initialLang="bn">
+      {/* Menubar redesign (2026-09-26): set <html lang> before the first
+          paint (stored choice, else Bangla) so the :lang(bn) typography rules
+          in globals.css — display fallback, no letter-spacing — apply from
+          frame one instead of flipping after hydration. */}
+      <script
+        dangerouslySetInnerHTML={{ __html: LANG_BOOTSTRAP }}
+      />
       {/* Search engines & Meta: who runs this storefront. Only real facts —
           address/phone join here when the shop profile actually has them. */}
       <script

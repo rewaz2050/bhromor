@@ -3,8 +3,9 @@
  *
  * Mirrors staff-auth.ts: verifies the Supabase session server-side, then
  * checks the `vendor_users` table. No session → 401; signed-in non-vendor →
- * 403; vendor of a non-active shop → 403 (suspended shops lose API access
- * the moment staff flips the status).
+ * 403; vendor of a non-active shop → 403 with a `reason` the login page can
+ * show — `pending` while the application awaits approval (apply = sign up,
+ * 2026-09-26), `suspended` once staff has flipped the status.
  */
 
 import "server-only";
@@ -22,11 +23,16 @@ export interface VendorContext {
   db: SupabaseClient;
 }
 
+/** Why a signed-in user is refused — drives the pending card on /vendor/login. */
+export type VendorDenyReason = "none" | "pending" | "suspended";
+
 export class VendorAuthError extends Error {
   status: 401 | 403;
-  constructor(message: string, status: 401 | 403) {
+  reason?: VendorDenyReason;
+  constructor(message: string, status: 401 | 403, reason?: VendorDenyReason) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -43,7 +49,7 @@ export async function requireVendor(): Promise<VendorContext> {
     .eq("user_id", data.user.id)
     .single();
   if (linkError || !link) {
-    throw new VendorAuthError("This account has no vendor access.", 403);
+    throw new VendorAuthError("This account has no vendor access.", 403, "none");
   }
   const shopId = (link as { shop_id: string }).shop_id;
   const { data: shop } = await db
@@ -51,10 +57,19 @@ export async function requireVendor(): Promise<VendorContext> {
     .select("status")
     .eq("id", shopId)
     .single();
-  if ((shop as { status: string } | null)?.status !== "active") {
+  const shopStatus = (shop as { status: string } | null)?.status;
+  if (shopStatus === "pending") {
     throw new VendorAuthError(
-      "This shop is not active — contact PROSANTI support.",
+      "Your shop application is awaiting PROSANTI's approval — this login opens the dashboard the moment it is confirmed.",
       403,
+      "pending",
+    );
+  }
+  if (shopStatus !== "active") {
+    throw new VendorAuthError(
+      "This shop is suspended — contact PROSANTI support.",
+      403,
+      "suspended",
     );
   }
   return {

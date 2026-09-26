@@ -5,7 +5,7 @@ import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import CartButton from "./cart-button";
 import MobileNav from "./mobile-nav";
-import NavLinks from "./nav-links";
+import NavLinks, { type NavItem } from "./nav-links";
 import WishlistButton from "./wishlist-button";
 import AnnouncementBar from "./announcement-bar";
 import ProductSearch from "./product-search";
@@ -16,21 +16,27 @@ import { offerProducts } from "@/lib/home-shelves";
 import { IconUser } from "@/components/ui/icons";
 
 /**
- * Premium sticky header — glass morphism, condensed on scroll,
- * scroll progress indicator, and buttery rAF-throttled updates.
+ * Sticky storefront header (menubar redesign, 2026-09-26).
+ *
+ * Three balanced zones on desktop — brand | primary nav | actions — with
+ * the nav as a wayfinding strip (hairline under the current section, a
+ * category drop-down) and the actions in the order people expect on a
+ * shop: language, search, wishlist, account, bag. Condenses on scroll; the
+ * announcement folds away; a thin gold line shows reading progress.
  */
 export default function Header() {
   const { t } = useLanguage();
   // Offers appears only while something is genuinely on offer (admin sets
   // compare-at prices / flash windows) — the menu never advertises an empty
-  // sale. Categories jumps to the home shelf, as before.
+  // sale. Categories is a drop-down once the live catalog answers and the
+  // home-shelf jump before that.
   const { products } = useLiveCatalog();
   const hasOffers = offerProducts(products).length > 0;
-  const NAV = [
+  const NAV: NavItem[] = [
     { label: t("nav.shop"), href: "/shop" },
+    { label: t("nav.categories"), href: "/#collections", menu: "categories" },
     ...(hasOffers ? [{ label: t("nav.offers"), href: "/shop?filter=sale" }] : []),
     { label: t("nav.shops"), href: "/shops" },
-    { label: t("nav.categories"), href: "/#collections" },
     { label: t("nav.track"), href: "/track" },
   ];
   const [scrolled, setScrolled] = useState(false);
@@ -80,21 +86,23 @@ export default function Header() {
       <div
         className={`header-bar relative border-b ${
           scrolled
-            ? "border-line/70 bg-ivory-50/88 supports-[backdrop-filter]:bg-ivory-50/78"
-            : "border-line/40 bg-ivory-50/72 supports-[backdrop-filter]:bg-ivory-50/60"
+            ? "border-line/70 bg-ivory-50/92 supports-[backdrop-filter]:bg-ivory-50/86"
+            : "border-line/40 bg-ivory-50/80 supports-[backdrop-filter]:bg-ivory-50/70"
         } backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150`}
       >
         <div
           className={`mx-auto flex max-w-7xl items-center gap-2 px-3 transition-[height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:gap-4 sm:px-6 lg:px-8 ${
-            scrolled ? "h-14 sm:h-[4.1rem]" : "h-[4.6rem] sm:h-[5.1rem] lg:h-[5.4rem]"
+            scrolled ? "h-14 sm:h-[4.1rem]" : "h-[4.4rem] sm:h-[5rem] lg:h-[5.4rem]"
           }`}
         >
           <MobileNav />
 
-          {/* Brand lockup — premium hover lift */}
+          {/* Brand lockup — the Latin wordmark keeps its tracking in every
+              language (lang="en"); the text column steps aside on the
+              narrowest phones instead of colliding with the actions. */}
           <Link
             href="/"
-            className="brand-lockup group flex min-w-0 items-center gap-2.5 sm:gap-3.5"
+            className="brand-lockup group flex min-w-0 shrink items-center gap-2.5 sm:gap-3.5"
             aria-label="PROSANTI home"
           >
             <span className="relative flex shrink-0 items-center justify-center">
@@ -108,9 +116,10 @@ export default function Header() {
                 }`}
               />
             </span>
-            <span className="flex flex-col leading-none">
+            <span className="hidden min-w-0 flex-col leading-none min-[360px]:flex">
               <span
-                className={`font-display font-semibold tracking-[0.12em] text-forest-900 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:tracking-[0.18em] ${
+                lang="en"
+                className={`truncate font-display font-semibold tracking-[0.12em] text-forest-900 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:tracking-[0.18em] ${
                   scrolled ? "text-[0.98rem] sm:text-[1.08rem]" : "text-[1.05rem] sm:text-[1.32rem]"
                 }`}
               >
@@ -119,7 +128,7 @@ export default function Header() {
               <span
                 lang="bn"
                 className={`font-bengali hidden font-medium text-ink-soft transition-all duration-500 sm:block ${
-                  scrolled ? "text-[0.52rem] opacity-80" : "text-[0.58rem]"
+                  scrolled ? "text-[0.6rem] opacity-80" : "text-[0.66rem]"
                 }`}
               >
                 প্রশান্তি
@@ -127,32 +136,29 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Desktop nav — truly centered: brand | nav | actions share the
-              bar in three balanced zones (the old ml-auto crammed the pills
-              against the action icons). */}
-          <div className="hidden flex-1 justify-center lg:flex">
+          {/* Desktop nav — centered between brand and actions. */}
+          <div className="hidden min-w-0 flex-1 justify-center lg:flex">
             <Suspense>
               <NavLinks items={NAV} />
             </Suspense>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <span className="hidden h-6 w-px bg-line/70 sm:block" aria-hidden="true" />
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
             <div className="hidden sm:flex">
               <LanguageSwitcher variant="header" />
             </div>
-            {/* Phones: one-tap language toggle where the wishlist icon was —
-                the bottom bar already carries the wishlist (P1 #8). */}
+            {/* Phones: one-tap language toggle — the bottom bar already
+                carries the wishlist (P1 #8). */}
             <div className="flex sm:hidden">
               <LanguageSwitcher variant="toggle" />
             </div>
+            <span className="mx-1 hidden h-6 w-px bg-line/80 sm:block" aria-hidden="true" />
             <ProductSearch />
             <div className="hidden sm:flex">
               <WishlistButton />
             </div>
-            {/* Account was reachable only from the burger menu / footer on
-                desktop (audit L7). Hidden on phones — the bottom bar's Menu
-                already lists it. */}
+            {/* Account is one tap from every desktop page (audit L7). Hidden
+                on phones — the drawer's quick actions carry it. */}
             <Link
               href="/account"
               aria-label={t("header.account")}

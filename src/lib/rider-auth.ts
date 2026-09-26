@@ -26,11 +26,16 @@ export interface RiderContext {
   email: string;
 }
 
+/** Why a signed-in user is refused — drives the pending card on /rider/login. */
+export type RiderDenyReason = "none" | "pending" | "suspended";
+
 export class RiderAuthError extends Error {
   status: 401 | 403 | 503;
-  constructor(message: string, status: 401 | 403 | 503) {
+  reason?: RiderDenyReason;
+  constructor(message: string, status: 401 | 403 | 503, reason?: RiderDenyReason) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -50,14 +55,24 @@ export async function requireRider(): Promise<RiderContext> {
     .eq("user_id", data.user.id)
     .single();
   if (rowError || !row) {
-    throw new RiderAuthError("This account has no rider access.", 403);
+    throw new RiderAuthError("This account has no rider access.", 403, "none");
   }
 
   const rider = mapRider(row as DbRider);
+  // Apply = sign up (2026-09-26): the login exists from the application on;
+  // the status is the only gate, so say which one it is.
+  if (rider.status === "pending") {
+    throw new RiderAuthError(
+      "আপনার রাইডার আবেদন এখনো অনুমোদনের অপেক্ষায় আছে — অ্যাডমিন অনুমোদন করলেই এই লগইনে রাইডার অ্যাপ খুলবে।",
+      403,
+      "pending",
+    );
+  }
   if (rider.status !== "active") {
     throw new RiderAuthError(
-      "Your rider account is not active. Contact PROSANTI support.",
+      "আপনার রাইডার অ্যাকাউন্টটি সাসপেন্ড করা আছে — PROSANTI সাপোর্টে যোগাযোগ করুন।",
       403,
+      "suspended",
     );
   }
 

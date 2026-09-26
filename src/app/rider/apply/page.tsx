@@ -1,10 +1,20 @@
 "use client";
 
+/**
+ * Rider application = rider sign-up (2026-09-26).
+ *
+ * One form collects the rider details AND the login (email + password).
+ * The server creates the account with the pending rider row, so there is
+ * no second "create account" step: once the admin approves, the same email
+ * and password open /rider.
+ */
+
 import { useState } from "react";
 import Link from "next/link";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
+import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
 
 const VEHICLES = [
   { id: "bike", label: "মোটরসাইকেল (Motorbike)" },
@@ -18,12 +28,16 @@ export default function RiderApplyPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [vehicle, setVehicle] = useState<"bike" | "bicycle" | "scooter">("bike");
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** "existing" → the email already had a PROSANTI login and it was reused. */
+  const [account, setAccount] = useState<"created" | "existing">("created");
 
   const toggleZone = (id: string) => {
     setSelectedZones((prev) =>
@@ -49,6 +63,15 @@ export default function RiderApplyPage() {
       setError("সঠিক ইমেইল অ্যাড্রেস দিন।");
       return;
     }
+    const passwordIssue = passwordProblem(password, confirmPassword);
+    if (passwordIssue) {
+      setError(passwordIssue);
+      return;
+    }
+    if (selectedZones.length === 0) {
+      setError("অন্তত একটি কাজের এলাকা / জোন সিলেক্ট করুন।");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -61,6 +84,7 @@ export default function RiderApplyPage() {
           name: cleanName,
           phone: cleanPhone,
           contactEmail: cleanEmail,
+          password,
           vehicle,
           zoneIds: selectedZones,
         }),
@@ -68,11 +92,15 @@ export default function RiderApplyPage() {
 
       const data = (await res.json().catch(() => null)) as {
         error?: string;
+        account?: "created" | "existing";
       } | null;
       if (!res.ok) {
         throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
       }
 
+      setAccount(data?.account === "existing" ? "existing" : "created");
+      setPassword("");
+      setConfirmPassword("");
       setSubmitted(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "আবেদন প্রক্রিয়া ব্যর্থ হয়েছে।");
@@ -94,16 +122,31 @@ export default function RiderApplyPage() {
           ধন্যবাদ <strong>{name}</strong>! আপনার আবেদনটি আমাদের পেন্ডিং কিউতে জমা হয়েছে। তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই আপনি <strong>/rider</strong> পোর্টাল থেকে ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
         </p>
 
+        <div
+          role="status"
+          className="mx-auto mt-6 max-w-md rounded-2xl bg-gold-100/70 p-4 text-left ring-1 ring-gold-300"
+        >
+          <p className="text-xs font-semibold text-forest-900">
+            আপনার রাইডার লগইন তৈরি হয়ে গেছে
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+            {account === "existing"
+              ? "এই ইমেইলে আগে থেকেই PROSANTI অ্যাকাউন্ট ছিল — সেটিই আপনার রাইডার প্রোফাইলের সাথে যুক্ত করা হয়েছে। "
+              : ""}
+            অ্যাডমিন অনুমোদন করার পর <strong>{email}</strong> এবং আবেদনের সময় দেওয়া পাসওয়ার্ড দিয়ে <strong>/rider/login</strong>-এ সাইন ইন করলেই রাইডার অ্যাপ খুলবে। অনুমোদনের আগে লগইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে — এটাই স্বাভাবিক।
+          </p>
+        </div>
+
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link
-            href="/rider"
-            className="rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            href="/rider/login"
+            className="inline-flex min-h-11 items-center rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
           >
-            রাইডার পোর্টালে যান →
+            রাইডার লগইন পেইজ →
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-line bg-paper px-6 py-2.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+            className="inline-flex min-h-11 items-center rounded-full border border-line bg-paper px-6 py-2.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
           >
             হোমে ফিরে যান
           </Link>
@@ -168,10 +211,42 @@ export default function RiderApplyPage() {
             <input
               required
               type="email"
+              autoComplete="email"
               className={field}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@example.com"
+            />
+          </label>
+
+          <label className="block">
+            <span className={label}>লগইন পাসওয়ার্ড *</span>
+            <input
+              required
+              type="password"
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="অন্তত ৬ অক্ষর"
+            />
+            <span className={hint}>
+              অনুমোদনের পর এই ইমেইল ও পাসওয়ার্ড দিয়েই রাইডার অ্যাপে ঢুকবেন।
+            </span>
+          </label>
+
+          <label className="block">
+            <span className={label}>পাসওয়ার্ড আবার লিখুন *</span>
+            <input
+              required
+              type="password"
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="একই পাসওয়ার্ড"
             />
           </label>
 
@@ -196,7 +271,7 @@ export default function RiderApplyPage() {
 
         {/* Preferred Delivery Zones */}
         <div>
-          <span className={label}>কাজের পছন্দের এলাকা / জোন</span>
+          <span className={label}>কাজের পছন্দের এলাকা / জোন *</span>
           <div className="mt-2 flex flex-wrap gap-2">
             {zones.map((z) => {
               const checked = selectedZones.includes(z.id);
@@ -221,7 +296,7 @@ export default function RiderApplyPage() {
         <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line text-xs leading-relaxed text-ink-soft flex items-start gap-2.5">
           <IconShield className="h-5 w-5 shrink-0 text-gold-600 mt-0.5" />
           <p>
-            আবেদনের পর অ্যাডমিন আপনার তথ্য ভেরিফাই করে অনুমোদন দেবে। লগইনের জন্য উপরে দেওয়া ইমেইল ও নিজের একটি পাসওয়ার্ড দিয়ে /rider/login থেকে অ্যাকাউন্ট খুলে রাখুন — অনুমোদনের পরই পোর্টাল খুলে যাবে।
+            আবেদন জমা দিলেই আপনার রাইডার লগইন (উপরের ইমেইল ও পাসওয়ার্ড) তৈরি হয়ে যায়। অ্যাডমিন তথ্য ভেরিফাই করে অনুমোদন দিলে সেই লগইনেই /rider অ্যাপ খুলবে — অনুমোদনের আগে সাইন ইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে।
           </p>
         </div>
 
@@ -230,7 +305,7 @@ export default function RiderApplyPage() {
           disabled={submitting}
           className="w-full h-12 rounded-full bg-forest-800 font-semibold text-xs text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
         >
-          {submitting ? "জমা হচ্ছে…" : "রাইডার আবেদন জমা দিন (Submit Rider Application)"}
+          {submitting ? "জমা হচ্ছে…" : "আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন"}
         </button>
       </form>
     </div>

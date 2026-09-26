@@ -21,16 +21,18 @@ export default function LanguageSwitcher({ variant = "header", className = "" }:
   const base =
     "inline-flex items-center rounded-full border p-1 transition-colors";
 
+  // Header: a quiet hairline pill — the language is a setting, not a call
+  // to action, so it must not out-shout the search and bag controls.
   const headerClasses =
-    "border-line/60 bg-ivory-100/80 backdrop-blur-sm";
+    "border-line/70 bg-transparent";
   const drawerClasses =
-    "border-line bg-ivory-50 w-full justify-between p-1.5";
+    "border-line bg-ivory-50 w-full justify-between p-1";
 
   const btnBase =
     "relative inline-flex items-center justify-center rounded-full text-xs font-semibold tracking-wide transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]";
 
-  const headerBtn = "px-3 py-1.5 min-w-[42px]";
-  const drawerBtn = "flex-1 px-4 py-2.5 text-sm";
+  const headerBtn = "px-2.5 py-1 min-w-[2.35rem] text-[0.7rem]";
+  const drawerBtn = "flex-1 px-4 py-2 text-sm";
 
   const active =
     "bg-forest-900 text-ivory-50 shadow-sm";
@@ -50,7 +52,7 @@ export default function LanguageSwitcher({ variant = "header", className = "" }:
         aria-label={next === "en" ? t("language.switchToEnglish") : t("language.switchToBengali")}
         title={next === "en" ? t("language.switchToEnglish") : t("language.switchToBengali")}
         data-testid="language-toggle"
-        className={`header-icon-btn inline-flex h-11 min-w-11 items-center justify-center rounded-full px-2 text-[0.72rem] font-bold tracking-wide text-forest-900 ring-1 ring-line/70 hover:bg-forest-50 ${
+        className={`header-icon-btn inline-flex h-10 min-w-10 items-center justify-center rounded-full px-2 text-[0.7rem] font-bold tracking-wide text-forest-900 ring-1 ring-line/80 hover:bg-forest-50 ${
           next === "bn" ? "font-bengali" : ""
         } ${className}`}
       >
