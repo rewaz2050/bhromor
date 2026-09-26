@@ -22,6 +22,7 @@ import {
 import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
+import FreeDeliveryBar from "./free-delivery-bar";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -235,6 +236,10 @@ export default function BagDrawer() {
             </section>
           )}
           <div className="border-t border-line bg-ivory-100/70 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            {/* Free-delivery threshold (2026-09-26): "add ৳X more" — the same
+                rule the checkout and ps_place_order price; hidden when the
+                shop / platform armed nothing. */}
+            <FreeDeliveryBar shop={bagShop} subtotal={subtotal} onNavigate={closeBag} className="mb-3" />
             {/* The saving is quoted here so the bag cannot surprise anyone at payment. */}
             <div className="mb-3 empty:hidden">
               <BagOffers lines={detail} />

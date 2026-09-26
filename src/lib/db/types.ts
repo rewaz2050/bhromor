@@ -121,6 +121,8 @@ export interface DbShop {
   reviewed_by?: string | null;
   reviewed_by_email?: string | null;
   reviewed_at?: string | null;
+  /** Free delivery (202609260003) — the shop's own minimum, paisa; null = off. */
+  free_delivery_min?: number | string | null;
 }
 
 export interface DbVendorUser {
@@ -284,6 +286,9 @@ export interface DbOrder {
   payment_verified_at?: string | null;
   /** P2 #17 — true when a PROSANTI+ term waived delivery on this order. */
   is_plus?: boolean;
+  /** Free delivery threshold (202609260003): who funded the waiver, and how much. */
+  free_delivery_by?: "platform" | "shop" | null;
+  free_delivery_waived?: number | null;
   status: DbOrderStatus;
   rider_id: string | null;
   delivery_code: string | null;

@@ -32,6 +32,8 @@ export interface PriceSummary {
   freeDelivery: boolean;
   couponFree: boolean;
   plusFree: boolean;
+  /** Free-delivery threshold that paid (2026-09-26): 'platform' | 'shop' | null. */
+  thresholdFree: "platform" | "shop" | null;
   discount: number;
   promo: number;
   promoKind: BagOffer["kind"] | null;
@@ -192,7 +194,11 @@ export default function OrderSummaryCard({
                     ? "FREE 👑 PROSANTI+"
                     : isPickup
                       ? "FREE — Pickup"
-                      : "Free"}{" "}
+                      : summary.thresholdFree === "shop"
+                        ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
+                        : summary.thresholdFree === "platform"
+                          ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
+                          : "Free"}{" "}
                 <span className="text-ink-soft line-through">
                   {formatBdt(summary.fullCharge)}
                 </span>

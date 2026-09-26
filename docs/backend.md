@@ -95,6 +95,8 @@ src/lib/
 ├── use-rider.ts           # rider fetch + session/jobs/actions hooks (live only)
 ├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (live only)
 ├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
+├── free-delivery.ts       # pure free-delivery threshold rules: platform + shop offers, lowest target, payer precedence (mirrors ps_place_order)
+├── use-free-delivery.ts   # shopper hook: platform rule (/api/settings) + shop.freeDeliveryMinPaisa → progress / payer
 ├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
 ├── use-my-zone.ts         # persisted customer "deliver to" zone for discovery
 ├── use-guarded-add.ts     # single-shop add-to-bag guard (stages conflicts)
@@ -129,7 +131,8 @@ supabase/
     ├── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
     ├── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
     ├── 202609090007_rider_dispatch.sql        # delivery_code trigger + rider accept/pickup/deliver/settle RPCs
-    └── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
+    ├── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
+    └── 202609260003_free_delivery.sql         # shops.free_delivery_min + orders.free_delivery_by/_waived; patches ps_place_order in place; ledger deducts shop-funded waivers
 scripts/seed-supabase.mjs  # store skeleton seed: shop, categories, zones, settings (never products)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
@@ -279,6 +282,15 @@ invented data (and no launch-catalog fallback — that is gone too).
 - **Totals are guarded twice** — TypeScript validator plus the
   `trg_orders_check_totals` trigger — and inserts are constrained to
   pending COD orders by `trg_orders_check_insert`.
+- **Free delivery is priced in the RPC, never trusted from the client.**
+  `ps_place_order` reads the platform rule from `site_settings['ops']
+  .freeDelivery` and the shop's `free_delivery_min`, applies them after
+  pickup / coupon / PROSANTI+ (platform first, then shop; rider zones only),
+  zeroes the charge + surcharges and stamps `free_delivery_by` /
+  `free_delivery_waived` on the order. `ps_write_shop_ledger` subtracts a
+  shop-funded waiver from that order's `payable`; a platform-funded one
+  leaves the payout alone. `lib/free-delivery.ts` is the TypeScript mirror
+  the validator, checkout and the bag's progress bar share.
 - **Media signing is staff-only.** `POST /api/media/sign` requires a staff
   session (quota abuse vector otherwise) and returns short-lived signature
   material; uploads go browser → Cloudinary directly.

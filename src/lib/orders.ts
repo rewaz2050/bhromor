@@ -234,6 +234,14 @@ export interface Order {
   paymentVerifiedAt?: number;
   /** P2 #17 — free-delivery waiver applied by an ACTIVE PROSANTI+ term. */
   isPlus?: boolean;
+  /**
+   * Free delivery threshold (2026-09-26): 'platform' (PROSANTI-funded) or
+   * 'shop' (deducted from the shop's payout); null when the charge was paid
+   * or waived by something else (pickup, coupon, PROSANTI+).
+   */
+  freeDeliveryBy?: "platform" | "shop" | null;
+  /** The delivery amount (charge + surcharges, paisa) that rule waived. */
+  freeDeliveryWaived?: number;
   status: OrderStatus;
   timeline: OrderTimelineEntry[];
   /** For delivered orders: minutes from placement to doorstep (§88 KPI). */

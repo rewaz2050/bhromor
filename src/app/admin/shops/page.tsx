@@ -10,6 +10,7 @@ import AdminDataError from "@/components/admin/admin-data-error";
 import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
 import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
 import { describeLoginEmail } from "@/lib/phone-login";
+import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-delivery";
 
 type Filter = Shop["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -45,6 +46,10 @@ function ShopCard({
   const [address, setAddress] = useState(shop.address ?? "");
   const [commission, setCommission] = useState(String(shop.commissionPct));
   const [prep, setPrep] = useState(String(shop.prepMinutes));
+  // Free delivery (2026-09-26): the shop's own minimum in TAKA; "" = off.
+  const [freeDeliveryTaka, setFreeDeliveryTaka] = useState(
+    shop.freeDeliveryMinPaisa ? String(Math.round(shop.freeDeliveryMinPaisa / 100)) : "",
+  );
   const [zoneIds, setZoneIds] = useState<string[]>([...shop.zoneIds]);
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
@@ -61,6 +66,26 @@ function ShopCard({
       setFormError("Prep time must be between 0 and 240 minutes.");
       return;
     }
+    const freeTaka = freeDeliveryTaka.trim() === "" ? 0 : Number(freeDeliveryTaka);
+    if (
+      !Number.isFinite(freeTaka) ||
+      freeTaka < 0 ||
+      (freeTaka > 0 &&
+        (freeTaka * 100 < FREE_DELIVERY_MIN_PAISA || freeTaka * 100 > FREE_DELIVERY_MAX_PAISA))
+    ) {
+      setFormError(
+        `Free-delivery minimum must be empty (off) or between ৳${FREE_DELIVERY_MIN_PAISA / 100} and ৳${FREE_DELIVERY_MAX_PAISA / 100}.`,
+      );
+      return;
+    }
+    // Only send the key when the admin touched it or the DB already has the
+    // column — a database without migration 202609260003 keeps saving.
+    const freeDeliveryPatch =
+      freeTaka > 0
+        ? { freeDeliveryMinPaisa: Math.round(freeTaka * 100) }
+        : shop.freeDeliveryMinPaisa !== undefined
+          ? { freeDeliveryMinPaisa: null }
+          : {};
     setSaving(true);
     const ok = await onSave({
       ...shop,
@@ -72,6 +97,7 @@ function ShopCard({
       prepMinutes: prepMin,
       zoneIds,
       isOpen,
+      ...freeDeliveryPatch,
     });
     setSaving(false);
     if (!ok) return; // page banner carries the hook error
@@ -152,6 +178,23 @@ function ShopCard({
           <label className="block">
             <span className={label}>Prep time (min)</span>
             <input className={field} type="number" min="0" max="240" value={prep} onChange={(e) => setPrep(e.target.value)} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Shop free-delivery minimum (৳) — empty = off</span>
+            <input
+              className={field}
+              type="number"
+              min="0"
+              max={FREE_DELIVERY_MAX_PAISA / 100}
+              step="1"
+              value={freeDeliveryTaka}
+              onChange={(e) => setFreeDeliveryTaka(e.target.value)}
+              placeholder="e.g. 999"
+              data-testid="shop-free-delivery-min"
+            />
+            <span className="mt-1 block text-xs text-ink-soft">
+              The shop pays: the waived rider charge is deducted from its payout. Rider zones only — never courier, pickup, coupon or PROSANTI+. The platform rule lives in Settings.
+            </span>
           </label>
           <div className="sm:col-span-2">
             <span className={label}>Serves zones</span>

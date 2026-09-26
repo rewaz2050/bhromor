@@ -338,6 +338,17 @@ export default function AdminOrderDetailPage() {
               </dt>
               <dd>{formatBdt(order.deliveryCharge)}</dd>
             </div>
+            {order.freeDeliveryBy && (
+              <div
+                className="flex justify-between rounded bg-emerald-50 px-2 py-1 text-emerald-800"
+                data-testid="admin-free-delivery"
+              >
+                <dt>
+                  🚚 Free delivery — {order.freeDeliveryBy === "shop" ? "shop offer (deducted from payout)" : "PROSANTI offer (platform pays)"}
+                </dt>
+                <dd>−{formatBdt(order.freeDeliveryWaived ?? 0)}</dd>
+              </div>
+            )}
             {deliverySlotSummary(order) && (
               <div className="flex justify-between rounded bg-sky-50 px-2 py-1 text-sky-800" data-testid="admin-slot">
                 <dt>🕒 Slot: {deliverySlotSummary(order)}</dt>

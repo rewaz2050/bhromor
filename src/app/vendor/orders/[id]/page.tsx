@@ -254,6 +254,19 @@ export default function VendorOrderDetailPage({
               <dt className="text-ink-soft">Delivery</dt>
               <dd className="font-medium">{formatBdt(order.deliveryCharge)}</dd>
             </div>
+            {order.freeDeliveryBy && (
+              <div
+                className={`flex justify-between ${order.freeDeliveryBy === "shop" ? "text-amber-800" : "text-emerald-700"}`}
+                data-testid="vendor-free-delivery"
+              >
+                <dt>
+                  {order.freeDeliveryBy === "shop"
+                    ? "আপনার ফ্রি ডেলিভারি অফার (পেআউট থেকে কাটা হবে)"
+                    : "PROSANTI ফ্রি ডেলিভারি অফার (আপনার পেআউট অপরিবর্তিত)"}
+                </dt>
+                <dd>{order.freeDeliveryBy === "shop" ? "−" : ""}{formatBdt(order.freeDeliveryWaived ?? 0)}</dd>
+              </div>
+            )}
             {order.coupon && (
               <div className="flex justify-between text-emerald-700">
                 <dt>Coupon · {order.coupon.code}</dt>

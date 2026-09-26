@@ -13,6 +13,7 @@ import { patchVendorShop, vendorErrorMessage } from "@/lib/use-vendor";
 import { useLiveZones } from "@/lib/use-live-zones";
 import type { Shop } from "@/lib/catalog";
 import ChangePasswordCard from "@/components/account/change-password-card";
+import VendorFreeDeliveryCard from "@/components/vendor/free-delivery-card";
 
 const field =
   "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
@@ -242,6 +243,19 @@ export default function VendorSettingsPage() {
           {saving ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
         </button>
       </form>
+
+      {/* Free delivery (2026-09-26): the shop's own opt-in threshold. Owner
+          only — it spends the shop's money. */}
+      {!isStaff && (
+        <VendorFreeDeliveryCard
+          shop={current}
+          onSaved={(updated) => {
+            setShop(updated);
+            setError(null);
+          }}
+          className="mt-4"
+        />
+      )}
 
       {/* Apply = sign up (2026-09-26): the owner's own password lives here;
           staff accounts change theirs from the admin side. */}

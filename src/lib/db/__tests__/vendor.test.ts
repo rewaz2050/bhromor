@@ -71,6 +71,26 @@ describe("vendorShopPatch (slice 3)", () => {
     }
   });
 
+  it("free delivery (2026-09-26): owner sets / clears the shop minimum; staff cannot", () => {
+    expect(vendorShopPatch({ free_delivery_min: 99900 }, "owner")).toEqual({ free_delivery_min: 99900 });
+    expect(vendorShopPatch({ freeDeliveryMinPaisa: "149900" }, "owner")).toEqual({ free_delivery_min: 149900 });
+    // null / "" / 0 switch the shop's rule OFF (explicit write of null)
+    expect(vendorShopPatch({ free_delivery_min: null }, "owner")).toEqual({ free_delivery_min: null });
+    expect(vendorShopPatch({ free_delivery_min: "" }, "owner")).toEqual({ free_delivery_min: null });
+    expect(vendorShopPatch({ free_delivery_min: 0 }, "owner")).toEqual({ free_delivery_min: null });
+    // the key is only written when sent — a profile save without it never touches the column
+    expect(vendorShopPatch({ name: "Shop One" }, "owner")).toEqual({ name: "Shop One" });
+    // garbage is refused, not silently turned off
+    expect(() => vendorShopPatch({ free_delivery_min: "abc" }, "owner")).toThrow(/ন্যূনতম/);
+    expect(() => vendorShopPatch({ free_delivery_min: -5 }, "owner")).toThrow(/ন্যূনতম/);
+    try {
+      vendorShopPatch({ free_delivery_min: 99900 }, "staff");
+      expect.unreachable("staff must not spend the shop's money");
+    } catch (err) {
+      expect((err as AdminInputError).status).toBe(403);
+    }
+  });
+
   it("bounds prep minutes and the shop name", () => {
     expect(() => vendorShopPatch({ prep_minutes: 241 }, "owner")).toThrow(
       /between 0 and 240/,

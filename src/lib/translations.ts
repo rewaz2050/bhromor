@@ -311,6 +311,17 @@ export const translations = {
       decreaseQuantity: "Decrease quantity",
       addToBag: "Add to Bag →",
     },
+    freeDelivery: {
+      addMore: "Add {amount} more and delivery is free",
+      reached: "Delivery is free on this order 🎉",
+      scope: "Inside Sunamganj Sadar (rider areas) — not on courier orders",
+      byShop: "Shop offer",
+      byPlatform: "PROSANTI offer",
+      pill: "Free delivery on orders over {amount}",
+      keepShopping: "Keep shopping →",
+      progressLabel: "Progress to free delivery",
+      freeLine: "FREE — {by}",
+    },
     bag: {
       yourBag: "Your Bag",
       bagEmpty: "Your bag is empty.",
@@ -994,6 +1005,17 @@ export const translations = {
       decreaseQuantity: "পরিমাণ কমান",
       addToBag: "ব্যাগে যোগ করুন →",
     },
+    freeDelivery: {
+      addMore: "আর {amount} যোগ করলে ডেলিভারি ফ্রি",
+      reached: "এই অর্ডারে ডেলিভারি ফ্রি 🎉",
+      scope: "সুনামগঞ্জ সদরের ভেতরে (রাইডার এলাকা) — কুরিয়ার অর্ডারে নয়",
+      byShop: "দোকানের অফার",
+      byPlatform: "PROSANTI অফার",
+      pill: "{amount}+ অর্ডারে ডেলিভারি ফ্রি",
+      keepShopping: "আরও দেখুন →",
+      progressLabel: "ফ্রি ডেলিভারির অগ্রগতি",
+      freeLine: "ফ্রি — {by}",
+    },
     bag: {
       yourBag: "আপনার ব্যাগ",
       bagEmpty: "আপনার ব্যাগ খালি।",
@@ -1379,6 +1401,7 @@ export type TranslationKey =
   | `install.${keyof typeof translations.en.install}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
+  | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
   | `mobileDrawer.${keyof typeof translations.en.mobileDrawer}`
   | `shop.${keyof typeof translations.en.shop}`
   | `shopBrowser.${keyof typeof translations.en.shopBrowser}`

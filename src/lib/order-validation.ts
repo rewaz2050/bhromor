@@ -31,6 +31,7 @@ import {
   MIN_ORDER_OUTSIDE_SADAR_PAISA,
 } from "./delivery";
 import { normalizePhone } from "./orders";
+import { freeDeliveryFor, freeDeliveryOffers, type FreeDeliverySource } from "./free-delivery";
 import {
   BUNDLE_DEFAULTS,
   FLASH_DEFAULTS,
@@ -134,11 +135,6 @@ export interface OrderSnapshot {
    * NOT apply a store-wide launch offer.
    */
   totalOrders?: number;
-  /**
-   * Retained for potential future promos — the flat-delivery model does
-   * NOT apply a free-delivery threshold.
-   */
-  freeThresholdEnabled?: boolean;
   /** Evaluation clock (ms). Defaults to Date.now() — tests pin it. */
   now?: number;
   /**
@@ -223,6 +219,13 @@ export interface ValidOrderDraft {
   deliveryCharge: number;
   discount: number;
   total: number;
+  /**
+   * Free delivery threshold (2026-09-26): the rule that waived the charge and
+   * the amount it would have been. Mirrors what ps_place_order records in
+   * orders.free_delivery_by / free_delivery_waived. Absent = charge paid, or
+   * waived by pickup / coupon / PROSANTI+.
+   */
+  freeDelivery?: { by: FreeDeliverySource; waived: number };
 }
 
 export type OrderValidation =
@@ -574,13 +577,30 @@ export const validateOrderPayload = (
    * Pickup → free. Free-delivery coupon → free (surcharges waived).
    * Otherwise the address-derived zone charge + surcharges. */
   const freeDelivery = isPickup || couponFreeDelivery || plusWaiver;
-  const deliveryCharge = freeDelivery
-    ? 0
-    : Math.max(0, zone.charge) +
-      surchargeNight +
-      surchargeRain +
-      surchargeExpress +
-      surchargeWeight;
+  const fullDeliveryCharge =
+    Math.max(0, zone.charge) +
+    surchargeNight +
+    surchargeRain +
+    surchargeExpress +
+    surchargeWeight;
+  /* Free delivery THRESHOLD (2026-09-26): the platform rule first (PROSANTI
+   * pays), then the shop's own opt-in (deducted from its payout). Rider zones
+   * only; never on top of pickup / coupon / PROSANTI+. The RPC applies the
+   * same two rules from the live rows — this only makes the quote honest. */
+  const bagShop =
+    snapshot.shops && shopIds.size === 1
+      ? snapshot.shops.find((s) => s.id === [...shopIds][0])
+      : undefined;
+  const thresholdOffer = freeDeliveryFor(
+    subtotal,
+    freeDeliveryOffers(snapshot.settings?.freeDelivery, bagShop),
+    { courier: zone.id === "z4", pickup: isPickup, alreadyFree: freeDelivery },
+  );
+  const thresholdFree =
+    thresholdOffer && fullDeliveryCharge > 0
+      ? { by: thresholdOffer.by, waived: fullDeliveryCharge }
+      : undefined;
+  const deliveryCharge = freeDelivery || thresholdFree ? 0 : fullDeliveryCharge;
 
   /* ---------------- P0 growth levers ----------------
    * One automatic offer per order (flash drop OR bundle set — the better one
@@ -758,6 +778,7 @@ export const validateOrderPayload = (
       deliveryCharge,
       discount: totalDiscount,
       total: orderTotal(subtotal, deliveryCharge, totalDiscount) + tipAmount + giftFee,
+      ...(thresholdFree ? { freeDelivery: thresholdFree } : {}),
     },
   };
 };

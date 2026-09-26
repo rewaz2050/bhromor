@@ -33,6 +33,7 @@ import {
   mapShop,
   mapZone,
 } from "./mappers";
+import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
 import { forgetStaffRole, type StaffRole } from "../staff-auth";
@@ -1858,9 +1859,21 @@ export async function upsertShop(
     status?: string;
     is_open?: boolean;
     isOpen?: boolean;
+    /** Free delivery (2026-09-26): the shop's own minimum, paisa; null clears it. */
+    free_delivery_min?: number | string | null;
+    freeDeliveryMinPaisa?: number | string | null;
   };
   const name = clean(body.name, 80);
   if (name.length < 2) throw new AdminInputError("Shop name is too short.");
+  // Only written when the form sent the key — a database without migration
+  // 202609260003 keeps saving every other field.
+  const freeDeliverySent =
+    body.free_delivery_min !== undefined || body.freeDeliveryMinPaisa !== undefined;
+  const freeDeliveryMin = freeDeliverySent
+    ? parseShopFreeDeliveryMin(
+        body.free_delivery_min !== undefined ? body.free_delivery_min : body.freeDeliveryMinPaisa,
+      )
+    : undefined;
   const phone = clean(body.phone, 20);
   const email = clean(body.contact_email ?? body.contactEmail, 120).toLowerCase();
   const zoneIds = Array.isArray(body.zone_ids ?? body.zoneIds)
@@ -1898,6 +1911,7 @@ export async function upsertShop(
       commission_pct: commission,
       status,
       is_open: status === "active" ? isOpen : false,
+      ...(freeDeliveryMin !== undefined ? { free_delivery_min: freeDeliveryMin } : {}),
     };
     const { data, error } = await db
       .from("shops")
@@ -1905,7 +1919,19 @@ export async function upsertShop(
       .eq("id", id)
       .select("*")
       .single();
-    if (error || !data) throw new AdminInputError("Shop not found.", 404);
+    if (error || !data) {
+      if (
+        freeDeliveryMin !== undefined &&
+        ((error as { code?: string } | null)?.code === "PGRST204" ||
+          /free_delivery_min/.test((error as { message?: string } | null)?.message ?? ""))
+      ) {
+        throw new AdminInputError(
+          "Free delivery is not set up on this database yet — run supabase/migrations/202609260003_free_delivery.sql, or leave the free-delivery field empty.",
+          503,
+        );
+      }
+      throw new AdminInputError("Shop not found.", 404);
+    }
     return mapShop(data as DbShop);
   }
 
@@ -1928,12 +1954,19 @@ export async function upsertShop(
       commission_pct: commission,
       status: "pending",
       is_open: false,
+      ...(freeDeliveryMin ? { free_delivery_min: freeDeliveryMin } : {}),
     })
     .select("*")
     .single();
   if (error) {
     if (error.code === "23505") {
       throw new AdminInputError("That shop slug is taken.", 409);
+    }
+    if (freeDeliveryMin && (error.code === "PGRST204" || /free_delivery_min/.test(error.message ?? ""))) {
+      throw new AdminInputError(
+        "Free delivery is not set up on this database yet — run supabase/migrations/202609260003_free_delivery.sql, or leave the free-delivery field empty.",
+        503,
+      );
     }
     throw new Error("shop insert failed");
   }

@@ -97,6 +97,12 @@ export interface Shop {
   isOpen: boolean;
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * Free delivery (2026-09-26) — the shop's OWN threshold in paisa (the shop
+   * funds it); null/undefined = the shop has not opted in. The platform rule
+   * lives in the ops settings. Public: the bag's progress bar reads it.
+   */
+  freeDeliveryMinPaisa?: number | null;
   /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
   review?: ApplicationReview;
 }

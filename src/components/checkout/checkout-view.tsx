@@ -53,6 +53,7 @@ import {
   orderTotal,
 } from "@/lib/delivery";
 import { usePublicSettings } from "@/lib/use-public-settings";
+import { freeDeliveryFor, freeDeliveryOffers } from "@/lib/free-delivery";
 import {
   IconArrowRight,
   IconBag,
@@ -680,6 +681,7 @@ export default function CheckoutView() {
         freeDelivery: false,
         couponFree: false,
         plusFree: false,
+        thresholdFree: null,
         discount: 0,
         promo: 0,
         promoKind: bagOffer?.kind ?? null,
@@ -703,6 +705,14 @@ export default function CheckoutView() {
     const isExpress =
       form.deliveryWindow === "express" && settings.expressDeliveryEnabled;
     const weightKg = detail.reduce((s, l) => s + l.qty * 0.5, 0);
+    // Free-delivery threshold (2026-09-26): the platform rule, then the
+    // shop's own — the same helpers the validator and ps_place_order mirror.
+    const alreadyFree = (couponFreeDelivery && !!activeCoupon) || plusActive;
+    const thresholdOffer = freeDeliveryFor(
+      subtotal,
+      freeDeliveryOffers(settings.freeDelivery, bagShop),
+      { courier: zone.id === "z4", pickup: form.isPickup, alreadyFree },
+    );
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
@@ -712,7 +722,8 @@ export default function CheckoutView() {
       isExpress,
       isPickup: form.isPickup,
       tipAmount: form.tipAmount * 100,
-      couponFree: (couponFreeDelivery && !!activeCoupon) || plusActive,
+      couponFree: alreadyFree,
+      thresholdFree: thresholdOffer?.by ?? null,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
       rates: settings.surcharges,
@@ -729,6 +740,7 @@ export default function CheckoutView() {
       freeDelivery: breakdown.freeDelivery,
       couponFree: couponFreeDelivery && !!activeCoupon,
       plusFree: plusActive && !form.isPickup,
+      thresholdFree: breakdown.thresholdFree,
       discount,
       promo: capped,
       promoKind: bagOffer?.kind ?? null,
@@ -2102,7 +2114,11 @@ export default function CheckoutView() {
                             ? "FREE — PROSANTI+"
                             : form.isPickup
                               ? "FREE — Pickup"
-                              : "Free"}
+                              : summary.thresholdFree === "shop"
+                                ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
+                                : summary.thresholdFree === "platform"
+                                  ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
+                                  : "Free"}
                       </span>
                     ) : (
                       formatBdt(summary.charge)

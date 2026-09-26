@@ -19,6 +19,7 @@ import {
 import type { Category, Product, Shop } from "../catalog";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapProduct, mapShop } from "./mappers";
+import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { toDomain, toDomainMany } from "./orders";
 import type {
   DbCategory,
@@ -60,6 +61,8 @@ export interface VendorShopPatch {
   address?: string;
   prep_minutes?: number;
   is_open?: boolean;
+  /** Free delivery (2026-09-26): the shop's own minimum in paisa; null = off. */
+  free_delivery_min?: number | null;
 }
 
 /**
@@ -109,6 +112,21 @@ export const vendorShopPatch = (
   }
   if (body.is_open !== undefined || body.isOpen !== undefined) {
     patch.is_open = (body.is_open ?? body.isOpen) === true;
+  }
+  // Free delivery (2026-09-26): owner-only (staff can't spend the shop's
+  // money); an explicit null / "" / 0 switches the shop's rule OFF. The key is
+  // only written when sent, so a database without 202609260003 still saves
+  // the rest of the profile.
+  if (body.free_delivery_min !== undefined || body.freeDeliveryMinPaisa !== undefined) {
+    const raw =
+      body.free_delivery_min !== undefined ? body.free_delivery_min : body.freeDeliveryMinPaisa;
+    if (raw !== null && raw !== "" && raw !== 0 && raw !== false) {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new AdminInputError("ফ্রি ডেলিভারির ন্যূনতম অর্ডার টাকায় লিখুন (যেমন ৯৯৯)।");
+      }
+    }
+    patch.free_delivery_min = parseShopFreeDeliveryMin(raw);
   }
   if (patch.name !== undefined && patch.name.length < 2) {
     throw new AdminInputError("Shop name is too short.");
@@ -370,6 +388,16 @@ export async function patchVendorShop(
   if (error || !data) {
     if ((error as { message?: string } | null)?.message?.includes("forbidden")) {
       throw new AdminInputError("That change is not allowed.", 403);
+    }
+    if (
+      patch.free_delivery_min !== undefined &&
+      ((error as { code?: string } | null)?.code === "PGRST204" ||
+        /free_delivery_min/.test((error as { message?: string } | null)?.message ?? ""))
+    ) {
+      throw new AdminInputError(
+        "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি — অ্যাডমিনকে supabase/migrations/202609260003_free_delivery.sql চালাতে বলুন।",
+        503,
+      );
     }
     throw new Error("vendor shop update failed");
   }

@@ -56,8 +56,6 @@ export interface OrderSnapshot {
   totalOrders?: number;
   /** THIS customer's earlier non-cancelled order count (first-order proof). */
   customerOrderCount?: number;
-  /** ৳1000+-always-free toggle (ops) — retained for future promos. */
-  freeThresholdEnabled?: boolean;
   /**
    * The P0 growth levers, sanitized from site_settings['ops'] — the SAME
    * document the storefront badges read. A client cannot invent a discount:
@@ -390,7 +388,6 @@ export async function loadOrderSnapshot(
     variants,
     mediaByProduct,
     shops: ((shopsRes.data ?? []) as DbShop[]).map(mapShop),
-    freeThresholdEnabled: ops.perZoneFreeThresholdEnabled !== false,
   };
 }
 

@@ -5,6 +5,7 @@ import { isShopOrderable } from "@/lib/shop-utils";
 import { shopChatMessage, waLink } from "@/lib/whatsapp-order";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconSend } from "@/components/ui/icons";
+import FreeDeliveryPill from "./free-delivery-pill";
 
 /**
  * Shop storefront header (marketplace slice 4): open state, prep time,
@@ -31,6 +32,8 @@ export default function ShopHero({
           {shop.tagline && (
             <p className="mt-2 max-w-xl text-ivory-100/75">{shop.tagline}</p>
           )}
+          {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
+          <FreeDeliveryPill shop={shop} tone="dark" className="mt-3" />
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${

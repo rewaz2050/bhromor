@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Shop } from "@/lib/catalog";
 import { isShopOrderable } from "@/lib/shop-utils";
 import { useLanguage } from "@/components/i18n/language-provider";
+import FreeDeliveryPill from "./free-delivery-pill";
 
 /**
  * Public shop card (marketplace slice 4): open state, prep time, and —
@@ -61,6 +62,8 @@ export default function ShopCard({
             ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})
           </span>
         )}
+        {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
+        <FreeDeliveryPill shop={shop} />
       </div>
 
       {zoneName && !servesZone && (

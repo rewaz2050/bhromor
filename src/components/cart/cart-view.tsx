@@ -30,6 +30,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import BagOffers from "@/components/promo/bag-offers";
+import FreeDeliveryBar from "./free-delivery-bar";
 import { useBagOffer } from "@/lib/use-bag-offer";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -224,6 +225,8 @@ export default function CartView() {
           >
             <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{deliveryPromise}
           </p>
+          {/* Free-delivery threshold (2026-09-26) — same rule as the checkout. */}
+          <FreeDeliveryBar shop={bagShop} subtotal={subtotal} className="mt-3" />
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">

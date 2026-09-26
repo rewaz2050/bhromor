@@ -234,8 +234,21 @@ export const mapShop = (row: DbShop): Shop => ({
   isOpen: row.is_open,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
+  // Key present only when the column exists (migration 202609260003): the
+  // admin form round-trips the whole Shop, and a key it never read must not
+  // become a write the database can't take.
+  ...(row.free_delivery_min !== undefined
+    ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
+    : {}),
   review: mapApplicationReview(row),
 });
+
+/** bigint columns arrive as strings from PostgREST; anything non-positive = off. */
+const mapFreeDeliveryMin = (raw: number | string | null | undefined): number | null => {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+};
 
 /** Rider row → the marketplace `Rider` shape (slice 6). */
 export const mapRider = (row: DbRider): Rider => ({
@@ -344,6 +357,8 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       ? new Date(o.payment_verified_at).getTime()
       : undefined,
     isPlus: o.is_plus === true,
+    freeDeliveryBy: o.free_delivery_by === "platform" || o.free_delivery_by === "shop" ? o.free_delivery_by : null,
+    freeDeliveryWaived: Math.max(0, Number(o.free_delivery_waived ?? 0) || 0),
     status: o.status as OrderStatus,
     timeline,
     deliveredMinutes,

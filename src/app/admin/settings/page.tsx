@@ -6,6 +6,7 @@ import { useCatalog } from "@/lib/use-catalog";
 import { useSettings } from "@/lib/use-settings";
 import { displayStock } from "@/lib/catalog-store";
 import { useTransientValue } from "@/lib/use-transient-value";
+import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-delivery";
 import { field, label } from "@/components/admin/form-ui";
 import AdminDataError from "@/components/admin/admin-data-error";
 import {
@@ -48,6 +49,12 @@ export default function AdminSettingsPage() {
   const [courierMinTaka, setCourierMinTaka] = useState(
     taka(settings.courierMinOrderPaisa),
   );
+  // Free delivery threshold (2026-09-26) — the PLATFORM rule (PROSANTI pays).
+  // Shops opt into their own minimum from Vendor → Settings.
+  const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState(settings.freeDelivery.enabled);
+  const [freeDeliveryTaka, setFreeDeliveryTaka] = useState(
+    taka(settings.freeDelivery.minSubtotalPaisa),
+  );
   const [contactPhone, setContactPhone] = useState(settings.contact.phone);
   const [contactWhatsapp, setContactWhatsapp] = useState(settings.contact.whatsapp);
   const [contactEmail, setContactEmail] = useState(settings.contact.email);
@@ -71,6 +78,8 @@ export default function AdminSettingsPage() {
     setExpressTaka(taka(settings.surcharges.express));
     setWeightTaka(taka(settings.surcharges.weightPerKg));
     setCourierMinTaka(taka(settings.courierMinOrderPaisa));
+    setFreeDeliveryEnabled(settings.freeDelivery.enabled);
+    setFreeDeliveryTaka(taka(settings.freeDelivery.minSubtotalPaisa));
     setContactPhone(settings.contact.phone);
     setContactWhatsapp(settings.contact.whatsapp);
     setContactEmail(settings.contact.email);
@@ -86,6 +95,7 @@ export default function AdminSettingsPage() {
     settings.expressDeliveryEnabled,
     settings.surcharges,
     settings.courierMinOrderPaisa,
+    settings.freeDelivery,
     settings.contact.phone,
     settings.contact.whatsapp,
     settings.contact.email,
@@ -164,6 +174,36 @@ export default function AdminSettingsPage() {
         Math.max(0, Math.round(Number(courierMinTaka) * 100)) || 0,
     }).then((ok) =>
       notify(ok ? "ডেলিভারি সেটিংস সংরক্ষিত হয়েছে" : "Could not save — please try again"),
+    );
+  };
+
+  const freeDeliveryMinPaisa = Math.round(Number(freeDeliveryTaka) * 100) || 0;
+  const freeDeliveryValid =
+    !freeDeliveryEnabled ||
+    (freeDeliveryMinPaisa >= FREE_DELIVERY_MIN_PAISA && freeDeliveryMinPaisa <= FREE_DELIVERY_MAX_PAISA);
+  const commitFreeDelivery = () => {
+    if (!freeDeliveryValid) {
+      notify(
+        `ন্যূনতম অর্ডার ৳${FREE_DELIVERY_MIN_PAISA / 100} থেকে ৳${(FREE_DELIVERY_MAX_PAISA / 100).toLocaleString("en-IN")}-এর মধ্যে দিন`,
+      );
+      return;
+    }
+    void saveSettings({
+      ...settings,
+      freeDelivery: {
+        enabled: freeDeliveryEnabled,
+        minSubtotalPaisa: freeDeliveryEnabled
+          ? freeDeliveryMinPaisa
+          : settings.freeDelivery.minSubtotalPaisa,
+      },
+    }).then((ok) =>
+      notify(
+        ok
+          ? freeDeliveryEnabled
+            ? `ফ্রি ডেলিভারি চালু — ৳${freeDeliveryTaka}+ অর্ডারে (সদর জোন)`
+            : "প্ল্যাটফর্ম ফ্রি ডেলিভারি বন্ধ — দোকানের নিজস্ব অফার চালু থাকবে"
+          : "Could not save — please try again",
+      ),
     );
   };
 
@@ -418,6 +458,60 @@ export default function AdminSettingsPage() {
             </div>
             <button type="button" onClick={commitDeliverySurcharges} className="mt-3 rounded-xl bg-gold-400 px-4 py-2 text-xs font-semibold text-forest-900">Save Delivery Settings</button>
           </div>
+
+          {/* Free delivery threshold (2026-09-26) — platform rule. The shop's
+              own opt-in lives in Vendor → Settings; the lowest armed minimum
+              is what the shopper sees, and whoever armed it pays. */}
+          <section
+            aria-label="Free delivery"
+            data-testid="free-delivery-settings"
+            className="mt-4 rounded-xl bg-gold-50 p-4 ring-1 ring-gold-200"
+          >
+            <h4 className="text-sm font-semibold text-forest-900">🚚 ফ্রি ডেলিভারি — প্ল্যাটফর্ম অফার</h4>
+            <p className="mt-1 text-xs text-ink-soft">
+              চালু করলে সদরের রাইডার জোনে (z1–z3) এই অঙ্কের উপরে অর্ডারে ডেলিভারি চার্জ ও সারচার্জ PROSANTI বহন করবে — দোকানের পেআউট বদলাবে না।
+              কুরিয়ার (z4), পিকআপ, ফ্রি-ডেলিভারি কুপন ও PROSANTI+ অর্ডারে প্রযোজ্য নয়। দোকান চাইলে নিজের অফারও দিতে পারে (Vendor → Settings) — গ্রাহক দুটির মধ্যে কম অঙ্কটি দেখবে।
+            </p>
+            <div className="mt-3 flex flex-wrap items-end gap-4">
+              <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-forest-900">
+                <input
+                  type="checkbox"
+                  checked={freeDeliveryEnabled}
+                  onChange={(e) => setFreeDeliveryEnabled(e.target.checked)}
+                  data-testid="free-delivery-enabled"
+                  className="h-4 w-4"
+                />
+                প্ল্যাটফর্ম ফ্রি ডেলিভারি {freeDeliveryEnabled ? "ON" : "OFF"}
+              </label>
+              <label className="block text-xs">
+                <span className="block text-ink-soft">ন্যূনতম অর্ডার (৳)</span>
+                <input
+                  type="number"
+                  min={FREE_DELIVERY_MIN_PAISA / 100}
+                  max={FREE_DELIVERY_MAX_PAISA / 100}
+                  step={1}
+                  value={freeDeliveryTaka}
+                  onChange={(e) => setFreeDeliveryTaka(e.target.value)}
+                  disabled={!freeDeliveryEnabled}
+                  data-testid="free-delivery-min"
+                  aria-invalid={!freeDeliveryValid}
+                  className={`${field} mt-1 w-40 disabled:opacity-50`}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={commitFreeDelivery}
+                className="min-h-11 rounded-xl bg-forest-800 px-4 py-2 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+              >
+                Save Free Delivery
+              </button>
+            </div>
+            {!freeDeliveryValid && (
+              <p className="mt-2 text-xs font-medium text-rose-700" role="alert">
+                ৳{FREE_DELIVERY_MIN_PAISA / 100} থেকে ৳{(FREE_DELIVERY_MAX_PAISA / 100).toLocaleString("en-IN")}-এর মধ্যে একটি অঙ্ক দিন।
+              </p>
+            )}
+          </section>
 
           <div className="flex justify-end pt-2">
             <button

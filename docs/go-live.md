@@ -415,6 +415,19 @@ After the existing migrations, apply in order:
   Shops / Riders answers 503 naming this file (the old row edit still
   saves), and the rider's KYC card says uploads are not enabled yet — the
   application itself is unaffected.
+- `supabase/migrations/202609260003_free_delivery.sql` — **free delivery
+  threshold** (platform rule + per-shop opt-in): adds `shops.free_delivery_min`
+  and `orders.free_delivery_by` / `free_delivery_waived`, patches the live
+  `ps_place_order` **in place** (it reads the deployed function, inserts the
+  rule after the PROSANTI+ block and re-creates it — so it works on top of
+  every earlier repair without re-pasting the whole function), and re-creates
+  `ps_write_shop_ledger` so a shop-funded waiver comes out of that order's
+  payable. Idempotent (a second run says "already prices the free-delivery
+  threshold"). **Verify:** the run ends with `NOTICE: FREE DELIVERY OK`.
+  Then switch it on: Admin → Settings → *ফ্রি ডেলিভারি — প্ল্যাটফর্ম অফার*
+  (PROSANTI pays) and/or Vendor → Settings → *ফ্রি ডেলিভারি অফার* (the shop
+  pays). Until it is applied, saving a minimum answers 503 naming this file
+  and checkout charges exactly as before.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
@@ -666,6 +679,9 @@ direct file-picker upload, add the four Cloudinary variables from
 | "পাসওয়ার্ড রিসেট সার্ভিস এখনো চালু হয়নি" (503) on the login page | Migration `202609260001_password_reset_requests.sql` not applied → step 1; meanwhile use the card's **Reset password** |
 | Admin → Shops / Riders → Approve or Reject → "Application review is not set up on this database yet" (503) | Migration `202609260002_application_review.sql` not applied → step 1. Meanwhile **Edit → Save** on the card still changes the status (no audit stamp) |
 | Rider's KYC card says "কাগজপত্র আপলোড এখনো চালু হয়নি" / "ছবি আপলোড এখনো কনফিগার করা হয়নি" | First message: migration `202609260002` missing → step 1. Second: Cloudinary env not set → step 6. The application is filed either way; approve after a phone/WhatsApp check of the NID instead |
+| Vendor → Settings → free delivery → "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি" (503), or Admin → Shops → Save → "Free delivery is not set up on this database yet" | Migration `202609260003_free_delivery.sql` not applied → step 1 (look for `FREE DELIVERY OK`). Profile saves without the field still work |
+| Bag shows "delivery is free" but the order was charged | The RPC is authoritative: either the migration is missing (see above — the storefront reads the rule from settings, the database cannot price it yet), the address resolved to the courier zone (z4 is never free), or a coupon / PROSANTI+ already waived it. Check `orders.free_delivery_by` on the row |
+| Shop asks why a payout is lower than subtotal − commission | Its own free-delivery offer paid that order's rider charge: Vendor → Orders → the order shows "আপনার ফ্রি ডেলিভারি অফার (পেআউট থেকে কাটা হবে) −৳60". Platform-funded waivers (`free_delivery_by = 'platform'`) never change the payout |
 | Applicant has no e-mail | Leave the e-mail field empty on the apply form: the login is the **mobile number** + password (the server stores `01XXXXXXXXX@phone.prosanti.app` internally; nothing is sent there). Staff screens show it as "01… (phone login)". The reset panel works the same way — mobile number, e-mail left empty |
 | Rejected applicant says "I fixed it, what now?" | They re-open the apply form and submit again with the **same** e-mail / mobile number + password → the rejected row goes back to pending with the new details (the bell says "re-submitted"). Admin → filter **rejected** to see what is waiting for a fix; **Re-open** puts a row back to pending without their action |
 | Reset request says "এই ইমেইল ও ফোন নম্বরের কোনো … লগইন পাওয়া যায়নি" | The pair must match the shop's `contact_email` + `phone` / the rider's row exactly (legacy rows linked by a different email won't match) → fix the row in Admin → Shops / Riders, or use the card's **Reset password** |

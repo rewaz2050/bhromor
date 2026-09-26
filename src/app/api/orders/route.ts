@@ -119,6 +119,8 @@ export async function POST(request: Request) {
       ];
       if (d.isPickup) details.push("Store Pickup");
       else if (plusActive) details.push("PROSANTI+ — delivery + surcharges free");
+      else if (order.freeDeliveryBy === "shop") details.push("ফ্রি ডেলিভারি (দোকানের অফার)");
+      else if (order.freeDeliveryBy === "platform") details.push("ফ্রি ডেলিভারি (PROSANTI অফার)");
       else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
       if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
       await notifyStaff(staffDb, {

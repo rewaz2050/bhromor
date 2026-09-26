@@ -20,6 +20,7 @@ import { MAX_LINE_QTY } from "@/lib/cart";
 import { waLink, productWaMessage } from "@/lib/whatsapp-order";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import FreeDeliveryPill from "@/components/shop/free-delivery-pill";
 import StylistChat from "@/components/stylist/stylist-chat";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useGuardedAdd } from "@/lib/use-guarded-add";
@@ -250,6 +251,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
                 ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})
               </span>
             )}
+            {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
+            <FreeDeliveryPill shop={shop} />
           </p>
         </div>
       )}

@@ -496,7 +496,15 @@ export default function TrackView() {
                   <div className="flex justify-between text-ink-soft">
                     <dt>Delivery{order.isPickup ? " — Pickup" : ""}{order.isExpress ? " — Express" : ""}</dt>
                     <dd>
-                      {order.isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
+                      {order.isPickup
+                        ? "Free (Pickup)"
+                        : order.deliveryCharge === 0
+                          ? order.freeDeliveryBy === "shop"
+                            ? "Free (shop offer)"
+                            : order.freeDeliveryBy === "platform"
+                              ? "Free (PROSANTI offer)"
+                              : "Free"
+                          : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
                   {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
