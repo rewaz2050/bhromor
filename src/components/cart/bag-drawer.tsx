@@ -23,6 +23,7 @@ import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/componen
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
 import FreeDeliveryBar from "./free-delivery-bar";
+import StampLine from "@/components/loyalty/stamp-line";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -247,6 +248,9 @@ export default function BagDrawer() {
                 rule the checkout and ps_place_order price; hidden when the
                 shop / platform armed nothing. */}
             <FreeDeliveryBar shop={bagShop} subtotal={subtotal} onNavigate={closeBag} className="mb-3" />
+            {/* UX plan §8 — loyalty visible where the decision is made:
+                "this order = your 7th stamp". Signed-in cardholders only. */}
+            <StampLine onNavigate={closeBag} className="mb-3" />
             {/* The saving is quoted here so the bag cannot surprise anyone at payment. */}
             <div className="mb-3 empty:hidden">
               <BagOffers lines={detail} />

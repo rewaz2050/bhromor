@@ -19,6 +19,7 @@ import {
   IconUser,
 } from "@/components/ui/icons";
 import LanguageSwitcher from "./language-switcher";
+import StampLine from "@/components/loyalty/stamp-line";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useWishlist } from "@/lib/use-wishlist";
@@ -182,6 +183,8 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
                 {t("footer.trackOrder")}
               </Link>
             </div>
+            {/* UX plan §8 — the stamp count follows the customer into the menu */}
+            <StampLine onNavigate={closeMenu} className="mt-3" />
 
             <nav aria-label="Primary mobile" className="mt-6">
               <p className={sectionTitle}>{t("mobileDrawer.discover")}</p>

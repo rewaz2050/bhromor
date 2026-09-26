@@ -13,6 +13,7 @@ import { CartProvider, useCart } from "@/components/cart/cart-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
+import { clearSizeProfile, saveSizeProfile, suggestSize } from "@/lib/size-finder";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 
 vi.mock("@/lib/use-live-catalog", async () => {
@@ -321,5 +322,43 @@ describe("Press-and-hold peek", () => {
     act(() => vi.advanceTimersByTime(600));
     expect(link).not.toHaveAttribute("data-peeking");
     expect(container.querySelector("[data-peek-dot]")).toBeNull();
+  });
+});
+
+/* UX plan §8 (R6) — the saved body follows the shopper onto the card. */
+describe("Product card — your size badge", () => {
+  afterEach(() => clearSizeProfile());
+
+  it("shows nothing without a saved profile, then 'Your size: X' once one is saved", () => {
+    const { unmount } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("your-size")).not.toBeInTheDocument();
+    unmount();
+
+    const profile = { heightCm: 172, weightKg: 68, fit: "regular" as const };
+    expect(saveSizeProfile(profile)).toBe(true);
+    const expected = suggestSize(product, profile);
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    expect(expected.advisory).toBe("ok"); // the seed panjabi grades a 172 cm / 68 kg body as M
+    expect(screen.getByTestId("your-size")).toHaveTextContent(`আপনার সাইজ: ${expected.recommended}`);
+  });
+
+  it("never badges a one-size or single-size piece", () => {
+    saveSizeProfile({ heightCm: 172, weightKg: 68, fit: "regular" });
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, sizes: ["Free"] }} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("your-size")).not.toBeInTheDocument();
   });
 });

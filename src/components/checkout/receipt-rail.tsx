@@ -14,24 +14,14 @@ import { useMemo } from "react";
 import ProductRail from "@/components/home/product-rail";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { Product } from "@/lib/catalog";
-import { moreInCategory } from "@/lib/home-shelves";
-import { completeTheLook } from "@/lib/merchandising";
+import { goesWith } from "@/lib/home-shelves";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 
 export const RECEIPT_RAIL_MIN = 2;
 
-export const receiptSuggestions = (ordered: Product[], products: Product[], limit = 8): Product[] => {
-  const skip = new Set(ordered.map((p) => p.id));
-  const out: Product[] = [];
-  const push = (p: Product) => {
-    if (skip.has(p.id) || out.length >= limit) return;
-    skip.add(p.id);
-    out.push(p);
-  };
-  for (const p of ordered) completeTheLook(p, products, 4).forEach(push);
-  for (const p of ordered) moreInCategory(p, products, ordered, limit).items.filter((s) => s.inStock).forEach(push);
-  return out;
-};
+/** Kept as the receipt's name for the shared `goesWith` picker. */
+export const receiptSuggestions = (ordered: Product[], products: Product[], limit = 8): Product[] =>
+  goesWith(ordered, products, limit);
 
 export default function ReceiptRail({ ordered }: { ordered: Product[] }) {
   const { t } = useLanguage();

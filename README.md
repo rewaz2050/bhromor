@@ -175,6 +175,47 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R6 — search that forgives spelling, a tracker worth reopening, loyalty you can see (2026-09-26)
+
+Round 6 of `docs/ux-sales-plan.md` (§1.2 search, §7 track, §8 account /
+wishlist). No migration.
+
+- **Search** (`src/lib/product-search.ts`, shared by the header overlay and
+  the shop grid): `foldSearchText` normalises case, Latin accents and the
+  Bengali spellings people type (ী/ি, ূ/ু, nukta, শ/ষ/স, ণ/ন, hyphens and
+  spaces); a small bilingual synonym table maps garment words across scripts
+  (পাঞ্জাবী → panjabi, সালোয়ার কামিজ → three-piece, টিশার্ট → t-shirt …); a
+  multi-word query matches when every word matches, in any order. The
+  overlay remembers the last six acted-on queries on the device
+  (`prosanti.recent-searches.v1`, clearable), reads its quick chips in the
+  UI language, and at zero results offers "Popular right now" plus a
+  WhatsApp "can't find it?" link when ops has a number (`/api/contact`,
+  fetched once via `use-support-contact.ts`).
+- **Track**: `track-rail` ("While you wait · New this week": new → featured
+  → rest, in stock, never the ordered pieces, ≥2 or hidden);
+  `share-tracker` hands the same `/track?id&phone` link to family (native
+  share sheet, WhatsApp fallback, clipboard on dismiss); the live map's ETA
+  card adds `rider-away` — "রাইডার প্রায় ১.২ কিমি দূরে · ~৫ মিনিট" from the real
+  rider fix and the real delivery pin only (`src/lib/rider-distance.ts`,
+  15 km/h, silent beyond 60 km).
+- **Loyalty visible**: `stamp-line` in the bag drawer and the mobile menu —
+  "This order = your 7th stamp — 3 more to <reward>" (signed-in, enabled
+  Smart Card only; Bengali ordinals and digits).
+- **Referral landing**: `ref-landing` banner on any `?ref=` visit — "Your
+  friend just gave you ৳50 off your first order", dismissible per session;
+  the code stays on the device for checkout as before.
+- **Your size on cards**: `your-size` chip when a saved Size Finder profile
+  yields a confident, in-range size the product actually sells.
+- **Wishlist**: sold-out pieces last (+ a one-line note), `wishlist-share`
+  (gift hint: `/wishlist?ids=…` opens a read-only shared list with "Save
+  these to my wishlist"), and a `wishlist-rail` of complements / same-shelf
+  pieces (`goesWith` in `home-shelves.ts`, also behind the receipt rail).
+- Generic `components/ui/share-link.tsx` (native share → WhatsApp → copy).
+- Tests: product-search (folding, synonyms, multi-word), recent-searches,
+  overlay R6 block, rider-distance, live-delivery-map distance line,
+  while-you-wait + share button, stamp-line, ref-capture banner,
+  product-card size badge, wishlist-view (own / shared).
+
 ## UX plan R5 — checkout one-minute cue, "same as last time", post-order rail (2026-09-26)
 
 Round 5 of `docs/ux-sales-plan.md` (§6 checkout). No migration.

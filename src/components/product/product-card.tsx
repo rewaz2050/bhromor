@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { cardPeekImages, coverImage, type Product } from "@/lib/catalog";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { useWishlist } from "@/lib/use-wishlist";
+import { useSizeProfile } from "@/lib/use-size-profile";
+import { suggestSize } from "@/lib/size-finder";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { productShopId, shopById } from "@/lib/shop-utils";
 import { Price } from "@/components/ui/primitives";
@@ -43,6 +45,14 @@ export function editorialProductName(product: Product): string {
 
 export default function ProductCard({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
+  /* UX plan §8 — the saved body (Size Finder) badges the card: "Your size: L".
+     Only a confident, in-range recommendation the product actually sells. */
+  const { profile } = useSizeProfile();
+  const yourSize = (() => {
+    if (!profile || product.sizes.length < 2) return null;
+    const s = suggestSize(product, profile);
+    return s.advisory === "ok" && s.recommended && product.sizes.includes(s.recommended) ? s.recommended : null;
+  })();
   /* Flash price + the price this device last saw — a quiet overlay; the cart
      and checkout decide the money. */
   const flash = useFlashPrice(product);
@@ -348,6 +358,14 @@ export default function ProductCard({ product }: { product: Product }) {
           {scarcity ? (
             <p data-testid="scarcity" className="mt-1 text-[0.68rem] font-semibold text-rose-700">
               {scarcity}
+            </p>
+          ) : null}
+          {yourSize ? (
+            <p
+              data-testid="your-size"
+              className="mt-1 inline-flex items-center gap-1 rounded-full bg-forest-50 px-2 py-0.5 text-[0.62rem] font-semibold text-forest-800 ring-1 ring-forest-200"
+            >
+              {t("product.yourSize").replace("{size}", yourSize)}
             </p>
           ) : null}
           {/* P2 #1 — real sales only: the count comes from the orders table

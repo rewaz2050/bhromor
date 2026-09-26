@@ -13,7 +13,7 @@
  */
 
 import type { Category, Product } from "./catalog";
-import { isDiscoverable, isOnOffer, offerPct } from "./merchandising";
+import { completeTheLook, isDiscoverable, isOnOffer, offerPct } from "./merchandising";
 
 /** One category block on the homepage: heading + its pieces in shelf order. */
 export interface CategoryShelf {
@@ -147,6 +147,25 @@ export const moreInCategory = (
     // the number the scoped shop link actually lists.
     total: category.length,
   };
+};
+
+/**
+ * "Goes with these" (UX plan §6 receipt, §8 wishlist) — around a set of
+ * seed pieces (an order, a wishlist): complements of each seed first
+ * (`completeTheLook`), then in-stock siblings from the same shelves; never
+ * a seed itself, never a duplicate, capped. Order-stable.
+ */
+export const goesWith = (seeds: Product[], products: Product[], limit = 8): Product[] => {
+  const skip = new Set(seeds.map((p) => p.id));
+  const out: Product[] = [];
+  const push = (p: Product) => {
+    if (skip.has(p.id) || out.length >= limit) return;
+    skip.add(p.id);
+    out.push(p);
+  };
+  for (const p of seeds) completeTheLook(p, products, 4).forEach(push);
+  for (const p of seeds) moreInCategory(p, products, seeds, limit).items.filter((s) => s.inStock).forEach(push);
+  return out;
 };
 
 /** Bangla-aware display name for a category. */

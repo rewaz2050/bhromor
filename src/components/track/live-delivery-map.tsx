@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
+import { riderDistance } from "@/lib/rider-distance";
+import { bnDigits } from "@/lib/arrival";
 import { usePoll } from "@/lib/use-poll";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
@@ -91,6 +93,10 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   };
 
   const riderPos = getPointOnCurve(transitProgress);
+
+  // UX plan §7 — how far, how long: only from a real rider fix and a real
+  // delivery pin; never while delivered.
+  const away = riderLive && !isDelivered ? riderDistance(riderLive, order, "bn") : null;
 
   // A real rider comes from the dispatch data — nothing is invented here:
   // no fake name, no invented phone, no made-up rating.
@@ -212,6 +218,13 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
           {riderLive && (
             <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
           )}
+          {/* UX plan §7 — the number a family actually wants: how far, how
+              long. Only from a real rider fix and a real delivery pin. */}
+          {away ? (
+            <p data-testid="rider-away" className="mt-1 text-[11px] font-semibold text-ivory-50">
+              রাইডার প্রায় {away.distanceLabel} দূরে · ~{bnDigits(String(away.minutes))} মিনিট
+            </p>
+          ) : null}
         </div>
 
         {/* Destination Chip on Map Bottom Right */}
