@@ -377,53 +377,13 @@ body {
 }
 .nav-editorial-link {
   position: relative;
-  padding: 0.65rem 1.05rem;
   border-radius: 999px;
-  /* Remove old bottom padding, use pill + underline hybrid */
+  /* Pill styling now handled by Tailwind classes in the component;
+     pseudos kept off so they don't double-paint the new solid fills. */
 }
+.nav-editorial-link::before,
 .nav-editorial-link::after {
-  content: "";
-  position: absolute;
-  bottom: 2px;
-  left: 0.9rem;
-  right: 0.9rem;
-  height: 1.5px;
-  background: linear-gradient(90deg, var(--color-gold-400), var(--color-gold-600));
-  border-radius: 999px;
-  transform: scaleX(0);
-  transform-origin: center;
-  transition: transform var(--motion-standard) var(--ease-refined);
-}
-.nav-editorial-link::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: var(--color-forest-50);
-  opacity: 0;
-  transform: scale(0.96);
-  transition:
-    opacity var(--motion-fast) linear,
-    transform var(--motion-standard) var(--ease-refined);
-  z-index: -1;
-}
-.nav-editorial-link:hover::before {
-  opacity: 1;
-  transform: scale(1);
-}
-.nav-editorial-link[aria-current="page"]::before {
-  opacity: 1;
-  transform: scale(1);
-  background: var(--color-forest-900);
-}
-.nav-editorial-link[aria-current="page"] {
-  color: var(--color-ivory-50) !important;
-}
-.nav-editorial-link[aria-current="page"]::after {
-  transform: scaleX(0);
-}
-.nav-editorial-link:focus-visible::after {
-  transform: scaleX(1);
+  display: none;
 }
 .hero-copy > p:first-child {
   max-width: 26rem;
@@ -479,33 +439,12 @@ body {
     0 0 0 3px var(--color-forest-600);
 }
 .storefront-bottom-nav {
-  box-shadow: 0 -4px 24px rgb(20 41 31 / 5%);
-  backdrop-filter: blur(16px) saturate(1.2);
+  /* Floating dock: no heavy top border, glass blur handled in component */
+  filter: drop-shadow(0 12px 24px rgba(12, 25, 19, 0.08));
 }
-.storefront-bottom-nav > a {
-  position: relative;
-}
-.storefront-bottom-nav > a::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 30%;
-  right: 30%;
-  height: 2px;
-  background: transparent;
-  border-radius: 0 0 2px 2px;
-}
-.storefront-bottom-nav > a[aria-current="page"]::before {
-  background: var(--color-gold-500);
-}
-.storefront-bottom-nav > a[aria-current="page"] svg {
+.storefront-bottom-nav a[aria-current="page"] svg,
+.storefront-bottom-nav button[aria-current="page"] svg {
   stroke-width: 2;
-}
-.storefront-bottom-nav > a[aria-current="page"] {
-  font-weight: 600;
-}
-.storefront-bottom-nav > a::before {
-  transition: background-color var(--motion-standard) var(--ease-refined);
 }
 .drawer-panel {
   overscroll-behavior: contain;

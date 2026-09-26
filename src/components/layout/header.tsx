@@ -80,79 +80,86 @@ export default function Header() {
       <div
         className={`header-bar relative border-b ${
           scrolled
-            ? "border-line/70 bg-ivory-50/88 supports-[backdrop-filter]:bg-ivory-50/78"
-            : "border-line/40 bg-ivory-50/72 supports-[backdrop-filter]:bg-ivory-50/60"
+            ? "border-line/60 bg-ivory-50/92 supports-[backdrop-filter]:bg-ivory-50/82"
+            : "border-line/35 bg-ivory-50/75 supports-[backdrop-filter]:bg-ivory-50/65"
         } backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150`}
       >
         <div
-          className={`mx-auto flex max-w-7xl items-center gap-2 px-3 transition-[height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:gap-4 sm:px-6 lg:px-8 ${
-            scrolled ? "h-14 sm:h-[4.1rem]" : "h-[4.6rem] sm:h-[5.1rem] lg:h-[5.4rem]"
+          className={`mx-auto flex max-w-7xl items-center gap-2 px-3 transition-[height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:gap-3 sm:px-6 lg:gap-6 lg:px-8 ${
+            scrolled ? "h-[3.65rem] sm:h-[4rem] lg:h-[4.25rem]" : "h-[4.2rem] sm:h-[4.85rem] lg:h-[5.1rem]"
           }`}
         >
-          <MobileNav />
+          {/* Left: mobile menu trigger — hidden on desktop where nav takes over */}
+          <div className="flex shrink-0 items-center lg:hidden">
+            <MobileNav />
+          </div>
 
-          {/* Brand lockup — premium hover lift */}
+          {/* Brand — centered on phones (absolute), left on desktop */}
           <Link
             href="/"
-            className="brand-lockup group flex min-w-0 items-center gap-2.5 sm:gap-3.5"
+            className="brand-lockup group absolute left-1/2 flex min-w-0 -translate-x-1/2 items-center gap-2.5 sm:gap-3 lg:static lg:translate-x-0"
             aria-label="PROSANTI home"
           >
             <span className="relative flex shrink-0 items-center justify-center">
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-forest-50 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-70"
+                className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-forest-50 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-60"
               />
               <LogoMark
-                className={`w-auto shrink-0 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform group-hover:scale-[1.03] group-hover:-rotate-1 ${
-                  scrolled ? "h-[1.85rem] sm:h-8" : "h-8 sm:h-[2.35rem]"
+                className={`w-auto shrink-0 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform group-hover:scale-[1.02] ${
+                  scrolled ? "h-[1.9rem] sm:h-[2.05rem]" : "h-[2.05rem] sm:h-[2.4rem]"
                 }`}
               />
             </span>
-            <span className="flex flex-col leading-none">
+            <span className="hidden flex-col leading-none sm:flex">
               <span
-                className={`font-display font-semibold tracking-[0.12em] text-forest-900 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:tracking-[0.18em] ${
-                  scrolled ? "text-[0.98rem] sm:text-[1.08rem]" : "text-[1.05rem] sm:text-[1.32rem]"
+                className={`font-display font-semibold tracking-[0.14em] text-forest-900 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] sm:tracking-[0.18em] ${
+                  scrolled ? "text-[0.95rem] sm:text-[1.05rem]" : "text-[1.02rem] sm:text-[1.28rem]"
                 }`}
               >
                 PROSANTI
               </span>
               <span
                 lang="bn"
-                className={`font-bengali hidden font-medium text-ink-soft transition-all duration-500 sm:block ${
-                  scrolled ? "text-[0.52rem] opacity-80" : "text-[0.58rem]"
+                className={`font-bengali hidden font-medium tracking-wide text-ink-soft transition-all duration-500 sm:block ${
+                  scrolled ? "text-[0.52rem] opacity-75" : "text-[0.58rem]"
                 }`}
               >
                 প্রশান্তি
               </span>
             </span>
+            {/* Phones — wordmark only, keep it compact */}
+            <span
+              className={`font-display font-semibold tracking-[0.14em] text-forest-900 sm:hidden ${
+                scrolled ? "text-[1rem]" : "text-[1.08rem]"
+              }`}
+            >
+              PROSANTI
+            </span>
           </Link>
 
-          {/* Desktop nav — truly centered: brand | nav | actions share the
-              bar in three balanced zones (the old ml-auto crammed the pills
-              against the action icons). */}
+          {/* Desktop nav — centered, breathable pills */}
           <div className="hidden flex-1 justify-center lg:flex">
             <Suspense>
               <NavLinks items={NAV} />
             </Suspense>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <span className="hidden h-6 w-px bg-line/70 sm:block" aria-hidden="true" />
-            <div className="hidden sm:flex">
+          {/* Actions — always on the right, consistent 44px targets */}
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5 lg:gap-2">
+            {/* Desktop divider + language — easy to find, never competes with cart */}
+            <span className="hidden h-6 w-px bg-line/60 lg:block" aria-hidden="true" />
+            <div className="hidden lg:flex">
               <LanguageSwitcher variant="header" />
             </div>
-            {/* Phones: one-tap language toggle where the wishlist icon was —
-                the bottom bar already carries the wishlist (P1 #8). */}
-            <div className="flex sm:hidden">
+            {/* Phone language is a single 44px tap — one letter shows the *other* language */}
+            <div className="flex lg:hidden">
               <LanguageSwitcher variant="toggle" />
             </div>
             <ProductSearch />
             <div className="hidden sm:flex">
               <WishlistButton />
             </div>
-            {/* Account was reachable only from the burger menu / footer on
-                desktop (audit L7). Hidden on phones — the bottom bar's Menu
-                already lists it. */}
             <Link
               href="/account"
               aria-label={t("header.account")}
@@ -165,7 +172,7 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Scroll progress — thin gold line */}
+        {/* Scroll progress — thin gold line, only when scrolling */}
         <div
           className="header-progress"
           aria-hidden="true"
