@@ -298,6 +298,9 @@ export const translations = {
       details: "Details",
       soldOut: "Sold out",
       sold: "{count} sold",
+      onlyLeft: "Only {count} left",
+      fewLeft: "Only a few left",
+      saveShort: "Save {pct}%",
       qualityChecked: "Quality checked",
       quickAddIntro: "A little everyday comfort",
       addToWishlist: "Add to wishlist",
@@ -310,6 +313,15 @@ export const translations = {
       increaseQuantity: "Increase quantity",
       decreaseQuantity: "Decrease quantity",
       addToBag: "Add to Bag →",
+    },
+    deliveryLine: {
+      toZone: "Delivery to {zone}: {charge}",
+      cod: "cash on delivery",
+      freeOver: "free over {amount}",
+      courier: "{zone}: courier {charge} · {eta} · min. order {min}",
+      pickArea: "Do we deliver to you?",
+      choose: "Choose your area",
+      change: "Change area",
     },
     freeDelivery: {
       addMore: "Add {amount} more and delivery is free",
@@ -992,6 +1004,9 @@ export const translations = {
       details: "বিস্তারিত",
       soldOut: "স্টক শেষ",
       sold: "{count}টি বিক্রি হয়েছে",
+      onlyLeft: "মাত্র {count}টি বাকি",
+      fewLeft: "অল্প কয়টি বাকি",
+      saveShort: "{pct}% ছাড়",
       qualityChecked: "কোয়ালিটি চেকড",
       quickAddIntro: "প্রতিদিনের ছোট্ট আরাম",
       addToWishlist: "পছন্দে যোগ করুন",
@@ -1004,6 +1019,15 @@ export const translations = {
       increaseQuantity: "পরিমাণ বাড়ান",
       decreaseQuantity: "পরিমাণ কমান",
       addToBag: "ব্যাগে যোগ করুন →",
+    },
+    deliveryLine: {
+      toZone: "{zone}-এ ডেলিভারি {charge}",
+      cod: "ক্যাশ অন ডেলিভারি",
+      freeOver: "{amount}+ অর্ডারে ফ্রি",
+      courier: "{zone}: কুরিয়ার {charge} · {eta} · ন্যূনতম অর্ডার {min}",
+      pickArea: "আপনার এলাকায় পাঠাই কি?",
+      choose: "এলাকা বেছে নিন",
+      change: "এলাকা বদলান",
     },
     freeDelivery: {
       addMore: "আর {amount} যোগ করলে ডেলিভারি ফ্রি",
@@ -1402,6 +1426,7 @@ export type TranslationKey =
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
+  | `deliveryLine.${keyof typeof translations.en.deliveryLine}`
   | `mobileDrawer.${keyof typeof translations.en.mobileDrawer}`
   | `shop.${keyof typeof translations.en.shop}`
   | `shopBrowser.${keyof typeof translations.en.shopBrowser}`

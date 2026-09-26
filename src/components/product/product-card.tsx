@@ -18,6 +18,7 @@ import { FlashRibbon } from "@/components/promo/flash-timer";
 import { IconTrendDown } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import { hasProductVideo } from "@/lib/media";
+import { bnDigits } from "@/lib/arrival";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -45,6 +46,26 @@ export default function ProductCard({ product }: { product: Product }) {
   const flash = useFlashPrice(product);
   const drop = usePriceDropFor(product);
   const shown = flash.was === null ? product.price : flash.price;
+  /* UX plan §1.1 (2026-09-26) — one price rule on every card: current price
+     big, old price struck, and the saving as a "-20%" chip. Flash drops
+     already wear their ribbon on the image, so the chip is for the shop's
+     own compare-at price only. */
+  const savePct =
+    flash.was === null && product.compareAtPrice && product.compareAtPrice > product.price
+      ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
+      : 0;
+  /* "Only 2 left" — a real count when the row carries one (≤ 3), the
+     shop's low-stock flag otherwise; never invented. */
+  const unitsLeft =
+    product.inStock && typeof product.stock === "number" && product.stock > 0 && product.stock <= 3
+      ? product.stock
+      : null;
+  const scarcity =
+    unitsLeft !== null
+      ? t("product.onlyLeft").replace("{count}", lang === "bn" ? bnDigits(String(unitsLeft)) : String(unitsLeft))
+      : product.inStock && product.lowStock
+        ? t("product.fewLeft")
+        : null;
   const { has, toggle, ready, busy } = useWishlist();
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useTransientValue("");
@@ -295,11 +316,26 @@ export default function ProductCard({ product }: { product: Product }) {
           </p>
         ) : null}
         <div className="mt-auto pt-2.5">
-          <Price
-            value={shown}
-            compareAt={flash.was ?? product.compareAtPrice}
-            size="sm"
-          />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Price
+              value={shown}
+              compareAt={flash.was ?? product.compareAtPrice}
+              size="sm"
+            />
+            {savePct > 0 ? (
+              <span
+                data-testid="save-chip"
+                className="rounded-full bg-rose-50 px-2 py-0.5 text-[0.62rem] font-bold text-rose-700 ring-1 ring-rose-200"
+              >
+                {t("product.saveShort").replace("{pct}", lang === "bn" ? bnDigits(String(savePct)) : String(savePct))}
+              </span>
+            ) : null}
+          </div>
+          {scarcity ? (
+            <p data-testid="scarcity" className="mt-1 text-[0.68rem] font-semibold text-rose-700">
+              {scarcity}
+            </p>
+          ) : null}
           {/* P2 #1 — real sales only: the count comes from the orders table
               (v_product_sales). No figure, no line — never an invented rank. */}
           {product.unitsSold != null && product.unitsSold > 0 && (

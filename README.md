@@ -164,6 +164,15 @@ What the customer sees: a **progress bar** in the bag drawer and `/cart` (`compo
 
 Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/target/payer, breakdown mirror), `order-validation.test.ts` (platform / shop / precedence / courier / pickup / PROSANTI+), `src/lib/db/__tests__/vendor.test.ts` (owner sets/clears, staff 403), `src/components/cart/__tests__/free-delivery-bar.test.tsx`. **Requires** `supabase/migrations/202609260003_free_delivery.sql`; until it runs, saving a free-delivery minimum answers 503 naming the file (profile saves without the field are unaffected) and the RPC keeps charging as before.
 
+## UX plan R1/R2 — card price block, personal delivery line, bag mini-bar, add-ons first (2026-09-26)
+
+The first items of `docs/ux-sales-plan.md` after the free-delivery decision, each small and measurable:
+
+- **Product card price block (§1.1)** — one rule everywhere: current price, struck old price, and a **"Save 20%" / "২০% ছাড়"** chip computed from the shop's `compareAtPrice` (flash drops keep their image ribbon instead). **"Only 2 left" / "মাত্র ২টি বাকি"** when the row carries a real count ≤ 3, "Only a few left" from the shop's low-stock flag alone; sold-out cards show neither. Bengali digits in Bengali. `components/product/product-card.tsx`, test `product-card-price-block.test.tsx`.
+- **Personal delivery line on the PDP (§4)** — `components/delivery/delivery-line.tsx` under the arrival cue: the shopper's remembered zone (`useMyZone`, shared with the home check, shop browser and checkout) → **"বড়পাড়ায় ডেলিভারি ৳৬০ · ক্যাশ অন ডেলিভারি · ৳৯৯৯+ অর্ডারে ফ্রি"**; the courier story for z4 (charge · days · minimum order from settings); and, when no zone is remembered, **"আপনার এলাকায় পাঠাই কি?"** with a zone picker that writes the same remembered zone. Test `delivery-line.test.tsx`.
+- **Sticky bag mini-bar on listing pages (§1.3)** — `components/cart/bag-mini-bar.tsx` (mounted in the site layout, phones only): while the bag has pieces on `/shop`, `/shops/*`, `/campaign/*`, `/wishlist`, `/live`, `/style`, a bar above the bottom nav reads **"৩টি পণ্য · ৳১,২৫০"** (tap → bag drawer) + **চেকআউট →**. Never on the product page (own buy bar), bag or checkout, and hidden while the drawer is open. Test `bag-mini-bar.test.tsx`.
+- **Add-on rail leads with the cheapest complements (§5)** — the bag drawer's *Pair it with* now sorts `completeTheLook` candidates by price and stays inside the bag's shop (single-shop rule), so the suggestion is a one-tap yes.
+
 ## Menubar redesign (2026-09-26)
 
 A UI/UX pass on the storefront chrome — the parts every page shares — so it reads like a professional shop and is easier to use, in both languages.

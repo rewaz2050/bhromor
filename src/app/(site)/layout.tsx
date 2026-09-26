@@ -6,6 +6,7 @@ import "@fontsource/noto-serif-bengali/500.css";
 import "@fontsource/noto-serif-bengali/600.css";
 import { CartProvider } from "@/components/cart/cart-provider";
 import BagDrawer from "@/components/cart/bag-drawer";
+import BagMiniBar from "@/components/cart/bag-mini-bar";
 import CustomerProvider from "@/components/account/customer-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import Header from "@/components/layout/header";
@@ -112,6 +113,9 @@ export default function SiteLayout({
           <Footer />
           {/* Thumb-reach navigation on phones (§67) */}
           <BottomNav />
+          {/* UX plan §1.3 — "3 pieces · ৳1,250 · Checkout →" above the bottom
+              nav while browsing a listing with a non-empty bag (phones). */}
+          <BagMiniBar />
           <BagDrawer />
           {/* Add-to-home-screen card: from the second visit, never in the
               installed app, quiet for a month after "Not now". */}

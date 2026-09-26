@@ -59,16 +59,23 @@ export default function BagDrawer() {
         ),
       )
     : null;
+  /* UX plan §5 (2026-09-26): the add-on rail leads with the CHEAPEST
+     complements — a gamcha or socks is a one-tap yes, a second panjabi is
+     not — and stays inside the bag's shop (single-shop rule, D1). */
   const recommendations = Array.from(
     new Map(
       detail
-        .flatMap((line) => completeTheLook(line.product, getLiveProducts() ?? []))
+        .flatMap((line) => completeTheLook(line.product, getLiveProducts() ?? [], 12))
         .filter(
-          (product) => !detail.some((line) => line.productId === product.id),
+          (product) =>
+            !detail.some((line) => line.productId === product.id) &&
+            (!bagShop || !product.shopId || product.shopId === bagShop.id),
         )
         .map((product) => [product.id, product]),
     ).values(),
-  ).slice(0, 2);
+  )
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 2);
     return (
     <Drawer
       open={bagOpen}

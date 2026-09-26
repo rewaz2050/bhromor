@@ -3,6 +3,7 @@
 import SizeGuide from "./size-guide";
 import ShareRow from "./share-row";
 import ArrivalCue from "@/components/delivery/arrival-cue";
+import DeliveryLine from "@/components/delivery/delivery-line";
 import SizeFinder, { useSizeSuggestion } from "./size-finder";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
@@ -503,6 +504,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
       {product.inStock && !hardStop ? (
         <ArrivalCue shopPrepMinutes={shop?.prepMinutes} className="mt-6" />
       ) : null}
+      {/* UX plan §4 — the shopper's own zone, charge, COD and the free-delivery
+          threshold in one line (with a picker when no zone is remembered). */}
+      <DeliveryLine shop={shop} className="mt-3" />
 
       {/* Quantity + CTAs */}
       <div
