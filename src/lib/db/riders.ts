@@ -34,6 +34,7 @@ import type {
 } from "./types";
 import type { Order } from "../orders";
 import { riderOrderView } from "../rider-order";
+import { phoneLoginEmail } from "../phone-login";
 import {
   sanitizeAvailability,
   type RiderAvailability,
@@ -146,6 +147,13 @@ export interface RiderApplyResult {
   userId: string;
   /** False when an existing login with the same email + password was reused. */
   accountCreated: boolean;
+  /** The login e-mail the rider signs in with (synthetic for phone logins). */
+  loginEmail: string;
+  /**
+   * Round 4 — true when this login's previously `rejected` rider row was
+   * rewritten with the new details and put back in the pending queue.
+   */
+  resubmitted: boolean;
 }
 
 /**
@@ -163,7 +171,7 @@ export async function applyRider(
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
-  const email = clean(b.email ?? b.contactEmail, 120).toLowerCase();
+  const typedEmail = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const vehicle = clean(b.vehicle, 12).toLowerCase();
   const zoneIds = Array.isArray(b.zoneIds)
     ? [
@@ -180,9 +188,12 @@ export async function applyRider(
   if (!BD_PHONE_RE.test(phone)) {
     throw new RiderInputError("A valid Bangladeshi mobile number is required.");
   }
+  // Round 4 — no e-mail? The mobile number IS the login (synthetic address,
+  // nothing is ever sent to it). A typed e-mail must still look like one.
+  const email = typedEmail === "" ? phoneLoginEmail(phone) : typedEmail;
   if (!EMAIL_RE.test(email)) {
     throw new RiderInputError(
-      "A valid email is required — it becomes your rider login.",
+      "That email does not look right — fix it, or leave it empty to sign in with your mobile number.",
     );
   }
   if (!VEHICLES.has(vehicle)) {
@@ -206,11 +217,13 @@ export async function applyRider(
     throw new RiderInputError("One of the chosen zones is not available.");
   }
 
+  // Rejected rows do not block: the same login re-applying rewrites its own
+  // row below, and a stranger reusing a rejected rider's phone starts fresh.
   const { data: dupe } = await db
     .from("riders")
     .select("id")
     .or(`phone.eq.${phone},contact_email.eq.${email}`)
-    .neq("status", "suspended")
+    .not("status", "in", "(suspended,rejected)")
     .limit(1);
   if (dupe && dupe.length > 0) {
     throw new RiderInputError(
@@ -219,19 +232,29 @@ export async function applyRider(
     );
   }
 
-  // One login is one rider.
-  const alreadyRider = async (userId: string): Promise<boolean> => {
+  // One login is one rider — unless that rider row was REJECTED, in which
+  // case this application replaces it (round 4).
+  const ownedRider = async (
+    userId: string,
+  ): Promise<{ id: string; status: string } | null> => {
     const { data: existing } = await db
       .from("riders")
-      .select("id")
+      .select("id,status")
       .eq("user_id", userId)
       .limit(1);
-    return !!existing && existing.length > 0;
+    return (existing as { id: string; status: string }[] | null)?.[0] ?? null;
   };
-  if (sessionUserId && (await alreadyRider(sessionUserId))) {
-    throw new RiderInputError(
+  const resubmitOrRefuse = async (userId: string, message: string): Promise<string | null> => {
+    const owned = await ownedRider(userId);
+    if (!owned) return null;
+    if (owned.status === "rejected") return owned.id;
+    throw new RiderInputError(message, 409);
+  };
+  let resubmitId: string | null = null;
+  if (sessionUserId) {
+    resubmitId = await resubmitOrRefuse(
+      sessionUserId,
       "This account is already a rider — sign in to the rider app instead.",
-      409,
     );
   }
 
@@ -246,12 +269,37 @@ export async function applyRider(
     });
     userId = account.userId;
     accountCreated = account.created;
-    if (!accountCreated && (await alreadyRider(userId))) {
-      throw new RiderInputError(
+    if (!accountCreated) {
+      resubmitId = await resubmitOrRefuse(
+        userId,
         "This login is already a rider — sign in to the rider app instead.",
-        409,
       );
     }
+  }
+
+  if (resubmitId) {
+    // Re-application after a rejection: same login, same row, new details,
+    // back to the pending queue with the old verdict cleared. Uploaded KYC
+    // documents are kept — they are usually still valid.
+    const { error: redoError } = await db
+      .from("riders")
+      .update({
+        name,
+        phone,
+        contact_email: email,
+        vehicle,
+        zone_ids: zoneIds,
+        status: "pending",
+        is_online: false,
+        review_note: null,
+        reviewed_by: null,
+        reviewed_by_email: null,
+        reviewed_at: null,
+      })
+      .eq("id", resubmitId)
+      .eq("status", "rejected");
+    if (redoError) throw new Error("rider re-application failed");
+    return { id: resubmitId, userId, accountCreated: false, loginEmail: email, resubmitted: true };
   }
 
   const { data, error } = await db
@@ -272,7 +320,7 @@ export async function applyRider(
     if (accountCreated) await deleteApplicantAccount(db, userId);
     throw new Error("rider application failed");
   }
-  return { id: (data as { id: string }).id, userId, accountCreated };
+  return { id: (data as { id: string }).id, userId, accountCreated, loginEmail: email, resubmitted: false };
 }
 
 /* ------------------------------------------------------------------ */

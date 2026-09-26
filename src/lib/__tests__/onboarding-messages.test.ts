@@ -4,7 +4,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  applicantApplyUrl,
   applicantLoginUrl,
+  applicationRejectedMessage,
+  applicationRejectedWhatsAppLink,
   approvalMessage,
   approvalWhatsAppLink,
   passwordResetMessage,
@@ -78,5 +81,33 @@ describe("reset REQUEST decisions (no SMS / e-mail)", () => {
   it("links wa.me for a BD mobile only", () => {
     expect(resetApprovedWhatsAppLink({ kind: "rider", name: "T", phone: "01811111111" })).toMatch(/^https:\/\/wa\.me\/8801811111111\?text=/);
     expect(resetApprovedWhatsAppLink({ kind: "rider", name: "T", phone: "" })).toBeNull();
+  });
+});
+
+describe("round 4 — phone logins and application rejections", () => {
+  it("tells a phone-login applicant to sign in with the mobile number, never the synthetic address", () => {
+    const text = approvalMessage({ kind: "rider", name: "Tanvir", email: "01811111111@phone.prosanti.app" });
+    expect(text).toContain("মোবাইল নম্বর (01811111111)");
+    expect(text).not.toContain("phone.prosanti.app");
+    expect(approvalMessage({ kind: "vendor", name: "Arian", email: "shop@example.com" })).toContain("ইমেইল (shop@example.com)");
+  });
+
+  it("carries the rejection reason and the re-apply link", () => {
+    const text = applicationRejectedMessage({ kind: "vendor", name: "Arian", note: "ফোনে পাওয়া যায়নি" });
+    expect(text).toContain("দোকানের আবেদন");
+    expect(text).toContain("কারণ: ফোনে পাওয়া যায়নি");
+    expect(text).toContain(applicantApplyUrl("vendor"));
+    expect(applicantApplyUrl("vendor")).toMatch(/\/shops\/apply$/);
+    expect(applicantApplyUrl("rider")).toMatch(/\/rider\/apply$/);
+    const noNote = applicationRejectedMessage({ kind: "rider", name: "T" });
+    expect(noNote).toContain("রাইডার আবেদন");
+    expect(noNote).not.toContain("কারণ:");
+  });
+
+  it("links wa.me for the rejection message on a BD mobile only", () => {
+    expect(applicationRejectedWhatsAppLink({ kind: "rider", name: "T", phone: "01811111111", note: "x" })).toMatch(
+      /^https:\/\/wa\.me\/8801811111111\?text=/,
+    );
+    expect(applicationRejectedWhatsAppLink({ kind: "rider", name: "T", phone: "12" })).toBeNull();
   });
 });

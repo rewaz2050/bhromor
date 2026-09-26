@@ -34,10 +34,12 @@ src/app/api/
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
 ├── auth/reset-request/route.ts   # POST {kind,email,phone}: file a password-reset REQUEST (no SMS/e-mail; 5/15min/IP, 3/h/email) · GET ?kind&email&phone: its status for the login page poll
 ├── auth/reset-complete/route.ts  # POST {kind,email,phone,password}: set the new password inside a staff-approved 24 h window, then close the request (5/15min/IP)
-├── shops/apply/route.ts   # POST public intake = sign-up: creates the login (email+password) + pending shop + owner link (5/min/IP)
-├── riders/apply/route.ts  # POST rider intake = sign-up: creates the login + pending rider row linked by user_id (5/min/IP)
-├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors
-├── rider/me/route.ts      # rider session probe (rider + linked email)
+├── shops/apply/route.ts   # POST public intake = sign-up: creates the login (email+password, or phone-login address when no e-mail) + pending shop + owner link; re-applying over a REJECTED shop of the same login rewrites it back to pending (5/min/IP)
+├── riders/apply/route.ts  # POST rider intake = sign-up: same, for the rider row (5/min/IP)
+├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors; {allowApplicant:true} lets pending/rejected riders into the KYC routes only
+├── rider/me/route.ts      # rider session probe (rider + linked email; review trail stripped)
+├── rider/kyc/route.ts     # GET own KYC state · POST {doc,url}: store one Cloudinary URL (nid_front|nid_back|selfie|license); open to pending applicants (20/min)
+├── rider/kyc/sign/route.ts # POST: Cloudinary signature for a KYC photo (folder prosanti/rider-kyc); 503 NOT_CONFIGURED without Cloudinary
 ├── rider/jobs/route.ts    # own delivery assignments with full order snapshots
 ├── rider/online/route.ts  # PATCH own online switch
 ├── rider/assignments/[id]/accept/route.ts    # offer → accepted
@@ -53,14 +55,16 @@ src/app/api/
 ├── admin/zones/...        # upsert + move + delete (last-zone/order guards)
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
-├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
+├── admin/shops/route.ts   # queue: list + upsert (fields/commission; status via the review route below)
+├── admin/shops/[id]/review/route.ts  # POST {status: active|rejected|suspended|pending, note?}: staff decision with audit stamp; note required to reject (admin/super_admin, 30/min; 503 until migration 202609260002)
 ├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner (legacy rows only — applications arrive linked)
 ├── admin/shops/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the owner login, returned once (admin/super_admin, 10/min; no e-mail reset exists)
 ├── admin/applications/route.ts  # GET {shops, riders, resets}: pending application + reset-request head-counts for the nav badges + dashboard banner (30 s client poll)
 ├── admin/access-requests/route.ts       # GET {pending, recent, ready}: password-reset request queue (staff RLS; ready=false until migration 202609260001)
 ├── admin/access-requests/[id]/route.ts  # POST {action: approve|reject, note?}: opens the requester's 24 h self-set window / leaves them a note (admin/super_admin, 30/min)
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
-├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
+├── admin/riders/route.ts   # queue: list (pending → active → rejected → suspended) + upsert (fields/zones)
+├── admin/riders/[id]/review/route.ts  # POST {status, note?}: staff decision with audit stamp (same contract as shops; non-active forces is_online=false)
 ├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login (legacy rows only — applications arrive linked)
 ├── admin/riders/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the rider login, returned once (admin/super_admin, 10/min)
 ├── admin/deliveries/route.ts       # GET dispatch board (assignments + awaiting orders)

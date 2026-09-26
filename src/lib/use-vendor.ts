@@ -18,7 +18,7 @@ import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
 
 /** Why a signed-in user was refused (mirrors VendorDenyReason server-side). */
-export type VendorDenyReason = "none" | "pending" | "suspended";
+export type VendorDenyReason = "none" | "pending" | "suspended" | "rejected";
 
 export class VendorApiError extends Error {
   status: number;
@@ -38,7 +38,7 @@ const readError = async (
   try {
     const data = (await res.json()) as { error?: string; reason?: string };
     const reason =
-      data.reason === "pending" || data.reason === "suspended" || data.reason === "none"
+      data.reason === "pending" || data.reason === "suspended" || data.reason === "rejected" || data.reason === "none"
         ? data.reason
         : undefined;
     return { message: data.error || FALLBACK, reason };

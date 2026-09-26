@@ -406,6 +406,15 @@ After the existing migrations, apply in order:
   is applied, "পাসওয়ার্ড ভুলে গেছেন?" answers 503 and Admin → Access
   requests explains what to run; the card-level **Reset password** keeps
   working regardless.
+- `supabase/migrations/202609260002_application_review.sql` — application
+  **review + rider KYC** (round 4): widens the shop / rider status check to
+  allow `rejected`, adds `review_note`, `reviewed_by`, `reviewed_by_email`,
+  `reviewed_at` to both tables and `kyc` (jsonb) + `kyc_submitted_at` to
+  riders. Pure `alter table … if not exists`; safe to re-run; nothing to
+  back-fill. Until it is applied, the **Approve / Reject…** strip on Admin →
+  Shops / Riders answers 503 naming this file (the old row edit still
+  saves), and the rider's KYC card says uploads are not enabled yet — the
+  application itself is unaffected.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
@@ -576,6 +585,19 @@ Do these on the deployed site, in order:
       test shop → **Reset password** → the temporary password shows once →
       sign in with it at `/vendor/login` → Shop settings → **পাসওয়ার্ড বদলান**
       → sign out / in with the new one.
+- [ ] Reject with a reason (round 4): a second test rider applies **without
+      an e-mail** (mobile number only) → `/rider/login` with the **mobile
+      number** + password shows "অনুমোদনের অপেক্ষায়" and the **KYC** card →
+      upload NID front/back + selfie from a phone (Cloudinary configured) →
+      Admin → Riders shows **KYC 3/3 — complete** with thumbnails → **Reject…** with
+      a reason → the rider's login page shows "আবেদন অনুমোদন হয়নি" with that
+      reason and **তথ্য ঠিক করে আবার আবেদন করুন →** → re-apply with the same
+      number + password → Admin → Riders shows the same rider pending again
+      ("re-submitted" in the bell), KYC photos kept → **Approve** → the card
+      reads "Approved by <you> · just now" → `/rider` opens.
+- [ ] Vendor checklist: sign in as a freshly approved shop → `/vendor` shows
+      **Get your shop ready** (n/5) → add address, tagline, 3 products with
+      photos, switch to Open → the card disappears.
 - [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
       **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
       for the auto-offer trigger) → the linked rider sees the offer → accept
@@ -642,6 +664,10 @@ direct file-picker upload, add the four Cloudinary variables from
 | Apply form → "this phone number already has an application" (409) | A shop row with that phone exists (pending or active) → find it in Admin → Shops; approve / edit it instead of creating a second one |
 | Vendor or rider forgot the password (no reset e-mail is ever sent) | Tell them to tap **পাসওয়ার্ড ভুলে গেছেন? / Forgot your password?** on their login page and enter the application email + phone. The request lands in Admin → **Access requests** (bell + dashboard banner): **call the number on file**, tick the confirmation, **Approve** → their login page switches to a new-password form by itself (24 h window). Can't reach them / no smartphone: the shop / rider card's **Reset password** gives a temporary password to read out |
 | "পাসওয়ার্ড রিসেট সার্ভিস এখনো চালু হয়নি" (503) on the login page | Migration `202609260001_password_reset_requests.sql` not applied → step 1; meanwhile use the card's **Reset password** |
+| Admin → Shops / Riders → Approve or Reject → "Application review is not set up on this database yet" (503) | Migration `202609260002_application_review.sql` not applied → step 1. Meanwhile **Edit → Save** on the card still changes the status (no audit stamp) |
+| Rider's KYC card says "কাগজপত্র আপলোড এখনো চালু হয়নি" / "ছবি আপলোড এখনো কনফিগার করা হয়নি" | First message: migration `202609260002` missing → step 1. Second: Cloudinary env not set → step 6. The application is filed either way; approve after a phone/WhatsApp check of the NID instead |
+| Applicant has no e-mail | Leave the e-mail field empty on the apply form: the login is the **mobile number** + password (the server stores `01XXXXXXXXX@phone.prosanti.app` internally; nothing is sent there). Staff screens show it as "01… (phone login)". The reset panel works the same way — mobile number, e-mail left empty |
+| Rejected applicant says "I fixed it, what now?" | They re-open the apply form and submit again with the **same** e-mail / mobile number + password → the rejected row goes back to pending with the new details (the bell says "re-submitted"). Admin → filter **rejected** to see what is waiting for a fix; **Re-open** puts a row back to pending without their action |
 | Reset request says "এই ইমেইল ও ফোন নম্বরের কোনো … লগইন পাওয়া যায়নি" | The pair must match the shop's `contact_email` + `phone` / the rider's row exactly (legacy rows linked by a different email won't match) → fix the row in Admin → Shops / Riders, or use the card's **Reset password** |
 | Approved someone — how do they know? | The card's **WhatsApp: approved, sign in →** button opens a prefilled Bangla message with the login URL. Their login page also re-checks every 30 s on its own while the "awaiting approval" card is open |
 | New applications go unnoticed | The Shops / Riders links in the admin nav carry the pending count and the dashboard shows a banner; both refresh every 30 s while the tab is visible |

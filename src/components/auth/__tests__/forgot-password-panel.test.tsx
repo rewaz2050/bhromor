@@ -37,7 +37,7 @@ describe("ForgotPasswordPanel", () => {
 
     expect(poll.calls.at(-1)?.enabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "পাসওয়ার্ড ভুলে গেছেন?" }));
-    fill(screen.getByLabelText("ইমেইল"), " Rider@Example.com ");
+    fill(screen.getByLabelText(/^ইমেইল/), " Rider@Example.com ");
     fill(screen.getByLabelText("মোবাইল নম্বর"), "+880 1811-111111");
     expect(screen.getByLabelText("মোবাইল নম্বর")).toHaveValue("01811111111");
     fireEvent.click(screen.getByRole("button", { name: "অনুরোধ পাঠান" }));
@@ -45,7 +45,7 @@ describe("ForgotPasswordPanel", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/auth/reset-request");
-    expect(JSON.parse(String(init.body))).toEqual({ kind: "rider", email: "Rider@Example.com", phone: "01811111111" });
+    expect(JSON.parse(String(init.body))).toEqual({ kind: "rider", email: "rider@example.com", phone: "01811111111" });
 
     expect(await screen.findByText(/অনুমোদনের অপেক্ষায়/)).toBeInTheDocument();
     expect(poll.calls.at(-1)).toEqual({ intervalMs: RESET_STATUS_POLL_MS, enabled: true });
@@ -59,7 +59,7 @@ describe("ForgotPasswordPanel", () => {
     vi.stubGlobal("fetch", vi.fn(async () => json({ error: "এই ইমেইল ও ফোন নম্বরের কোনো রাইডার লগইন পাওয়া যায়নি" }, 404)));
     render(<ForgotPasswordPanel kind="rider" lang="bn" />);
     fireEvent.click(screen.getByRole("button", { name: "পাসওয়ার্ড ভুলে গেছেন?" }));
-    fill(screen.getByLabelText("ইমেইল"), "x@example.com");
+    fill(screen.getByLabelText(/^ইমেইল/), "x@example.com");
     fill(screen.getByLabelText("মোবাইল নম্বর"), "01811111111");
     fireEvent.click(screen.getByRole("button", { name: "অনুরোধ পাঠান" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/পাওয়া যায়নি/);
@@ -109,7 +109,7 @@ describe("ForgotPasswordPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/ফোনে মেলেনি/);
     fireEvent.click(screen.getByRole("button", { name: "আবার অনুরোধ করুন" }));
     expect(screen.getByRole("button", { name: "অনুরোধ পাঠান" })).toBeInTheDocument();
-    expect(screen.getByLabelText("ইমেইল")).toHaveValue("r@example.com");
+    expect(screen.getByLabelText(/^ইমেইল/)).toHaveValue("r@example.com");
     expect(window.localStorage.getItem("prosanti.reset.rider")).toBeNull();
   });
 

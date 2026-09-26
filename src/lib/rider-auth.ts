@@ -26,8 +26,8 @@ export interface RiderContext {
   email: string;
 }
 
-/** Why a signed-in user is refused — drives the pending card on /rider/login. */
-export type RiderDenyReason = "none" | "pending" | "suspended";
+/** Why a signed-in user is refused — drives the status card on /rider/login. */
+export type RiderDenyReason = "none" | "pending" | "suspended" | "rejected";
 
 export class RiderAuthError extends Error {
   status: 401 | 403 | 503;
@@ -39,7 +39,24 @@ export class RiderAuthError extends Error {
   }
 }
 
-export async function requireRider(): Promise<RiderContext> {
+export interface RequireRiderOptions {
+  /**
+   * Round 4 — let a rider whose application is still `pending` (or was
+   * `rejected` and is being fixed) through. Only the KYC upload routes use
+   * this; every job/cash route keeps the active-only gate.
+   */
+  allowApplicant?: boolean;
+}
+
+/** Bangla message for a rejected application, note included when staff left one. */
+export const riderRejectedMessage = (note?: string): string =>
+  note && note.trim() !== ""
+    ? `আপনার রাইডার আবেদনটি এবার অনুমোদন হয়নি। কারণ: ${note.trim()} — তথ্য ঠিক করে একই লগইনে আবার আবেদন করুন।`
+    : "আপনার রাইডার আবেদনটি এবার অনুমোদন হয়নি — তথ্য ঠিক করে একই লগইনে আবার আবেদন করুন, অথবা PROSANTI সাপোর্টে কথা বলুন।";
+
+export async function requireRider(
+  opts: RequireRiderOptions = {},
+): Promise<RiderContext> {
   const server = await getSupabaseServer();
   if (!server) {
     throw new RiderAuthError("Rider sign-in is not configured.", 401);
@@ -61,14 +78,18 @@ export async function requireRider(): Promise<RiderContext> {
   const rider = mapRider(row as DbRider);
   // Apply = sign up (2026-09-26): the login exists from the application on;
   // the status is the only gate, so say which one it is.
-  if (rider.status === "pending") {
+  const applicant = rider.status === "pending" || rider.status === "rejected";
+  if (rider.status === "pending" && !opts.allowApplicant) {
     throw new RiderAuthError(
       "আপনার রাইডার আবেদন এখনো অনুমোদনের অপেক্ষায় আছে — অ্যাডমিন অনুমোদন করলেই এই লগইনে রাইডার অ্যাপ খুলবে।",
       403,
       "pending",
     );
   }
-  if (rider.status !== "active") {
+  if (rider.status === "rejected" && !opts.allowApplicant) {
+    throw new RiderAuthError(riderRejectedMessage(rider.review?.note), 403, "rejected");
+  }
+  if (rider.status !== "active" && !applicant) {
     throw new RiderAuthError(
       "আপনার রাইডার অ্যাকাউন্টটি সাসপেন্ড করা আছে — PROSANTI সাপোর্টে যোগাযোগ করুন।",
       403,

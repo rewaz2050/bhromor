@@ -9,6 +9,7 @@ import {
   shopServesZone,
   splitEta,
   toPublicShop,
+  withoutReview,
 } from "../shop-utils";
 
 const shop = (over: Partial<Shop> = {}): Shop => ({
@@ -139,5 +140,21 @@ describe("splitEta", () => {
     expect(splitEta(15, "45–60 min")).toBe(
       "Ready in ~15 min · at your door in 45–60 min",
     );
+  });
+});
+
+describe("withoutReview (round 4, 2026-09-26)", () => {
+  it("drops the staff review trail from a self payload without touching the source", () => {
+    const shop = {
+      id: "s1",
+      name: "Arian",
+      status: "rejected",
+      review: { note: "Outside our zones", by: "admin@prosanti.example", at: 1 },
+    };
+    const own = withoutReview(shop);
+    expect(own).toEqual({ id: "s1", name: "Arian", status: "rejected" });
+    expect("review" in own).toBe(false);
+    expect(shop.review).toBeDefined();
+    expect(withoutReview({ id: "r1", review: undefined })).toEqual({ id: "r1" });
   });
 });

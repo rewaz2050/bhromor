@@ -18,6 +18,7 @@ import {
   linksSession,
 } from "./applicant-account";
 import { toPublicShop } from "../shop-utils";
+import { phoneLoginEmail } from "../phone-login";
 import { mapShop } from "./mappers";
 import type { DbShop } from "./types";
 
@@ -76,6 +77,13 @@ export interface ApplyResult {
   userId: string;
   /** False when an existing login with the same email + password was reused. */
   accountCreated: boolean;
+  /** The login e-mail the applicant signs in with (synthetic for phone logins). */
+  loginEmail: string;
+  /**
+   * Round 4 — true when a previously `rejected` shop of this same login was
+   * rewritten with the new details and put back in the pending queue.
+   */
+  resubmitted: boolean;
 }
 
 /**
@@ -97,7 +105,7 @@ export async function applyShop(
   const name = clean(b.name, 80);
   const tagline = clean(b.tagline, 200);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
-  const email = clean(b.email ?? b.contactEmail, 120).toLowerCase();
+  const typedEmail = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const address = clean(b.address, 300);
   const prepRaw = Number(b.prepMinutes ?? b.prep_minutes);
   const prepMinutes = Number.isFinite(prepRaw)
@@ -111,8 +119,11 @@ export async function applyShop(
   if (!BD_PHONE_RE.test(phone)) {
     throw new ShopInputError("A valid Bangladeshi mobile number is required.");
   }
+  // Round 4 — no e-mail? The mobile number IS the login (synthetic address,
+  // nothing is ever sent to it). A typed e-mail must still look like one.
+  const email = typedEmail === "" ? phoneLoginEmail(phone) : typedEmail;
   if (!EMAIL_RE.test(email)) {
-    throw new ShopInputError("A valid email is required — it becomes your dashboard login.");
+    throw new ShopInputError("That email does not look right — fix it, or leave it empty to sign in with your mobile number.");
   }
   if (zoneIds.length === 0) {
     throw new ShopInputError("Choose at least one delivery zone.");
@@ -133,12 +144,14 @@ export async function applyShop(
   }
 
   // One shop per email AND per phone — the same shop used to be able to
-  // apply twice under two emails.
+  // apply twice under two emails. Rejected rows do not block: the same
+  // login re-applying rewrites its own row below, and a stranger reusing
+  // a rejected shop's phone simply starts fresh.
   const { data: dupe } = await db
     .from("shops")
     .select("id,status,contact_email")
     .or(`contact_email.eq.${email},phone.eq.${phone}`)
-    .neq("status", "suspended")
+    .not("status", "in", "(suspended,rejected)")
     .limit(1);
   if (dupe && dupe.length > 0) {
     const sameEmail = (dupe[0] as { contact_email?: string }).contact_email === email;
@@ -150,19 +163,36 @@ export async function applyShop(
     );
   }
 
-  // One login owns at most one shop.
-  const alreadyVendor = async (userId: string): Promise<boolean> => {
+  // One login owns at most one shop — unless that shop was REJECTED, in
+  // which case this application replaces it (round 4).
+  const ownedShop = async (
+    userId: string,
+  ): Promise<{ id: string; status: string } | null> => {
     const { data: existing } = await db
       .from("vendor_users")
       .select("shop_id")
       .eq("user_id", userId)
       .limit(1);
-    return !!existing && existing.length > 0;
+    const shopId = (existing as { shop_id: string }[] | null)?.[0]?.shop_id;
+    if (!shopId) return null;
+    const { data: shop } = await db
+      .from("shops")
+      .select("id,status")
+      .eq("id", shopId)
+      .maybeSingle();
+    return (shop as { id: string; status: string } | null) ?? { id: shopId, status: "unknown" };
   };
-  if (sessionUserId && (await alreadyVendor(sessionUserId))) {
-    throw new ShopInputError(
+  const resubmitOrRefuse = async (userId: string, message: string): Promise<string | null> => {
+    const owned = await ownedShop(userId);
+    if (!owned) return null;
+    if (owned.status === "rejected") return owned.id;
+    throw new ShopInputError(message, 409);
+  };
+  let resubmitId: string | null = null;
+  if (sessionUserId) {
+    resubmitId = await resubmitOrRefuse(
+      sessionUserId,
       "This account already has a shop — sign in to the vendor dashboard instead.",
-      409,
     );
   }
 
@@ -177,16 +207,42 @@ export async function applyShop(
     });
     userId = account.userId;
     accountCreated = account.created;
-    if (!accountCreated && (await alreadyVendor(userId))) {
-      throw new ShopInputError(
+    if (!accountCreated) {
+      resubmitId = await resubmitOrRefuse(
+        userId,
         "This login already runs a shop — sign in to the vendor dashboard instead.",
-        409,
       );
     }
   }
   const undoAccount = async () => {
     if (accountCreated) await deleteApplicantAccount(db, userId);
   };
+
+  if (resubmitId) {
+    // Re-application after a rejection: same login, same row, new details,
+    // back to the pending queue with the old verdict cleared.
+    const { error: redoError } = await db
+      .from("shops")
+      .update({
+        name,
+        tagline,
+        phone,
+        contact_email: email,
+        address,
+        zone_ids: zoneIds,
+        prep_minutes: prepMinutes,
+        status: "pending",
+        is_open: false,
+        review_note: null,
+        reviewed_by: null,
+        reviewed_by_email: null,
+        reviewed_at: null,
+      })
+      .eq("id", resubmitId)
+      .eq("status", "rejected");
+    if (redoError) throw new Error("shop re-application failed");
+    return { id: resubmitId, userId, accountCreated: false, loginEmail: email, resubmitted: true };
+  }
 
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "shop";
   let slug = base;
@@ -227,5 +283,5 @@ export async function applyShop(
     await undoAccount();
     throw new Error("shop application link failed");
   }
-  return { id: shopId, userId, accountCreated };
+  return { id: shopId, userId, accountCreated, loginEmail: email, resubmitted: false };
 }

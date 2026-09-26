@@ -23,8 +23,14 @@ export interface VendorContext {
   db: SupabaseClient;
 }
 
-/** Why a signed-in user is refused — drives the pending card on /vendor/login. */
-export type VendorDenyReason = "none" | "pending" | "suspended";
+/** Why a signed-in user is refused — drives the status card on /vendor/login. */
+export type VendorDenyReason = "none" | "pending" | "suspended" | "rejected";
+
+/** English message for a rejected application, note included when staff left one. */
+export const vendorRejectedMessage = (note?: string | null): string =>
+  note && note.trim() !== ""
+    ? `Your shop application was not approved this time. Reason: ${note.trim()} — fix the details and apply again with this same login.`
+    : "Your shop application was not approved this time — fix the details and apply again with this same login, or talk to PROSANTI support.";
 
 export class VendorAuthError extends Error {
   status: 401 | 403;
@@ -54,16 +60,20 @@ export async function requireVendor(): Promise<VendorContext> {
   const shopId = (link as { shop_id: string }).shop_id;
   const { data: shop } = await db
     .from("shops")
-    .select("status")
+    .select("status,review_note")
     .eq("id", shopId)
     .single();
-  const shopStatus = (shop as { status: string } | null)?.status;
+  const shopRow = shop as { status: string; review_note?: string | null } | null;
+  const shopStatus = shopRow?.status;
   if (shopStatus === "pending") {
     throw new VendorAuthError(
       "Your shop application is awaiting PROSANTI's approval — this login opens the dashboard the moment it is confirmed.",
       403,
       "pending",
     );
+  }
+  if (shopStatus === "rejected") {
+    throw new VendorAuthError(vendorRejectedMessage(shopRow?.review_note), 403, "rejected");
   }
   if (shopStatus !== "active") {
     throw new VendorAuthError(

@@ -44,6 +44,10 @@ export default function RiderApplyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** What to type in the login box later — the e-mail, or the mobile number for a phone login. */
+  const [loginHandle, setLoginHandle] = useState("");
+  /** Round 4 — this application replaced a rejected one (same login). */
+  const [resubmitted, setResubmitted] = useState(false);
   /** "existing" → the email already had a PROSANTI login and it was reused. */
   const [account, setAccount] = useState<"created" | "existing">("created");
 
@@ -67,8 +71,9 @@ export default function RiderApplyPage() {
       setError("সঠিক ১১-সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError("সঠিক ইমেইল অ্যাড্রেস দিন।");
+    // Round 4 — e-mail is optional: without one the mobile number is the login.
+    if (cleanEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError("ইমেইলটি ঠিক নেই — ঠিক করুন, অথবা ফাঁকা রাখুন (তখন মোবাইল নম্বর দিয়েই লগইন হবে)।");
       return;
     }
     const passwordIssue = passwordProblem(password, confirmPassword);
@@ -101,12 +106,16 @@ export default function RiderApplyPage() {
       const data = (await res.json().catch(() => null)) as {
         error?: string;
         account?: "created" | "existing";
+        login?: string;
+        resubmitted?: boolean;
       } | null;
       if (!res.ok) {
         throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
       }
 
       setAccount(data?.account === "existing" ? "existing" : "created");
+      setLoginHandle(data?.login || cleanEmail || cleanPhone);
+      setResubmitted(data?.resubmitted === true);
       setPassword("");
       setConfirmPassword("");
       setSubmitted(true);
@@ -124,10 +133,14 @@ export default function RiderApplyPage() {
           <IconCheck className="h-8 w-8 stroke-[2.5]" />
         </div>
         <h1 className="font-display mt-6 text-2xl font-bold text-forest-900 sm:text-3xl">
-          রাইডার আবেদন গৃহীত হয়েছে!
+          {resubmitted ? "আবেদন আবার জমা হয়েছে!" : "রাইডার আবেদন গৃহীত হয়েছে!"}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-          ধন্যবাদ <strong>{name}</strong>! আপনার আবেদনটি আমাদের পেন্ডিং কিউতে জমা হয়েছে। তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই আপনি <strong>/rider</strong> পোর্টাল থেকে ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
+          ধন্যবাদ <strong>{name}</strong>!{" "}
+          {resubmitted
+            ? "নতুন তথ্যসহ আপনার আবেদনটি আবার অ্যাডমিনের কিউতে গেছে।"
+            : "আপনার আবেদনটি আমাদের পেন্ডিং কিউতে জমা হয়েছে।"}{" "}
+          তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই আপনি <strong>/rider</strong> পোর্টাল থেকে ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
         </p>
 
         <div
@@ -141,7 +154,10 @@ export default function RiderApplyPage() {
             {account === "existing"
               ? "এই ইমেইলে আগে থেকেই PROSANTI অ্যাকাউন্ট ছিল — সেটিই আপনার রাইডার প্রোফাইলের সাথে যুক্ত করা হয়েছে। "
               : ""}
-            অ্যাডমিন অনুমোদন করার পর <strong>{email}</strong> এবং আবেদনের সময় দেওয়া পাসওয়ার্ড দিয়ে <strong>/rider/login</strong>-এ সাইন ইন করলেই রাইডার অ্যাপ খুলবে। অনুমোদনের আগে লগইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে — এটাই স্বাভাবিক।
+            অ্যাডমিন অনুমোদন করার পর <strong>{loginHandle}</strong> এবং আবেদনের সময় দেওয়া পাসওয়ার্ড দিয়ে <strong>/rider/login</strong>-এ সাইন ইন করলেই রাইডার অ্যাপ খুলবে। অনুমোদনের আগে লগইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে — এটাই স্বাভাবিক।
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-forest-900">
+            <strong>দ্রুত অনুমোদন চান?</strong> এখনই লগইন করে “অনুমোদনের অপেক্ষায়” কার্ড থেকে NID-র দুই পাশ ও একটি সেলফি আপলোড করে রাখুন — অ্যাডমিন সেগুলো দেখেই অনুমোদন দেন।
           </p>
         </div>
 
@@ -233,12 +249,11 @@ export default function RiderApplyPage() {
         <FormSection
           step={2}
           title="লগইন তথ্য"
-          hint="অনুমোদনের পর এই ইমেইল ও পাসওয়ার্ড দিয়েই রাইডার অ্যাপে ঢুকবেন — মনে রাখার মতো পাসওয়ার্ড দিন।"
+          hint="অনুমোদনের পর মোবাইল নম্বর (বা ইমেইল) ও এই পাসওয়ার্ড দিয়েই রাইডার অ্যাপে ঢুকবেন — মনে রাখার মতো পাসওয়ার্ড দিন।"
         >
           <label className="block sm:col-span-2">
-            <span className={label}>লগইন ইমেইল অ্যাড্রেস *</span>
+            <span className={label}>ইমেইল অ্যাড্রেস (ঐচ্ছিক)</span>
             <input
-              required
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -247,6 +262,7 @@ export default function RiderApplyPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="rider@example.com"
             />
+            <span className={hint}>ইমেইল না থাকলে ফাঁকা রাখুন — উপরের মোবাইল নম্বর দিয়েই লগইন করবেন। কোনো এসএমএস বা ইমেইল পাঠানো হয় না।</span>
           </label>
 
           <label className="block">

@@ -29,14 +29,19 @@ export const routeId = async (context: unknown): Promise<string> => {
 export const riderRoute = (
   name: string,
   handler: RiderHandler,
-  opts: { limit?: number; windowMs?: number } = {},
+  opts: {
+    limit?: number;
+    windowMs?: number;
+    /** Round 4 — KYC upload routes: pending / rejected applicants may pass. */
+    allowApplicant?: boolean;
+  } = {},
 ) => {
   const limit = opts.limit ?? 60;
   const windowMs = opts.windowMs ?? 60_000;
   return async (request: Request, routeContext?: unknown): Promise<NextResponse> => {
     let rider: RiderContext;
     try {
-      rider = await requireRider();
+      rider = await requireRider({ allowApplicant: opts.allowApplicant === true });
     } catch (err) {
       if (err instanceof RiderAuthError) {
         return apiError(

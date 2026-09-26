@@ -19,8 +19,7 @@ import { useVendorSession } from "@/lib/use-vendor";
 import PasswordInput from "@/components/ui/password-input";
 import { usePoll } from "@/lib/use-poll";
 import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { loginIdentifierToEmail } from "@/lib/phone-login";
 
 const inputClass =
   "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
@@ -51,8 +50,11 @@ export default function VendorLoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    if (!EMAIL_RE.test(email.trim())) {
-      setFormError("Enter a valid email address.");
+    // Round 4 — e-mail OR mobile number; a number becomes the synthetic
+    // login address the application was created with (no SMS involved).
+    const loginEmail = loginIdentifierToEmail(email);
+    if (!loginEmail) {
+      setFormError("Enter a valid email address or 11-digit mobile number.");
       return;
     }
     if (password.length < 6) {
@@ -60,11 +62,11 @@ export default function VendorLoginPage() {
       return;
     }
     setBusy(true);
-    const problem = await signIn(email, password);
+    const problem = await signIn(loginEmail, password);
     setBusy(false);
     if (problem) {
       setFormError(
-        `${problem} Use the email and password from your shop application.`,
+        `${problem} Use the email (or mobile number) and password from your shop application.`,
       );
     }
   };
@@ -93,16 +95,20 @@ export default function VendorLoginPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-forest-700">
             {denyReason === "pending"
               ? "Application received"
-              : denyReason === "suspended"
-                ? "Shop suspended"
-                : "No shop on this login"}
+              : denyReason === "rejected"
+                ? "Application not approved"
+                : denyReason === "suspended"
+                  ? "Shop suspended"
+                  : "No shop on this login"}
           </p>
           <h2 id="vendor-status-heading" className="font-display text-xl text-forest-900">
             {denyReason === "pending"
               ? "Awaiting PROSANTI's approval"
-              : denyReason === "suspended"
-                ? "This shop is suspended"
-                : "Send a shop application"}
+              : denyReason === "rejected"
+                ? "Fix the details and apply again"
+                : denyReason === "suspended"
+                  ? "This shop is suspended"
+                  : "Send a shop application"}
           </h2>
           <p
             role="status"
@@ -121,6 +127,19 @@ export default function VendorLoginPage() {
               the dashboard. This page re-checks every 30 seconds while it is
               open — or tap “Check again”.
             </p>
+          )}
+          {denyReason === "rejected" && (
+            <>
+              <p className="text-sm text-ink-soft">
+                Your login still works. Correct what the note above points
+                at and submit the application form again — with the same
+                email (or mobile number) and password it replaces the
+                rejected application and goes back into the review queue.
+              </p>
+              <Link href="/shops/apply" className={primaryClass}>
+                Fix the details and re-apply →
+              </Link>
+            </>
           )}
           {denyReason === "none" && (
             <Link href="/shops/apply" className={primaryClass}>
@@ -158,15 +177,16 @@ export default function VendorLoginPage() {
 
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
-              Email
+              Email or mobile number
             </span>
             <input
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClass}
-              placeholder="you@yourshop.com"
+              placeholder="you@yourshop.com or 017XXXXXXXX"
             />
           </label>
           <label className="block">
@@ -185,8 +205,9 @@ export default function VendorLoginPage() {
             {busy ? "Please wait…" : "Sign in"}
           </button>
           <p className="text-center text-xs text-ink-soft">
-            Use the email and password from your shop application — the
-            dashboard opens once PROSANTI approves it.
+            Use the email (or, if you gave none, the mobile number) and
+            password from your shop application — the dashboard opens once
+            PROSANTI approves it.
           </p>
           <p className="border-t border-line pt-4 text-center text-sm text-ink">
             New shop?{" "}

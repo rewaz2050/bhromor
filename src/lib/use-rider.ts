@@ -28,7 +28,7 @@ export const RIDER_JOBS_POLL_MS = 15_000;
 export const RIDER_JOBS_POLL_BACKUP_MS = 120_000;
 
 /** Why a signed-in user was refused (mirrors RiderDenyReason server-side). */
-export type RiderDenyReason = "none" | "pending" | "suspended";
+export type RiderDenyReason = "none" | "pending" | "suspended" | "rejected";
 
 export class RiderApiError extends Error {
   status: number;
@@ -48,7 +48,7 @@ const readError = async (
   try {
     const data = (await res.json()) as { error?: string; reason?: string };
     const reason =
-      data.reason === "pending" || data.reason === "suspended" || data.reason === "none"
+      data.reason === "pending" || data.reason === "suspended" || data.reason === "rejected" || data.reason === "none"
         ? data.reason
         : undefined;
     return { message: data.error || FALLBACK, reason };

@@ -50,9 +50,11 @@ export default function RiderShell({ children }: { children: ReactNode }) {
         <h1 className="font-display mt-4 text-2xl font-bold text-forest-900">
           {denyReason === "pending"
             ? "অনুমোদনের অপেক্ষায়"
-            : denied
-              ? "রাইডার অ্যাক্সেস নেই"
-              : "রাইডার লগইন প্রয়োজন"}
+            : denyReason === "rejected"
+              ? "আবেদন অনুমোদন হয়নি"
+              : denied
+                ? "রাইডার অ্যাক্সেস নেই"
+                : "রাইডার লগইন প্রয়োজন"}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           {error ?? "এই পেইজ দেখতে রাইডার অ্যাকাউন্ট দিয়ে সাইন ইন করুন।"}

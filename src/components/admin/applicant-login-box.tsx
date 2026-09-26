@@ -16,10 +16,12 @@ import { useState } from "react";
 import { field, label } from "@/components/admin/form-ui";
 import {
   applicantLoginUrl,
+  applicationRejectedWhatsAppLink,
   approvalWhatsAppLink,
   passwordResetWhatsAppLink,
   type ApplicantKind,
 } from "@/lib/onboarding-messages";
+import { describeLoginEmail } from "@/lib/phone-login";
 
 const ghostButton =
   "inline-flex min-h-9 items-center justify-center rounded-full bg-paper px-4 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50 disabled:opacity-60 disabled:hover:bg-paper disabled:hover:text-forest-800";
@@ -30,6 +32,7 @@ export function ApplicantLoginBox({
   phone,
   email,
   status,
+  reviewNote,
   linked: linkedInitially,
   live,
   onLink,
@@ -39,7 +42,9 @@ export function ApplicantLoginBox({
   name: string;
   phone: string;
   email?: string | null;
-  status: "pending" | "active" | "suspended";
+  status: "pending" | "active" | "suspended" | "rejected";
+  /** Round 4 — the rejection reason, for the WhatsApp hand-off. */
+  reviewNote?: string | null;
   linked: boolean;
   live: boolean;
   onLink: (email: string) => Promise<boolean>;
@@ -56,6 +61,10 @@ export function ApplicantLoginBox({
   const loginPath = kind === "vendor" ? "/vendor/login" : "/rider/login";
   const approvalLink =
     status === "active" ? approvalWhatsAppLink({ kind, name, phone, email }) : null;
+  const rejectedLink =
+    status === "rejected"
+      ? applicationRejectedWhatsAppLink({ kind, name, phone, note: reviewNote })
+      : null;
   const resetLink = passwordResetWhatsAppLink({ kind, name, phone });
 
   const reset = async () => {
@@ -89,7 +98,7 @@ export function ApplicantLoginBox({
       {linked ? (
         <div className="space-y-3">
           <p className="text-xs font-medium text-forest-800">
-            Linked — {email ? <strong>{email}</strong> : `the ${noun}`} signs in at{" "}
+            Linked — {email ? <strong>{describeLoginEmail(email)}</strong> : `the ${noun}`} signs in at{" "}
             <a
               href={applicantLoginUrl(kind)}
               target="_blank"
@@ -99,9 +108,23 @@ export function ApplicantLoginBox({
               {loginPath}
             </a>{" "}
             with the password from the application
-            {status === "active" ? "." : " the moment the row is approved (active)."}
+            {status === "active"
+              ? "."
+              : status === "rejected"
+                ? " — right now they see the rejection reason there and can re-apply with the same login."
+                : " the moment the row is approved (active)."}
           </p>
           <div className="flex flex-wrap gap-2">
+            {rejectedLink && (
+              <a
+                href={rejectedLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={ghostButton}
+              >
+                WhatsApp: not approved, here is why →
+              </a>
+            )}
             {status === "active" &&
               (approvalLink ? (
                 <a

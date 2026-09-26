@@ -76,9 +76,11 @@ export default function VendorShell({ children }: { children: ReactNode }) {
         <h1 className="mt-4 font-display text-2xl text-forest-900">
           {denyReason === "pending"
             ? "Awaiting approval"
-            : denied
-              ? "No vendor access"
-              : "Vendor sign-in required"}
+            : denyReason === "rejected"
+              ? "Application not approved"
+              : denied
+                ? "No vendor access"
+                : "Vendor sign-in required"}
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           {error ?? "Please sign in with your vendor account to continue."}

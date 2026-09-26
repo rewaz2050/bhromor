@@ -20,6 +20,8 @@ import { IconTruck } from "@/components/ui/icons";
 import PasswordInput from "@/components/ui/password-input";
 import { usePoll } from "@/lib/use-poll";
 import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
+import KycUploadCard from "@/components/rider/kyc-upload-card";
+import { loginIdentifierToEmail } from "@/lib/phone-login";
 
 /**
  * Supabase returns raw English auth errors ("Email not confirmed", "Invalid
@@ -31,7 +33,7 @@ const supabaseSignInError = (err: { message?: string }): string => {
     return "ইমেইলটি এখনো কনফার্ম হয়নি — ইনবক্সে (স্প্যামসহ) পাঠানো কনফার্মেশন লিংকে ক্লিক করুন, তারপর আবার লগইন করুন।";
   }
   if (/invalid login credentials/i.test(m)) {
-    return "ইমেইল বা পাসওয়ার্ড মিলছে না। রাইডার আবেদনের সময় যে ইমেইল ও পাসওয়ার্ড দিয়েছিলেন সেটাই ব্যবহার করুন।";
+    return "ইমেইল/মোবাইল নম্বর বা পাসওয়ার্ড মিলছে না। রাইডার আবেদনের সময় যে তথ্য দিয়েছিলেন সেটাই ব্যবহার করুন।";
   }
   if (/rate limit|too many/i.test(m)) {
     return "অনেকবার চেষ্টা হয়েছে — এক মিনিট পর আবার করুন।";
@@ -66,9 +68,11 @@ export default function RiderLoginPage() {
     e.preventDefault();
     setFormError(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setFormError("সঠিক ইমেইল অ্যাড্রেস লিখুন।");
+    // Round 4 — e-mail OR mobile number; a number becomes the synthetic
+    // login address the application was created with (no SMS involved).
+    const cleanEmail = loginIdentifierToEmail(email);
+    if (!cleanEmail) {
+      setFormError("সঠিক ইমেইল অ্যাড্রেস বা ১১-সংখ্যার মোবাইল নম্বর লিখুন।");
       return;
     }
     if (password.length < 6) {
@@ -134,16 +138,20 @@ export default function RiderLoginPage() {
           <p className="text-[11px] font-semibold uppercase tracking-wider text-forest-700">
             {denyReason === "pending"
               ? "আবেদন জমা আছে"
-              : denyReason === "suspended"
-                ? "অ্যাকাউন্ট সাসপেন্ড"
-                : "এই লগইনে রাইডার প্রোফাইল নেই"}
+              : denyReason === "rejected"
+                ? "আবেদন অনুমোদন হয়নি"
+                : denyReason === "suspended"
+                  ? "অ্যাকাউন্ট সাসপেন্ড"
+                  : "এই লগইনে রাইডার প্রোফাইল নেই"}
           </p>
           <h2 id="rider-status-heading" className="font-display text-lg font-bold text-forest-900">
             {denyReason === "pending"
               ? "অ্যাডমিনের অনুমোদনের অপেক্ষায়"
-              : denyReason === "suspended"
-                ? "রাইডার অ্যাকাউন্ট সাসপেন্ড করা আছে"
-                : "রাইডার আবেদন করুন"}
+              : denyReason === "rejected"
+                ? "তথ্য ঠিক করে আবার আবেদন করুন"
+                : denyReason === "suspended"
+                  ? "রাইডার অ্যাকাউন্ট সাসপেন্ড করা আছে"
+                  : "রাইডার আবেদন করুন"}
           </h2>
           <p
             role="status"
@@ -157,10 +165,25 @@ export default function RiderLoginPage() {
           </p>
           {denyReason === "pending" && (
             <p className="text-xs text-ink-soft">
-              আপনি লগইন অবস্থায় আছেন। অনুমোদন হয়ে গেলে এই ইমেইল ও
+              আপনি লগইন অবস্থায় আছেন। অনুমোদন হয়ে গেলে এই ইমেইল/মোবাইল নম্বর ও
               পাসওয়ার্ডেই রাইডার অ্যাপ খুলবে — এই পেইজ খোলা থাকলে প্রতি ৩০
               সেকেন্ডে নিজে থেকেই দেখে নেবে, চাইলে “আবার দেখুন” চাপুন।
             </p>
+          )}
+          {denyReason === "rejected" && (
+            <>
+              <p className="text-xs text-ink-soft">
+                আপনার লগইন ঠিকই আছে। উপরের কারণটি ঠিক করে আবেদন ফর্মটি আবার
+                জমা দিন — একই ইমেইল/মোবাইল নম্বর ও পাসওয়ার্ড দিলে আগের আবেদনটিই
+                নতুন তথ্যসহ অ্যাডমিনের কিউতে ফিরে যাবে।
+              </p>
+              <Link
+                href="/rider/apply"
+                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+              >
+                তথ্য ঠিক করে আবার আবেদন করুন →
+              </Link>
+            </>
           )}
           {denyReason === "none" && (
             <Link
@@ -193,17 +216,17 @@ export default function RiderLoginPage() {
 
           <div>
             <label htmlFor="rider-login-email" className="mb-1 block text-xs font-semibold text-forest-900">
-              ইমেইল অ্যাড্রেস
+              ইমেইল অ্যাড্রেস বা মোবাইল নম্বর
             </label>
             <input
               id="rider-login-email"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
-              placeholder="rider@example.com"
+              placeholder="017XXXXXXXX অথবা rider@example.com"
             />
           </div>
           <div>
@@ -228,10 +251,14 @@ export default function RiderLoginPage() {
             {busy ? "যাচাই হচ্ছে…" : "লগইন করুন"}
           </button>
           <p className="text-center text-[11px] leading-relaxed text-ink-soft">
-            রাইডার আবেদনের সময় দেওয়া ইমেইল ও পাসওয়ার্ড দিন — অ্যাডমিন অনুমোদন
-            করলেই অ্যাপ খুলবে।
+            রাইডার আবেদনের সময় দেওয়া ইমেইল (বা ইমেইল না দিলে মোবাইল নম্বর) ও
+            পাসওয়ার্ড দিন — অ্যাডমিন অনুমোদন করলেই অ্যাপ খুলবে।
           </p>
         </form>
+      )}
+      {denied && (denyReason === "pending" || denyReason === "rejected") && (
+        // Round 4 — NID / selfie / licence photos while waiting; staff see them before approving.
+        <KycUploadCard className="mt-4" />
       )}
       {status !== "checking" && !denied && (
         // এসএমএস/ইমেইল ছাড়া রিসেট: অনুরোধ → অ্যাডমিনের ফোন-যাচাই → এখানেই নতুন পাসওয়ার্ড।

@@ -12,7 +12,21 @@ import type { Product, Shop } from "./catalog";
 export const toPublicShop = (shop: Shop): Shop => {
   const pub = { ...shop };
   delete pub.contactEmail;
+  // Round 4 — the staff decision trail (who approved, rejection notes) is
+  // never part of the storefront payload either.
+  delete pub.review;
   return pub;
+};
+
+/**
+ * Round 4 — a vendor's or rider's OWN payload (/api/vendor/me, /api/rider/me)
+ * carries no review trail: the rejection reason reaches them through the
+ * 403 message, and the reviewer's staff e-mail is nobody else's business.
+ */
+export const withoutReview = <T extends { review?: unknown }>(row: T): T => {
+  const copy = { ...row };
+  delete copy.review;
+  return copy;
 };
 
 /** Rows without shopId implicitly belong to the fallback shop. */

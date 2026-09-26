@@ -7,6 +7,7 @@
  */
 
 import type {
+  ApplicationReview,
   Category,
   DeliveryZone,
   Product,
@@ -15,6 +16,7 @@ import type {
   Shop,
 } from "../catalog";
 import type { Coupon } from "../coupons";
+import { normalizeKyc } from "../rider-kyc";
 import type {
   Order,
   OrderItem,
@@ -200,6 +202,22 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
 };
 
 /** Shop row → the marketplace `Shop` shape (slice 1: read-only use). */
+/**
+ * Round 4 — the staff decision columns, or undefined when the row was never
+ * reviewed (and on databases that have not run 202609260002 yet).
+ */
+export const mapApplicationReview = (row: {
+  review_note?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+}): ApplicationReview | undefined => {
+  const note = typeof row.review_note === "string" && row.review_note.trim() !== "" ? row.review_note.trim() : undefined;
+  const by = typeof row.reviewed_by_email === "string" && row.reviewed_by_email !== "" ? row.reviewed_by_email : undefined;
+  const at = row.reviewed_at ? Date.parse(row.reviewed_at) : NaN;
+  if (!note && !by && !Number.isFinite(at)) return undefined;
+  return { note, by, at: Number.isFinite(at) ? at : undefined };
+};
+
 export const mapShop = (row: DbShop): Shop => ({
   id: row.id,
   slug: row.slug,
@@ -216,6 +234,7 @@ export const mapShop = (row: DbShop): Shop => ({
   isOpen: row.is_open,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
+  review: mapApplicationReview(row),
 });
 
 /** Rider row → the marketplace `Rider` shape (slice 6). */
@@ -244,6 +263,9 @@ export const mapRider = (row: DbRider): Rider => ({
     toHour: row.avail_to_hour ?? null,
     days: Array.isArray(row.avail_days) && row.avail_days.length > 0 ? [...row.avail_days] : null,
   },
+  review: mapApplicationReview(row),
+  kyc: normalizeKyc(row.kyc),
+  kycSubmittedAt: row.kyc_submitted_at ? Date.parse(row.kyc_submitted_at) : undefined,
 });
 
 export interface OrderRowBundle {

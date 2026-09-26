@@ -363,8 +363,51 @@ describe("mapRider (marketplace slice 6)", () => {
       totalDeliveries: 0,
       // P2 #22 — no shift on the row means ALWAYS available (explicit, not undefined)
       availability: { days: null, fromHour: null, toHour: null },
+      // Round 4 (2026-09-26): no verdict yet, no KYC uploaded — never undefined kyc
+      review: undefined,
+      kyc: {},
+      kycSubmittedAt: undefined,
     });
     expect(rider.zoneIds).not.toBe(row.zone_ids);
+  });
+
+  it("maps the review trail and KYC documents (round 4, 2026-09-26)", () => {
+    const rider = mapRider({
+      id: "rider-uuid-4",
+      user_id: "auth-user-4",
+      name: "Tanvir Rahman",
+      phone: "01811111111",
+      contact_email: "01811111111@phone.prosanti.app",
+      vehicle: "bike",
+      zone_ids: [],
+      status: "rejected",
+      is_online: false,
+      cash_in_hand: 0,
+      rating_avg: 0,
+      rating_count: 0,
+      created_at: "2026-09-09T00:00:00.000Z",
+      review_note: "  Licence photo unreadable  ",
+      reviewed_by: "staff-1",
+      reviewed_by_email: "admin@prosanti.example",
+      reviewed_at: "2026-09-26T10:00:00.000Z",
+      kyc: {
+        nid_front: "https://res.cloudinary.com/demo/image/upload/v1/prosanti/rider-kyc/a.jpg",
+        passport: "https://res.cloudinary.com/demo/image/upload/v1/x.jpg",
+        selfie: 12,
+      },
+      kyc_submitted_at: null,
+    });
+    expect(rider.status).toBe("rejected");
+    expect(rider.review).toEqual({
+      note: "Licence photo unreadable",
+      by: "admin@prosanti.example",
+      at: Date.parse("2026-09-26T10:00:00.000Z"),
+    });
+    // Unknown keys and non-string values are dropped; only known documents survive.
+    expect(rider.kyc).toEqual({
+      nid_front: "https://res.cloudinary.com/demo/image/upload/v1/prosanti/rider-kyc/a.jpg",
+    });
+    expect(rider.kycSubmittedAt).toBeUndefined();
   });
 
   it("flags a linked login from user_id (apply = sign up, 2026-09-26)", () => {

@@ -11,14 +11,19 @@ import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
 import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
+import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
+import { RiderKycSummary } from "@/components/admin/rider-kyc-summary";
+import { describeLoginEmail } from "@/lib/phone-login";
+import { kycProgress } from "@/lib/rider-kyc";
 
 type Filter = Rider["status"] | "all";
-const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
+const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
 
 const BADGE: Record<Rider["status"], string> = {
   pending: "bg-amber-100 text-amber-900",
   active: "bg-emerald-100 text-emerald-800",
   suspended: "bg-rose-100 text-rose-800",
+  rejected: "bg-ivory-200 text-ink-soft",
 };
 
 const VEHICLES: { id: Rider["vehicle"]; label: string }[] = [
@@ -47,7 +52,7 @@ function RiderCard({
   zones: { id: string; name: string }[];
   live: boolean;
   onSave: (r: Rider) => Promise<boolean>;
-  onStatus: (id: string, status: Rider["status"]) => void;
+  onStatus: (id: string, status: Rider["status"], note?: string) => void;
   onLinkRider: (id: string, email: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
   onSettle: (r: Rider) => Promise<boolean>;
@@ -110,9 +115,15 @@ function RiderCard({
                 {rider.isOnline ? "Online" : "Offline"}
               </span>
             )}
+            {/* Round 4 — KYC state at a glance; the documents themselves sit in the pending card below. */}
+            {(rider.status === "pending" || rider.status === "rejected") && (
+              <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${kycProgress(rider.kyc, rider.vehicle).complete ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
+                {kycProgress(rider.kyc, rider.vehicle).complete ? "KYC complete" : `KYC ${kycProgress(rider.kyc, rider.vehicle).done.length}/${kycProgress(rider.kyc, rider.vehicle).required.length}`}
+              </span>
+            )}
           </div>
           <p className="mt-1 truncate text-xs text-ink-soft">
-            {rider.contactEmail ?? "no email"} · {rider.phone} ·{" "}
+            {describeLoginEmail(rider.contactEmail)} · {rider.phone} ·{" "}
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
               <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
@@ -128,6 +139,7 @@ function RiderCard({
               <> · ★ {rider.ratingAvg.toFixed(1)} ({rider.ratingCount})</>
             )}
           </p>
+          <ReviewSummary status={rider.status} review={rider.review} now={now} />
         </div>
         {rider.cashInHand > 0 && (
           <button
@@ -146,37 +158,13 @@ function RiderCard({
             Settle Cash ({formatBdt(rider.cashInHand)})
           </button>
         )}
-        {rider.status === "pending" && (
-          <button
-            type="button"
-            onClick={() => onStatus(rider.id, "active")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
-          >
-            <IconCheck className="h-3.5 w-3.5" /> Approve
-          </button>
-        )}
-        {rider.status !== "suspended" && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Suspend “${rider.name}”? Future dispatch offers stop immediately.`)) {
-                onStatus(rider.id, "suspended");
-              }
-            }}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
-          >
-            Suspend
-          </button>
-        )}
-        {rider.status === "suspended" && (
-          <button
-            type="button"
-            onClick={() => onStatus(rider.id, "active")}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50"
-          >
-            Re-activate
-          </button>
-        )}
+        <ReviewActions
+          kind="rider"
+          name={rider.name}
+          status={rider.status}
+          onDecide={(status, note) => onStatus(rider.id, status, note)}
+          suspendEffect="Future dispatch offers stop immediately."
+        />
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -185,6 +173,11 @@ function RiderCard({
           {open ? "Close" : "Edit"}
         </button>
       </div>
+
+      {/* Round 4 — documents to check BEFORE approving; always visible while the application is open. */}
+      {(rider.status === "pending" || rider.status === "rejected") && (
+        <RiderKycSummary kyc={rider.kyc} vehicle={rider.vehicle} submittedAt={rider.kycSubmittedAt} />
+      )}
 
       {open && (
         <div className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
@@ -268,6 +261,7 @@ function RiderCard({
             phone={rider.phone}
             email={rider.contactEmail}
             status={rider.status}
+            reviewNote={rider.review?.note}
             linked={rider.hasLogin === true}
             live={live}
             onLink={(email) => onLinkRider(rider.id, email)}
@@ -314,9 +308,10 @@ export default function AdminRidersPage() {
       all: riders.length,
       pending: 0,
       active: 0,
+      rejected: 0,
       suspended: 0,
     };
-    for (const r of riders) c[r.status] += 1;
+    for (const r of riders) c[r.status] = (c[r.status] ?? 0) + 1;
     return c;
   }, [riders]);
   const visible = useMemo(
@@ -568,7 +563,7 @@ export default function AdminRidersPage() {
               zones={zones}
               live={live}
               onSave={saveRider}
-              onStatus={(id, status) => void setStatus(id, status)}
+              onStatus={(id, status, note) => void setStatus(id, status, note)}
               onLinkRider={linkRider}
               onResetPassword={resetRiderPassword}
               onSettle={(r) => settleCash(r.id, "cash", "")}

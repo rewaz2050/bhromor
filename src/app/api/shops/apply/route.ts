@@ -16,6 +16,7 @@ import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
+import { loginHandleFor } from "@/lib/phone-login";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
       applicantUserId = undefined;
     }
     const fields = (body ?? {}) as Record<string, unknown>;
-    const { id, accountCreated } = await applyShop(body, {
+    const { id, accountCreated, loginEmail, resubmitted } = await applyShop(body, {
       applicantUserId,
       applicantEmail,
       password: typeof fields.password === "string" ? fields.password : undefined,
@@ -63,8 +64,10 @@ export async function POST(request: Request) {
           : "A shop";
       await notifyStaff(staffDb, {
         kind: "system",
-        title: "New shop application",
-        body: `${shopName} applied to sell on PROSANTI — approve it to open their dashboard.`,
+        title: resubmitted ? "Shop application re-submitted" : "New shop application",
+        body: resubmitted
+          ? `${shopName} fixed their details after a rejection and applied again — review it in the pending queue.`
+          : `${shopName} applied to sell on PROSANTI — approve it to open their dashboard.`,
         href: "/admin/shops",
       });
     }
@@ -74,8 +77,13 @@ export async function POST(request: Request) {
         id,
         linked: true as const,
         account: accountCreated ? ("created" as const) : ("existing" as const),
-        message:
-          "Application received — sign in with this email and password as soon as PROSANTI approves it.",
+        // Round 4 — what to type in the login box: the e-mail, or the mobile
+        // number for a phone login (the synthetic address stays server-side).
+        login: loginHandleFor(loginEmail),
+        resubmitted,
+        message: resubmitted
+          ? "Application re-submitted — it is back in PROSANTI's review queue; sign in with the same details once it is approved."
+          : "Application received — sign in with these details as soon as PROSANTI approves it.",
       },
       201,
     );

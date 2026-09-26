@@ -25,7 +25,7 @@ export interface DbRider {
   contact_email: string;
   vehicle: "bicycle" | "bike" | "scooter";
   zone_ids: string[];
-  status: "pending" | "active" | "suspended";
+  status: "pending" | "active" | "suspended" | "rejected";
   is_online: boolean;
   cash_in_hand: number;
   rating_avg: number;
@@ -42,6 +42,13 @@ export interface DbRider {
   avail_from_hour?: number | null;
   avail_to_hour?: number | null;
   avail_days?: number[] | null;
+  /** Round 4 — review audit + KYC (202609260002). */
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+  kyc?: Record<string, unknown> | null;
+  kyc_submitted_at?: string | null;
 }
 
 export interface DbDeliveryAssignment {
@@ -104,11 +111,16 @@ export interface DbShop {
   zone_ids: string[];
   prep_minutes: number;
   commission_pct: number;
-  status: "pending" | "active" | "suspended";
+  status: "pending" | "active" | "suspended" | "rejected";
   is_open: boolean;
   rating_avg: number;
   rating_count: number;
   created_at: string;
+  /** Round 4 — review audit (202609260002). */
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
 }
 
 export interface DbVendorUser {

@@ -10,10 +10,14 @@ const session = vi.hoisted(() => ({
   value: {
     status: "guest" as "checking" | "authed" | "guest",
     error: null as string | null,
-    denyReason: null as "none" | "pending" | "suspended" | null,
+    denyReason: null as "none" | "pending" | "suspended" | "rejected" | null,
     refresh: vi.fn(async () => undefined),
     signOut: vi.fn(async () => undefined),
   },
+}));
+// Round 4 — the KYC card on the pending/rejected card fetches /api/rider/kyc.
+vi.mock("@/components/rider/kyc-upload-card", () => ({
+  default: () => <section aria-label="kyc-card-stub">KYC</section>,
 }));
 vi.mock("@/lib/use-rider", () => ({
   useRiderSession: () => session.value,
@@ -47,7 +51,7 @@ describe("Rider Login Page (/rider/login)", () => {
     render(<RiderLoginPage />);
 
     expect(screen.getByText(/PROSANTI রাইডার লগইন/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/ইমেইল অ্যাড্রেস/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/ইমেইল অ্যাড্রেস বা মোবাইল নম্বর/)).toBeInTheDocument();
     expect(screen.getByLabelText(/পাসওয়ার্ড/)).toHaveAttribute("autocomplete", "current-password");
     expect(screen.getByRole("button", { name: /লগইন করুন/ })).toBeInTheDocument();
   });
@@ -70,6 +74,27 @@ describe("Rider Login Page (/rider/login)", () => {
     expect(screen.getByRole("button", { name: /সাইন আউট/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /আবার দেখুন/ })).toBeInTheDocument();
     // No bounce to /rider while the application is pending.
+    expect(nav.replace).not.toHaveBeenCalled();
+  });
+
+  it("shows the KYC upload card while the application is pending (round 4)", () => {
+    session.value.error = "অনুমোদনের অপেক্ষায়";
+    session.value.denyReason = "pending";
+    render(<RiderLoginPage />);
+    expect(screen.getByLabelText("kyc-card-stub")).toBeInTheDocument();
+  });
+
+  it("shows the rejection reason with a re-apply link and keeps the KYC card (round 4)", () => {
+    session.value.error = "আপনার রাইডার আবেদনটি এবার অনুমোদন হয়নি। কারণ: NID ঝাপসা — তথ্য ঠিক করে একই লগইনে আবার আবেদন করুন।";
+    session.value.denyReason = "rejected";
+    render(<RiderLoginPage />);
+
+    expect(screen.getByRole("heading", { name: /আবার আবেদন করুন/ })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/NID/);
+    expect(screen.getByRole("link", { name: /আবার আবেদন করুন/ })).toHaveAttribute("href", "/rider/apply");
+    expect(screen.getByLabelText("kyc-card-stub")).toBeInTheDocument();
+    // Rejected applicants are not polled — nothing changes until they re-apply.
+    expect(poll.calls.at(-1)).toEqual({ intervalMs: 30_000, enabled: false });
     expect(nav.replace).not.toHaveBeenCalled();
   });
 

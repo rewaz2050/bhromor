@@ -93,10 +93,29 @@ export interface Shop {
   zoneIds: string[];
   prepMinutes: number;
   commissionPct: number;
-  status: "pending" | "active" | "suspended";
+  status: ApplicationStatus;
   isOpen: boolean;
   ratingAvg: number;
   ratingCount: number;
+  /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
+  review?: ApplicationReview;
+}
+
+/**
+ * Shop / rider lifecycle. `rejected` (round 4, 2026-09-26) is a staff
+ * answer with a reason — the applicant reads it on the login page, fixes
+ * the details and re-applies with the same login.
+ */
+export type ApplicationStatus = "pending" | "active" | "suspended" | "rejected";
+
+/** STAFF ONLY — never sent to the storefront. */
+export interface ApplicationReview {
+  /** Free-text reason, shown to the applicant when status is `rejected`. */
+  note?: string;
+  /** Staff e-mail at decision time (audit — resolves without a join). */
+  by?: string;
+  /** Epoch ms of the decision. */
+  at?: number;
 }
 
 /**
@@ -118,7 +137,7 @@ export interface Rider {
   hasLogin?: boolean;
   vehicle: "bicycle" | "bike" | "scooter";
   zoneIds: string[];
-  status: "pending" | "active" | "suspended";
+  status: ApplicationStatus;
   isOnline: boolean;
   cashInHand: number;
   ratingAvg: number;
@@ -130,6 +149,12 @@ export interface Rider {
   totalDeliveries?: number;
   /** P2 #22 — the rider's own shift; drives auto-dispatch (see lib/rider-hours.ts). */
   availability?: import("./rider-hours").RiderAvailability;
+  /** Round 4 — last staff decision. STAFF ONLY. */
+  review?: ApplicationReview;
+  /** Round 4 — uploaded KYC document URLs (doc id → https). STAFF + the rider. */
+  kyc?: import("./rider-kyc").RiderKyc;
+  /** Epoch ms when every required KYC document was in. */
+  kycSubmittedAt?: number;
 }
 
 /**

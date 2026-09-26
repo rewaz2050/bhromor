@@ -15,7 +15,7 @@ const session = vi.hoisted(() => ({
   value: {
     status: "guest" as "checking" | "authed" | "guest",
     error: null as string | null,
-    denyReason: null as "none" | "pending" | "suspended" | null,
+    denyReason: null as "none" | "pending" | "suspended" | "rejected" | null,
     refresh: vi.fn(async () => undefined),
     signIn: vi.fn(async () => null as string | null),
     signOut: vi.fn(async () => undefined),
@@ -59,13 +59,36 @@ describe("Vendor login page (/vendor/login)", () => {
   it("signs in with the application's email and password", async () => {
     render(<VendorLoginPage />);
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "shop@example.com" } });
+    fireEvent.change(screen.getByLabelText(/^Email or mobile number/), { target: { value: "shop@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret1" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() =>
       expect(session.value.signIn).toHaveBeenCalledWith("shop@example.com", "secret1"),
     );
+  });
+
+  it("signs in with a mobile number by mapping it to the phone-login address (round 4)", async () => {
+    render(<VendorLoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/^Email or mobile number/), { target: { value: "+880 1712-345678" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(session.value.signIn).toHaveBeenCalledWith("01712345678@phone.prosanti.app", "secret1"),
+    );
+  });
+
+  it("shows the rejection reason and a re-apply link for a rejected shop (round 4)", () => {
+    session.value.error = "Your shop application was not approved this time. Reason: phone never answers — fix the details and apply again with this same login.";
+    session.value.denyReason = "rejected";
+    render(<VendorLoginPage />);
+
+    expect(screen.getByRole("heading", { name: /fix the details and apply again/i })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/phone never answers/);
+    expect(screen.getByRole("link", { name: /re-apply/i })).toHaveAttribute("href", "/shops/apply");
+    expect(nav.replace).not.toHaveBeenCalled();
   });
 
   it("shows the awaiting-approval card for a pending shop", () => {
@@ -75,7 +98,7 @@ describe("Vendor login page (/vendor/login)", () => {
 
     expect(screen.getByRole("heading", { name: /awaiting PROSANTI's approval/i })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/awaiting/i);
-    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Email or mobile number/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(session.value.refresh).toHaveBeenCalled();

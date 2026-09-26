@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
 import { bnDigits } from "@/lib/arrival";
 import { tidyPhoneInput } from "@/lib/phone";
+import { describeLoginEmail, loginHandleFor, phoneLoginEmail } from "@/lib/phone-login";
 import { usePoll } from "@/lib/use-poll";
 import PasswordInput from "@/components/ui/password-input";
 
@@ -38,7 +39,7 @@ const COPY: Record<Lang, Record<string, string>> = {
     title: "পাসওয়ার্ড রিসেটের অনুরোধ",
     intro:
       "আবেদনের সময় দেওয়া ইমেইল ও মোবাইল নম্বর দিন। অ্যাডমিন ফোনে নিশ্চিত হয়ে অনুমোদন দিলে এখানেই নতুন পাসওয়ার্ড দিতে পারবেন — কোনো এসএমএস বা ইমেইল আসবে না।",
-    email: "ইমেইল",
+    email: "ইমেইল (আবেদনে ইমেইল না দিয়ে থাকলে ফাঁকা রাখুন)",
     phone: "মোবাইল নম্বর",
     submit: "অনুরোধ পাঠান",
     sending: "পাঠানো হচ্ছে…",
@@ -73,7 +74,7 @@ const COPY: Record<Lang, Record<string, string>> = {
     title: "Request a password reset",
     intro:
       "Enter the email and mobile number from your application. Staff confirm by phone and approve; then you set a new password right here — no SMS or e-mail is sent.",
-    email: "Email",
+    email: "Email (leave empty if you applied without one)",
     phone: "Mobile number",
     submit: "Send request",
     sending: "Sending…",
@@ -210,19 +211,24 @@ export default function ForgotPasswordPanel({
   const submitRequest = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    // Round 4 — an applicant who gave no e-mail signs in with their mobile
+    // number; their row holds the synthetic phone-login address, so that is
+    // what identifies them here too.
+    const typedEmail = email.trim().toLowerCase();
+    const resolvedEmail = typedEmail === "" ? phoneLoginEmail(phone) : typedEmail;
     setBusy(true);
     try {
       const res = await fetch("/api/auth/reset-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, email: email.trim(), phone: phone.trim() }),
+        body: JSON.stringify({ kind, email: resolvedEmail, phone: phone.trim() }),
       });
       const data = (await res.json().catch(() => null)) as StatusPayload | null;
       if (!res.ok || !data) {
         setError(data?.error ?? t.failed);
         return;
       }
-      const who = { email: email.trim().toLowerCase(), phone: tidyPhoneInput(phone) };
+      const who = { email: resolvedEmail, phone: tidyPhoneInput(phone) };
       setEmail(who.email);
       setPhone(who.phone);
       writeStored(kind, who);
@@ -259,7 +265,7 @@ export default function ForgotPasswordPanel({
       setPassword("");
       setConfirm("");
       setStep("done");
-      onDone?.(email);
+      onDone?.(loginHandleFor(email));
     } catch {
       setError(t.failed);
     } finally {
@@ -321,7 +327,6 @@ export default function ForgotPasswordPanel({
               type="email"
               inputMode="email"
               autoComplete="email"
-              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClass}
@@ -363,7 +368,7 @@ export default function ForgotPasswordPanel({
             {t.pendingBody}
           </p>
           <p className="text-xs text-ink-soft">
-            {email} · {lang === "bn" ? bnDigits(phone) : phone}
+            {describeLoginEmail(email, lang)} · {lang === "bn" ? bnDigits(phone) : phone}
           </p>
           <button type="button" disabled={busy} onClick={() => void manualCheck()} className={secondary}>
             {busy ? t.checking : t.check}

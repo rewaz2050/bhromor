@@ -1,4 +1,5 @@
 import { apiJson } from "@/lib/api-response";
+import { withoutReview } from "@/lib/shop-utils";
 import { riderRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 /** GET /api/rider/me — authenticated rider session probe. */
 export const GET = riderRoute("me", async (ctx) => {
   return apiJson({
-    rider: ctx.rider,
+    rider: withoutReview(ctx.rider),
     email: ctx.email,
   });
 });

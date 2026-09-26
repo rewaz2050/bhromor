@@ -11,6 +11,7 @@ import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ApplicationStatus,
   Category,
   DeliveryZone,
   Product,
@@ -1758,6 +1759,76 @@ export async function listShopsFull(
   }));
 }
 
+/** Round 4 — the four lifecycle states; anything else lands pending. */
+export const parseApplicationStatus = (value: unknown): ApplicationStatus =>
+  value === "active" || value === "suspended" || value === "rejected" ? value : "pending";
+
+export interface ReviewDecision {
+  status: ApplicationStatus;
+  /** Reason shown to the applicant (required when rejecting). */
+  note?: string;
+  /** Staff identity for the audit columns. */
+  reviewer: { id: string; email?: string | null };
+}
+
+/**
+ * Round 4 — staff decision on a shop or rider application (approve /
+ * reject / suspend / re-open). Every decision stamps reviewed_by /
+ * reviewed_at; the note is required for a rejection because the applicant
+ * reads it on the login page and fixes the details before re-applying.
+ * Approving clears an old rejection note so it never leaks into a later
+ * card; suspending keeps whatever reason staff typed.
+ */
+export async function reviewApplication(
+  db: SupabaseClient,
+  kind: "shop" | "rider",
+  id: string,
+  raw: { status?: unknown; note?: unknown },
+  reviewer: ReviewDecision["reviewer"],
+): Promise<Shop | Rider> {
+  const table = kind === "shop" ? "shops" : "riders";
+  const status = parseApplicationStatus(raw.status);
+  if (raw.status !== status) {
+    throw new AdminInputError("Choose a decision: active, rejected, suspended or pending.");
+  }
+  const note = clean(raw.note, 400);
+  if (status === "rejected" && note.length < 3) {
+    throw new AdminInputError(
+      "Give the applicant a reason (at least a few words) — they read it on their login page.",
+    );
+  }
+  const patch: Record<string, unknown> = {
+    status,
+    review_note: note || null,
+    reviewed_by: reviewer.id,
+    reviewed_by_email: (reviewer.email ?? "").trim().toLowerCase() || null,
+    reviewed_at: new Date().toISOString(),
+  };
+  if (kind === "shop" && status !== "active") patch.is_open = false;
+  if (kind === "rider" && status !== "active") patch.is_online = false;
+  const { data, error } = await db
+    .from(table)
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingColumn(error)) {
+      throw new AdminInputError(
+        "Application review is not set up on this database yet — run supabase/migrations/202609260002_application_review.sql.",
+        503,
+      );
+    }
+    throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
+  }
+  if (!data) throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
+  return kind === "shop" ? mapShop(data as DbShop) : mapRider(data as DbRider);
+}
+
+/** Postgres 42703 (undefined column) / PostgREST PGRST204 — column missing. */
+const isMissingColumn = (error: PostgrestError | null): boolean =>
+  !!error && (error.code === "42703" || error.code === "PGRST204" || /column .* does not exist/i.test(error.message ?? ""));
+
 /**
  * Staff upsert: full-object save from the Shops queue (new manual rows send
  * no id; approval/suspend/commission edits send the row id). Vendors never
@@ -1810,7 +1881,7 @@ export async function upsertShop(
   if (commission < 0 || commission > 90) {
     throw new AdminInputError("Commission must be between 0 and 90 percent.");
   }
-  const status = body.status === "active" || body.status === "suspended" ? body.status : "pending";
+  const status = parseApplicationStatus(body.status);
   const isOpen = (body.is_open ?? body.isOpen) === true;
 
   const id = clean(body.id, 64);
@@ -2117,7 +2188,7 @@ export async function listRidersFull(db: SupabaseClient): Promise<Rider[]> {
   if (error) throw new Error("riders list failed");
   const rows = ((data ?? []) as DbRider[]).map(mapRider);
   const rank = (s: Rider["status"]): number =>
-    s === "pending" ? 0 : s === "active" ? 1 : 2;
+    s === "pending" ? 0 : s === "active" ? 1 : s === "rejected" ? 2 : 3;
   return rows.sort((a, b) => rank(a.status) - rank(b.status));
 }
 
@@ -2172,9 +2243,7 @@ export async function upsertRider(
   const badZone = zoneIds.find((z) => !known.has(z));
   if (badZone) throw new AdminInputError(`Unknown delivery zone: ${badZone}.`);
   const status =
-    body.status === "active" || body.status === "suspended"
-      ? body.status
-      : "pending";
+    parseApplicationStatus(body.status);
 
   const id = clean(body.id, 64);
   if (id !== "") {

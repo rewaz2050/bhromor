@@ -61,13 +61,29 @@ export function useShops() {
     [live, refresh],
   );
 
+  /**
+   * Round 4 — approve / reject / suspend / re-open through the review
+   * endpoint, which stamps who decided and when and stores the reason a
+   * rejected applicant reads on their login page.
+   */
   const setStatus = useCallback(
-    async (id: string, status: Shop["status"]): Promise<boolean> => {
-      const current = liveShops?.find((s) => s.id === id);
-      if (!current) return false;
-      return saveShop({ ...current, status });
+    async (id: string, status: Shop["status"], note?: string): Promise<boolean> => {
+      if (!live) return false;
+      try {
+        await apiSend(
+          `/api/admin/shops/${encodeURIComponent(id)}/review`,
+          "POST",
+          { status, note: note ?? "" },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
     },
-    [liveShops, saveShop],
+    [live, refresh],
   );
 
   /** Link an Auth account as the shop's vendor owner. */

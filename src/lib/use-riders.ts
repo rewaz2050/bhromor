@@ -69,13 +69,29 @@ export function useRiders(pollMs = 0) {
     [live, refresh],
   );
 
+  /**
+   * Round 4 — approve / reject / suspend / re-open through the review
+   * endpoint, which stamps who decided and when and stores the reason a
+   * rejected applicant reads on their login page.
+   */
   const setStatus = useCallback(
-    async (id: string, status: Rider["status"]): Promise<boolean> => {
-      const current = liveRiders?.find((r) => r.id === id);
-      if (!current) return false;
-      return saveRider({ ...current, status });
+    async (id: string, status: Rider["status"], note?: string): Promise<boolean> => {
+      if (!live) return false;
+      try {
+        await apiSend(
+          `/api/admin/riders/${encodeURIComponent(id)}/review`,
+          "POST",
+          { status, note: note ?? "" },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
     },
-    [liveRiders, saveRider],
+    [live, refresh],
   );
 
   /** Staff records a rider cash pay-in and zeroes the balance. */

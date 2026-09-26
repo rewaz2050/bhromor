@@ -33,6 +33,7 @@ import {
   zoneDemand,
 } from "@/lib/insights";
 import { shelfState } from "@/lib/product-shelf";
+import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -154,6 +155,21 @@ export default function VendorDashboardPage() {
       {toggleError && (
         <div className="mt-3">
           <ErrorBox message={toggleError} />
+        </div>
+      )}
+
+      {/* Round 4 — what a new shop still has to do; hides itself once complete. */}
+      {me && (
+        <div className="mt-6">
+          <OnboardingChecklist
+            shop={{ ...me.shop, isOpen }}
+            products={prods.products}
+            loading={prods.loading}
+            onOpenShop={() => {
+              if (!isOpen) void flipOpen();
+            }}
+            opening={toggling}
+          />
         </div>
       )}
 

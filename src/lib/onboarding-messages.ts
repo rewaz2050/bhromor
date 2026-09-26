@@ -7,11 +7,26 @@
 
 import { absoluteUrl } from "./site-url";
 import { waLink } from "./whatsapp-order";
+import { phoneFromLoginEmail } from "./phone-login";
 
 export type ApplicantKind = "vendor" | "rider";
 
 export const applicantLoginUrl = (kind: ApplicantKind): string =>
   absoluteUrl(kind === "vendor" ? "/vendor/login" : "/rider/login");
+
+export const applicantApplyUrl = (kind: ApplicantKind): string =>
+  absoluteUrl(kind === "vendor" ? "/shops/apply" : "/rider/apply");
+
+/**
+ * "sign in with the e-mail (x) and password" — or, for a phone login
+ * (round 4, synthetic address), "with the mobile number (01…) and password".
+ */
+const credentialsPhrase = (email?: string | null): string => {
+  const trimmed = email?.trim();
+  const phone = phoneFromLoginEmail(trimmed);
+  if (phone) return `আবেদনের সময় দেওয়া মোবাইল নম্বর (${phone}) ও পাসওয়ার্ড`;
+  return `আবেদনের সময় দেওয়া ইমেইল${trimmed ? ` (${trimmed})` : ""} ও পাসওয়ার্ড`;
+};
 
 /** "Approved — sign in with the email + password from your application." */
 export const approvalMessage = (input: {
@@ -21,18 +36,38 @@ export const approvalMessage = (input: {
 }): string => {
   const login = applicantLoginUrl(input.kind);
   const who = input.name.trim() || (input.kind === "vendor" ? "আপনার দোকান" : "আপনি");
-  const email = input.email?.trim();
+  const creds = credentialsPhrase(input.email);
   return input.kind === "vendor"
     ? [
         `PROSANTI: ${who} — আপনার দোকান অনুমোদিত হয়েছে! 🎉`,
-        `আবেদনের সময় দেওয়া ইমেইল${email ? ` (${email})` : ""} ও পাসওয়ার্ড দিয়ে এখানে সাইন ইন করুন: ${login}`,
+        `${creds} দিয়ে এখানে সাইন ইন করুন: ${login}`,
         "প্রথমে দোকানের সময় ঠিক করে প্রোডাক্ট যোগ করুন — অর্ডার আসা শুরু হবে।",
       ].join("\n")
     : [
         `PROSANTI: ${who}, আপনার রাইডার আবেদন অনুমোদিত হয়েছে! 🎉`,
-        `আবেদনের সময় দেওয়া ইমেইল${email ? ` (${email})` : ""} ও পাসওয়ার্ড দিয়ে এখানে সাইন ইন করুন: ${login}`,
+        `${creds} দিয়ে এখানে সাইন ইন করুন: ${login}`,
         "অ্যাপে ঢুকে “অনলাইন” করলেই ট্রিপের অনুরোধ পাবেন।",
       ].join("\n");
+};
+
+/**
+ * Round 4 — application REJECTED with a reason. The same login stays
+ * valid: the applicant fixes the details and applies again, which puts the
+ * same row back in the queue.
+ */
+export const applicationRejectedMessage = (input: {
+  kind: ApplicantKind;
+  name: string;
+  note?: string | null;
+}): string => {
+  const who = input.name.trim() || "আপনি";
+  const note = input.note?.trim();
+  const noun = input.kind === "vendor" ? "দোকানের আবেদন" : "রাইডার আবেদন";
+  return [
+    `PROSANTI: ${who}, আপনার ${noun}টি এবার অনুমোদন করা যায়নি।`,
+    note ? `কারণ: ${note}` : "বিস্তারিত জানতে এই নম্বরে উত্তর দিন।",
+    `তথ্য ঠিক করে একই লগইনে আবার আবেদন করুন: ${applicantApplyUrl(input.kind)}`,
+  ].join("\n");
 };
 
 /**
@@ -99,6 +134,13 @@ export const passwordResetWhatsAppLink = (input: {
   name: string;
   phone: string | null | undefined;
 }): string | null => waLink(input.phone, passwordResetMessage(input));
+
+export const applicationRejectedWhatsAppLink = (input: {
+  kind: ApplicantKind;
+  name: string;
+  phone: string | null | undefined;
+  note?: string | null;
+}): string | null => waLink(input.phone, applicationRejectedMessage(input));
 
 export const resetApprovedWhatsAppLink = (input: {
   kind: ApplicantKind;

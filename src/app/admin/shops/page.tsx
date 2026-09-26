@@ -8,14 +8,17 @@ import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
 import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
+import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
+import { describeLoginEmail } from "@/lib/phone-login";
 
 type Filter = Shop["status"] | "all";
-const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
+const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
 
 const BADGE: Record<Shop["status"], string> = {
   pending: "bg-amber-100 text-amber-900",
   active: "bg-emerald-100 text-emerald-800",
   suspended: "bg-rose-100 text-rose-800",
+  rejected: "bg-ivory-200 text-ink-soft",
 };
 
 function ShopCard({
@@ -31,7 +34,7 @@ function ShopCard({
   zones: { id: string; name: string }[];
   live: boolean;
   onSave: (s: Shop) => Promise<boolean>;
-  onStatus: (id: string, status: Shop["status"]) => void;
+  onStatus: (id: string, status: Shop["status"], note?: string) => void;
   onLinkVendor: (id: string, email: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
 }) {
@@ -94,45 +97,22 @@ function ShopCard({
             )}
           </div>
           <p className="mt-1 truncate text-xs text-ink-soft">
-            {shop.contactEmail ?? "no email"} · {shop.phone || "no phone"} ·{" "}
+            {describeLoginEmail(shop.contactEmail)} · {shop.phone || "no phone"} ·{" "}
             {shop.productCount} products · {shop.zoneIds.length} zones ·{" "}
             {shop.commissionPct}% commission
             {shop.ratingCount > 0 && (
               <> · ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})</>
             )}
           </p>
+          <ReviewSummary status={shop.status} review={shop.review} />
         </div>
-        {shop.status === "pending" && (
-          <button
-            type="button"
-            onClick={() => onStatus(shop.id, "active")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
-          >
-            <IconCheck className="h-3.5 w-3.5" /> Approve
-          </button>
-        )}
-        {shop.status !== "suspended" && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Suspend “${shop.name}”? Its products disappear from the storefront immediately.`)) {
-                onStatus(shop.id, "suspended");
-              }
-            }}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
-          >
-            Suspend
-          </button>
-        )}
-        {shop.status === "suspended" && (
-          <button
-            type="button"
-            onClick={() => onStatus(shop.id, "active")}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50"
-          >
-            Re-activate
-          </button>
-        )}
+        <ReviewActions
+          kind="shop"
+          name={shop.name}
+          status={shop.status}
+          onDecide={(status, note) => onStatus(shop.id, status, note)}
+          suspendEffect="Its products disappear from the storefront immediately."
+        />
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -228,6 +208,7 @@ function ShopCard({
             phone={shop.phone}
             email={shop.contactEmail}
             status={shop.status}
+            reviewNote={shop.review?.note}
             linked={shop.vendorLinked === true}
             live={live}
             onLink={(email) => onLinkVendor(shop.id, email)}
@@ -266,9 +247,10 @@ export default function AdminShopsPage() {
       all: shops.length,
       pending: 0,
       active: 0,
+      rejected: 0,
       suspended: 0,
     };
-    for (const s of shops) c[s.status] += 1;
+    for (const s of shops) c[s.status] = (c[s.status] ?? 0) + 1;
     return c;
   }, [shops]);
   const visible = useMemo(
@@ -416,7 +398,7 @@ export default function AdminShopsPage() {
               zones={zones}
               live={live}
               onSave={saveShop}
-              onStatus={(id, status) => void setStatus(id, status)}
+              onStatus={(id, status, note) => void setStatus(id, status, note)}
               onLinkVendor={linkVendor}
               onResetPassword={resetVendorPassword}
             />

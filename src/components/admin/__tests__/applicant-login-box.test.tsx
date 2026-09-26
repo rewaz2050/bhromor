@@ -32,6 +32,24 @@ describe("ApplicantLoginBox", () => {
     expect(decodeURIComponent(wa.getAttribute("href") ?? "")).toContain("/vendor/login");
   });
 
+  it("offers the rejection WhatsApp message with the reason and shows phone logins as numbers (round 4)", () => {
+    render(
+      <ApplicantLoginBox
+        {...base}
+        email="01712345678@phone.prosanti.app"
+        status="rejected"
+        reviewNote="Address outside our zones"
+        linked
+      />,
+    );
+    expect(screen.getByText("01712345678 (phone login)")).toBeInTheDocument();
+    expect(screen.queryByText(/phone\.prosanti\.app/)).not.toBeInTheDocument();
+    const wa = screen.getByRole("link", { name: /WhatsApp: not approved/ });
+    expect(decodeURIComponent(wa.getAttribute("href") ?? "")).toContain("Address outside our zones");
+    expect(screen.getByText(/rejection reason there and can re-apply/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /WhatsApp: approved/ })).not.toBeInTheDocument();
+  });
+
   it("resets the password after confirmation and shows it once, never inside the chat link", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ApplicantLoginBox {...base} status="active" linked />);
