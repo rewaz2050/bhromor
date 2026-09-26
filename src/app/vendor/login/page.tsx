@@ -7,9 +7,28 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import { useVendorSession } from "@/lib/use-vendor";
+
+/**
+ * Map the Supabase messages that genuinely block a vendor to a hint with the
+ * next step; anything else passes through untouched.
+ */
+const vendorAuthHint = (message: string): string => {
+  const m = message.toLowerCase();
+  if (m.includes("email not confirmed")) {
+    return "Email not confirmed — open the confirmation link from your inbox (check spam), then sign in again.";
+  }
+  if (m.includes("already registered") || m.includes("already exists")) {
+    return "An account with this email already exists — use Sign in. Forgot the password? Ask PROSANTI support.";
+  }
+  if (m.includes("invalid login credentials")) {
+    return "Email or password did not match. New here? Use Create account (same email as your application).";
+  }
+  return message;
+};
 
 export default function VendorLoginPage() {
   const router = useRouter();
@@ -24,6 +43,24 @@ export default function VendorLoginPage() {
   useEffect(() => {
     if (status === "authed") router.replace("/vendor");
   }, [status, router]);
+
+  // The shop-apply success screen sends applicants here to create the login
+  // (?mode=up&email=…). Window read (not useSearchParams) so the page needs
+  // no Suspense boundary; runs once on mount.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("mode") === "up") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption of the URL on mount
+      setMode("up");
+      setNotice(
+        "Application found — create the account with the SAME email you applied with. Staff approves → this login opens the dashboard.",
+      );
+    }
+    const prefill = q.get("email");
+    if (prefill) {
+      setEmail(prefill.slice(0, 160));
+    }
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +81,9 @@ export default function VendorLoginPage() {
         : await signUp(email, password);
     setBusy(false);
     if (problem) {
-      setFormError(problem);
+      // Supabase answers in raw English; add the next step to the ones that
+      // actually block a vendor ("Email not confirmed" etc.).
+      setFormError(vendorAuthHint(problem));
       return;
     }
     if (mode === "up") {
@@ -105,6 +144,14 @@ export default function VendorLoginPage() {
             <p className="rounded-xl bg-forest-50 px-4 py-3 text-sm text-forest-900 ring-1 ring-forest-200">
               {notice}
             </p>
+          )}
+          {notice && mode === "up" && (
+            <Link
+              href="/shops/apply"
+              className="block rounded-xl bg-forest-800 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-forest-900"
+            >
+              Send the shop application →
+            </Link>
           )}
           {error && mode === "in" && (
             <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">

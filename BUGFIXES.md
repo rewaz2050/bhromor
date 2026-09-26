@@ -410,3 +410,84 @@ client each RPC runs on.
 - `src/lib/__tests__/delivery.test.ts` — zone charge, free-delivery threshold, cheapest active zone, non-negative totals
 - `src/lib/__tests__/store-snapshots.test.ts` — snapshot identity stability (the infinite-render class)
 - plus phone-normalisation and cart-clamping cases in the existing suites
+
+## 2026-09-25 — rider dashboard ও account fix (PROD: migrations pending)
+
+Reported: *"Rider profile creation, dashboard kicui tik nai, accaunt o open kora jacce na."*
+
+**Root cause:** PR #33/#34 deployed to `proshanti.rahatahmed.site` while the production
+Supabase database had NOT received the day's seven migrations — the deployed rider code
+calls `ps_expire_stale_offers(p_force)`, `rider_settle_claims`, `ps_rider_deliver_check`
+and the realtime publication, none of which exist there. Proven on a disposable PGlite
+with old-vs-new schema: on the old schema the job feed 503s (`function … does not
+exist`), the settlements read 503s (`relation … does not exist`), delivery dies, and —
+worst — the OLD `ps_rider_settle` still answers the new call and **zeroes the rider's
+cash with no staff approval**. Both halves of the dashboard's `Promise.all` fail, so the
+rider sees nothing. Full write-up + the 2-minute SQL-Editor repair list:
+`docs/prod-fix-2026-09-25.md`.
+
+| # | Fix |
+|---|-----|
+| 139 | **Rider app survives a database that has not caught up.** `isMissingDbObject()` (42883/42P01/PGRST202/PGRST205 + message fallback) drives three degradations: the stale-offer sweep skips with a `console.warn` naming `202609250003` instead of 503-ing the job feed; `listRiderSettleClaim` answers `null` and `listPendingSettleClaims` an empty queue so the rider settlements panel and the admin riders queue keep loading; the PIN-deliver fallback to direct `ps_rider_deliver` now also fires on 42883 (it only matched PGRST202, so on a truly missing function the rider's Delivered button failed with raw SQL text). |
+| 140 | **A rider's COD money can no longer move without staff approval, even on the un-migrated database.** `POST /api/rider/settle` probes `rider_settle_claims` first (`settleClaimsReady()`): missing table → 503 in Bangla, legacy `ps_rider_settle` (which zeroes `cash_in_hand` immediately) never runs. `GET /api/rider/settlements` reports `claimsReady:false`; the dashboard hides the Settle button and shows a short notice instead of a control that would eat the rider's money. `useRiderJobs` now reads jobs and settlements with `Promise.allSettled` — a settlements failure keeps every live job on screen (this `Promise.all` is what made the whole dashboard look dead). |
+| 141 | **No raw SQL errors on a rider's phone.** The shared `/api/rider/*` wrapper maps missing-object failures to an honest 503 ("ব্যাকএন্ড আপডেট এখনো প্রয়োগ হয়নি…") — "function ps_expire_stale_offers(p_force => boolean) does not exist" never reaches the UI again. |
+| 142 | **Rider login/account dead-ends (the "account open kora jacce na" half).** `/rider/login` with an unconfigured Supabase no longer redirects into the guest loop — it says the backend is not configured. Supabase's raw English auth errors are translated with the next step ("Email not confirmed" → confirm the mail incl. spam; "Invalid login credentials" → use নতুন অ্যাকাউন্ট). Sign-up now reads the returned session: with confirmation off the rider is signed in and taken straight to `/rider/apply`; with confirmation on they get a clear confirm-your-email notice instead of a dead "now apply" line. `/rider/apply` validates the zone selection in Bangla BEFORE submit (the old English "Choose at least one delivery zone." came only from the server), fixes the wrong "no password needed, OTP login" copy, and the success screen gains a one-tap "এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →" (prefilled email, signup tab) whenever the application was saved WITHOUT a linked login (`linked:false`) — the exact gap that left approved riders with no usable account. |
+
+Tests: `rider-degrade` (9), `rider-route-degrade` (2), `settle-claim-routes` +1;
+`tsc` 0, `eslint` 0, full suite green, production build green.
+
+## 2026-09-25 (evening) — pre-merge scan: rider/user/shop connections & dashboards
+
+Full audit of the four dashboards and their connections before merging PR #35:
+rider (apply→login→approve→jobs→deliver→settle), customer (login→checkout→track→
+account), shop/vendor (apply→login→orders→settings), admin (riders queue, claims,
+deliveries board), plus the cross-links (area broadcast, per-step customer push,
+WA drafts, realtime offers, the scheduler). Two real defects found and fixed:
+
+| # | Fix |
+|---|-----|
+| 143 | **The scheduler's report lied on every tick.** `runExpireOffers` counted stale offers with `.eq("status","offered")`, but `delivery_assignments` has no `status` column — it is `state` (checked against the schema). PostgREST answered 42703, the catch swallowed it, and every 15-minute tick reported "0 stale offers expired" no matter how many actually expired (the sweep RPC itself ran fine, so dispatch kept moving — only the report was wrong, which is exactly the report the owner reads). Fixed to `.eq("state","offered")` and pinned by a test that asserts the filter column (cron 16 tests). |
+| 144 | **Shop onboarding had the same dead-ends the rider flow had.** `/shops/apply` submitted happily with zero delivery zones — the server's English "Choose at least one delivery zone." arrived only after a wasted submit (now pre-validated in Bangla before submit, mirroring the rider form). Worse, the success screen never told an unlinked applicant to create the vendor login — the exact gap that left approved riders/shopkeepers locked out ("account open kora jacce na"). It now reads `linked:false` and shows the one-tap "এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →" card (prefilled email). `/vendor/login` accepts `?mode=up&email=…` (opens the signup tab with a notice), maps Supabase's blocking auth errors to next-step hints ("Email not confirmed" → confirm the mail; "already registered" → use Sign in), and gains a "Send the shop application →" button under the account-created notice. |
+
+Audited and left as-is (working as designed): per-step customer push (accept/
+pickup/deliver all notify), WA draft fallback, area broadcast eligibility
+(zone overlap + online + shift + load + cash cap), realtime offers with the
+15 s poll backup, admin settle-claim approve/reject, customer phone+password
+login (own API, Bangla errors), PIN lockout two-step deliver, vendor two-tap
+order flow with wallet gate, `ps_expire_stale_offers` default-force call from
+the cron (signature-compatible). `tsc` 0, `eslint` 0, 1,287 tests green,
+production build green.
+
+## 2026-09-25 (night) — rider scoreboard + customer delivery rating (ideas #1+#2)
+
+New mini-feature bundle for the rider experience — the rider finally sees their
+own record, and the customer closes the loop by rating the delivery.
+
+### What shipped
+- **`202609250008_delivery_ratings.sql`** — new table `delivery_ratings`
+  (order_id PK → orders ON DELETE CASCADE, rider_id → riders, stars 1–5,
+  created_at). RLS on, no policies: service-role only, ratings move through
+  the API. **Must be pasted in Supabase before ratings are used** (paste part
+  24 of the 20260925-fixes set; 596 B — safe to run whole).
+- **`GET /api/rider/stats`** — the rider's scoreboard: lifetime
+  `total_deliveries`, a real 7-day delivered count (`delivery_assignments`
+  delivered joined to orders' delivery timestamp), and own rating avg/count
+  recomputed from `delivery_ratings`. Works even before the migration runs
+  (rating reads as 0); the rest of the rider app never blocks on it.
+- **`POST /api/track/rate`** — customer rates the delivery 1–5 stars on the
+  track page, only after delivery, only with the tracking phone. One rating
+  per order (PK + 23505 → `{ok:true,already:true}` — a re-tap never skews
+  the average). Vague 404 like /api/track; 409 before delivery; 429 at
+  10/min/IP; Bangla 503s when the DB is unreachable. Riders stay anonymous:
+  only the display name is ever shown to the customer.
+- **Rider dashboard** — Quick Stats Strip grew from 2 to 4 cards:
+  চলমান ডেলিভারি / ফিডে সম্পন্ন / মোট ডেলিভারি (lifetime) / ৭ দিনে + ⭐ rating.
+  Scoreboard refreshes after a successful delivery, not on the 15 s poll.
+- **Track page** — `RiderRatingAsk` under the delivered order: "তানভীর-এর
+  ডেলিভারি কেমন হয়েছিল?" with a 1–5 star picker (bn/en bilingual). Hidden
+  entirely for pickup/courier orders — no rider, no rating.
+
+### Notes
+- `applyDeliveryRating` recomputes avg from the table on every new rating —
+  the `riders.rating_avg` column is derived state, never accumulated, so a
+  failed insert can never drift the number.

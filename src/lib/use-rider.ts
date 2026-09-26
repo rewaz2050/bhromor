@@ -164,6 +164,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
   const [jobs, setJobs] = useState<RiderJob[]>([]);
   const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
   const [pendingClaim, setPendingClaim] = useState<SettleClaim | null>(null);
+  const [claimsReady, setClaimsReady] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
@@ -179,19 +180,31 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
       setLoading(true);
       setError(null);
       try {
-        const [jobsData, settlementsData] = await Promise.all([
+        // Jobs are the dashboard; settlements are a side panel. A failures
+        // in one must not blank the other (2026-09-25: a pending database
+        // migration answered 503 for settlements and hid every live job).
+        const [jobsResult, settleResult] = await Promise.allSettled([
           riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
-          riderFetch<{ settlements: RiderSettlement[]; pendingClaim: SettleClaim | null }>(
-            "/api/rider/settlements",
-          ),
+          riderFetch<{
+            settlements: RiderSettlement[];
+            pendingClaim: SettleClaim | null;
+            claimsReady?: boolean;
+          }>("/api/rider/settlements"),
         ]);
-        setJobs(jobsData.jobs);
-        setSettlements(settlementsData.settlements);
-        setPendingClaim(settlementsData.pendingClaim ?? null);
-        return true;
-      } catch (err) {
-        setError(riderErrorMessage(err));
-        return false;
+        if (jobsResult.status === "fulfilled") {
+          setJobs(jobsResult.value.jobs);
+        } else {
+          setError(riderErrorMessage(jobsResult.reason));
+        }
+        if (settleResult.status === "fulfilled") {
+          setSettlements(settleResult.value.settlements);
+          setPendingClaim(settleResult.value.pendingClaim ?? null);
+          setClaimsReady(settleResult.value.claimsReady ?? true);
+        } else {
+          // Keep the last settlements on screen; never block the job feed.
+          setClaimsReady(false);
+        }
+        return jobsResult.status === "fulfilled";
       } finally {
         setLoading(false);
         inflight.current = null;
@@ -320,5 +333,44 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
 
-  return { jobs, settlements, pendingClaim, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+  return { jobs, settlements, pendingClaim, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+};
+
+export interface RiderStatsView {
+  totalDeliveries: number;
+  weekDeliveries: number;
+  ratingAvg: number;
+  ratingCount: number;
+}
+
+/**
+ * The rider's scoreboard (202609250008). Fetched once per app open (not with
+ * the 15 s job poll — these numbers do not change that fast); `refresh`
+ * re-reads after a delivery or a settle, when the numbers actually move.
+ */
+export const useRiderStats = (enabled: boolean) => {
+  const [stats, setStats] = useState<RiderStatsView | null>(null);
+  const [loading, setLoading] = useState(enabled);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (!enabled) return;
+    try {
+      const data = await riderFetch<{ stats: RiderStatsView }>("/api/rider/stats");
+      setStats(data.stats);
+    } catch {
+      // The scoreboard is decoration on top of real work — never an error
+      // banner; the last known numbers stay on screen.
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
+    setLoading(true);
+    void refresh();
+  }, [enabled, refresh]);
+
+  return { stats, loading, refresh };
 };

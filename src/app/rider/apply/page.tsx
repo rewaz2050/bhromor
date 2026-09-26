@@ -221,7 +221,7 @@ export default function RiderApplyPage() {
         <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line text-xs leading-relaxed text-ink-soft flex items-start gap-2.5">
           <IconShield className="h-5 w-5 shrink-0 text-gold-600 mt-0.5" />
           <p>
-            আবেদনের পর অ্যাডমিন আপনার তথ্য ভেরিফাই করে অনুমোদন দেবে। আপনার অ্যাকাউন্টে কোনো পাসওয়ার্ডের ঝামেলা নেই — সরাসরি ওটিপি/ইমেইল লগইন সাপোর্ট।
+            আবেদনের পর অ্যাডমিন আপনার তথ্য ভেরিফাই করে অনুমোদন দেবে। লগইনের জন্য উপরে দেওয়া ইমেইল ও নিজের একটি পাসওয়ার্ড দিয়ে /rider/login থেকে অ্যাকাউন্ট খুলে রাখুন — অনুমোদনের পরই পোর্টাল খুলে যাবে।
           </p>
         </div>
 

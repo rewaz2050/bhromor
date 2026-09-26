@@ -81,7 +81,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('37f', 'P0: PIN lockout columns on orders',                                '202609250005_delivery_pin_lockout.sql', 'column', 'orders.delivery_code_locked_until'),
   ('37g', 'P0: /api/health probe knows all four dispatch migrations',         '202609250006_dispatch_health.sql', 'function_src', 'ps_checkout_health|pin_lockout_ok'),
   ('37h', 'SPEED: delivery_assignments published for instant offers',         '202609250007_realtime_offers.sql', 'publication', 'supabase_realtime.delivery_assignments'),
-  ('37i', 'SPEED: /api/health probe knows the realtime flag',                '202609250007_realtime_offers.sql', 'function_src', 'ps_checkout_health|realtime_offers_ok')
+  ('37i', 'SPEED: /api/health probe knows the realtime flag',                '202609250007_realtime_offers.sql', 'function_src', 'ps_checkout_health|realtime_offers_ok'),
+  ('37j', 'Delivery ratings (customer rates the rider on /track)',          '202609250008_delivery_ratings.sql', 'table', 'delivery_ratings')
 )
 select step as ord,
        label,

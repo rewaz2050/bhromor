@@ -9402,3 +9402,21 @@ revoke all on function ps_checkout_health() from public, anon, authenticated;
 grant execute on function ps_checkout_health() to service_role;
 
 commit;
+
+-- ============================================================================
+-- Feature: delivery (rider) ratings — the customer closes the quality loop
+-- (202609250008). One rating per order; service-role only (RLS, no policies).
+-- ============================================================================
+
+begin;
+
+create table if not exists delivery_ratings (
+  order_id   uuid primary key references orders (id) on delete cascade,
+  rider_id   uuid not null references riders (id),
+  stars      int  not null check (stars between 1 and 5),
+  created_at timestamptz not null default now()
+);
+
+alter table delivery_ratings enable row level security;
+
+commit;

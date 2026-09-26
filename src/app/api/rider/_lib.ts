@@ -9,7 +9,7 @@ import {
   RiderAuthError,
   type RiderContext,
 } from "@/lib/rider-auth";
-import { RiderInputError } from "@/lib/db/riders";
+import { isMissingDbObject, RiderInputError } from "@/lib/db/riders";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiError } from "@/lib/api-response";
 
@@ -58,6 +58,15 @@ export const riderRoute = (
     } catch (err) {
       if (err instanceof RiderInputError) {
         return apiError(err.message, err.status);
+      }
+      // A database the app has outgrown (pending migrations) must surface as
+      // an honest, rider-readable message — never a raw SQL error such as
+      // "function ps_rider_deliver_check does not exist".
+      if (err instanceof Error && isMissingDbObject({ message: err.message })) {
+        return apiError(
+          "ব্যাকএন্ড আপডেট এখনো প্রয়োগ হয়নি — কিছুক্ষণ পরে আবার চেষ্টা করুন বা অ্যাডমিনকে জানান।",
+          503,
+        );
       }
       return apiError(
         err instanceof Error ? err.message : "Something went wrong — please try again.",

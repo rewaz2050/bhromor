@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { RiderProfile } from "@/components/rider/rider-profile";
 import Link from "next/link";
-import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
+import { useRiderJobs, useRiderSession, useRiderStats } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
@@ -52,6 +52,7 @@ export default function RiderPage() {
   const isLive = session.status === "authed";
   const activeRider = session.rider;
   const riderJobsApi = useRiderJobs(isLive, activeRider?.id);
+  const riderStats = useRiderStats(isLive);
 
   const [onlineOverride, setOnlineOverride] = useState<boolean | null>(null);
   const isOnline = onlineOverride ?? activeRider?.isOnline ?? false;
@@ -284,6 +285,7 @@ export default function RiderPage() {
       `🎉 অভিনন্দন! অর্ডার #${task.order.id} সফলভাবে ডেলিভারি সম্পন্ন হয়েছে। Proof: ${proofUrl ? "with photo" : "no photo"}`,
     );
     void session.refresh();
+    void riderStats.refresh();
   };
 
   const handleSettleCash = async () => {
@@ -450,7 +452,7 @@ export default function RiderPage() {
             <p className="font-display text-2xl font-bold text-forest-900">
               {formatBdt(cashInHand)}
             </p>
-            {cashInHand > 0 && !pendingClaim && (
+            {cashInHand > 0 && !pendingClaim && riderJobsApi.claimsReady && (
               <button
                 type="button"
                 onClick={() => setSettle(true)}
@@ -460,6 +462,11 @@ export default function RiderPage() {
               </button>
             )}
           </div>
+          {cashInHand > 0 && !riderJobsApi.claimsReady && (
+            <p className="mt-2 rounded-xl bg-ivory-100 p-2.5 text-xs font-medium text-ink-soft ring-1 ring-line">
+              টাকা জমার অনুরোধ সাময়িকভাবে বন্ধ আছে — অ্যাডমিন দ্রুত হিসাব মিলিয়ে নেবেন।
+            </p>
+          )}
           {pendingClaim && (
             <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">
               ⏳ {formatBdt(pendingClaim.amount)} জমার দাবি Admin-এর কাছে অপেক্ষায় আছে
@@ -523,8 +530,11 @@ export default function RiderPage() {
           </section>
         )}
 
-        {/* Quick Stats Strip */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Quick Stats Strip — the rider's scoreboard (202609250008):
+            live counts from the feed, lifetime + 7-day + rating from
+            /api/rider/stats. A rider who sees their own record works better;
+            the feed window alone could never answer "how am I doing". */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
               চলমান ডেলিভারি
@@ -535,10 +545,36 @@ export default function RiderPage() {
           </div>
           <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
-              মোট সম্পন্ন
+              ফিডে সম্পন্ন
             </p>
             <p className="font-display mt-1 text-2xl font-bold text-emerald-700">
               {deliveredCount}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+              মোট ডেলিভারি
+            </p>
+            <p className="font-display mt-1 text-2xl font-bold text-forest-900">
+              {riderStats.stats?.totalDeliveries ?? "…"}
+            </p>
+            <p className="mt-0.5 text-[10px] text-ink-soft">
+              {riderStats.stats ? "সর্বমোট" : "হিসাব হচ্ছে…"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-line bg-paper p-3.5 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+              ৭ দিনে
+            </p>
+            <p className="font-display mt-1 text-2xl font-bold text-emerald-700">
+              {riderStats.stats?.weekDeliveries ?? "…"}
+            </p>
+            <p className="mt-0.5 text-[10px] text-ink-soft">
+              {riderStats.stats && riderStats.stats.ratingCount > 0
+                ? `⭐ ${riderStats.stats.ratingAvg.toFixed(1)} (${riderStats.stats.ratingCount})`
+                : riderStats.stats
+                  ? "এখনো রেটিং নেই"
+                  : "\u00a0"}
             </p>
           </div>
         </div>

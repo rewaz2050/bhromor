@@ -151,7 +151,10 @@ const runExpireOffers = async (service: SupabaseClient, nowMs: number): Promise<
     const { count } = await service
       .from("delivery_assignments")
       .select("id", { count: "exact", head: true })
-      .eq("status", "offered")
+      // The column is `state` (checked against the schema) — `status` made
+      // this count fail silently on EVERY tick and the report always said
+      // "0 stale offers" no matter how many actually expired.
+      .eq("state", "offered")
       .lt("expires_at", iso(nowMs));
     stale = count ?? 0;
   } catch {

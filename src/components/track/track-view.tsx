@@ -27,6 +27,7 @@ import { LiveDeliveryMap } from "./live-delivery-map";
 import ReturnPanel from "@/components/returns/return-panel";
 import WarrantyPanel from "@/components/warranty/warranty-panel";
 import ReviewAsk from "@/components/track/review-ask";
+import RiderRatingAsk from "@/components/track/rider-rating-ask";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
@@ -348,6 +349,11 @@ export default function TrackView() {
 
             {/* Delivered → ask for a one-line review of the bought pieces. */}
             <ReviewAsk order={order} />
+
+            {/* Delivered with a rider → rate the delivery (202609250008).
+                Keyed by order + phone so a new lookup starts fresh; hidden
+                entirely for pickup/courier orders — no rider, no rating. */}
+            <RiderRatingAsk key={`rate-${order.id}`} order={order} phone={phone} />
 
             {/* Timeline */}
             {order.status === "cancelled" && contactNumber && (

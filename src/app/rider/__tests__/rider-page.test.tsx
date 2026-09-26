@@ -31,6 +31,11 @@ vi.mock("@/lib/use-rider", () => ({
     signUp: vi.fn(),
     signOut: vi.fn(),
   }),
+  useRiderStats: () => ({
+    stats: { totalDeliveries: 41, weekDeliveries: 9, ratingAvg: 4.8, ratingCount: 12 },
+    loading: false,
+    refresh: vi.fn(async () => {}),
+  }),
   useRiderJobs: () => ({
     jobs: state.jobs,
     settlements: [],
@@ -88,6 +93,11 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.getByText(/PROSANTI রাইডার/i)).toBeInTheDocument();
     expect(screen.getByText(/হাতে জমা ক্যাশ/i)).toBeInTheDocument();
     expect(screen.getByText(/অ্যাসাইন্ড অর্ডার সমূহ/i)).toBeInTheDocument();
+
+    // Scoreboard (202609250008): lifetime + 7-day + own rating from /api/rider/stats.
+    expect(screen.getByText("মোট ডেলিভারি")).toBeInTheDocument();
+    expect(screen.getByText("৭ দিনে")).toBeInTheDocument();
+    expect(screen.getByText("⭐ 4.8 (12)")).toBeInTheDocument();
   });
 
   it("a COD job says how much cash to collect; a bKash job says the customer already paid (Batch H)", () => {
