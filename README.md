@@ -175,6 +175,67 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R10 — the last "pending" items (2026-09-27)
+
+Round 10 of `docs/ux-sales-plan.md` — the plan's last shippable items. Two
+**migrations**: `supabase/migrations/202609270003_bag_snapshots.sql`
+(abandoned-bag push; needs `202609270001` first) and
+`202609270004_review_stamps.sql` (review → Smart Card stamp). Everything
+else is code only.
+
+- **R10a — per-size stock + PDP accordion** (§4). `Product.sizeStock`
+  (`lib/size-stock.ts`, read from `variants` — no schema change) drives the
+  size chips: 1–3 units → "২টি বাকি", 0 → greyed but tappable → an inline
+  `size-sold-out` panel with the restock alert, the nearest in-stock size and
+  "ask on WhatsApp"; quick-add disables sold-out sizes. Sellers set the
+  numbers in the product editor ("Set stock per size"); leave them blank and
+  the total stock behaves exactly as before. Product details are now an
+  accordion — বিবরণ ও কাপড় (open) · যত্ন · ফিট ও মাপ · ডেলিভারি ও ফেরত.
+- **R10b — shorter whole shelf + pattern interrupts** (§2,
+  `lib/home-shelves.ts`, `home/category-shelf.tsx`, `home/shelf-interrupts.tsx`):
+  6 pieces per category + "see all N"; from the 3rd category the shelf is a
+  mobile snap rail ending in an "আরও N →" tile; a "why PROSANTI" band after the
+  first shelf and one photo review before the 4th (or last) shelf — the review
+  band is skipped when no approved review has a photo.
+- **R10c — abandoned bag** (§5). Home banner under the hero when the bag is
+  ≥ 30 min old ("আপনার ব্যাগে ২টি পিস অপেক্ষা করছে →", thumbs, checkout link,
+  dismiss per bag). Devices opted in to marketing push send a bag snapshot
+  (`PUT /api/bag/snapshot`); the `abandoned-bags` cron job sends **one** push
+  24–72 h later (max one per 7 days; never SMS/email) → `/cart`. Details in
+  `docs/automation.md`.
+- **R10d — review → stamp ledger** (§4/§7/§8). The track page's "review this
+  piece" link hands the order no + phone to the product page's form
+  (`lib/review-proof.ts`, sessionStorage, 1 h). `POST /api/reviews` re-checks
+  it (`provenPurchase`: a *delivered* order on that phone containing the
+  product; a signed-in account's phone is tried too) and stores the review
+  `verified` with `customer_phone` / `order_ref`. When staff **approve** a
+  proven review, `awardReviewStamp` writes one `stamp_ledger` row (unique per
+  review — approve → hide → approve never pays twice) and pushes "রিভিউর জন্য
+  ধন্যবাদ — ১টা স্ট্যাম্প যোগ হলো". The Smart Card counts orders **plus**
+  ledger rows (`countStampsForPhone`; `/api/account/card` adds
+  `reviewStamps`). Before the migration reviews save as before; nothing is
+  stamped.
+- **R10e — the last live's rail + Bengali legal pages** (§10, §11).
+  `GET /api/live` now also answers `last`: the most recent *ended* session
+  (≤ 60 days) whose pieces are still published (`getPublicLive`, no
+  migration). Whenever nothing is on air, `/live` shows "গত লাইভে যে পিসগুলো
+  দেখিয়েছিলাম" (`live-last-rail`: session title, date in Bengali digits,
+  in-stock pieces first, one-tap add to bag with source `live`) — under the
+  upcoming card, or between the empty card and the new-arrivals rail. The
+  `/privacy` and `/terms` pages are fully bilingual (`<L en bn />` leaves,
+  headings included); the copy now also names the optional account, the
+  phone/order kept behind a verified review, browser-push/WhatsApp updates
+  and the coupon / Smart Card rules.
+
+Tests: `src/lib/__tests__/{size-stock,home-shelves,abandoned-bag,bag-memory,review-proof}.test.ts`,
+`src/lib/db/__tests__/{review-stamps,live-last}.test.ts`,
+`src/app/api/reviews/__tests__/review-proof-route.test.ts`,
+`src/app/api/bag/__tests__/snapshot-route.test.ts`,
+`src/components/track/__tests__/review-ask.test.tsx`,
+`src/components/account/__tests__/loyalty-card.test.tsx`,
+`src/components/live/__tests__/live-view.test.tsx`,
+`src/app/(site)/__tests__/legal-pages.test.tsx`.
+
 ## UX plan R9 — every remaining "pending" in one round (2026-09-27)
 
 Round 9 of `docs/ux-sales-plan.md` closes the leftovers from R1–R8. Two small

@@ -130,6 +130,12 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
   const sizes = distinct(live.map((v) => v.size));
   const stock = live.reduce((s, v) => s + Math.max(0, v.available), 0);
   const inStock = p.in_stock && (live.length === 0 || stock > 0);
+  // Per-size availability (UX plan §4, R10): only when the grid has sizes.
+  const sizeStock: Record<string, number> = {};
+  for (const v of live) {
+    if (v.size === "") continue;
+    sizeStock[v.size] = (sizeStock[v.size] ?? 0) + Math.max(0, v.available);
+  }
 
   const ordered = [...media].sort((a, b) => a.sort_order - b.sort_order);
   // Images and videos share one ordered gallery; the first row should be
@@ -168,6 +174,7 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     isNew: p.is_new,
     inStock,
     lowStock: p.low_stock || (inStock && stock > 0 && stock <= 5),
+    ...(Object.keys(sizeStock).length > 0 ? { sizeStock } : {}),
     media: gallery,
     video: youtubeId
       ? { youtubeId, label: yt?.alt_text || p.name }

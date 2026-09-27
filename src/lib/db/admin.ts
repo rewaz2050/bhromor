@@ -630,10 +630,30 @@ export interface ProductInput {
   video?: { youtubeId: string; label?: string };
   status?: "draft" | "published";
   active?: boolean;
-  /** Desired TOTAL stock across variants (single-number admin UI). */
+  /** Desired TOTAL units available to sell across variants (single-number UI). */
   stock?: number;
+  /**
+   * UX plan §4 (R10) — desired units available PER SIZE (summed across the
+   * colours of that size). Wins over `stock` when present. Keys must be in
+   * `sizes`; a size left out keeps what it has.
+   */
+  sizeStock?: Record<string, number>;
   seo?: { title?: string; description?: string };
 }
+
+/** Per-size stock body → clean map (unknown/negative/NaN dropped). */
+const cleanSizeStock = (v: unknown, sizes: string[]): Record<string, number> | undefined => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [size, n] of Object.entries(v as Record<string, unknown>)) {
+    const key = size.trim().slice(0, 24);
+    if (key === "" || !sizes.includes(key)) continue;
+    const num = typeof n === "string" ? Number(n) : n;
+    if (typeof num !== "number" || !Number.isFinite(num)) continue;
+    out[key] = Math.min(100000, Math.max(0, Math.floor(num)));
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
 
 const SLUG_RE = /^[a-z0-9\u0980-\u09ff]+(?:-[a-z0-9\u0980-\u09ff]+)*$/;
 
@@ -702,6 +722,7 @@ const sanitizeProductInput = (
     status: body.status === "published" ? "published" : "draft",
     active: body.active !== false,
     stock: body.stock === undefined ? undefined : Math.max(0, cleanInt(body.stock)),
+    sizeStock: undefined,
     seo: {
       title: str((body.seo as { title?: unknown } | undefined)?.title, 160) || undefined,
       description:
@@ -709,6 +730,7 @@ const sanitizeProductInput = (
     },
   };
   if (typeof body.nameBn === "string") out.nameBn = str(body.nameBn, 160);
+  out.sizeStock = cleanSizeStock(body.sizeStock, out.sizes ?? []);
   if (
     body.video &&
     typeof (body.video as { youtubeId?: unknown }).youtubeId === "string"
@@ -751,11 +773,51 @@ const validateProductInput = (
 };
 
 /**
- * Variant grid sync. Stock strategy (documented for the single-number UI):
- * - grid unchanged → every variant keeps its stock/reserved;
- * - grid changed or new product → desired total is split evenly;
- * - desired total given + grid unchanged → the difference lands on the
- *   first variant (never below its reservations).
+ * Spread a wanted AVAILABLE count over a group of variants, moving as few
+ * rows as possible: extra units land on the first row; a shortfall is taken
+ * from the last rows first, never below zero available (stock ≥ reserved).
+ * Returns the rows whose stock changes.
+ */
+export const spreadAvailable = (
+  rows: { id: string; stock: number; reserved: number }[],
+  wantedAvailable: number,
+): { id: string; stock: number }[] => {
+  if (rows.length === 0) return [];
+  const available = rows.map((r) => Math.max(0, r.stock - r.reserved));
+  const current = available.reduce((s, n) => s + n, 0);
+  let delta = Math.max(0, Math.floor(wantedAvailable)) - current;
+  const next = [...available];
+  if (delta > 0) next[0] += delta;
+  else {
+    for (let i = next.length - 1; i >= 0 && delta < 0; i -= 1) {
+      const take = Math.min(next[i], -delta);
+      next[i] -= take;
+      delta += take;
+    }
+  }
+  return rows
+    .map((r, i) => ({ id: r.id, stock: r.reserved + next[i] }))
+    .filter((r, i) => r.stock !== rows[i].stock);
+};
+
+/** Split `total` over `n` slots, remainder to the first slots. */
+const splitEven = (total: number, n: number): number[] => {
+  const per = Math.floor(total / n);
+  let remainder = total - per * n;
+  return Array.from({ length: n }, () => per + (remainder > 0 ? (remainder -= 1, 1) : 0));
+};
+
+/**
+ * Variant grid sync. Stock numbers in the editors mean "units still to sell"
+ * (= `available`, what the storefront shows), so a re-save never shaves off
+ * the units already sold. Strategy:
+ * - grid unchanged, nothing asked → every variant keeps its stock/reserved;
+ * - per-size counts given (UX plan §4, R10) → each size's colours are
+ *   nudged to that count, fewest rows moved; sizes not named keep theirs;
+ * - a total given → the difference lands on the first variant (a shortfall
+ *   is taken from the last rows first, never below the reservations);
+ * - grid changed or new product → the per-size counts (or the total, or 12)
+ *   are split evenly over the new cells.
  */
 const syncVariants = async (
   db: SupabaseClient,
@@ -763,6 +825,7 @@ const syncVariants = async (
   input: ProductInput,
   desiredTotal: number | undefined,
 ): Promise<void> => {
+  const sizeStock = input.sizeStock;
   const colors = input.colors?.length ? input.colors : [""];
   const sizes = input.sizes?.length ? input.sizes : [""];
   const wanted = new Map<string, { color: string; size: string }>();
@@ -785,19 +848,25 @@ const syncVariants = async (
     [...wanted.keys()].every((k) => existingKeys.has(k));
 
   if (sameGrid && existing.length > 0) {
-    // Keep per-variant stock; optionally nudge the total via row one.
-    const currentTotal = existing.reduce((s, v) => s + v.stock, 0);
-    const target = desiredTotal ?? currentTotal;
-    const first = [...existing].sort((a, b) =>
-      a.color.localeCompare(b.color),
-    )[0];
-    const nextFirst = Math.max(first.reserved, first.stock + (target - currentTotal));
-    const { error: upError } = await db
-      .from("product_variants")
-      .update({ price: input.price, stock: nextFirst, active: true })
-      .eq("id", first.id);
-    if (upError) throw new Error("variant update failed");
-    const rest = existing.filter((v) => v.id !== first.id);
+    // Keep per-variant stock; nudge per size or via the total when asked.
+    const ordered = [...existing].sort((a, b) => a.color.localeCompare(b.color));
+    const changes: { id: string; stock: number }[] = [];
+    if (sizeStock) {
+      for (const [size, wanted] of Object.entries(sizeStock)) {
+        changes.push(...spreadAvailable(ordered.filter((v) => v.size === size), wanted));
+      }
+    } else if (desiredTotal !== undefined) {
+      changes.push(...spreadAvailable(ordered, desiredTotal));
+    }
+    for (const c of changes) {
+      const { error: upError } = await db
+        .from("product_variants")
+        .update({ price: input.price, stock: c.stock, active: true })
+        .eq("id", c.id);
+      if (upError) throw new Error("variant update failed");
+    }
+    const changed = new Set(changes.map((c) => c.id));
+    const rest = existing.filter((v) => !changed.has(v.id));
     if (rest.length > 0) {
       const { error: restError } = await db
         .from("product_variants")
@@ -817,14 +886,27 @@ const syncVariants = async (
       await db.from("product_variants").delete().eq("id", v.id);
     }
   }
-  // …and upsert the wanted ones with evenly split stock.
-  const total = desiredTotal ?? 12;
-  const per = Math.floor(total / wanted.size);
-  let remainder = total - per * wanted.size;
+  // …and upsert the wanted ones with evenly split stock — per size when
+  // the editor said so, otherwise the total over the whole grid.
+  const cells = [...wanted.values()];
+  let stocks: number[];
+  if (sizeStock) {
+    const perSizeTotal = (size: string) =>
+      sizeStock[size] ?? Math.floor((desiredTotal ?? 12) / sizes.length);
+    stocks = cells.map(() => 0);
+    for (const size of sizes) {
+      const idx = cells.map((c, i) => (c.size === size ? i : -1)).filter((i) => i >= 0);
+      splitEven(perSizeTotal(size), idx.length).forEach((n, k) => {
+        stocks[idx[k]] = n;
+      });
+    }
+  } else {
+    stocks = splitEven(desiredTotal ?? 12, cells.length);
+  }
   let n = 0;
-  for (const { color, size } of wanted.values()) {
+  for (const { color, size } of cells) {
+    const stock = stocks[n];
     n += 1;
-    const stock = per + (remainder > 0 ? (remainder -= 1, 1) : 0);
     const row = existing.find((v) => v.color === color && v.size === size);
     if (row) {
       const { error: upError } = await db
@@ -1161,7 +1243,7 @@ export async function updateProduct(
       // the product is saved; the alert can wait for the next restock
     }
   }
-  if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sku !== undefined) {
+  if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sizeStock !== undefined || rawRec.sku !== undefined) {
     // Variant grid inputs fall back to the CURRENT grid (not blank).
     const { data: current } = await db
       .from("product_variants")
@@ -1169,16 +1251,20 @@ export async function updateProduct(
       .eq("product_id", id)
       .eq("active", true);
     const cur = (current ?? []) as { color: string; size: string }[];
+    const gridSizes =
+      rawRec.sizes !== undefined
+        ? merged.sizes
+        : [...new Set(cur.map((v) => v.size).filter((s) => s !== ""))];
     const gridInput: ProductInput = {
       ...merged,
       colors:
         rawRec.colors !== undefined
           ? merged.colors
           : [...new Set(cur.map((v) => v.color).filter((c) => c !== ""))],
-      sizes:
-        rawRec.sizes !== undefined
-          ? merged.sizes
-          : [...new Set(cur.map((v) => v.size).filter((s) => s !== ""))],
+      sizes: gridSizes,
+      // A per-size PATCH without `sizes` is checked against the CURRENT grid.
+      sizeStock:
+        rawRec.sizeStock !== undefined ? cleanSizeStock(rawRec.sizeStock, gridSizes ?? []) : undefined,
       price: merged.price,
       sku: merged.sku,
       name: merged.name,
@@ -1690,12 +1776,64 @@ export async function moderateReviewRow(
     .eq("id", row.product_id)
     .single();
   const p = (product ?? {}) as { name?: string; slug?: string };
+  if (patch.status === "approved") {
+    await awardReviewStamp(db, row, p.name ?? "");
+  }
   return {
     ...mapReview(row),
     productName: p.name ?? "Removed product",
     productSlug: p.slug ?? "",
   };
 }
+
+/**
+ * "রিভিউ লিখুন, স্ট্যাম্প পান" (UX plan §4/§7, R10; migration 202609270004):
+ * an approved review that is a PROVEN purchase (verified + the phone the
+ * proof came from) writes one row to `stamp_ledger`. The (kind, ref_id)
+ * unique key makes approve → hide → approve pay once; a missing table or
+ * any error is swallowed — moderation must never fail on a courtesy. The
+ * shopper hears about it on the phone that opted in to push.
+ */
+export const awardReviewStamp = async (
+  db: SupabaseClient,
+  review: { id: string; verified: boolean; customer_phone?: string | null },
+  productName: string,
+): Promise<boolean> => {
+  const phone = typeof review.customer_phone === "string" ? review.customer_phone.replace(/\D/g, "") : "";
+  if (!review.verified || phone === "") return false;
+  try {
+    const { error } = await db.from("stamp_ledger").insert({
+      phone,
+      kind: "review",
+      ref_id: review.id,
+      note: productName.slice(0, 120),
+    });
+    if (error) return false; // duplicate (already paid) or table missing
+  } catch {
+    return false;
+  }
+  try {
+    const { pushCustomerMessage } = await import("@/lib/customer-push");
+    await pushCustomerMessage(db, {
+      phone,
+      build: (lang) =>
+        lang === "bn"
+          ? {
+              title: "রিভিউর জন্য ধন্যবাদ — ১টা স্ট্যাম্প যোগ হলো",
+              body: `${productName ? `"${productName}" — ` : ""}আপনার রিভিউ প্রকাশিত হয়েছে, স্মার্ট কার্ডে একটা স্ট্যাম্প বসল।`,
+              href: "/account",
+            }
+          : {
+              title: "Thanks for the review — 1 stamp added",
+              body: `${productName ? `"${productName}" — ` : ""}your review is live and a stamp landed on your Smart Card.`,
+              href: "/account",
+            },
+    });
+  } catch {
+    /* the stamp is written; the push is a courtesy */
+  }
+  return true;
+};
 
 export async function deleteReviewRow(
   db: SupabaseClient,

@@ -87,6 +87,24 @@ describe("mapProduct", () => {
     expect(p.stock).toBe(5);
     expect(p.inStock).toBe(true);
     expect(p.id).toBe("uuid-p1");
+    // UX plan §4 (R10): per-size availability from the same rows — L is
+    // fully reserved, so the storefront greys it; the inactive XL is absent.
+    expect(p.sizeStock).toEqual({ M: 5, L: 0 });
+  });
+
+  it("sums per-size stock across colours and omits the map without a grid", () => {
+    const p = mapProduct({
+      product: productRow(),
+      variants: [
+        variant({ id: "v1", color: "Green", size: "M", available: 2 }),
+        variant({ id: "v2", color: "Blue", size: "M", available: 3 }),
+        variant({ id: "v3", color: "Blue", size: "L", available: 0 }),
+      ],
+      media: [media()],
+    });
+    expect(p.sizeStock).toEqual({ M: 5, L: 0 });
+    const noGrid = mapProduct({ product: productRow(), variants: [], media: [] });
+    expect(noGrid.sizeStock).toBeUndefined();
   });
 
   it("marks out-of-stock when every variant is exhausted", () => {

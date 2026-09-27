@@ -57,6 +57,15 @@ export interface Product {
   active?: boolean;
   stock?: number;
   /**
+   * UX plan §4 (R10) — units available PER SIZE, summed across colours
+   * (`product_variants.available`, active rows only). Present on live rows
+   * that have a variant grid; absent on seeds and on products without
+   * sizes, in which case every size counts as available (unknown ≠ sold out).
+   * This is the same number `ps_place_order` enforces per variant, so a
+   * chip greyed here is an order that would have failed at checkout.
+   */
+  sizeStock?: Record<string, number>;
+  /**
    * P1 #14 — warranty period in days (shop-managed, set on accessories).
    * Absent/null = no warranty on this item; nothing is warranted by default.
    */

@@ -451,6 +451,24 @@ After the existing migrations, apply in order:
   `/shops` card; empty = exactly today's look. Safe to re-run. **Verify:**
   `NOTICE: SHOP COVER OK`. Until it is applied, saving a cover answers 503
   naming this file (the rest of the profile still saves).
+- `supabase/migrations/202609270003_bag_snapshots.sql` — **abandoned-bag
+  push** (UX plan §5, R10): the `bag_snapshots` table (one row per device
+  that opted in to marketing push; count, subtotal, top piece, `touched_at`,
+  `reminded_at`). The `abandoned-bags` cron job sends one push 24–72 h after
+  the bag was last touched, at most once per 7 days. **Needs
+  `202609270001` first** (the `marketing` column / device FK). Safe to
+  re-run. **Verify:** `NOTICE: BAG SNAPSHOTS OK`. Until it is applied the
+  snapshot endpoint answers 503 naming this file (silently, the shopper
+  never sees it) and the cron job reports `skipped`; the on-site "your bag
+  is waiting" banner works without it.
+- `supabase/migrations/202609270004_review_stamps.sql` — **review → Smart
+  Card stamp** (UX plan §4/§7/§8, R10): `reviews.customer_phone` +
+  `reviews.order_ref` (the proven purchase behind the verified badge) and
+  the `stamp_ledger` table (one row per approved verified review, unique per
+  review). Service-role only (RLS on, no policies). Safe to re-run.
+  **Verify:** `NOTICE: REVIEW STAMPS OK`. Until it is applied reviews still
+  save (unverified — the proof columns are dropped on insert), the card
+  counts orders only and approving a review stamps nothing.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch

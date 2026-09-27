@@ -56,7 +56,10 @@ export function usePublicReviews(opts: { product?: string; featured?: boolean } 
       body: string;
       /** At most 3 browser-compressed JPEG data URLs (P1 #10 UGC). */
       photos?: string[];
-    }): Promise<{ ok: boolean; error?: string }> => {
+      /** Purchase proof from the track page (UX plan §4/§7, R10) — the server re-checks it. */
+      orderId?: string;
+      phone?: string;
+    }): Promise<{ ok: boolean; error?: string; stampEligible?: boolean }> => {
       try {
         const res = await fetch("/api/reviews", {
           method: "POST",
@@ -65,8 +68,9 @@ export function usePublicReviews(opts: { product?: string; featured?: boolean } 
         });
         const data = (await res.json().catch(() => null)) as {
           error?: string;
+          stampEligible?: boolean;
         } | null;
-        if (res.ok) return { ok: true };
+        if (res.ok) return { ok: true, stampEligible: data?.stampEligible === true };
         return { ok: false, error: data?.error || "Could not save the review." };
       } catch {
         return { ok: false, error: "Could not reach the shop — try again." };

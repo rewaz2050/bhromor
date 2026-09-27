@@ -331,6 +331,9 @@ export interface DbReview {
   status: DbReviewStatus;
   verified: boolean;
   featured: boolean;
+  /** Proven-purchase phone / public order no (migration 202609270004; absent before it). */
+  customer_phone?: string | null;
+  order_ref?: string | null;
   created_at: string;
 }
 

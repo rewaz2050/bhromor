@@ -1,5 +1,7 @@
 "use client";
 
+import { Fragment } from "react";
+
 import Image from "next/image";
 import Link from "next/link";
 import Reveal from "@/components/ui/reveal";
@@ -21,6 +23,8 @@ import HeroCampaignBand, { useHeroCampaign } from "@/components/home/hero-campai
 import CuratedRails from "@/components/home/curated-rails";
 import ZonePill from "@/components/layout/zone-pill";
 import CategoryShelfBlock from "@/components/home/category-shelf";
+import { ReviewInterrupt, WhyBand } from "@/components/home/shelf-interrupts";
+import BagWaitingBanner from "@/components/home/bag-waiting-banner";
 import CustomerStories from "@/components/reviews/customer-stories";
 import ScrollDepthTracker from "@/components/analytics/scroll-depth-tracker";
 import { categoryShelves } from "@/lib/home-shelves";
@@ -66,6 +70,8 @@ export default function HomeClient() {
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
       {sections.hero && <Hero cms={settings} />}
+      {/* UX plan §5 (R10) — a returning shopper's bag, right under the hero. */}
+      <BagWaitingBanner />
       {booting ? (
         <HomeSkeleton />
       ) : (
@@ -192,6 +198,10 @@ function Hero({ cms }: { cms: HomeSettings }) {
   );
 }
 
+/** Shelf index (0-based) after which each interrupt sits. */
+const WHY_AFTER = 1;
+const REVIEW_AFTER = 3;
+
 /**
  * The whole shelf: one block per category, every discoverable piece (capped
  * per block with a scoped "See all N in <category>" button). Empty catalog
@@ -255,7 +265,16 @@ function WholeShelf({
         </Reveal>
       </div>
       {shelves.map((shelf, index) => (
-        <CategoryShelfBlock key={shelf.category.id} shelf={shelf} index={index} />
+        <Fragment key={shelf.category.id}>
+          <CategoryShelfBlock shelf={shelf} index={index} />
+          {/* UX plan §2 (R10) — pattern-interrupts: the "why" band after the
+              2nd block, one photo review after the 4th (or after the last
+              block when the shelf is shorter). Never two in a row. */}
+          {index === WHY_AFTER && shelves.length > 1 && <WhyBand />}
+          {index === Math.min(REVIEW_AFTER, shelves.length - 1) && index !== WHY_AFTER && (
+            <ReviewInterrupt />
+          )}
+        </Fragment>
       ))}
     </div>
   );

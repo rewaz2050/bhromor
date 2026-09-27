@@ -309,6 +309,24 @@ export const pushCustomerMessage = async (
   }
 };
 
+/**
+ * Push one message to specific devices (the abandoned-bag reminder, UX plan
+ * §5 R10, addresses a device, not a phone). Same fan-out, same dead-device
+ * cleanup; 0 when VAPID is unconfigured.
+ */
+export const sendToDevices = async (
+  db: SupabaseClient,
+  subs: readonly CustomerSubscription[],
+  build: (lang: Language) => { title: string; body: string; href: string },
+): Promise<number> => {
+  try {
+    if (subs.length === 0 || !ensureVapid()) return 0;
+    return await sendFanOut(db, subs, (lang) => JSON.stringify(build(lang)));
+  } catch {
+    return 0;
+  }
+};
+
 /* ------------------------------------------------------------------ */
 /* Broadcast opt-in (UX plan §12, R9) — migration 202609270001         */
 /* ------------------------------------------------------------------ */

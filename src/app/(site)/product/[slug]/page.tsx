@@ -21,9 +21,9 @@ import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
 import RestockAlertRow from "@/components/product/restock-alert-row";
+import ProductInfo from "@/components/product/product-info";
 import ReviewsSection from "@/components/reviews/reviews-section";
-import { IconCheck, IconChevron, IconLeaf } from "@/components/ui/icons";
-import { gsmBand, hasFabricInfo } from "@/lib/fabric";
+import { IconChevron, IconLeaf } from "@/components/ui/icons";
 import {
   DELIVERY_ETA,
 
@@ -168,109 +168,10 @@ export default async function ProductPage({ params }: PageProps) {
         <StickyBuyBar product={product} />
       </div>
 
-      {/* Product information — accordion so the page stays short on mobile */}
+      {/* Product information — accordion so the page stays short on mobile
+          (UX plan §4, R10: bilingual, first section open, fit block honest). */}
       <div className="mt-14 grid gap-8 lg:grid-cols-3 lg:gap-12">
-        <div className="info-accordion lg:col-span-2">
-          <details open>
-            <summary>Product details</summary>
-            <div className="info-body space-y-4">
-              {product.description.map((para) => (
-                <p key={para.slice(0, 32)} className="leading-8 text-ink-soft">
-                  {para}
-                </p>
-              ))}
-            </div>
-          </details>
-          <details>
-            <summary>Fabric &amp; care</summary>
-            <div className="info-body">
-              <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-                {product.details.map((d) => (
-                  <div
-                    key={d.label}
-                    className="flex justify-between gap-4 border-b border-line pb-3 text-sm"
-                  >
-                    <dt className="font-medium text-ink">{d.label}</dt>
-                    <dd className="text-right text-ink-soft">{d.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          </details>
-          {hasFabricInfo(product) ? (
-            <details open>
-              <summary>Quality &amp; transparency</summary>
-              <div className="info-body space-y-3">
-                {product.qualityChecked ? (
-                  <p className="inline-flex items-center gap-1.5 rounded-full bg-forest-50 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-forest-800">
-                    <IconCheck className="h-3.5 w-3.5" /> Quality Checked
-                  </p>
-                ) : null}
-                <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
-                  {product.fabricGsm ? (
-                    <div className="flex justify-between gap-4 border-b border-line pb-3 text-sm">
-                      <dt className="font-medium text-ink">Fabric weight</dt>
-                      <dd className="text-right text-ink-soft">
-                        {product.fabricGsm} GSM · {gsmBand(product.fabricGsm)}
-                      </dd>
-                    </div>
-                  ) : null}
-                  {product.manufacturer ? (
-                    <div className="flex justify-between gap-4 border-b border-line pb-3 text-sm">
-                      <dt className="font-medium text-ink">Woven by</dt>
-                      <dd className="text-right text-ink-soft">{product.manufacturer}</dd>
-                    </div>
-                  ) : null}
-                </dl>
-                {product.testReportUrl ? (
-                  <p className="text-sm text-ink-soft">
-                    Fabric test report on file —{" "}
-                    <a
-                      href={product.testReportUrl}
-                      target="_blank"
-                      rel="noopener nofollow"
-                      className="font-medium text-forest-700 underline underline-offset-4"
-                    >
-                      read it here
-                    </a>
-                    .
-                  </p>
-                ) : null}
-                <p className="text-xs leading-6 text-ink-soft/80">
-                  These details are declared by the shop for this piece — we
-                  publish what the maker states, never a generic “premium” label.
-                </p>
-              </div>
-            </details>
-          ) : null}
-          <details>
-            <summary>Delivery &amp; returns</summary>
-            <div className="info-body">
-              <ul className="space-y-3 text-sm leading-7 text-ink-soft">
-                <li>· 7-day easy return &amp; exchange on unworn items</li>
-                {product.warrantyDays ? (
-                  <li>
-                    · {product.warrantyDays}-day warranty on this item —{" "}
-                    <span className="text-ink">
-                      claim it from the track page within {product.warrantyDays} days of delivery
-                    </span>
-                  </li>
-                ) : null}
-                <li>· Quality checked before every dispatch</li>
-                <li>· Cash on delivery across Sunamganj Sadar</li>
-                <li>
-                  · Questions?{" "}
-                  <Link
-                    href="/contact"
-                    className="font-medium text-forest-700 underline underline-offset-4"
-                  >
-                    Contact support
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </details>
-        </div>
+        <ProductInfo product={product} />
 
         <aside className="space-y-6">
           <PriceAlertRow product={product} />

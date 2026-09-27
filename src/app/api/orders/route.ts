@@ -14,7 +14,7 @@ import { validateOrderPayload } from "@/lib/order-validation";
 import { isPlusMember } from "@/lib/db/membership";
 import {
   OrderPlacementError,
-  countOrdersForPhone,
+  countStampsForPhone,
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
     if (cardCustomer && samePhone(cardCustomer.phone, order.customer?.phone ?? "")) {
       const cfg = await loadSmartCardTarget();
       const target = Math.max(1, cfg.target);
-      const count = await countOrdersForPhone(
+      const { total: count } = await countStampsForPhone(
         staffDb as NonNullable<ReturnType<typeof getSupabaseService>>,
         cardCustomer.phone,
       );

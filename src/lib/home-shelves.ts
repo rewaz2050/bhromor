@@ -27,7 +27,10 @@ export interface CategoryShelf {
 }
 
 /** Default cap per category block on the homepage (2 rows of 4 on desktop). */
-export const SHELF_PREVIEW = 8;
+/** Pieces per category block on the home page (UX plan §2, R10: 4–6 + "See all N"). */
+export const SHELF_PREVIEW = 6;
+/** From this block on (0-based) phones get a horizontal rail instead of a grid. */
+export const SHELF_RAIL_FROM = 2;
 /** Default length of the best-seller / new-arrival rails. */
 export const RAIL_LENGTH = 8;
 

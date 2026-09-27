@@ -7,7 +7,7 @@ import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { categoryLabel, type CategoryShelf as Shelf } from "@/lib/home-shelves";
+import { SHELF_RAIL_FROM, categoryLabel, type CategoryShelf as Shelf } from "@/lib/home-shelves";
 
 const fmt = (tpl: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), tpl);
@@ -17,6 +17,11 @@ const fmt = (tpl: string, vars: Record<string, string | number>) =>
  * name, count — all one link to the category) followed by the category's
  * pieces in a 2/3/4-column grid. The whole thing is the shelf a shopper
  * would walk past in the physical shop — scroll, look, tap.
+ *
+ * UX plan §2 (R10): blocks are capped at SHELF_PREVIEW pieces, and from the
+ * third block on a phone shows a snap-scrolling rail instead of a grid, so
+ * the page stops being a wall of identical grids; the rail ends in a
+ * "More <category>" tile so the thumb has somewhere to go.
  */
 export default function CategoryShelfBlock({
   shelf,
@@ -31,6 +36,7 @@ export default function CategoryShelfBlock({
   const total = products.length + hiddenCount;
   const headingId = `shelf-${category.id}-heading`;
   const countLabel = total === 1 ? t("home.piece") : fmt(t("home.pieces"), { count: total });
+  const rail = index >= SHELF_RAIL_FROM;
 
   return (
     <section
@@ -39,6 +45,7 @@ export default function CategoryShelfBlock({
       data-testid="category-shelf"
       data-category={category.id}
       data-list={`shelf-${category.id}`}
+      data-layout={rail ? "rail" : "grid"}
       className={`scroll-mt-24 ${index % 2 === 0 ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
     >
       <ListImpression list={`shelf-${category.id}`} count={products.length} />
@@ -82,12 +89,37 @@ export default function CategoryShelfBlock({
           </Link>
         </Reveal>
 
-        <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-8 sm:mt-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-4 lg:gap-x-7">
+        <div
+          className={
+            rail
+              ? "-mx-4 mt-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7"
+              : "mt-6 grid grid-cols-2 gap-x-4 gap-y-8 sm:mt-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-4 lg:gap-x-7"
+          }
+        >
           {products.map((product, i) => (
-            <Reveal key={product.id} delay={Math.min(i, 3) * 60}>
+            <Reveal
+              key={product.id}
+              delay={Math.min(i, 3) * 60}
+              className={rail ? "w-[62vw] min-w-[200px] max-w-[280px] shrink-0 snap-start sm:w-auto sm:min-w-0 sm:max-w-none" : undefined}
+            >
               <ProductCard product={product} />
             </Reveal>
           ))}
+          {rail && hiddenCount > 0 && (
+            <Link
+              href={href}
+              data-testid="shelf-more-tile"
+              className="flex w-[40vw] min-w-[140px] max-w-[200px] shrink-0 snap-start flex-col items-center justify-center gap-3 rounded-md bg-forest-900 p-4 text-center text-ivory-50 sm:hidden"
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
+                <IconArrowRight className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-semibold leading-snug">
+                {fmt(t("home.shelfMore"), { category: label })}
+              </span>
+              <span className="text-xs text-ivory-100/70">{fmt(t("home.pieces"), { count: total })}</span>
+            </Link>
+          )}
         </div>
 
         {hiddenCount > 0 && (

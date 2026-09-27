@@ -131,10 +131,14 @@ async function hydrateSessions(
 /* Public read — the storefront's one question: what's on, what's next */
 /* ------------------------------------------------------------------ */
 
+/** How far back "the last live" may reach — older sessions are history, not a rail. */
+export const LAST_LIVE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000;
+
 export async function getPublicLive(
   db: SupabaseClient,
-): Promise<{ live: LiveSession | null; upcoming: LiveSession | null }> {
-  const [liveRes, upcomingRes] = await Promise.all([
+  now: number = Date.now(),
+): Promise<{ live: LiveSession | null; upcoming: LiveSession | null; last: LiveSession | null }> {
+  const [liveRes, upcomingRes, endedRes] = await Promise.all([
     db
       .from("live_sessions")
       .select("*")
@@ -147,14 +151,28 @@ export async function getPublicLive(
       .eq("status", "scheduled")
       .order("scheduled_start", { ascending: true })
       .limit(1),
+    // UX plan §10 (R10) — "the last live": the most recent ended session
+    // that still has orderable pieces. A few candidates, because a session
+    // whose pieces were all unpublished since should not block the one before.
+    db
+      .from("live_sessions")
+      .select("*")
+      .eq("status", "ended")
+      .gte("ended_at", new Date(now - LAST_LIVE_MAX_AGE_MS).toISOString())
+      .order("ended_at", { ascending: false })
+      .limit(3),
   ]);
   if (liveRes.error || upcomingRes.error)
     throw new Error("Could not load live shopping.");
-  const [live, upcoming] = await Promise.all([
+  const [live, upcoming, ended] = await Promise.all([
     hydrateSessions(db, (liveRes.data ?? []) as DbLiveSession[]),
     hydrateSessions(db, (upcomingRes.data ?? []) as DbLiveSession[]),
+    endedRes.error
+      ? Promise.resolve([] as LiveSession[])
+      : hydrateSessions(db, (endedRes.data ?? []) as DbLiveSession[]).catch(() => [] as LiveSession[]),
   ]);
-  return { live: live[0] ?? null, upcoming: upcoming[0] ?? null };
+  const last = ended.find((s) => s.products.length > 0) ?? null;
+  return { live: live[0] ?? null, upcoming: upcoming[0] ?? null, last };
 }
 
 /* ------------------------------------------------------------------ */

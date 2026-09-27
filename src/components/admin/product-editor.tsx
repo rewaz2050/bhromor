@@ -39,6 +39,10 @@ interface Draft {
   priceTaka: string;
   compareTaka: string;
   stock: string;
+  /* UX plan §4 (R10) — per-size stock. `perSize` on → the size grid below
+     is the source of truth and the total is its sum. */
+  perSize: boolean;
+  sizeStock: Record<string, string>;
   warrantyDays: string;
   /* P2 #21 — fabric transparency card (shop-declared; blank = not declared) */
   fabricGsm: string;
@@ -78,6 +82,10 @@ const draftFrom = (p?: Product | null): Draft => ({
   priceTaka: p ? String(p.price / 100) : "",
   compareTaka: p?.compareAtPrice ? String(p.compareAtPrice / 100) : "",
   stock: p?.stock != null ? String(p.stock) : p ? (p.inStock ? (p.lowStock ? "3" : "12") : "0") : "",
+  perSize: !!p?.sizeStock && Object.keys(p.sizeStock).length > 0,
+  sizeStock: p?.sizeStock
+    ? Object.fromEntries(Object.entries(p.sizeStock).map(([k, v]) => [k, String(v)]))
+    : {},
   warrantyDays: p?.warrantyDays != null ? String(p.warrantyDays) : "",
   fabricGsm: p?.fabricGsm != null ? String(p.fabricGsm) : "",
   manufacturer: p?.manufacturer ?? "",
@@ -145,6 +153,10 @@ export default function ProductEditor({
   const catSubs = useMemo(
     () => categoriesList.find((c) => c.id === draft.category)?.subCategories ?? [],
     [categoriesList, draft.category],
+  );
+  const perSizeTotal = draft.sizes.reduce(
+    (sum, sz) => sum + Math.max(0, Math.floor(Number(draft.sizeStock[sz]) || 0)),
+    0,
   );
 
   const addChip = (list: "colors" | "sizes", value: string, inputKey: "colorInput" | "sizeInput") => {
@@ -214,6 +226,14 @@ export default function ProductEditor({
     }
     if (draft.stock.trim() && !Number.isFinite(Number(draft.stock)))
       return "Stock must be a number.";
+    if (draft.perSize) {
+      if (draft.sizes.length === 0) return "Add the sizes first, then set stock per size.";
+      for (const sz of draft.sizes) {
+        const v = draft.sizeStock[sz] ?? "";
+        if (v.trim() !== "" && (!Number.isFinite(Number(v)) || Number(v) < 0))
+          return `Stock for size ${sz} must be a number.`;
+      }
+    }
     if (draft.warrantyDays.trim()) {
       const w = Number(draft.warrantyDays);
       if (!Number.isInteger(w) || w < 1 || w > 365)
@@ -254,7 +274,14 @@ export default function ProductEditor({
       set("error", problem);
       return;
     }
-    const stock = Math.max(0, Math.floor(Number(draft.stock) || 0));
+    const perSizeStock = draft.perSize
+      ? Object.fromEntries(
+          draft.sizes.map((sz) => [sz, Math.max(0, Math.floor(Number(draft.sizeStock[sz]) || 0))]),
+        )
+      : undefined;
+    const stock = perSizeStock
+      ? Object.values(perSizeStock).reduce((a, b) => a + b, 0)
+      : Math.max(0, Math.floor(Number(draft.stock) || 0));
     const existing = product;
     const now: Product = {
       id: existing?.id ?? nextProductId(products),
@@ -284,6 +311,8 @@ export default function ProductEditor({
       inStock: stock > 0,
       lowStock: stock > 0 && stock <= 5,
       stock,
+      // Per-size counts win on the server; absent → the total is spread.
+      sizeStock: perSizeStock,
       warrantyDays:
         draft.warrantyDays.trim() === ""
           ? undefined
@@ -547,18 +576,88 @@ export default function ProductEditor({
               </button>
             </div>
           </div>
-          <label className="block sm:col-span-2">
-            <span className={label}>Stock quantity</span>
-            <input
-              className={`${field} max-w-40`}
-              type="number"
-              min="0"
-              step="1"
-              value={draft.stock}
-              onChange={(e) => set("stock", e.target.value)}
-            />
-            <span className={hint}>0 = out of stock; 1–5 triggers the low-stock badge (§58).</span>
-          </label>
+          <div className="sm:col-span-2">
+            <label className="block">
+              <span className={label}>Stock quantity{draft.perSize ? " (sum of sizes)" : ""}</span>
+              <input
+                className={`${field} max-w-40`}
+                type="number"
+                min="0"
+                step="1"
+                value={draft.perSize ? String(perSizeTotal) : draft.stock}
+                readOnly={draft.perSize}
+                aria-readonly={draft.perSize || undefined}
+                onChange={(e) => set("stock", e.target.value)}
+              />
+              <span className={hint}>
+                0 = out of stock; 1–5 triggers the low-stock badge (§58). The number is what is
+                still to sell — sold pieces are already taken off.
+              </span>
+            </label>
+            {draft.sizes.length > 0 && (
+              <div className="mt-3 rounded-xl bg-ivory-50 p-3 ring-1 ring-line" data-testid="per-size-stock">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-forest-800"
+                    checked={draft.perSize}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setDraft((d) => {
+                        if (!on) return { ...d, perSize: false, error: null };
+                        // Seed the grid from the total so the sum does not jump.
+                        const seeded = { ...d.sizeStock };
+                        const missing = d.sizes.filter((sz) => (seeded[sz] ?? "").trim() === "");
+                        if (missing.length > 0) {
+                          const total = Math.max(0, Math.floor(Number(d.stock) || 0));
+                          const per = Math.floor(total / d.sizes.length);
+                          let rem = total - per * d.sizes.length;
+                          for (const sz of d.sizes) {
+                            if (!missing.includes(sz)) continue;
+                            seeded[sz] = String(per + (rem > 0 ? (rem -= 1, 1) : 0));
+                          }
+                        }
+                        return { ...d, perSize: true, sizeStock: seeded, error: null };
+                      });
+                    }}
+                  />
+                  Set stock per size (সাইজ-প্রতি স্টক)
+                </label>
+                <p className={hint}>
+                  Shoppers see “{"{size}"} sold out” and “N left” per size, and cannot order a size
+                  that is gone. Sizes with several colours share the count.
+                </p>
+                {draft.perSize && (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {draft.sizes.map((sz) => (
+                      <label key={sz} className="block">
+                        <span className="block text-[0.7rem] font-semibold uppercase tracking-wider text-ink-soft">
+                          {sz}
+                        </span>
+                        <input
+                          className={`${field} mt-1 w-24`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputMode="numeric"
+                          aria-label={`Stock for size ${sz}`}
+                          placeholder="0"
+                          value={draft.sizeStock[sz] ?? ""}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              sizeStock: { ...d.sizeStock, [sz]: e.target.value },
+                              error: null,
+                            }))
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <label className="block sm:col-span-2">
             <span className={label}>Warranty (days)</span>
             <input

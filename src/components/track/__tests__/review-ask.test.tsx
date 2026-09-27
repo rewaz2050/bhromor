@@ -2,11 +2,21 @@
  * Post-delivery review ask — the track page only asks once the order really
  * is delivered, and links straight to each bought piece's review form.
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import ReviewAsk from "@/components/track/review-ask";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import type { Order } from "@/lib/orders";
+import { __resetReviewProof, readReviewProof } from "@/lib/review-proof";
+import { SETTINGS_DEFAULTS } from "@/lib/settings-store";
+
+const settingsState = vi.hoisted(() => ({ loyaltyEnabled: true }));
+vi.mock("@/lib/use-public-settings", () => ({
+  usePublicSettings: () => ({
+    settings: { ...SETTINGS_DEFAULTS, loyaltyEnabled: settingsState.loyaltyEnabled },
+    loading: false,
+  }),
+}));
 
 const order = (over: Partial<Order>): Order =>
   ({
@@ -44,7 +54,11 @@ const renderAsk = (o: Order) =>
     </LanguageProvider>,
   );
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  __resetReviewProof();
+  settingsState.loyaltyEnabled = true;
+});
 
 describe("ReviewAsk — delivered orders invite a one-line review", () => {
   it("renders nothing before the order is delivered", () => {
@@ -84,5 +98,21 @@ describe("ReviewAsk — delivered orders invite a one-line review", () => {
     expect(screen.getAllByTestId("review-ask-link")).toHaveLength(3);
     expect(screen.getByTestId("review-ask")).toHaveTextContent("A");
     expect(screen.queryByText("Ghost")).toBeNull();
+  });
+
+  it("hands the order proof to the review form and promises the stamp (R10)", () => {
+    renderAsk(order({ status: "delivered" }));
+    expect(screen.getByTestId("review-ask-stamp")).toHaveTextContent(/1 stamp to your Smart Card/);
+    expect(readReviewProof("p1")).toBeNull();
+    fireEvent.click(screen.getByTestId("review-ask-link"));
+    expect(readReviewProof("p1")).toEqual({ orderId: "PS-20260921-0004", phone: "01711111111" });
+    expect(readReviewProof("p2")).toBeNull();
+  });
+
+  it("stays quiet about stamps when the Smart Card is switched off", () => {
+    settingsState.loyaltyEnabled = false;
+    renderAsk(order({ status: "delivered" }));
+    expect(screen.queryByTestId("review-ask-stamp")).toBeNull();
+    expect(screen.getByTestId("review-ask-link")).toBeVisible();
   });
 });

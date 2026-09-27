@@ -7,6 +7,7 @@ import "@fontsource/noto-serif-bengali/600.css";
 import { CartProvider } from "@/components/cart/cart-provider";
 import BagDrawer from "@/components/cart/bag-drawer";
 import BagMiniBar from "@/components/cart/bag-mini-bar";
+import BagSnapshotSync from "@/components/cart/bag-snapshot-sync";
 import CustomerProvider from "@/components/account/customer-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import Header from "@/components/layout/header";
@@ -116,6 +117,10 @@ export default function SiteLayout({
           {/* UX plan §1.3 — "3 pieces · ৳1,250 · Checkout →" above the bottom
               nav while browsing a listing with a non-empty bag (phones). */}
           <BagMiniBar />
+          {/* UX plan §5 (R10) — remembers when the bag last changed and, on a
+              push device that opted in to offers, lets the server send ONE
+              "your bag is waiting" push a day later. Renders nothing. */}
+          <BagSnapshotSync />
           <BagDrawer />
           {/* Add-to-home-screen card: from the second visit, never in the
               installed app, quiet for a month after "Not now". */}

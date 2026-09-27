@@ -9,6 +9,7 @@ housekeeping ran lazily, whenever a human happened to load a page:
 | A rider offer nobody answered | expired only when an admin/rider next loaded a board | `expire-offers` every 15 min |
 | "Your parcel comes this evening" | a phone call, or nothing | `delivery-reminders` ~2h before the window |
 | Yesterday's takings / what is piling up | open `/admin` and read | `daily-digest` at 9am Dhaka |
+| "Your bag is waiting" (UX plan §5, R10) | nothing — the bag was simply forgotten | `abandoned-bags` ~24h after the last change, push only, once |
 | Price-drop / restock news | staff call list (a phone call each) | watched phones get a **push** at the moment of the save; only the unreachable numbers stay on the call list |
 
 Nothing here costs money and nothing needs a new account: a **GitHub Action**
@@ -41,6 +42,7 @@ read the jobs, not just the HTTP code.
 |---|---|---|
 | `expire-offers` | counts offers with `status='offered'` past `expires_at`, then calls `ps_expire_stale_offers` (the RPC that re-offers the order) | yes — idempotent, runs even without the marks table |
 | `delivery-reminders` | orders with a `scheduled_at` inside the next 2 hours → push **"আজ আপনার পার্সেল আসছে 🛵"** with the shop's own window label | claimed per order (`delivery-soon:<order id>`); the claim is **released** when nobody could be reached, so a shopper who turns notifications on later in that window still gets it |
+| `abandoned-bags` | `bag_snapshots` rows (migration `202609270003`) with `count > 0`, untouched 24–72 h, on a device that opted in to **offers** push (`customer_push_subscriptions.marketing`) → ONE push "আপনার ব্যাগে ২টি পিস অপেক্ষা করছে" → `/cart`. Never SMS/email. | stamps `reminded_at` whether or not the push was accepted (a dead device is removed by the fan-out; a flaky one is not retried into a nag); never twice within 7 days on one device; a device that opted out in between is closed without a push. Missing table → `skipped` naming the file. |
 | `daily-digest` | once per Dhaka day, after 9am: one staff push (inbox row + phone) with yesterday's orders/takings, today's orders, what is still open, today's scheduled deliveries, low stock, and how many shoppers are waiting on a price/restock | claimed once per day (`digest:<YYYY-MM-DD>`) |
 
 **The reminder is deliberately not fired for every order** — only orders that

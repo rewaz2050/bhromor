@@ -132,3 +132,14 @@ export const shopChatMessage = (
   lang === "bn"
     ? `আসসালামু আলাইকুম ${shop.name}, আমি PROSANTI-তে আপনার দোকান দেখছি। Size/stock নিয়ে কিছু জিজ্ঞেস করতে চাই।`
     : `Hello ${shop.name}, I'm browsing your store on PROSANTI and have a question about size/stock.`;
+
+/** "When will size L be back?" — the sold-out-size ask (UX plan §4, R10). */
+export const sizeAskMessage = (
+  product: Pick<Product, "name" | "slug">,
+  size: string,
+  shop: Pick<Shop, "name">,
+  lang: Language = "en",
+): string =>
+  lang === "bn"
+    ? `আসসালামু আলাইকুম ${shop.name}, PROSANTI-তে "${product.name}"-এর ${size} সাইজটা শেষ দেখাচ্ছে। এটা কবে আসবে জানাবেন? (/product/${product.slug})`
+    : `Hello ${shop.name}, size ${size} of "${product.name}" shows sold out on PROSANTI. Could you tell me when it will be back? (/product/${product.slug})`;

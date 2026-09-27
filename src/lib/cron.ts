@@ -15,6 +15,10 @@
  *                             checkout, push "আজ আপনার পার্সেল আসছে".
  *   3. `daily-digest`       — at 9am Dhaka, one staff push with yesterday's
  *                             takings and what is piling up.
+ *   4. `abandoned-bags`     — UX plan §5 (R10): one push, ~24 h after a
+ *                             shopper on an offers-opted-in device left
+ *                             pieces in the bag (bag_snapshots, migration
+ *                             202609270003). Never SMS/email, never twice.
  *
  * Rules that keep it safe to run 96 times a day:
  *   • **Nothing here is required for correctness.** The tracker, the panel and
@@ -42,9 +46,10 @@ import { pushCustomerMessage } from "@/lib/customer-push";
 import { customerPushMessage } from "@/lib/notify-messages";
 import { dhakaDateString, dhakaParts, deliverySlotSummary } from "@/lib/delivery-slots";
 import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/digest";
+import { runAbandonedBags } from "@/lib/abandoned-bag";
 import type { Language } from "@/lib/translations";
 
-export type CronJobName = "expire-offers" | "delivery-reminders" | "daily-digest";
+export type CronJobName = "expire-offers" | "delivery-reminders" | "daily-digest" | "abandoned-bags";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -443,6 +448,19 @@ export const runCronTick = async (input: {
         });
       }
     }
+  }
+
+  // The bag reminder keeps its own one-shot stamp (reminded_at) — no marks.
+  try {
+    const bags = await runAbandonedBags(input.service, nowMs);
+    jobs.push({ job: "abandoned-bags", ...bags });
+  } catch (err) {
+    jobs.push({
+      job: "abandoned-bags",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "abandoned-bags failed",
+    });
   }
 
   // Remembered for /api/health: "the scheduler is alive" is a row, not a hope.

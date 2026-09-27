@@ -101,6 +101,78 @@ export async function countOrdersForPhone(
   ).length;
 }
 
+/**
+ * Review-stamp ledger (UX plan §4/§7, R10; migration 202609270004): stamps
+ * that are not orders. 0 when the table is missing — the card then simply
+ * counts orders, exactly as before the migration.
+ */
+export async function countLedgerStampsForPhone(
+  db: SupabaseClient,
+  phone: string,
+): Promise<number> {
+  const digits = normalizePhone(phone);
+  if (digits === "") return 0;
+  try {
+    const { count, error } = await db
+      .from("stamp_ledger")
+      .select("id", { count: "exact", head: true })
+      .eq("phone", digits);
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Orders + review stamps — the number the Smart Card shows. */
+export async function countStampsForPhone(
+  db: SupabaseClient,
+  phone: string,
+): Promise<{ orders: number; reviews: number; total: number }> {
+  const [orders, reviews] = await Promise.all([
+    countOrdersForPhone(db, phone),
+    countLedgerStampsForPhone(db, phone),
+  ]);
+  return { orders, reviews, total: orders + reviews };
+}
+
+/**
+ * Did THIS phone receive THIS product? The proof behind a "verified
+ * purchase" badge and a review stamp: a delivered, non-cancelled order on
+ * the phone whose items include the product. `orderNo` narrows it to one
+ * order when the shopper came from the track page.
+ */
+export async function provenPurchase(
+  db: SupabaseClient,
+  input: { phone: string; productId: string; orderNo?: string },
+): Promise<{ orderNo: string } | null> {
+  const digits = normalizePhone(input.phone);
+  if (digits === "" || !input.productId) return null;
+  let q = db
+    .from("orders")
+    .select("id, order_no, customer_phone")
+    .eq("status", "delivered")
+    .ilike("customer_phone", phoneNeedle(digits))
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (input.orderNo) q = q.eq("order_no", input.orderNo.trim().toUpperCase());
+  const { data, error } = await q;
+  if (error) return null;
+  const mine = ((data ?? []) as { id: string; order_no: string | null; customer_phone: string }[]).filter(
+    (row) => normalizePhone(row.customer_phone) === digits,
+  );
+  if (mine.length === 0) return null;
+  const { data: items, error: itemsError } = await db
+    .from("order_items")
+    .select("order_id, product_id")
+    .in("order_id", mine.map((o) => o.id))
+    .eq("product_id", input.productId)
+    .limit(1);
+  if (itemsError || !items || items.length === 0) return null;
+  const hit = mine.find((o) => o.id === (items[0] as { order_id: string }).order_id);
+  return hit ? { orderNo: hit.order_no ?? hit.id } : null;
+}
+
 /** One row of the signed-in customer's order history (P1 #15). */
 export interface CustomerOrderSummary {
   /** Public order number (falls back to the row id for legacy rows). */
