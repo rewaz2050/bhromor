@@ -92,3 +92,23 @@ describe("<ShopsDirectory> cards", () => {
     expect(within(cards[1]).queryByTestId("shop-serves-zone")).toBeNull();
   });
 });
+
+describe("shop cover image (UX plan §9, R9)", () => {
+  it("shows a banner only for shops that set a cover, leaving the rest unchanged", () => {
+    render(
+      <LanguageProvider initialLang="bn">
+        <ShopsDirectory
+          shops={[shop({ coverUrl: "https://cdn.example/cover.jpg" }), shop({ id: "s2", slug: "s2", name: "Shop Two" })]}
+          zones={DELIVERY_ZONES}
+          productCounts={{ s1: 7, s2: 3 }}
+          peeks={{ s1: PRODUCTS.slice(0, 3), s2: PRODUCTS.slice(3, 4) }}
+        />
+      </LanguageProvider>,
+    );
+    const cards = screen.getAllByTestId("shop-card");
+    expect(cards[0].dataset.cover).toBe("1");
+    expect(cards[0].querySelector('[data-testid="shop-card-cover"]')?.getAttribute("src")).toBe("https://cdn.example/cover.jpg");
+    expect(cards[1].dataset.cover).toBeUndefined();
+    expect(cards[1].querySelector('[data-testid="shop-card-cover"]')).toBeNull();
+  });
+});

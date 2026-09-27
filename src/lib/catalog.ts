@@ -86,6 +86,8 @@ export interface Shop {
   name: string;
   tagline?: string;
   logoUrl?: string;
+  /** Landscape cover photo for the storefront header / directory card (UX plan §9). */
+  coverUrl?: string;
   phone: string;
   /** Applicant email — STAFF ONLY. Public endpoints must strip it. */
   contactEmail?: string;

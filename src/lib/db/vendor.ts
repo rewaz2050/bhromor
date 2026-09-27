@@ -57,6 +57,8 @@ export interface VendorShopPatch {
   name?: string;
   tagline?: string;
   logo_url?: string;
+  /** Cover photo URL (migration 202609270002). */
+  cover_url?: string;
   phone?: string;
   address?: string;
   prep_minutes?: number;
@@ -98,6 +100,12 @@ export const vendorShopPatch = (
     body.logo_url === undefined && body.logoUrl === undefined
       ? undefined
       : clean((body.logo_url ?? body.logoUrl) as unknown, 500),
+  );
+  take(
+    "cover_url",
+    body.cover_url === undefined && body.coverUrl === undefined
+      ? undefined
+      : clean((body.cover_url ?? body.coverUrl) as unknown, 500),
   );
   take("phone", body.phone === undefined ? undefined : clean(body.phone, 20));
   take("address", body.address === undefined ? undefined : clean(body.address, 300));
@@ -396,6 +404,16 @@ export async function patchVendorShop(
     ) {
       throw new AdminInputError(
         "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি — অ্যাডমিনকে supabase/migrations/202609260003_free_delivery.sql চালাতে বলুন।",
+        503,
+      );
+    }
+    if (
+      patch.cover_url !== undefined &&
+      ((error as { code?: string } | null)?.code === "PGRST204" ||
+        /cover_url/.test((error as { message?: string } | null)?.message ?? ""))
+    ) {
+      throw new AdminInputError(
+        "কভার ছবি এখনো এই ডেটাবেসে চালু হয়নি — অ্যাডমিনকে supabase/migrations/202609270002_shop_cover.sql চালাতে বলুন।",
         503,
       );
     }

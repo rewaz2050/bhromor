@@ -37,8 +37,22 @@ export default function ShopCard({
   return (
     <article
       data-testid="shop-card"
-      className="group relative flex min-w-0 flex-col rounded-3xl bg-paper p-6 ring-1 ring-line transition-shadow hover:shadow-lg"
+      className="group relative flex min-w-0 flex-col overflow-hidden rounded-3xl bg-paper p-6 ring-1 ring-line transition-shadow hover:shadow-lg"
+      data-cover={shop.coverUrl ? "1" : undefined}
     >
+      {/* Cover banner (UX plan §9, R9) — only when the shop set one. */}
+      {shop.coverUrl && (
+        <Link href={href} tabIndex={-1} aria-hidden="true" className="-mx-6 -mt-6 mb-5 block aspect-[3/1] overflow-hidden bg-ivory-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shop.coverUrl}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            data-testid="shop-card-cover"
+          />
+        </Link>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           {shop.logoUrl && (

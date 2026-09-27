@@ -279,6 +279,8 @@ describe("mapShop (marketplace slice 1)", () => {
     });
     expect(shop.slug).toBe("prosanti-direct");
     expect(shop.tagline).toBeUndefined();
+    // cover_url (202609270002) absent on an older DB → no cover, nothing breaks
+    expect(shop.coverUrl).toBeUndefined();
     expect(shop.zoneIds).toEqual(["z1", "z2"]);
     expect(shop.commissionPct).toBe(15);
     expect(shop.ratingAvg).toBe(4.5);

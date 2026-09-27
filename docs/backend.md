@@ -136,7 +136,8 @@ supabase/
     ├── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
     └── 202609260003_free_delivery.sql         # shops.free_delivery_min + orders.free_delivery_by/_waived; patches ps_place_order in place; ledger deducts shop-funded waivers
     ├── 202609260004_storefront_events.sql     # first-party funnel: storefront_events (service-role only) + ps_funnel_report(days) + ps_prune_storefront_events
-    └── 202609270001_push_broadcasts.sql       # weekly drops & offers push: customer_push_subscriptions.marketing opt-in + push_broadcasts log (7-day gate)
+    ├── 202609270001_push_broadcasts.sql       # weekly drops & offers push: customer_push_subscriptions.marketing opt-in + push_broadcasts log (7-day gate)
+    └── 202609270002_shop_cover.sql            # shops.cover_url — optional landscape cover for the storefront header + /shops card
 scripts/seed-supabase.mjs  # store skeleton seed: shop, categories, zones, settings (never products)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```

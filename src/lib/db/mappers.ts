@@ -224,6 +224,7 @@ export const mapShop = (row: DbShop): Shop => ({
   name: row.name,
   tagline: row.tagline || undefined,
   logoUrl: row.logo_url || undefined,
+  coverUrl: typeof row.cover_url === "string" && row.cover_url !== "" ? row.cover_url : undefined,
   phone: row.phone,
   contactEmail: row.contact_email || undefined,
   address: row.address || undefined,

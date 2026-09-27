@@ -105,6 +105,8 @@ export interface DbShop {
   name: string;
   tagline: string;
   logo_url: string;
+  /** Cover photo (migration 202609270002) — absent on a DB that has not run it. */
+  cover_url?: string | null;
   phone: string;
   contact_email: string;
   address: string;

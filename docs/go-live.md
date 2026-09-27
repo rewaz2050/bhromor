@@ -445,6 +445,12 @@ After the existing migrations, apply in order:
   the run ends with `NOTICE: PUSH BROADCASTS OK`. Until it is applied the
   tick answers 503 naming this file and the Growth card says to run it;
   order-milestone pushes are unaffected.
+- `supabase/migrations/202609270002_shop_cover.sql` — **shop cover image**
+  (UX plan §9): `shops.cover_url` (default `''`). Vendor → Settings → *কভার
+  ছবি (URL)*; shown behind the storefront header and as the banner on the
+  `/shops` card; empty = exactly today's look. Safe to re-run. **Verify:**
+  `NOTICE: SHOP COVER OK`. Until it is applied, saving a cover answers 503
+  naming this file (the rest of the profile still saves).
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch

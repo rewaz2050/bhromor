@@ -38,6 +38,7 @@ export default function VendorSettingsPage() {
     phone: current.phone,
     address: current.address ?? "",
     logoUrl: current.logoUrl ?? "",
+    coverUrl: current.coverUrl ?? "",
     prepMinutes: String(current.prepMinutes),
   };
 
@@ -62,6 +63,9 @@ export default function VendorSettingsPage() {
             address: values.address,
             logo_url: values.logoUrl,
             prep_minutes: Number(values.prepMinutes),
+            // Cover (UX plan §9): only sent when it changed, so a database
+            // without 202609270002 still saves the rest of the profile.
+            ...(values.coverUrl !== (current.coverUrl ?? "") ? { cover_url: values.coverUrl } : {}),
           };
       const updated = await patchVendorShop(patch);
       setShop(updated);
@@ -187,6 +191,23 @@ export default function VendorSettingsPage() {
               />
             </label>
           </div>
+          <label className="block">
+            <span className={label}>কভার ছবি (URL) — দোকানের পাতার ওপরে ও /shops কার্ডে</span>
+            <input
+              className={field}
+              value={values.coverUrl}
+              onChange={(e) => set("coverUrl", e.target.value)}
+              placeholder="https://… (landscape, ~1600×600)"
+              data-testid="vendor-cover-url"
+            />
+            <span className="mt-1.5 block text-xs leading-5 text-ink-soft">
+              ঐচ্ছিক — খালি রাখলে আগের মতোই সবুজ হেডার আর শেলফের ৩টা ছবি দেখাবে। আপনার দোকানের সামনের ছবি বা সাজানো তাকের ছবি সবচেয়ে ভালো কাজ করে।
+            </span>
+            {values.coverUrl.startsWith("http") && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={values.coverUrl} alt="" className="mt-3 aspect-[3/1] w-full rounded-xl object-cover ring-1 ring-line" />
+            )}
+          </label>
           <label className="block">
             <span className={label}>পিকআপের ঠিকানা *</span>
             <textarea
