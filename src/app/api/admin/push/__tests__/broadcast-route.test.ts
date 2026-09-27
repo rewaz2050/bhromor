@@ -57,7 +57,7 @@ vi.mock("@/lib/supabase-server", () => ({
         }
         // customer_push_subscriptions
         return {
-          eq: (_c: string, _v: unknown) => {
+          eq: () => {
             if (opts?.head) return Promise.resolve({ count: state.subs.length, error: null });
             return { limit: async () => ({ data: state.subs, error: null }) };
           },
