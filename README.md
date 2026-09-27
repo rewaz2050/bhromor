@@ -175,6 +175,78 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R11 — the plan's tail, closed (2026-09-27)
+
+Round 11 of `docs/ux-sales-plan.md` — every item that was still 🔴/🟠/🟢
+and did not need data the shop does not have. **No migration**; code only.
+
+- **R11a — quick-chip row under the hero** (§2, `lib/quick-chips.ts`,
+  `home/quick-chips.tsx`): "৳৫০০-এর নিচে · উৎসবের · গিফট · আজই পাবেন · ছাড় ·
+  নতুন" — each a link into an already-filtered `/shop`; a chip needs ≥ 2 live
+  pieces, the row needs ≥ 2 chips, otherwise nothing renders.
+- **R11b — PDP trust line + one help cluster** (§4, `purchase-panel.tsx`):
+  under the CTAs "ক্যাশ অন ডেলিভারি · ৭ দিনে বদল · PIN মিলিয়ে হ্যান্ডওভার"
+  (each linking to its page; a closed shop gets the honest "খুললেই অর্ডার
+  নেওয়া হবে" + WhatsApp instead); WhatsApp order + share fold into one quiet
+  "সাহায্য দরকার?" cluster.
+- **R11c — "পরে কিনব"** (§5, `cart/save-for-later.tsx`): a bag line moves to
+  the wishlist (guest store or account) instead of the bin, from the drawer
+  and `/cart`, with a one-line confirmation and "উইশলিস্ট দেখুন →". Never
+  duplicates a piece already saved.
+- **R11d — "এটার সাথে অন্যরা কিনেছেন"** (§4, `lib/db/also-bought.ts`,
+  `product/also-bought-rail.tsx`): order co-occurrence — pieces that sat in
+  the same non-cancelled orders, ranked by distinct orders then units,
+  memoised per product for an hour in the server instance. Published,
+  in-stock pieces only, at most four, nothing under two. No service role / any
+  error → no rail.
+- **R11e — flash wall clock + coupon carry** (§3, `lib/ends-at.ts`,
+  `lib/coupon-carry.ts`): the flash rail says *when* — "আজ রাত ১১টায় শেষ" /
+  "আগামীকাল সন্ধ্যা ৬:৩০টায় শেষ" (Asia/Dhaka, Bengali digits) beside the
+  countdown; copying the promo code on the offers card places it in
+  checkout's coupon field (opens "আরও অপশন", hint "Apply চাপুন", 24 h, same
+  device). **Placed, never applied** for a guest — auto-apply stays an
+  account perk (R9); a successful apply forgets the carry.
+- **R11f/h — checkout** (§6): the para field quotes zone, charge and ETA
+  right under itself as soon as it is filled (`area-quote`, same numbers as
+  the summary), is searchable (`prosanti-paras` datalist from the live zone
+  table + the Sadar list) and — site-wide — `text-sm/xs` inputs render at
+  16 px on phones so iOS Safari stops zooming on focus.
+- **R11g — first screen + listing** (§3, §4): a compact one-field
+  "আপনার পাড়ায় ডেলিভারি হয়?" under the quick chips, only until the device
+  knows its zone; the install nudge also appears on a first visit once
+  something is in the bag; garment-type chips carry the cover of their first
+  in-stock piece (`subcategory-tile`); the shop grid shows 24 cards a page
+  with "আরও দেখুন" (never infinite scroll) and an editorial tile after every
+  eighth card (`grid-interrupt`: Style Match / delivery promise / real
+  shops, rotating).
+- **R11i — PDP layout** (§4): the one-tap bundle and a short "Pair it with"
+  rail sit right under the buy panel (the duplicate grid below is gone); the
+  delivery card beside the details now reads the live zone ladder (and this
+  device's own zone) bilingually — the hard-coded "from ৳30" / invented
+  free-delivery rule is gone.
+- **R11j — wishlist "back in stock"** (§8, `lib/stock-memory.ts`): a saved
+  piece this device last saw sold out and finds on the shelf now gets a badge
+  and a one-line note, once; today's state is then remembered.
+- **R11k — shop page shelf** (§9): the shop's own category chips (with counts,
+  from two categories up) and the same sort as `/shop`; `sortShelf()` in
+  `lib/shop-sort.ts` is now the single sort for every shelf.
+
+Still open, by design: true-to-size bar and cm/inch toggle (no fit data),
+pre-order / "opens at …" (shops only have an open/closed toggle), the
+campaign landing page, lookbook/UGC tiles (needs photo reviews).
+
+Tests: `src/lib/__tests__/{quick-chips,ends-at,install-prompt}.test.ts`,
+`src/lib/db/__tests__/also-bought.test.ts`,
+`src/components/cart/__tests__/save-for-later.test.tsx`,
+`src/components/product/__tests__/{whatsapp-order,also-bought-rail}.test.tsx`,
+`src/components/checkout/__tests__/{checkout-coupon-carry,checkout-area-quote}.test.tsx`,
+`src/components/promo/__tests__/flash-ends-at.test.tsx`,
+`src/components/home/__tests__/{promo-code-card,home-delivery-check}.test.tsx`,
+`src/components/shop/__tests__/{shop-grid-pages,shop-products,shop-browser}.test.tsx`,
+`src/components/wishlist/__tests__/wishlist-view.test.tsx`,
+`src/app/(site)/__tests__/home.test.tsx`,
+`src/app/(site)/product/__tests__/product-page-tail.test.tsx`.
+
 ## UX plan R10 — the last "pending" items (2026-09-27)
 
 Round 10 of `docs/ux-sales-plan.md` — the plan's last shippable items. Two
