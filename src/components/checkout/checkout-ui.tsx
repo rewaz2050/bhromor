@@ -182,12 +182,17 @@ export function OrderErrorBanner({
   title,
   fixLabel,
   onFix,
+  retryLabel,
+  onRetry,
   bannerRef,
 }: {
   error: FriendlyError | null;
   title: string;
   fixLabel: string;
   onFix?: (() => void) | null;
+  /** UX plan §6 (R11) — a network/server failure: the same order, one tap again. */
+  retryLabel?: string;
+  onRetry?: (() => void) | null;
   bannerRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   if (!error) return null;
@@ -208,9 +213,19 @@ export function OrderErrorBanner({
         <button
           type="button"
           onClick={onFix}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-rose-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-800"
+          data-testid="order-fix-fields"
+          className="tap-press mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-rose-700 px-4 text-xs font-semibold text-white hover:bg-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:ring-offset-2"
         >
           {fixLabel} <IconArrowRight className="h-3.5 w-3.5" />
+        </button>
+      ) : onRetry && retryLabel ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          data-testid="order-retry"
+          className="tap-press mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-rose-700 px-4 text-xs font-semibold text-white hover:bg-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-700 focus-visible:ring-offset-2"
+        >
+          {retryLabel} <IconArrowRight className="h-3.5 w-3.5" />
         </button>
       ) : null}
     </div>
@@ -241,7 +256,7 @@ export function StickyOrderBar({
 }) {
   return (
     <div
-      className="sticky-buy-bar border-t border-line bg-paper/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-paper/90"
+      className="sticky-buy-bar border-t border-line bg-paper/97 px-4 py-3"
       data-visible={visible}
       data-testid="sticky-order-bar"
       inert={!visible}

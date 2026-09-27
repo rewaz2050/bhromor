@@ -43,10 +43,16 @@ export const findZoneForPara = (zones: DeliveryZone[], input: string): DeliveryZ
   return null;
 };
 
-export default function HomeDeliveryCheck() {
+/**
+ * `compact` (UX plan §3, R11): the same one-field check as a single row
+ * right under the hero — only while this device has NO zone yet (the header
+ * pill takes over once it does), and only the question, no pills. The full
+ * strip at the foot of the page keeps the four trust facts.
+ */
+export default function HomeDeliveryCheck({ compact = false }: { compact?: boolean }) {
   const { t, lang } = useLanguage();
   const { activeZones } = useLiveZones();
-  const { setZoneId } = useMyZone();
+  const { zoneId: knownZoneId, setZoneId } = useMyZone();
   const [para, setPara] = useState("");
   const [checked, setChecked] = useState<null | { zone: DeliveryZone | null }>(null);
   const inputId = useId();
@@ -68,6 +74,88 @@ export default function HomeDeliveryCheck() {
 
   const zone = checked?.zone ?? null;
   const zoneShort = (z: DeliveryZone) => z.name.split(" — ")[0];
+
+  // Compact row: gone as soon as the zone is known — except right after the
+  // shopper's own check, so the answer they asked for is actually shown.
+  if (compact && knownZoneId && !checked) return null;
+
+  const result = checked ? (
+    zone ? (
+      <>
+        <span className="font-semibold">✓ </span>
+        {t("trust.checkFound")
+          .replace("{zone}", zoneShort(zone))
+          .replace("{charge}", formatBdt(zone.charge))
+          .replace("{eta}", isCourierZone(zone.id) ? courierEta(lang) : zone.etaLabel)}
+        {" · "}
+        <Link href="/shop" className="font-semibold underline underline-offset-2 hover:text-forest-700">
+          {t("trust.checkShop")}
+        </Link>
+      </>
+    ) : (
+      <span className="text-ink-soft">
+        {t("trust.checkMissing").replace("{eta}", courierEta(lang))}{" "}
+        <Link href="/contact" className="font-semibold underline underline-offset-2">
+          WhatsApp
+        </Link>
+      </span>
+    )
+  ) : null;
+
+  if (compact) {
+    return (
+      <section
+        aria-label={t("trust.checkTitle")}
+        className="border-b border-line bg-paper"
+        data-testid="home-delivery-check-compact"
+      >
+        <form
+          onSubmit={submit}
+          className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6 lg:px-8"
+        >
+          <label htmlFor={inputId} className="text-sm font-semibold text-forest-900">
+            {t("trust.checkTitle")}
+          </label>
+          <div className="flex min-w-0 flex-1 basis-64 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-ivory-100 px-3 ring-1 ring-line focus-within:ring-2 focus-within:ring-forest-500">
+              <IconMapPin className="h-4 w-4 shrink-0 text-ink-soft" />
+              <input
+                id={inputId}
+                list={listId}
+                value={para}
+                onChange={(e) => {
+                  setPara(e.target.value);
+                  setChecked(null);
+                }}
+                placeholder={t("trust.checkPlaceholder")}
+                autoComplete="address-level3"
+                className="h-11 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-soft/50 sm:text-sm"
+              />
+              <datalist id={listId}>
+                {activeZones.flatMap((z) => z.areas).map((a) => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
+            </div>
+            <button
+              type="submit"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
+            >
+              {t("trust.checkButton")}
+            </button>
+          </div>
+          <p
+            role="status"
+            aria-live="polite"
+            className={result ? "w-full text-sm text-forest-900" : "sr-only"}
+            data-testid="home-delivery-result-compact"
+          >
+            {result}
+          </p>
+        </form>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -128,31 +216,7 @@ export default function HomeDeliveryCheck() {
         </form>
 
         <p role="status" aria-live="polite" className="mt-3 text-sm text-forest-900" data-testid="home-delivery-result">
-          {checked ? (
-            zone ? (
-              <>
-                <span className="font-semibold">✓ </span>
-                {t("trust.checkFound")
-                  .replace("{zone}", zoneShort(zone))
-                  .replace("{charge}", formatBdt(zone.charge))
-                  .replace("{eta}", isCourierZone(zone.id) ? courierEta(lang) : zone.etaLabel)}
-                {" · "}
-                <Link
-                  href="/shop"
-                  className="font-semibold underline underline-offset-2 hover:text-forest-700"
-                >
-                  {t("trust.checkShop")}
-                </Link>
-              </>
-            ) : (
-              <span className="text-ink-soft">
-                {t("trust.checkMissing").replace("{eta}", courierEta(lang))}{" "}
-                <Link href="/contact" className="font-semibold underline underline-offset-2">
-                  WhatsApp
-                </Link>
-              </span>
-            )
-          ) : null}
+          {result}
         </p>
       </div>
     </section>

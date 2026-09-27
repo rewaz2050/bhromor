@@ -3,6 +3,7 @@ import { DELIVERY_ZONES, PRODUCTS, type Product, type Shop } from "../catalog";
 import { launchCoupons } from "./coupon-fixtures";
 import { bdt } from "../format";
 import { defaultVariant } from "../cart";
+import { SETTINGS_DEFAULTS } from "../settings-store";
 import { dhakaDaySeconds, formatClock } from "../promos";
 import {
   validateOrderPayload,
@@ -770,5 +771,119 @@ describe("validateOrderPayload — growth levers", () => {
     // and a NON-member snapshot with the same payload still pays the full quote
     const plain = validateOrderPayload(payload({ is_express: true, is_rain: true }), snapshot());
     if (plain.ok) expect(plain.draft.deliveryCharge).toBe(bdt(60 + 40 + 15));
+  });
+});
+
+describe("validateOrderPayload free-delivery threshold (2026-09-26)", () => {
+  const shop = (over: Partial<Shop> = {}): Shop => ({
+    id: "shop-1",
+    slug: "shop-one",
+    name: "Shop One",
+    phone: "01700000000",
+    zoneIds: ["z1"],
+    prepMinutes: 15,
+    commissionPct: 15,
+    status: "active",
+    isOpen: true,
+    ratingAvg: 0,
+    ratingCount: 0,
+    ...over,
+  });
+  const tagged = (): Product[] => PRODUCTS.map((p) => ({ ...p, shopId: "shop-1" }));
+  const snap = (over: Partial<OrderSnapshot> = {}, shopOver: Partial<Shop> = {}): OrderSnapshot => ({
+    ...snapshot(),
+    products: tagged(),
+    shops: [shop(shopOver)],
+    ...over,
+  });
+  const armed = (minSubtotalPaisa: number) => ({
+    ...SETTINGS_DEFAULTS,
+    freeDelivery: { enabled: true, minSubtotalPaisa },
+  });
+
+  it("nothing armed → the ৳60 city charge exactly as before, no freeDelivery block", () => {
+    const r = validateOrderPayload(payload(), snap());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.deliveryCharge).toBe(bdt(60));
+    expect(r.draft.freeDelivery).toBeUndefined();
+  });
+
+  it("platform rule met → charge 0, attributed to 'platform', waived = the full rider charge", () => {
+    // p1 = ৳1,490 ≥ ৳999; express + rain would have added ৳55 on top of ৳60.
+    const r = validateOrderPayload(
+      payload({ is_express: true, is_rain: true }),
+      snap({ settings: { ...armed(bdt(999)), rainSurchargeEnabled: true } }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.deliveryCharge).toBe(0);
+    expect(r.draft.freeDelivery).toEqual({ by: "platform", waived: bdt(60 + 40 + 15) });
+    expect(r.draft.total).toBe(bdt(1490));
+  });
+
+  it("platform rule NOT met → paid, even when the toggle is on", () => {
+    const r = validateOrderPayload(payload(), snap({ settings: armed(bdt(2000)) }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.deliveryCharge).toBe(bdt(60));
+    expect(r.draft.freeDelivery).toBeUndefined();
+  });
+
+  it("shop rule alone → the shop pays ('shop'), from its own minimum", () => {
+    const r = validateOrderPayload(payload(), snap({}, { freeDeliveryMinPaisa: bdt(1000) }));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.deliveryCharge).toBe(0);
+    expect(r.draft.freeDelivery).toEqual({ by: "shop", waived: bdt(60) });
+    // below the shop's minimum → paid
+    const below = validateOrderPayload(payload(), snap({}, { freeDeliveryMinPaisa: bdt(1500) }));
+    if (below.ok) expect(below.draft.deliveryCharge).toBe(bdt(60));
+  });
+
+  it("both armed and both met → PROSANTI pays first (the shop's payout is untouched)", () => {
+    const r = validateOrderPayload(
+      payload(),
+      snap({ settings: armed(bdt(999)) }, { freeDeliveryMinPaisa: bdt(500) }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.freeDelivery?.by).toBe("platform");
+    // only the shop's minimum met → the shop pays
+    const mid = validateOrderPayload(
+      payload(),
+      snap({ settings: armed(bdt(2000)) }, { freeDeliveryMinPaisa: bdt(1000) }),
+    );
+    if (mid.ok) expect(mid.draft.freeDelivery?.by).toBe("shop");
+  });
+
+  it("never on the courier leg (z4) — the ৳150 courier charge stays", () => {
+    const r = validateOrderPayload(
+      payload({ district: "Sylhet", upazila: "Sylhet Sadar", para: "Zindabazar", area: "Zindabazar", zoneId: "z4" }),
+      snap({ settings: armed(bdt(500)) }, { freeDeliveryMinPaisa: bdt(500) }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.draft.zone.id).toBe("z4");
+    expect(r.draft.deliveryCharge).toBe(bdt(150));
+    expect(r.draft.freeDelivery).toBeUndefined();
+  });
+
+  it("pickup and PROSANTI+ already waive everything — no threshold attribution on top", () => {
+    const pickup = validateOrderPayload(
+      payload({ is_pickup: true, pickup_slot: "now" }),
+      snap({ settings: armed(bdt(500)) }),
+    );
+    expect(pickup.ok).toBe(true);
+    if (pickup.ok) {
+      expect(pickup.draft.deliveryCharge).toBe(0);
+      expect(pickup.draft.freeDelivery).toBeUndefined();
+    }
+    const plus = validateOrderPayload(payload(), snap({ settings: armed(bdt(500)), plusActive: true }));
+    expect(plus.ok).toBe(true);
+    if (plus.ok) {
+      expect(plus.draft.deliveryCharge).toBe(0);
+      expect(plus.draft.freeDelivery).toBeUndefined();
+    }
   });
 });

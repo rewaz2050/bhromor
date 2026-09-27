@@ -44,15 +44,15 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm run build` | Production build (what Vercel runs) |
 | `npm start` | Serve production build |
 
-Unit/component suite: 446 tests. Browser suite: 14 Chromium checks (see `docs/browser-qa.md`).
+Unit/component suite: 1,533 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
 ## Premium storefront refresh
 
-The public homepage is a shelf, top to bottom: **compact hero (headline + one button) → recently-viewed strip (returning devices only) → category row → offers → every category with its pieces → customer stories (approved reviews only; hidden when there are none) → delivery check → service promise strip**. There is no screen-filling poster any more — the category row is on the first screen of a phone. The offers block shows the flash drop while a window runs plus every piece with a struck-through price (`/shop?filter=sale` lists them all); with nothing on offer it stays away. Product pages end with the rest of the piece's own category (strictly the same category, never a "you may also like" mix). The curated new-arrival / best-seller paths and the owned visual journal remain available in the shop (`?sort=newest`, `?sort=best`). Product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
+The public homepage is a shelf, top to bottom: **compact hero (headline + one button) → recently-viewed strip (returning devices only) → category row → offers → every category with its pieces → customer stories (approved reviews only; hidden when there are none) → delivery check → service promise strip**. There is no screen-filling poster any more — the category row is on the first screen of a phone. The offers block shows the flash drop while a window runs plus every piece with a struck-through price ("See all" → the `/offers` hub, R7; `/shop?filter=sale` still lists them as a shop filter); with nothing on offer it stays away. After it, the R7 "your style" section: a rail for a device that has used Style Match, a three-tap invite otherwise. Product pages end with the rest of the piece's own category (strictly the same category, never a "you may also like" mix). The curated new-arrival / best-seller paths and the owned visual journal remain available in the shop (`?sort=newest`, `?sort=best`). Product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
 
 The palette is warm ivory, deep charcoal/forest and restrained bronze-gold. English display type (Playfair), interface type (Inter) and Bengali copy (Noto Serif Bengali) have explicit roles. No seeded or fake ratings/reviews are rendered anywhere — public home and product pages only ever show real, approved customer reviews (verified badge only when a matching order exists); the moderation queue lives in admin.
 
-Existing CMS hero copy and the six section toggles (hero, recently viewed, category row, offers, customer stories, service strip), search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
+Existing CMS hero copy and the section toggles (hero, recently viewed, category row, best sellers, new arrivals, offers, your style, customer stories, service strip), search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
 
 ## Premium feel & usability pass
 
@@ -96,6 +96,466 @@ Fourteen small, real-data-only additions that make the shop easier to trust and 
 - **Image zoom**: hover magnifier on desktop, full-screen pinch / wheel / double-tap lightbox with pan.
 - **Order again**: one tap on the account's order history or the track page re-adds a past order; anything gone, sold out or no longer offered in that colour/size is listed, never swapped; another shop's bag is only replaced after confirming.
 - **Cash at the door** card in the bag: pieces + your zone's delivery charge (+ the ৳20 night surcharge when it applies), the ৳500 courier floor, and a reminder that the rider asks for the amount and the 4-digit PIN.
+
+## Apply = sign up: shops and riders (2026-09-26)
+
+Opening a shop or joining as a rider used to be three steps that people kept getting stuck between: send the application, then separately "Create account" on the login page with the same email, then wait for staff to approve **and** link the two by email. It is now one step, and the admin's approval is the only gate.
+
+**What the applicant does**
+
+- `/shops/apply` and `/rider/apply` collect the details **plus the login email and a password** (min 6, typed twice). Submitting creates the login and the pending row together — no email confirmation link, no second form. The success screen says exactly what happens next: *after approval, sign in at `/vendor/login` (or `/rider/login`) with this email and password.*
+- Signing in **before** approval works but opens an "Awaiting approval" card (Check again · Sign out) instead of the dashboard; a suspended account gets a "suspended — contact support" card; a login that has no shop / rider profile is pointed at the application form. Nothing bounces between the login page and the dashboard any more.
+- The moment staff approves (status → active), the same email + password open `/vendor` / `/rider`.
+- The login pages are sign-in only (the "Create account" tabs are gone; "New here? Apply" links replace them).
+
+**How it works**
+
+- `POST /api/shops/apply` and `POST /api/riders/apply` still refuse without the service role (503) and are rate-limited 5/min/IP. The intake validates the fields **and the password** first, then `createApplicantAccount()` (`src/lib/db/applicant-account.ts`) calls `auth.admin.createUser({ email_confirm: true })`; then the row is inserted already linked (`vendor_users` owner row / `riders.user_id`). If the row cannot be written the fresh login is deleted again, so a failed submit never leaves a stray account.
+- An email that **already has a PROSANTI login** (a vendor from the old two-step flow, or a rider also opening a shop) is reused when the given password matches it — verified with a throwaway sign-in — otherwise the form gets a 409 that says to use that account's password or sign in first. A signed-in applicant links the current login and needs no password.
+- `requireVendor()` / `requireRider()` answer 403 with a `reason` (`pending` · `suspended` · `none`) that the login pages and shells read; the pending message is English for vendors and Bangla for riders.
+- Admin → Shops / Riders show **Linked — {email} signs in … once approved** for applications (new shop rows carry `vendorLinked`, riders `hasLogin`); the manual "Link vendor / Link rider" boxes remain only for legacy or manually created rows. No database migration is needed.
+
+Tests: `src/lib/__tests__/{applicant-password,apply-approval-gate}.test.ts`, `src/lib/db/__tests__/{applicant-account,apply-signup}.test.ts`, `src/app/api/__tests__/apply-signup-routes.test.ts`, and the apply/login page tests under `src/app/(site)/shops/apply`, `src/app/rider/{apply,login}`, `src/app/vendor/login`.
+
+### Round 2 — running the onboarding without SMS or e-mail (2026-09-26)
+
+There is deliberately **no SMS and no e-mail** anywhere in this flow, so the pieces that normally depend on them are done by people and WhatsApp instead:
+
+- **Forgot password → staff reset.** `POST /api/admin/shops/[id]/reset-password` and `POST /api/admin/riders/[id]/reset-password` (admin / super_admin only, 10/min) generate a readable temporary password (`xxx-xxx-xxx`, no look-alike characters), set it with the service role and return it **once**. Admin → Shops / Riders → *Reset password* shows it with a Copy button and an "Open WhatsApp chat" link whose prefilled text never contains the password — staff read it out or paste it into the chat. Vendors change it in **Shop settings → পাসওয়ার্ড বদলান**, riders in **আমার রাইডার প্রোফাইল**, both through `auth.updateUser({ password })` on their own session (`src/components/account/change-password-card.tsx`). The login pages say so instead of promising a reset e-mail.
+- **Approval hand-off by WhatsApp.** Once a row is active, the same card offers *WhatsApp: approved, sign in →* — a `wa.me` link with a Bangla message naming the login email and the absolute `/vendor/login` / `/rider/login` URL (`src/lib/onboarding-messages.ts`). Non-BD phones get a note instead of a dead link.
+- **Applications are seen.** `GET /api/admin/applications` returns the two pending head-counts; `useApplicationsPending()` polls it every 30 s while the admin tab is visible and puts the numbers on the **Shops / Riders** nav links and a dashboard banner ("3 applications waiting for approval — 2 shops · 1 rider") with one-tap links into each queue.
+- **Pending applicants get let in automatically.** `/vendor/login` and `/rider/login` re-check the session every 30 s (visible tab only) while the "awaiting approval" card is showing, so the dashboard opens the moment staff taps Approve — no reload, no message needed.
+- **Duplicate applications** are refused on the shop's phone number as well as its email (409 with a specific message).
+- **Forms.** Both application forms are split into three numbered fieldsets (details · login · zones) under a "what happens next" strip, password fields have show/hide toggles (also on both login pages), phone inputs use the numeric keypad, zone chips are real `aria-pressed` toggles at 44 px, the error banner scrolls into view and takes focus, and an "already applied? sign in" link closes the loop. Shared pieces: `src/components/apply/apply-form-ui.tsx`, `src/components/ui/password-input.tsx`, `src/components/admin/applicant-login-box.tsx`.
+
+Still no database migration required for the above. Tests: `src/app/api/__tests__/admin-onboarding-routes.test.ts`, `src/lib/__tests__/{onboarding-messages,use-applications-pending}.test.ts(x)`, `src/components/{admin,account,apply,ui}/__tests__/*` for the new components, plus the extended login/dashboard/admin-gate tests.
+
+### Round 3 — "Forgot password?" as a request the admin approves (2026-09-26)
+
+The one thing round 2 still needed a phone call *to start* was a forgotten password. It is now self-service on the applicant's side and a decision on the admin's side — still with no SMS and no e-mail:
+
+1. **Request.** `/vendor/login` and `/rider/login` have **পাসওয়ার্ড ভুলে গেছেন? / Forgot your password?** → email + phone as they appear on the shop / rider row → `POST /api/auth/reset-request`. The server resolves the login behind that pair (shop `contact_email` + `phone` → `vendor_users` owner; rider `contact_email` + `phone` → `riders.user_id`), files one open request per login (`password_reset_requests`, migration `202609260001`), and pings the staff inbox + Web Push. Unknown pair → a plain 404 message; 5/15 min per IP, 3/h per email.
+2. **Decide.** Admin → **Access requests** (`/admin/access`, counted on the nav badge and the dashboard banner with the applications) shows each request with **Call** (`tel:`) and a WhatsApp "did you ask for this?" button. **Approve** stays disabled until the admin ticks *"I spoke to them on … and they confirmed"* — the phone call is the identity check, because a shop's email and phone are semi-public. Approve opens a 24-hour window; **Reject with note** leaves a note the requester sees. Both then offer a prefilled WhatsApp message (`resetApprovedMessage` / `resetRejectedMessage`). Admin / super_admin only.
+3. **Set.** The login page keeps polling `GET /api/auth/reset-request` every 20 s (and remembers the request in `localStorage`, so closing the tab is fine). When the status turns `approved` it switches to a new-password form by itself; `POST /api/auth/reset-complete` sets the password with the service role **only** while an approved, unused, unexpired request exists for exactly that email + phone pair, then marks it `used`. The login form is prefilled with the email. `rejected` shows the note with *Request again*; `expired` (24 h passed) says so and lets them re-file.
+
+Nothing secret is ever generated or transported in this path: identity is the email + phone pair the requester already knew, the staff phone call, and the window. Status derivation (`effectiveStatus`), matching, the one-open-request rule and the full request → approve → complete → reuse-refused machine are covered in `src/lib/db/__tests__/password-reset.test.ts`; routes in `src/app/api/__tests__/reset-request-routes.test.ts`; the panel in `src/components/auth/__tests__/forgot-password-panel.test.tsx`; the queue page in `src/app/admin/access/__tests__/admin-access.test.tsx`. **Requires** `supabase/migrations/202609260001_password_reset_requests.sql` (one table, one staff RLS policy); until it is applied the login page answers 503 with a Bangla note and Admin → Access requests tells you what to run — the card-level *Reset password* from round 2 keeps working meanwhile.
+
+### Round 4 — review decisions, rider KYC, phone-number login, vendor checklist (2026-09-26)
+
+Four things the queue still could not do, all without SMS/e-mail (bKash/Nagad payout capture is deliberately **not** in this round — there is no merchant account yet):
+
+1. **Reject with a reason, and every decision is audited.** Shops and riders gain a fourth status, `rejected` (migration `202609260002_application_review.sql`: constraint widened + `review_note`, `reviewed_by`, `reviewed_by_email`, `reviewed_at`; riders also get `kyc jsonb` + `kyc_submitted_at`). Admin → Shops / Riders now use one `ReviewActions` strip: **Approve**, **Reject…** (inline textarea — the reason is required, the applicant reads it), **Suspend** (confirm + optional staff note), **Re-open** / **Re-activate**. All go through `POST /api/admin/{shops,riders}/[id]/review` (`reviewApplication` in `lib/db/admin.ts`), which stamps who/when; the card shows *"Rejected by admin@… · 5 min ago"* plus the note, and the login box offers a prefilled WhatsApp *"not approved, here is why"* (`applicationRejectedMessage`). On the applicant's side `requireVendor` / `requireRider` answer 403 with `reason: "rejected"` and the note in the message; `/vendor/login` and `/rider/login` show it with **Fix the details and re-apply →**. Re-applying with the same login (or same email + password) **updates the rejected row back to `pending`** with the new details and a cleared verdict (`applyShop` / `applyRider` `resubmitted: true`; the update is fenced to `status = 'rejected'`), and the staff inbox gets *"re-submitted"*. Rejected/suspended rows no longer block a fresh application on the same phone. The vendor/rider self endpoints strip the review trail (`withoutReview`) — the reviewer's e-mail is staff-only.
+2. **Rider KYC before approval.** While pending (or rejected and fixing), the rider's login page shows **পরিচয়ের কাগজপত্র (KYC)**: NID front, NID back, selfie with NID, and driving licence for bike/scooter (`lib/rider-kyc.ts` — required set depends on the vehicle). Each button opens the phone camera; the photo goes straight to Cloudinary with a signature from `POST /api/rider/kyc/sign` (folder `prosanti/rider-kyc`) and the URL is stored via `POST /api/rider/kyc` with the service role — only `https://res.cloudinary.com/<our cloud>/image/upload/…` is accepted, one per document, and `kyc_submitted_at` is stamped the first time the required set is complete. These are the only rider routes a pending applicant may call (`requireRider({ allowApplicant: true })`; jobs/cash stay active-only). Admin → Riders shows a **KYC 2/3** badge and, on pending/rejected cards, thumbnails that open full-size plus the missing list. Cloudinary not configured → 503 with a Bangla note; the application stands.
+3. **Phone-number login, no SMS.** The e-mail field on both apply forms is optional. Without one, the server mints a synthetic login address from the mobile number — `01712345678@phone.prosanti.app` (`lib/phone-login.ts`; nothing is ever sent there) — and creates the Supabase user under it. Every login form and the reset panel now take **email or mobile number** (`loginIdentifierToEmail`: e-mail passes through, any BD spelling of a number — `+880`, spaces, Bangla digits — maps to the synthetic address). Success screens and the approval WhatsApp message tell the applicant to sign in with *the mobile number*; staff screens show `01712345678 (phone login)` instead of the synthetic address (`describeLoginEmail`).
+4. **Vendor "Get your shop ready" card** on `/vendor`: phone + pickup address, tagline, first 3 live products, a photo on every live product, shop switched to Open (`lib/vendor-onboarding.ts`; `components/vendor/onboarding-checklist.tsx`). Progress bar + per-step link; the Open step flips the existing dashboard toggle; the card removes itself once complete and never flashes while products load.
+
+Tests: `src/lib/__tests__/phone-login.test.ts`, `rider-kyc.test.ts`, `vendor-onboarding.test.ts`, `apply-approval-gate.test.ts` (rejected + KYC gate), `src/lib/db/__tests__/apply-signup.test.ts` (re-apply, phone-only apply), `rider-kyc.test.ts`, `src/app/api/__tests__/application-review-routes.test.ts`, `rider-kyc-routes.test.ts`, `src/components/admin/__tests__/review-actions.test.tsx`, `src/components/rider/__tests__/kyc-upload-card.test.tsx`, `src/components/vendor/__tests__/onboarding-checklist.test.tsx`, plus the login-page and applicant-box suites. **Requires** `supabase/migrations/202609260002_application_review.sql`; until it runs, the review buttons answer 503 naming the file and the KYC card says uploads are not enabled yet — approve/suspend from the old upsert path keeps working.
+
+## Free delivery threshold — platform AND per-shop (2026-09-26)
+
+"Add ৳150 more and delivery is free" — the cheapest average-order-value lever a bag can have, now a real, priced rule instead of a hard-coded promo. Two independent switches, both optional:
+
+- **Platform rule** — Admin → Settings → *ফ্রি ডেলিভারি — প্ল্যাটফর্ম অফার*: on/off + minimum item subtotal (৳100–৳50,000; default OFF at ৳999). Stored in the ops settings document as `freeDelivery: {enabled, minSubtotalPaisa}` (`lib/settings-store.ts`, public via `/api/settings`). **PROSANTI pays** — the shop's payout is untouched.
+- **Shop rule** — Vendor → Settings → *ফ্রি ডেলিভারি অফার (ঐচ্ছিক)* (owner only; staff get 403) or the admin's shop editor: on/off + the shop's own minimum, column `shops.free_delivery_min` (paisa, NULL = off). **The shop pays** — `ps_write_shop_ledger` deducts the waived rider charge from that order's `payable` (`greatest(0, payable − waived)`).
+
+Rules (`lib/free-delivery.ts`, mirrored 1:1 in SQL): the shopper's target is the **lowest armed minimum**; who pays is decided at placement **platform first, then shop**; the waiver covers the base zone charge **plus every surcharge**; it never applies on the courier leg (z4), on store pickup, on a return order, or on top of a free-delivery coupon / PROSANTI+ (those already waived everything). `ps_place_order` (migration `202609260003_free_delivery.sql`, an in-place patch of the live function) prices it from the live rows and records `orders.free_delivery_by` (`'platform' | 'shop'`) + `orders.free_delivery_waived`; the TypeScript validator computes the same so the quote is honest, and `ps_check_order_totals` still guards the arithmetic.
+
+What the customer sees: a **progress bar** in the bag drawer and `/cart` (`components/cart/free-delivery-bar.tsx` — "আর ৳১৫০ যোগ করলে ডেলিভারি ফ্রি" → "এই অর্ডারে ডেলিভারি ফ্রি 🎉 · দোকানের অফার / PROSANTI অফার", a *keep shopping* link back to the shop, and the scope line "সদরের ভেতরে — কুরিয়ারে নয়"); a **pill** on shop cards, the shop hero and the PDP seller line (`components/shop/free-delivery-pill.tsx`); the checkout delivery row reads **ফ্রি — দোকানের অফার / PROSANTI অফার** with the struck-through charge; track, admin and vendor order pages name the payer; the staff inbox line says which offer paid. Nothing renders on a shop where neither rule is armed — the bag looks exactly as before.
+
+Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/target/payer, breakdown mirror), `order-validation.test.ts` (platform / shop / precedence / courier / pickup / PROSANTI+), `src/lib/db/__tests__/vendor.test.ts` (owner sets/clears, staff 403), `src/components/cart/__tests__/free-delivery-bar.test.tsx`. **Requires** `supabase/migrations/202609260003_free_delivery.sql`; until it runs, saving a free-delivery minimum answers 503 naming the file (profile saves without the field are unaffected) and the RPC keeps charging as before.
+
+## UX plan R0 — first-party funnel: the shop's own numbers (2026-09-26)
+
+§০ of `docs/ux-sales-plan.md`: *what cannot be measured cannot be fixed*. Until now the funnel events only went to GA4 / Meta — when those ids are set. Now the storefront keeps its **own** copy, anonymous and first-party, and Admin → Reports prints the rates every later UX round is judged by.
+
+- **Events** (`lib/analytics.ts` `track()` → `lib/events-sink.ts`): `page_view` (every one, including the first — sessions, bounce, pages/session), `view_item`, `add_to_cart` **with its source** (`card` quick-add / `pdp` / `bundle` / `live` — `addItem`'s fourth argument), `begin_checkout`, `purchase`, `search` (query + result count, once the typed text rests 800 ms; zero results = demand we don't stock), `view_item_list` (a rail/grid scrolled ≥ 25 % into view — `components/analytics/list-impression.tsx`, `data-list` on the offers rail, every category shelf and the shop grid), `select_item` (card tap credited to the nearest `data-list`), `scroll_depth` (home 25/50/75/100 %, `scroll-depth-tracker.tsx`). Vendors still get their usual payloads when configured; nothing here depends on them.
+- **Wire** (`lib/funnel-events.ts`): tiny JSON `{sid, events:[{t,p,pid,shop,src,v,lang,meta}]}`, ≤ 25 events, batched every 4 s / on `pagehide` via `sendBeacon`. The session id is a random per-tab token in `sessionStorage` — no cookie, no user id, no IP stored.
+- **Sink** — `POST /api/events`: whitelist + trim + cap, 60 batches/min/IP, insert into `storefront_events` with the service role, **always 204** (a beacon has nobody to show an error to; an unapplied migration never breaks the shop). Table has RLS on with no policies and all grants revoked from `anon`/`authenticated`.
+- **Report** — `ps_funnel_report(p_days)` (SQL, security definer, staff route only) → `GET /api/admin/reports/funnel?days=7|28` → the **Funnel** card (`components/admin/funnel-card.tsx`): sessions · bounce · pages/session · session→order; **product page → add to bag → checkout → order** step rates; average order and repeat-customer rate **from the `orders` table** (cancelled + return excluded — the "order" step is real money); add-to-bag by source chips; top searches with a *no results* flag; home scroll-depth bars. 503 → "run `202609260004_storefront_events.sql`". `ps_prune_storefront_events(days)` keeps the table small (optional cron).
+
+Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
+
+## Scroll performance pass (2026-09-27)
+
+"Scrolling smooth na." A code audit of everything the storefront did on each scrolled frame, fixed at the source — full table, rules and an on-device checklist in **[docs/scroll-performance.md](docs/scroll-performance.md)**. The short version:
+
+- **Every product card re-rendered once a second.** The promo store's shared ticker sat inside `useFlashPrice`, so a listing of 60 cards did 60 React renders a minute whether or not a flash window existed. The store now tracks a *phase* (window open / closes at / next opens at) and notifies only when it changes; countdown digits and the strip's progress line tick on their own (`FlashProgress` is one CSS transform transition).
+- **The sticky header is paint-only while the page moves.** No React state per frame (progress goes to the gold line's transform through a ref), one bar height per breakpoint, the announcement bar scrolls away as normal flow instead of folding the header, and `data-scrolled` only toggles a shadow/border.
+- **No backdrop blur on phone chrome.** Header, shop filter bar, bottom nav, bag mini-bar, PDP/checkout sticky bars, drawer scrim, per-card badges/buttons/heart — blur removed on touch devices (near-opaque backgrounds), kept on desktop via `pointer-fine:`. `will-change` gone from per-card and header CSS; a stray duplicate `.reveal-pending` rule that re-added a blur filter to every revealing card is deleted.
+- **One photo per card until asked.** Hover-swap / peek photos mount on the first hover, press or focus instead of downloading and decoding with the card; 2-column grids request 48vw images instead of the rails' 72vw.
+- **Native scrolling everywhere.** The `lenis` wheel hijack is removed (desktop scrolling no longer depends on the main thread); `<html data-scroll-behavior="smooth">` tells Next 16 to jump, not glide, on route changes; styled scrollbars are desktop-only; the footer uses `content-visibility: auto`.
+
+Nothing was measured on a device from the sandbox — the doc ends with what to feel for on a phone. Tests: `src/lib/__tests__/use-promos-phase.test.tsx`, `src/components/layout/__tests__/header-scroll.test.tsx`, `src/components/promo/__tests__/flash-progress.test.tsx`, additions to `product-card.test.tsx`.
+
+## UX plan R11 — the plan's tail, closed (2026-09-27)
+
+Round 11 of `docs/ux-sales-plan.md` — every item that was still 🔴/🟠/🟢
+and did not need data the shop does not have. **No migration**; code only.
+
+- **R11a — quick-chip row under the hero** (§2, `lib/quick-chips.ts`,
+  `home/quick-chips.tsx`): "৳৫০০-এর নিচে · উৎসবের · গিফট · আজই পাবেন · ছাড় ·
+  নতুন" — each a link into an already-filtered `/shop`; a chip needs ≥ 2 live
+  pieces, the row needs ≥ 2 chips, otherwise nothing renders.
+- **R11b — PDP trust line + one help cluster** (§4, `purchase-panel.tsx`):
+  under the CTAs "ক্যাশ অন ডেলিভারি · ৭ দিনে বদল · PIN মিলিয়ে হ্যান্ডওভার"
+  (each linking to its page; a closed shop gets the honest "খুললেই অর্ডার
+  নেওয়া হবে" + WhatsApp instead); WhatsApp order + share fold into one quiet
+  "সাহায্য দরকার?" cluster.
+- **R11c — "পরে কিনব"** (§5, `cart/save-for-later.tsx`): a bag line moves to
+  the wishlist (guest store or account) instead of the bin, from the drawer
+  and `/cart`, with a one-line confirmation and "উইশলিস্ট দেখুন →". Never
+  duplicates a piece already saved.
+- **R11d — "এটার সাথে অন্যরা কিনেছেন"** (§4, `lib/db/also-bought.ts`,
+  `product/also-bought-rail.tsx`): order co-occurrence — pieces that sat in
+  the same non-cancelled orders, ranked by distinct orders then units,
+  memoised per product for an hour in the server instance. Published,
+  in-stock pieces only, at most four, nothing under two. No service role / any
+  error → no rail.
+- **R11e — flash wall clock + coupon carry** (§3, `lib/ends-at.ts`,
+  `lib/coupon-carry.ts`): the flash rail says *when* — "আজ রাত ১১টায় শেষ" /
+  "আগামীকাল সন্ধ্যা ৬:৩০টায় শেষ" (Asia/Dhaka, Bengali digits) beside the
+  countdown; copying the promo code on the offers card places it in
+  checkout's coupon field (opens "আরও অপশন", hint "Apply চাপুন", 24 h, same
+  device). **Placed, never applied** for a guest — auto-apply stays an
+  account perk (R9); a successful apply forgets the carry.
+- **R11f/h — checkout** (§6): the para field quotes zone, charge and ETA
+  right under itself as soon as it is filled (`area-quote`, same numbers as
+  the summary), is searchable (`prosanti-paras` datalist from the live zone
+  table + the Sadar list) and — site-wide — `text-sm/xs` inputs render at
+  16 px on phones so iOS Safari stops zooming on focus.
+- **R11l — one-tap retry** (§6): when the order request dies on the network
+  or the server answers 5xx with nothing to fix, the error banner grows an
+  "আবার চেষ্টা করুন — একই অর্ডার" button (`order-retry`) that re-submits the
+  same form — nothing to re-type. Field errors keep the "fix fields" path
+  (`order-fix-fields`); `FriendlyError.retryable` decides which.
+- **R11g — first screen + listing** (§3, §4): a compact one-field
+  "আপনার পাড়ায় ডেলিভারি হয়?" under the quick chips, only until the device
+  knows its zone; the install nudge also appears on a first visit once
+  something is in the bag; garment-type chips carry the cover of their first
+  in-stock piece (`subcategory-tile`); the shop grid shows 24 cards a page
+  with "আরও দেখুন" (never infinite scroll) and an editorial tile after every
+  eighth card (`grid-interrupt`: Style Match / delivery promise / real
+  shops, rotating).
+- **R11i — PDP layout** (§4): the one-tap bundle and a short "Pair it with"
+  rail sit right under the buy panel (the duplicate grid below is gone); the
+  delivery card beside the details now reads the live zone ladder (and this
+  device's own zone) bilingually — the hard-coded "from ৳30" / invented
+  free-delivery rule is gone.
+- **R11j — wishlist "back in stock"** (§8, `lib/stock-memory.ts`): a saved
+  piece this device last saw sold out and finds on the shelf now gets a badge
+  and a one-line note, once; today's state is then remembered.
+- **R11k — shop page shelf** (§9): the shop's own category chips (with counts,
+  from two categories up) and the same sort as `/shop`; `sortShelf()` in
+  `lib/shop-sort.ts` is now the single sort for every shelf.
+
+Checking a live database after the round: `supabase/verify-2026-09-27.sql`
+(read-only, one `OK`/`MISSING` row per table / column / patched function,
+`SUMMARY` must read `ALL 8 MIGRATIONS APPLIED`) or `/api/health` as staff
+(`passwordResetReady` … `reviewStampsReady`, missing files under `nextSteps`).
+
+Still open, by design: true-to-size bar and cm/inch toggle (no fit data),
+pre-order / "opens at …" (shops only have an open/closed toggle), the
+campaign landing page, lookbook/UGC tiles (needs photo reviews).
+
+Tests: `src/lib/__tests__/{quick-chips,ends-at,install-prompt}.test.ts`,
+`src/lib/db/__tests__/also-bought.test.ts`,
+`src/components/cart/__tests__/save-for-later.test.tsx`,
+`src/components/product/__tests__/{whatsapp-order,also-bought-rail}.test.tsx`,
+`src/components/checkout/__tests__/{checkout-coupon-carry,checkout-area-quote,checkout-retry}.test.tsx`,
+`src/components/promo/__tests__/flash-ends-at.test.tsx`,
+`src/components/home/__tests__/{promo-code-card,home-delivery-check}.test.tsx`,
+`src/components/shop/__tests__/{shop-grid-pages,shop-products,shop-browser}.test.tsx`,
+`src/components/wishlist/__tests__/wishlist-view.test.tsx`,
+`src/app/(site)/__tests__/home.test.tsx`,
+`src/app/(site)/product/__tests__/product-page-tail.test.tsx`.
+
+## UX plan R10 — the last "pending" items (2026-09-27)
+
+Round 10 of `docs/ux-sales-plan.md` — the plan's last shippable items. Two
+**migrations**: `supabase/migrations/202609270003_bag_snapshots.sql`
+(abandoned-bag push; needs `202609270001` first) and
+`202609270004_review_stamps.sql` (review → Smart Card stamp). Everything
+else is code only.
+
+- **R10a — per-size stock + PDP accordion** (§4). `Product.sizeStock`
+  (`lib/size-stock.ts`, read from `variants` — no schema change) drives the
+  size chips: 1–3 units → "২টি বাকি", 0 → greyed but tappable → an inline
+  `size-sold-out` panel with the restock alert, the nearest in-stock size and
+  "ask on WhatsApp"; quick-add disables sold-out sizes. Sellers set the
+  numbers in the product editor ("Set stock per size"); leave them blank and
+  the total stock behaves exactly as before. Product details are now an
+  accordion — বিবরণ ও কাপড় (open) · যত্ন · ফিট ও মাপ · ডেলিভারি ও ফেরত.
+- **R10b — shorter whole shelf + pattern interrupts** (§2,
+  `lib/home-shelves.ts`, `home/category-shelf.tsx`, `home/shelf-interrupts.tsx`):
+  6 pieces per category + "see all N"; from the 3rd category the shelf is a
+  mobile snap rail ending in an "আরও N →" tile; a "why PROSANTI" band after the
+  first shelf and one photo review before the 4th (or last) shelf — the review
+  band is skipped when no approved review has a photo.
+- **R10c — abandoned bag** (§5). Home banner under the hero when the bag is
+  ≥ 30 min old ("আপনার ব্যাগে ২টি পিস অপেক্ষা করছে →", thumbs, checkout link,
+  dismiss per bag). Devices opted in to marketing push send a bag snapshot
+  (`PUT /api/bag/snapshot`); the `abandoned-bags` cron job sends **one** push
+  24–72 h later (max one per 7 days; never SMS/email) → `/cart`. Details in
+  `docs/automation.md`.
+- **R10d — review → stamp ledger** (§4/§7/§8). The track page's "review this
+  piece" link hands the order no + phone to the product page's form
+  (`lib/review-proof.ts`, sessionStorage, 1 h). `POST /api/reviews` re-checks
+  it (`provenPurchase`: a *delivered* order on that phone containing the
+  product; a signed-in account's phone is tried too) and stores the review
+  `verified` with `customer_phone` / `order_ref`. When staff **approve** a
+  proven review, `awardReviewStamp` writes one `stamp_ledger` row (unique per
+  review — approve → hide → approve never pays twice) and pushes "রিভিউর জন্য
+  ধন্যবাদ — ১টা স্ট্যাম্প যোগ হলো". The Smart Card counts orders **plus**
+  ledger rows (`countStampsForPhone`; `/api/account/card` adds
+  `reviewStamps`). Before the migration reviews save as before; nothing is
+  stamped.
+- **R10e — the last live's rail + Bengali legal pages** (§10, §11).
+  `GET /api/live` now also answers `last`: the most recent *ended* session
+  (≤ 60 days) whose pieces are still published (`getPublicLive`, no
+  migration). Whenever nothing is on air, `/live` shows "গত লাইভে যে পিসগুলো
+  দেখিয়েছিলাম" (`live-last-rail`: session title, date in Bengali digits,
+  in-stock pieces first, one-tap add to bag with source `live`) — under the
+  upcoming card, or between the empty card and the new-arrivals rail. The
+  `/privacy` and `/terms` pages are fully bilingual (`<L en bn />` leaves,
+  headings included); the copy now also names the optional account, the
+  phone/order kept behind a verified review, browser-push/WhatsApp updates
+  and the coupon / Smart Card rules.
+
+Tests: `src/lib/__tests__/{size-stock,home-shelves,abandoned-bag,bag-memory,review-proof}.test.ts`,
+`src/lib/db/__tests__/{review-stamps,live-last}.test.ts`,
+`src/app/api/reviews/__tests__/review-proof-route.test.ts`,
+`src/app/api/bag/__tests__/snapshot-route.test.ts`,
+`src/components/track/__tests__/review-ask.test.tsx`,
+`src/components/account/__tests__/loyalty-card.test.tsx`,
+`src/components/live/__tests__/live-view.test.tsx`,
+`src/app/(site)/__tests__/legal-pages.test.tsx`.
+
+## UX plan R9 — every remaining "pending" in one round (2026-09-27)
+
+Round 9 of `docs/ux-sales-plan.md` closes the leftovers from R1–R8. Two small
+**migrations**: `supabase/migrations/202609270001_push_broadcasts.sql` (weekly
+push) and `202609270002_shop_cover.sql` (shop cover) — everything else ships
+without one, and every surface degrades to today's behaviour until they run.
+
+- **Coupon auto-apply — signed-in customers only** (§5, the owner's call). `GET`→`POST /api/coupons/best` answers **401** for guests; for a signed-in customer the checkout asks once per bag change (500 ms debounce, only while no code is applied and none was dismissed) and applies the best redeemable code with an **"Auto / অটো"** chip (`coupon-auto`); *Remove* remembers the dismissal. Guests see the nudge *"Sign in and the best coupon applies itself"* (`coupon-login-nudge` → `/account?next=/checkout`). Typing a code by hand is unchanged for everyone. Tests: `checkout-coupon-auto.test.tsx`, `coupons-best-route.test.ts`.
+- **Product card** (§1.1): colour **swatch dots** from Bengali/English colour names (`lib/color-swatch.ts` — specific shades before generic words, up to 3 dots + "+N", text fallback when a name is unknown; `product/color-swatches.tsx`), and a **rating line only when real reviews exist** (`card-rating`, Bengali digits). Second image on hover / press-and-hold was already in.
+- **Bilingual info pages** (§11): `components/i18n/l.tsx` — a `<L en bn />` client leaf so server pages stay server-rendered; `/delivery` (zone checker `HomeDeliveryCheck` on top, table headers/notes), `/returns`, `/contact`, `/about` are now fully Bengali-first. `/privacy`, `/terms`, `/faq` stay English (legal / low priority; FAQ answers were already bilingual in `lib/faq.ts`).
+- **`/story`** (§11): image-heavy brand story in four chapters — cloth, hands, town, calm — built only from editorial/product assets already in `/public`; footer & mobile nav *Our story* → `/story` (a new *About PROSANTI* link keeps `/about`), `/shop#journal` CTA → `/story`; in the sitemap.
+- **Campaign-aware hero** (§2, `home/hero-campaign.tsx`): a **live** campaign swaps the hero copy for the campaign's (Bengali first), adds an *ends in* countdown and a CTA to `/campaign`; a **teaser** counts up to the opening with *Get early access*; a running **flash drop** (no campaign) shows "*N*% off, for a few hours" + timer → `/offers`. Ordinary day = the hero is byte-for-byte as before. `/campaign` after a campaign ends now has a *"Don't miss the next one"* teaser (early-access list + offers hub) instead of a dead end (§10).
+- **PROSANTI+ pitch in checkout** (§8, `plus-pitch` in `order-summary-card.tsx`): loud with the exact saving when the delivery charge is **≥ ৳100** ("You'd have saved ৳150 on this order — PROSANTI+ ৳99/month"), a quiet one-liner below that; the price comes from `/api/membership`; hidden when Plus is off, on pickup, when delivery is already free, and for members; links to `/account#plus`.
+- **Photo reviews first** (§2/§4/§7): `visibleReviews` ranks featured → **with photos** → newest; home *Customer stories* gets a buyer-photo strip (`stories-photos`, newest first, ≤ 8, tap → the product's reviews); the post-delivery `ReviewAsk` asks for a **photo review** explicitly. (A "1 stamp per review" reward is *not* promised — there is no review→stamp ledger yet.)
+- **Weekly drops & offers push** (§12, migration `202609270001`): on the tracker card, once order updates are on, a separate default-off tick *"Also tell me about new drops & offers"* (`PATCH /api/track/push {endpoint, marketing}` → `customer_push_subscriptions.marketing`, per device). Admin → Growth → **Drops & offers broadcast** (`components/admin/broadcast-card.tsx`): Bengali + English title/body, same-site link, preview, opted-in device count; `POST /api/admin/push/broadcast` fans out to every opted-in device in its own language and logs a `push_broadcasts` row; the server enforces **one broadcast per 7 days** (429 + `Retry-After`), a send to nobody does not spend the slot, and the migration is named when missing. No SMS, no email. Rules in `lib/push-broadcast.ts`.
+- **Shop cover image** (§9, migration `202609270002`): `shops.cover_url`; Vendor → Settings *কভার ছবি (URL)* (sent only when changed, so an un-migrated DB still saves the rest); the storefront header renders it behind a readability gradient and the `/shops` card gets a 3:1 banner (`shop-card-cover`). Empty = today's look.
+
+Tests added/updated: `hero-campaign.test.ts`, `plus-pitch.test.tsx`, `customer-stories.test.tsx`, `reviews.test.ts`, `story-page.test.tsx`, `push-broadcast.test.ts`, `admin/push/__tests__/broadcast-route.test.ts`, `track-push-route.test.ts` (PATCH), `notify-opt-in.test.tsx`, `shops-directory.test.tsx`, `mappers.test.ts`, `l.test.tsx`, `color-swatch.test.ts`, `product-card.test.tsx`.
+
+## UX plan R8 — shop cards you can see into, info pages that end in product, no dead ends (2026-09-27)
+
+Round 8 of `docs/ux-sales-plan.md` (§9 shop directory, §11 information
+pages, §1.4 empty states, §1.5 speed audit). No migration.
+
+- **Shop directory card** (`components/shop/shop-card.tsx`): logo when the
+  shop has one, a **"peek at the shelf"** — the shop's three best pieces as
+  thumbnails (`shopShelfPeeks` in `lib/home-shelves.ts`: best sellers →
+  featured → new, discoverable and in stock only; computed on the server
+  page and passed down), and the zone answer both ways: a green
+  **"Delivers to your area"** tick when the picked zone is served, the
+  existing honest badge when it is not. Counts, prep minutes and rating in
+  Bengali digits under Bangla.
+- **Information pages end in product**: `components/info/info-rail.tsx`
+  ("Before you go · The pieces people are buying" — best sellers, new
+  arrivals while sales data is thin, hidden below two) closes about,
+  delivery, returns, FAQ, contact, privacy and terms.
+- **FAQ** is now bilingual and searchable (`lib/faq.ts`,
+  `components/info/faq-list.tsx`): the product search's forgiving folding
+  (case, Bengali spelling variants, synonyms), every word must match the
+  question or the answer in either script, matches open themselves, the
+  count reads "৮টির মধ্যে ১টি প্রশ্ন", and a miss offers "Ask us directly" →
+  `/contact` instead of a blank list.
+- **Contact**: WhatsApp card first (highlighted), then the call, then
+  e-mail — still only channels the shop actually configured.
+- **Empty states** (§1.4): the empty wishlist shows the best-seller rail;
+  the empty bag *drawer* shows the recently-viewed strip (the cart page
+  already did); and the storefront gets its own 404 —
+  `app/(site)/not-found.tsx` inside the site chrome (header, language,
+  bag), bilingual with Bengali digits, one CTA back to `/shop` and the
+  best-seller shelf underneath. `app/(site)/[...missing]/page.tsx` sends
+  every URL no real route claims there; the bare root 404 remains for the
+  admin / rider / vendor apps.
+- **Speed audit** (§1.5): verified what already holds — ISR home with
+  server-hydrated catalog + CMS, `/shop` and `/offers` painted from server
+  rows, `sizes` on every `next/image`, AVIF/WebP with a 31-day optimizer
+  cache, `font-display: swap` everywhere, `Reveal` never hides
+  above-the-fold content, no hero image on phones (LCP is the headline).
+  One change: the first two category tiles on the home page are
+  `priority` — they are the LCP candidates on a phone.
+- New strings under `info.*` and `shops.deliversHere / topPieces /
+  shopLogoAlt` (en + bn).
+- Tests: shops-directory (peeks helper, thumbnails + Bengali digits, tick
+  vs badge + ordering), faq-list (search across scripts, filtering, empty
+  hand-off), info-rail + not-found view, contact-channels order,
+  bag-drawer empty strip.
+
+## UX plan R7 — one Offers hub, Style Match that remembers, a Live page that is never empty (2026-09-27)
+
+Round 7 of `docs/ux-sales-plan.md` (§10 offers hub / live / Style Match).
+No migration.
+
+- **`/offers` hub** (`src/components/offers/offers-hub.tsx`, page is
+  `force-dynamic` and hydrates the storefront catalog like `/shop`): the
+  public promo-code card, the flash-drop rail (timer, up to 8), **every**
+  marked-down piece as a grid (biggest saving first, count in the UI
+  language, "see it as a shop filter" → `/shop?filter=sale`), "the set of
+  the week" (`BundleOffer` on `bundleAnchor` = the first discoverable,
+  in-stock piece that really has complements) and a new-arrivals rail.
+  When nothing is on — no markdowns, no code, no flash, no bundle — an
+  honest empty state with a single `/shop` CTA; the hub never invents an
+  offer.
+- **Every "Offers" entry points at `/offers`**: header, mobile bottom nav,
+  category menu, the home offers block's "See all" and the PWA shortcut
+  (`/offers?utm_source=pwa`). `isNavActive`: the Offers tab lights on
+  `/offers` only; `/shop?filter=sale` is a shop filter and lights **Shop**.
+- **Style Match remembered** (`src/lib/style-memory.ts`,
+  `prosanti.style-query.v1`, 60-day TTL, sanitised on read): the panel on
+  `/style` saves the query 600 ms after it finds ≥1 match. Home gains a
+  CMS-toggleable section `yourStyle` (`your-style-rail.tsx`): a returning
+  device sees **"New in your style"** — Style Match's own ranking, in-stock
+  only, new pieces ahead among equals, the occasion named in the subtitle,
+  ≥2 or hidden; a first visit sees a slim **"Three taps"** invite to
+  `/style`.
+- **`/live` never empty**: with no session on air or scheduled the page
+  keeps its honest "No live shopping right now" card and adds
+  `live-new-rail` — the newest orderable pieces (`newArrivals`, ≥2) with
+  "See all new arrivals" → `/shop?filter=new`.
+- New strings under `offers.*`, `home.style*`, `live.*` (en + bn, Bengali
+  digits in Bengali copy).
+- Tests: offers-hub (anchor, full hub in bn, empty state), nav-links
+  (Offers tab / sale-grid = Shop), home (see-all href), style-memory
+  (save / clear / junk / TTL), your-style-rail (invite, rail, silence
+  below two), live-view (rail order, no rail without stock), home-cms key
+  list.
+
+## UX plan R6 — search that forgives spelling, a tracker worth reopening, loyalty you can see (2026-09-26)
+
+Round 6 of `docs/ux-sales-plan.md` (§1.2 search, §7 track, §8 account /
+wishlist). No migration.
+
+- **Search** (`src/lib/product-search.ts`, shared by the header overlay and
+  the shop grid): `foldSearchText` normalises case, Latin accents and the
+  Bengali spellings people type (ী/ি, ূ/ু, nukta, শ/ষ/স, ণ/ন, hyphens and
+  spaces); a small bilingual synonym table maps garment words across scripts
+  (পাঞ্জাবী → panjabi, সালোয়ার কামিজ → three-piece, টিশার্ট → t-shirt …); a
+  multi-word query matches when every word matches, in any order. The
+  overlay remembers the last six acted-on queries on the device
+  (`prosanti.recent-searches.v1`, clearable), reads its quick chips in the
+  UI language, and at zero results offers "Popular right now" plus a
+  WhatsApp "can't find it?" link when ops has a number (`/api/contact`,
+  fetched once via `use-support-contact.ts`).
+- **Track**: `track-rail` ("While you wait · New this week": new → featured
+  → rest, in stock, never the ordered pieces, ≥2 or hidden);
+  `share-tracker` hands the same `/track?id&phone` link to family (native
+  share sheet, WhatsApp fallback, clipboard on dismiss); the live map's ETA
+  card adds `rider-away` — "রাইডার প্রায় ১.২ কিমি দূরে · ~৫ মিনিট" from the real
+  rider fix and the real delivery pin only (`src/lib/rider-distance.ts`,
+  15 km/h, silent beyond 60 km).
+- **Loyalty visible**: `stamp-line` in the bag drawer and the mobile menu —
+  "This order = your 7th stamp — 3 more to <reward>" (signed-in, enabled
+  Smart Card only; Bengali ordinals and digits).
+- **Referral landing**: `ref-landing` banner on any `?ref=` visit — "Your
+  friend just gave you ৳50 off your first order", dismissible per session;
+  the code stays on the device for checkout as before.
+- **Your size on cards**: `your-size` chip when a saved Size Finder profile
+  yields a confident, in-range size the product actually sells.
+- **Wishlist**: sold-out pieces last (+ a one-line note), `wishlist-share`
+  (gift hint: `/wishlist?ids=…` opens a read-only shared list with "Save
+  these to my wishlist"), and a `wishlist-rail` of complements / same-shelf
+  pieces (`goesWith` in `home-shelves.ts`, also behind the receipt rail).
+- Generic `components/ui/share-link.tsx` (native share → WhatsApp → copy).
+- Tests: product-search (folding, synonyms, multi-word), recent-searches,
+  overlay R6 block, rider-distance, live-delivery-map distance line,
+  while-you-wait + share button, stamp-line, ref-capture banner,
+  product-card size badge, wishlist-view (own / shared).
+
+## UX plan R5 — checkout one-minute cue, "same as last time", post-order rail (2026-09-26)
+
+Round 5 of `docs/ux-sales-plan.md` (§6 checkout). No migration.
+
+- **"About a minute" chip** in the checkout page header (`checkout-minute`,
+  en/bn) — the form is three short steps on one page and now says so.
+- **"Same as last time — go to order"** (`same-as-last`): when the last
+  saved address has pre-filled the form, a one-tap button under the
+  pre-fill note scrolls to the review step and focuses the Place Order
+  button. It never submits by itself; the shopper still confirms the total.
+- **Receipt rail** (`receipt-rail`, `src/components/checkout/receipt-rail.tsx`):
+  below Track / Continue shopping, "You may also like" shows complements
+  of the pieces just bought (`completeTheLook`) and then the same shelf's
+  in-stock siblings (`moreInCategory`) — never the ordered pieces, in-stock
+  only, up to 8, hidden below 2 candidates. Cards fire the usual funnel
+  events with `src="receipt-rail"`.
+- Push opt-in and the referral row already lived on the receipt; the
+  "phone-only one-tap account" idea is dropped (no SMS/email verification
+  by design — addresses are saved on the device anyway).
+- Tests: `receipt-rail.test.tsx` (suggestions contract, Bengali rail,
+  header cue in both languages), `checkout-batch-f` (one-tap jump focuses
+  the CTA without an order request). The free-delivery suite pins
+  `isNight: false` so it no longer flakes after 9 PM.
+
+## UX plan R4 — the listing remembers: URL state, back-restore, sticky filter bar (2026-09-26)
+
+§3 of `docs/ux-sales-plan.md` — the listing page's biggest time-killer was starting over after every product page:
+
+- **The filters are the URL** — `lib/shop-url.ts` (`shopSearchString`, `parseList`, `resolvePriceBand`, price bands) + `ShopBrowser`: every change to category / sub-category / new / sale / query / mood / price / sort / **sizes / colours / in-stock** is written with `history.replaceState` (no server round-trip, no history spam; foreign params like `utm_*` survive), and `app/(site)/shop/page.tsx` parses the same params (`?size=M,L&color=Ivory&stock=1&price=<band>`), so reload, a shared link and **Back** all show the same list. The first render never rewrites the URL the server just produced.
+- **Scroll restore** — before a card opens a product page the grid stamps `scrollY` on the current history entry (`SHOP_SCROLL_KEY`); when that entry is revisited the browser restores it once the grid is tall enough (rAF, ≤ 20 tries), then clears the stamp. A push navigation to `/shop` never inherits it.
+- **Sticky compact bar** — *Filters (n) · N products · Sort* stays under the condensed header (`top-14` / `sm:top-[4.1rem]`) on every breakpoint; the search field and deliver-to select stay in the toolbar above.
+- **Sold-out last** in the default *Featured* order (in stock → featured → catalog order); the result line now carries the zone's charge and time (*Deliver to Zone A · ৳60 · 40–50 min*).
+
+Tests: `src/lib/__tests__/shop-url.test.ts`, `shop-browser.test.tsx` (URL writes + foreign params, `?size/stock/price` start state, sold-out last, scroll stamp/restore).
+
+## UX plan R3 — best-seller / new-arrival rails, area pill (2026-09-26)
+
+§2 + §1.2 of `docs/ux-sales-plan.md`, the first-screen items:
+
+- **Curated rails after the category row** — `components/home/curated-rails.tsx`. *Best sellers* is ranked by real orders (`unitsSold` from `v_product_sales`, in stock only) and stays away until the shop has **two** genuine sellers; *New arrivals* leads with the shop's `isNew` flag, then the newest rows, needs a real row (**4+**) and never repeats a best seller. Both are plain `ProductRail`s (`data-list` `best-sellers-rail` / `new-arrivals-rail` for the funnel) linking to `/shop?sort=best` / `?sort=newest`, and both have Admin → Homepage section toggles (`sections.bestSellers`, `sections.newArrivals`, default on). Test `curated-rails.test.tsx`.
+- **"Area: Borpara ▾" pill** — `components/layout/zone-pill.tsx`: a native `<select>` dressed as a pill (works on every phone, no popover to trap focus) that reads/writes the one remembered zone (`useMyZone`) the home delivery check, the PDP delivery line, the shop browser and checkout already share. In the header from `sm` up; inside the hero on phones. en + bn (`zonePill.*`). Test `zone-pill.test.tsx`.
+
+## UX plan R1/R2 — card price block, personal delivery line, bag mini-bar, add-ons first (2026-09-26)
+
+The first items of `docs/ux-sales-plan.md` after the free-delivery decision, each small and measurable:
+
+- **Product card price block (§1.1)** — one rule everywhere: current price, struck old price, and a **"Save 20%" / "২০% ছাড়"** chip computed from the shop's `compareAtPrice` (flash drops keep their image ribbon instead). **"Only 2 left" / "মাত্র ২টি বাকি"** when the row carries a real count ≤ 3, "Only a few left" from the shop's low-stock flag alone; sold-out cards show neither. Bengali digits in Bengali. `components/product/product-card.tsx`, test `product-card-price-block.test.tsx`.
+- **Personal delivery line on the PDP (§4)** — `components/delivery/delivery-line.tsx` under the arrival cue: the shopper's remembered zone (`useMyZone`, shared with the home check, shop browser and checkout) → **"বড়পাড়ায় ডেলিভারি ৳৬০ · ক্যাশ অন ডেলিভারি · ৳৯৯৯+ অর্ডারে ফ্রি"**; the courier story for z4 (charge · days · minimum order from settings); and, when no zone is remembered, **"আপনার এলাকায় পাঠাই কি?"** with a zone picker that writes the same remembered zone. Test `delivery-line.test.tsx`.
+- **Sticky bag mini-bar on listing pages (§1.3)** — `components/cart/bag-mini-bar.tsx` (mounted in the site layout, phones only): while the bag has pieces on `/shop`, `/shops/*`, `/campaign/*`, `/wishlist`, `/live`, `/style`, a bar above the bottom nav reads **"৩টি পণ্য · ৳১,২৫০"** (tap → bag drawer) + **চেকআউট →**. Never on the product page (own buy bar), bag or checkout, and hidden while the drawer is open. Test `bag-mini-bar.test.tsx`.
+- **Add-on rail leads with the cheapest complements (§5)** — the bag drawer's *Pair it with* now sorts `completeTheLook` candidates by price and stays inside the bag's shop (single-shop rule), so the suggestion is a one-tap yes.
+
+## Menubar redesign (2026-09-26)
+
+A UI/UX pass on the storefront chrome — the parts every page shares — so it reads like a professional shop and is easier to use, in both languages.
+
+**Desktop header**
+
+- **Categories is a real menu.** Hover or click opens a panel of every category that has pieces (thumbnail, count), the garment types inside each as chips (`/shop?category=…&sub=…`), and an "All products / Offers" footer. Keyboard: `Escape` closes and returns focus; clicking elsewhere or navigating closes it. Until the live catalog answers it is the plain jump to the home shelf it used to be. Data comes from `src/lib/category-menu.ts` (`categoryMenuEntries`), which only lists discoverable pieces and follows the shop's declared sub-category order.
+- **Search you can see.** From 1280px the search trigger is a field-shaped button showing the placeholder ("Panjabi, shirts, gamcha…") instead of a lone magnifier; below that it is the round icon. It is still one button (`aria-label` "Search products") opening the same full-screen search.
+- **Quieter wayfinding.** Nav labels lost their pill boxes; the current section is marked by colour and a gold hairline. The in-page `Categories` jump (`/#collections`) is never marked "current" (it lit up on the home page before, reading as a page you were on). Account is one tap from every desktop page.
+- Language switch is a light hairline pill; the actions read left-to-right as language · search · wishlist · account · bag.
+
+**Phone**
+
+- Announcement bar is always one line (truncates with a title tooltip, no more two-line wrap); the wordmark steps aside below 360px instead of colliding with the language toggle.
+- **Drawer rebuilt:** language row first (P1 #8 stays), Account / Wishlist (with count) / Track Order tiles, Shop · Offers · Shops rows, then **every category with a thumbnail and count** linking into the filtered shop, then Help. Panel is ivory, 88% wide, sticky header with the brand and a close button.
+- Bottom bar: the active tab sits in a soft pill; the bag count is a badge (99+ cap) with a spoken label ("Open bag, 3 items").
+
+**Bengali typography (systemic)**
+
+- `--font-display` now falls back to Noto Serif Bengali, so the 129 `font-display` headings render Bangla in a serif instead of a fallback sans; `:lang(bn)` drops the letter-spacing that spread Bengali conjuncts apart (`tracking-*` and uppercase eyebrows) and removes synthetic italics.
+- `<html lang>` is set **before first paint** by a tiny inline script in the site layout (stored choice, else `bn`), so these rules apply from frame one instead of flipping after hydration. Latin wordmarks/announcements carry `lang="en"` and keep their tracking.
+
+**Found and fixed on the way**
+
+- **The whole storefront remounted about a second after every page load.** `AccountWishlistProvider` switched wrapper element types when the customer-session probe answered, so React threw away the header, page and footer: a search or menu opened in that first second vanished, typed text was dropped, and every entrance animation replayed (the "blink" after load). It now keeps one element and only changes the context value; a device without a cloud client is a guest immediately (no blank-then-jump wishlist count). Regression test: `src/components/account/__tests__/account-wishlist-stability.test.tsx`.
+- The Playwright storefront suite had gone stale against the Bangla-default storefront (English locators, an old dialog name). It now pins the remembered language to English per test, uses the current names and tolerates pages that nest their own `<header>`. It still needs a configured catalog to pass end to end — see `docs/browser-qa.md`.
+- `npm run lint` no longer trips over Playwright's generated report under `.cache/`.
+
+New strings are keyed in en + bn (`header.search`, `categoryMenu.*`, `mobileDrawer.*`). Tests: `src/lib/__tests__/category-menu.test.ts`, `src/components/layout/__tests__/{category-menu,mobile-nav-catalog,nav-links}.test.tsx`.
 
 ## Menubar polish (2026-09-21)
 
@@ -379,7 +839,7 @@ Live project: [bhromor-zeta.vercel.app](https://bhromor-zeta.vercel.app). `verce
 
 ## Next phases (in order)
 
-1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply the SQL migrations, `npm run seed`, approve + link the first rider, grant the first staff role (`npm run grant-admin -- rahatbd2050@gmail.com super_admin`), run the verify checklist. The storefront serves the launch catalog out of the box, but the database must be seeded before live checkout, admin, and tracking work.
+1. **Go-live (owner)** — follow **[docs/go-live.md](docs/go-live.md)**: apply the SQL migrations, `npm run seed`, approve the first rider (the application already carries the login), grant the first staff role (`npm run grant-admin -- rahatbd2050@gmail.com super_admin`), run the verify checklist. The storefront serves the launch catalog out of the box, but the database must be seeded before live checkout, admin, and tracking work.
 2. **Notif channels (SMS/WhatsApp)** on top of the inbox (§35) once a gateway account exists; Cloudinary keys enable direct media upload (§48) — both optional, everything else is already real.
 
 

@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useOrders } from "@/lib/use-orders";
 import { useCatalog } from "@/lib/use-catalog";
 import { useSettings } from "@/lib/use-settings";
+import { useApplicationsPending } from "@/lib/use-applications-pending";
 import {
   aggregateOrders,
   deliveryStats,
@@ -36,6 +37,7 @@ import {
 /** §32 operational overview + §88 delivery performance. */
 export default function AdminDashboard() {
   const { orders, loading: ordersLoading, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
+  const applications = useApplicationsPending();
 
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const perf = useMemo(() => deliveryStats(orders), [orders]);
@@ -178,6 +180,60 @@ export default function AdminDashboard() {
           </span>
           <IconArrowRight className="h-4 w-4" />
         </Link>
+      )}
+
+      {/* Apply = sign up (2026-09-26): applications and password-reset
+          requests wait for a human decision; the person on the other side
+          cannot sign in until then, so they must not sit unseen. */}
+      {applications.total > 0 && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-forest-50 px-5 py-3 text-sm font-semibold text-forest-900 ring-1 ring-forest-200"
+        >
+          <span>
+            📋 Waiting for you:{" "}
+            {[
+              applications.shops > 0
+                ? `${applications.shops} shop application${applications.shops === 1 ? "" : "s"}`
+                : null,
+              applications.riders > 0
+                ? `${applications.riders} rider application${applications.riders === 1 ? "" : "s"}`
+                : null,
+              applications.resets > 0
+                ? `${applications.resets} password reset request${applications.resets === 1 ? "" : "s"}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            . They can sign in the moment you decide.
+          </span>
+          <span className="flex flex-wrap gap-2">
+            {applications.shops > 0 && (
+              <Link
+                href="/admin/shops"
+                className="inline-flex items-center gap-1 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-forest-700"
+              >
+                Shops <IconArrowRight className="h-3 w-3" />
+              </Link>
+            )}
+            {applications.riders > 0 && (
+              <Link
+                href="/admin/riders"
+                className="inline-flex items-center gap-1 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-forest-700"
+              >
+                Riders <IconArrowRight className="h-3 w-3" />
+              </Link>
+            )}
+            {applications.resets > 0 && (
+              <Link
+                href="/admin/access"
+                className="inline-flex items-center gap-1 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-forest-700"
+              >
+                Access requests <IconArrowRight className="h-3 w-3" />
+              </Link>
+            )}
+          </span>
+        </div>
       )}
 
       {/* Late orders — the same SLA list as the dispatch board, on the page

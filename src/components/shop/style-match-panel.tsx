@@ -9,7 +9,8 @@
  * unrelated stock.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { saveStyleQuery } from "@/lib/style-memory";
 import Link from "next/link";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useSizeProfile } from "@/lib/use-size-profile";
@@ -52,6 +53,15 @@ export default function StyleMatchPanel() {
 
   const empty = isStyleQueryEmpty(query as never);
   const matches = useMemo(() => styleMatch(products, query), [products, query]);
+
+  /* UX plan §10 (R7) — remember the style on this device once it actually
+     finds something, so the home page can greet the shopper with "new in
+     your style". Debounced: typing a budget digit by digit is one query. */
+  useEffect(() => {
+    if (empty || matches.length === 0) return;
+    const timer = window.setTimeout(() => saveStyleQuery(query), 600);
+    return () => window.clearTimeout(timer);
+  }, [empty, matches.length, query]);
 
   const chip =
     "h-9 rounded-full px-3 text-xs font-semibold ring-1 transition-colors";

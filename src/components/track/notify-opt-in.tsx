@@ -46,7 +46,7 @@ export default function NotifyOptIn({
   status?: string;
 }) {
   const { t, lang } = useLanguage();
-  const { state, enable, disable, sendTest } = useOrderPush(orderId, phone);
+  const { state, enable, disable, sendTest, setMarketing } = useOrderPush(orderId, phone);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,6 +84,19 @@ export default function NotifyOptIn({
     setNote(null);
     await disable();
     setNote(t("trackPush.off"));
+    setBusy(false);
+  };
+
+  // UX plan §12 — the weekly drops & offers broadcast is a SEPARATE yes,
+  // asked only once order updates are on; default off, one tap either way.
+  const onMarketing = async (on: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    const result = await setMarketing(on);
+    if (result.ok) setNote(on ? t("trackPush.marketingOn") : t("trackPush.marketingOff"));
+    else setError(result.message ?? t("trackPush.failed"));
     setBusy(false);
   };
 
@@ -136,6 +149,26 @@ export default function NotifyOptIn({
           )}
         </div>
       </div>
+
+      {state.subscribed && (
+        <label
+          className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl bg-ivory-100/70 px-3.5 py-2.5 text-xs leading-5 text-ink ring-1 ring-line"
+          data-testid="track-notify-marketing"
+          data-on={state.marketing ? "1" : "0"}
+        >
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 shrink-0 accent-forest-800"
+            checked={state.marketing === true}
+            disabled={busy || state.marketing === null}
+            onChange={(e) => void onMarketing(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold text-forest-900">{t("trackPush.marketingTitle")}</span>{" "}
+            <span className="text-ink-soft">{t("trackPush.marketingBody")}</span>
+          </span>
+        </label>
+      )}
 
       {/* Every step, from the same journey the fan-out walks. */}
       <ul className="mt-3 flex flex-wrap gap-2" data-testid="track-notify-milestones">

@@ -57,6 +57,11 @@ export interface OrderPushCardState {
   remembered: boolean;
   /** True while the first status read is still running. */
   loading: boolean;
+  /**
+   * "Drops & offers too" opt-in for THIS device (UX plan §12) — null until
+   * the server has answered for the browser's own endpoint.
+   */
+  marketing: boolean | null;
 }
 
 interface ServerStatus {
@@ -64,6 +69,7 @@ interface ServerStatus {
   publicKey: string | null;
   ready: boolean;
   watching: number;
+  marketing?: boolean | null;
 }
 
 const readRemembered = (): { endpoint: string; orderId: string } | null => {
@@ -99,6 +105,8 @@ export interface UseOrderPush {
   sendTest: () => Promise<{ ok: boolean; message?: string }>;
   /** Re-read everything (used after the shopper returns to the tab). */
   refresh: () => Promise<void>;
+  /** Opt this device in/out of the weekly drops & offers broadcast. */
+  setMarketing: (on: boolean) => Promise<{ ok: boolean; message?: string }>;
 }
 
 /**
@@ -116,20 +124,28 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
   const [subscribed, setSubscribed] = useState(false);
   const [remembered, setRemembered] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [marketing, setMarketingState] = useState<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     const nextEnv = readPushEnv();
     setEnv(nextEnv);
     setEnvReady(true);
     setPermission(readPermission());
-    setSubscribed(
-      nextEnv.serviceWorker ? (await currentSubscription()) !== null : false,
-    );
+    const live = nextEnv.serviceWorker ? await currentSubscription() : null;
+    setSubscribed(live !== null);
     const saved = readRemembered();
     setRemembered(saved !== null && (orderId === "" || saved.orderId === orderId));
     try {
-      const res = await fetch("/api/track/push", { cache: "no-store" });
-      if (res.ok) setStatus((await res.json()) as ServerStatus);
+      // The browser's own endpoint rides along so the server can say whether
+      // THIS device also opted into drops & offers (UX plan §12).
+      const endpoint = live?.endpoint ?? saved?.endpoint ?? "";
+      const query = endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : "";
+      const res = await fetch(`/api/track/push${query}`, { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as ServerStatus;
+        setStatus(data);
+        setMarketingState(typeof data.marketing === "boolean" ? data.marketing : null);
+      }
     } catch {
       // Offline or unconfigured backend: the card stays honest about `supported`.
     } finally {
@@ -223,6 +239,7 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
       // nothing to forget
     }
     setSubscribed(false);
+    setMarketingState(null);
   }, []);
 
   const sendTest = useCallback(async () => {
@@ -247,6 +264,30 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
     }
   }, [orderId, phone]);
 
+  const setMarketing = useCallback(async (on: boolean) => {
+    const sub = await currentSubscription();
+    const endpoint = sub?.endpoint ?? readRemembered()?.endpoint ?? "";
+    if (!endpoint) {
+      return { ok: false, message: "Age order update ON korun, tarpor drops & offers." };
+    }
+    try {
+      const res = await fetch("/api/track/push", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ endpoint, marketing: on }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        return { ok: false, message: data?.error ?? "Save kora gelo na — abar cheshta korun." };
+      }
+      setMarketingState(on);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: apiErrorMessage(err) };
+    }
+  }, []);
+
   const blocker = envReady ? pushBlocker(env) : null;
   const steps = envReady ? recoverySteps(env, permission) : [];
 
@@ -261,10 +302,12 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
       configured: status?.configured === true,
       ready: status?.ready !== false,
       loading,
+      marketing,
     },
     enable,
     disable,
     sendTest,
     refresh,
+    setMarketing,
   };
 }

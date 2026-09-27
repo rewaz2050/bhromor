@@ -13,6 +13,7 @@ import Drawer from "@/components/ui/drawer";
 import { Price } from "@/components/ui/primitives";
 import { IconClose } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
 
 export default function QuickAdd({
   product,
@@ -21,14 +22,12 @@ export default function QuickAdd({
   product: Product;
   onClose: () => void;
 }) {
-  const { t } = useLanguage();
-  const [size, setSize] = useState(
-    product.sizes.length === 1 ? product.sizes[0] : "",
-  );
+  const { t, lang } = useLanguage();
+  const [size, setSize] = useState(() => pickSelectableSize(product, null));
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
   const { openBag } = useCart();
-  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("card");
   const ready = product.inStock && (product.sizes.length === 0 || !!size);
   return (
     <Drawer
@@ -63,17 +62,44 @@ export default function QuickAdd({
           <legend className="mb-3 text-xs uppercase tracking-widest">
             {t("shopBrowser.size")}
           </legend>
-          <div className="flex flex-wrap gap-2">
-            {product.sizes.map((s) => (
-              <button
-                key={s}
-                onClick={() => setSize(s)}
-                aria-pressed={size === s}
-                className={`min-h-11 min-w-11 border px-4 text-sm ${size === s ? "border-forest-800 bg-forest-800 text-white" : "border-line"}`}
-              >
-                {s}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-x-2 gap-y-5">
+            {product.sizes.map((s) => {
+              // UX plan §4 (R10): a sold-out size is disabled here — the
+              // sheet is for a quick add; the product page carries the
+              // "ask the shop" path for that size.
+              const avail = sizeAvailability(product, s);
+              const out = avail.state === "out";
+              return (
+                <button
+                  key={s}
+                  onClick={() => setSize(s)}
+                  disabled={out}
+                  aria-pressed={size === s}
+                  aria-label={
+                    out
+                      ? `${s} — ${t("purchase.soldOut")}`
+                      : avail.state === "low" && avail.available !== null
+                        ? `${s} — ${sizeLeftLabel(avail.available, lang)}`
+                        : undefined
+                  }
+                  data-size-stock={avail.state}
+                  className={`relative min-h-11 min-w-11 border px-4 text-sm ${
+                    size === s
+                      ? "border-forest-800 bg-forest-800 text-white"
+                      : out
+                        ? "border-line/60 text-ink-soft/50 line-through"
+                        : "border-line"
+                  }`}
+                >
+                  {s}
+                  {avail.state === "low" && avail.available !== null ? (
+                    <span aria-hidden="true" className="absolute -bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[0.6rem] font-semibold text-rose-700">
+                      {sizeLeftLabel(avail.available, lang)}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </fieldset>
       )}

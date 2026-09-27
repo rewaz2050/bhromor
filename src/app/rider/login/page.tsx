@@ -1,10 +1,27 @@
 "use client";
 
+/**
+ * Rider sign-in (2026-09-26 apply = sign up).
+ *
+ * The rider application form sets the email + password, so this page only
+ * signs in. A session that the rider API still refuses (application
+ * pending, suspended, or a login with no rider row) gets a status card
+ * with the next step — before this the page blindly redirected every
+ * session to /rider, which bounced pending riders between the shell's
+ * guest screen and here.
+ */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { useRiderSession } from "@/lib/use-rider";
 import { IconTruck } from "@/components/ui/icons";
+import PasswordInput from "@/components/ui/password-input";
+import { usePoll } from "@/lib/use-poll";
+import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
+import KycUploadCard from "@/components/rider/kyc-upload-card";
+import { loginIdentifierToEmail } from "@/lib/phone-login";
 
 /**
  * Supabase returns raw English auth errors ("Email not confirmed", "Invalid
@@ -16,7 +33,7 @@ const supabaseSignInError = (err: { message?: string }): string => {
     return "ইমেইলটি এখনো কনফার্ম হয়নি — ইনবক্সে (স্প্যামসহ) পাঠানো কনফার্মেশন লিংকে ক্লিক করুন, তারপর আবার লগইন করুন।";
   }
   if (/invalid login credentials/i.test(m)) {
-    return "ইমেইল বা পাসওয়ার্ড মিলছে না। নতুন অ্যাকাউন্ট খুলতে উপরের \u201cনতুন অ্যাকাউন্ট\u201d ট্যাব ব্যবহার করুন।";
+    return "ইমেইল/মোবাইল নম্বর বা পাসওয়ার্ড মিলছে না। রাইডার আবেদনের সময় যে তথ্য দিয়েছিলেন সেটাই ব্যবহার করুন।";
   }
   if (/rate limit|too many/i.test(m)) {
     return "অনেকবার চেষ্টা হয়েছে — এক মিনিট পর আবার করুন।";
@@ -24,67 +41,38 @@ const supabaseSignInError = (err: { message?: string }): string => {
   return m ? `লগইন করা যায়নি: ${m}` : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।";
 };
 
-const supabaseSignUpError = (err: { message?: string }): string => {
-  const m = err.message ?? "";
-  if (/already registered|already exists/i.test(m)) {
-    return "এই ইমেইলে অ্যাকাউন্ট আছে — \u201cসাইন ইন (Login)\u201d ট্যাব দিয়ে লগইন করুন। পাসওয়ার্ড ভুলে গেলে অ্যাডমিনকে জানান।";
-  }
-  if (/rate limit|too many/i.test(m)) {
-    return "অনেকবার চেষ্টা হয়েছে — এক মিনিট পর আবার করুন।";
-  }
-  if (/password/i.test(m) && /weak|short|at least/i.test(m)) {
-    return "পাসওয়ার্ড অন্তত ৬ অক্ষরের দিন।";
-  }
-  return m ? `অ্যাকাউন্ট খোলা যায়নি: ${m}` : "অ্যাকাউন্ট খোলা যায়নি। আবার চেষ্টা করুন।";
-};
+const secondaryClass =
+  "inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-4 text-xs font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100";
 
+/** Pending-approval re-check cadence (visible tab only). */
+const PENDING_RECHECK_MS = 30_000;
 
 export default function RiderLoginPage() {
   const router = useRouter();
   const supabase = getSupabaseBrowser();
+  const { status, error, denyReason, refresh, signOut } = useRiderSession();
+  // Apply = sign up: a pending applicant usually leaves this tab open, so
+  // re-check every 30 s while visible and send them in the moment staff approves.
+  usePoll(refresh, PENDING_RECHECK_MS, status === "guest" && denyReason === "pending");
 
-  const [mode, setMode] = useState<"in" | "up">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        router.replace("/rider");
-      }
-    });
-  }, [supabase, router]);
-
-  // The apply success screen sends applicants here to create the login
-  // (?mode=up&email=…). Window read (not useSearchParams) so the page needs
-  // no Suspense boundary; runs once on mount.
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("mode") === "up") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption of the URL on mount
-      setMode("up");
-      setNotice(
-        "আবেদন পেওয়া গেছে! একই ইমেইল দিয়ে নিচের অ্যাকাউন্ট খুলুন — অনুমোদনের পর এই অ্যাকাউন্টেই রাইডার পোর্টাল খুলবে।",
-      );
-    }
-    const prefill = q.get("email");
-    if (prefill) {
-      setEmail(prefill.slice(0, 160));
-    }
-  }, []);
+    if (status === "authed") router.replace("/rider");
+  }, [status, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    setNotice(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setFormError("সঠিক ইমেইল অ্যাড্রেস লিখুন।");
+    // Round 4 — e-mail OR mobile number; a number becomes the synthetic
+    // login address the application was created with (no SMS involved).
+    const cleanEmail = loginIdentifierToEmail(email);
+    if (!cleanEmail) {
+      setFormError("সঠিক ইমেইল অ্যাড্রেস বা ১১-সংখ্যার মোবাইল নম্বর লিখুন।");
       return;
     }
     if (password.length < 6) {
@@ -102,44 +90,26 @@ export default function RiderLoginPage() {
 
     setBusy(true);
     try {
-      if (mode === "in") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-        if (error) {
-          setFormError(supabaseSignInError(error));
-          return;
-        }
-        router.replace("/rider");
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-        });
-        if (error) {
-          setFormError(supabaseSignUpError(error));
-          return;
-        }
-        if (data.session) {
-          // Email confirmation is off → the rider is signed in already:
-          // take them straight to the application (profile) form.
-          router.replace("/rider/apply");
-        } else {
-          // Email confirmation is on → no session until they tap the link.
-          setNotice(
-            "অ্যাকাউন্ট তৈরি হয়েছে! এখন ইমেইলে পাঠানো কনফার্মেশন লিংকে ক্লিক করুন (স্প্যাম ফোল্ডারও দেখুন), তারপর এখানে লগইন করে রাইডার আবেদন সম্পূর্ণ করুন।",
-          );
-        }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (signInError) {
+        setFormError(supabaseSignInError(signInError));
+        return;
       }
+      // The probe decides: active → /rider, pending → the status card below.
+      await refresh();
     } catch (err: unknown) {
       setFormError(
-        err instanceof Error ? err.message : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।",
+        err instanceof Error ? err.message : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।",
       );
     } finally {
       setBusy(false);
     }
   };
+
+  const denied = status === "guest" && error !== null;
 
   return (
     <div className="flex-1 flex flex-col justify-center p-6 sm:p-8">
@@ -155,90 +125,145 @@ export default function RiderLoginPage() {
         </p>
       </div>
 
-      
+      {status === "checking" ? (
+        <div
+          className="mt-8 h-56 animate-pulse rounded-3xl bg-line/60"
+          aria-label="লোড হচ্ছে"
+        />
+      ) : denied ? (
+        <section
+          aria-labelledby="rider-status-heading"
+          className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-forest-700">
+            {denyReason === "pending"
+              ? "আবেদন জমা আছে"
+              : denyReason === "rejected"
+                ? "আবেদন অনুমোদন হয়নি"
+                : denyReason === "suspended"
+                  ? "অ্যাকাউন্ট সাসপেন্ড"
+                  : "এই লগইনে রাইডার প্রোফাইল নেই"}
+          </p>
+          <h2 id="rider-status-heading" className="font-display text-lg font-bold text-forest-900">
+            {denyReason === "pending"
+              ? "অ্যাডমিনের অনুমোদনের অপেক্ষায়"
+              : denyReason === "rejected"
+                ? "তথ্য ঠিক করে আবার আবেদন করুন"
+                : denyReason === "suspended"
+                  ? "রাইডার অ্যাকাউন্ট সাসপেন্ড করা আছে"
+                  : "রাইডার আবেদন করুন"}
+          </h2>
+          <p
+            role="status"
+            className={`rounded-xl p-3 text-xs ring-1 ${
+              denyReason === "pending"
+                ? "bg-amber-50 text-amber-900 ring-amber-200"
+                : "bg-rose-50 text-rose-800 ring-rose-200"
+            }`}
+          >
+            {error}
+          </p>
+          {denyReason === "pending" && (
+            <p className="text-xs text-ink-soft">
+              আপনি লগইন অবস্থায় আছেন। অনুমোদন হয়ে গেলে এই ইমেইল/মোবাইল নম্বর ও
+              পাসওয়ার্ডেই রাইডার অ্যাপ খুলবে — এই পেইজ খোলা থাকলে প্রতি ৩০
+              সেকেন্ডে নিজে থেকেই দেখে নেবে, চাইলে “আবার দেখুন” চাপুন।
+            </p>
+          )}
+          {denyReason === "rejected" && (
+            <>
+              <p className="text-xs text-ink-soft">
+                আপনার লগইন ঠিকই আছে। উপরের কারণটি ঠিক করে আবেদন ফর্মটি আবার
+                জমা দিন — একই ইমেইল/মোবাইল নম্বর ও পাসওয়ার্ড দিলে আগের আবেদনটিই
+                নতুন তথ্যসহ অ্যাডমিনের কিউতে ফিরে যাবে।
+              </p>
+              <Link
+                href="/rider/apply"
+                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+              >
+                তথ্য ঠিক করে আবার আবেদন করুন →
+              </Link>
+            </>
+          )}
+          {denyReason === "none" && (
+            <Link
+              href="/rider/apply"
+              className="inline-flex h-12 w-full items-center justify-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
+            >
+              রাইডার আবেদন ফর্ম →
+            </Link>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => void refresh()} className={secondaryClass}>
+              আবার দেখুন
+            </button>
+            <button type="button" onClick={() => void signOut()} className={secondaryClass}>
+              সাইন আউট
+            </button>
+          </div>
+        </section>
+      ) : (
         <form
           onSubmit={handleSubmit}
           className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
         >
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-ivory-100 p-1 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("in");
-                setFormError(null);
-              }}
-              className={`rounded-lg py-2 transition-all ${
-                mode === "in"
-                  ? "bg-paper text-forest-900 shadow-sm"
-                  : "text-ink-soft hover:text-forest-900"
-              }`}
-            >
-              সাইন ইন (Login)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("up");
-                setFormError(null);
-              }}
-              className={`rounded-lg py-2 transition-all ${
-                mode === "up"
-                  ? "bg-paper text-forest-900 shadow-sm"
-                  : "text-ink-soft hover:text-forest-900"
-              }`}
-            >
-              নতুন অ্যাকাউন্ট
-            </button>
-          </div>
-
+          <h2 className="font-display text-base font-bold text-forest-900">সাইন ইন (Login)</h2>
           {formError && (
             <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
               {formError}
             </p>
           )}
-          {notice && (
-            <p className="rounded-xl bg-emerald-50 p-3 text-xs text-emerald-900 ring-1 ring-emerald-200">
-              {notice}
-            </p>
-          )}
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-forest-900">
-              ইমেইল অ্যাড্রেস
+            <label htmlFor="rider-login-email" className="mb-1 block text-xs font-semibold text-forest-900">
+              ইমেইল অ্যাড্রেস বা মোবাইল নম্বর
             </label>
             <input
-              type="email"
-              required
+              id="rider-login-email"
+              type="text"
+              autoComplete="username"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="rider@example.com"
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
+              placeholder="017XXXXXXXX অথবা rider@example.com"
             />
           </div>
-
           <div>
-            <label className="mb-1 block text-xs font-semibold text-forest-900">
+            <label htmlFor="rider-login-password" className="mb-1 block text-xs font-semibold text-forest-900">
               পাসওয়ার্ড
             </label>
-            <input
-              type="password"
-              required
-              minLength={6}
+            <PasswordInput
+              id="rider-login-password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
+              placeholder="••••••••"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
             />
           </div>
-
           <button
             type="submit"
             disabled={busy}
             className="w-full h-12 rounded-full bg-forest-800 font-semibold text-xs text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
           >
-            {busy ? "যাচাই হচ্ছে…" : mode === "in" ? "লগইন করুন" : "অ্যাকাউন্ট খুলুন"}
+            {busy ? "যাচাই হচ্ছে…" : "লগইন করুন"}
           </button>
-      </form>
+          <p className="text-center text-[11px] leading-relaxed text-ink-soft">
+            রাইডার আবেদনের সময় দেওয়া ইমেইল (বা ইমেইল না দিলে মোবাইল নম্বর) ও
+            পাসওয়ার্ড দিন — অ্যাডমিন অনুমোদন করলেই অ্যাপ খুলবে।
+          </p>
+        </form>
+      )}
+      {denied && (denyReason === "pending" || denyReason === "rejected") && (
+        // Round 4 — NID / selfie / licence photos while waiting; staff see them before approving.
+        <KycUploadCard className="mt-4" />
+      )}
+      {status !== "checking" && !denied && (
+        // এসএমএস/ইমেইল ছাড়া রিসেট: অনুরোধ → অ্যাডমিনের ফোন-যাচাই → এখানেই নতুন পাসওয়ার্ড।
+        <ForgotPasswordPanel kind="rider" lang="bn" onDone={setEmail} className="mt-4" />
+      )}
 
       <div className="mt-8 text-center space-y-2 text-xs text-ink-soft">
         <p>

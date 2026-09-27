@@ -396,6 +396,100 @@ After the existing migrations, apply in order:
 - `supabase/migrations/202609250004_settle_claims.sql`
 - `supabase/migrations/202609250005_delivery_pin_lockout.sql`
 - `supabase/migrations/202609250006_dispatch_health.sql`
+- `supabase/migrations/202609250007_realtime_offers.sql`
+- `supabase/migrations/202609250008_delivery_ratings.sql`
+- `supabase/migrations/202609260001_password_reset_requests.sql` — password
+  reset **requests** for vendor / rider logins (no SMS, no e-mail): the
+  login page files a request, staff verify by phone and approve under
+  Admin → Access requests, and the person sets a new password themselves
+  within 24 h. One table + one staff RLS policy; safe to re-run. Until it
+  is applied, "পাসওয়ার্ড ভুলে গেছেন?" answers 503 and Admin → Access
+  requests explains what to run; the card-level **Reset password** keeps
+  working regardless.
+- `supabase/migrations/202609260002_application_review.sql` — application
+  **review + rider KYC** (round 4): widens the shop / rider status check to
+  allow `rejected`, adds `review_note`, `reviewed_by`, `reviewed_by_email`,
+  `reviewed_at` to both tables and `kyc` (jsonb) + `kyc_submitted_at` to
+  riders. Pure `alter table … if not exists`; safe to re-run; nothing to
+  back-fill. Until it is applied, the **Approve / Reject…** strip on Admin →
+  Shops / Riders answers 503 naming this file (the old row edit still
+  saves), and the rider's KYC card says uploads are not enabled yet — the
+  application itself is unaffected.
+- `supabase/migrations/202609260003_free_delivery.sql` — **free delivery
+  threshold** (platform rule + per-shop opt-in): adds `shops.free_delivery_min`
+  and `orders.free_delivery_by` / `free_delivery_waived`, patches the live
+  `ps_place_order` **in place** (it reads the deployed function, inserts the
+  rule after the PROSANTI+ block and re-creates it — so it works on top of
+  every earlier repair without re-pasting the whole function), and re-creates
+  `ps_write_shop_ledger` so a shop-funded waiver comes out of that order's
+  payable. Idempotent (a second run says "already prices the free-delivery
+  threshold"). **Verify:** the run ends with `NOTICE: FREE DELIVERY OK`.
+  Since 2026-09-27 the patch is whitespace-tolerant: it normalises the
+  installed body (Windows `CR LF`, tabs, re-indentation — a pasted function
+  is byte-different from the repository text) before matching its anchors,
+  and prints `ps_place_order patched (had CR line endings: t/f, tabs: t/f)`.
+  If it still cannot patch, the error names the missing anchor (`declare`,
+  `P0 offers`, `insert columns`, `insert values`) plus the installed body's
+  length / md5 — re-install the function exactly (`supabase/paste-parts`
+  05 → 09, then `202609160001`) and run this file again.
+  Then switch it on: Admin → Settings → *ফ্রি ডেলিভারি — প্ল্যাটফর্ম অফার*
+  (PROSANTI pays) and/or Vendor → Settings → *ফ্রি ডেলিভারি অফার* (the shop
+  pays). Until it is applied, saving a minimum answers 503 naming this file
+  and checkout charges exactly as before.
+- `supabase/migrations/202609260004_storefront_events.sql` — **first-party
+  funnel** (UX plan §0): the `storefront_events` table (service-role only;
+  RLS on, no policies, grants revoked), `ps_funnel_report(p_days)` behind
+  Admin → Reports → *Funnel*, and `ps_prune_storefront_events(days)` for
+  retention. Pure `create … if not exists`; safe to re-run; nothing to
+  back-fill. **Verify:** the run ends with `NOTICE: STOREFRONT EVENTS OK`.
+  Until it is applied the storefront keeps sending (the API answers 204 and
+  drops the batch) and the Reports card says which file to run.
+- `supabase/migrations/202609270001_push_broadcasts.sql` — **weekly drops &
+  offers push** (UX plan §12): adds `customer_push_subscriptions.marketing`
+  (per-device opt-in, default false — the tracker card's "নতুন ড্রপ ও
+  অফারের খবরও দিন" tick) and the `push_broadcasts` log that enforces one
+  broadcast per 7 days from Admin → Growth → *Drops & offers broadcast*.
+  Pure `add column / create table if not exists`; safe to re-run. **Verify:**
+  the run ends with `NOTICE: PUSH BROADCASTS OK`. Until it is applied the
+  tick answers 503 naming this file and the Growth card says to run it;
+  order-milestone pushes are unaffected.
+- `supabase/migrations/202609270002_shop_cover.sql` — **shop cover image**
+  (UX plan §9): `shops.cover_url` (default `''`). Vendor → Settings → *কভার
+  ছবি (URL)*; shown behind the storefront header and as the banner on the
+  `/shops` card; empty = exactly today's look. Safe to re-run. **Verify:**
+  `NOTICE: SHOP COVER OK`. Until it is applied, saving a cover answers 503
+  naming this file (the rest of the profile still saves).
+- `supabase/migrations/202609270003_bag_snapshots.sql` — **abandoned-bag
+  push** (UX plan §5, R10): the `bag_snapshots` table (one row per device
+  that opted in to marketing push; count, subtotal, top piece, `touched_at`,
+  `reminded_at`). The `abandoned-bags` cron job sends one push 24–72 h after
+  the bag was last touched, at most once per 7 days. **Needs
+  `202609270001` first** (the `marketing` column / device FK). Safe to
+  re-run. **Verify:** `NOTICE: BAG SNAPSHOTS OK`. Until it is applied the
+  snapshot endpoint answers 503 naming this file (silently, the shopper
+  never sees it) and the cron job reports `skipped`; the on-site "your bag
+  is waiting" banner works without it.
+- `supabase/migrations/202609270004_review_stamps.sql` — **review → Smart
+  Card stamp** (UX plan §4/§7/§8, R10): `reviews.customer_phone` +
+  `reviews.order_ref` (the proven purchase behind the verified badge) and
+  the `stamp_ledger` table (one row per approved verified review, unique per
+  review). Service-role only (RLS on, no policies). Safe to re-run.
+  **Verify:** `NOTICE: REVIEW STAMPS OK`. Until it is applied reviews still
+  save (unverified — the proof columns are dropped on insert), the card
+  counts orders only and approving a review stamps nothing.
+
+**Verify the whole 2026-09-26/27 round in one go** (after the eight files
+above): paste `supabase/verify-2026-09-27.sql` (read-only) — one row per
+table / column / patched function, `OK` or `MISSING`, and a `SUMMARY` row
+that must read `ALL 8 MIGRATIONS APPLIED`. The same answer is on the site:
+`/api/health` (signed in as staff) now reports `passwordResetReady`,
+`applicationReviewReady`, `freeDeliveryReady`, `storefrontEventsReady`,
+`pushBroadcastsReady`, `shopCoverReady`, `bagSnapshotsReady`,
+`reviewStampsReady`, and lists any missing file under `nextSteps` (they do
+not gate `live` — orders flow without them). Both were exercised against a
+scratch Postgres built from `bootstrap-fresh.sql` + every later migration:
+all `MISSING` before the round, all `OK` after it, including a
+`ps_place_order` that had been pasted with Windows line endings.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
@@ -527,7 +621,14 @@ Do these on the deployed site, in order:
 - [ ] `GET /api/health` → `"live": true`, all `checks` true (probe verifies
       seed counts + the `ps_place_order` RPC; `/admin` home shows a
       green **LIVE** banner once every check passes, an amber checklist while
-      anything is missing)
+      anything is missing). The eight `…Ready` flags at the end of `checks`
+      are the 2026-09-26/27 migrations — every one `true`, `nextSteps` empty
+      of `2026092…` file names (or run `supabase/verify-2026-09-27.sql`)
+- [ ] Free delivery: Admin → Settings → *ফ্রি ডেলিভারি* on with a minimum, then
+      a test COD order above it to a z1–z3 address → receipt shows delivery
+      ৳0, `orders.free_delivery_by = 'platform'` on the row (a shop's own
+      minimum gives `'shop'`, and its payout in `shop_ledger` is smaller by
+      the waived charge once the order is delivered)
 - [ ] `/checkout` shows the flat ৳60 promise — no launch-offer counter, no free-delivery threshold, no first-10-free copy anywhere
       (check `snapshot.customerOrderCount` on a placed order in Supabase)
 - [ ] `/shop` shows the seeded catalog with live prices
@@ -546,9 +647,39 @@ Do these on the deployed site, in order:
 - [ ] `/checkout` → place a real test order (COD) → confirmation shows the
       4-digit delivery PIN → `/track` finds it by ID + phone →
       `/admin/orders` shows it → advance it → bell notice
-- [ ] Rider network: `/admin/riders` approve a rider → `/admin/riders` →
-      **link rider** with the rider's Auth email → open `/rider` in an
-      incognito window → sign in → `/rider` shows their job queue
+- [ ] Rider network: open `/rider/apply` in an incognito window → send an
+      application with an email + password → `/rider/login` with it shows
+      **"অনুমোদনের অপেক্ষায়"** (not the app) → `/admin/riders` shows the
+      rider as **Linked** → approve → sign in again → `/rider` shows their
+      job queue. (**Link rider** is only for legacy / manually created rows.)
+- [ ] Shop network: same with `/shops/apply` → `/vendor/login` shows
+      "Awaiting approval" → `/admin/shops` approve → the dashboard opens
+      (leave the login tab open: it lets the applicant in by itself within
+      30 s of the approval; the admin nav showed the pending count meanwhile)
+- [ ] Password reset without e-mail (self-service request): `/rider/login`
+      → **পাসওয়ার্ড ভুলে গেছেন?** → the test rider's email + phone → "অপেক্ষায়"
+      → the admin bell and dashboard banner show *1 password reset request*
+      → Admin → **Access requests** → Call (tick "they confirmed") →
+      **Approve** → within 20 s the rider's login page shows the
+      new-password form by itself → set it → sign in with it. Repeat once
+      for the test shop at `/vendor/login`.
+- [ ] Password reset without e-mail (staff-issued): Admin → Shops → the
+      test shop → **Reset password** → the temporary password shows once →
+      sign in with it at `/vendor/login` → Shop settings → **পাসওয়ার্ড বদলান**
+      → sign out / in with the new one.
+- [ ] Reject with a reason (round 4): a second test rider applies **without
+      an e-mail** (mobile number only) → `/rider/login` with the **mobile
+      number** + password shows "অনুমোদনের অপেক্ষায়" and the **KYC** card →
+      upload NID front/back + selfie from a phone (Cloudinary configured) →
+      Admin → Riders shows **KYC 3/3 — complete** with thumbnails → **Reject…** with
+      a reason → the rider's login page shows "আবেদন অনুমোদন হয়নি" with that
+      reason and **তথ্য ঠিক করে আবার আবেদন করুন →** → re-apply with the same
+      number + password → Admin → Riders shows the same rider pending again
+      ("re-submitted" in the bell), KYC photos kept → **Approve** → the card
+      reads "Approved by <you> · just now" → `/rider` opens.
+- [ ] Vendor checklist: sign in as a freshly approved shop → `/vendor` shows
+      **Get your shop ready** (n/5) → add address, tagline, 3 products with
+      photos, switch to Open → the card disappears.
 - [ ] Dispatch: advance a ready order in `/admin/orders` → it appears under
       **Admin → Deliveries → Awaiting dispatch** → **Assign rider** (or wait
       for the auto-offer trigger) → the linked rider sees the offer → accept
@@ -609,7 +740,24 @@ direct file-picker upload, add the four Cloudinary variables from
 |---|---|
 | `/api/products` → `NOT_SEEDED` | No published products yet → add them in Admin → Catalog & Products (step 3 only seeds the skeleton) |
 | Homepage publish “works” but `/` unchanged | Migration 006 not applied → public read policy missing; apply step 1.7 |
-| `/rider` shows only login | No Auth user linked to a `riders` row yet → step 5 rider check + Admin → Riders → link |
+| `/rider` shows only login | Not signed in, or a legacy `riders` row with no Auth user → step 5 rider check + Admin → Riders → link (applications since 2026-09-26 arrive linked) |
+| `/rider/login` or `/vendor/login` shows "awaiting approval" | Expected until staff approves: Admin → Riders / Shops → **Approve** (status → active); the same email + password then open the app |
+| Apply form → "This email already has a PROSANTI login" (409) | The email has an account with a different password → use that password in the form, or sign in first and apply again |
+| Apply form → "this phone number already has an application" (409) | A shop row with that phone exists (pending or active) → find it in Admin → Shops; approve / edit it instead of creating a second one |
+| Vendor or rider forgot the password (no reset e-mail is ever sent) | Tell them to tap **পাসওয়ার্ড ভুলে গেছেন? / Forgot your password?** on their login page and enter the application email + phone. The request lands in Admin → **Access requests** (bell + dashboard banner): **call the number on file**, tick the confirmation, **Approve** → their login page switches to a new-password form by itself (24 h window). Can't reach them / no smartphone: the shop / rider card's **Reset password** gives a temporary password to read out |
+| "পাসওয়ার্ড রিসেট সার্ভিস এখনো চালু হয়নি" (503) on the login page | Migration `202609260001_password_reset_requests.sql` not applied → step 1; meanwhile use the card's **Reset password** |
+| Admin → Shops / Riders → Approve or Reject → "Application review is not set up on this database yet" (503) | Migration `202609260002_application_review.sql` not applied → step 1. Meanwhile **Edit → Save** on the card still changes the status (no audit stamp) |
+| Rider's KYC card says "কাগজপত্র আপলোড এখনো চালু হয়নি" / "ছবি আপলোড এখনো কনফিগার করা হয়নি" | First message: migration `202609260002` missing → step 1. Second: Cloudinary env not set → step 6. The application is filed either way; approve after a phone/WhatsApp check of the NID instead |
+| Vendor → Settings → free delivery → "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি" (503), or Admin → Shops → Save → "Free delivery is not set up on this database yet" | Migration `202609260003_free_delivery.sql` not applied → step 1 (look for `FREE DELIVERY OK`). Profile saves without the field still work |
+| Running `202609260003_free_delivery.sql` → `free-delivery patch could not find its anchors in ps_place_order (declare / P0 offers / insert)` | The file you ran predates 2026-09-27: it matched the deployed function byte-for-byte, and a function pasted from Windows carries `CR LF` line endings (reproduced 1:1 against a scratch Postgres). Pull the current file and run it again — it normalises line endings / tabs first and ends with `ps_place_order patched (had CR line endings: t …)` + `FREE DELIVERY OK`. Nothing from the failed run was saved (whole file is one transaction). If the new error still names a `MISSING` anchor, the deployed `ps_place_order` is not the repository's text: re-install it (`supabase/paste-parts` 05 → 09, then `202609160001`) and re-run |
+| Admin → Reports → *Funnel* says "Not installed yet — run `202609260004_storefront_events.sql`" | Migration `202609260004_storefront_events.sql` not applied → step 1 (look for `STOREFRONT EVENTS OK`). The storefront keeps sending in the meantime (`/api/events` answers 204 and drops the batch); numbers start from the moment the table exists |
+| Bag shows "delivery is free" but the order was charged | The RPC is authoritative: either the migration is missing (see above — the storefront reads the rule from settings, the database cannot price it yet), the address resolved to the courier zone (z4 is never free), or a coupon / PROSANTI+ already waived it. Check `orders.free_delivery_by` on the row |
+| Shop asks why a payout is lower than subtotal − commission | Its own free-delivery offer paid that order's rider charge: Vendor → Orders → the order shows "আপনার ফ্রি ডেলিভারি অফার (পেআউট থেকে কাটা হবে) −৳60". Platform-funded waivers (`free_delivery_by = 'platform'`) never change the payout |
+| Applicant has no e-mail | Leave the e-mail field empty on the apply form: the login is the **mobile number** + password (the server stores `01XXXXXXXXX@phone.prosanti.app` internally; nothing is sent there). Staff screens show it as "01… (phone login)". The reset panel works the same way — mobile number, e-mail left empty |
+| Rejected applicant says "I fixed it, what now?" | They re-open the apply form and submit again with the **same** e-mail / mobile number + password → the rejected row goes back to pending with the new details (the bell says "re-submitted"). Admin → filter **rejected** to see what is waiting for a fix; **Re-open** puts a row back to pending without their action |
+| Reset request says "এই ইমেইল ও ফোন নম্বরের কোনো … লগইন পাওয়া যায়নি" | The pair must match the shop's `contact_email` + `phone` / the rider's row exactly (legacy rows linked by a different email won't match) → fix the row in Admin → Shops / Riders, or use the card's **Reset password** |
+| Approved someone — how do they know? | The card's **WhatsApp: approved, sign in →** button opens a prefilled Bangla message with the login URL. Their login page also re-checks every 30 s on its own while the "awaiting approval" card is open |
+| New applications go unnoticed | The Shops / Riders links in the admin nav carry the pending count and the dashboard shows a banner; both refresh every 30 s while the tab is visible |
 | Contact/newsletter submit → “Could not …” | Service-role key missing/typo in Vercel → step 2 + redeploy |
 | Admin sign-in → “not a staff member” | Auth user exists but no `admin_users` row → step 4.2 |
 | Admin API → 401 right after sign-in | Session cookie lost (private window / clock skew) → sign in again |

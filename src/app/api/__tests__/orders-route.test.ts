@@ -46,6 +46,7 @@ vi.mock("@/lib/db/orders", () => ({
     }
   },
   countOrdersForPhone: async () => 0,
+  countStampsForPhone: async () => ({ orders: 0, reviews: 0, total: 0 }),
   loadOrderSnapshot: async () => {
     state.snapshotReads += 1;
     if (state.snapshotThrows) throw new Error("order snapshot read failed");

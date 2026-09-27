@@ -208,16 +208,26 @@ describe("customer account routes — no verification, instant session", () => {
       .then(() => null);
     void countMock;
     const mod = await import("@/lib/db/orders");
+    // 2 orders + 1 approved verified review (R10 stamp ledger) = 3 stamps
     const spy = vi
-      .spyOn(mod, "countOrdersForPhone")
-      .mockResolvedValue(3);
+      .spyOn(mod, "countStampsForPhone")
+      .mockResolvedValue({ orders: 2, reviews: 1, total: 3 });
     const res = await cardGet(get("/api/account/card", cookie));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      card: { stamps: number; target: number; revealed: boolean; unlocked: boolean };
+      card: {
+        stamps: number;
+        target: number;
+        revealed: boolean;
+        unlocked: boolean;
+        orderCount: number;
+        reviewStamps: number;
+      };
     };
     expect(spy).toHaveBeenCalledWith(expect.anything(), "01812345678");
     expect(body.card.stamps).toBe(3);
+    expect(body.card.orderCount).toBe(2);
+    expect(body.card.reviewStamps).toBe(1);
     expect(body.card.target).toBe(10);
     expect(body.card.revealed).toBe(true);
     expect(body.card.unlocked).toBe(false);
@@ -226,8 +236,8 @@ describe("customer account routes — no verification, instant session", () => {
     // 0 stamps → prize still a surprise
     const fresh = await signupCookie("01912345678");
     const spy0 = vi
-      .spyOn(mod, "countOrdersForPhone")
-      .mockResolvedValue(0);
+      .spyOn(mod, "countStampsForPhone")
+      .mockResolvedValue({ orders: 0, reviews: 0, total: 0 });
     const res0 = await cardGet(get("/api/account/card", fresh));
     const body0 = (await res0.json()) as { card: { revealed: boolean } };
     expect(body0.card.revealed).toBe(false);

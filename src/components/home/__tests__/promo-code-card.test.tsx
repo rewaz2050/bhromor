@@ -3,11 +3,13 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import PromoCodeCard from "@/components/home/promo-code-card";
 import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { __resetHomeSettings } from "@/lib/use-home-settings";
+import { carriedCoupon } from "@/lib/coupon-carry";
 
 const originalFetch = globalThis.fetch;
 let settings: unknown = HOME_DEFAULTS;
 
 beforeEach(() => {
+  window.localStorage.clear();
   __resetHomeSettings();
   globalThis.fetch = (() =>
     Promise.resolve(new Response(JSON.stringify({ settings }), { status: 200 }))) as typeof fetch;
@@ -53,5 +55,7 @@ describe("PromoCodeCard", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("WELCOME10"));
     expect(screen.getByRole("status")).toHaveTextContent(/code copied/i);
     expect(screen.getByRole("link", { name: /shop now/i })).toHaveAttribute("href", "/shop");
+    // UX plan §3 (R11) — the code travels to checkout's coupon field
+    expect(carriedCoupon()).toBe("WELCOME10");
   });
 });

@@ -34,6 +34,11 @@ vi.mock("@/lib/db/storefront", () => ({
     products.find((p) => p.slug === slug) ?? null,
 }));
 
+// R11 co-purchase rail — a server-only DB read; no baskets in this test.
+vi.mock("@/lib/db/also-bought", () => ({
+  alsoBoughtProducts: async () => [],
+}));
+
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NEXT_NOT_FOUND");
@@ -142,5 +147,38 @@ describe("Product page — same-category shelf at the very bottom", () => {
     const tail = view.container.querySelector('[data-testid="more-in-category"]') as HTMLElement;
     expect(sections[sections.length - 1]).toBe(tail);
     expect(rail.compareDocumentPosition(tail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("Product page — the AOV lever right under the buy panel (UX plan §4, R11)", () => {
+  it("puts 'Pair it with' before the details/reviews and quotes the real zone ladder in the delivery card", async () => {
+    const product = PRODUCTS.find((p) => p.slug === "heritage-green-panjabi")!;
+    const { container } = await renderProduct(product.slug);
+
+    const pair = container.querySelector('[data-testid="pair-it-with"]') as HTMLElement | null;
+    const complements = (await import("@/lib/merchandising")).completeTheLook(product, PRODUCTS);
+    if (complements.length === 0) {
+      expect(pair).toBeNull();
+    } else {
+      expect(pair).not.toBeNull();
+      const reviews = within(container).getByRole("heading", { name: /reviews/i });
+      expect(pair!.compareDocumentPosition(reviews) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // and above the details accordion
+      const details = container.querySelector('[data-testid="product-info"], #product-info, [aria-label*="details" i]');
+      if (details) expect(pair!.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const cards = within(pair!).getAllByRole("article");
+      expect(cards.length).toBeLessThanOrEqual(4);
+      for (const card of cards) {
+        expect(within(card).queryByRole("link", { name: `View ${product.name}` })).toBeNull();
+      }
+    }
+
+    // the old hard-coded "from ৳30" / free-delivery promise is gone
+    const aside = container.querySelector('[data-testid="delivery-aside"]') as HTMLElement;
+    expect(aside).not.toBeNull();
+    expect(aside.textContent).not.toContain("৳30");
+    expect(aside.textContent).not.toMatch(/ফ্রি \(প্রতিটি কাস্টমারের জন্য\)/);
+    expect(aside.textContent).toContain("৳60");
+    expect(within(aside).getByRole("link", { name: /Delivery details/ })).toHaveAttribute("href", "/delivery");
   });
 });

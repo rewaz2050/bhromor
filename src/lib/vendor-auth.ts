@@ -3,8 +3,9 @@
  *
  * Mirrors staff-auth.ts: verifies the Supabase session server-side, then
  * checks the `vendor_users` table. No session → 401; signed-in non-vendor →
- * 403; vendor of a non-active shop → 403 (suspended shops lose API access
- * the moment staff flips the status).
+ * 403; vendor of a non-active shop → 403 with a `reason` the login page can
+ * show — `pending` while the application awaits approval (apply = sign up,
+ * 2026-09-26), `suspended` once staff has flipped the status.
  */
 
 import "server-only";
@@ -22,11 +23,22 @@ export interface VendorContext {
   db: SupabaseClient;
 }
 
+/** Why a signed-in user is refused — drives the status card on /vendor/login. */
+export type VendorDenyReason = "none" | "pending" | "suspended" | "rejected";
+
+/** English message for a rejected application, note included when staff left one. */
+export const vendorRejectedMessage = (note?: string | null): string =>
+  note && note.trim() !== ""
+    ? `Your shop application was not approved this time. Reason: ${note.trim()} — fix the details and apply again with this same login.`
+    : "Your shop application was not approved this time — fix the details and apply again with this same login, or talk to PROSANTI support.";
+
 export class VendorAuthError extends Error {
   status: 401 | 403;
-  constructor(message: string, status: 401 | 403) {
+  reason?: VendorDenyReason;
+  constructor(message: string, status: 401 | 403, reason?: VendorDenyReason) {
     super(message);
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -43,18 +55,31 @@ export async function requireVendor(): Promise<VendorContext> {
     .eq("user_id", data.user.id)
     .single();
   if (linkError || !link) {
-    throw new VendorAuthError("This account has no vendor access.", 403);
+    throw new VendorAuthError("This account has no vendor access.", 403, "none");
   }
   const shopId = (link as { shop_id: string }).shop_id;
   const { data: shop } = await db
     .from("shops")
-    .select("status")
+    .select("status,review_note")
     .eq("id", shopId)
     .single();
-  if ((shop as { status: string } | null)?.status !== "active") {
+  const shopRow = shop as { status: string; review_note?: string | null } | null;
+  const shopStatus = shopRow?.status;
+  if (shopStatus === "pending") {
     throw new VendorAuthError(
-      "This shop is not active — contact PROSANTI support.",
+      "Your shop application is awaiting PROSANTI's approval — this login opens the dashboard the moment it is confirmed.",
       403,
+      "pending",
+    );
+  }
+  if (shopStatus === "rejected") {
+    throw new VendorAuthError(vendorRejectedMessage(shopRow?.review_note), 403, "rejected");
+  }
+  if (shopStatus !== "active") {
+    throw new VendorAuthError(
+      "This shop is suspended — contact PROSANTI support.",
+      403,
+      "suspended",
     );
   }
   return {

@@ -32,10 +32,14 @@ src/app/api/
 ├── reviews/route.ts       # GET approved-only (?product, ?featured) / POST pending
 ├── coupons/validate/route.ts  # POST: honest { valid, discount?, reason? }
 ├── shops/route.ts         # GET active shops (?zone=), contact emails stripped
-├── shops/apply/route.ts   # POST public intake → pending row (5/min/IP)
-├── riders/apply/route.ts  # POST rider intake → pending row (5/min/IP)
-├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors
-├── rider/me/route.ts      # rider session probe (rider + linked email)
+├── auth/reset-request/route.ts   # POST {kind,email,phone}: file a password-reset REQUEST (no SMS/e-mail; 5/15min/IP, 3/h/email) · GET ?kind&email&phone: its status for the login page poll
+├── auth/reset-complete/route.ts  # POST {kind,email,phone,password}: set the new password inside a staff-approved 24 h window, then close the request (5/15min/IP)
+├── shops/apply/route.ts   # POST public intake = sign-up: creates the login (email+password, or phone-login address when no e-mail) + pending shop + owner link; re-applying over a REJECTED shop of the same login rewrites it back to pending (5/min/IP)
+├── riders/apply/route.ts  # POST rider intake = sign-up: same, for the rider row (5/min/IP)
+├── rider/_lib.ts          # riderRoute() wrapper: requireRider() + rate limit + errors; {allowApplicant:true} lets pending/rejected riders into the KYC routes only
+├── rider/me/route.ts      # rider session probe (rider + linked email; review trail stripped)
+├── rider/kyc/route.ts     # GET own KYC state · POST {doc,url}: store one Cloudinary URL (nid_front|nid_back|selfie|license); open to pending applicants (20/min)
+├── rider/kyc/sign/route.ts # POST: Cloudinary signature for a KYC photo (folder prosanti/rider-kyc); 503 NOT_CONFIGURED without Cloudinary
 ├── rider/jobs/route.ts    # own delivery assignments with full order snapshots
 ├── rider/online/route.ts  # PATCH own online switch
 ├── rider/assignments/[id]/accept/route.ts    # offer → accepted
@@ -51,11 +55,18 @@ src/app/api/
 ├── admin/zones/...        # upsert + move + delete (last-zone/order guards)
 ├── admin/coupons/...      # upsert (409 on code clash) + delete
 ├── admin/reviews/...      # list (filters) / moderate+feature / delete
-├── admin/shops/route.ts   # queue: list + upsert (approve/suspend/commission)
-├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner
+├── admin/shops/route.ts   # queue: list + upsert (fields/commission; status via the review route below)
+├── admin/shops/[id]/review/route.ts  # POST {status: active|rejected|suspended|pending, note?}: staff decision with audit stamp; note required to reject (admin/super_admin, 30/min; 503 until migration 202609260002)
+├── admin/shops/[id]/link-vendor/route.ts  # POST {email}: link Auth user as vendor owner (legacy rows only — applications arrive linked)
+├── admin/shops/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the owner login, returned once (admin/super_admin, 10/min; no e-mail reset exists)
+├── admin/applications/route.ts  # GET {shops, riders, resets}: pending application + reset-request head-counts for the nav badges + dashboard banner (30 s client poll)
+├── admin/access-requests/route.ts       # GET {pending, recent, ready}: password-reset request queue (staff RLS; ready=false until migration 202609260001)
+├── admin/access-requests/[id]/route.ts  # POST {action: approve|reject, note?}: opens the requester's 24 h self-set window / leaves them a note (admin/super_admin, 30/min)
 ├── admin/payouts/route.ts  # GET balances (+?shop= settlement lines) / POST record payout
-├── admin/riders/route.ts   # queue: list + upsert (approve/suspend/zones)
-├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login
+├── admin/riders/route.ts   # queue: list (pending → active → rejected → suspended) + upsert (fields/zones)
+├── admin/riders/[id]/review/route.ts  # POST {status, note?}: staff decision with audit stamp (same contract as shops; non-active forces is_online=false)
+├── admin/riders/[id]/link-rider/route.ts  # POST {email}: link Auth user as rider login (legacy rows only — applications arrive linked)
+├── admin/riders/[id]/reset-password/route.ts  # POST: staff sets a temporary password on the rider login, returned once (admin/super_admin, 10/min)
 ├── admin/deliveries/route.ts       # GET dispatch board (assignments + awaiting orders)
 ├── admin/deliveries/offer/route.ts # POST {orderId}: staff re-offers an order
 ├── admin/deliveries/[id]/cancel/route.ts # POST: staff cancels a live assignment
@@ -84,6 +95,10 @@ src/lib/
 ├── use-rider.ts           # rider fetch + session/jobs/actions hooks (live only)
 ├── use-vendor.ts          # vendor fetch + session/orders/products/earnings hooks (live only)
 ├── order-validation.ts    # pure checkout validator (client money ignored; single-shop + shop open/zone checks)
+├── free-delivery.ts       # pure free-delivery threshold rules: platform + shop offers, lowest target, payer precedence (mirrors ps_place_order)
+├── funnel-events.ts       # first-party funnel wire model: event names, sanitizers (≤25/batch), FunnelReport parser + step rates (pure)
+├── events-sink.ts         # browser batch sink → POST /api/events (4 s / 25 events / pagehide sendBeacon); per-tab session id
+├── use-free-delivery.ts   # shopper hook: platform rule (/api/settings) + shop.freeDeliveryMinPaisa → progress / payer
 ├── shop-utils.ts          # pure shop helpers: strip, zone filter, split ETA (client-safe)
 ├── use-my-zone.ts         # persisted customer "deliver to" zone for discovery
 ├── use-guarded-add.ts     # single-shop add-to-bag guard (stages conflicts)
@@ -110,6 +125,7 @@ src/lib/
     └── storefront.ts      # server page reads (live rows, empty otherwise)
 supabase/
 ├── schema.sql                              # base tables, RLS, §34 machine
+├── verify-2026-09-27.sql                   # read-only probe: OK/MISSING per artefact of the 2026-09-26/27 round + SUMMARY
 └── migrations/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon
@@ -118,7 +134,13 @@ supabase/
     ├── 202609090005_riders.sql                # riders/assignments/settlements + rider RLS + self-update guard
     ├── 202609090006_engagement.sql            # contact/newsletter/media tables + homepage public read
     ├── 202609090007_rider_dispatch.sql        # delivery_code trigger + rider accept/pickup/deliver/settle RPCs
-    └── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
+    ├── 202609090008_dispatch_auto.sql         # auto-offer trigger + admin assign/cancel RPCs
+    └── 202609260003_free_delivery.sql         # shops.free_delivery_min + orders.free_delivery_by/_waived; patches ps_place_order in place; ledger deducts shop-funded waivers
+    ├── 202609260004_storefront_events.sql     # first-party funnel: storefront_events (service-role only) + ps_funnel_report(days) + ps_prune_storefront_events
+    ├── 202609270001_push_broadcasts.sql       # weekly drops & offers push: customer_push_subscriptions.marketing opt-in + push_broadcasts log (7-day gate)
+    ├── 202609270002_shop_cover.sql            # shops.cover_url — optional landscape cover for the storefront header + /shops card
+    ├── 202609270003_bag_snapshots.sql         # abandoned-bag push: bag_snapshots per marketing-opted device (needs 202609270001); cron abandoned-bags
+    └── 202609270004_review_stamps.sql         # review → Smart Card stamp: reviews.customer_phone/order_ref + stamp_ledger (unique per review)
 scripts/seed-supabase.mjs  # store skeleton seed: shop, categories, zones, settings (never products)
 scripts/grant-admin.mjs     # grant one existing Auth user manager/admin/super_admin
 ```
@@ -268,9 +290,28 @@ invented data (and no launch-catalog fallback — that is gone too).
 - **Totals are guarded twice** — TypeScript validator plus the
   `trg_orders_check_totals` trigger — and inserts are constrained to
   pending COD orders by `trg_orders_check_insert`.
+- **Free delivery is priced in the RPC, never trusted from the client.**
+  `ps_place_order` reads the platform rule from `site_settings['ops']
+  .freeDelivery` and the shop's `free_delivery_min`, applies them after
+  pickup / coupon / PROSANTI+ (platform first, then shop; rider zones only),
+  zeroes the charge + surcharges and stamps `free_delivery_by` /
+  `free_delivery_waived` on the order. `ps_write_shop_ledger` subtracts a
+  shop-funded waiver from that order's `payable`; a platform-funded one
+  leaves the payout alone. `lib/free-delivery.ts` is the TypeScript mirror
+  the validator, checkout and the bag's progress bar share.
 - **Media signing is staff-only.** `POST /api/media/sign` requires a staff
   session (quota abuse vector otherwise) and returns short-lived signature
   material; uploads go browser → Cloudinary directly.
+- **Funnel events are anonymous and write-only from the public side.**
+  `POST /api/events` accepts only whitelisted event names with trimmed,
+  capped fields (`lib/funnel-events.ts`), 60 batches per minute per IP,
+  and inserts with the service role; `storefront_events` has RLS enabled
+  with no policies and every grant revoked from `anon` / `authenticated`,
+  so nothing can read it from a browser. The only identifier is a random
+  per-tab session token — no user id, no IP, no cookie. Reading is a staff
+  route (`/api/admin/reports/funnel`) calling `ps_funnel_report`, whose
+  execute grant is likewise revoked from public roles. The endpoint always
+  answers 204 so a missing table or backend can never surface in the shop.
 - **Vendor routes verify JWT + shop link + active status on every call**
   (`requireVendor` in `src/lib/vendor-auth.ts`). Suspended shops lose API
   access immediately. Vendors advance only their own orders through early

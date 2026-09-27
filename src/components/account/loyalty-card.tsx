@@ -39,8 +39,9 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
           <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> ১০টা স্ট্যাম্প পূর্ণ করলেই আকর্ষণীয় পুরস্কার একদম ফ্রি
         </h3>
         <p className="mt-2 text-sm leading-7 text-ink-soft">
-          প্রতিটি অর্ডারে <strong>১টি করে স্ট্যাম্প</strong> পড়বে; ১০টি হলেই
-          বিশেষ পুরস্কার। স্ট্যাম্প জমাতে <strong>অ্যাকাউন্ট খুলতে হবে</strong> —
+          প্রতিটি অর্ডারে <strong>১টি করে স্ট্যাম্প</strong> পড়বে, কেনা পিসের
+          রিভিউ প্রকাশিত হলেও ১টি; ১০টি হলেই বিশেষ পুরস্কার। স্ট্যাম্প জমাতে{" "}
+          <strong>অ্যাকাউন্ট খুলতে হবে</strong> —
           কোনো ভেরিফিকেশন লাগে না, সাইন আপ করলেই সাথে সাথে লগ ইন হয়ে যাবে।
         </p>
         <Link
@@ -241,7 +242,10 @@ export function LoyaltyCard({ className = "" }: { className?: string }) {
             />
           </div>
           <div className="mt-2 flex items-center justify-between text-[11px] text-ink-soft">
-            <span>সর্বমোট অর্ডার: {card.orderCount} টি (প্রতি অর্ডারে ১ স্ট্যাম্প)</span>
+            <span>
+              সর্বমোট অর্ডার: {card.orderCount} টি (প্রতি অর্ডারে ১ স্ট্যাম্প)
+              {card.reviewStamps > 0 ? ` · রিভিউ স্ট্যাম্প: ${card.reviewStamps}` : ""}
+            </span>
             {card.cycles > 0 && <span>পূর্ণ কার্ড: {card.cycles} বার</span>}
           </div>
         </div>

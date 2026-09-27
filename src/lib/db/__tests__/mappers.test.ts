@@ -87,6 +87,24 @@ describe("mapProduct", () => {
     expect(p.stock).toBe(5);
     expect(p.inStock).toBe(true);
     expect(p.id).toBe("uuid-p1");
+    // UX plan §4 (R10): per-size availability from the same rows — L is
+    // fully reserved, so the storefront greys it; the inactive XL is absent.
+    expect(p.sizeStock).toEqual({ M: 5, L: 0 });
+  });
+
+  it("sums per-size stock across colours and omits the map without a grid", () => {
+    const p = mapProduct({
+      product: productRow(),
+      variants: [
+        variant({ id: "v1", color: "Green", size: "M", available: 2 }),
+        variant({ id: "v2", color: "Blue", size: "M", available: 3 }),
+        variant({ id: "v3", color: "Blue", size: "L", available: 0 }),
+      ],
+      media: [media()],
+    });
+    expect(p.sizeStock).toEqual({ M: 5, L: 0 });
+    const noGrid = mapProduct({ product: productRow(), variants: [], media: [] });
+    expect(noGrid.sizeStock).toBeUndefined();
   });
 
   it("marks out-of-stock when every variant is exhausted", () => {
@@ -279,6 +297,8 @@ describe("mapShop (marketplace slice 1)", () => {
     });
     expect(shop.slug).toBe("prosanti-direct");
     expect(shop.tagline).toBeUndefined();
+    // cover_url (202609270002) absent on an older DB → no cover, nothing breaks
+    expect(shop.coverUrl).toBeUndefined();
     expect(shop.zoneIds).toEqual(["z1", "z2"]);
     expect(shop.commissionPct).toBe(15);
     expect(shop.ratingAvg).toBe(4.5);
@@ -347,6 +367,8 @@ describe("mapRider (marketplace slice 6)", () => {
       name: "Tanvir Rahman",
       phone: "01811111111",
       contactEmail: undefined,
+      // apply = sign up (2026-09-26): an unlinked legacy row shows no login
+      hasLogin: false,
       vehicle: "bicycle",
       zoneIds: ["z1", "z2"],
       status: "pending",
@@ -361,8 +383,71 @@ describe("mapRider (marketplace slice 6)", () => {
       totalDeliveries: 0,
       // P2 #22 — no shift on the row means ALWAYS available (explicit, not undefined)
       availability: { days: null, fromHour: null, toHour: null },
+      // Round 4 (2026-09-26): no verdict yet, no KYC uploaded — never undefined kyc
+      review: undefined,
+      kyc: {},
+      kycSubmittedAt: undefined,
     });
     expect(rider.zoneIds).not.toBe(row.zone_ids);
+  });
+
+  it("maps the review trail and KYC documents (round 4, 2026-09-26)", () => {
+    const rider = mapRider({
+      id: "rider-uuid-4",
+      user_id: "auth-user-4",
+      name: "Tanvir Rahman",
+      phone: "01811111111",
+      contact_email: "01811111111@phone.prosanti.app",
+      vehicle: "bike",
+      zone_ids: [],
+      status: "rejected",
+      is_online: false,
+      cash_in_hand: 0,
+      rating_avg: 0,
+      rating_count: 0,
+      created_at: "2026-09-09T00:00:00.000Z",
+      review_note: "  Licence photo unreadable  ",
+      reviewed_by: "staff-1",
+      reviewed_by_email: "admin@prosanti.example",
+      reviewed_at: "2026-09-26T10:00:00.000Z",
+      kyc: {
+        nid_front: "https://res.cloudinary.com/demo/image/upload/v1/prosanti/rider-kyc/a.jpg",
+        passport: "https://res.cloudinary.com/demo/image/upload/v1/x.jpg",
+        selfie: 12,
+      },
+      kyc_submitted_at: null,
+    });
+    expect(rider.status).toBe("rejected");
+    expect(rider.review).toEqual({
+      note: "Licence photo unreadable",
+      by: "admin@prosanti.example",
+      at: Date.parse("2026-09-26T10:00:00.000Z"),
+    });
+    // Unknown keys and non-string values are dropped; only known documents survive.
+    expect(rider.kyc).toEqual({
+      nid_front: "https://res.cloudinary.com/demo/image/upload/v1/prosanti/rider-kyc/a.jpg",
+    });
+    expect(rider.kycSubmittedAt).toBeUndefined();
+  });
+
+  it("flags a linked login from user_id (apply = sign up, 2026-09-26)", () => {
+    expect(
+      mapRider({
+        id: "rider-uuid-2",
+        user_id: "auth-user-1",
+        name: "Tanvir Rahman",
+        phone: "01811111112",
+        contact_email: "tanvir@example.com",
+        vehicle: "bike",
+        zone_ids: [],
+        status: "pending",
+        is_online: false,
+        cash_in_hand: 0,
+        rating_avg: 0,
+        rating_count: 0,
+        created_at: "2026-09-26T00:00:00.000Z",
+      }).hasLogin,
+    ).toBe(true);
   });
 
   it("maps a saved night shift onto the rider (P2 #22)", () => {

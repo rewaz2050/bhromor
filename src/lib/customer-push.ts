@@ -309,6 +309,110 @@ export const pushCustomerMessage = async (
   }
 };
 
+/**
+ * Push one message to specific devices (the abandoned-bag reminder, UX plan
+ * §5 R10, addresses a device, not a phone). Same fan-out, same dead-device
+ * cleanup; 0 when VAPID is unconfigured.
+ */
+export const sendToDevices = async (
+  db: SupabaseClient,
+  subs: readonly CustomerSubscription[],
+  build: (lang: Language) => { title: string; body: string; href: string },
+): Promise<number> => {
+  try {
+    if (subs.length === 0 || !ensureVapid()) return 0;
+    return await sendFanOut(db, subs, (lang) => JSON.stringify(build(lang)));
+  } catch {
+    return 0;
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Broadcast opt-in (UX plan §12, R9) — migration 202609270001         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Flip the "drops & offers" opt-in for ONE device. Keyed by endpoint only,
+ * like DELETE: the caller's browser already holds that endpoint, and the
+ * worst a stranger could do with a leaked one is opt it out.
+ */
+export const setCustomerPushMarketing = async (
+  db: SupabaseClient,
+  endpoint: unknown,
+  marketing: boolean,
+): Promise<{ ok: true } | { ok: false; reason: CustomerPushSaveFailure }> => {
+  const ep = clean(endpoint, 500);
+  if (!ep.startsWith("https://")) return { ok: false, reason: "invalid" };
+  const { error } = await db
+    .from("customer_push_subscriptions")
+    .update({ marketing, last_seen_at: new Date().toISOString() })
+    .eq("endpoint", ep);
+  const reason = customerPushSaveFailureReason(error);
+  return reason ? { ok: false, reason } : { ok: true };
+};
+
+/** Whether THIS device is opted in (null when unknown / column missing). */
+export const customerPushMarketingFor = async (
+  db: SupabaseClient,
+  endpoint: unknown,
+): Promise<boolean | null> => {
+  const ep = clean(endpoint, 500);
+  if (ep === "") return null;
+  const { data, error } = await db
+    .from("customer_push_subscriptions")
+    .select("marketing")
+    .eq("endpoint", ep)
+    .maybeSingle();
+  if (error || !data) return null;
+  return (data as { marketing?: unknown }).marketing === true;
+};
+
+/** How many devices would hear a broadcast right now. */
+export const broadcastAudienceCount = async (db: SupabaseClient): Promise<number> => {
+  const { count, error } = await db
+    .from("customer_push_subscriptions")
+    .select("endpoint", { count: "exact", head: true })
+    .eq("marketing", true);
+  if (error) return 0;
+  return count ?? 0;
+};
+
+/**
+ * One message to every opted-in device. Unlike the milestone fan-out this is
+ * a deliberate, staff-triggered send, so the cap is generous (20 s) and the
+ * result is reported, not swallowed. Dead endpoints are pruned on the way.
+ */
+export const broadcastCustomerPush = async (
+  db: SupabaseClient,
+  input: {
+    build: (lang: Language) => { title: string; body: string; href: string };
+    capMs?: number;
+    limit?: number;
+  },
+): Promise<{ devices: number; accepted: number; configured: boolean }> => {
+  if (!ensureVapid()) return { devices: 0, accepted: 0, configured: false };
+  const { data, error } = await db
+    .from("customer_push_subscriptions")
+    .select("endpoint, p256dh, auth, phone, lang")
+    .eq("marketing", true)
+    .limit(input.limit ?? 2_000);
+  if (error) throw error;
+  const subs = ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    endpoint: clean(row.endpoint, 500),
+    p256dh: clean(row.p256dh, 200),
+    auth: clean(row.auth, 200),
+    phone: clean(row.phone, 20),
+    lang: row.lang === "en" ? ("en" as const) : ("bn" as const),
+  }));
+  const accepted = await sendFanOut(
+    db,
+    subs,
+    (lang) => JSON.stringify(input.build(lang)),
+    input.capMs ?? 20_000,
+  );
+  return { devices: subs.length, accepted, configured: true };
+};
+
 /** Every device a shopper registered on this phone (the fan-out's own read). */
 export const customerDevicesForPhone = async (
   db: SupabaseClient,

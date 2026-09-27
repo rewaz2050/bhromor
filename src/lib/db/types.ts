@@ -25,7 +25,7 @@ export interface DbRider {
   contact_email: string;
   vehicle: "bicycle" | "bike" | "scooter";
   zone_ids: string[];
-  status: "pending" | "active" | "suspended";
+  status: "pending" | "active" | "suspended" | "rejected";
   is_online: boolean;
   cash_in_hand: number;
   rating_avg: number;
@@ -42,6 +42,13 @@ export interface DbRider {
   avail_from_hour?: number | null;
   avail_to_hour?: number | null;
   avail_days?: number[] | null;
+  /** Round 4 — review audit + KYC (202609260002). */
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+  kyc?: Record<string, unknown> | null;
+  kyc_submitted_at?: string | null;
 }
 
 export interface DbDeliveryAssignment {
@@ -98,17 +105,26 @@ export interface DbShop {
   name: string;
   tagline: string;
   logo_url: string;
+  /** Cover photo (migration 202609270002) — absent on a DB that has not run it. */
+  cover_url?: string | null;
   phone: string;
   contact_email: string;
   address: string;
   zone_ids: string[];
   prep_minutes: number;
   commission_pct: number;
-  status: "pending" | "active" | "suspended";
+  status: "pending" | "active" | "suspended" | "rejected";
   is_open: boolean;
   rating_avg: number;
   rating_count: number;
   created_at: string;
+  /** Round 4 — review audit (202609260002). */
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+  /** Free delivery (202609260003) — the shop's own minimum, paisa; null = off. */
+  free_delivery_min?: number | string | null;
 }
 
 export interface DbVendorUser {
@@ -272,6 +288,9 @@ export interface DbOrder {
   payment_verified_at?: string | null;
   /** P2 #17 — true when a PROSANTI+ term waived delivery on this order. */
   is_plus?: boolean;
+  /** Free delivery threshold (202609260003): who funded the waiver, and how much. */
+  free_delivery_by?: "platform" | "shop" | null;
+  free_delivery_waived?: number | null;
   status: DbOrderStatus;
   rider_id: string | null;
   delivery_code: string | null;
@@ -312,6 +331,9 @@ export interface DbReview {
   status: DbReviewStatus;
   verified: boolean;
   featured: boolean;
+  /** Proven-purchase phone / public order no (migration 202609270004; absent before it). */
+  customer_phone?: string | null;
+  order_ref?: string | null;
   created_at: string;
 }
 

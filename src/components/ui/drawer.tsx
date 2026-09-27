@@ -3,11 +3,15 @@
 /**
  * Accessible slide-over drawer.
  *
- * Why a portal: the sticky site header uses `backdrop-blur`, and any element
- * with a backdrop-filter becomes the *containing block* for its
+ * Why a portal: the sticky site header uses `backdrop-blur` on desktop, and
+ * any element with a backdrop-filter becomes the *containing block* for its
  * position:fixed descendants. A drawer rendered inside the header was
  * therefore clipped to the 64px header strip — it opened, but nobody could
  * see it. Rendering into <body> escapes that containing block for good.
+ *
+ * The scrim is a plain tint, not a blur: a full-viewport backdrop-filter is
+ * the single most expensive thing a phone GPU can be asked to do while the
+ * panel slides in (scroll audit 2026-09-27).
  *
  * Also handles the things every dialog needs and none of ours had:
  * Escape to close, background scroll lock, initial focus, focus trap and
@@ -160,7 +164,7 @@ export default function Drawer({
       <div
         aria-hidden="true"
         onClick={onClose}
-        className="drawer-scrim absolute inset-0 h-full w-full bg-forest-950/40 backdrop-blur-sm"
+        className="drawer-scrim absolute inset-0 h-full w-full bg-forest-950/50"
       />
       <div
         ref={panelRef}

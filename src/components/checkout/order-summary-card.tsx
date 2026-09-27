@@ -23,6 +23,7 @@ import {
 import { coverImage, type DeliveryZone } from "@/lib/catalog";
 import { INSTANT_DELIVERY_TITLE, courierEta, isCourierZone, type deliveryBreakdown } from "@/lib/delivery";
 import { formatBdt } from "@/lib/format";
+import { bnDigits } from "@/lib/arrival";
 import { SUNAMGANJ_HUB } from "@/lib/sunamganj";
 import type { BagOffer } from "@/lib/use-bag-offer";
 
@@ -32,6 +33,8 @@ export interface PriceSummary {
   freeDelivery: boolean;
   couponFree: boolean;
   plusFree: boolean;
+  /** Free-delivery threshold that paid (2026-09-26): 'platform' | 'shop' | null. */
+  thresholdFree: "platform" | "shop" | null;
   discount: number;
   promo: number;
   promoKind: BagOffer["kind"] | null;
@@ -60,6 +63,7 @@ export default function OrderSummaryCard({
   bagOffer,
   giftWrap,
   plusState,
+  plusInfo = null,
   bagShopPrep,
 }: {
   compact: boolean;
@@ -72,9 +76,19 @@ export default function OrderSummaryCard({
   bagOffer: BagOffer | null;
   giftWrap: string;
   plusState: PlusState;
+  /** Live membership config from /api/membership (price in paisa; enabled=false hides the pitch). */
+  plusInfo?: { pricePaisa: number; enabled: boolean } | null;
   bagShopPrep: number;
 }) {
   const { t, lang } = useLanguage();
+  const bn = lang === "bn";
+  // UX plan §8 (R9) — the PROSANTI+ pitch is loud only when it would have
+  // paid for itself on THIS order (charge ≥ ৳100 → zone 2+/night/express);
+  // below that it stays a quiet one-liner. Hidden when the shop turns Plus off.
+  const plusPrice = plusInfo?.pricePaisa && plusInfo.pricePaisa > 0 ? plusInfo.pricePaisa : 9900;
+  const plusPriceLabel = bn ? bnDigits(formatBdt(plusPrice)) : formatBdt(plusPrice);
+  const plusStrong = summary.charge >= 10000;
+  const savedLabel = bn ? bnDigits(formatBdt(summary.charge)) : formatBdt(summary.charge);
   return (
     <div className={`rounded-3xl bg-ivory-50 ring-1 ring-line ${compact ? "p-5" : "bg-paper p-7"}`}>
       <h3 className="font-display text-xl font-medium text-forest-900">
@@ -192,7 +206,11 @@ export default function OrderSummaryCard({
                     ? "FREE 👑 PROSANTI+"
                     : isPickup
                       ? "FREE — Pickup"
-                      : "Free"}{" "}
+                      : summary.thresholdFree === "shop"
+                        ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
+                        : summary.thresholdFree === "platform"
+                          ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
+                          : "Free"}{" "}
                 <span className="text-ink-soft line-through">
                   {formatBdt(summary.fullCharge)}
                 </span>
@@ -226,12 +244,28 @@ export default function OrderSummaryCard({
         )}
         {(plusState === "none" || plusState === "expired" || plusState === "rejected") &&
           !summary.couponFree &&
-          !isPickup && (
-            <p className="text-xs leading-5 text-ink-soft">
-              👑 {plusState === "none" ? "Not a member yet" : "Membership ended"} — PROSANTI+ (৳99/মাস)
-              gets free delivery on every order.{" "}
-              <Link href="/account" className="font-semibold text-forest-800 underline underline-offset-2">
-                Join from your account
+          !summary.freeDelivery &&
+          !isPickup &&
+          plusInfo?.enabled !== false && (
+            <p
+              data-testid="plus-pitch"
+              data-strong={plusStrong ? "1" : undefined}
+              className={
+                plusStrong
+                  ? "rounded-xl bg-gold-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-gold-200"
+                  : "text-xs leading-5 text-ink-soft"
+              }
+            >
+              👑{" "}
+              {plusStrong
+                ? bn
+                  ? `এই অর্ডারেই ${savedLabel} বাঁচত — PROSANTI+ (${plusPriceLabel}/মাস) মানে প্রতিটি অর্ডারে ফ্রি ডেলিভারি, রাত/বৃষ্টির চার্জও নয়।`
+                  : `You'd have saved ${savedLabel} on this order — PROSANTI+ (${plusPriceLabel}/month) means free delivery on every order, night and rain surcharges included.`
+                : bn
+                  ? `${plusState === "none" ? "এখনও সদস্য নন" : "সদস্যপদ শেষ"} — PROSANTI+ (${plusPriceLabel}/মাস) প্রতিটি অর্ডারে ফ্রি ডেলিভারি দেয়।`
+                  : `${plusState === "none" ? "Not a member yet" : "Membership ended"} — PROSANTI+ (${plusPriceLabel}/month) gets free delivery on every order.`}{" "}
+              <Link href="/account#plus" className="font-semibold text-forest-800 underline underline-offset-2">
+                {bn ? "অ্যাকাউন্ট থেকে যোগ দিন" : "Join from your account"}
               </Link>
             </p>
           )}

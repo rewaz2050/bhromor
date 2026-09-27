@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
+import { riderDistance } from "@/lib/rider-distance";
+import { bnDigits } from "@/lib/arrival";
 import { usePoll } from "@/lib/use-poll";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
@@ -92,6 +94,10 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
   const riderPos = getPointOnCurve(transitProgress);
 
+  // UX plan §7 — how far, how long: only from a real rider fix and a real
+  // delivery pin; never while delivered.
+  const away = riderLive && !isDelivered ? riderDistance(riderLive, order, "bn") : null;
+
   // A real rider comes from the dispatch data — nothing is invented here:
   // no fake name, no invented phone, no made-up rating.
   const rider = order.rider;
@@ -179,7 +185,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
         </svg>
 
         {/* Floating Map Badges */}
-        <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-forest-900/90 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 backdrop-blur-md ring-1 ring-white/10">
+        <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-forest-900/95 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 ring-1 ring-white/10">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -194,7 +200,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
         </div>
 
         {/* Live ETA Card overlay */}
-        <div className="absolute right-4 top-4 rounded-2xl bg-forest-900/90 p-3 text-right text-ivory-50 backdrop-blur-md ring-1 ring-white/10">
+        <div className="absolute right-4 top-4 rounded-2xl bg-forest-900/95 p-3 text-right text-ivory-50 ring-1 ring-white/10">
           <p className="text-[10px] uppercase tracking-wider text-ivory-100/70">
             আনুমানিক সময় (ETA)
           </p>
@@ -212,10 +218,17 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
           {riderLive && (
             <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
           )}
+          {/* UX plan §7 — the number a family actually wants: how far, how
+              long. Only from a real rider fix and a real delivery pin. */}
+          {away ? (
+            <p data-testid="rider-away" className="mt-1 text-[11px] font-semibold text-ivory-50">
+              রাইডার প্রায় {away.distanceLabel} দূরে · ~{bnDigits(String(away.minutes))} মিনিট
+            </p>
+          ) : null}
         </div>
 
         {/* Destination Chip on Map Bottom Right */}
-        <div className="absolute bottom-3 right-4 flex items-center gap-1.5 rounded-full bg-forest-900/80 px-3 py-1 text-xs text-ivory-100 backdrop-blur-sm ring-1 ring-white/10">
+        <div className="absolute bottom-3 right-4 flex items-center gap-1.5 rounded-full bg-forest-900/90 px-3 py-1 text-xs text-ivory-100 ring-1 ring-white/10">
           <IconMapPin className="h-3.5 w-3.5 text-emerald-400" />
           <span className="truncate max-w-[180px]">{order.customer.area}</span>
         </div>

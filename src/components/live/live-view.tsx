@@ -19,15 +19,22 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
+import ProductRail from "@/components/home/product-rail";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { newArrivals } from "@/lib/home-shelves";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { IconArrowRight, IconBag, IconClock, IconExternal } from "@/components/ui/icons";
 import { youtubeEmbedUrl } from "@/lib/media";
 import { formatBdt } from "@/lib/format";
+import { bnDigits } from "@/lib/arrival";
 import { liveState, type LiveSession, type LiveSessionProduct } from "@/lib/live";
 import { usePoll } from "@/lib/use-poll";
 
 interface LiveData {
   live: LiveSession | null;
   upcoming: LiveSession | null;
+  /** The most recent ended session with pieces still on sale (R10 rail). */
+  last: LiveSession | null;
   /** The poll's own timestamp — time judgments stay pure at render. */
   fetchedAt: number;
 }
@@ -123,7 +130,7 @@ function PieceCard({
           type="button"
           disabled={!piece.inStock}
           onClick={() => {
-            addItem(piece.productId, piece.defaultVariantLabel);
+            addItem(piece.productId, piece.defaultVariantLabel, 1, "live");
             openBag();
           }}
           className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-forest-800 px-3 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:cursor-not-allowed disabled:bg-line disabled:text-ink-soft"
@@ -301,6 +308,80 @@ function UpcomingSessionView({
   );
 }
 
+/**
+ * UX plan §10 (R7) — "/live is never empty": when nothing is on air, the
+ * newest orderable pieces take the stage instead of a closed door. Same
+ * catalog store the shop uses, so it paints from cache on a return visit.
+ */
+function LiveNewArrivals() {
+  const { t } = useLanguage();
+  const { products } = useLiveCatalog();
+  const picks = newArrivals(products, 8);
+  if (picks.length < 2) return null;
+  return (
+    <div className="mt-10 overflow-hidden rounded-3xl ring-1 ring-line">
+      <ProductRail
+        id="live-new-arrivals"
+        testId="live-new-rail"
+        eyebrow={t("live.newEyebrow")}
+        title={t("live.newTitle")}
+        sub={t("live.newSub")}
+        href="/shop?filter=new"
+        seeAllLabel={t("live.newAll")}
+        products={picks}
+        tone="ivory"
+      />
+    </div>
+  );
+}
+
+/**
+ * UX plan §10 (R10) — "the last live": the pieces the shop showed on air
+ * last time, still orderable. Shown whenever nothing is live (upcoming or
+ * empty); in-stock pieces first, the sold-out ones stay so the shopper who
+ * saw the stream can still find them (their restock alert is on the PDP).
+ */
+function LastLiveRail({ session }: { session: LiveSession }) {
+  const { t, lang } = useLanguage();
+  const pieces = [...session.products].sort((a, b) => Number(b.inStock) - Number(a.inStock));
+  if (pieces.length === 0) return null;
+  const when = new Date(session.endedAt ?? session.scheduledStart).toLocaleDateString(
+    lang === "bn" ? "bn-BD" : "en-GB",
+    { day: "numeric", month: "long" },
+  );
+  const date = lang === "bn" ? bnDigits(when) : when;
+  const count = lang === "bn" ? bnDigits(String(pieces.length)) : String(pieces.length);
+  const sub = (pieces.length === 1 ? t("live.lastSubOne") : t("live.lastSub"))
+    .replace("{date}", date)
+    .replace("{n}", count);
+  return (
+    <section
+      id="live-last"
+      data-testid="live-last-rail"
+      aria-labelledby="live-last-heading"
+      className="mt-10 rounded-3xl bg-paper p-5 ring-1 ring-line sm:p-7"
+    >
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-gold-700">
+        {t("live.lastEyebrow")}
+      </p>
+      <h2
+        id="live-last-heading"
+        className="font-display mt-1.5 text-2xl font-medium tracking-tight text-forest-900 sm:text-3xl"
+      >
+        {t("live.lastTitle")}
+      </h2>
+      <p className="mt-1.5 text-sm leading-6 text-ink-soft">
+        <span className="font-medium text-ink">{session.title}</span> · {sub}
+      </p>
+      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {pieces.slice(0, 8).map((p) => (
+          <PieceCard key={p.productId} piece={p} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function EmptyView() {
   return (
     <div className="mx-auto max-w-md rounded-3xl bg-paper p-10 text-center ring-1 ring-line">
@@ -332,18 +413,19 @@ export default function LiveView() {
       const res = await fetch("/api/live", { cache: "no-store" });
       if (!res.ok) {
         // Backend unconfigured / error → no live UI at all (never a fake LIVE).
-        setData({ live: null, upcoming: null, fetchedAt: Date.now() });
+        setData({ live: null, upcoming: null, last: null, fetchedAt: Date.now() });
         return;
       }
-      const json = (await res.json()) as Omit<LiveData, "fetchedAt">;
+      const json = (await res.json()) as Partial<Omit<LiveData, "fetchedAt">>;
       setData({
         live: json.live ?? null,
         upcoming: json.upcoming ?? null,
+        last: json.last ?? null,
         fetchedAt: Date.now(),
       });
     } catch {
       setData((prev) =>
-        prev ?? { live: null, upcoming: null, fetchedAt: Date.now() },
+        prev ?? { live: null, upcoming: null, last: null, fetchedAt: Date.now() },
       );
     }
   }, []);
@@ -370,10 +452,11 @@ export default function LiveView() {
       ? data.live
       : data.upcoming;
 
+  const onAir = session !== null && liveState(session) === "live";
   return (
     <div>
       {session ? (
-        liveState(session) === "live" ? (
+        onAir ? (
           <LiveSessionView session={session} />
         ) : (
           <UpcomingSessionView session={session} nowMs={data.fetchedAt} />
@@ -381,6 +464,8 @@ export default function LiveView() {
       ) : (
         <EmptyView />
       )}
+      {!onAir && data.last ? <LastLiveRail session={data.last} /> : null}
+      {!session ? <LiveNewArrivals /> : null}
     </div>
   );
 }

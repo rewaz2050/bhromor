@@ -17,6 +17,9 @@ export interface FriendlyError {
   bn: string;
   /** English line under it (also what staff will recognise). */
   en: string;
+  /** Nothing to fix on the form — the same order can simply be sent again
+   *  (network failure, a 5xx/503 from the shop). Drives the retry button. */
+  retryable?: boolean;
 }
 
 interface Rule {

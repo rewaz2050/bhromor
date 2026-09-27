@@ -11,6 +11,7 @@ import "server-only";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ApplicationStatus,
   Category,
   DeliveryZone,
   Product,
@@ -32,6 +33,7 @@ import {
   mapShop,
   mapZone,
 } from "./mappers";
+import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
 import { forgetStaffRole, type StaffRole } from "../staff-auth";
@@ -628,10 +630,30 @@ export interface ProductInput {
   video?: { youtubeId: string; label?: string };
   status?: "draft" | "published";
   active?: boolean;
-  /** Desired TOTAL stock across variants (single-number admin UI). */
+  /** Desired TOTAL units available to sell across variants (single-number UI). */
   stock?: number;
+  /**
+   * UX plan §4 (R10) — desired units available PER SIZE (summed across the
+   * colours of that size). Wins over `stock` when present. Keys must be in
+   * `sizes`; a size left out keeps what it has.
+   */
+  sizeStock?: Record<string, number>;
   seo?: { title?: string; description?: string };
 }
+
+/** Per-size stock body → clean map (unknown/negative/NaN dropped). */
+const cleanSizeStock = (v: unknown, sizes: string[]): Record<string, number> | undefined => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [size, n] of Object.entries(v as Record<string, unknown>)) {
+    const key = size.trim().slice(0, 24);
+    if (key === "" || !sizes.includes(key)) continue;
+    const num = typeof n === "string" ? Number(n) : n;
+    if (typeof num !== "number" || !Number.isFinite(num)) continue;
+    out[key] = Math.min(100000, Math.max(0, Math.floor(num)));
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
 
 const SLUG_RE = /^[a-z0-9\u0980-\u09ff]+(?:-[a-z0-9\u0980-\u09ff]+)*$/;
 
@@ -700,6 +722,7 @@ const sanitizeProductInput = (
     status: body.status === "published" ? "published" : "draft",
     active: body.active !== false,
     stock: body.stock === undefined ? undefined : Math.max(0, cleanInt(body.stock)),
+    sizeStock: undefined,
     seo: {
       title: str((body.seo as { title?: unknown } | undefined)?.title, 160) || undefined,
       description:
@@ -707,6 +730,7 @@ const sanitizeProductInput = (
     },
   };
   if (typeof body.nameBn === "string") out.nameBn = str(body.nameBn, 160);
+  out.sizeStock = cleanSizeStock(body.sizeStock, out.sizes ?? []);
   if (
     body.video &&
     typeof (body.video as { youtubeId?: unknown }).youtubeId === "string"
@@ -749,11 +773,51 @@ const validateProductInput = (
 };
 
 /**
- * Variant grid sync. Stock strategy (documented for the single-number UI):
- * - grid unchanged → every variant keeps its stock/reserved;
- * - grid changed or new product → desired total is split evenly;
- * - desired total given + grid unchanged → the difference lands on the
- *   first variant (never below its reservations).
+ * Spread a wanted AVAILABLE count over a group of variants, moving as few
+ * rows as possible: extra units land on the first row; a shortfall is taken
+ * from the last rows first, never below zero available (stock ≥ reserved).
+ * Returns the rows whose stock changes.
+ */
+export const spreadAvailable = (
+  rows: { id: string; stock: number; reserved: number }[],
+  wantedAvailable: number,
+): { id: string; stock: number }[] => {
+  if (rows.length === 0) return [];
+  const available = rows.map((r) => Math.max(0, r.stock - r.reserved));
+  const current = available.reduce((s, n) => s + n, 0);
+  let delta = Math.max(0, Math.floor(wantedAvailable)) - current;
+  const next = [...available];
+  if (delta > 0) next[0] += delta;
+  else {
+    for (let i = next.length - 1; i >= 0 && delta < 0; i -= 1) {
+      const take = Math.min(next[i], -delta);
+      next[i] -= take;
+      delta += take;
+    }
+  }
+  return rows
+    .map((r, i) => ({ id: r.id, stock: r.reserved + next[i] }))
+    .filter((r, i) => r.stock !== rows[i].stock);
+};
+
+/** Split `total` over `n` slots, remainder to the first slots. */
+const splitEven = (total: number, n: number): number[] => {
+  const per = Math.floor(total / n);
+  let remainder = total - per * n;
+  return Array.from({ length: n }, () => per + (remainder > 0 ? (remainder -= 1, 1) : 0));
+};
+
+/**
+ * Variant grid sync. Stock numbers in the editors mean "units still to sell"
+ * (= `available`, what the storefront shows), so a re-save never shaves off
+ * the units already sold. Strategy:
+ * - grid unchanged, nothing asked → every variant keeps its stock/reserved;
+ * - per-size counts given (UX plan §4, R10) → each size's colours are
+ *   nudged to that count, fewest rows moved; sizes not named keep theirs;
+ * - a total given → the difference lands on the first variant (a shortfall
+ *   is taken from the last rows first, never below the reservations);
+ * - grid changed or new product → the per-size counts (or the total, or 12)
+ *   are split evenly over the new cells.
  */
 const syncVariants = async (
   db: SupabaseClient,
@@ -761,6 +825,7 @@ const syncVariants = async (
   input: ProductInput,
   desiredTotal: number | undefined,
 ): Promise<void> => {
+  const sizeStock = input.sizeStock;
   const colors = input.colors?.length ? input.colors : [""];
   const sizes = input.sizes?.length ? input.sizes : [""];
   const wanted = new Map<string, { color: string; size: string }>();
@@ -783,19 +848,25 @@ const syncVariants = async (
     [...wanted.keys()].every((k) => existingKeys.has(k));
 
   if (sameGrid && existing.length > 0) {
-    // Keep per-variant stock; optionally nudge the total via row one.
-    const currentTotal = existing.reduce((s, v) => s + v.stock, 0);
-    const target = desiredTotal ?? currentTotal;
-    const first = [...existing].sort((a, b) =>
-      a.color.localeCompare(b.color),
-    )[0];
-    const nextFirst = Math.max(first.reserved, first.stock + (target - currentTotal));
-    const { error: upError } = await db
-      .from("product_variants")
-      .update({ price: input.price, stock: nextFirst, active: true })
-      .eq("id", first.id);
-    if (upError) throw new Error("variant update failed");
-    const rest = existing.filter((v) => v.id !== first.id);
+    // Keep per-variant stock; nudge per size or via the total when asked.
+    const ordered = [...existing].sort((a, b) => a.color.localeCompare(b.color));
+    const changes: { id: string; stock: number }[] = [];
+    if (sizeStock) {
+      for (const [size, wanted] of Object.entries(sizeStock)) {
+        changes.push(...spreadAvailable(ordered.filter((v) => v.size === size), wanted));
+      }
+    } else if (desiredTotal !== undefined) {
+      changes.push(...spreadAvailable(ordered, desiredTotal));
+    }
+    for (const c of changes) {
+      const { error: upError } = await db
+        .from("product_variants")
+        .update({ price: input.price, stock: c.stock, active: true })
+        .eq("id", c.id);
+      if (upError) throw new Error("variant update failed");
+    }
+    const changed = new Set(changes.map((c) => c.id));
+    const rest = existing.filter((v) => !changed.has(v.id));
     if (rest.length > 0) {
       const { error: restError } = await db
         .from("product_variants")
@@ -815,14 +886,27 @@ const syncVariants = async (
       await db.from("product_variants").delete().eq("id", v.id);
     }
   }
-  // …and upsert the wanted ones with evenly split stock.
-  const total = desiredTotal ?? 12;
-  const per = Math.floor(total / wanted.size);
-  let remainder = total - per * wanted.size;
+  // …and upsert the wanted ones with evenly split stock — per size when
+  // the editor said so, otherwise the total over the whole grid.
+  const cells = [...wanted.values()];
+  let stocks: number[];
+  if (sizeStock) {
+    const perSizeTotal = (size: string) =>
+      sizeStock[size] ?? Math.floor((desiredTotal ?? 12) / sizes.length);
+    stocks = cells.map(() => 0);
+    for (const size of sizes) {
+      const idx = cells.map((c, i) => (c.size === size ? i : -1)).filter((i) => i >= 0);
+      splitEven(perSizeTotal(size), idx.length).forEach((n, k) => {
+        stocks[idx[k]] = n;
+      });
+    }
+  } else {
+    stocks = splitEven(desiredTotal ?? 12, cells.length);
+  }
   let n = 0;
-  for (const { color, size } of wanted.values()) {
+  for (const { color, size } of cells) {
+    const stock = stocks[n];
     n += 1;
-    const stock = per + (remainder > 0 ? (remainder -= 1, 1) : 0);
     const row = existing.find((v) => v.color === color && v.size === size);
     if (row) {
       const { error: upError } = await db
@@ -1159,7 +1243,7 @@ export async function updateProduct(
       // the product is saved; the alert can wait for the next restock
     }
   }
-  if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sku !== undefined) {
+  if (rawRec.colors !== undefined || rawRec.sizes !== undefined || rawRec.price !== undefined || rawRec.stock !== undefined || rawRec.sizeStock !== undefined || rawRec.sku !== undefined) {
     // Variant grid inputs fall back to the CURRENT grid (not blank).
     const { data: current } = await db
       .from("product_variants")
@@ -1167,16 +1251,20 @@ export async function updateProduct(
       .eq("product_id", id)
       .eq("active", true);
     const cur = (current ?? []) as { color: string; size: string }[];
+    const gridSizes =
+      rawRec.sizes !== undefined
+        ? merged.sizes
+        : [...new Set(cur.map((v) => v.size).filter((s) => s !== ""))];
     const gridInput: ProductInput = {
       ...merged,
       colors:
         rawRec.colors !== undefined
           ? merged.colors
           : [...new Set(cur.map((v) => v.color).filter((c) => c !== ""))],
-      sizes:
-        rawRec.sizes !== undefined
-          ? merged.sizes
-          : [...new Set(cur.map((v) => v.size).filter((s) => s !== ""))],
+      sizes: gridSizes,
+      // A per-size PATCH without `sizes` is checked against the CURRENT grid.
+      sizeStock:
+        rawRec.sizeStock !== undefined ? cleanSizeStock(rawRec.sizeStock, gridSizes ?? []) : undefined,
       price: merged.price,
       sku: merged.sku,
       name: merged.name,
@@ -1688,12 +1776,64 @@ export async function moderateReviewRow(
     .eq("id", row.product_id)
     .single();
   const p = (product ?? {}) as { name?: string; slug?: string };
+  if (patch.status === "approved") {
+    await awardReviewStamp(db, row, p.name ?? "");
+  }
   return {
     ...mapReview(row),
     productName: p.name ?? "Removed product",
     productSlug: p.slug ?? "",
   };
 }
+
+/**
+ * "রিভিউ লিখুন, স্ট্যাম্প পান" (UX plan §4/§7, R10; migration 202609270004):
+ * an approved review that is a PROVEN purchase (verified + the phone the
+ * proof came from) writes one row to `stamp_ledger`. The (kind, ref_id)
+ * unique key makes approve → hide → approve pay once; a missing table or
+ * any error is swallowed — moderation must never fail on a courtesy. The
+ * shopper hears about it on the phone that opted in to push.
+ */
+export const awardReviewStamp = async (
+  db: SupabaseClient,
+  review: { id: string; verified: boolean; customer_phone?: string | null },
+  productName: string,
+): Promise<boolean> => {
+  const phone = typeof review.customer_phone === "string" ? review.customer_phone.replace(/\D/g, "") : "";
+  if (!review.verified || phone === "") return false;
+  try {
+    const { error } = await db.from("stamp_ledger").insert({
+      phone,
+      kind: "review",
+      ref_id: review.id,
+      note: productName.slice(0, 120),
+    });
+    if (error) return false; // duplicate (already paid) or table missing
+  } catch {
+    return false;
+  }
+  try {
+    const { pushCustomerMessage } = await import("@/lib/customer-push");
+    await pushCustomerMessage(db, {
+      phone,
+      build: (lang) =>
+        lang === "bn"
+          ? {
+              title: "রিভিউর জন্য ধন্যবাদ — ১টা স্ট্যাম্প যোগ হলো",
+              body: `${productName ? `"${productName}" — ` : ""}আপনার রিভিউ প্রকাশিত হয়েছে, স্মার্ট কার্ডে একটা স্ট্যাম্প বসল।`,
+              href: "/account",
+            }
+          : {
+              title: "Thanks for the review — 1 stamp added",
+              body: `${productName ? `"${productName}" — ` : ""}your review is live and a stamp landed on your Smart Card.`,
+              href: "/account",
+            },
+    });
+  } catch {
+    /* the stamp is written; the push is a courtesy */
+  }
+  return true;
+};
 
 export async function deleteReviewRow(
   db: SupabaseClient,
@@ -1709,6 +1849,11 @@ export async function deleteReviewRow(
 
 export interface AdminShop extends Shop {
   productCount: number;
+  /**
+   * A vendor login is attached (apply = sign up, 2026-09-26: every new
+   * application arrives linked; only legacy rows still need "Link vendor").
+   */
+  vendorLinked: boolean;
 }
 
 export async function listShopsFull(
@@ -1733,8 +1878,95 @@ export async function listShopsFull(
       counts.set(r.shop_id, (counts.get(r.shop_id) ?? 0) + 1);
     }
   }
-  return shops.map((s) => ({ ...s, productCount: counts.get(s.id) ?? 0 }));
+  const linked = new Set<string>();
+  if (shops.length > 0) {
+    // Staff read every link (policy "vendor_users admin all"); a failure
+    // here only hides the "Linked" badge, never the queue.
+    const { data: links } = await db
+      .from("vendor_users")
+      .select("shop_id")
+      .in(
+        "shop_id",
+        shops.map((s) => s.id),
+      );
+    for (const l of ((links ?? []) as { shop_id: string }[])) linked.add(l.shop_id);
+  }
+  return shops.map((s) => ({
+    ...s,
+    productCount: counts.get(s.id) ?? 0,
+    vendorLinked: linked.has(s.id),
+  }));
 }
+
+/** Round 4 — the four lifecycle states; anything else lands pending. */
+export const parseApplicationStatus = (value: unknown): ApplicationStatus =>
+  value === "active" || value === "suspended" || value === "rejected" ? value : "pending";
+
+export interface ReviewDecision {
+  status: ApplicationStatus;
+  /** Reason shown to the applicant (required when rejecting). */
+  note?: string;
+  /** Staff identity for the audit columns. */
+  reviewer: { id: string; email?: string | null };
+}
+
+/**
+ * Round 4 — staff decision on a shop or rider application (approve /
+ * reject / suspend / re-open). Every decision stamps reviewed_by /
+ * reviewed_at; the note is required for a rejection because the applicant
+ * reads it on the login page and fixes the details before re-applying.
+ * Approving clears an old rejection note so it never leaks into a later
+ * card; suspending keeps whatever reason staff typed.
+ */
+export async function reviewApplication(
+  db: SupabaseClient,
+  kind: "shop" | "rider",
+  id: string,
+  raw: { status?: unknown; note?: unknown },
+  reviewer: ReviewDecision["reviewer"],
+): Promise<Shop | Rider> {
+  const table = kind === "shop" ? "shops" : "riders";
+  const status = parseApplicationStatus(raw.status);
+  if (raw.status !== status) {
+    throw new AdminInputError("Choose a decision: active, rejected, suspended or pending.");
+  }
+  const note = clean(raw.note, 400);
+  if (status === "rejected" && note.length < 3) {
+    throw new AdminInputError(
+      "Give the applicant a reason (at least a few words) — they read it on their login page.",
+    );
+  }
+  const patch: Record<string, unknown> = {
+    status,
+    review_note: note || null,
+    reviewed_by: reviewer.id,
+    reviewed_by_email: (reviewer.email ?? "").trim().toLowerCase() || null,
+    reviewed_at: new Date().toISOString(),
+  };
+  if (kind === "shop" && status !== "active") patch.is_open = false;
+  if (kind === "rider" && status !== "active") patch.is_online = false;
+  const { data, error } = await db
+    .from(table)
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) {
+    if (isMissingColumn(error)) {
+      throw new AdminInputError(
+        "Application review is not set up on this database yet — run supabase/migrations/202609260002_application_review.sql.",
+        503,
+      );
+    }
+    throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
+  }
+  if (!data) throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
+  return kind === "shop" ? mapShop(data as DbShop) : mapRider(data as DbRider);
+}
+
+/** Postgres 42703 (undefined column) / PostgREST PGRST204 — column missing. */
+const isMissingColumn = (error: PostgrestError | null): boolean =>
+  !!error && (error.code === "42703" || error.code === "PGRST204" || /column .* does not exist/i.test(error.message ?? ""));
 
 /**
  * Staff upsert: full-object save from the Shops queue (new manual rows send
@@ -1765,9 +1997,21 @@ export async function upsertShop(
     status?: string;
     is_open?: boolean;
     isOpen?: boolean;
+    /** Free delivery (2026-09-26): the shop's own minimum, paisa; null clears it. */
+    free_delivery_min?: number | string | null;
+    freeDeliveryMinPaisa?: number | string | null;
   };
   const name = clean(body.name, 80);
   if (name.length < 2) throw new AdminInputError("Shop name is too short.");
+  // Only written when the form sent the key — a database without migration
+  // 202609260003 keeps saving every other field.
+  const freeDeliverySent =
+    body.free_delivery_min !== undefined || body.freeDeliveryMinPaisa !== undefined;
+  const freeDeliveryMin = freeDeliverySent
+    ? parseShopFreeDeliveryMin(
+        body.free_delivery_min !== undefined ? body.free_delivery_min : body.freeDeliveryMinPaisa,
+      )
+    : undefined;
   const phone = clean(body.phone, 20);
   const email = clean(body.contact_email ?? body.contactEmail, 120).toLowerCase();
   const zoneIds = Array.isArray(body.zone_ids ?? body.zoneIds)
@@ -1788,7 +2032,7 @@ export async function upsertShop(
   if (commission < 0 || commission > 90) {
     throw new AdminInputError("Commission must be between 0 and 90 percent.");
   }
-  const status = body.status === "active" || body.status === "suspended" ? body.status : "pending";
+  const status = parseApplicationStatus(body.status);
   const isOpen = (body.is_open ?? body.isOpen) === true;
 
   const id = clean(body.id, 64);
@@ -1805,6 +2049,7 @@ export async function upsertShop(
       commission_pct: commission,
       status,
       is_open: status === "active" ? isOpen : false,
+      ...(freeDeliveryMin !== undefined ? { free_delivery_min: freeDeliveryMin } : {}),
     };
     const { data, error } = await db
       .from("shops")
@@ -1812,7 +2057,19 @@ export async function upsertShop(
       .eq("id", id)
       .select("*")
       .single();
-    if (error || !data) throw new AdminInputError("Shop not found.", 404);
+    if (error || !data) {
+      if (
+        freeDeliveryMin !== undefined &&
+        ((error as { code?: string } | null)?.code === "PGRST204" ||
+          /free_delivery_min/.test((error as { message?: string } | null)?.message ?? ""))
+      ) {
+        throw new AdminInputError(
+          "Free delivery is not set up on this database yet — run supabase/migrations/202609260003_free_delivery.sql, or leave the free-delivery field empty.",
+          503,
+        );
+      }
+      throw new AdminInputError("Shop not found.", 404);
+    }
     return mapShop(data as DbShop);
   }
 
@@ -1835,12 +2092,19 @@ export async function upsertShop(
       commission_pct: commission,
       status: "pending",
       is_open: false,
+      ...(freeDeliveryMin ? { free_delivery_min: freeDeliveryMin } : {}),
     })
     .select("*")
     .single();
   if (error) {
     if (error.code === "23505") {
       throw new AdminInputError("That shop slug is taken.", 409);
+    }
+    if (freeDeliveryMin && (error.code === "PGRST204" || /free_delivery_min/.test(error.message ?? ""))) {
+      throw new AdminInputError(
+        "Free delivery is not set up on this database yet — run supabase/migrations/202609260003_free_delivery.sql, or leave the free-delivery field empty.",
+        503,
+      );
     }
     throw new Error("shop insert failed");
   }
@@ -2095,7 +2359,7 @@ export async function listRidersFull(db: SupabaseClient): Promise<Rider[]> {
   if (error) throw new Error("riders list failed");
   const rows = ((data ?? []) as DbRider[]).map(mapRider);
   const rank = (s: Rider["status"]): number =>
-    s === "pending" ? 0 : s === "active" ? 1 : 2;
+    s === "pending" ? 0 : s === "active" ? 1 : s === "rejected" ? 2 : 3;
   return rows.sort((a, b) => rank(a.status) - rank(b.status));
 }
 
@@ -2150,9 +2414,7 @@ export async function upsertRider(
   const badZone = zoneIds.find((z) => !known.has(z));
   if (badZone) throw new AdminInputError(`Unknown delivery zone: ${badZone}.`);
   const status =
-    body.status === "active" || body.status === "suspended"
-      ? body.status
-      : "pending";
+    parseApplicationStatus(body.status);
 
   const id = clean(body.id, 64);
   if (id !== "") {

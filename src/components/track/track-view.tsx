@@ -33,6 +33,8 @@ import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
 import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
 import NotifyOptIn from "./notify-opt-in";
+import ShareTrackerButton from "./share-tracker-button";
+import WhileYouWaitRail from "./while-you-wait-rail";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
 
@@ -496,7 +498,15 @@ export default function TrackView() {
                   <div className="flex justify-between text-ink-soft">
                     <dt>Delivery{order.isPickup ? " — Pickup" : ""}{order.isExpress ? " — Express" : ""}</dt>
                     <dd>
-                      {order.isPickup ? "Free (Pickup)" : order.deliveryCharge === 0 ? "Free" : formatBdt(order.deliveryCharge)}
+                      {order.isPickup
+                        ? "Free (Pickup)"
+                        : order.deliveryCharge === 0
+                          ? order.freeDeliveryBy === "shop"
+                            ? "Free (shop offer)"
+                            : order.freeDeliveryBy === "platform"
+                              ? "Free (PROSANTI offer)"
+                              : "Free"
+                          : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
                   {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
@@ -568,6 +578,10 @@ export default function TrackView() {
                     </a>
                   )}
                   {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
+                  {/* UX plan §7 — hand the same tracker to whoever is at home */}
+                  {order.status !== "cancelled" ? (
+                    <ShareTrackerButton orderId={order.id} phone={order.customer.phone || phone} />
+                  ) : null}
                 </div>
                 {order.customer.note && (
                   <p className="mt-3 text-xs leading-5 text-ink-soft">
@@ -576,6 +590,13 @@ export default function TrackView() {
                 )}
               </div>
             </div>
+
+            {/* UX plan §7 — the waiting time is browsing time */}
+            {order.status !== "cancelled" ? (
+              <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+                <WhileYouWaitRail order={order} />
+              </div>
+            ) : null}
           </div>
         )}
       </div>

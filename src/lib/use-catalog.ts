@@ -40,6 +40,7 @@ const toProductInput = (p: Product): Record<string, unknown> => ({
   status: p.status ?? "published",
   active: p.active ?? true,
   stock: p.stock,
+  sizeStock: p.sizeStock,
   seo: p.seo,
   // null clears the warranty — the editor round-trips the full field.
   warrantyDays: p.warrantyDays ?? null,

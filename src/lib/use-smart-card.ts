@@ -12,6 +12,8 @@ import { useCustomer } from "./use-customer";
 export interface SmartCard {
   stamps: number;
   orderCount: number;
+  /** Stamps earned by approved verified reviews (UX plan §4/§7, R10). */
+  reviewStamps: number;
   target: number;
   cycles: number;
   unlocked: boolean;
@@ -46,6 +48,7 @@ export function useSmartCard(): {
           card: {
             stamps: number;
             orderCount: number;
+            reviewStamps?: number;
             target: number;
             cycles: number;
             unlocked: boolean;
@@ -59,6 +62,7 @@ export function useSmartCard(): {
         const card: SmartCard = {
           stamps: body.card.stamps,
           orderCount: body.card.orderCount,
+          reviewStamps: Math.max(0, Math.floor(Number(body.card.reviewStamps) || 0)),
           target,
           cycles: body.card.cycles,
           unlocked: body.card.unlocked,

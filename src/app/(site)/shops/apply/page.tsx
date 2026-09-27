@@ -1,10 +1,28 @@
 "use client";
 
+/**
+ * Shop application = vendor sign-up (2026-09-26).
+ *
+ * One form collects the shop details AND the login (email + password).
+ * The server creates the account with the pending shop, so there is no
+ * second "create account" step: once PROSANTI approves, the same email and
+ * password open /vendor.
+ */
+
 import { useState } from "react";
 import Link from "next/link";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
+import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
+import PasswordInput from "@/components/ui/password-input";
+import {
+  AlreadyAppliedLink,
+  ApplySteps,
+  FormAlert,
+  FormSection,
+  ZoneChips,
+} from "@/components/apply/apply-form-ui";
 
 export default function ShopApplyPage() {
   const { activeZones: zones } = useLiveZones();
@@ -13,6 +31,8 @@ export default function ShopApplyPage() {
   const [tagline, setTagline] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [address, setAddress] = useState("");
   const [prepMinutes, setPrepMinutes] = useState("15");
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
@@ -20,8 +40,12 @@ export default function ShopApplyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** false → no signed-in account matched, the vendor login still has to be created. */
-  const [linked, setLinked] = useState(true);
+  /** What to type in the login box later — the e-mail, or the mobile number for a phone login. */
+  const [loginHandle, setLoginHandle] = useState("");
+  /** Round 4 — this application replaced a rejected one (same login). */
+  const [resubmitted, setResubmitted] = useState(false);
+  /** "existing" → the email already had a PROSANTI login and it was reused. */
+  const [account, setAccount] = useState<"created" | "existing">("created");
 
   const toggleZone = (id: string) => {
     setSelectedZones((prev) =>
@@ -43,8 +67,14 @@ export default function ShopApplyPage() {
       setError("সঠিক বাংলাদেশি মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError("সঠিক ইমেইল অ্যাড্রেস দিন।");
+    // Round 4 — e-mail is optional: without one the mobile number is the login.
+    if (cleanEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError("ইমেইলটি ঠিক নেই — ঠিক করুন, অথবা ফাঁকা রাখুন (তখন মোবাইল নম্বর দিয়েই লগইন হবে)।");
+      return;
+    }
+    const passwordIssue = passwordProblem(password, confirmPassword);
+    if (passwordIssue) {
+      setError(passwordIssue);
       return;
     }
     if (selectedZones.length === 0) {
@@ -64,6 +94,7 @@ export default function ShopApplyPage() {
           tagline: tagline.trim(),
           phone: cleanPhone,
           contactEmail: cleanEmail,
+          password,
           address: address.trim(),
           prepMinutes: Math.max(5, Math.floor(Number(prepMinutes) || 15)),
           zoneIds: selectedZones,
@@ -72,13 +103,19 @@ export default function ShopApplyPage() {
 
       const data = (await res.json().catch(() => null)) as {
         error?: string;
-        linked?: boolean;
+        account?: "created" | "existing";
+        login?: string;
+        resubmitted?: boolean;
       } | null;
       if (!res.ok) {
         throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
       }
 
-      setLinked(data?.linked !== false);
+      setAccount(data?.account === "existing" ? "existing" : "created");
+      setLoginHandle(data?.login || cleanEmail || cleanPhone);
+      setResubmitted(data?.resubmitted === true);
+      setPassword("");
+      setConfirmPassword("");
       setSubmitted(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "আবেদন প্রক্রিয়া ব্যর্থ হয়েছে।");
@@ -94,39 +131,41 @@ export default function ShopApplyPage() {
           <IconCheck className="h-8 w-8 stroke-[2.5]" />
         </div>
         <h1 className="font-display mt-6 text-2xl font-bold text-forest-900 sm:text-3xl">
-          আবেদন সফলভাবে গৃহীত হয়েছে!
+          {resubmitted ? "আবেদন আবার জমা হয়েছে!" : "আবেদন সফলভাবে গৃহীত হয়েছে!"}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-ink-soft">
-          ধন্যবাদ <strong>{name}</strong>! আপনার শপ রেজিস্ট্রেশন আবেদন আমাদের পেন্ডিং কিউতে জমা হয়েছে। আমাদের টিম খুব দ্রুত তথ্য যাচাই করে অ্যাকাউন্ট অনুমোদন (Approve) করবে।
+          ধন্যবাদ <strong>{name}</strong>!{" "}
+          {resubmitted
+            ? "নতুন তথ্যসহ আপনার শপ রেজিস্ট্রেশন আবেদন আবার অ্যাডমিনের কিউতে গেছে।"
+            : "আপনার শপ রেজিস্ট্রেশন আবেদন আমাদের পেন্ডিং কিউতে জমা হয়েছে।"}{" "}
+          আমাদের টিম খুব দ্রুত তথ্য যাচাই করে অ্যাকাউন্ট অনুমোদন (Approve) করবে।
         </p>
 
-        {!linked && (
-          <div className="mx-auto mt-6 max-w-md rounded-2xl bg-gold-100/70 p-4 text-left ring-1 ring-gold-300">
-            <p className="text-xs font-semibold text-forest-900">
-              শেষ ধাপ: ভেন্ডর লগইন অ্যাকাউন্ট খুলুন
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-              আপনার আবেদনটি ইমেইল <strong>{email}</strong>-এর সাথে যুক্ত আছে। এই একই ইমেইল ও নিজের একটি পাসওয়ার্ড দিয়ে <strong>/vendor/login</strong> থেকে অ্যাকাউন্ট না খুললে অনুমোদনের পরেও ড্যাশবোর্ডে ঢুকতে পারবেন না।
-            </p>
-            <Link
-              href={`/vendor/login?mode=up&email=${encodeURIComponent(email.trim().toLowerCase())}`}
-              className="mt-3 inline-flex h-10 items-center rounded-full bg-forest-800 px-5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
-            >
-              এই ইমেইল দিয়ে অ্যাকাউন্ট খুলুন →
-            </Link>
-          </div>
-        )}
+        <div
+          role="status"
+          className="mx-auto mt-6 max-w-md rounded-2xl bg-gold-100/70 p-4 text-left ring-1 ring-gold-300"
+        >
+          <p className="text-xs font-semibold text-forest-900">
+            আপনার ভেন্ডর লগইন তৈরি হয়ে গেছে
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+            {account === "existing"
+              ? "এই ইমেইলে আগে থেকেই PROSANTI অ্যাকাউন্ট ছিল — সেটিই আপনার দোকানের সাথে যুক্ত করা হয়েছে। "
+              : ""}
+            অ্যাডমিন অনুমোদন করার পর <strong>{loginHandle}</strong> এবং আবেদনের সময় দেওয়া পাসওয়ার্ড দিয়ে <strong>/vendor/login</strong>-এ সাইন ইন করলেই ড্যাশবোর্ড খুলবে। অনুমোদনের আগে লগইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে — এটাই স্বাভাবিক।
+          </p>
+        </div>
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
           <Link
-            href="/shops"
-            className="rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            href="/vendor/login"
+            className="inline-flex min-h-11 items-center rounded-full bg-forest-800 px-6 py-2.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
           >
-            শপ ডিরেক্টরি দেখুন →
+            ভেন্ডর লগইন পেইজ →
           </Link>
           <Link
             href="/"
-            className="rounded-full border border-line bg-paper px-6 py-2.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+            className="inline-flex min-h-11 items-center rounded-full border border-line bg-paper px-6 py-2.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
           >
             হোমে ফিরে যান
           </Link>
@@ -149,24 +188,20 @@ export default function ShopApplyPage() {
         </p>
       </div>
 
+      <ApplySteps kind="vendor" />
+
       <form
         onSubmit={handleSubmit}
-        className="mt-8 rounded-3xl border border-line bg-paper p-6 sm:p-8 shadow-sm space-y-5"
+        className="mt-6 space-y-6 rounded-3xl border border-line bg-paper p-6 shadow-sm sm:p-8"
       >
-        {error && (
-          <div
-            role="alert"
-            className="rounded-2xl bg-rose-50 p-4 text-xs font-semibold text-rose-800 ring-1 ring-rose-200"
-          >
-            {error}
-          </div>
-        )}
+        <FormAlert message={error} />
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <FormSection step={1} title="দোকানের তথ্য">
           <label className="block sm:col-span-2">
             <span className={label}>দোকানের নাম (Shop Name) *</span>
             <input
               required
+              autoComplete="organization"
               className={field}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -189,41 +224,21 @@ export default function ShopApplyPage() {
             <input
               required
               type="tel"
+              inputMode="numeric"
+              autoComplete="tel-national"
               className={field}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="017XXXXXXXX"
             />
+            <span className={hint}>রাইডার পিকআপের সময় এই নম্বরে কল করবেন; WhatsApp থাকলে ভালো।</span>
           </label>
 
           <label className="block">
-            <span className={label}>লগইন / যোগাযোগ ইমেইল *</span>
-            <input
-              required
-              type="email"
-              className={field}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="shop@example.com"
-            />
-          </label>
-
-          <label className="block sm:col-span-2">
-            <span className={label}>দোকানের পূর্ণ ঠিকানা *</span>
-            <textarea
-              required
-              rows={2}
-              className={field}
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="যেমন: কান্দিরপাড় মার্কেট, ২য় তলা, কুমিল্লা"
-            />
-          </label>
-
-          <label className="block sm:col-span-2">
-            <span className={label}>আনুমানিক প্যাকিং সময় (মিনিট)</span>
+            <span className={label}>আনুমানিক প্যাকিং সময় (মিনিট)</span>
             <input
               type="number"
+              inputMode="numeric"
               min="5"
               max="45"
               className={field}
@@ -231,53 +246,95 @@ export default function ShopApplyPage() {
               onChange={(e) => setPrepMinutes(e.target.value)}
               placeholder="15"
             />
-            <span className={hint}>
-              অর্ডার আসার পর রাইডার আসার আগে কত মিনিটে কাপড় প্যাক করে দিতে পারবেন।
-            </span>
+            <span className={hint}>অর্ডার আসার পর রাইডার পৌঁছানোর আগে কত মিনিটে প্যাক করতে পারবেন।</span>
           </label>
-        </div>
 
-        {/* Zones selection */}
-        <div>
-          <span className={label}>যেসব জোনে ডেলিভারি দিতে চান</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {zones.map((z) => {
-              const checked = selectedZones.includes(z.id);
-              return (
-                <button
-                  type="button"
-                  key={z.id}
-                  onClick={() => toggleZone(z.id)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all ${
-                    checked
-                      ? "bg-forest-800 text-ivory-50 ring-1 ring-forest-800"
-                      : "bg-ivory-100 text-ink-soft ring-1 ring-line hover:border-line-strong"
-                  }`}
-                >
-                  {checked ? `✓ ${z.name}` : z.name}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-[11px] text-ink-soft">
-            (সিলেক্ট না করলে সব জোনে সার্ভিস প্রযোজ্য হবে)
-          </p>
-        </div>
+          <label className="block sm:col-span-2">
+            <span className={label}>দোকানের পূর্ণ ঠিকানা *</span>
+            <textarea
+              required
+              rows={2}
+              autoComplete="street-address"
+              className={field}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="যেমন: কান্দিরপাড় মার্কেট, ২য় তলা, কুমিল্লা"
+            />
+          </label>
+        </FormSection>
 
-        <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line text-xs leading-relaxed text-ink-soft flex items-start gap-2.5">
-          <IconShield className="h-5 w-5 shrink-0 text-gold-600 mt-0.5" />
+        <FormSection
+          step={2}
+          title="লগইন তথ্য"
+          hint="অনুমোদনের পর মোবাইল নম্বর (বা ইমেইল) ও এই পাসওয়ার্ড দিয়েই ভেন্ডর ড্যাশবোর্ডে ঢুকবেন — মনে রাখার মতো পাসওয়ার্ড দিন।"
+        >
+          <label className="block sm:col-span-2">
+            <span className={label}>ইমেইল অ্যাড্রেস (ঐচ্ছিক)</span>
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              className={field}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="shop@example.com"
+            />
+            <span className={hint}>ইমেইল না থাকলে ফাঁকা রাখুন — দোকানের মোবাইল নম্বর দিয়েই লগইন করবেন। কোনো এসএমএস বা ইমেইল পাঠানো হয় না।</span>
+          </label>
+
+          <label className="block">
+            <span className={label}>লগইন পাসওয়ার্ড *</span>
+            <PasswordInput
+              required
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="অন্তত ৬ অক্ষর"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
+            />
+          </label>
+
+          <label className="block">
+            <span className={label}>পাসওয়ার্ড আবার লিখুন *</span>
+            <PasswordInput
+              required
+              autoComplete="new-password"
+              minLength={APPLICANT_PASSWORD_MIN}
+              className={field}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="একই পাসওয়ার্ড"
+              toggle={{ show: "দেখুন", hide: "লুকান" }}
+            />
+          </label>
+        </FormSection>
+
+        <FormSection
+          step={3}
+          title="ডেলিভারি এলাকা"
+          hint="যেসব এলাকায় ডেলিভারি দিতে চান, অন্তত একটি বেছে নিন — পরে অ্যাডমিন বাড়াতে বা কমাতে পারবেন।"
+        >
+          <ZoneChips zones={zones} selected={selectedZones} onToggle={toggleZone} />
+        </FormSection>
+
+        <div className="flex items-start gap-2.5 rounded-2xl bg-ivory-100/70 p-4 text-xs leading-relaxed text-ink-soft ring-1 ring-line">
+          <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-gold-600" />
           <p>
-            আবেদন জমা দিলে অ্যাডমিন প্যানেল থেকে তথ্য যাচাই করে আপনার শপ অ্যাকাউন্ট অ্যাক্টিভ করা হবে। আপনি ভেন্ডর প্যানেলে লগইন করে প্রোডাক্ট আপলোড করতে পারবেন।
+            আবেদন জমা দিলেই আপনার ভেন্ডর লগইন (উপরের ইমেইল ও পাসওয়ার্ড) তৈরি হয়ে যায়। অ্যাডমিন তথ্য যাচাই করে অনুমোদন দিলে সেই লগইনেই ড্যাশবোর্ড খুলবে — তখন প্রোডাক্ট আপলোড, অর্ডার ও আয় সব এক জায়গায়। অনুমোদনের আগে সাইন ইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে।
           </p>
         </div>
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full h-12 rounded-full bg-forest-800 font-semibold text-xs text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
+          className="h-12 w-full rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-900 disabled:opacity-60"
         >
-          {submitting ? "জমা হচ্ছে…" : "আবেদন জমা দিন (Submit Shop Application)"}
+          {submitting ? "জমা হচ্ছে…" : "আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন"}
         </button>
+
+        <AlreadyAppliedLink href="/vendor/login" />
       </form>
     </div>
   );

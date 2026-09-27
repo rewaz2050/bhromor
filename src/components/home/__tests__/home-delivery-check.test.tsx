@@ -89,3 +89,30 @@ describe("HomeDeliveryCheck", () => {
     expect(screen.getByTestId("home-delivery-result").textContent).toMatch(/min\. order ৳500/);
   });
 });
+
+describe("HomeDeliveryCheck — compact row under the hero (UX plan §3, R11)", () => {
+  it("asks the one question without pills, answers it, then hands over to the header pill", () => {
+    render(<HomeDeliveryCheck compact />);
+    const row = screen.getByTestId("home-delivery-check-compact");
+    expect(row.querySelector('[data-testid="trust-pills"]')).toBeNull();
+    const zoneA = DELIVERY_ZONES[0];
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: zoneA.areas[0] } });
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    // the answer is shown even though the zone just became known
+    const result = screen.getByTestId("home-delivery-result-compact");
+    expect(result.textContent).toContain("Zone A");
+    expect(result.textContent).toContain(formatBdt(zoneA.charge));
+    expect(window.localStorage.getItem("prosanti.myzone.v1")).toContain(zoneA.id);
+    // a fresh mount on a device that already knows its zone → nothing
+    cleanup();
+    render(<HomeDeliveryCheck compact />);
+    expect(screen.queryByTestId("home-delivery-check-compact")).toBeNull();
+  });
+
+  it("the full strip at the foot of the page is unaffected by a known zone", () => {
+    window.localStorage.setItem("prosanti.myzone.v1", JSON.stringify({ zoneId: "z1" }));
+    render(<HomeDeliveryCheck />);
+    expect(screen.getByTestId("home-delivery-check")).toBeInTheDocument();
+    expect(screen.getByTestId("trust-pills")).toBeInTheDocument();
+  });
+});

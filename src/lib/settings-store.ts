@@ -24,6 +24,11 @@ import {
   type CampaignConfig,
 } from "./campaign";
 import { PLUS_DEFAULTS, sanitizePlus, type PlusConfig } from "./membership";
+import {
+  FREE_DELIVERY_DEFAULTS,
+  sanitizeFreeDelivery,
+  type FreeDeliveryRule,
+} from "./free-delivery";
 
 export interface AdminSettings {
   lowStockThreshold: number;
@@ -37,7 +42,6 @@ export interface AdminSettings {
   rainSurchargeEnabled: boolean;
   nightSurchargeEnabled: boolean;
   expressDeliveryEnabled: boolean;
-  perZoneFreeThresholdEnabled: boolean;
   /** The amounts behind the toggles, in paisa (admin-editable, 2026-09-21). */
   surcharges: SurchargeRates;
   /** Courier (outside Sadar) minimum order, in paisa. */
@@ -59,6 +63,11 @@ export interface AdminSettings {
   campaign: CampaignConfig;
   /** P2 #17 — PROSANTI+ membership program. */
   plus: PlusConfig;
+  /**
+   * Free delivery (2026-09-26) — the PLATFORM rule: on/off + minimum subtotal,
+   * PROSANTI-funded. Shops opt into their own rule on the shop row.
+   */
+  freeDelivery: FreeDeliveryRule;
 }
 
 export const SETTINGS_DEFAULTS: AdminSettings = {
@@ -72,7 +81,6 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   rainSurchargeEnabled: false,
   nightSurchargeEnabled: true,
   expressDeliveryEnabled: true,
-  perZoneFreeThresholdEnabled: true,
   surcharges: { ...DEFAULT_SURCHARGE_RATES },
   courierMinOrderPaisa: 50_000,
   // No wallet configured → checkout offers COD only, until the shop adds
@@ -94,6 +102,9 @@ export const SETTINGS_DEFAULTS: AdminSettings = {
   // running" until the owner arms a real window in Admin → Growth.
   campaign: CAMPAIGN_DEFAULTS,
   plus: PLUS_DEFAULTS,
+  // Off until the owner arms it in Admin → Settings — a threshold moves real
+  // delivery money, so it never appears by default.
+  freeDelivery: FREE_DELIVERY_DEFAULTS,
 };
 
 /** Paisa rate: any finite number 0..cap, else the default. */
@@ -161,11 +172,6 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     typeof p.expressDeliveryEnabled === "boolean"
       ? p.expressDeliveryEnabled
       : SETTINGS_DEFAULTS.expressDeliveryEnabled;
-  const perZoneFreeThresholdEnabled =
-    typeof p.perZoneFreeThresholdEnabled === "boolean"
-      ? p.perZoneFreeThresholdEnabled
-      : SETTINGS_DEFAULTS.perZoneFreeThresholdEnabled;
-
   const bool = (value: unknown, fallback: boolean): boolean =>
     typeof value === "boolean" ? value : fallback;
 
@@ -200,7 +206,6 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     rainSurchargeEnabled,
     nightSurchargeEnabled,
     expressDeliveryEnabled,
-    perZoneFreeThresholdEnabled,
     sizeFinderEnabled: bool(p.sizeFinderEnabled, SETTINGS_DEFAULTS.sizeFinderEnabled),
     priceAlertsEnabled: bool(p.priceAlertsEnabled, SETTINGS_DEFAULTS.priceAlertsEnabled),
     wallets: {
@@ -221,5 +226,6 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     referral: sanitizeReferral(p.referral),
     campaign: sanitizeCampaign(p.campaign),
     plus: sanitizePlus(p.plus),
+    freeDelivery: sanitizeFreeDelivery(p.freeDelivery),
   };
 };

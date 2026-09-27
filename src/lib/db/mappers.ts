@@ -7,6 +7,7 @@
  */
 
 import type {
+  ApplicationReview,
   Category,
   DeliveryZone,
   Product,
@@ -15,6 +16,7 @@ import type {
   Shop,
 } from "../catalog";
 import type { Coupon } from "../coupons";
+import { normalizeKyc } from "../rider-kyc";
 import type {
   Order,
   OrderItem,
@@ -128,6 +130,12 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
   const sizes = distinct(live.map((v) => v.size));
   const stock = live.reduce((s, v) => s + Math.max(0, v.available), 0);
   const inStock = p.in_stock && (live.length === 0 || stock > 0);
+  // Per-size availability (UX plan §4, R10): only when the grid has sizes.
+  const sizeStock: Record<string, number> = {};
+  for (const v of live) {
+    if (v.size === "") continue;
+    sizeStock[v.size] = (sizeStock[v.size] ?? 0) + Math.max(0, v.available);
+  }
 
   const ordered = [...media].sort((a, b) => a.sort_order - b.sort_order);
   // Images and videos share one ordered gallery; the first row should be
@@ -166,6 +174,7 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
     isNew: p.is_new,
     inStock,
     lowStock: p.low_stock || (inStock && stock > 0 && stock <= 5),
+    ...(Object.keys(sizeStock).length > 0 ? { sizeStock } : {}),
     media: gallery,
     video: youtubeId
       ? { youtubeId, label: yt?.alt_text || p.name }
@@ -200,12 +209,29 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
 };
 
 /** Shop row → the marketplace `Shop` shape (slice 1: read-only use). */
+/**
+ * Round 4 — the staff decision columns, or undefined when the row was never
+ * reviewed (and on databases that have not run 202609260002 yet).
+ */
+export const mapApplicationReview = (row: {
+  review_note?: string | null;
+  reviewed_by_email?: string | null;
+  reviewed_at?: string | null;
+}): ApplicationReview | undefined => {
+  const note = typeof row.review_note === "string" && row.review_note.trim() !== "" ? row.review_note.trim() : undefined;
+  const by = typeof row.reviewed_by_email === "string" && row.reviewed_by_email !== "" ? row.reviewed_by_email : undefined;
+  const at = row.reviewed_at ? Date.parse(row.reviewed_at) : NaN;
+  if (!note && !by && !Number.isFinite(at)) return undefined;
+  return { note, by, at: Number.isFinite(at) ? at : undefined };
+};
+
 export const mapShop = (row: DbShop): Shop => ({
   id: row.id,
   slug: row.slug,
   name: row.name,
   tagline: row.tagline || undefined,
   logoUrl: row.logo_url || undefined,
+  coverUrl: typeof row.cover_url === "string" && row.cover_url !== "" ? row.cover_url : undefined,
   phone: row.phone,
   contactEmail: row.contact_email || undefined,
   address: row.address || undefined,
@@ -216,7 +242,21 @@ export const mapShop = (row: DbShop): Shop => ({
   isOpen: row.is_open,
   ratingAvg: Number(row.rating_avg),
   ratingCount: row.rating_count,
+  // Key present only when the column exists (migration 202609260003): the
+  // admin form round-trips the whole Shop, and a key it never read must not
+  // become a write the database can't take.
+  ...(row.free_delivery_min !== undefined
+    ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
+    : {}),
+  review: mapApplicationReview(row),
 });
+
+/** bigint columns arrive as strings from PostgREST; anything non-positive = off. */
+const mapFreeDeliveryMin = (raw: number | string | null | undefined): number | null => {
+  if (raw === null || raw === undefined) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+};
 
 /** Rider row → the marketplace `Rider` shape (slice 6). */
 export const mapRider = (row: DbRider): Rider => ({
@@ -224,6 +264,7 @@ export const mapRider = (row: DbRider): Rider => ({
   name: row.name,
   phone: row.phone,
   contactEmail: row.contact_email || undefined,
+  hasLogin: typeof row.user_id === "string" && row.user_id.length > 0,
   vehicle: row.vehicle,
   zoneIds: [...row.zone_ids],
   status: row.status,
@@ -243,6 +284,9 @@ export const mapRider = (row: DbRider): Rider => ({
     toHour: row.avail_to_hour ?? null,
     days: Array.isArray(row.avail_days) && row.avail_days.length > 0 ? [...row.avail_days] : null,
   },
+  review: mapApplicationReview(row),
+  kyc: normalizeKyc(row.kyc),
+  kycSubmittedAt: row.kyc_submitted_at ? Date.parse(row.kyc_submitted_at) : undefined,
 });
 
 export interface OrderRowBundle {
@@ -321,6 +365,8 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       ? new Date(o.payment_verified_at).getTime()
       : undefined,
     isPlus: o.is_plus === true,
+    freeDeliveryBy: o.free_delivery_by === "platform" || o.free_delivery_by === "shop" ? o.free_delivery_by : null,
+    freeDeliveryWaived: Math.max(0, Number(o.free_delivery_waived ?? 0) || 0),
     status: o.status as OrderStatus,
     timeline,
     deliveredMinutes,

@@ -151,6 +151,35 @@ describe("P1 #16 — saved address pre-fills", () => {
     expect((screen.getByPlaceholderText(/House 12/) as HTMLInputElement).value).toBe("Beside the mosque");
   });
 
+  it("offers a one-tap 'same as last time' that jumps to the order button without submitting", async () => {
+    saveAddress({
+      label: "🏠 Boropara - Rahim",
+      name: "Rahim Uddin",
+      phone: "01711111111",
+      area: "Boropara",
+      houseNo: "12",
+      roadName: "College Road",
+      fullAddress: "Beside the mosque",
+      note: "",
+      zoneId: "z1",
+      tag: "home",
+    });
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return mockFetch(input);
+    });
+    mount();
+    await ready();
+    const jump = await screen.findByTestId("same-as-last");
+    expect(jump).toHaveAttribute("type", "button");
+    expect(jump).toHaveTextContent(/Same as last time|গতবারের মতোই/);
+    fireEvent.click(jump);
+    const cta = screen.getByRole("button", { name: /Place Order/i });
+    expect(document.activeElement).toBe(cta);
+    expect(urls.some((u) => u.includes("/api/orders"))).toBe(false);
+  });
+
   it("saving the same place twice keeps one row", () => {
     const addr = {
       label: "🏠 Boropara - Rahim",

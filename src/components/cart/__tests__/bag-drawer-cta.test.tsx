@@ -134,3 +134,36 @@ describe("BagDrawer — arrival cue + cash-at-the-door reminder", () => {
     expect(within(dialog2).getByTestId("cod-reminder")).toHaveTextContent(/minimum order is ৳500/);
   });
 });
+
+describe("BagDrawer — empty bag (UX plan §1.4, R8)", () => {
+  it("shows the pieces this device viewed under the empty state; nothing extra on a first visit", async () => {
+    window.localStorage.removeItem(CART_STORAGE_KEY);
+    const { recordView, __resetRecentlyViewed } = await import("@/lib/recently-viewed");
+    __resetRecentlyViewed();
+    recordView(PRODUCTS[1].id);
+    render(
+      <CartProvider>
+        <OpenBag />
+        <BagDrawer />
+      </CartProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
+    const dialog = await screen.findByRole("dialog", { name: "Your Bag" });
+    expect(within(dialog).getByText("Your bag is empty.")).toBeTruthy();
+    const strip = within(dialog).getByTestId("recently-viewed-strip");
+    expect(within(strip).getByRole("link")).toHaveAttribute("href", `/product/${PRODUCTS[1].slug}`);
+    cleanup();
+
+    __resetRecentlyViewed();
+    window.localStorage.clear();
+    render(
+      <CartProvider>
+        <OpenBag />
+        <BagDrawer />
+      </CartProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open-bag" }));
+    const again = await screen.findByRole("dialog", { name: "Your Bag" });
+    expect(within(again).queryByTestId("recently-viewed-strip")).toBeNull();
+  });
+});

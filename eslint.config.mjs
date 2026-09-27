@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Playwright writes its HTML report, traces and screenshots here
+    // (playwright.config.ts); they are git-ignored generated bundles.
+    ".cache/**",
   ]),
 ]);
 

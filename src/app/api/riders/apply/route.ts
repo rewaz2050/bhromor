@@ -1,17 +1,22 @@
 /**
- * POST /api/riders/apply — public rider application intake (slice 6).
+ * POST /api/riders/apply — public rider application intake (slice 6;
+ * 2026-09-26 apply = sign up).
  *
- * Creates a pending row for the Admin → Riders queue. Tight rate limit:
- * applications are rare and the endpoint writes to the database. An
- * unconfigured backend answers 503.
+ * The application carries the email + password that become the rider
+ * login: the account and the pending, linked rider row are created
+ * together, and the admin's approval is what opens the rider app. Tight
+ * rate limit: applications are rare and the endpoint writes to the
+ * database and to Auth. An unconfigured backend answers 503.
  */
 
 import { RiderInputError, applyRider } from "@/lib/db/riders";
+import { ApplicantAccountError } from "@/lib/db/applicant-account";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
+import { loginHandleFor } from "@/lib/phone-login";
 
 export const dynamic = "force-dynamic";
 
@@ -33,27 +38,36 @@ export async function POST(request: Request) {
     return apiError("Rider applications are not open yet.", 503);
   }
   try {
-    // Signed-in applicants link their login to the application:
-    // the staff queue can approve straight into an active rider account.
+    // A signed-in applicant (an account made under the old two-step flow)
+    // links that login instead of creating a new one.
     let applicantUserId: string | undefined;
+    let applicantEmail: string | null = null;
     try {
       const session = await getSupabaseServer();
       const { data } = (await session?.auth.getUser()) ?? { data: null };
       applicantUserId = data?.user?.id;
+      applicantEmail = data?.user?.email ?? null;
     } catch {
       applicantUserId = undefined;
     }
-    const { id } = await applyRider(body, applicantUserId);
+    const fields = (body ?? {}) as Record<string, unknown>;
+    const { id, accountCreated, loginEmail, resubmitted } = await applyRider(body, {
+      applicantUserId,
+      applicantEmail,
+      password: typeof fields.password === "string" ? fields.password : undefined,
+    });
     const staffDb = getSupabaseService();
     if (staffDb) {
       const riderName =
-        typeof (body as Record<string, unknown>)?.name === "string"
-          ? String((body as Record<string, unknown>).name).trim().slice(0, 80)
+        typeof fields.name === "string"
+          ? fields.name.trim().slice(0, 80)
           : "A rider";
       await notifyStaff(staffDb, {
         kind: "system",
-        title: "New rider application",
-        body: `${riderName} applied to ride for PROSANTI.`,
+        title: resubmitted ? "Rider application re-submitted" : "New rider application",
+        body: resubmitted
+          ? `${riderName} fixed their details after a rejection and applied again — review them in the pending queue.`
+          : `${riderName} applied to ride for PROSANTI — approve them to open their rider app.`,
         href: "/admin/riders",
       });
     }
@@ -61,14 +75,20 @@ export async function POST(request: Request) {
       {
         applied: true as const,
         id,
-        linked: applicantUserId !== undefined,
-        message:
-          "Application received — we'll call you back after verification.",
+        linked: true as const,
+        account: accountCreated ? ("created" as const) : ("existing" as const),
+        // Round 4 — what to type in the login box: the e-mail, or the mobile
+        // number for a phone login (the synthetic address stays server-side).
+        login: loginHandleFor(loginEmail),
+        resubmitted,
+        message: resubmitted
+          ? "Application re-submitted — it is back in PROSANTI's review queue; sign in with the same details once it is approved."
+          : "Application received — sign in with these details as soon as PROSANTI approves it.",
       },
       201,
     );
   } catch (err) {
-    if (err instanceof RiderInputError) {
+    if (err instanceof RiderInputError || err instanceof ApplicantAccountError) {
       return apiError(err.message, err.status);
     }
     return apiError("Could not save the application.", 503);

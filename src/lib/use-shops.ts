@@ -12,6 +12,8 @@ import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export interface AdminShopClient extends Shop {
   productCount: number;
+  /** A vendor login is attached (applications arrive linked since 2026-09-26). */
+  vendorLinked?: boolean;
 }
 
 export function useShops() {
@@ -59,13 +61,29 @@ export function useShops() {
     [live, refresh],
   );
 
+  /**
+   * Round 4 — approve / reject / suspend / re-open through the review
+   * endpoint, which stamps who decided and when and stores the reason a
+   * rejected applicant reads on their login page.
+   */
   const setStatus = useCallback(
-    async (id: string, status: Shop["status"]): Promise<boolean> => {
-      const current = liveShops?.find((s) => s.id === id);
-      if (!current) return false;
-      return saveShop({ ...current, status });
+    async (id: string, status: Shop["status"], note?: string): Promise<boolean> => {
+      if (!live) return false;
+      try {
+        await apiSend(
+          `/api/admin/shops/${encodeURIComponent(id)}/review`,
+          "POST",
+          { status, note: note ?? "" },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
     },
-    [liveShops, saveShop],
+    [live, refresh],
   );
 
   /** Link an Auth account as the shop's vendor owner. */
@@ -88,6 +106,29 @@ export function useShops() {
     [live],
   );
 
+  /**
+   * Staff password reset for the shop's linked login — answers the
+   * temporary password once (apply = sign up, 2026-09-26: no e-mail reset).
+   */
+  const resetVendorPassword = useCallback(
+    async (id: string): Promise<string | null> => {
+      if (!live) return null;
+      try {
+        const data = await apiSend<{ password: string }>(
+          `/api/admin/shops/${encodeURIComponent(id)}/reset-password`,
+          "POST",
+          {},
+        );
+        setError(null);
+        return data.password;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return null;
+      }
+    },
+    [live],
+  );
+
   const shops: AdminShopClient[] = liveShops ?? [];
   return {
     shops,
@@ -95,6 +136,7 @@ export function useShops() {
     saveShop,
     setStatus,
     linkVendor,
+    resetVendorPassword,
     reset: refresh,
     live,
     loading: live && (!checked || liveShops === null),

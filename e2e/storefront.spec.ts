@@ -1,8 +1,20 @@
-import { test, expect, type Page } from "@playwright/test";
+import {
+  test,
+  expect,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+/** The storefront remembers the shopper's language under this key. */
+const pinEnglish = (target: Page | BrowserContext) =>
+  target.addInitScript(() =>
+    window.localStorage.setItem("prosanti-lang", "en"),
+  );
+
 async function settled(page: Page) {
-  await page.locator("header").waitFor();
+  // The site header is the first <header>; pages may nest their own.
+  await page.locator("header").first().waitFor();
   await page.evaluate(() => document.fonts.ready);
   await expect(
     page.getByRole("button", { name: "Search products", exact: true }),
@@ -29,6 +41,13 @@ async function accessible(page: Page) {
     })),
   ).toEqual([]);
 }
+
+// The storefront defaults to Bangla (P1 #8) and this suite asserts English
+// copy, so pin the remembered language before any page script runs — the
+// same localStorage key LanguageProvider and the pre-paint bootstrap read.
+test.beforeEach(async ({ page }) => {
+  await pinEnglish(page);
+});
 
 for (const width of [320, 390, 768, 1024, 1440]) {
   test(`responsive layout and screenshots at ${width}px`, async ({
@@ -72,6 +91,7 @@ test("mobile quick add → bag → checkout retains selected options", async ({
     isMobile: true,
     hasTouch: true,
   });
+  await pinEnglish(context);
   const page = await context.newPage();
   await page.goto("/shop");
   await settled(page);
@@ -132,11 +152,14 @@ test("search dialog traps focus, closes with Escape and restores focus", async (
     exact: true,
   });
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "Search the collection" });
+  const dialog = page.getByRole("dialog", { name: "Search products" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('input[type="search"]')).toBeFocused();
   expect(
-    await page.locator("header").evaluate((el) => (el as HTMLElement).inert),
+    await page
+      .locator("header")
+      .first()
+      .evaluate((el) => (el as HTMLElement).inert),
   ).toBe(true);
   for (let i = 0; i < 22; i++) {
     await page.keyboard.press("Tab");
@@ -149,7 +172,10 @@ test("search dialog traps focus, closes with Escape and restores focus", async (
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
   expect(
-    await page.locator("header").evaluate((el) => (el as HTMLElement).inert),
+    await page
+      .locator("header")
+      .first()
+      .evaluate((el) => (el as HTMLElement).inert),
   ).toBe(false);
   expect(await page.evaluate(() => document.body.style.overflow)).not.toBe(
     "hidden",

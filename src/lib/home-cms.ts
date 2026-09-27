@@ -37,14 +37,17 @@ export interface HomeSettings {
  * previously published toggle still applies). Retired keys (`featured`,
  * `brandStory`, `brandJournal`) are ignored by `resolveSettings`.
  */
-export const SECTION_KEYS = ["hero", "recent", "collections", "offers", "stories", "trust"] as const;
+export const SECTION_KEYS = ["hero", "recent", "collections", "bestSellers", "newArrivals", "offers", "yourStyle", "stories", "trust"] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABELS: Record<SectionKey, string> = {
   hero: "Compact hero (headline + button)",
   recent: "Recently viewed strip (returning visitors only)",
   collections: "Category row",
+  bestSellers: "Best sellers rail (ranked by real orders; hidden until 2+ sellers)",
+  newArrivals: "New arrivals rail (hidden until 4+ pieces)",
   offers: "Offers (flash drop + reduced prices)",
+  yourStyle: "Your style (Style Match rail for returning devices; a 3-tap invite otherwise)",
   stories: "Customer stories (approved reviews only)",
   trust: "Service promise strip",
 };
@@ -72,7 +75,10 @@ export const HOME_DEFAULTS: HomeSettings = {
     hero: true,
     recent: true,
     collections: true,
+    bestSellers: true,
+    newArrivals: true,
     offers: true,
+    yourStyle: true,
     stories: true,
     trust: true,
   },

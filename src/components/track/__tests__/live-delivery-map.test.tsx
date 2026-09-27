@@ -113,6 +113,21 @@ describe("LiveDeliveryMap Component", () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
       // The real position lands in the ETA card.
       expect(screen.getByText(/Rider live 25\.0658,91\.3950/)).toBeInTheDocument();
+      // No delivery pin on this order → no distance claim (UX plan §7).
+      expect(screen.queryByTestId("rider-away")).not.toBeInTheDocument();
+    });
+
+    it("says how far the rider is when the order has a real pin — Bengali digits, honest minutes", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      stubFetch();
+      // ~1.2 km north-east of the rider fix.
+      render(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const away = await screen.findByTestId("rider-away");
+      expect(away.textContent).toMatch(/রাইডার প্রায় [০-৯.]+ কিমি দূরে · ~[০-৯]+ মিনিট/);
+      expect(away.textContent).not.toMatch(/\d/);
     });
 
     it("stops polling while the tab is hidden", async () => {

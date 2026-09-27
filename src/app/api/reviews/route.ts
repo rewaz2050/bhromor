@@ -22,6 +22,9 @@ import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
 import { publicJson } from "@/lib/public-cache";
 import { isUuid } from "@/lib/db/order-lookup";
+import { provenPurchase } from "@/lib/db/orders";
+import { resolveCustomer } from "@/lib/customer-auth";
+import { normalizePhone } from "@/lib/orders";
 import {
   attachReviewPhotos,
   sanitizeReviewPhotos,
@@ -154,20 +157,49 @@ export async function POST(request: Request) {
     // size). Re-hosted to Cloudinary when configured; stored as the
     // compressed data URL otherwise. Photo problems never lose the review.
     const photos = sanitizeReviewPhotos(b.photos).dataUrls;
-    const { data, error } = await db
-      .from("reviews")
-      .insert({
-        product_id: productId,
-        author: clean(b.author, 80) || "Anonymous customer",
-        rating,
-        title: clean(b.title, 120) || null,
-        body: reviewBody,
-        status: "pending",
-        verified: false,
-        featured: false,
-      })
-      .select("*")
-      .single();
+    // Verified purchase (UX plan §4/§7, R10): a delivered order on this
+    // phone that contains the piece. The phone comes from the track page's
+    // proof (order no + phone, checked against the row) or from the
+    // signed-in account — never from the form alone. A proven review earns
+    // a Smart Card stamp when staff approve it (migration 202609270004).
+    let proof: { phone: string; orderNo: string } | null = null;
+    try {
+      const claimedPhone = normalizePhone(clean(b.phone, 20));
+      const claimedOrder = clean(b.orderId, 40);
+      const customer = await resolveCustomer(request);
+      const candidates = [
+        claimedPhone !== "" ? { phone: claimedPhone, orderNo: claimedOrder || undefined } : null,
+        customer ? { phone: customer.phone, orderNo: undefined } : null,
+      ].filter((c): c is { phone: string; orderNo: string | undefined } => c !== null);
+      for (const c of candidates) {
+        const hit = await provenPurchase(db, { phone: c.phone, productId, orderNo: c.orderNo });
+        if (hit) {
+          proof = { phone: normalizePhone(c.phone), orderNo: hit.orderNo };
+          break;
+        }
+      }
+    } catch {
+      proof = null;
+    }
+    const baseRow = {
+      product_id: productId,
+      author: clean(b.author, 80) || "Anonymous customer",
+      rating,
+      title: clean(b.title, 120) || null,
+      body: reviewBody,
+      status: "pending",
+      verified: proof !== null,
+      featured: false,
+    };
+    const fullRow: Record<string, unknown> = proof
+      ? { ...baseRow, customer_phone: proof.phone, order_ref: proof.orderNo }
+      : baseRow;
+    let inserted = await db.from("reviews").insert(fullRow).select("*").single();
+    if (inserted.error && proof) {
+      // Migration 202609270004 not run yet — keep the review, drop the proof columns.
+      inserted = await db.from("reviews").insert(baseRow).select("*").single();
+    }
+    const { data, error } = inserted;
     if (error || !data) return apiError("Could not save the review.", 503);
     let storedPhotos: string[] = [];
     if (photos.length > 0) {
@@ -186,7 +218,11 @@ export async function POST(request: Request) {
       href: "/admin/reviews",
     });
     return apiJson(
-      { review: { ...mapReview(data as DbReview), photos: storedPhotos } },
+      {
+        review: { ...mapReview(data as DbReview), photos: storedPhotos },
+        // The form tells the shopper a stamp is coming only when it really is.
+        stampEligible: proof !== null,
+      },
       201,
     );
   } catch {

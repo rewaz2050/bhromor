@@ -17,21 +17,24 @@ import CheckoutAssurance from "./checkout-assurance";
 import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
 import { useBagOffer } from "@/lib/use-bag-offer";
+import { carriedCoupon, forgetCoupon } from "@/lib/coupon-carry";
 import { validateGift } from "@/lib/gift";
 import {
   clearStoredRef,
   normalizeRefCode,
   referralLink,
 } from "@/lib/referral";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
+import ReceiptRail from "@/components/checkout/receipt-rail";
 import NotifyOptIn from "@/components/track/notify-opt-in";
 import { haptic } from "@/lib/haptics";
 import BagSkeleton from "@/components/cart/bag-skeleton";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
+import type { Product } from "@/lib/catalog";
 import {
   isShopOrderable,
   lineShopIds,
@@ -53,6 +56,7 @@ import {
   orderTotal,
 } from "@/lib/delivery";
 import { usePublicSettings } from "@/lib/use-public-settings";
+import { freeDeliveryFor, freeDeliveryOffers } from "@/lib/free-delivery";
 import {
   IconArrowRight,
   IconBag,
@@ -415,6 +419,8 @@ export default function CheckoutView() {
     /** P2 #18 — the "what happens next" list is built from THIS order. */
     isPickup?: boolean;
     isCourier?: boolean;
+    /** UX plan §6 (R5) — what was bought, for the "you may also like" rail. */
+    ordered?: Product[];
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -440,6 +446,7 @@ export default function CheckoutView() {
   // answers (the client cannot claim it) and the same question is re-asked by
   // the place-order RPC at confirmation; this only makes the quote honest.
   const [plusState, setPlusState] = useState<PlusState>("idle");
+  const [plusInfo, setPlusInfo] = useState<{ pricePaisa: number; enabled: boolean } | null>(null);
   const plusActive = plusState === "active";
   // begin_checkout (pixel/GA, only when configured): once per checkout visit,
   // as soon as the bag has resolved against the live catalog.
@@ -455,6 +462,7 @@ export default function CheckoutView() {
         category: l.product.category,
         price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
         qty: l.qty,
+        shopId: l.product.shopId,
       })),
       value: subtotal,
     });
@@ -500,6 +508,27 @@ export default function CheckoutView() {
   const [showMap, setShowMap] = useState(false);
   const [addrTag, setAddrTag] = useState<AddressTag>("home");
   const [bestLoading, setBestLoading] = useState(false);
+  /* UX plan §5 (R9) — coupon auto-apply is an ACCOUNT perk (owner decision
+     2026-09-27): a signed-in customer gets the best redeemable code placed
+     by itself; a guest sees why signing in pays. `autoCoupon` is the state
+     of that search; removing an auto-placed code stops it for this visit. */
+  const [autoCoupon, setAutoCoupon] = useState<"idle" | "searching" | "applied" | "none" | "error">("idle");
+  const couponDismissedRef = useRef(false);
+  const autoTriedKeyRef = useRef<string | null>(null);
+  /* UX plan §3 (R11) — the code copied from the offers card is PLACED in the
+     field (never applied by itself for a guest — see lib/coupon-carry). */
+  const [carriedCode, setCarriedCode] = useState<string | null>(null);
+  const carryDone = useRef(false);
+  useEffect(() => {
+    if (carryDone.current || !ready) return;
+    carryDone.current = true;
+    const code = carriedCoupon();
+    if (!code) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
+    setCarriedCode(code);
+    setForm((f) => (f.couponCode.trim() ? f : { ...f, couponCode: code }));
+    setMoreOpen(true);
+  }, [ready]);
 
   /* P1 #16 — a repeat customer's last address (name, phone, para, house,
      pin) fills the form by itself; the "saved addresses" sheet stays for
@@ -547,9 +576,14 @@ export default function CheckoutView() {
         const res = await fetch(`/api/membership?phone=${encodeURIComponent(phone)}`, {
           cache: "no-store",
         });
-        const data = res.ok ? ((await res.json()) as { state?: string }) : null;
+        const data = res.ok
+          ? ((await res.json()) as { state?: string; pricePaisa?: number; enabled?: boolean })
+          : null;
         if (!cancelled) {
           const st = data?.state;
+          if (data && typeof data.enabled === "boolean") {
+            setPlusInfo({ pricePaisa: Number(data.pricePaisa) || 0, enabled: data.enabled });
+          }
           setPlusState(
             st === "none" || st === "pending" || st === "active" || st === "expired" || st === "rejected"
               ? st
@@ -586,6 +620,13 @@ export default function CheckoutView() {
     [form.district, effectiveUpazila, effectivePara],
   );
   const derivedZoneId = derived.zoneId;
+  /** Paras the zone table (live) + the Sadar list know — the datalist. */
+  const knownParas = useMemo(() => {
+    const names = new Set<string>();
+    for (const z of zoneList) for (const a of z.areas) if (a.trim()) names.add(a.trim());
+    for (const p of SADAR_PARA_OPTIONS) if (p.name.trim()) names.add(p.name.trim());
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [zoneList]);
   const zone = useMemo(
     () => zoneList.find((z) => z.id === derivedZoneId) ?? zoneList[0],
     [zoneList, derivedZoneId],
@@ -628,6 +669,8 @@ export default function CheckoutView() {
                 ? `${data.code} — Free Delivery ${data.description ? `· ${data.description}` : ""}`
                 : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
             });
+            // The carried code has done its job once a code is applied.
+            forgetCoupon();
             return;
           }
         } catch {
@@ -651,6 +694,65 @@ export default function CheckoutView() {
     () => (couponCheck.code ? { code: couponCheck.code } : null),
     [couponCheck.code],
   );
+
+  /**
+   * The single best redeemable coupon for this cart, server-priced. Signed-in
+   * only (the API answers 401 otherwise). `auto` runs quietly on its own;
+   * `manual` is the retry link after a failed search.
+   */
+  const findBestCoupon = useCallback(
+    async (source: "auto" | "manual") => {
+      setBestLoading(true);
+      setAutoCoupon("searching");
+      if (source === "manual") setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
+      try {
+        const res = await fetch("/api/coupons/best", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: detail.map((l) => ({ productId: l.product.id, qty: l.qty })),
+            zoneId: derivedZoneId,
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as {
+          code?: string;
+          none?: boolean;
+          freeDelivery?: boolean;
+          description?: string;
+        } | null;
+        if (res.ok && data?.code) {
+          setAppliedCode(data.code);
+          setAutoCoupon("applied");
+        } else if (res.ok && data?.none) {
+          setAutoCoupon("none");
+          if (source === "manual") setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
+        } else {
+          setAutoCoupon("error");
+          if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+        }
+      } catch {
+        setAutoCoupon("error");
+        if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+      } finally {
+        setBestLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detail is captured via cartKey by the caller
+    [derivedZoneId, cartKey],
+  );
+
+  /* Auto-apply: once per cart shape, signed-in, nothing applied, not dismissed. */
+  useEffect(() => {
+    if (!ready || !cardChecked || !cardCustomer) return;
+    if (detail.length === 0 || appliedCode || couponDismissedRef.current) return;
+    if (autoTriedKeyRef.current === cartKey) return;
+    const timer = window.setTimeout(() => {
+      autoTriedKeyRef.current = cartKey;
+      void findBestCoupon("auto");
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cartKey stands for detail
+  }, [ready, cardChecked, cardCustomer, appliedCode, cartKey, findBestCoupon]);
 
   /** The one automatic offer this bag earns (flash drop or a complete set). */
   const bagOffer = useBagOffer(detail);
@@ -680,6 +782,7 @@ export default function CheckoutView() {
         freeDelivery: false,
         couponFree: false,
         plusFree: false,
+        thresholdFree: null,
         discount: 0,
         promo: 0,
         promoKind: bagOffer?.kind ?? null,
@@ -703,6 +806,14 @@ export default function CheckoutView() {
     const isExpress =
       form.deliveryWindow === "express" && settings.expressDeliveryEnabled;
     const weightKg = detail.reduce((s, l) => s + l.qty * 0.5, 0);
+    // Free-delivery threshold (2026-09-26): the platform rule, then the
+    // shop's own — the same helpers the validator and ps_place_order mirror.
+    const alreadyFree = (couponFreeDelivery && !!activeCoupon) || plusActive;
+    const thresholdOffer = freeDeliveryFor(
+      subtotal,
+      freeDeliveryOffers(settings.freeDelivery, bagShop),
+      { courier: zone.id === "z4", pickup: form.isPickup, alreadyFree },
+    );
     const breakdown = deliveryBreakdown({
       zone,
       subtotal,
@@ -712,7 +823,8 @@ export default function CheckoutView() {
       isExpress,
       isPickup: form.isPickup,
       tipAmount: form.tipAmount * 100,
-      couponFree: (couponFreeDelivery && !!activeCoupon) || plusActive,
+      couponFree: alreadyFree,
+      thresholdFree: thresholdOffer?.by ?? null,
       shopPrepMinutes: bagShop?.prepMinutes ?? 15,
       queueCount: 0,
       rates: settings.surcharges,
@@ -729,6 +841,7 @@ export default function CheckoutView() {
       freeDelivery: breakdown.freeDelivery,
       couponFree: couponFreeDelivery && !!activeCoupon,
       plusFree: plusActive && !form.isPickup,
+      thresholdFree: breakdown.thresholdFree,
       discount,
       promo: capped,
       promoKind: bagOffer?.kind ?? null,
@@ -1023,6 +1136,13 @@ export default function CheckoutView() {
             {t("checkout.continueShopping")}
           </Link>
         </div>
+
+        {/* UX plan §6 (R5) — the session need not end on the receipt. */}
+        {placed.ordered && placed.ordered.length > 0 && (
+          <div className="-mx-6 mt-12 text-left">
+            <ReceiptRail ordered={placed.ordered} />
+          </div>
+        )}
       </div>
     );
   }
@@ -1081,6 +1201,9 @@ export default function CheckoutView() {
   };
 
   const removeCoupon = () => {
+    // A code the shopper takes off stays off — no re-placing it behind them.
+    couponDismissedRef.current = true;
+    setAutoCoupon("idle");
     setAppliedCode("");
     setCouponCheck({ code: null, discount: 0, problem: null });
     setCouponFreeDelivery(false);
@@ -1088,36 +1211,6 @@ export default function CheckoutView() {
     update("couponCode", "");
   };
 
-  /** Auto-apply the single best redeemable coupon for this cart (server-priced). */
-  const applyBestCoupon = async () => {
-    if (bestLoading || activeCoupon) return;
-    setBestLoading(true);
-    setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
-    try {
-      const res = await fetch("/api/coupons/best", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: detail.map((l) => ({ productId: l.product.id, qty: l.qty })),
-          zoneId: derivedZoneId,
-        }),
-      });
-      const data = (await res.json().catch(() => null)) as {
-        code?: string;
-        freeDelivery?: boolean;
-        description?: string;
-      } | null;
-      if (res.ok && data?.code) {
-        setAppliedCode(data.code);
-      } else {
-        setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
-      }
-    } catch {
-      setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
-    } finally {
-      setBestLoading(false);
-    }
-  };
 
   /** Full address string — house/road + para/upazila/district auto-append. */
   const buildFullAddress = () => {
@@ -1363,6 +1456,7 @@ export default function CheckoutView() {
       fail({
         bn: "সার্ভারে পৌঁছানো যাচ্ছে না — ইন্টারনেট চেক করে আবার চেষ্টা করুন।",
         en: "Could not reach the shop — check your connection and try again.",
+        retryable: true,
       });
       return;
     }
@@ -1407,6 +1501,7 @@ export default function CheckoutView() {
           category: l.product.category,
           price: l.qty > 0 ? Math.round(l.lineTotal / l.qty) : l.product.price,
           qty: l.qty,
+          shopId: l.product.shopId,
         })),
         value: data.order.total,
         delivery: data.order.deliveryCharge,
@@ -1415,6 +1510,7 @@ export default function CheckoutView() {
       setPlaced({
         orderId: data.order.id,
         phone: form.phone,
+        ordered: detail.map((l) => l.product),
         eta: form.isPickup
           ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
           : isCourierZone(derivedZoneId)
@@ -1464,8 +1560,12 @@ export default function CheckoutView() {
     const firstMessage = data.errors?.[0]?.message || data.error;
     const friendly = friendlyOrderError(firstMessage);
     const extra = (data.errors?.length ?? 0) - 1;
+    // A 5xx with nothing to fix is a "try again", not a form problem.
+    const retryable = res.status >= 500 && Object.keys(fieldMap).length === 0;
     fail(
-      extra > 0 ? { ...friendly, bn: `${friendly.bn} (আরও ${extra}টি ঘর ঠিক করতে হবে)` } : friendly,
+      extra > 0
+        ? { ...friendly, bn: `${friendly.bn} (আরও ${extra}টি ঘর ঠিক করতে হবে)`, retryable }
+        : { ...friendly, retryable },
       Object.keys(fieldMap).length > 0 ? fieldMap : undefined,
     );
   };
@@ -1511,6 +1611,7 @@ export default function CheckoutView() {
       bagOffer={bagOffer}
       giftWrap={giftValue.wrap}
       plusState={plusState}
+      plusInfo={plusInfo}
       bagShopPrep={bagShop?.prepMinutes ?? 15}
     />
   );
@@ -1586,16 +1687,33 @@ export default function CheckoutView() {
             </p>
           ) : null}
           {prefilledFrom ? (
-            <p
+            <div
               role="status"
               data-testid="address-prefilled"
-              className="mb-4 flex items-start gap-2 rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200"
+              className="mb-4 rounded-xl bg-forest-50 px-3 py-2 text-xs leading-5 text-forest-900 ring-1 ring-forest-200"
             >
-              <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                {prefilledFrom.label} — {t("checkout.savedAddressUsed")}
-              </span>
-            </p>
+              <p className="flex items-start gap-2">
+                <IconCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  {prefilledFrom.label} — {t("checkout.savedAddressUsed")}
+                </span>
+              </p>
+              {/* UX plan §6 — the repeat customer's one tap: nothing to retype,
+                  jump straight to the review step and the Place Order button.
+                  It never submits by itself. */}
+              <button
+                type="button"
+                data-testid="same-as-last"
+                onClick={() => {
+                  jumpToStep(3);
+                  ctaRef.current?.focus({ preventScroll: true });
+                }}
+                className="tap-press mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 focus-visible:ring-offset-2"
+              >
+                {t("checkout.sameAsLast")}
+                <IconArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ) : null}
           {showSaved && savedAddrs.length > 0 && (
             <div className="mb-5 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
@@ -1818,6 +1936,7 @@ export default function CheckoutView() {
             <input
               ref={paraRef}
               required
+              list="prosanti-paras"
               autoComplete="address-level3"
               value={form.paraCustom}
               onChange={(e) => {
@@ -1830,8 +1949,33 @@ export default function CheckoutView() {
               aria-invalid={!!fieldErrors.area}
               className={inputClass("area")}
             />
+            {/* UX plan §6 (R11) — searchable: every para the zone table knows
+                (typing "Bor" offers Boropara); anything else still types in. */}
+            <datalist id="prosanti-paras">
+              {knownParas.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
             {fieldErrors.area ? (
               <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+            ) : effectivePara.trim() && !form.isPickup ? (
+              /* UX plan §6 (R11) — the charge and the clock RIGHT where the
+                 area was chosen, not two steps later. Same numbers as the
+                 summary (server re-derives at placement). */
+              <p
+                role="status"
+                data-testid="area-quote"
+                data-zone={derivedZoneId}
+                className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-forest-800"
+              >
+                <IconTruck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>
+                  {t("checkout.areaQuote")
+                    .replace("{zone}", zone.name)
+                    .replace("{charge}", summary.freeDelivery ? t("checkout.areaQuoteFree") : formatBdt(summary.charge))
+                    .replace("{eta}", etaLabel)}
+                </span>
+              </p>
             ) : (
               <p className="mt-1.5 text-xs text-ink-soft">
                 পাড়া বা গ্রামের নাম লিখলেই ডেলিভারি চার্জ ও সময় দেখা যাবে।
@@ -2102,7 +2246,11 @@ export default function CheckoutView() {
                             ? "FREE — PROSANTI+"
                             : form.isPickup
                               ? "FREE — Pickup"
-                              : "Free"}
+                              : summary.thresholdFree === "shop"
+                                ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
+                                : summary.thresholdFree === "platform"
+                                  ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
+                                  : "Free"}
                       </span>
                     ) : (
                       formatBdt(summary.charge)
@@ -2264,6 +2412,14 @@ export default function CheckoutView() {
                       প্রয়োগ হয়েছে ✓
                       {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? " · ফ্রি ডেলিভারি" : ""}
                     </span>
+                    {autoCoupon === "applied" && (
+                      <span
+                        data-testid="coupon-auto"
+                        className="rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-gold-800"
+                      >
+                        {t("checkout.couponAutoChip")}
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -2301,15 +2457,47 @@ export default function CheckoutView() {
                       {t("checkout.apply")}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={applyBestCoupon}
-                    disabled={bestLoading}
-                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
-                  >
-                    <IconSparkles className="h-3.5 w-3.5" />
-                    {bestLoading ? "সেরা অফার খুঁজছে…" : "সেরা অফার অটো-অ্যাপ্লাই করুন"}
-                  </button>
+                  {carriedCode && form.couponCode.trim() === carriedCode && (
+                    <p role="status" data-testid="coupon-carried" className="mt-2 text-xs leading-5 text-forest-800">
+                      {t("checkout.couponCarried")}
+                    </p>
+                  )}
+                  {/* UX plan §5 (R9) — the best coupon places itself for a
+                      signed-in customer; a guest is told exactly why to sign in. */}
+                  {cardChecked && !cardCustomer && (
+                    <p data-testid="coupon-login-nudge" className="mt-2 text-xs leading-5 text-ink-soft">
+                      <IconSparkles className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-gold-600" />
+                      {t("checkout.couponLoginNudge")}{" "}
+                      <Link
+                        href="/account?next=/checkout"
+                        className="font-semibold text-forest-800 underline underline-offset-2"
+                      >
+                        {t("checkout.couponLoginCta")}
+                      </Link>
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "searching" && (
+                    <p role="status" data-testid="coupon-auto-status" className="mt-2 text-xs leading-5 text-ink-soft">
+                      {t("checkout.couponAutoSearching")}
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "none" && (
+                    <p role="status" data-testid="coupon-auto-status" className="mt-2 text-xs leading-5 text-ink-soft">
+                      {t("checkout.couponAutoNone")}
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "error" && (
+                    <button
+                      type="button"
+                      onClick={() => void findBestCoupon("manual")}
+                      disabled={bestLoading}
+                      data-testid="coupon-auto-retry"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
+                    >
+                      <IconSparkles className="h-3.5 w-3.5" />
+                      {t("checkout.couponAutoRetry")}
+                    </button>
+                  )}
                 </>
               )}
               {couponCheck.problem && (
@@ -2487,6 +2675,12 @@ export default function CheckoutView() {
                 title={t("checkout.errorTitle")}
                 fixLabel={t("checkout.fixFields")}
                 onFix={firstBadField ? () => jumpToField(firstBadField) : null}
+                retryLabel={t("checkout.retryOrder")}
+                onRetry={
+                  orderError?.retryable && !form.submitting
+                    ? () => ctaRef.current?.click()
+                    : null
+                }
               />
             </div>
 

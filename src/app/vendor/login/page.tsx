@@ -1,9 +1,14 @@
 "use client";
 
 /**
- * Vendor sign-in + account creation (marketplace slice 3).
- * A fresh account has no shop link yet — /api/vendor/me answers 403 and
- * the page explains the next step (apply, then staff approval).
+ * Vendor sign-in (marketplace slice 3; 2026-09-26 apply = sign up).
+ *
+ * There is no separate "create account" step any more: the shop
+ * application form sets the email + password, and PROSANTI's approval is
+ * what opens the dashboard. So this page only signs in — and when the
+ * login exists but the API still refuses it (403), it shows the status
+ * ("awaiting approval", "suspended", "no shop yet") with the next step
+ * instead of a blank form that would bounce forever.
  */
 
 import { useEffect, useState } from "react";
@@ -11,63 +16,45 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import { useVendorSession } from "@/lib/use-vendor";
+import PasswordInput from "@/components/ui/password-input";
+import { usePoll } from "@/lib/use-poll";
+import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
+import { loginIdentifierToEmail } from "@/lib/phone-login";
 
-/**
- * Map the Supabase messages that genuinely block a vendor to a hint with the
- * next step; anything else passes through untouched.
- */
-const vendorAuthHint = (message: string): string => {
-  const m = message.toLowerCase();
-  if (m.includes("email not confirmed")) {
-    return "Email not confirmed — open the confirmation link from your inbox (check spam), then sign in again.";
-  }
-  if (m.includes("already registered") || m.includes("already exists")) {
-    return "An account with this email already exists — use Sign in. Forgot the password? Ask PROSANTI support.";
-  }
-  if (m.includes("invalid login credentials")) {
-    return "Email or password did not match. New here? Use Create account (same email as your application).";
-  }
-  return message;
-};
+const inputClass =
+  "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
+const primaryClass =
+  "inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-forest-800 px-4 py-3 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60";
+const secondaryClass =
+  "inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-white px-4 py-3 text-sm font-semibold text-forest-900 ring-1 ring-line hover:bg-cream";
+
+/** Pending-approval re-check cadence (visible tab only). */
+const PENDING_RECHECK_MS = 30_000;
 
 export default function VendorLoginPage() {
   const router = useRouter();
-  const { status, error, signIn, signUp } = useVendorSession();
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const { status, error, denyReason, refresh, signIn, signOut } =
+    useVendorSession();
+  // Apply = sign up: a pending applicant usually leaves this tab open, so
+  // re-check every 30 s while visible and send them in the moment staff approves.
+  usePoll(refresh, PENDING_RECHECK_MS, status === "guest" && denyReason === "pending");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "authed") router.replace("/vendor");
   }, [status, router]);
 
-  // The shop-apply success screen sends applicants here to create the login
-  // (?mode=up&email=…). Window read (not useSearchParams) so the page needs
-  // no Suspense boundary; runs once on mount.
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    if (q.get("mode") === "up") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption of the URL on mount
-      setMode("up");
-      setNotice(
-        "Application found — create the account with the SAME email you applied with. Staff approves → this login opens the dashboard.",
-      );
-    }
-    const prefill = q.get("email");
-    if (prefill) {
-      setEmail(prefill.slice(0, 160));
-    }
-  }, []);
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
-    setNotice(null);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setFormError("Enter a valid email address.");
+    // Round 4 — e-mail OR mobile number; a number becomes the synthetic
+    // login address the application was created with (no SMS involved).
+    const loginEmail = loginIdentifierToEmail(email);
+    if (!loginEmail) {
+      setFormError("Enter a valid email address or 11-digit mobile number.");
       return;
     }
     if (password.length < 6) {
@@ -75,23 +62,16 @@ export default function VendorLoginPage() {
       return;
     }
     setBusy(true);
-    const problem =
-      mode === "in"
-        ? await signIn(email, password)
-        : await signUp(email, password);
+    const problem = await signIn(loginEmail, password);
     setBusy(false);
     if (problem) {
-      // Supabase answers in raw English; add the next step to the ones that
-      // actually block a vendor ("Email not confirmed" etc.).
-      setFormError(vendorAuthHint(problem));
-      return;
-    }
-    if (mode === "up") {
-      setNotice(
-        "Account created — now send a shop application (or ask PROSANTI to link your shop). You'll get in as soon as staff approves it.",
+      setFormError(
+        `${problem} Use the email (or mobile number) and password from your shop application.`,
       );
     }
   };
+
+  const denied = status === "guest" && error !== null;
 
   return (
     <div className="mx-auto max-w-md px-4 py-14">
@@ -107,96 +87,142 @@ export default function VendorLoginPage() {
 
       {status === "checking" ? (
         <div className="mt-8 h-64 animate-pulse rounded-2xl bg-line/60" aria-label="Loading" />
+      ) : denied ? (
+        <section
+          aria-labelledby="vendor-status-heading"
+          className="mt-8 space-y-4 rounded-2xl bg-paper p-6 ring-1 ring-line"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wider text-forest-700">
+            {denyReason === "pending"
+              ? "Application received"
+              : denyReason === "rejected"
+                ? "Application not approved"
+                : denyReason === "suspended"
+                  ? "Shop suspended"
+                  : "No shop on this login"}
+          </p>
+          <h2 id="vendor-status-heading" className="font-display text-xl text-forest-900">
+            {denyReason === "pending"
+              ? "Awaiting PROSANTI's approval"
+              : denyReason === "rejected"
+                ? "Fix the details and apply again"
+                : denyReason === "suspended"
+                  ? "This shop is suspended"
+                  : "Send a shop application"}
+          </h2>
+          <p
+            role="status"
+            className={`rounded-xl px-4 py-3 text-sm ring-1 ${
+              denyReason === "pending"
+                ? "bg-amber-50 text-amber-900 ring-amber-200"
+                : "bg-rose-50 text-rose-800 ring-rose-200"
+            }`}
+          >
+            {error}
+          </p>
+          {denyReason === "pending" && (
+            <p className="text-sm text-ink-soft">
+              You are signed in. Our team reviews every application by hand;
+              the moment it is confirmed, this same email and password open
+              the dashboard. This page re-checks every 30 seconds while it is
+              open — or tap “Check again”.
+            </p>
+          )}
+          {denyReason === "rejected" && (
+            <>
+              <p className="text-sm text-ink-soft">
+                Your login still works. Correct what the note above points
+                at and submit the application form again — with the same
+                email (or mobile number) and password it replaces the
+                rejected application and goes back into the review queue.
+              </p>
+              <Link href="/shops/apply" className={primaryClass}>
+                Fix the details and re-apply →
+              </Link>
+            </>
+          )}
+          {denyReason === "none" && (
+            <Link href="/shops/apply" className={primaryClass}>
+              Apply to sell on PROSANTI →
+            </Link>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className={secondaryClass}
+            >
+              Check again
+            </button>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className={secondaryClass}
+            >
+              Sign out
+            </button>
+          </div>
+        </section>
       ) : (
         <form
           onSubmit={submit}
           className="mt-8 space-y-4 rounded-2xl bg-paper p-6 ring-1 ring-line"
         >
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-cream p-1 text-sm font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("in");
-                setFormError(null);
-              }}
-              className={`rounded-lg px-3 py-2 ${mode === "in" ? "bg-white text-forest-900 shadow-sm" : "text-ink-soft"}`}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("up");
-                setFormError(null);
-              }}
-              className={`rounded-lg px-3 py-2 ${mode === "up" ? "bg-white text-forest-900 shadow-sm" : "text-ink-soft"}`}
-            >
-              Create account
-            </button>
-          </div>
-
+          <h2 className="font-display text-lg text-forest-900">Sign in</h2>
           {formError && (
             <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
               {formError}
             </p>
           )}
-          {notice && (
-            <p className="rounded-xl bg-forest-50 px-4 py-3 text-sm text-forest-900 ring-1 ring-forest-200">
-              {notice}
-            </p>
-          )}
-          {notice && mode === "up" && (
-            <Link
-              href="/shops/apply"
-              className="block rounded-xl bg-forest-800 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-forest-900"
-            >
-              Send the shop application →
-            </Link>
-          )}
-          {error && mode === "in" && (
-            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
-              {error}
-            </p>
-          )}
 
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
-              Email
+              Email or mobile number
             </span>
             <input
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600"
-              placeholder="you@yourshop.com"
+              className={inputClass}
+              placeholder="you@yourshop.com or 017XXXXXXXX"
             />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
               Password
             </span>
-            <input
-              type="password"
-              autoComplete={mode === "in" ? "current-password" : "new-password"}
+            <PasswordInput
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600"
+              className={inputClass}
               placeholder="••••••••"
             />
           </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-xl bg-forest-800 px-4 py-3 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60"
-          >
-            {busy ? "Please wait…" : mode === "in" ? "Sign in" : "Create account"}
+          <button type="submit" disabled={busy} className={primaryClass}>
+            {busy ? "Please wait…" : "Sign in"}
           </button>
           <p className="text-center text-xs text-ink-soft">
-            New to PROSANTI? Create an account, then ask our team for a
-            shop application — approval links your login automatically.
+            Use the email (or, if you gave none, the mobile number) and
+            password from your shop application — the dashboard opens once
+            PROSANTI approves it.
+          </p>
+          <p className="border-t border-line pt-4 text-center text-sm text-ink">
+            New shop?{" "}
+            <Link
+              href="/shops/apply"
+              className="font-semibold text-forest-800 underline-offset-4 hover:underline"
+            >
+              Apply to sell on PROSANTI →
+            </Link>
           </p>
         </form>
+      )}
+      {status !== "checking" && !denied && (
+        // Reset without e-mail: request → staff phone check → set it here.
+        <ForgotPasswordPanel kind="vendor" lang="en" onDone={setEmail} className="mt-4" />
       )}
     </div>
   );

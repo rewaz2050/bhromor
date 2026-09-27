@@ -22,6 +22,10 @@ import {
 import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
+import FreeDeliveryBar from "./free-delivery-bar";
+import { SaveForLaterButton, SavedForLaterNotice, useSaveForLater } from "./save-for-later";
+import StampLine from "@/components/loyalty/stamp-line";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -38,7 +42,9 @@ export default function BagDrawer() {
     removeItem,
   } = useCart();
   /** Hook unconditionally — the bag content below is a conditional render. */
-  const { shops } = useLiveCatalog();
+  const { shops, products: catalogProducts } = useLiveCatalog();
+  /** UX plan §5 (R11) — "পরে কিনব": line → wishlist, with a one-line confirmation. */
+  const { save: saveForLater, notice: savedNotice } = useSaveForLater();
   /** WhatsApp order for the whole bag (P1 #15) — one shop per cart. */
   const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
   const bagShop =
@@ -58,16 +64,23 @@ export default function BagDrawer() {
         ),
       )
     : null;
+  /* UX plan §5 (2026-09-26): the add-on rail leads with the CHEAPEST
+     complements — a gamcha or socks is a one-tap yes, a second panjabi is
+     not — and stays inside the bag's shop (single-shop rule, D1). */
   const recommendations = Array.from(
     new Map(
       detail
-        .flatMap((line) => completeTheLook(line.product, getLiveProducts() ?? []))
+        .flatMap((line) => completeTheLook(line.product, getLiveProducts() ?? [], 12))
         .filter(
-          (product) => !detail.some((line) => line.productId === product.id),
+          (product) =>
+            !detail.some((line) => line.productId === product.id) &&
+            (!bagShop || !product.shopId || product.shopId === bagShop.id),
         )
         .map((product) => [product.id, product]),
     ).values(),
-  ).slice(0, 2);
+  )
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 2);
     return (
     <Drawer
       open={bagOpen}
@@ -91,6 +104,7 @@ export default function BagDrawer() {
         </button>
       </div>
       {detail.length === 0 ? (
+        <>
         <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ivory-100 text-gold-600 ring-1 ring-line">
             <IconBag className="h-6 w-6" />
@@ -107,6 +121,10 @@ export default function BagDrawer() {
             {t("bag.startShopping")}
           </Link>
         </div>
+        {/* UX plan §1.4 (R8) — an empty bag on a returning device shows the
+            pieces it looked at; a first visit sees nothing extra. */}
+        <RecentlyViewedStrip pool={catalogProducts} limit={4} />
+        </>
       ) : (
         <>
           <div className="border-b border-line bg-forest-50 px-6 py-4">
@@ -129,6 +147,7 @@ export default function BagDrawer() {
             <div className="pt-4">
               <BagShopHeader />
             </div>
+            <SavedForLaterNotice notice={savedNotice} onNavigate={closeBag} className="mt-3" />
             {detail.map(({ product, variantLabel, qty, lineTotal }) => (
               <article
                 key={`${product.id}-${variantLabel}`}
@@ -185,14 +204,23 @@ export default function BagDrawer() {
                         +
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="min-h-11 px-1 text-xs text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-forest-800"
-                      aria-label={`${t("bag.remove")} ${product.name}`}
-                      onClick={() => removeItem(product.id, variantLabel)}
-                    >
-                      {t("bag.remove")}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {/* UX plan §5 (R11) — keep it instead of deleting it. */}
+                      <SaveForLaterButton
+                        productId={product.id}
+                        variantLabel={variantLabel}
+                        productName={product.name}
+                        onSave={saveForLater}
+                      />
+                      <button
+                        type="button"
+                        className="min-h-11 px-1 text-xs text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-forest-800"
+                        aria-label={`${t("bag.remove")} ${product.name}`}
+                        onClick={() => removeItem(product.id, variantLabel)}
+                      >
+                        {t("bag.remove")}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -235,6 +263,13 @@ export default function BagDrawer() {
             </section>
           )}
           <div className="border-t border-line bg-ivory-100/70 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            {/* Free-delivery threshold (2026-09-26): "add ৳X more" — the same
+                rule the checkout and ps_place_order price; hidden when the
+                shop / platform armed nothing. */}
+            <FreeDeliveryBar shop={bagShop} subtotal={subtotal} onNavigate={closeBag} className="mb-3" />
+            {/* UX plan §8 — loyalty visible where the decision is made:
+                "this order = your 7th stamp". Signed-in cardholders only. */}
+            <StampLine onNavigate={closeBag} className="mb-3" />
             {/* The saving is quoted here so the bag cannot surprise anyone at payment. */}
             <div className="mb-3 empty:hidden">
               <BagOffers lines={detail} />

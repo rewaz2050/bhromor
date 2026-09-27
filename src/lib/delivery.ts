@@ -5,13 +5,15 @@
  * The zone is derived internally from the address; customers never pick one.
  *   • Free for store pickup.
  *   • Surcharges: night/rain/express/weight still apply.
- *   • No free delivery promos (launch offer, first-10, threshold all removed).
+ *   • Free above a threshold ONLY when the owner (platform rule) or the shop
+ *     (its own rule) armed one — see lib/free-delivery.ts (2026-09-26).
  *
  * Money is integer paisa throughout (§69).
  */
 
 import { bdt, type Bdt } from "./format";
 import type { DeliveryZone } from "./catalog";
+import type { FreeDeliverySource } from "./free-delivery";
 
 export const DELIVERY_ETA = "45–50 min";
 export const INSTANT_DELIVERY_TITLE = "Instant delivery";
@@ -117,6 +119,11 @@ export interface DeliveryBreakdown {
   surcharge: DeliverySurcharge;
   freeDelivery: boolean;
   couponFree: boolean;
+  /**
+   * Free delivery threshold (2026-09-26): which rule waived the charge —
+   * 'platform' or 'shop' — or null. Set only when nothing else already did.
+   */
+  thresholdFree: FreeDeliverySource | null;
   isPickup: boolean;
   totalCharge: Bdt;
   eta: string;
@@ -149,6 +156,13 @@ export const deliveryBreakdown = (opts: {
   isPickup?: boolean;
   tipAmount?: Bdt;
   couponFree?: boolean;
+  /**
+   * The free-delivery rule this subtotal reached (see lib/free-delivery.ts),
+   * or null. Ignored on the courier zone and when a coupon/PROSANTI+ already
+   * waived the charge — the caller decides with `freeDeliveryFor`, this only
+   * prices it.
+   */
+  thresholdFree?: FreeDeliverySource | null;
   shopPrepMinutes?: number;
   queueCount?: number;
   /** Admin-editable amounts; omitted = the launch defaults. */
@@ -175,6 +189,7 @@ export const deliveryBreakdown = (opts: {
       surcharge: { night: 0, rain: 0, express: 0, weight: 0, tip: tipAmount ?? 0, total: 0 },
       freeDelivery: true,
       couponFree: false,
+      thresholdFree: null,
       isPickup: true,
       totalCharge: 0,
       eta: "Ready in " + (shopPrepMinutes ?? 15) + " min — Pickup",
@@ -182,7 +197,13 @@ export const deliveryBreakdown = (opts: {
     };
   }
 
-  const freeDelivery = !!couponFree;
+  // A threshold never applies to the courier leg, and never stacks on a
+  // coupon / PROSANTI+ waiver (nothing left to waive — no attribution).
+  const thresholdFree =
+    !couponFree && !isCourierZone(opts.zone?.id) && opts.thresholdFree
+      ? opts.thresholdFree
+      : null;
+  const freeDelivery = !!couponFree || thresholdFree !== null;
   // Zone pricing: city ৳60, nearby ৳120, outside/remote ৳150.
   // The zone is derived internally from address/distance and never exposed as a choice.
   const baseCharge = opts.zone?.charge ?? FLAT_DELIVERY_CHARGE_PAISA;
@@ -213,6 +234,7 @@ export const deliveryBreakdown = (opts: {
     surcharge,
     freeDelivery,
     couponFree: !!couponFree,
+    thresholdFree,
     isPickup: false,
     totalCharge,
     eta: courier ? COURIER_ETA_EN : eta.label,

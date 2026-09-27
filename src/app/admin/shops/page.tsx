@@ -7,14 +7,19 @@ import type { Shop } from "@/lib/catalog";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
+import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
+import { describeLoginEmail } from "@/lib/phone-login";
+import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-delivery";
 
 type Filter = Shop["status"] | "all";
-const FILTERS: Filter[] = ["all", "pending", "active", "suspended"];
+const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
 
 const BADGE: Record<Shop["status"], string> = {
   pending: "bg-amber-100 text-amber-900",
   active: "bg-emerald-100 text-emerald-800",
   suspended: "bg-rose-100 text-rose-800",
+  rejected: "bg-ivory-200 text-ink-soft",
 };
 
 function ShopCard({
@@ -24,13 +29,15 @@ function ShopCard({
   onSave,
   onStatus,
   onLinkVendor,
+  onResetPassword,
 }: {
   shop: AdminShopClient;
   zones: { id: string; name: string }[];
   live: boolean;
   onSave: (s: Shop) => Promise<boolean>;
-  onStatus: (id: string, status: Shop["status"]) => void;
+  onStatus: (id: string, status: Shop["status"], note?: string) => void;
   onLinkVendor: (id: string, email: string) => Promise<boolean>;
+  onResetPassword: (id: string) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(shop.name);
@@ -39,13 +46,14 @@ function ShopCard({
   const [address, setAddress] = useState(shop.address ?? "");
   const [commission, setCommission] = useState(String(shop.commissionPct));
   const [prep, setPrep] = useState(String(shop.prepMinutes));
+  // Free delivery (2026-09-26): the shop's own minimum in TAKA; "" = off.
+  const [freeDeliveryTaka, setFreeDeliveryTaka] = useState(
+    shop.freeDeliveryMinPaisa ? String(Math.round(shop.freeDeliveryMinPaisa / 100)) : "",
+  );
   const [zoneIds, setZoneIds] = useState<string[]>([...shop.zoneIds]);
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [linkEmail, setLinkEmail] = useState(shop.contactEmail ?? "");
-  const [linking, setLinking] = useState(false);
-  const [linked, setLinked] = useState(false);
 
   const save = async () => {
     const pct = Number(commission);
@@ -58,6 +66,26 @@ function ShopCard({
       setFormError("Prep time must be between 0 and 240 minutes.");
       return;
     }
+    const freeTaka = freeDeliveryTaka.trim() === "" ? 0 : Number(freeDeliveryTaka);
+    if (
+      !Number.isFinite(freeTaka) ||
+      freeTaka < 0 ||
+      (freeTaka > 0 &&
+        (freeTaka * 100 < FREE_DELIVERY_MIN_PAISA || freeTaka * 100 > FREE_DELIVERY_MAX_PAISA))
+    ) {
+      setFormError(
+        `Free-delivery minimum must be empty (off) or between ৳${FREE_DELIVERY_MIN_PAISA / 100} and ৳${FREE_DELIVERY_MAX_PAISA / 100}.`,
+      );
+      return;
+    }
+    // Only send the key when the admin touched it or the DB already has the
+    // column — a database without migration 202609260003 keeps saving.
+    const freeDeliveryPatch =
+      freeTaka > 0
+        ? { freeDeliveryMinPaisa: Math.round(freeTaka * 100) }
+        : shop.freeDeliveryMinPaisa !== undefined
+          ? { freeDeliveryMinPaisa: null }
+          : {};
     setSaving(true);
     const ok = await onSave({
       ...shop,
@@ -69,6 +97,7 @@ function ShopCard({
       prepMinutes: prepMin,
       zoneIds,
       isOpen,
+      ...freeDeliveryPatch,
     });
     setSaving(false);
     if (!ok) return; // page banner carries the hook error
@@ -94,45 +123,22 @@ function ShopCard({
             )}
           </div>
           <p className="mt-1 truncate text-xs text-ink-soft">
-            {shop.contactEmail ?? "no email"} · {shop.phone || "no phone"} ·{" "}
+            {describeLoginEmail(shop.contactEmail)} · {shop.phone || "no phone"} ·{" "}
             {shop.productCount} products · {shop.zoneIds.length} zones ·{" "}
             {shop.commissionPct}% commission
             {shop.ratingCount > 0 && (
               <> · ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})</>
             )}
           </p>
+          <ReviewSummary status={shop.status} review={shop.review} />
         </div>
-        {shop.status === "pending" && (
-          <button
-            type="button"
-            onClick={() => onStatus(shop.id, "active")}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
-          >
-            <IconCheck className="h-3.5 w-3.5" /> Approve
-          </button>
-        )}
-        {shop.status !== "suspended" && (
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Suspend “${shop.name}”? Its products disappear from the storefront immediately.`)) {
-                onStatus(shop.id, "suspended");
-              }
-            }}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-rose-700 ring-1 ring-rose-300 transition-colors hover:bg-rose-50"
-          >
-            Suspend
-          </button>
-        )}
-        {shop.status === "suspended" && (
-          <button
-            type="button"
-            onClick={() => onStatus(shop.id, "active")}
-            className="rounded-full px-4 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 transition-colors hover:bg-forest-800 hover:text-ivory-50"
-          >
-            Re-activate
-          </button>
-        )}
+        <ReviewActions
+          kind="shop"
+          name={shop.name}
+          status={shop.status}
+          onDecide={(status, note) => onStatus(shop.id, status, note)}
+          suspendEffect="Its products disappear from the storefront immediately."
+        />
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -172,6 +178,23 @@ function ShopCard({
           <label className="block">
             <span className={label}>Prep time (min)</span>
             <input className={field} type="number" min="0" max="240" value={prep} onChange={(e) => setPrep(e.target.value)} />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Shop free-delivery minimum (৳) — empty = off</span>
+            <input
+              className={field}
+              type="number"
+              min="0"
+              max={FREE_DELIVERY_MAX_PAISA / 100}
+              step="1"
+              value={freeDeliveryTaka}
+              onChange={(e) => setFreeDeliveryTaka(e.target.value)}
+              placeholder="e.g. 999"
+              data-testid="shop-free-delivery-min"
+            />
+            <span className="mt-1 block text-xs text-ink-soft">
+              The shop pays: the waived rider charge is deducted from its payout. Rider zones only — never courier, pickup, coupon or PROSANTI+. The platform rule lives in Settings.
+            </span>
           </label>
           <div className="sm:col-span-2">
             <span className={label}>Serves zones</span>
@@ -222,39 +245,18 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
-          <div className="rounded-xl bg-cream/70 p-3 ring-1 ring-line sm:col-span-2">
-            <span className={label}>Vendor login</span>
-            {linked ? (
-              <p className="text-xs font-medium text-forest-800">
-                Linked — the vendor can sign in at /vendor once the shop is active.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  className={`${field} flex-1`}
-                  value={linkEmail}
-                  onChange={(e) => setLinkEmail(e.target.value)}
-                  placeholder="vendor account email"
-                  aria-label="Vendor account email"
-                  disabled={!live}
-                />
-                <button
-                  type="button"
-                  disabled={linking || !live || linkEmail.trim() === ""}
-                  onClick={() => {
-                    setLinking(true);
-                    void onLinkVendor(shop.id, linkEmail.trim()).then((ok) => {
-                      setLinking(false);
-                      if (ok) setLinked(true);
-                    });
-                  }}
-                  className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-800 hover:text-ivory-50 disabled:opacity-60"
-                >
-                  {linking ? "Linking…" : "Link vendor"}
-                </button>
-              </div>
-            )}
-          </div>
+          <ApplicantLoginBox
+            kind="vendor"
+            name={shop.name}
+            phone={shop.phone}
+            email={shop.contactEmail}
+            status={shop.status}
+            reviewNote={shop.review?.note}
+            linked={shop.vendorLinked === true}
+            live={live}
+            onLink={(email) => onLinkVendor(shop.id, email)}
+            onResetPassword={() => onResetPassword(shop.id)}
+          />
         </div>
       )}
     </li>
@@ -263,8 +265,18 @@ function ShopCard({
 
 /** Marketplace phase 2 — staff shops queue: approve / suspend / commission. */
 export default function AdminShopsPage() {
-  const { shops, live, loading, error, clearError, saveShop, setStatus, linkVendor, reset } =
-    useShops();
+  const {
+    shops,
+    live,
+    loading,
+    error,
+    clearError,
+    saveShop,
+    setStatus,
+    linkVendor,
+    resetVendorPassword,
+    reset,
+  } = useShops();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
   const [creating, setCreating] = useState(false);
@@ -278,9 +290,10 @@ export default function AdminShopsPage() {
       all: shops.length,
       pending: 0,
       active: 0,
+      rejected: 0,
       suspended: 0,
     };
-    for (const s of shops) c[s.status] += 1;
+    for (const s of shops) c[s.status] = (c[s.status] ?? 0) + 1;
     return c;
   }, [shops]);
   const visible = useMemo(
@@ -428,8 +441,9 @@ export default function AdminShopsPage() {
               zones={zones}
               live={live}
               onSave={saveShop}
-              onStatus={(id, status) => void setStatus(id, status)}
+              onStatus={(id, status, note) => void setStatus(id, status, note)}
               onLinkVendor={linkVendor}
+              onResetPassword={resetVendorPassword}
             />
           ))}
         </ul>

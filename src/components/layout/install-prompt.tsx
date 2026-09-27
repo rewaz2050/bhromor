@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { useOptionalCart } from "@/components/cart/cart-provider";
 import { IconClose } from "@/components/ui/icons";
 import {
   countVisit,
@@ -27,6 +28,9 @@ interface BeforeInstallPromptEvent extends Event {
  */
 export default function InstallPrompt() {
   const { t } = useLanguage();
+  // UX plan §3 (R11) — a first visit with a bag counts as intent.
+  const cart = useOptionalCart();
+  const hasBag = !!cart && cart.ready && cart.lines.length > 0;
   const [native, setNative] = useState<BeforeInstallPromptEvent | null>(null);
   const [mode, setMode] = useState<"native" | "ios" | null>(null);
   const [visitsCounted, setVisitsCounted] = useState(false);
@@ -66,9 +70,10 @@ export default function InstallPrompt() {
         standalone: isStandalone(),
         hasNativePrompt: native !== null,
         ua: navigator.userAgent,
+        hasBag,
       }),
     );
-  }, [visitsCounted, native]);
+  }, [visitsCounted, native, hasBag]);
 
   if (!mode) return null;
 

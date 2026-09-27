@@ -7,6 +7,8 @@ import { __resetHomeSettings } from "@/lib/use-home-settings";
 import { MY_ZONE_KEY } from "@/lib/use-my-zone";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 import { __resetRecentlyViewed, recordView } from "@/lib/recently-viewed";
+import { CART_STORAGE_KEY } from "@/lib/cart";
+import { BAG_BANNER_AFTER_MS, BAG_BANNER_DISMISSED_KEY, BAG_TOUCHED_KEY } from "@/lib/bag-memory";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status });
@@ -163,7 +165,7 @@ describe("Homepage editorial journey", () => {
 
   /* 2026-09-20 — offers sit between the category row and the shelf: every
      piece with a struck-through price, biggest saving first, and a "See all
-     N offers" link into the ?filter=sale shop. */
+     N offers" link into the /offers hub (R7; was the ?filter=sale shop). */
   it("lists the marked-down pieces in the offers rail, biggest saving first", async () => {
     await renderHome();
     const rail = await screen.findByTestId("rail-offers");
@@ -180,9 +182,10 @@ describe("Homepage editorial journey", () => {
     expect(onOffer.length).toBeGreaterThan(1);
     // 22% off (Slate Premium T-Shirt) before 19% off (Heritage Green Panjabi).
     expect(names).toEqual(["View Slate Premium T-Shirt", "View Heritage Green Panjabi"]);
+    // UX plan §10 (R7): "See all" lands on the offers hub, not the sale filter.
     expect(within(rail).getByRole("link", { name: /see all 2 offers/i })).toHaveAttribute(
       "href",
-      "/shop?filter=sale",
+      "/offers",
     );
     // No flash window is running in the test clock → no drop rail.
     expect(screen.queryByTestId("flash-rail")).toBeNull();
@@ -212,6 +215,54 @@ describe("Homepage editorial journey", () => {
     expect(
       within(shelves[0]).getByRole("heading", { level: 2, name: "Men" }).closest("a"),
     ).toHaveAttribute("href", "/shop?category=men");
+  });
+
+  it("welcomes a returning shopper back to a bag left 30+ minutes ago, and × hides it for that bag (UX plan §5, R10)", async () => {
+    const piece = PRODUCTS.find((p) => p.inStock && p.status !== "draft")!;
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify([{ productId: piece.id, variantLabel: piece.sizes[0] ?? "Default", qty: 2 }]));
+    localStorage.setItem(BAG_TOUCHED_KEY, String(Date.now() - BAG_BANNER_AFTER_MS - 1000));
+    sessionStorage.removeItem(BAG_BANNER_DISMISSED_KEY);
+    try {
+      await renderHome();
+      const banner = await screen.findByTestId("bag-waiting");
+      expect(banner.textContent).toContain("2 pieces are waiting in your bag");
+      expect(within(banner).getAllByRole("link", { name: /Checkout/ })[0]).toHaveAttribute("href", "/checkout");
+      fireEvent.click(within(banner).getByRole("button", { name: "Hide this" }));
+      expect(screen.queryByTestId("bag-waiting")).toBeNull();
+      expect(sessionStorage.getItem(BAG_BANNER_DISMISSED_KEY)).not.toBeNull();
+      cleanup();
+      // Same bag, same session → stays hidden.
+      await renderHome();
+      await screen.findByTestId("whole-shelf");
+      expect(screen.queryByTestId("bag-waiting")).toBeNull();
+      cleanup();
+      // A bag touched a minute ago is not "waiting" — no banner.
+      sessionStorage.removeItem(BAG_BANNER_DISMISSED_KEY);
+      localStorage.setItem(BAG_TOUCHED_KEY, String(Date.now() - 60_000));
+      await renderHome();
+      await screen.findByTestId("whole-shelf");
+      expect(screen.queryByTestId("bag-waiting")).toBeNull();
+    } finally {
+      localStorage.removeItem(CART_STORAGE_KEY);
+      localStorage.removeItem(BAG_TOUCHED_KEY);
+      sessionStorage.removeItem(BAG_BANNER_DISMISSED_KEY);
+    }
+  });
+
+  it("breaks the shelf with the 'why' band after the 2nd category and rails from the 3rd (UX plan §2, R10)", async () => {
+    await renderHome();
+    await screen.findByTestId("whole-shelf");
+    const shelves = screen.getAllByTestId("category-shelf");
+    expect(shelves.map((s) => s.getAttribute("data-layout"))).toEqual(["grid", "grid", "rail"]);
+    const band = screen.getByTestId("why-band");
+    // Sits between the 2nd and the 3rd block.
+    expect(shelves[1].compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(band.compareDocumentPosition(shelves[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Four facts, each a link to the page that proves it.
+    const links = within(band).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/shops", "/delivery", "/faq", "/track"]);
+    // No approved photo review in the sandbox → no review interrupt, never a seed.
+    expect(screen.queryByTestId("review-interrupt")).toBeNull();
   });
 
   it("says 'no shop delivers there' (with a reset) instead of 'being stocked' for an unserved zone", async () => {
@@ -380,6 +431,27 @@ describe("Homepage editorial journey", () => {
     expect(screen.getByRole("link", { name: "Cash on Delivery" })).toHaveAttribute(
       "href",
       "/faq",
+    );
+  });
+
+  it("offers quick chips under the hero — pre-filtered shop links with honest counts (UX plan §2, R11)", async () => {
+    await renderHome();
+    const { quickChips } = await import("@/lib/quick-chips");
+    const expected = quickChips(PRODUCTS);
+    expect(expected.length).toBeGreaterThanOrEqual(2);
+    const row = screen.getByTestId("quick-chips");
+    // right under the hero, before the shelf
+    const hero = screen.getByTestId("home-hero");
+    expect(hero.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const chip of expected) {
+      const link = within(row).getByTestId(`quick-chip-${chip.id}`);
+      expect(link).toHaveAttribute("href", chip.href);
+      expect(link).toHaveTextContent(chip.en);
+      expect(link).toHaveTextContent(String(chip.count));
+    }
+    // every chip in the row is one the shelf can honour
+    expect(within(row).getAllByRole("link").filter((a) => a.dataset.testid?.startsWith("quick-chip-"))).toHaveLength(
+      expected.length,
     );
   });
 });

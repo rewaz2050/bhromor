@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ListImpression from "@/components/analytics/list-impression";
 import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -42,8 +43,10 @@ export default function ProductRail({
       id={id}
       aria-labelledby={headingId}
       data-testid={testId}
+      data-list={id}
       className={`scroll-mt-24 ${tone === "ivory" ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
     >
+      <ListImpression list={id} count={products.length} />
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <Reveal className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:mb-8">
           <div className="max-w-2xl">

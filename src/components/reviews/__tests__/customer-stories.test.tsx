@@ -94,3 +94,28 @@ describe("Customer stories preview", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("Photo reviews first (UX plan §2/§4, R9)", () => {
+  it("shows a buyer-photo strip that links each photo to the product's reviews, photo stories ranked first", () => {
+    const photo = "data:image/jpeg;base64,AAAA";
+    state.reviews = [
+      { ...review, id: "text-new", date: 5 },
+      { ...review, id: "with-photo", date: 2, photos: [photo, photo] },
+    ];
+    render(<CustomerStories />);
+    const strip = screen.getByTestId("stories-photos");
+    const links = strip.querySelectorAll("a");
+    expect(links).toHaveLength(2);
+    expect(links[0].getAttribute("href")).toBe(`/product/${PRODUCTS[0].slug}#reviews-heading`);
+    expect(strip.querySelectorAll("img")[0].getAttribute("src")).toBe(photo);
+    // ordering: the photo story beats the newer text-only one
+    const ordered = approvedStories(state.reviews, PRODUCTS).map((r) => r.id);
+    expect(ordered).toEqual(["with-photo", "text-new"]);
+  });
+
+  it("renders no strip when nobody has attached a photo", () => {
+    state.reviews = [review];
+    render(<CustomerStories />);
+    expect(screen.queryByTestId("stories-photos")).toBeNull();
+  });
+});

@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { countdownLabel } from "@/lib/promos";
+import { endsAtLabel } from "@/lib/ends-at";
 import { ensurePromos } from "@/lib/use-promos";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatBdt } from "@/lib/format";
@@ -48,6 +49,28 @@ export function FlashTimer({
   );
 }
 
+/**
+ * UX plan §3 (R11) — "(আজ রাত ১১টায় শেষ)": the wall-clock end next to the
+ * countdown, in the shop's day (Asia/Dhaka). Re-labelled once a minute so
+ * "today" becomes "tomorrow"-safe across midnight; empty once it has passed.
+ */
+export function FlashEndsAt({ endsAtMs, className = "" }: { endsAtMs: number; className?: string }) {
+  const { lang } = useLanguage();
+  const [label, setLabel] = useState(() => endsAtLabel(endsAtMs, lang));
+  useEffect(() => {
+    const tick = () => setLabel(endsAtLabel(endsAtMs, lang));
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [endsAtMs, lang]);
+  if (!label) return null;
+  return (
+    <span data-testid="flash-ends-at" lang={lang === "bn" ? "bn" : undefined} className={className}>
+      ({label})
+    </span>
+  );
+}
+
 /** "Starts in 01:12:40" for the window that has not opened yet. */
 export function FlashCountup({ atMs }: { atMs: number }) {
   const { t } = useLanguage();
@@ -64,6 +87,55 @@ export function FlashCountup({ atMs }: { atMs: number }) {
     <span className="tabular-nums">
       {t("promo.opensSoon").replace("{time}", countdownLabel(left))}
     </span>
+  );
+}
+
+/**
+ * The thin "how much of the window is gone" line under the flash strip.
+ *
+ * Scroll audit 2026-09-27: this used to be a `width: N%` restyled from a 1 s
+ * React tick — a layout every second on every page. Now it is one CSS
+ * transform transition: start at the share already elapsed, reach 100 % at
+ * `endsAtMs`, and let the compositor move it — no timer, no layout, no
+ * re-render. `msLeftAt`/`progressAt` are the pair the promo store froze at
+ * the last phase change (see use-promos.ts), which is all it takes to know
+ * the window's length.
+ */
+export function FlashProgress({
+  endsAtMs,
+  msLeftAt,
+  progressAt,
+  className = "",
+}: {
+  endsAtMs: number | null;
+  msLeftAt: number;
+  progressAt: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !endsAtMs) return;
+    const windowMs = progressAt < 1 && msLeftAt > 0 ? msLeftAt / (1 - progressAt) : 0;
+    const msLeft = Math.max(0, endsAtMs - Date.now());
+    const now = windowMs > 0 ? Math.min(1, Math.max(0, 1 - msLeft / windowMs)) : 1;
+    el.style.transition = "none";
+    el.style.transform = `scaleX(${now.toFixed(4)})`;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    if (reduce || msLeft === 0) return;
+    // Flush the start value, then hand the rest of the window to the compositor.
+    void el.getBoundingClientRect();
+    el.style.transition = `transform ${msLeft}ms linear`;
+    el.style.transform = "scaleX(1)";
+  }, [endsAtMs, msLeftAt, progressAt]);
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      data-testid="flash-progress"
+      className={`block h-0.5 origin-left bg-gold-400/80 ${className}`}
+      style={{ transform: `scaleX(${Math.min(1, Math.max(0, progressAt)).toFixed(4)})` }}
+    />
   );
 }
 

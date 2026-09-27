@@ -26,9 +26,9 @@ vi.mock("@/lib/use-rider", () => ({
     email: "rider@example.com",
     status: "authed",
     error: null,
+    denyReason: null,
     refresh: vi.fn(async () => {}),
     signIn: vi.fn(),
-    signUp: vi.fn(),
     signOut: vi.fn(),
   }),
   useRiderStats: () => ({

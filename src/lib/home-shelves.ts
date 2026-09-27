@@ -13,7 +13,7 @@
  */
 
 import type { Category, Product } from "./catalog";
-import { isDiscoverable, isOnOffer, offerPct } from "./merchandising";
+import { completeTheLook, isDiscoverable, isOnOffer, offerPct } from "./merchandising";
 
 /** One category block on the homepage: heading + its pieces in shelf order. */
 export interface CategoryShelf {
@@ -27,7 +27,10 @@ export interface CategoryShelf {
 }
 
 /** Default cap per category block on the homepage (2 rows of 4 on desktop). */
-export const SHELF_PREVIEW = 8;
+/** Pieces per category block on the home page (UX plan §2, R10: 4–6 + "See all N"). */
+export const SHELF_PREVIEW = 6;
+/** From this block on (0-based) phones get a horizontal rail instead of a grid. */
+export const SHELF_RAIL_FROM = 2;
 /** Default length of the best-seller / new-arrival rails. */
 export const RAIL_LENGTH = 8;
 
@@ -149,6 +152,58 @@ export const moreInCategory = (
   };
 };
 
+/**
+ * "Goes with these" (UX plan §6 receipt, §8 wishlist) — around a set of
+ * seed pieces (an order, a wishlist): complements of each seed first
+ * (`completeTheLook`), then in-stock siblings from the same shelves; never
+ * a seed itself, never a duplicate, capped. Order-stable.
+ */
+export const goesWith = (seeds: Product[], products: Product[], limit = 8): Product[] => {
+  const skip = new Set(seeds.map((p) => p.id));
+  const out: Product[] = [];
+  const push = (p: Product) => {
+    if (skip.has(p.id) || out.length >= limit) return;
+    skip.add(p.id);
+    out.push(p);
+  };
+  for (const p of seeds) completeTheLook(p, products, 4).forEach(push);
+  for (const p of seeds) moreInCategory(p, products, seeds, limit).items.filter((s) => s.inStock).forEach(push);
+  return out;
+};
+
 /** Bangla-aware display name for a category. */
 export const categoryLabel = (category: Category, lang: "en" | "bn"): string =>
   lang === "bn" && category.nameBn ? category.nameBn : category.name;
+
+/**
+ * UX plan §9 (R8) — the shop directory's "peek at the shelf": each shop's
+ * best pieces as thumbnails. Best sellers lead, then featured, then new,
+ * then catalog order; only discoverable, in-stock pieces (a thumbnail of
+ * something you cannot buy is a small lie). Keyed by shop id.
+ */
+export const shopShelfPeeks = (
+  products: Product[],
+  fallbackShopId: string,
+  limit = 3,
+): Record<string, Product[]> => {
+  const byShop: Record<string, { p: Product; index: number }[]> = {};
+  products.forEach((p, index) => {
+    if (!isDiscoverable(p) || !p.inStock) return;
+    const id = p.shopId ?? fallbackShopId;
+    (byShop[id] ??= []).push({ p, index });
+  });
+  const out: Record<string, Product[]> = {};
+  for (const [id, rows] of Object.entries(byShop)) {
+    out[id] = rows
+      .sort(
+        (a, b) =>
+          (b.p.unitsSold ?? 0) - (a.p.unitsSold ?? 0) ||
+          Number(!!b.p.featured) - Number(!!a.p.featured) ||
+          Number(!!b.p.isNew) - Number(!!a.p.isNew) ||
+          a.index - b.index,
+      )
+      .slice(0, limit)
+      .map((r) => r.p);
+  }
+  return out;
+};

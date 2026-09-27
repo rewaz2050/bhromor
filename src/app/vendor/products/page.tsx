@@ -133,11 +133,20 @@ export default function VendorProductsPage() {
                 const state = shelfState(p);
                 const meta = SHELF_META[state];
                 const cover = p.media.find((m) => m.kind !== "video") ?? p.media[0];
+                // Per-size stock (UX plan §4, R10): name the sizes that are
+                // gone so the seller restocks the right one, not "some".
+                const goneSizes = p.sizeStock
+                  ? p.sizes.filter((sz) => (p.sizeStock?.[sz] ?? 1) === 0)
+                  : [];
                 const stockLine =
                   typeof p.stock === "number"
                     ? p.stock === 0
                       ? "0 in stock"
-                      : `${p.stock} in stock`
+                      : `${p.stock} in stock${
+                          goneSizes.length > 0 && goneSizes.length < p.sizes.length
+                            ? ` · ${goneSizes.join(", ")} sold out`
+                            : ""
+                        }`
                     : p.inStock
                       ? "in stock"
                       : "out of stock";

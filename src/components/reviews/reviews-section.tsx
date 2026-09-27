@@ -11,6 +11,8 @@ import type { Product } from "@/lib/catalog";
 import { IconCheck, IconStar } from "@/components/ui/icons";
 import { optimizedMediaUrl } from "@/lib/media-url";
 import { compressReviewPhoto, MAX_PHOTOS } from "@/lib/review-photos";
+import { readReviewProof } from "@/lib/review-proof";
+import { usePublicSettings } from "@/lib/use-public-settings";
 
 const dayLabel = (ms: number): string =>
   new Date(ms).toLocaleDateString("en-GB", {
@@ -81,7 +83,8 @@ export default function ReviewsSection({ product }: { product: Product }) {
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<false | "plain" | "stamp">(false);
+  const { settings: publicSettings } = usePublicSettings();
   const [error, setError] = useState<string | null>(null);
   // P1 #10 UGC: picked photos, compressed to the review JPEG budget in the
   // browser before submit.
@@ -136,6 +139,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
     if (rating < 1) return setError("Pick a star rating first.");
     if (body.trim().length < 10)
       return setError("Tell us a little more — at least a sentence.");
+    // Purchase proof stashed by the track page's "Review <piece>" link
+    // (UX plan §4/§7, R10) → verified badge + a Smart Card stamp on approval.
+    const proof = readReviewProof(product.id);
     void submit({
       productId: product.id,
       author: name.trim(),
@@ -143,7 +149,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
       title: title.trim() || undefined,
       body: body.trim(),
       photos: photos.length > 0 ? photos : undefined,
-    }).then(({ ok, error: submitError }) => {
+      orderId: proof?.orderId,
+      phone: proof?.phone,
+    }).then(({ ok, error: submitError, stampEligible }) => {
       if (!ok) {
         setError(submitError ?? "Could not save the review.");
         return;
@@ -152,7 +160,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       setTitle("");
       setBody("");
       setPhotos([]);
-      setSent(true);
+      setSent(stampEligible && publicSettings.loyaltyEnabled ? "stamp" : "plain");
       setError(null);
       if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
       sentTimer.current = window.setTimeout(() => setSent(false), 5000);
@@ -422,6 +430,12 @@ export default function ReviewsSection({ product }: { product: Product }) {
               >
                 Thanks! Your review is awaiting moderation and will appear once
                 approved.
+                {sent === "stamp" ? (
+                  <span className="mt-1 block" data-testid="review-stamp-promise">
+                    Verified purchase — once approved, 1 stamp lands on your Smart
+                    Card. (অনুমোদন হলে স্মার্ট কার্ডে ১টা স্ট্যাম্প যোগ হবে।)
+                  </span>
+                ) : null}
               </p>
             )}
 

@@ -134,7 +134,9 @@ counts start at 0 for new shops.
 - RLS: vendors read/write only rows where `shop_id` matches their shop.
   Platform staff keep full access via existing `ps_is_admin()` policies.
 - Vendor login: `/vendor/login` (separate gate from the secret admin login path so the
-  two sessions never confuse each other).
+  two sessions never confuse each other). Since 2026-09-26 the login is created by the
+  shop application itself (`/shops/apply` carries email + password; `createApplicantAccount`
+  in `src/lib/db/applicant-account.ts`) — staff approval is the only gate.
 
 ### 2.4 Vendor dashboard scope (lite admin — new route group `/vendor`)
 

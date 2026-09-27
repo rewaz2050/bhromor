@@ -5,6 +5,7 @@ import { isShopOrderable } from "@/lib/shop-utils";
 import { shopChatMessage, waLink } from "@/lib/whatsapp-order";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconSend } from "@/components/ui/icons";
+import FreeDeliveryPill from "./free-delivery-pill";
 
 /**
  * Shop storefront header (marketplace slice 4): open state, prep time,
@@ -22,8 +23,27 @@ export default function ShopHero({
   const open = isShopOrderable(shop);
   const waChatHref = waLink(shop.phone, shopChatMessage(shop, lang));
   return (
-    <header className="mt-8 rounded-3xl bg-forest-900 p-8 text-ivory-100 sm:p-10">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <header
+      className="relative mt-8 overflow-hidden rounded-3xl bg-forest-900 p-8 text-ivory-100 sm:p-10"
+      data-cover={shop.coverUrl ? "1" : undefined}
+    >
+      {/* Cover photo (UX plan §9, R9) — plain <img>: vendor-supplied hosts
+          are not in next/image's allow-list. The gradient keeps the text
+          readable on any photo; no cover → the solid header as before. */}
+      {shop.coverUrl && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shop.coverUrl}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full object-cover"
+            data-testid="shop-cover"
+          />
+          <span aria-hidden="true" className="absolute inset-0 bg-gradient-to-r from-forest-950/90 via-forest-950/75 to-forest-950/40" />
+        </>
+      )}
+      <div className="relative flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h1 className="font-display text-3xl font-medium tracking-tight sm:text-4xl">
             {shop.name}
@@ -31,6 +51,8 @@ export default function ShopHero({
           {shop.tagline && (
             <p className="mt-2 max-w-xl text-ivory-100/75">{shop.tagline}</p>
           )}
+          {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
+          <FreeDeliveryPill shop={shop} tone="dark" className="mt-3" />
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
@@ -42,7 +64,7 @@ export default function ShopHero({
           {open ? t("shops.openNow") : t("shops.closed")}
         </span>
       </div>
-      <dl className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+      <dl className="relative mt-6 flex flex-wrap gap-x-8 gap-y-3 text-sm">
         <div>
           <dt className="text-xs uppercase tracking-widest text-ivory-100/60">
             {t("shops.preparesIn")}
@@ -82,13 +104,13 @@ export default function ShopHero({
           target="_blank"
           rel="noopener noreferrer"
           data-testid="whatsapp-shop-chat"
-          className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-sm bg-ivory-50 px-5 text-sm font-semibold text-forest-900 transition-colors hover:bg-white"
+          className="relative mt-6 inline-flex min-h-11 items-center gap-2 rounded-sm bg-ivory-50 px-5 text-sm font-semibold text-forest-900 transition-colors hover:bg-white"
         >
           <IconSend className="h-4 w-4" /> {t("shops.chatWhatsApp")}
         </a>
       ) : null}
       {!open && (
-        <p className="mt-6 rounded-2xl bg-ivory-100/10 px-4 py-3 text-sm text-ivory-100/85 ring-1 ring-ivory-100/20">
+        <p className="relative mt-6 rounded-2xl bg-ivory-100/10 px-4 py-3 text-sm text-ivory-100/85 ring-1 ring-ivory-100/20">
           <span className="font-semibold">{t("shops.shopClosed")}</span> —{" "}
           {t("shops.shopClosedHint")}
         </p>

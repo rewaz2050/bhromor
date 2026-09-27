@@ -13,6 +13,7 @@ import { CartProvider, useCart } from "@/components/cart/cart-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore } from "@/lib/wishlist-store";
+import { clearSizeProfile, saveSizeProfile, suggestSize } from "@/lib/size-finder";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 
 vi.mock("@/lib/use-live-catalog", async () => {
@@ -224,6 +225,41 @@ describe("Editorial product cards", () => {
   });
 });
 
+describe("Card images — one photo per card until asked (scroll audit 2026-09-27)", () => {
+  it("mounts only the cover; the other photos arrive on the first hover/press and then stay", () => {
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    const media = container.querySelector(".product-card-media")!;
+    expect(product.media.filter((m) => (m.kind ?? "image") === "image").length).toBeGreaterThan(1);
+    expect(media.querySelectorAll("img").length).toBe(1);
+    expect(container.querySelector("[data-peek-slide]")).toBeNull();
+
+    // Pointer enters (a mouse hover, or the start of a touch) — arm the swap.
+    fireEvent.pointerEnter(screen.getByTestId("card-peek"));
+    const peekSlides = container.querySelectorAll("[data-peek-slide]");
+    expect(peekSlides.length).toBeGreaterThanOrEqual(1);
+    expect(media.querySelectorAll("img").length).toBe(1 + peekSlides.length);
+    expect(peekSlides[0]).toHaveAttribute("data-active", "false");
+
+    // Leaving does not unmount them again (a second hover must not reload).
+    fireEvent.pointerLeave(screen.getByTestId("card-peek"));
+    expect(container.querySelectorAll("[data-peek-slide]").length).toBe(peekSlides.length);
+  });
+
+  it("keyboard focus arms the swap too", () => {
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    fireEvent.focus(screen.getByTestId("card-peek"));
+    expect(container.querySelector('[data-peek-slide="1"]')).not.toBeNull();
+  });
+});
+
 describe("Press-and-hold peek", () => {
   afterEach(() => vi.useRealTimers());
 
@@ -321,5 +357,86 @@ describe("Press-and-hold peek", () => {
     act(() => vi.advanceTimersByTime(600));
     expect(link).not.toHaveAttribute("data-peeking");
     expect(container.querySelector("[data-peek-dot]")).toBeNull();
+  });
+});
+
+/* UX plan §8 (R6) — the saved body follows the shopper onto the card. */
+describe("Product card — your size badge", () => {
+  afterEach(() => clearSizeProfile());
+
+  it("shows nothing without a saved profile, then 'Your size: X' once one is saved", () => {
+    const { unmount } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("your-size")).not.toBeInTheDocument();
+    unmount();
+
+    const profile = { heightCm: 172, weightKg: 68, fit: "regular" as const };
+    expect(saveSizeProfile(profile)).toBe(true);
+    const expected = suggestSize(product, profile);
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    expect(expected.advisory).toBe("ok"); // the seed panjabi grades a 172 cm / 68 kg body as M
+    expect(screen.getByTestId("your-size")).toHaveTextContent(`আপনার সাইজ: ${expected.recommended}`);
+  });
+
+  it("never badges a one-size or single-size piece", () => {
+    saveSizeProfile({ heightCm: 172, weightKg: 68, fit: "regular" });
+    render(
+      <CartProvider>
+        <ProductCard product={{ ...product, sizes: ["Free"] }} />
+      </CartProvider>,
+    );
+    expect(screen.queryByTestId("your-size")).not.toBeInTheDocument();
+  });
+});
+
+describe("ProductCard — colour dots + honest rating (UX plan §1.1, R9)", () => {
+  it("shows up to three swatches with a '+N' and the rating only when reviews exist", async () => {
+    const { swatchColors } = await import("@/lib/color-swatch");
+    const base = PRODUCTS[0];
+    const product = {
+      ...base,
+      colors: ["Forest Green", "Ivory", "Red & Cream", "Slate", "Navy"],
+      rating: 4.8,
+      reviewCount: 12,
+    };
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    const swatches = screen.getByTestId("card-swatches");
+    expect(swatches.querySelectorAll("[data-swatch]")).toHaveLength(3);
+    expect(swatches.textContent).toContain("+2");
+    expect(swatches.getAttribute("aria-label")).toBe("Forest Green, Ivory, Red & Cream, Slate, Navy");
+    expect(swatchColors("Forest Green")).toHaveLength(1);
+    const rating = screen.getByTestId("card-rating");
+    expect(rating.textContent).toContain("৪.৮");
+    expect(rating.textContent).toContain("১২");
+    expect(rating.textContent).not.toMatch(/[0-9]/);
+  });
+
+  it("keeps the colour as text when no dot can be rendered honestly, and hides the rating at zero reviews", () => {
+    const product = { ...PRODUCTS[0], colors: ["Heritage"], rating: 0, reviewCount: 0 };
+    render(
+      <LanguageProvider initialLang="en">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByTestId("card-swatches")).toBeNull();
+    expect(screen.getByText("Heritage")).toBeInTheDocument();
+    expect(screen.queryByTestId("card-rating")).toBeNull();
   });
 });

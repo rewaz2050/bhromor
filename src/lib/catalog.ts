@@ -57,6 +57,15 @@ export interface Product {
   active?: boolean;
   stock?: number;
   /**
+   * UX plan §4 (R10) — units available PER SIZE, summed across colours
+   * (`product_variants.available`, active rows only). Present on live rows
+   * that have a variant grid; absent on seeds and on products without
+   * sizes, in which case every size counts as available (unknown ≠ sold out).
+   * This is the same number `ps_place_order` enforces per variant, so a
+   * chip greyed here is an order that would have failed at checkout.
+   */
+  sizeStock?: Record<string, number>;
+  /**
    * P1 #14 — warranty period in days (shop-managed, set on accessories).
    * Absent/null = no warranty on this item; nothing is warranted by default.
    */
@@ -86,6 +95,8 @@ export interface Shop {
   name: string;
   tagline?: string;
   logoUrl?: string;
+  /** Landscape cover photo for the storefront header / directory card (UX plan §9). */
+  coverUrl?: string;
   phone: string;
   /** Applicant email — STAFF ONLY. Public endpoints must strip it. */
   contactEmail?: string;
@@ -93,10 +104,35 @@ export interface Shop {
   zoneIds: string[];
   prepMinutes: number;
   commissionPct: number;
-  status: "pending" | "active" | "suspended";
+  status: ApplicationStatus;
   isOpen: boolean;
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * Free delivery (2026-09-26) — the shop's OWN threshold in paisa (the shop
+   * funds it); null/undefined = the shop has not opted in. The platform rule
+   * lives in the ops settings. Public: the bag's progress bar reads it.
+   */
+  freeDeliveryMinPaisa?: number | null;
+  /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
+  review?: ApplicationReview;
+}
+
+/**
+ * Shop / rider lifecycle. `rejected` (round 4, 2026-09-26) is a staff
+ * answer with a reason — the applicant reads it on the login page, fixes
+ * the details and re-applies with the same login.
+ */
+export type ApplicationStatus = "pending" | "active" | "suspended" | "rejected";
+
+/** STAFF ONLY — never sent to the storefront. */
+export interface ApplicationReview {
+  /** Free-text reason, shown to the applicant when status is `rejected`. */
+  note?: string;
+  /** Staff e-mail at decision time (audit — resolves without a join). */
+  by?: string;
+  /** Epoch ms of the decision. */
+  at?: number;
 }
 
 /**
@@ -110,9 +146,15 @@ export interface Rider {
   phone: string;
   /** Login email — STAFF ONLY. Never sent to riders or the storefront. */
   contactEmail?: string;
+  /**
+   * A login account is attached (`riders.user_id`). Applications arrive
+   * linked since 2026-09-26 (apply = sign up); only legacy or manually
+   * created rows still need the admin "Link rider" step.
+   */
+  hasLogin?: boolean;
   vehicle: "bicycle" | "bike" | "scooter";
   zoneIds: string[];
-  status: "pending" | "active" | "suspended";
+  status: ApplicationStatus;
   isOnline: boolean;
   cashInHand: number;
   ratingAvg: number;
@@ -124,6 +166,12 @@ export interface Rider {
   totalDeliveries?: number;
   /** P2 #22 — the rider's own shift; drives auto-dispatch (see lib/rider-hours.ts). */
   availability?: import("./rider-hours").RiderAvailability;
+  /** Round 4 — last staff decision. STAFF ONLY. */
+  review?: ApplicationReview;
+  /** Round 4 — uploaded KYC document URLs (doc id → https). STAFF + the rider. */
+  kyc?: import("./rider-kyc").RiderKyc;
+  /** Epoch ms when every required KYC document was in. */
+  kycSubmittedAt?: number;
 }
 
 /**

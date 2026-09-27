@@ -5,6 +5,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import { useHomeSettings } from "@/lib/use-home-settings";
 import { publicPromoCode } from "@/lib/home-cms";
 import { copyToClipboard } from "@/lib/share";
+import { rememberCoupon } from "@/lib/coupon-carry";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { IconArrowRight, IconCopy, IconTag } from "@/components/ui/icons";
 
@@ -25,6 +26,10 @@ export default function PromoCodeCard() {
   const text = settings.promo.text.trim();
 
   const copy = async () => {
+    // UX plan §3 (R11) — the code travels to checkout's coupon field by
+    // itself (placed, not applied — see lib/coupon-carry); the clipboard
+    // is the backup for a bag on another device.
+    rememberCoupon(code);
     const ok = await copyToClipboard(code);
     setNotice(ok ? t("home.promoCopied") : t("home.promoCopyFailed"));
   };

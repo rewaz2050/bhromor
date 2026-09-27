@@ -14,7 +14,7 @@ import { validateOrderPayload } from "@/lib/order-validation";
 import { isPlusMember } from "@/lib/db/membership";
 import {
   OrderPlacementError,
-  countOrdersForPhone,
+  countStampsForPhone,
   loadOrderSnapshot,
   placeLiveOrder,
 } from "@/lib/db/orders";
@@ -119,6 +119,8 @@ export async function POST(request: Request) {
       ];
       if (d.isPickup) details.push("Store Pickup");
       else if (plusActive) details.push("PROSANTI+ — delivery + surcharges free");
+      else if (order.freeDeliveryBy === "shop") details.push("ফ্রি ডেলিভারি (দোকানের অফার)");
+      else if (order.freeDeliveryBy === "platform") details.push("ফ্রি ডেলিভারি (PROSANTI অফার)");
       else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
       if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
       await notifyStaff(staffDb, {
@@ -143,7 +145,7 @@ export async function POST(request: Request) {
     if (cardCustomer && samePhone(cardCustomer.phone, order.customer?.phone ?? "")) {
       const cfg = await loadSmartCardTarget();
       const target = Math.max(1, cfg.target);
-      const count = await countOrdersForPhone(
+      const { total: count } = await countStampsForPhone(
         staffDb as NonNullable<ReturnType<typeof getSupabaseService>>,
         cardCustomer.phone,
       );

@@ -3,6 +3,7 @@
 import SizeGuide from "./size-guide";
 import ShareRow from "./share-row";
 import ArrivalCue from "@/components/delivery/arrival-cue";
+import DeliveryLine from "@/components/delivery/delivery-line";
 import SizeFinder, { useSizeSuggestion } from "./size-finder";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor, usePriceMemory } from "@/lib/use-price-watch";
@@ -17,9 +18,11 @@ import { useRouter } from "next/navigation";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
-import { waLink, productWaMessage } from "@/lib/whatsapp-order";
+import { waLink, productWaMessage, sizeAskMessage } from "@/lib/whatsapp-order";
+import { availableSizes, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
+import FreeDeliveryPill from "@/components/shop/free-delivery-pill";
 import StylistChat from "@/components/stylist/stylist-chat";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useGuardedAdd } from "@/lib/use-guarded-add";
@@ -32,9 +35,11 @@ import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { Price } from "@/components/ui/primitives";
 import {
   IconCheck,
+  IconClock,
   IconMapPin,
   IconMinus,
   IconPlus,
+  IconRefresh,
   IconRuler,
   IconSend,
   IconShield,
@@ -47,7 +52,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
   const { openBag } = useCart();
   const { products, shops } = useLiveCatalog();
-  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd();
+  const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("pdp");
   const router = useRouter();
   const [pendingBuyNow, setPendingBuyNow] = useState(false);
   /* P1 #16: the stylist chat hands off to these drawers — one at a time,
@@ -71,9 +76,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
   const hasSizes =
     product.sizes.length > 1 || !/free|one size/i.test(product.sizes[0] ?? "");
   const [color, setColor] = useState(product.colors[0] ?? "");
-  const [size, setSize] = useState(
-    product.sizes.length === 1 ? product.sizes[0] : "",
-  );
+  const [size, setSize] = useState(() => pickSelectableSize(product, null));
   const [qty, setQty] = useState(1);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [stickyVisible, setStickyVisible] = useState(false);
@@ -111,9 +114,19 @@ export default function PurchasePanel({ product }: { product: Product }) {
     if (!saved) return;
     setSize((current) => {
       if (current !== "" || sizeTouched.current) return current;
-      return suggestSize(product, saved).recommended ?? "";
+      // Never pre-select a size the grid says is gone (UX plan §4, R10).
+      return pickSelectableSize(product, suggestSize(product, saved).recommended);
     });
   }, [product]);
+
+  /* UX plan §4 (R10) — per-size stock. The chip stays tappable when its size
+     is sold out: the tap opens the "this size is gone" panel (ask the shop on
+     WhatsApp, pick another size, size finder) instead of a dead button. */
+  const pickedAvailability = size ? sizeAvailability(product, size) : null;
+  const sizeSoldOut = pickedAvailability?.state === "out";
+  const otherSizes = availableSizes(product).filter((s) => s !== size);
+  const waSizeAskHref =
+    shop && size ? waLink(shop.phone, sizeAskMessage(product, size, shop, lang)) : null;
 
   const feedbackTimer = useRef<number | null>(null);
   useEffect(
@@ -166,17 +179,19 @@ export default function PurchasePanel({ product }: { product: Product }) {
   /** One definition for the gate and the label so the inline CTA, the
    *  sticky bar and the disabled state can never disagree. */
   const ctaDisabled =
-    shopClosed || !product.inStock || (product.sizes.length > 0 && !size);
+    shopClosed || !product.inStock || sizeSoldOut || (product.sizes.length > 0 && !size);
   /** Truly blocked (closed shop / sold out) — a missing size is NOT a hard
    *  stop any more: the tap teaches instead of ignoring (P1 #10). */
-  const hardStop = shopClosed || !product.inStock;
+  const hardStop = shopClosed || !product.inStock || sizeSoldOut;
   const ctaLabel = shopClosed
     ? t("shops.closed")
     : !product.inStock
       ? t("purchase.soldOut")
-      : product.sizes.length > 0 && !size
-        ? t("purchase.selectASize")
-        : t("purchase.addToBag");
+      : sizeSoldOut
+        ? t("purchase.sizeSoldOut").replace("{size}", size)
+        : product.sizes.length > 0 && !size
+          ? t("purchase.selectASize")
+          : t("purchase.addToBag");
 
   const handleAdd = () => {
     if (needsSize && !shopClosed && product.inStock) return nudgeSize();
@@ -250,6 +265,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
                 ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})
               </span>
             )}
+            {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
+            <FreeDeliveryPill shop={shop} />
           </p>
         </div>
       )}
@@ -382,7 +399,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           ) : null}
         </div>
         <div
-          className={`mt-3 flex flex-wrap gap-2 rounded-md transition-shadow ${
+          className={`mt-3 flex flex-wrap gap-x-2 gap-y-5 rounded-md transition-shadow ${
             sizeNudge ? "size-nudge ring-2 ring-gold-400 ring-offset-4 ring-offset-ivory-50" : ""
           }`}
           role="group"
@@ -390,6 +407,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
         >
           {product.sizes.map((s) => {
             const verdict = suggestion.scores.find((x) => x.size === s);
+            const avail = sizeAvailability(product, s);
+            const out = avail.state === "out";
             return (
               <button
                 key={s}
@@ -399,15 +418,36 @@ export default function PurchasePanel({ product }: { product: Product }) {
                   setSize(s);
                 }}
                 aria-pressed={size === s}
+                aria-label={
+                  out
+                    ? `${s} — ${t("purchase.soldOut")}`
+                    : avail.state === "low" && avail.available !== null
+                      ? `${s} — ${sizeLeftLabel(avail.available, lang)}`
+                      : undefined
+                }
                 data-size-fit={verdict?.verdict ?? "unknown"}
+                data-size-stock={avail.state}
                 className={`relative h-11 min-w-11 rounded-sm px-4 text-sm transition-colors ${
                   size === s
-                    ? "bg-forest-800 font-semibold text-ivory-50"
-                    : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
+                    ? out
+                      ? "bg-ivory-200 font-semibold text-ink-soft ring-2 ring-line"
+                      : "bg-forest-800 font-semibold text-ivory-50"
+                    : out
+                      ? "bg-ivory-100 text-ink-soft/60 ring-1 ring-line/70 hover:ring-forest-300"
+                      : "bg-paper text-ink-soft ring-1 ring-line hover:ring-forest-400"
                 }`}
               >
-                {s}
-                {verdict && verdict.verdict !== "skip" ? (
+                <span className={out ? "line-through decoration-ink-soft/50" : ""}>{s}</span>
+                {avail.state === "low" && avail.available !== null ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-4 left-1/2 -translate-x-1/2 whitespace-nowrap text-[0.6rem] font-semibold text-rose-700"
+                    data-testid="size-left"
+                  >
+                    {sizeLeftLabel(avail.available, lang)}
+                  </span>
+                ) : null}
+                {verdict && verdict.verdict !== "skip" && !out ? (
                   <span
                     aria-hidden="true"
                     className={`absolute -top-1.5 right-0 h-2 w-2 rounded-full ${
@@ -423,6 +463,52 @@ export default function PurchasePanel({ product }: { product: Product }) {
             );
           })}
         </div>
+        {sizeSoldOut && (
+          <div
+            className="mt-5 rounded-md bg-ivory-100/80 p-3.5 ring-1 ring-line"
+            data-testid="size-sold-out"
+            role="status"
+          >
+            <p className="text-sm font-semibold text-forest-900">
+              {t("purchase.sizeSoldOutTitle").replace("{size}", size)}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-ink-soft">{t("purchase.sizeSoldOutBody")}</p>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {otherSizes.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    sizeTouched.current = true;
+                    setSize(s);
+                  }}
+                  className="h-9 min-w-9 rounded-sm bg-paper px-3 text-xs font-semibold text-forest-800 ring-1 ring-line hover:ring-forest-400"
+                  data-testid="size-alt"
+                >
+                  {s}
+                </button>
+              ))}
+              {waSizeAskHref ? (
+                <a
+                  href={waSizeAskHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-forest-800 px-3 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+                  data-testid="size-ask-whatsapp"
+                >
+                  {t("purchase.sizeAskShop")}
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setSizeHelpOpen(true)}
+                className="h-9 px-2 text-xs font-semibold text-forest-800 underline-offset-4 hover:underline"
+              >
+                {t("purchase.sizeHelp")}
+              </button>
+            </div>
+          </div>
+        )}
         {suggestion.recommended ? (
           <p className="mt-2 flex flex-wrap items-center gap-2 text-xs font-medium text-forest-800">
             <span>
@@ -500,6 +586,9 @@ export default function PurchasePanel({ product }: { product: Product }) {
       {product.inStock && !hardStop ? (
         <ArrivalCue shopPrepMinutes={shop?.prepMinutes} className="mt-6" />
       ) : null}
+      {/* UX plan §4 — the shopper's own zone, charge, COD and the free-delivery
+          threshold in one line (with a picker when no zone is remembered). */}
+      <DeliveryLine shop={shop} className="mt-3" />
 
       {/* Quantity + CTAs */}
       <div
@@ -553,23 +642,59 @@ export default function PurchasePanel({ product }: { product: Product }) {
         </button>
       </div>
 
-      {/* WhatsApp order — pre-filled chat, shop confirms, COD unchanged */}
-      {waOrderHref ? (
-        <div className="mt-3">
-          <a
-            href={waOrderHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="whatsapp-order"
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-sm bg-paper text-sm font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
-          >
-            <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
-          </a>
-          <p className="mt-1.5 text-center text-xs text-ink-soft">
-            {t("purchase.whatsAppHint")}
-          </p>
-        </div>
-      ) : null}
+      {/* UX plan §4 (R11) — the three promises that decide the tap, right
+          under the buttons: COD · 7-day exchange · PIN handover. A closed
+          shop says so here instead of a silent disabled button. */}
+      {shopClosed ? (
+        <p
+          className="mt-3 flex items-start gap-2 rounded-sm bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink"
+          data-testid="cta-trust-line"
+          data-state="closed"
+        >
+          <IconClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" />
+          <span>
+            {t("purchase.trustClosed")}
+            {waOrderHref ? (
+              <>
+                {" "}
+                <a
+                  href={waOrderHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-forest-800 underline underline-offset-2"
+                >
+                  WhatsApp →
+                </a>
+              </>
+            ) : null}
+          </span>
+        </p>
+      ) : (
+        <ul
+          className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft"
+          data-testid="cta-trust-line"
+          aria-label={lang === "bn" ? "কেনার নিশ্চয়তা" : "Buying promises"}
+        >
+          <li className="inline-flex items-center gap-1.5">
+            <IconShield className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/faq" className="underline-offset-2 hover:underline">
+              {t("purchase.trustCod")}
+            </Link>
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <IconRefresh className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/returns" className="underline-offset-2 hover:underline">
+              {t("purchase.trustExchange")}
+            </Link>
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <IconCheck className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/delivery" className="underline-offset-2 hover:underline">
+              {t("purchase.trustPin")}
+            </Link>
+          </li>
+        </ul>
+      )}
 
       {feedback && (
         <p
@@ -581,8 +706,34 @@ export default function PurchasePanel({ product }: { product: Product }) {
         </p>
       )}
 
-      {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
-      <ShareRow product={product} className="mt-6" />
+      {/* UX plan §4 (R11) — ONE primary CTA above; the other ways to act
+          (WhatsApp order, share with family) sit together in one quiet
+          "help" cluster instead of competing full-width buttons. */}
+      <div
+        className="mt-6 rounded-sm bg-ivory-100/60 p-3.5 ring-1 ring-line"
+        data-testid="help-cluster"
+      >
+        <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          {t("purchase.helpEyebrow")}
+        </p>
+        {waOrderHref ? (
+          <div className="mt-2">
+            <a
+              href={waOrderHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="whatsapp-order"
+              title={t("purchase.whatsAppHint")}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-paper px-4 text-xs font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
+            >
+              <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
+            </a>
+            <p className="mt-1.5 text-xs text-ink-soft">{t("purchase.whatsAppHint")}</p>
+          </div>
+        ) : null}
+        {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
+        <ShareRow product={product} className={waOrderHref ? "mt-4" : "mt-2"} />
+      </div>
 
       {/* Delivery trust card */}
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -609,7 +760,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
       {/* Compact buy bar for phones — appears once the main CTA scrolls away */}
       <div
-        className="sticky-buy-bar border-t border-line bg-paper/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-paper/90"
+        className="sticky-buy-bar border-t border-line bg-paper/97 px-4 py-3"
         data-visible={stickyVisible}
         inert={!stickyVisible}
       >
@@ -624,19 +775,26 @@ export default function PurchasePanel({ product }: { product: Product }) {
               <span className="shrink-0 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
                 {t("purchase.size")}
               </span>
-              {product.sizes.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    sizeTouched.current = true;
-                    setSize(s);
-                  }}
-                  className="h-9 shrink-0 rounded-sm bg-paper px-3 text-xs text-ink ring-1 ring-line"
-                >
-                  {s}
-                </button>
-              ))}
+              {product.sizes.map((s) => {
+                const out = sizeAvailability(product, s).state === "out";
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      sizeTouched.current = true;
+                      setSize(s);
+                    }}
+                    aria-label={out ? `${s} — ${t("purchase.soldOut")}` : undefined}
+                    data-size-stock={out ? "out" : undefined}
+                    className={`h-9 shrink-0 rounded-sm px-3 text-xs ring-1 ${
+                      out ? "bg-ivory-100 text-ink-soft/60 line-through ring-line/70" : "bg-paper text-ink ring-line"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
             </div>
           ) : null}
           <div className="flex items-center gap-3">

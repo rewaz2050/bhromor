@@ -17,6 +17,12 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseService } from "../supabase-server";
+import {
+  assertApplicantPassword,
+  createApplicantAccount,
+  deleteApplicantAccount,
+  linksSession,
+} from "./applicant-account";
 import { toDomainMany } from "./orders";
 import { AdminInputError } from "./admin";
 import type {
@@ -28,6 +34,7 @@ import type {
 } from "./types";
 import type { Order } from "../orders";
 import { riderOrderView } from "../rider-order";
+import { phoneLoginEmail } from "../phone-login";
 import {
   sanitizeAvailability,
   type RiderAvailability,
@@ -122,30 +129,49 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BD_PHONE_RE = /^01\d{9}$/;
 const VEHICLES = new Set(["bicycle", "bike", "scooter"]);
 
-/** A rider application → a `pending` row. One account owns one rider. */
+/** What an application needs besides the form fields. */
+export interface RiderApplyOptions {
+  /**
+   * A signed-in applicant (legacy two-step flow). That login is linked when
+   * no password was given, or when its email is the application's email;
+   * otherwise the form's email + password win (see `linksSession`).
+   */
+  applicantUserId?: string;
+  applicantEmail?: string | null;
+  /** Otherwise the application IS the sign-up: this becomes the login. */
+  password?: string;
+}
+
+export interface RiderApplyResult {
+  id: string;
+  userId: string;
+  /** False when an existing login with the same email + password was reused. */
+  accountCreated: boolean;
+  /** The login e-mail the rider signs in with (synthetic for phone logins). */
+  loginEmail: string;
+  /**
+   * Round 4 — true when this login's previously `rejected` rider row was
+   * rewritten with the new details and put back in the pending queue.
+   */
+  resubmitted: boolean;
+}
+
+/**
+ * A rider application → a `pending` row WITH its login (2026-09-26: apply =
+ * sign up). The email + password from the form become the account, linked
+ * as `user_id` right away; staff approval (status → active) is what opens
+ * the rider app. One account owns one rider.
+ */
 export async function applyRider(
   raw: unknown,
-  applicantUserId?: string,
-): Promise<{ id: string }> {
+  opts: RiderApplyOptions = {},
+): Promise<RiderApplyResult> {
   const db = getSupabaseService();
   if (!db) throw new Error("rider intake unavailable");
-  if (applicantUserId) {
-    const { data: existing } = await db
-      .from("riders")
-      .select("id")
-      .eq("user_id", applicantUserId)
-      .limit(1);
-    if (existing && existing.length > 0) {
-      throw new RiderInputError(
-        "This account is already a rider — sign in to the rider app instead.",
-        409,
-      );
-    }
-  }
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
   const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
-  const email = clean(b.email ?? b.contactEmail, 120).toLowerCase();
+  const typedEmail = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const vehicle = clean(b.vehicle, 12).toLowerCase();
   const zoneIds = Array.isArray(b.zoneIds)
     ? [
@@ -162,9 +188,12 @@ export async function applyRider(
   if (!BD_PHONE_RE.test(phone)) {
     throw new RiderInputError("A valid Bangladeshi mobile number is required.");
   }
+  // Round 4 — no e-mail? The mobile number IS the login (synthetic address,
+  // nothing is ever sent to it). A typed e-mail must still look like one.
+  const email = typedEmail === "" ? phoneLoginEmail(phone) : typedEmail;
   if (!EMAIL_RE.test(email)) {
     throw new RiderInputError(
-      "A valid email is required — it becomes your rider login.",
+      "That email does not look right — fix it, or leave it empty to sign in with your mobile number.",
     );
   }
   if (!VEHICLES.has(vehicle)) {
@@ -173,6 +202,11 @@ export async function applyRider(
   if (zoneIds.length === 0) {
     throw new RiderInputError("Choose at least one delivery zone.");
   }
+  // Checked before anything is written so a typo never leaves a half-made
+  // application behind.
+  const sessionUserId = linksSession(opts, email) ? opts.applicantUserId : undefined;
+  const password = sessionUserId ? null : assertApplicantPassword(opts.password);
+
   const { data: zones } = await db.from("delivery_zones").select("id,active");
   const live = new Set(
     ((zones ?? []) as { id: string; active: boolean }[])
@@ -183,23 +217,95 @@ export async function applyRider(
     throw new RiderInputError("One of the chosen zones is not available.");
   }
 
+  // Rejected rows do not block: the same login re-applying rewrites its own
+  // row below, and a stranger reusing a rejected rider's phone starts fresh.
   const { data: dupe } = await db
     .from("riders")
     .select("id")
     .or(`phone.eq.${phone},contact_email.eq.${email}`)
-    .neq("status", "suspended")
+    .not("status", "in", "(suspended,rejected)")
     .limit(1);
   if (dupe && dupe.length > 0) {
     throw new RiderInputError(
-      "This phone or email already has a rider application — we'll be in touch.",
+      "This phone or email already has a rider application — sign in at /rider/login once it is approved.",
       409,
     );
+  }
+
+  // One login is one rider — unless that rider row was REJECTED, in which
+  // case this application replaces it (round 4).
+  const ownedRider = async (
+    userId: string,
+  ): Promise<{ id: string; status: string } | null> => {
+    const { data: existing } = await db
+      .from("riders")
+      .select("id,status")
+      .eq("user_id", userId)
+      .limit(1);
+    return (existing as { id: string; status: string }[] | null)?.[0] ?? null;
+  };
+  const resubmitOrRefuse = async (userId: string, message: string): Promise<string | null> => {
+    const owned = await ownedRider(userId);
+    if (!owned) return null;
+    if (owned.status === "rejected") return owned.id;
+    throw new RiderInputError(message, 409);
+  };
+  let resubmitId: string | null = null;
+  if (sessionUserId) {
+    resubmitId = await resubmitOrRefuse(
+      sessionUserId,
+      "This account is already a rider — sign in to the rider app instead.",
+    );
+  }
+
+  let userId = sessionUserId ?? "";
+  let accountCreated = false;
+  if (!userId) {
+    const account = await createApplicantAccount(db, {
+      email,
+      password: password as string,
+      name,
+      kind: "rider",
+    });
+    userId = account.userId;
+    accountCreated = account.created;
+    if (!accountCreated) {
+      resubmitId = await resubmitOrRefuse(
+        userId,
+        "This login is already a rider — sign in to the rider app instead.",
+      );
+    }
+  }
+
+  if (resubmitId) {
+    // Re-application after a rejection: same login, same row, new details,
+    // back to the pending queue with the old verdict cleared. Uploaded KYC
+    // documents are kept — they are usually still valid.
+    const { error: redoError } = await db
+      .from("riders")
+      .update({
+        name,
+        phone,
+        contact_email: email,
+        vehicle,
+        zone_ids: zoneIds,
+        status: "pending",
+        is_online: false,
+        review_note: null,
+        reviewed_by: null,
+        reviewed_by_email: null,
+        reviewed_at: null,
+      })
+      .eq("id", resubmitId)
+      .eq("status", "rejected");
+    if (redoError) throw new Error("rider re-application failed");
+    return { id: resubmitId, userId, accountCreated: false, loginEmail: email, resubmitted: true };
   }
 
   const { data, error } = await db
     .from("riders")
     .insert({
-      user_id: applicantUserId ?? null,
+      user_id: userId,
       name,
       phone,
       contact_email: email,
@@ -210,8 +316,11 @@ export async function applyRider(
     })
     .select("id")
     .single();
-  if (error || !data) throw new Error("rider application failed");
-  return { id: (data as { id: string }).id };
+  if (error || !data) {
+    if (accountCreated) await deleteApplicantAccount(db, userId);
+    throw new Error("rider application failed");
+  }
+  return { id: (data as { id: string }).id, userId, accountCreated, loginEmail: email, resubmitted: false };
 }
 
 /* ------------------------------------------------------------------ */

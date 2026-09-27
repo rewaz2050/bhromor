@@ -30,6 +30,8 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import BagOffers from "@/components/promo/bag-offers";
+import FreeDeliveryBar from "./free-delivery-bar";
+import { SaveForLaterButton, SavedForLaterNotice, useSaveForLater } from "./save-for-later";
 import { useBagOffer } from "@/lib/use-bag-offer";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -37,6 +39,8 @@ import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 export default function CartView() {
   const { t, lang } = useLanguage();
   const { detail, updateQty, removeItem, subtotal, ready } = useCart();
+  /** UX plan §5 (R11) — "পরে কিনব": line → wishlist instead of the bin. */
+  const { save: saveForLater, notice: savedNotice } = useSaveForLater();
   const offer = useBagOffer(detail);
   /** Hook BEFORE the empty early-return — hook order must not change. */
   const { shops } = useLiveCatalog();
@@ -110,6 +114,7 @@ export default function CartView() {
         <div className="mb-5">
           <BagShopHeader />
         </div>
+        <SavedForLaterNotice notice={savedNotice} className="mb-4" />
         <ul className="divide-y divide-line border-y border-line">
           {detail.map((line) => {
             const { product } = line;
@@ -183,17 +188,26 @@ export default function CartView() {
                         <IconPlus className="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        removeItem(product.id, line.variantLabel)
-                      }
-                      aria-label={`${t("cart.remove")} ${product.name} from cart`}
-                      className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm text-ink-soft transition-colors hover:bg-red-50 hover:text-red-700"
-                    >
-                      <IconTrash className="h-4 w-4" />
-                      <span className="hidden sm:inline">{t("cart.remove")}</span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <SaveForLaterButton
+                        productId={product.id}
+                        variantLabel={line.variantLabel}
+                        productName={product.name}
+                        onSave={saveForLater}
+                        className="px-2"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removeItem(product.id, line.variantLabel)
+                        }
+                        aria-label={`${t("cart.remove")} ${product.name} from cart`}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-full px-4 py-2 text-sm text-ink-soft transition-colors hover:bg-red-50 hover:text-red-700"
+                      >
+                        <IconTrash className="h-4 w-4" />
+                        <span className="hidden sm:inline">{t("cart.remove")}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </li>
@@ -224,6 +238,8 @@ export default function CartView() {
           >
             <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{deliveryPromise}
           </p>
+          {/* Free-delivery threshold (2026-09-26) — same rule as the checkout. */}
+          <FreeDeliveryBar shop={bagShop} subtotal={subtotal} className="mt-3" />
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">

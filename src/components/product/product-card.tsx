@@ -6,11 +6,14 @@ import { useEffect, useRef, useState } from "react";
 import { cardPeekImages, coverImage, type Product } from "@/lib/catalog";
 import { useTransientValue } from "@/lib/use-transient-value";
 import { useWishlist } from "@/lib/use-wishlist";
+import { useSizeProfile } from "@/lib/use-size-profile";
+import { suggestSize } from "@/lib/size-finder";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { productShopId, shopById } from "@/lib/shop-utils";
 import { Price } from "@/components/ui/primitives";
 import { IconArrowRight, IconCheck, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
+import ColorSwatches from "./color-swatches";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor } from "@/lib/use-price-watch";
@@ -18,6 +21,9 @@ import { FlashRibbon } from "@/components/promo/flash-timer";
 import { IconTrendDown } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import { hasProductVideo } from "@/lib/media";
+import { bnDigits } from "@/lib/arrival";
+import { itemFromProduct, track } from "@/lib/analytics";
+import { listNameFor } from "@/components/analytics/list-impression";
 
 /**
  * Product names read more like a fashion line when the garment type and the
@@ -38,13 +44,63 @@ export function editorialProductName(product: Product): string {
   return name;
 }
 
-export default function ProductCard({ product }: { product: Product }) {
+/**
+ * `sizes` for a card in a two-up phone grid (shop, wishlist, offers…). The
+ * default below is tuned for the home rails, whose cards are 62–68vw wide;
+ * a 2-column grid card is under half the screen, and asking the CDN for the
+ * rail size there meant decoding 2.25× the pixels per card while scrolling
+ * the one page people scroll most (scroll audit 2026-09-27).
+ */
+export const GRID_CARD_SIZES =
+  "(min-width: 1280px) 300px, (min-width: 1024px) 33vw, 48vw";
+const RAIL_CARD_SIZES =
+  "(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw";
+
+export default function ProductCard({
+  product,
+  backInStock = false,
+  sizes = RAIL_CARD_SIZES,
+}: {
+  product: Product;
+  /** UX plan §8 (R11) — the wishlist knows this device last saw it sold out. */
+  backInStock?: boolean;
+  /** Responsive `sizes` for the photos — see GRID_CARD_SIZES. */
+  sizes?: string;
+}) {
   const { t, lang } = useLanguage();
+  /* UX plan §8 — the saved body (Size Finder) badges the card: "Your size: L".
+     Only a confident, in-range recommendation the product actually sells. */
+  const { profile } = useSizeProfile();
+  const yourSize = (() => {
+    if (!profile || product.sizes.length < 2) return null;
+    const s = suggestSize(product, profile);
+    return s.advisory === "ok" && s.recommended && product.sizes.includes(s.recommended) ? s.recommended : null;
+  })();
   /* Flash price + the price this device last saw — a quiet overlay; the cart
      and checkout decide the money. */
   const flash = useFlashPrice(product);
   const drop = usePriceDropFor(product);
   const shown = flash.was === null ? product.price : flash.price;
+  /* UX plan §1.1 (2026-09-26) — one price rule on every card: current price
+     big, old price struck, and the saving as a "-20%" chip. Flash drops
+     already wear their ribbon on the image, so the chip is for the shop's
+     own compare-at price only. */
+  const savePct =
+    flash.was === null && product.compareAtPrice && product.compareAtPrice > product.price
+      ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
+      : 0;
+  /* "Only 2 left" — a real count when the row carries one (≤ 3), the
+     shop's low-stock flag otherwise; never invented. */
+  const unitsLeft =
+    product.inStock && typeof product.stock === "number" && product.stock > 0 && product.stock <= 3
+      ? product.stock
+      : null;
+  const scarcity =
+    unitsLeft !== null
+      ? t("product.onlyLeft").replace("{count}", lang === "bn" ? bnDigits(String(unitsLeft)) : String(unitsLeft))
+      : product.inStock && product.lowStock
+        ? t("product.fewLeft")
+        : null;
   const { has, toggle, ready, busy } = useWishlist();
   const [quickOpen, setQuickOpen] = useState(false);
   const [notice, setNotice] = useTransientValue("");
@@ -56,6 +112,16 @@ export default function ProductCard({ product }: { product: Product }) {
   const peekImages = cardPeekImages(product);
   const [peekIndex, setPeekIndex] = useState(0);
   const [holding, setHolding] = useState(false);
+  /* Scroll audit 2026-09-27: the extra photos used to mount with the card
+     (opacity 0), so a listing downloaded and decoded every photo of every
+     card as it scrolled — 3–5× the bytes and decodes for images nobody had
+     asked to see. They now mount on the first hover/press/focus ("armed")
+     and stay mounted, so a hover swap or a hold peek is still instant after
+     the first one. */
+  const [armed, setArmed] = useState(false);
+  const arm = () => {
+    if (!armed && peekImages.length > 1) setArmed(true);
+  };
   const holdTimer = useRef<number | null>(null);
   const rotorTimer = useRef<number | null>(null);
   const swallowedClick = useRef(false);
@@ -71,6 +137,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
   const beginHold = () => {
     if (peekImages.length < 2 || holding || holdTimer.current !== null) return;
+    setArmed(true);
     setHolding(true);
     holdTimer.current = window.setTimeout(() => {
       holdTimer.current = null;
@@ -100,8 +167,20 @@ export default function ProductCard({ product }: { product: Product }) {
   const { shops } = useLiveCatalog();
   const shop = shopById(shops, productShopId(product, shops[0]?.id ?? ""));
 
+  /* UX plan §0 — `select_item`: any tap that leads to the product page,
+     credited to the rail / grid the card sits in (nearest data-list). */
+  const onCardClick = (event: React.MouseEvent<HTMLElement>) => {
+    const anchor = (event.target as Element | null)?.closest?.("a[href^='/product/']");
+    if (!anchor) return;
+    track({
+      type: "select_item",
+      item: itemFromProduct(product),
+      list: listNameFor(event.currentTarget, typeof window === "undefined" ? "/" : window.location.pathname),
+    });
+  };
+
   return (
-    <article className="product-card group relative flex min-w-0 flex-col">
+    <article className="product-card group relative flex min-w-0 flex-col" onClick={onCardClick}>
       <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
           href={`/product/${product.slug}`}
@@ -109,6 +188,8 @@ export default function ProductCard({ product }: { product: Product }) {
           aria-label={`View ${product.name}`}
           data-testid="card-peek"
           data-peeking={peekIndex > 0 || undefined}
+          onPointerEnter={arm}
+          onFocus={arm}
           onPointerDown={beginHold}
           onPointerUp={endPeek}
           onPointerCancel={endPeek}
@@ -131,16 +212,16 @@ export default function ProductCard({ product }: { product: Product }) {
             src={cover.src}
             alt={cover.alt || product.name}
             fill
-            sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+            sizes={sizes}
             className="product-image-primary object-cover"
           />
-          {peekImages.length > 1 && (
+          {armed && peekImages.length > 1 && (
             <Image
               src={peekImages[1]!.src}
               alt=""
               aria-hidden="true"
               fill
-              sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+              sizes={sizes}
               data-peek-slide={1}
               data-active={peekIndex === 1}
               className={`product-image-secondary absolute inset-0 h-full w-full object-cover ${
@@ -148,7 +229,7 @@ export default function ProductCard({ product }: { product: Product }) {
               }`}
             />
           )}
-          {peekImages.slice(2).map((slide, offset) => {
+          {armed && peekImages.slice(2).map((slide, offset) => {
             const index = offset + 2;
             return (
               <Image
@@ -157,7 +238,7 @@ export default function ProductCard({ product }: { product: Product }) {
                 alt=""
                 aria-hidden="true"
                 fill
-                sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+                sizes={sizes}
                 data-peek-slide={index}
                 data-active={peekIndex === index}
                 className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 data-[active=true]:opacity-100"
@@ -174,7 +255,7 @@ export default function ProductCard({ product }: { product: Product }) {
                   key={slide.src}
                   data-peek-dot={index}
                   data-active={peekIndex === index}
-                  className={`h-1 w-4 rounded-full backdrop-blur-[2px] transition-colors duration-200 ${
+                  className={`h-1 w-4 rounded-full transition-colors duration-200 ${
                     peekIndex === index ? "bg-ivory-50" : "bg-ivory-50/45"
                   }`}
                 />
@@ -186,13 +267,13 @@ export default function ProductCard({ product }: { product: Product }) {
           {hasProductVideo(product) && (
             <span
               data-testid="video-badge"
-              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-forest-950/80 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-ivory-50 backdrop-blur-[2px]"
+              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-forest-950/80 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-ivory-50"
             >
               <span aria-hidden="true">▶</span> {t("product.video")}
             </span>
           )}
           {!product.inStock && (
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100">
               {t("product.soldOut")}
             </span>
           )}
@@ -228,13 +309,13 @@ export default function ProductCard({ product }: { product: Product }) {
               type="button"
               onClick={() => setQuickOpen(true)}
               aria-label={`Quick add ${product.name} to cart`}
-              className="product-quick-add tap-press flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
+              className="product-quick-add tap-press flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 hover:bg-forest-800"
             >
               <IconPlus className="h-3.5 w-3.5" /> {t("product.quickAdd")}
             </button>
             <Link
               href={`/product/${product.slug}`}
-              className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 backdrop-blur-sm hover:bg-gold-200 sm:flex"
+              className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 hover:bg-gold-200 sm:flex"
               aria-label={`${t("product.viewDetails")} ${product.name}`}
             >
               {t("product.details")} <IconArrowRight className="h-3.5 w-3.5" />
@@ -247,7 +328,7 @@ export default function ProductCard({ product }: { product: Product }) {
           aria-live="polite"
           className={
             notice
-              ? "absolute inset-x-2 top-14 bg-forest-950/95 px-3 py-2 text-center text-xs text-white backdrop-blur-sm"
+              ? "absolute inset-x-2 top-14 bg-forest-950/95 px-3 py-2 text-center text-xs text-white"
               : "sr-only"
           }
         >
@@ -267,10 +348,25 @@ export default function ProductCard({ product }: { product: Product }) {
               <span aria-hidden="true" className="text-line">
                 /
               </span>
-              <span className="font-medium normal-case tracking-[0.06em] text-ink-soft/80">
-                {product.colors[0]}
-              </span>
+              {/* UX plan §1.1 (R9) — colour dots (≤3, "+N") instead of one name. */}
+              <ColorSwatches colors={product.colors} />
             </>
+          )}
+          {/* Rating only when real reviews exist — never a decorative five stars. */}
+          {product.reviewCount > 0 && product.rating > 0 && (
+            <span
+              data-testid="card-rating"
+              className="ml-auto inline-flex items-center gap-1 normal-case tracking-normal text-gold-700"
+              aria-label={`${product.rating.toFixed(1)} / 5 · ${product.reviewCount}`}
+            >
+              <span aria-hidden="true">★</span>
+              <span className="font-semibold">
+                {lang === "bn" ? bnDigits(product.rating.toFixed(1)) : product.rating.toFixed(1)}
+              </span>
+              <span className="text-ink-soft">
+                ({lang === "bn" ? bnDigits(String(product.reviewCount)) : product.reviewCount})
+              </span>
+            </span>
           )}
         </p>
         <h3
@@ -295,11 +391,34 @@ export default function ProductCard({ product }: { product: Product }) {
           </p>
         ) : null}
         <div className="mt-auto pt-2.5">
-          <Price
-            value={shown}
-            compareAt={flash.was ?? product.compareAtPrice}
-            size="sm"
-          />
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Price
+              value={shown}
+              compareAt={flash.was ?? product.compareAtPrice}
+              size="sm"
+            />
+            {savePct > 0 ? (
+              <span
+                data-testid="save-chip"
+                className="rounded-full bg-rose-50 px-2 py-0.5 text-[0.62rem] font-bold text-rose-700 ring-1 ring-rose-200"
+              >
+                {t("product.saveShort").replace("{pct}", lang === "bn" ? bnDigits(String(savePct)) : String(savePct))}
+              </span>
+            ) : null}
+          </div>
+          {scarcity ? (
+            <p data-testid="scarcity" className="mt-1 text-[0.68rem] font-semibold text-rose-700">
+              {scarcity}
+            </p>
+          ) : null}
+          {yourSize ? (
+            <p
+              data-testid="your-size"
+              className="mt-1 inline-flex items-center gap-1 rounded-full bg-forest-50 px-2 py-0.5 text-[0.62rem] font-semibold text-forest-800 ring-1 ring-forest-200"
+            >
+              {t("product.yourSize").replace("{size}", yourSize)}
+            </p>
+          ) : null}
           {/* P2 #1 — real sales only: the count comes from the orders table
               (v_product_sales). No figure, no line — never an invented rank. */}
           {product.unitsSold != null && product.unitsSold > 0 && (
@@ -318,6 +437,15 @@ export default function ProductCard({ product }: { product: Product }) {
             <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
               <IconTrendDown className="h-3 w-3" />
               {t("priceDrop.dropped").replace("{amount}", formatBdt(drop.down))}
+            </p>
+          ) : null}
+          {backInStock && product.inStock ? (
+            <p
+              data-testid="card-back-in-stock"
+              className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700"
+            >
+              <IconCheck className="h-3 w-3" />
+              {t("wishlist.backInStock")}
             </p>
           ) : null}
           {shop && (

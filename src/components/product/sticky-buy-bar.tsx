@@ -47,7 +47,7 @@ export default function StickyBuyBar({
     <div
       data-testid="sticky-buy-bar"
       data-visible={panelGone}
-      className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper/95 backdrop-blur-sm transition-transform duration-200 lg:hidden ${
+      className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper transition-transform duration-200 lg:hidden ${
         panelGone ? "translate-y-0" : "translate-y-full"
       }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}

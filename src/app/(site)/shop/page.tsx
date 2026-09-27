@@ -6,6 +6,7 @@ import {
 } from "@/lib/db/storefront";
 import ShopBrowser from "@/components/shop/shop-browser";
 import { resolveSort } from "@/lib/shop-sort";
+import { parseList, resolvePriceBand } from "@/lib/shop-url";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import BrandJournal from "@/components/shop/brand-journal";
 import ShopHeroHeader from "@/components/shop/shop-hero-header";
@@ -48,6 +49,9 @@ export default async function ShopPage({
     mood?: string | string[];
     price?: string | string[];
     sort?: string | string[];
+    size?: string | string[];
+    color?: string | string[];
+    stock?: string | string[];
   }>;
 }) {
   const params = await searchParams;
@@ -72,6 +76,11 @@ export default async function ShopPage({
   const onlySale = params.filter === "sale";
   // Batch J — the homepage rails deep-link here ("See all best sellers").
   const initialSort = resolveSort(params.sort);
+  // UX plan §3 (R4) — the rest of the filter state the browser writes back
+  // into the URL, so Back / reload / a shared link show the same list.
+  const initialSizes = parseList(params.size);
+  const initialColors = parseList(params.color);
+  const initialInStock = params.stock === "1";
 
   return (
     <>
@@ -93,8 +102,11 @@ export default async function ShopPage({
           initialSale={onlySale}
           initialQuery={query}
           initialMood={resolveMood(params.mood)}
-          initialPrice={params.price === "under500" ? "under500" : "any"}
+          initialPrice={resolvePriceBand(params.price)}
           initialSort={initialSort}
+          initialSizes={initialSizes}
+          initialColors={initialColors}
+          initialInStock={initialInStock}
         />
       </div>
       {/* Visual journal retained on the shop (removed from the short homepage). */}

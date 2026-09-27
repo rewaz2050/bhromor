@@ -22,7 +22,7 @@ import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { campaignMatchesProduct } from "@/lib/campaign";
 import { FlashCountup, FlashTimer } from "./flash-timer";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import { IconBolt } from "@/components/ui/icons";
 import { Eyebrow } from "@/components/ui/primitives";
 
@@ -144,6 +144,24 @@ export default function CampaignPage() {
       >
         {lang === "bn" ? "শপ দেখুন" : "Browse the shop"}
       </Link>
+      {/* UX plan §10 (R9) — "the next one …" teaser once a campaign ends: the
+          early-access list (a real newsletter row) plus the offers hub, where
+          flash drops keep running between festivals. No invented dates. */}
+      <div className="mt-12 text-left" data-testid="campaign-next-teaser">
+        <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          {lang === "bn" ? "পরেরটা মিস করবেন না" : "Don't miss the next one"}
+        </p>
+        <div className="mt-4">
+          <EarlyAccessBox />
+        </div>
+        <p className="mt-4 text-center text-sm text-ink-soft">
+          {lang === "bn" ? "এর মাঝে চলমান ছাড় ও ফ্ল্যাশ ড্রপ — " : "Meanwhile, live discounts and flash drops — "}
+          <Link href="/offers" className="font-semibold text-forest-800 underline-offset-4 hover:underline">
+            {lang === "bn" ? "অফার হাবে" : "in the offers hub"}
+          </Link>
+          .
+        </p>
+      </div>
     </section>
   );
 
@@ -225,7 +243,7 @@ export default function CampaignPage() {
           {picks.length > 0 ? (
             <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-3">
               {picks.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} sizes={GRID_CARD_SIZES} />
               ))}
             </div>
           ) : (
