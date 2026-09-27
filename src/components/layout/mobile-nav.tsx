@@ -64,7 +64,8 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
     { label: t("footer.returns"), href: "/returns" },
     { label: t("footer.faq"), href: "/faq" },
     { label: t("footer.contact"), href: "/contact" },
-    { label: t("footer.ourStory"), href: "/about" },
+    { label: t("footer.ourStory"), href: "/story" },
+    { label: t("footer.about"), href: "/about" },
   ];
   const [open, setOpen] = useState(false);
   const pathname = usePathname();

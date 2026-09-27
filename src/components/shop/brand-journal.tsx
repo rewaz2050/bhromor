@@ -57,7 +57,7 @@ export default function BrandJournal() {
               shape the PROSANTI point of view.
             </p>
           </div>
-          <Link href="/about" className="editorial-text-link justify-self-start lg:justify-self-end">
+          <Link href="/story" className="editorial-text-link justify-self-start lg:justify-self-end">
             Discover our world
             <IconArrowRight className="h-4 w-4" />
           </Link>
