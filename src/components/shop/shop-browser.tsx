@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import ListImpression from "@/components/analytics/list-impression";
-import type {
-  Category,
-  CategoryId,
-  DeliveryZone,
-  Product,
-  Shop,
+import {
+  coverImage,
+  type Category,
+  type CategoryId,
+  type DeliveryZone,
+  type Product,
+  type Shop,
 } from "@/lib/catalog";
 import {
   MOODS,
@@ -23,6 +25,7 @@ import { useMyZone } from "@/lib/use-my-zone";
 import { formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import ProductCard from "@/components/product/product-card";
+import GridInterrupt, { GRID_INTERRUPT_EVERY } from "@/components/shop/grid-interrupt";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import Drawer from "@/components/ui/drawer";
 import {
@@ -46,6 +49,8 @@ type CategoryFilter = "all" | CategoryId;
 /** Sizes/colours are derived from the catalog, so a filter never offers an
  *  option nothing matches (and never misses a colour a new product adds). */
 const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+/** UX plan §4 (R11) — cards per "show more" page (12 rows of two on a phone). */
+export const SHOP_PAGE_SIZE = 24;
 
 const collectSizes = (products: Product[]): string[] => {
   const set = new Set<string>();
@@ -430,10 +435,18 @@ export default function ShopBrowser({
     if (category === "all") return [];
     const inCategory = zonedProducts.filter((p) => isDiscoverable(p) && p.category === category);
     const counts = new Map<string, number>();
+    // UX plan §4 (R11) — a garment-type TILE: the chip carries the cover of
+    // its first in-stock piece (no separate tile images to maintain).
+    const thumbs = new Map<string, string>();
     for (const p of inCategory) {
       const key = p.subCategory.trim();
       if (!key) continue;
       counts.set(key, (counts.get(key) ?? 0) + 1);
+      if (p.inStock && !thumbs.has(key)) thumbs.set(key, coverImage(p).src);
+    }
+    for (const p of inCategory) {
+      const key = p.subCategory.trim();
+      if (key && !thumbs.has(key)) thumbs.set(key, coverImage(p).src);
     }
     const declared = categories.find((c) => c.id === category)?.subCategories ?? [];
     const ordered = [
@@ -443,9 +456,19 @@ export default function ShopBrowser({
         .sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b)),
     ];
     return ordered.length >= 2
-      ? ordered.map((name) => ({ name, count: counts.get(name) ?? 0 }))
+      ? ordered.map((name) => ({ name, count: counts.get(name) ?? 0, thumb: thumbs.get(name) ?? null }))
       : [];
   }, [category, categories, zonedProducts]);
+
+  /* UX plan §4 (R11) — "show more", not infinite scroll: the footer stays
+     reachable and the thumb gets a breath. The page count resets with the
+     result set (its signature), without an effect. */
+  const pageSig = `${visible.length}|${visible[0]?.id ?? ""}|${visible[visible.length - 1]?.id ?? ""}`;
+  const [pages, setPages] = useState<{ sig: string; n: number }>({ sig: pageSig, n: 1 });
+  const shownCount = Math.min(visible.length, (pages.sig === pageSig ? pages.n : 1) * SHOP_PAGE_SIZE);
+  const shown = shownCount < visible.length ? visible.slice(0, shownCount) : visible;
+  const remaining = visible.length - shownCount;
+  const showMore = () => setPages({ sig: pageSig, n: (pages.sig === pageSig ? pages.n : 1) + 1 });
 
   /** Rendered twice (sidebar + drawer); `scope` keeps radio groups apart so
    *  the two copies do not fight over the same browser radio group. */
@@ -828,12 +851,25 @@ export default function ShopBrowser({
                 type="button"
                 aria-pressed={active}
                 onClick={() => setSubCategory(active ? "" : chip.name)}
-                className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-xs font-medium transition-colors ${
+                data-testid="subcategory-tile"
+                className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-xs font-medium transition-colors ${
                   active
                     ? "bg-forest-100 text-forest-900 ring-1 ring-forest-300"
                     : "bg-ivory-100 text-ink-soft hover:text-forest-900"
                 }`}
               >
+                {chip.thumb ? (
+                  <Image
+                    src={chip.thumb}
+                    alt=""
+                    width={36}
+                    height={36}
+                    sizes="36px"
+                    className="h-9 w-9 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span aria-hidden className="h-9 w-9 shrink-0 rounded-full bg-ivory-200" />
+                )}
                 {chip.name}
                 <span className="text-[0.65rem] text-ink-soft/80">{chip.count}</span>
               </button>
@@ -896,16 +932,44 @@ export default function ShopBrowser({
 
         <div className="min-w-0">
           {visible.length > 0 ? (
+            <>
             <div
               className="grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3"
               data-list="shop-grid"
               onClickCapture={rememberScroll}
             >
               <ListImpression list="shop-grid" count={visible.length} />
-              {visible.map((product) => (
-                <ProductCard key={product.id} product={product} />
+              {shown.map((product, index) => (
+                <Fragment key={product.id}>
+                  <ProductCard product={product} />
+                  {/* UX plan §4 (R11) — one editorial tile after every eighth card */}
+                  {(index + 1) % GRID_INTERRUPT_EVERY === 0 && index + 1 < shown.length ? (
+                    <GridInterrupt slot={(index + 1) / GRID_INTERRUPT_EVERY - 1} />
+                  ) : null}
+                </Fragment>
               ))}
             </div>
+            {remaining > 0 && (
+              <div className="mt-10 flex flex-col items-center gap-2" data-testid="shop-show-more-row">
+                <p className="text-xs text-ink-soft">
+                  {t("shopBrowser.showingOf")
+                    .replace("{shown}", String(shownCount))
+                    .replace("{total}", String(visible.length))}
+                </p>
+                <button
+                  type="button"
+                  onClick={showMore}
+                  data-testid="shop-show-more"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-full border border-forest-800 px-6 text-sm font-semibold text-forest-900 transition-colors hover:bg-forest-800 hover:text-ivory-50"
+                >
+                  {t("shopBrowser.showMore")}
+                  <span className="text-xs font-medium opacity-70">
+                    {t("shopBrowser.showMoreCount").replace("{n}", String(remaining))}
+                  </span>
+                </button>
+              </div>
+            )}
+            </>
           ) : (
             <div className="flex flex-col items-center rounded-3xl bg-ivory-100 px-6 py-20 text-center ring-1 ring-line">
               <span className="flex h-14 w-14 items-center justify-center rounded-full bg-paper text-ink-soft ring-1 ring-line">

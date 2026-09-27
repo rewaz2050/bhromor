@@ -4,7 +4,9 @@
  * Rules (pure, tested):
  *   • never inside an installed app (standalone display mode);
  *   • never on the first visit — the shopper has not decided they like the
- *     shop yet; the nudge appears from the second visit (a visit = a day);
+ *     shop yet; the nudge appears from the second visit (a visit = a day)
+ *     OR, on the first visit, once something is in the bag (UX plan §3,
+ *     R11: the first add-to-bag is the moment the shop earned a place);
  *   • a dismissal is respected for 30 days; "installed" is forever;
  *   • Android/Chrome: the real `beforeinstallprompt` sheet; iOS Safari has
  *     no such event, so the same card explains Share → Add to Home Screen.
@@ -78,11 +80,13 @@ export const shouldOfferInstall = (
     /** Chrome fired beforeinstallprompt (Android/desktop). */
     hasNativePrompt: boolean;
     ua: string;
+    /** Something is in the bag — a first visit that already earned intent. */
+    hasBag?: boolean;
   },
   now: number = Date.now(),
 ): "native" | "ios" | null => {
   if (input.standalone || input.memory.installed) return null;
-  if (input.visits.count < MIN_VISITS) return null;
+  if (input.visits.count < MIN_VISITS && !input.hasBag) return null;
   if (input.memory.dismissedAt > 0 && now - input.memory.dismissedAt < DISMISS_FOR_MS) return null;
   if (input.hasNativePrompt) return "native";
   if (isIosSafari(input.ua)) return "ios";

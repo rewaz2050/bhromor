@@ -73,6 +73,9 @@ export default function HomeClient() {
       {sections.hero && <Hero cms={settings} />}
       {/* UX plan §2 (R11) — one tap from the first screen into a filtered shop. */}
       {!booting && <QuickChips pool={pool} />}
+      {/* UX plan §3 (R11) — "do you come to my para?" answered on the first
+          screen, one field, only until this device knows its zone. */}
+      {!booting && <HomeDeliveryCheck compact />}
       {/* UX plan §5 (R10) — a returning shopper's bag, right under the hero. */}
       <BagWaitingBanner />
       {booting ? (

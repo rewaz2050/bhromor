@@ -37,6 +37,9 @@ describe("add-to-home-screen rules", () => {
 
   it("never asks on the first visit, inside the app, or after installing", () => {
     expect(shouldOfferInstall({ ...base, visits: { count: 1, lastDay: "" } })).toBeNull();
+    // UX plan §3 (R11) — a first visit with something in the bag is intent enough
+    expect(shouldOfferInstall({ ...base, visits: { count: 1, lastDay: "" }, hasBag: true })).toBe("native");
+    expect(shouldOfferInstall({ ...base, visits: { count: 1, lastDay: "" }, hasBag: true, standalone: true })).toBeNull();
     expect(shouldOfferInstall({ ...base, standalone: true })).toBeNull();
     expect(shouldOfferInstall({ ...base, memory: { dismissedAt: 0, installed: true } })).toBeNull();
     expect(shouldOfferInstall(base)).toBe("native");

@@ -280,6 +280,10 @@ describe("ShopBrowser", () => {
     for (const type of menTypes) {
       expect(within(chips).getByRole("button", { name: new RegExp(`^${type}`) })).toBeInTheDocument();
     }
+    // UX plan §4 (R11) — each type is a tile: the cover of its first in-stock piece
+    const tiles = within(chips).getAllByTestId("subcategory-tile");
+    expect(tiles).toHaveLength(menTypes.length);
+    for (const tile of tiles) expect(tile.querySelector("img")).not.toBeNull();
     fireEvent.click(within(chips).getByRole("button", { name: /^Panjabi/ }));
     expect(gridNames()).toEqual(
       PRODUCTS.filter((p) => p.category === "men" && p.subCategory === "Panjabi").map((p) => p.name),
