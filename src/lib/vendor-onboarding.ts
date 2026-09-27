@@ -30,7 +30,15 @@ export const FIRST_PRODUCTS_TARGET = 3;
 const isLive = (p: Product): boolean => p.status !== "draft";
 
 export const vendorChecklist = (
-  shop: Pick<Shop, "phone" | "address" | "tagline" | "isOpen">,
+  shop: Pick<Shop, "phone" | "address" | "tagline" | "isOpen"> & {
+    /**
+     * 2026-09-27 — a pending (or rejected/suspended) shop has nothing to
+     * open yet: the checklist used to offer "Open the shop", which cannot
+     * work before approval and reads like a broken button. Undefined keeps
+     * the old behaviour for callers that only have a storefront snapshot.
+     */
+    status?: Shop["status"];
+  },
   products: Product[],
 ): ChecklistStep[] => {
   const live = products.filter(isLive);
@@ -74,14 +82,33 @@ export const vendorChecklist = (
       href: "/vendor/products",
       cta: "Add photos",
     },
-    {
-      id: "open",
-      title: "Switch the shop to Open",
-      detail: "Closed shops stay on the storefront but cannot take orders.",
-      done: shop.isOpen,
-      href: null,
-      cta: "Open the shop",
-    },
+    shop.status === undefined || shop.status === "active"
+      ? {
+          id: "open",
+          title: "Switch the shop to Open",
+          detail: "Closed shops stay on the storefront but cannot take orders.",
+          done: shop.isOpen,
+          href: null,
+          cta: "Open the shop",
+        }
+      : {
+          id: "open",
+          title:
+            shop.status === "pending"
+              ? "Wait for PROSANTI approval"
+              : shop.status === "rejected"
+                ? "Fix your application and re-apply"
+                : "This shop is paused",
+          detail:
+            shop.status === "pending"
+              ? "Staff review new applications by hand. Everything else on this list can be done meanwhile — approval puts the shop live."
+              : shop.status === "rejected"
+                ? "Staff sent the application back with a note. Read it on the sign-in page, fix the details and apply again with the same login."
+                : "Talk to PROSANTI before planning orders; the storefront hides a suspended shop.",
+          done: false,
+          href: null,
+          cta: "",
+        },
   ];
 };
 

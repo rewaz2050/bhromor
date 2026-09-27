@@ -78,16 +78,24 @@ function AgeChip({ order, now }: { order: Order; now: number }) {
 export default function AdminOrdersPage() {
   const [filter, setFilter] = useState<FilterId>("all");
   const [query, setQuery] = useState("");
+  /** Deep link from Admin → Shops ("this shop's orders", 2026-09-27/B12). */
+  const [shopId, setShopId] = useState("");
   const now = useNow(30_000);
   // Deep links from the dashboard (/admin/orders?status=action). Read in an
   // effect, not via useSearchParams — that would force a Suspense boundary
   // and de-opt the page (same reason as /track).
   useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get("status");
+    const url = new URLSearchParams(window.location.search);
+    const wanted = url.get("status");
     if (wanted && FILTER_IDS.has(wanted)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- adopt the URL once on mount
       setFilter(wanted as FilterId);
     }
+    // Admin → Shops "Orders →" deep link (2026-09-27, B12): the shop filter
+    // is applied SERVER-side through useOrders below, so the paginated list
+    // never silently hides older orders.
+    const wantedShop = url.get("shop");
+    if (wantedShop) setShopId(wantedShop);
   }, []);
   const pickFilter = (id: FilterId) => {
     setFilter(id);
@@ -115,7 +123,7 @@ export default function AdminOrdersPage() {
     loadingMore,
     advance,
     cancel,
-  } = useOrders({ q: serverQuery });
+  } = useOrders({ q: serverQuery, shop: shopId });
 
   const counts = useMemo(() => aggregateOrders(orders).byStatus, [orders]);
 
@@ -125,6 +133,7 @@ export default function AdminOrdersPage() {
     return [...orders]
       .sort((a, b) => b.createdAt - a.createdAt)
       .filter((o) => (filter === "all" ? true : allowed.includes(o.status)))
+      .filter((o) => (shopId === "" ? true : o.shopId === shopId))
       .filter(
         (o) =>
           q === "" ||
@@ -133,7 +142,7 @@ export default function AdminOrdersPage() {
           o.customer.phone.includes(q) ||
           o.items.some((it) => it.name.toLowerCase().includes(q)),
       );
-  }, [orders, filter, query]);
+  }, [orders, filter, query, shopId]);
 
   if (loading) {
     return (
@@ -223,6 +232,15 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Status filter chips */}
+      {shopId !== "" && (
+        <p className="rounded-xl bg-forest-50 px-4 py-3 text-sm text-forest-900 ring-1 ring-forest-200">
+          Showing <strong>one shop&rsquo;s</strong> orders only.{" "}
+          <Link href="/admin/orders" className="font-semibold underline underline-offset-2">
+            Clear the shop filter
+          </Link>
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
         {FILTERS.map((f) => {
           const active = filter === f.id;

@@ -12,6 +12,10 @@ vi.mock("@/lib/use-live-zones", () => ({
 
 const fill = (input: HTMLElement, value: string) => fireEvent.change(input, { target: { value } });
 
+/** The commission/settlement consent added 2026-09-27 — a real gate. */
+const agree = () =>
+  fireEvent.click(screen.getByRole("checkbox", { name: /শর্তাবলীতে সম্মত/ }));
+
 describe("Shop Apply Page", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -49,9 +53,27 @@ describe("Shop Apply Page", () => {
     fill(screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/), "secret2");
     fill(screen.getByPlaceholderText(/কান্দিরপাড় মার্কেট/), "Kandirpar");
     fireEvent.click(screen.getByRole("button", { name: /Kandirpar/ }));
+    agree();
     fireEvent.click(screen.getByRole("button", { name: /আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/মিলছে না/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("will not submit until the commission/settlement terms are agreed", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ShopApplyPage />);
+
+    fill(screen.getByPlaceholderText(/যেমন: আরিয়ান ফ্যাশন/i), "Arian Fashion");
+    fill(screen.getByPlaceholderText("017XXXXXXXX"), "01712345678");
+    fill(screen.getByLabelText(/লগইন পাসওয়ার্ড/), "secret1");
+    fill(screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/), "secret1");
+    fill(screen.getByPlaceholderText(/কান্দিরপাড় মার্কেট/), "Kandirpar");
+    fireEvent.click(screen.getByRole("button", { name: /Kandirpar/ }));
+    fireEvent.click(screen.getByRole("button", { name: /আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/শর্তাবলীতে/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -72,6 +94,7 @@ describe("Shop Apply Page", () => {
     fill(screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/), "secret1");
     fill(screen.getByPlaceholderText(/কান্দিরপাড় মার্কেট/), "Kandirpar");
     fireEvent.click(screen.getByRole("button", { name: /Kandirpar/ }));
+    agree();
     fireEvent.click(screen.getByRole("button", { name: /আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

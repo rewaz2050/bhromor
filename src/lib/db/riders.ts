@@ -35,6 +35,7 @@ import type {
 import type { Order } from "../orders";
 import { riderOrderView } from "../rider-order";
 import { phoneLoginEmail } from "../phone-login";
+import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "../phone";
 import {
   sanitizeAvailability,
   type RiderAvailability,
@@ -126,7 +127,6 @@ const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const BD_PHONE_RE = /^01\d{9}$/;
 const VEHICLES = new Set(["bicycle", "bike", "scooter"]);
 
 /** What an application needs besides the form fields. */
@@ -170,7 +170,8 @@ export async function applyRider(
   if (!db) throw new Error("rider intake unavailable");
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
-  const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
+  // Same normalisation as the shop form: +88 / Bangla digits accepted.
+  const phone = normalizeBdPhone(asciiDigits(clean(b.phone, 20)));
   const typedEmail = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const vehicle = clean(b.vehicle, 12).toLowerCase();
   const zoneIds = Array.isArray(b.zoneIds)
@@ -185,8 +186,10 @@ export async function applyRider(
     : [];
 
   if (name.length < 2) throw new RiderInputError("Rider name is too short.");
-  if (!BD_PHONE_RE.test(phone)) {
-    throw new RiderInputError("A valid Bangladeshi mobile number is required.");
+  if (!isPlausibleBdPhone(phone)) {
+    throw new RiderInputError(
+      "A valid Bangladeshi mobile number is required (01XXXXXXXXX).",
+    );
   }
   // Round 4 — no e-mail? The mobile number IS the login (synthetic address,
   // nothing is ever sent to it). A typed e-mail must still look like one.

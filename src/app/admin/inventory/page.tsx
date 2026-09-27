@@ -65,12 +65,20 @@ export default function AdminInventoryPage() {
     const value = Number.isFinite(parsed)
       ? Math.max(0, Math.floor(parsed))
       : displayStock(product);
-    const ok = await saveProduct({
-      ...product,
-      stock: value,
-      inStock: value > 0,
-      lowStock: value > 0 && value <= thresholdValue,
-    });
+    let ok = false;
+    try {
+      ok = await saveProduct({
+        ...product,
+        stock: value,
+        inStock: value > 0,
+        lowStock: value > 0 && value <= thresholdValue,
+      });
+    } catch (err) {
+      // The hook throws the API's message (and stores it for the banner);
+      // this row must not take the whole page down with it.
+      flashMessage(err instanceof Error ? err.message : "Could not save the stock.");
+      return;
+    }
     if (!ok) return; // page banner carries the hook error
     setDrafts((d) => {
       const next = { ...d };

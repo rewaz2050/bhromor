@@ -19,6 +19,7 @@ import {
 } from "./applicant-account";
 import { toPublicShop } from "../shop-utils";
 import { phoneLoginEmail } from "../phone-login";
+import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "../phone";
 import { mapShop } from "./mappers";
 import type { DbShop } from "./types";
 
@@ -36,7 +37,6 @@ const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const BD_PHONE_RE = /^01\d{9}$/;
 
 /**
  * Active shops, optionally scoped to one delivery zone (area-scoped
@@ -104,7 +104,11 @@ export async function applyShop(
   const b = (raw ?? {}) as Record<string, unknown>;
   const name = clean(b.name, 80);
   const tagline = clean(b.tagline, 200);
-  const phone = clean(b.phone, 20).replace(/[\s-]/g, "");
+  // Normalised, not just trimmed: "+880 1712-345678", "8801712345678" and a
+  // Bangla-keyboard "০১৭…" all become 01712345678. The old strict regex
+  // rejected the first two outright — a shop owner typing their number the
+  // way it appears on their own phone could not submit the form (2026-09-27).
+  const phone = normalizeBdPhone(asciiDigits(clean(b.phone, 20)));
   const typedEmail = clean(b.email ?? b.contactEmail, 120).toLowerCase();
   const address = clean(b.address, 300);
   const prepRaw = Number(b.prepMinutes ?? b.prep_minutes);
@@ -116,8 +120,10 @@ export async function applyShop(
     : [];
 
   if (name.length < 2) throw new ShopInputError("Shop name is too short.");
-  if (!BD_PHONE_RE.test(phone)) {
-    throw new ShopInputError("A valid Bangladeshi mobile number is required.");
+  if (!isPlausibleBdPhone(phone)) {
+    throw new ShopInputError(
+      "A valid Bangladeshi mobile number is required (01XXXXXXXXX).",
+    );
   }
   // Round 4 — no e-mail? The mobile number IS the login (synthetic address,
   // nothing is ever sent to it). A typed e-mail must still look like one.
@@ -245,11 +251,22 @@ export async function applyShop(
   }
 
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "shop";
+  // Slug collisions (2026-09-27, B7): the old loop gave up at -9 and the
+  // insert died into a generic "shop application failed" — a tenth "Fashion"
+  // could not apply at all. Walk to -2 … -50, then fall back to a short
+  // random tail so the shop ALWAYS gets a storefront URL.
   let slug = base;
-  for (let n = 2; n < 10; n += 1) {
+  let free = false;
+  for (let n = 2; n < 50; n += 1) {
     const { data: clash } = await db.from("shops").select("id").eq("slug", slug).limit(1);
-    if (!clash || clash.length === 0) break;
+    if (!clash || clash.length === 0) {
+      free = true;
+      break;
+    }
     slug = `${base}-${n}`;
+  }
+  if (!free) {
+    slug = `${base.slice(0, 40)}-${Math.random().toString(36).slice(2, 7)}`;
   }
   const { data, error } = await db
     .from("shops")
@@ -270,6 +287,14 @@ export async function applyShop(
     .single();
   if (error || !data) {
     await undoAccount();
+    // A slug that collided despite the walk (two applications at once) is
+    // worth a sentence the applicant can act on, not a 503.
+    if ((error as { code?: string } | null)?.code === "23505") {
+      throw new ShopInputError(
+        "এই নামে (বা প্রায় একই নামে) একটি দোকান ইতিমধ্যেই আছে — নামটা আরেকটু আলাদা করে আবার চেষ্টা করুন।",
+        409,
+      );
+    }
     throw new Error("shop application failed");
   }
   const shopId = (data as { id: string }).id;

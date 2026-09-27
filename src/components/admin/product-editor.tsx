@@ -124,7 +124,10 @@ export default function ProductEditor({
   saveError: saveErrorProp,
   onSave,
   redirectTo = "/admin/products",
+  cancelTo,
   hideCuration = false,
+  mediaSignPath = "/api/media/sign",
+  mediaFolder = "prosanti/products",
 }: {
   product?: Product | null;
   categoriesList: { id: string; name: string; subCategories: string[] }[];
@@ -134,7 +137,12 @@ export default function ProductEditor({
   saveError?: string | null;
   onSave?: (product: Product, isNew: boolean) => Promise<boolean>;
   redirectTo?: string;
+  /** Where Cancel goes; defaults to the post-save destination. */
+  cancelTo?: string;
   hideCuration?: boolean;
+  /** Vendor pages point the uploader at /api/vendor/media/sign (2026-09-27). */
+  mediaSignPath?: string;
+  mediaFolder?: string;
 }) {
   const router = useRouter();
   const catalog = useCatalog();
@@ -147,7 +155,13 @@ export default function ProductEditor({
   }));
   const isNew = !product;
 
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+  /**
+   * Field edit + clear the error banner. `error` is a Draft key, so
+   * `set("error", …)` used to spread `{ error: value, error: null }` and the
+   * banner never appeared — every caller that means to SHOW a message must
+   * use setDraft directly (three places did not; fixed 2026-09-27).
+   */
+  const set = <K extends Exclude<keyof Draft, "error">>(key: K, value: Draft[K]) =>
     setDraft((d) => ({ ...d, [key]: value, error: null }));
 
   const catSubs = useMemo(
@@ -175,19 +189,19 @@ export default function ProductEditor({
       driveKind: draft.driveKind,
     });
     if (!result.ok) {
-      set("error", result.error);
+      setDraft((d) => ({ ...d, error: result.error }));
       return;
     }
     const media = result.media;
     if (media.kind === "youtube") {
-      set(
-        "error",
-        "That's a YouTube link — paste it in the “YouTube video” field below instead.",
-      );
+      setDraft((d) => ({
+        ...d,
+        error: "That's a YouTube link — paste it in the “YouTube video” field below instead.",
+      }));
       return;
     }
     if (draft.media.some((m) => m.src === media.src)) {
-      set("error", "That media is already added.");
+      setDraft((d) => ({ ...d, error: "That media is already added." }));
       return;
     }
     // YouTube was routed out above — only image/video reach the gallery list.
@@ -245,12 +259,19 @@ export default function ProductEditor({
         return "Fabric weight (GSM) must be a whole number, 30–1000 (or leave blank).";
     }
     if (!draft.category) return "Pick a category.";
-    if (draft.media.length === 0) return "Add at least one product image.";
-    if (!draft.media.some((m) => m.kind === "image")) {
-      return "Add at least one photo — videos can't be the card cover.";
-    }
-    if (draft.media[0].kind !== "image") {
-      return "The first media must be a photo — use “Cover” on an image row.";
+    // 2026-09-27 (B8): a DRAFT may save without a photo — the shelf model
+    // already blocks publishing a photo-less row (product-shelf.ts
+    // publishBlocker), and a shop photographing stock later could not even
+    // park the half-finished row. Publishing still demands a cover photo,
+    // because a card without one cannot be shown.
+    if (draft.status !== "draft") {
+      if (draft.media.length === 0) return "Add at least one product image.";
+      if (!draft.media.some((m) => m.kind === "image")) {
+        return "Add at least one photo — videos can't be the card cover.";
+      }
+      if (draft.media[0].kind !== "image") {
+        return "The first media must be a photo — use “Cover” on an image row.";
+      }
     }
     // Duplicate slugs silently broke /product/[slug] (two rows, one URL).
     const slug = slugify(draft.slug || draft.name);
@@ -271,7 +292,12 @@ export default function ProductEditor({
   const save = async () => {
     const problem = validate();
     if (problem) {
-      set("error", problem);
+      // NOT `set("error", …)`: the `set` helper ends with `error: null` (it
+      // clears the banner on any field edit), so routing a validation failure
+      // through it erased the very message it meant to show — "Save" simply
+      // did nothing, with no reason on screen (found 2026-09-27 while testing
+      // the draft-without-photo rule).
+      setDraft((d) => ({ ...d, error: problem }));
       return;
     }
     const perSizeStock = draft.perSize
@@ -342,11 +368,27 @@ export default function ProductEditor({
 
     // Await the save: in live mode it is a network write, and navigating
     // first would strand the editor on a failure with no message.
+    //
+    // 2026-09-27: the save sink now THROWS the API's own message. Reading the
+    // `saveError` prop here showed the previous render's value (usually null),
+    // so every failure — "Slug or SKU is already in use", a variant clash, a
+    // 503 naming a missing migration — surfaced as the generic "Could not
+    // save the product." and the shop had no way to fix it.
     setSaving(true);
-    const ok = onSave ? await onSave(now, isNew) : await catalog.saveProduct(now);
-    setSaving(false);
-    if (!ok) {
-      setDraft((d) => ({ ...d, error: saveError ?? "Could not save the product." }));
+    let failure: string | null = null;
+    try {
+      const ok = onSave ? await onSave(now, isNew) : await catalog.saveProduct(now);
+      if (!ok) failure = saveError ?? "Could not save the product.";
+    } catch (err) {
+      failure =
+        err instanceof Error && err.message.trim() !== ""
+          ? err.message
+          : "Could not save the product.";
+    } finally {
+      setSaving(false);
+    }
+    if (failure) {
+      setDraft((d) => ({ ...d, error: failure }));
       return;
     }
     router.push(redirectTo);
@@ -806,6 +848,8 @@ export default function ProductEditor({
           <div className="flex flex-wrap items-center gap-3 rounded-xl bg-forest-50 px-3.5 py-3 ring-1 ring-forest-100">
             <MediaUploader
               compact
+              signPath={mediaSignPath}
+              folder={mediaFolder}
               onUploaded={(urlToAdd, labelToAdd, kindAdded) => {
                 if (kindAdded === "youtube") return;
                 setDraft((d) =>
@@ -1015,7 +1059,9 @@ export default function ProductEditor({
         <button
           type="button"
           onClick={() => {
-            router.push("/admin/products");
+            // Vendor pages pass their own list: the hard-coded admin path
+            // dropped a shop owner into the staff gate (2026-09-27).
+            router.push(cancelTo ?? redirectTo);
           }}
           className="rounded-full px-6 py-3 text-sm font-medium text-ink-soft ring-1 ring-line transition-colors hover:bg-paper hover:text-forest-800"
         >

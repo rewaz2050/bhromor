@@ -14,6 +14,8 @@ export interface AdminShopClient extends Shop {
   productCount: number;
   /** A vendor login is attached (applications arrive linked since 2026-09-26). */
   vendorLinked?: boolean;
+  /** When the application landed — powers the "waiting N days" badge. */
+  createdAt?: number;
 }
 
 export function useShops() {
@@ -86,15 +88,21 @@ export function useShops() {
     [live, refresh],
   );
 
-  /** Link an Auth account as the shop's vendor owner. */
+  /**
+   * Link an Auth account as the shop's vendor owner. Accepts the e-mail OR
+   * the mobile number (2026-09-27, B10) — phone-only applicants sign in with
+   * a synthetic address the panel never shows.
+   */
   const linkVendor = useCallback(
-    async (id: string, email: string): Promise<boolean> => {
+    async (id: string, identifier: string): Promise<boolean> => {
       if (!live) return false;
+      const value = identifier.trim();
+      const body = value.includes("@") ? { email: value } : { phone: value };
       try {
         await apiSend(
           `/api/admin/shops/${encodeURIComponent(id)}/link-vendor`,
           "POST",
-          { email },
+          body,
         );
         setError(null);
         return true;

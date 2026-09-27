@@ -73,6 +73,8 @@ export default function VendorEditProductPage({
           saveError={saveError}
           onSave={saveProduct}
           redirectTo="/vendor/products"
+          cancelTo="/vendor/products"
+          mediaSignPath="/api/vendor/media/sign"
           hideCuration
         />
       )}

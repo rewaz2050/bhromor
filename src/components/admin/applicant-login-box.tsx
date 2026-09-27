@@ -188,12 +188,14 @@ export function ApplicantLoginBox({
         </div>
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row">
+          {/* 2026-09-27 (B10): either identifier works — a phone-only
+              applicant signs in with a synthetic address. */}
           <input
             className={`${field} flex-1`}
             value={linkEmail}
             onChange={(e) => setLinkEmail(e.target.value)}
-            placeholder={`${noun} account email`}
-            aria-label={kind === "vendor" ? "Vendor account email" : "Rider account email"}
+            placeholder={`${noun} account email or mobile`}
+            aria-label={kind === "vendor" ? "Vendor account email or mobile" : "Rider account email or mobile"}
             disabled={!live}
           />
           <button

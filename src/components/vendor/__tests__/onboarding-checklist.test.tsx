@@ -33,6 +33,21 @@ const product = (id: string, media = true): Product =>
   ({ id, slug: id, name: id, price: 100, media: media ? [{ src: `https://x/${id}.jpg`, alt: id }] : [] }) as Product;
 
 describe("OnboardingChecklist", () => {
+  it("shows a waiting note for a pending shop instead of the open button (2026-09-27)", () => {
+    render(
+      <OnboardingChecklist
+        shop={{ ...shop, status: "pending" }}
+        products={[product("a")]}
+        loading={false}
+        onOpenShop={() => undefined}
+        opening={false}
+      />,
+    );
+    expect(screen.getByText(/wait for prosanti approval/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open the shop/i })).toBeNull();
+    expect(screen.getByText(/waiting on staff/i)).toBeInTheDocument();
+  });
+
   it("lists what is missing with links, and a button for the open step", () => {
     const onOpenShop = vi.fn();
     render(<OnboardingChecklist shop={shop} products={[product("a")]} loading={false} onOpenShop={onOpenShop} opening={false} />);

@@ -1,12 +1,18 @@
 /**
  * Staff link-vendor (marketplace phase 2, slice 3).
- * POST { email } → finds the Auth user, inserts vendor_users as owner.
- * Works before approval too: the vendor's API access unlocks when staff
- * flips the shop to active (requireVendor enforces the status check).
+ * POST { email } or { phone } → finds the Auth user, inserts vendor_users as
+ * owner. Works before approval too: the vendor's API access unlocks when
+ * staff flips the shop to active (requireVendor enforces the status check).
+ *
+ * 2026-09-27 (B10): the mobile number works too. Every applicant who left
+ * the e-mail empty signed in with a synthetic `<phone>@…` address, and the
+ * old e-mail-only form made those shops impossible to link from the panel.
  */
 import { staffRoute, routeId } from "../../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { AdminInputError } from "@/lib/db/admin";
+import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "@/lib/phone";
+import { describeLoginEmail, phoneLoginEmail } from "@/lib/phone-login";
 import { apiJson } from "@/lib/api-response";
 import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 
@@ -16,10 +22,21 @@ export const POST = staffRoute(
     const id = await routeId(routeContext);
     const body = (await request.json().catch(() => null)) as {
       email?: string;
+      phone?: string;
     } | null;
     const email = (body?.email ?? "").trim().toLowerCase().slice(0, 160);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new AdminInputError("Enter a valid email address.");
+    const typedPhone = (body?.phone ?? "").trim();
+    let lookup = email;
+    let byPhone = false;
+    if (typedPhone !== "") {
+      const phone = normalizeBdPhone(asciiDigits(typedPhone));
+      if (!isPlausibleBdPhone(phone)) {
+        throw new AdminInputError("Enter a valid mobile number (01XXXXXXXXX).");
+      }
+      lookup = phoneLoginEmail(phone);
+      byPhone = true;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AdminInputError("Enter the vendor's email address or mobile number.");
     }
     const { data: shop, error: shopError } = await db
       .from("shops")
@@ -33,11 +50,13 @@ export const POST = staffRoute(
       await service.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (listError) throw new Error("user lookup failed");
     const match = listed.users.find(
-      (u) => (u.email ?? "").toLowerCase() === email,
+      (u) => (u.email ?? "").toLowerCase() === lookup,
     );
     if (!match) {
       throw new AdminInputError(
-        "No account uses that email yet — ask the vendor to sign up first.",
+        byPhone
+          ? "No account uses that mobile number yet — ask the vendor to apply or sign up first."
+          : "No account uses that email yet — ask the vendor to sign up first.",
         404,
       );
     }
@@ -53,7 +72,7 @@ export const POST = staffRoute(
       throw new Error("vendor link failed");
     }
     revalidateCatalogCaches(CACHE_TAG_SHOPS);
-    return apiJson({ linked: email });
+    return apiJson({ linked: describeLoginEmail(lookup), email: lookup });
   },
   { limit: 20 },
 );

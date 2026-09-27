@@ -318,7 +318,8 @@ export const useVendorProducts = (enabled: boolean) => {
   const { refresh, reload } = res;
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  /** ProductEditor-shaped save: POST for new rows, PATCH for edits. */
+  /** ProductEditor-shaped save: POST for new rows, PATCH for edits. Throws
+   * the API's message so the editor can show the real reason. */
   const saveProduct = useCallback(async (
     product: Product,
     isNew: boolean,
@@ -337,8 +338,9 @@ export const useVendorProducts = (enabled: boolean) => {
       refresh();
       return true;
     } catch (err) {
-      setSaveError(vendorErrorMessage(err));
-      return false;
+      const message = vendorErrorMessage(err);
+      setSaveError(message);
+      throw new Error(message);
     }
   }, [refresh]);
 

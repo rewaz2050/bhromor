@@ -15,6 +15,7 @@ import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
+import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import PasswordInput from "@/components/ui/password-input";
 import {
   AlreadyAppliedLink,
@@ -36,6 +37,8 @@ export default function ShopApplyPage() {
   const [address, setAddress] = useState("");
   const [prepMinutes, setPrepMinutes] = useState("15");
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  /** 2026-09-27 — the commission/settlement terms must be seen, not assumed. */
+  const [agreedTerms, setAgreedTerms] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -46,6 +49,8 @@ export default function ShopApplyPage() {
   const [resubmitted, setResubmitted] = useState(false);
   /** "existing" → the email already had a PROSANTI login and it was reused. */
   const [account, setAccount] = useState<"created" | "existing">("created");
+  /** The number staff will call/WhatsApp — echoed back on the success card. */
+  const [submittedPhone, setSubmittedPhone] = useState("");
 
   const toggleZone = (id: string) => {
     setSelectedZones((prev) =>
@@ -56,14 +61,16 @@ export default function ShopApplyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = name.trim();
-    const cleanPhone = phone.trim().replace(/[\s-]/g, "");
+    // +88 / 88 / Bangla digits / spaces all collapse to 01XXXXXXXXX — the
+    // server normalises the same way, so the two can never disagree again.
+    const cleanPhone = tidyPhoneInput(phone);
     const cleanEmail = email.trim().toLowerCase();
 
     if (cleanName.length < 2) {
       setError("দোকানের নাম অন্তত ২ অক্ষরের হতে হবে।");
       return;
     }
-    if (!/^(\+?88)?01[0-9]{9}$/.test(cleanPhone)) {
+    if (!isPlausibleBdPhone(cleanPhone)) {
       setError("সঠিক বাংলাদেশি মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }
@@ -79,6 +86,10 @@ export default function ShopApplyPage() {
     }
     if (selectedZones.length === 0) {
       setError("অন্তত একটি ডেলিভারি এলাকা সিলেক্ট করুন।");
+      return;
+    }
+    if (!agreedTerms) {
+      setError("শর্তাবলীতে টিক দিয়ে সম্মতি দিন — কমিশন ও পেআউট কীভাবে কাজ করে সেখানে লেখা আছে।");
       return;
     }
 
@@ -113,6 +124,7 @@ export default function ShopApplyPage() {
 
       setAccount(data?.account === "existing" ? "existing" : "created");
       setLoginHandle(data?.login || cleanEmail || cleanPhone);
+      setSubmittedPhone(cleanPhone);
       setResubmitted(data?.resubmitted === true);
       setPassword("");
       setConfirmPassword("");
@@ -154,6 +166,18 @@ export default function ShopApplyPage() {
               : ""}
             অ্যাডমিন অনুমোদন করার পর <strong>{loginHandle}</strong> এবং আবেদনের সময় দেওয়া পাসওয়ার্ড দিয়ে <strong>/vendor/login</strong>-এ সাইন ইন করলেই ড্যাশবোর্ড খুলবে। অনুমোদনের আগে লগইন করলে “অনুমোদনের অপেক্ষায়” বার্তা দেখাবে — এটাই স্বাভাবিক।
           </p>
+        </div>
+
+        <div className="mx-auto mt-4 max-w-md rounded-2xl bg-paper p-4 text-left ring-1 ring-line" data-testid="after-apply">
+          <p className="text-xs font-semibold text-forest-900">এরপর কী হবে</p>
+          <ul className="mt-1.5 space-y-1 text-xs leading-relaxed text-ink-soft">
+            <li>১. আমাদের টিম তথ্য যাচাই করে সাধারণত একই দিনে অনুমোদন দেয়।</li>
+            <li>
+              ২. অনুমোদনের খবর আপনার মোবাইলে ({submittedPhone || phone}) WhatsApp/ফোনে
+              দেওয়া হবে — ফোনটা হাতের কাছে রাখুন।
+            </li>
+            <li>৩. তারপর লগইন করে প্রোডাক্ট তুলুন — ছবি, দাম, স্টক দিলেই দোকান লাইভ।</li>
+          </ul>
         </div>
 
         <div className="mt-8 flex flex-wrap justify-center gap-4">
@@ -240,13 +264,16 @@ export default function ShopApplyPage() {
               type="number"
               inputMode="numeric"
               min="5"
-              max="45"
+              max="240"
               className={field}
               value={prepMinutes}
               onChange={(e) => setPrepMinutes(e.target.value)}
               placeholder="15"
             />
-            <span className={hint}>অর্ডার আসার পর রাইডার পৌঁছানোর আগে কত মিনিটে প্যাক করতে পারবেন।</span>
+            <span className={hint}>
+              অর্ডার আসার পর রাইডার পৌঁছানোর আগে কত মিনিটে প্যাক করতে পারবেন
+              (৫–২৪০; বেশিরভাগ দোকানের জন্য ১৫–৩০ ঠিকঠাক)। পরে সেটিংসে বদলানো যাবে।
+            </span>
           </label>
 
           <label className="block sm:col-span-2">
@@ -318,6 +345,44 @@ export default function ShopApplyPage() {
         >
           <ZoneChips zones={zones} selected={selectedZones} onToggle={toggleZone} />
         </FormSection>
+
+        {/* 2026-09-27 — the terms a seller actually needs before signing up:
+            commission, settlement and returns were nowhere on this page. */}
+        <div className="rounded-2xl bg-ivory-100/70 p-4 ring-1 ring-line">
+          <p className="text-xs font-semibold uppercase tracking-wider text-forest-900">
+            যে শর্তে PROSANTI-তে বিক্রি হবে
+          </p>
+          <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-ink-soft">
+            <li>
+              • প্রতি অর্ডারে <strong>PROSANTI কমিশন</strong> (সাধারণত ১৫%, চূড়ান্ত
+              হার অনুমোদনের সময় আপনার সাথে ঠিক করা হয়) কেটে বাকিটা আপনার।
+            </li>
+            <li>
+              • ডেলিভারি চার্জ কাস্টমার দেয়; ডেলিভারি হয় PROSANTI-র রাইডার/কুরিয়ারে —
+              আপনার দরকার শুধু অর্ডার প্যাক করে দেওয়া।
+            </li>
+            <li>
+              • বিক্রির টাকা <strong>সেটেলমেন্ট (পেআউট)</strong> চক্রে bKash/ব্যাংকে
+              দেওয়া হয়; ভারী-হালকা হিসাব ড্যাশবোর্ডের আর্নিংস পেজে সবসময় দেখা যাবে।
+            </li>
+            <li>
+              • ভুল/নষ্ট পণ্য, বাতিল ও রিটার্ন PROSANTI নীতিমালা অনুযায়ী — কাস্টমার
+              রাইডারের সামনেই চেক করে নেয়, ডেলিভারি প্রুফ ড্যাশবোর্ডে থাকে।
+            </li>
+          </ul>
+          <label className="mt-3 flex items-start gap-2.5 text-xs font-medium text-forest-900">
+            <input
+              type="checkbox"
+              checked={agreedTerms}
+              onChange={(e) => setAgreedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-forest-700"
+              aria-label="শর্তাবলীতে সম্মত"
+            />
+            <span>
+              আমি উপরের কমিশন, সেটেলমেন্ট ও ডেলিভারি/রিটার্ন নীতিতে সম্মত আছি।
+            </span>
+          </label>
+        </div>
 
         <div className="flex items-start gap-2.5 rounded-2xl bg-ivory-100/70 p-4 text-xs leading-relaxed text-ink-soft ring-1 ring-line">
           <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-gold-600" />

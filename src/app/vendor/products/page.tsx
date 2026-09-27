@@ -70,7 +70,17 @@ export default function VendorProductsPage() {
             ? `${counts.live + counts.low} on sale · ${counts.out} sold out · ${counts.low} running low — restock the loud ones first.`
             : "Drafts stay invisible until you publish them; archived pieces keep their order history."
         }
-        action={<PrimaryLink href="/vendor/products/new">+ New product</PrimaryLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <PrimaryLink href="/vendor/products/quick">⚡ Quick add</PrimaryLink>
+            <Link
+              href="/vendor/products/new"
+              className="inline-flex min-h-11 items-center rounded-full bg-paper px-5 text-sm font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-50"
+            >
+              Full editor
+            </Link>
+          </div>
+        }
       />
 
       {loading ? (
@@ -81,7 +91,17 @@ export default function VendorProductsPage() {
         <EmptyState
           title="No products yet"
           sub="Add your first product — publish it when the photos and price are ready."
-          action={<PrimaryLink href="/vendor/products/new">+ New product</PrimaryLink>}
+          action={
+          <div className="flex flex-wrap gap-2">
+            <PrimaryLink href="/vendor/products/quick">⚡ Quick add</PrimaryLink>
+            <Link
+              href="/vendor/products/new"
+              className="inline-flex min-h-11 items-center rounded-full bg-paper px-5 text-sm font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-50"
+            >
+              Full editor
+            </Link>
+          </div>
+        }
         />
       ) : (
         <>

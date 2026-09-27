@@ -119,15 +119,21 @@ export function useRiders(pollMs = 0) {
     [live, refresh],
   );
 
-  /** Link an Auth account as this rider's login. */
+  /**
+   * Link an Auth account as this rider's login. Takes the e-mail OR the
+   * mobile number (2026-09-27) — phone-only riders sign in with a synthetic
+   * address the panel never shows.
+   */
   const linkRider = useCallback(
-    async (id: string, email: string): Promise<boolean> => {
+    async (id: string, identifier: string): Promise<boolean> => {
       if (!live) return false;
+      const value = identifier.trim();
+      const body = value.includes("@") ? { email: value } : { phone: value };
       try {
         await apiSend(
           `/api/admin/riders/${encodeURIComponent(id)}/link-rider`,
           "POST",
-          { email },
+          body,
         );
         setError(null);
         return true;

@@ -155,6 +155,31 @@ describe("applyShop — apply = sign up", () => {
     expect(state.deleteAccount).not.toHaveBeenCalled();
   });
 
+  it("accepts the phone the way the owner's own phone shows it (+880, Bangla digits)", async () => {
+    state.respond = shopHappy;
+    // Until 2026-09-27 the server only accepted a bare 01XXXXXXXXX while the
+    // form accepted +88 — a correct number typed with the country code made
+    // the whole application fail.
+    const country = await applyShop(
+      { ...SHOP, phone: "+880 1712-345678" },
+      { password: "secret1" },
+    );
+    expect(country.loginEmail).toBe("shop@example.com");
+    expect(inserted("shops")).toMatchObject({ phone: "01712345678" });
+
+    state.calls = [];
+    await applyShop({ ...SHOP, phone: "০১৭১২৩৪৫৬৭৮" }, { password: "secret1" });
+    expect(inserted("shops")).toMatchObject({ phone: "01712345678" });
+  });
+
+  it("still refuses a number that is not a BD mobile", async () => {
+    state.respond = shopHappy;
+    await expect(
+      applyShop({ ...SHOP, phone: "+1 555 0100" }, { password: "secret1" }),
+    ).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/mobile number/) });
+    expect(state.createAccount).not.toHaveBeenCalled();
+  });
+
   it("rejects a duplicate application email before creating any login", async () => {
     state.respond = (table, ops, payload) => {
       if (table === "shops" && ops.includes("not")) {

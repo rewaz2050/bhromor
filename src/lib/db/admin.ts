@@ -34,6 +34,7 @@ import {
   mapZone,
 } from "./mappers";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
+import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "../phone";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
 import { forgetStaffRole, type StaffRole } from "../staff-auth";
@@ -77,6 +78,8 @@ const cleanInt = (value: unknown, fallback = 0): number => {
 export interface OrderFilters {
   status?: string;
   q?: string;
+  /** Only this shop's orders (2026-09-27, B12 — the shop card's deep link). */
+  shop?: string;
   /** Page size, 1–500 (default 100). */
   limit?: number;
   /** Opaque keyset cursor from a previous page's `nextCursor`. */
@@ -152,6 +155,8 @@ export async function listOrders(
     .limit(limit + 1);
   const status = clean(filters.status, 32);
   if (status !== "") query = query.eq("status", status);
+  const shop = clean(filters.shop, 64);
+  if (shop !== "") query = query.eq("shop_id", shop);
   const q = clean(filters.q, 64);
   if (q !== "") {
     // Quoted PostgREST value: strip the characters that would end or escape
@@ -881,11 +886,39 @@ const syncVariants = async (
   for (const v of existing) {
     if (wanted.has(`${v.color}::${v.size}`)) continue;
     if (v.reserved > 0) {
-      await db.from("product_variants").update({ active: false }).eq("id", v.id);
+      // Keep the row (its reservations must survive) but RELEASE its SKU:
+      // product_variants.sku is globally unique, and the numbered variant
+      // SKUs below are allocated by position — a retired row still holding
+      // "-V1" made the next grid change die on a duplicate key, so a shop
+      // that had sold one piece could never change its sizes again
+      // (2026-09-27).
+      await db
+        .from("product_variants")
+        .update({ active: false, sku: null })
+        .eq("id", v.id);
     } else {
       await db.from("product_variants").delete().eq("id", v.id);
     }
   }
+  // SKUs still held by rows we keep (they are updated in place below)…
+  const usedSkus = new Set(
+    existing
+      .filter((v) => wanted.has(`${v.color}::${v.size}`))
+      .map((v) => v.sku)
+      .filter((sku): sku is string => typeof sku === "string" && sku !== ""),
+  );
+  // …and a fresh SKU for every NEW cell: lowest free `-V{n}`, never the old
+  // positional counter that recycled numbers of retired rows.
+  const nextVariantSku = (): string => {
+    for (let n = 1; n <= 500; n += 1) {
+      const candidate = `${input.sku}-V${n}`;
+      if (!usedSkus.has(candidate)) {
+        usedSkus.add(candidate);
+        return candidate;
+      }
+    }
+    return `${input.sku}-V${Date.now()}`;
+  };
   // …and upsert the wanted ones with evenly split stock — per size when
   // the editor said so, otherwise the total over the whole grid.
   const cells = [...wanted.values()];
@@ -919,17 +952,35 @@ const syncVariants = async (
         .eq("id", row.id);
       if (upError) throw new Error("variant update failed");
     } else {
-      const { error: insError } = await db.from("product_variants").insert({
-        product_id: productId,
-        color,
-        size,
-        sku: `${input.sku}-V${n}`,
-        price: input.price,
-        stock,
-        reserved: 0,
-        active: true,
-      });
-      if (insError) throw new Error("variant insert failed");
+      // Two tries: the next free number, then the one after it. A 23505 here
+      // could still come from a row this product's own history left behind
+      // on a database where the release above could not run (old rows).
+      let lastError: { code?: string; message?: string } | null = null;
+      for (let tries = 0; tries < 3; tries += 1) {
+        const { error: insError } = await db.from("product_variants").insert({
+          product_id: productId,
+          color,
+          size,
+          sku: nextVariantSku(),
+          price: input.price,
+          stock,
+          reserved: 0,
+          active: true,
+        });
+        if (!insError) {
+          lastError = null;
+          break;
+        }
+        lastError = insError;
+        if ((insError as { code?: string }).code !== "23505") break;
+      }
+      if (lastError) {
+        console.error(
+          "[variants] insert refused",
+          JSON.stringify({ productId, color, size, code: lastError.code ?? null }),
+        );
+        throw new Error("variant insert failed");
+      }
     }
   }
 };
@@ -1000,6 +1051,21 @@ export const readProductBundle = async (
   });
 };
 
+/**
+ * Which marketplace-wide unique constraint a 23505 answer names.
+ *
+ * `products.slug` and `products.sku` are unique across all shops (they come
+ * from the single-shop schema) while RLS hides other shops' rows from a
+ * vendor — so the database's constraint name is the only way to tell the
+ * shop which of the two collided (2026-09-27).
+ */
+const duplicateProductColumn = (error: unknown): "slug" | "sku" | null => {
+  const message = (error as { message?: string })?.message ?? "";
+  if (/products_slug_key|unique constraint "slug"|products_slug/.test(message)) return "slug";
+  if (/products_sku_key|unique constraint "sku"|products_sku/.test(message)) return "sku";
+  return null;
+};
+
 /** P1 #14 — parse a warranty period (days) from raw product input.
  *  null/absent → no warranty. Out-of-range or non-integer → input error. */
 const parseWarrantyDays = (
@@ -1036,6 +1102,10 @@ export async function createProduct(
   }
   const slugBase =
     input.slug && input.slug !== "" ? input.slug : slugify(input.name);
+  // Duplicate probe — but it only sees the rows THIS caller may read (a
+  // vendor's RLS client sees its own shop only). A clash inside the shop is
+  // a real duplicate worth refusing; a clash with another shop's product is
+  // invisible here and is resolved by the insert retry just below.
   const { data: dupe } = await db
     .from("products")
     .select("id")
@@ -1044,14 +1114,27 @@ export async function createProduct(
   if (dupe && dupe.length > 0) {
     throw new AdminInputError("Slug or SKU is already in use.", 409);
   }
-  const { data, error } = await db
-    .from("products")
-    .insert({
+  // `products.slug` and `products.sku` are unique across EVERY shop (they
+  // predate the marketplace). Two shops may therefore both want "Panjabi" —
+  // the second one used to be refused with "Slug or SKU is already in use.",
+  // for a name it had never used, and could not add the product at all
+  // (2026-09-27). We keep the platform-wide uniqueness the storefront URLs
+  // depend on and simply pick the next free spelling, then log it.
+  const slugFor = (n: number): string => (n === 0 ? slugBase : `${slugBase}-${n + 1}`);
+  const skuFor = (n: number): string => (n === 0 ? input.sku : `${input.sku}-${n + 1}`);
+  let data: { id?: string } | null = null;
+  let error: { code?: string; message?: string } | null = null;
+  let slugN = 0;
+  let skuN = 0;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const res = await db
+      .from("products")
+      .insert({
       shop_id: resolvedShop,
-      slug: slugBase,
+      slug: slugFor(slugN),
       name: input.name,
       name_bn: (input as { nameBn?: string }).nameBn ?? "",
-      sku: input.sku,
+      sku: skuFor(skuN),
       category_id: input.category,
       subcategory: input.subCategory ?? "",
       short_description: input.shortDescription ?? "",
@@ -1080,15 +1163,35 @@ export async function createProduct(
         };
       })(),
     })
-    .select("id")
-    .single();
-  if (error || !data) {
+      .select("id")
+      .single();
+    data = (res.data ?? null) as { id?: string } | null;
+    error = (res.error ?? null) as { code?: string; message?: string } | null;
+    if (!error && data?.id) break;
+    if (error?.code !== "23505") break;
+    // Which marketplace-wide unique index answered? RLS hides the other
+    // shop's row from the vendor, so the constraint name is the only clue.
+    const which = duplicateProductColumn(error);
+    if (which !== "sku") slugN += 1;
+    if (which !== "slug") skuN += 1;
+  }
+  if (error || !data?.id) {
     if (error?.code === "23505") {
-      throw new AdminInputError("Slug or SKU is already in use.", 409);
+      throw new AdminInputError(
+        "এই নাম/SKU দিয়ে অনেক প্রোডাক্ট আগেই আছে — নাম বা SKU-তে একটু আলাদা শব্দ যোগ করুন।",
+        409,
+      );
     }
     throw new Error("product insert failed");
   }
-  const id = (data as { id: string }).id;
+  const id = data.id;
+  if (slugN > 0 || skuN > 0) {
+    // Honest server log: the shop asked for `slugBase` and got a neighbour.
+    console.warn(
+      "[products] auto-unique on create",
+      JSON.stringify({ slug: slugFor(slugN), sku: skuFor(skuN), slugN, skuN }),
+    );
+  }
   await syncVariants(db, id, input, input.stock);
   await syncMedia(db, id, input);
   return readProductBundle(db, id);
@@ -1204,7 +1307,17 @@ export async function updateProduct(
   const { error } = await db.from("products").update(patch).eq("id", id);
   if (error) {
     if (error.code === "23505") {
-      throw new AdminInputError("Slug or SKU is already in use.", 409);
+      // An edit keeps whatever the shop typed — silently renaming their link
+      // would break shared URLs — so the message names the field to change.
+      const which = duplicateProductColumn(error);
+      throw new AdminInputError(
+        which === "slug"
+          ? "এই লিংক (slug) অন্য দোকানের প্রোডাক্টে ব্যবহৃত — একটু আলাদা শব্দ দিন।"
+          : which === "sku"
+            ? "এই SKU আরেকটি দোকানের প্রোডাক্টে ব্যবহৃত — SKU-তে একটু আলাদা কোড দিন।"
+            : "Slug or SKU is already in use.",
+        409,
+      );
     }
     throw new Error("product update failed");
   }
@@ -1854,6 +1967,11 @@ export interface AdminShop extends Shop {
    * application arrives linked; only legacy rows still need "Link vendor").
    */
   vendorLinked: boolean;
+  /**
+   * When the application landed (2026-09-27, Phase 2) — the queue can say
+   * "pending 3 days" instead of showing every application as equally new.
+   */
+  createdAt?: number;
 }
 
 export async function listShopsFull(
@@ -1864,20 +1982,29 @@ export async function listShopsFull(
     .select("*")
     .order("created_at", { ascending: false });
   if (error) throw new Error("shop list failed");
-  const shops = ((data ?? []) as DbShop[]).map(mapShop);
-  const counts = new Map<string, number>();
-  if (shops.length > 0) {
-    const { data: rows } = await db
-      .from("products")
-      .select("shop_id")
-      .in(
-        "shop_id",
-        shops.map((s) => s.id),
-      );
-    for (const r of ((rows ?? []) as { shop_id: string }[])) {
-      counts.set(r.shop_id, (counts.get(r.shop_id) ?? 0) + 1);
-    }
+  const rows = (data ?? []) as DbShop[];
+  const shops = rows.map(mapShop);
+  const created = new Map<string, number>();
+  for (const r of rows) {
+    const at = r.created_at ? Date.parse(String(r.created_at)) : NaN;
+    if (Number.isFinite(at)) created.set(r.id, at);
   }
+  // Product counts (2026-09-27, B9): one HEAD count per shop instead of
+  // downloading every product row of every shop. The old query pulled the
+  // whole catalog into staff memory just to size the list — a platform with
+  // 10k products paid for it on every page load, and the shop rows they
+  // belonged to were the only thing read. Each count now returns no rows at
+  // all; PostgREST filters the count on the server.
+  const counts = new Map<string, number>();
+  await Promise.all(
+    shops.map(async (s) => {
+      const { count } = await db
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", s.id);
+      counts.set(s.id, count ?? 0);
+    }),
+  );
   const linked = new Set<string>();
   if (shops.length > 0) {
     // Staff read every link (policy "vendor_users admin all"); a failure
@@ -1895,6 +2022,7 @@ export async function listShopsFull(
     ...s,
     productCount: counts.get(s.id) ?? 0,
     vendorLinked: linked.has(s.id),
+    ...(created.has(s.id) ? { createdAt: created.get(s.id) } : {}),
   }));
 }
 
@@ -2387,9 +2515,12 @@ export async function upsertRider(
   };
   const name = clean(body.name, 80);
   if (name.length < 2) throw new AdminInputError("Rider name is too short.");
-  const phone = clean(body.phone, 20).replace(/[\s-]/g, "");
-  if (!/^01\d{9}$/.test(phone)) {
-    throw new AdminInputError("A valid Bangladeshi mobile number is required.");
+  // Same tolerant normalisation as the public apply forms (+88, Bangla digits).
+  const phone = normalizeBdPhone(asciiDigits(clean(body.phone, 20)));
+  if (!isPlausibleBdPhone(phone)) {
+    throw new AdminInputError(
+      "A valid Bangladeshi mobile number is required (01XXXXXXXXX).",
+    );
   }
   const email = clean(
     body.contact_email ?? body.contactEmail,
