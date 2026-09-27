@@ -35,9 +35,11 @@ import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { Price } from "@/components/ui/primitives";
 import {
   IconCheck,
+  IconClock,
   IconMapPin,
   IconMinus,
   IconPlus,
+  IconRefresh,
   IconRuler,
   IconSend,
   IconShield,
@@ -640,23 +642,59 @@ export default function PurchasePanel({ product }: { product: Product }) {
         </button>
       </div>
 
-      {/* WhatsApp order — pre-filled chat, shop confirms, COD unchanged */}
-      {waOrderHref ? (
-        <div className="mt-3">
-          <a
-            href={waOrderHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid="whatsapp-order"
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-sm bg-paper text-sm font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
-          >
-            <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
-          </a>
-          <p className="mt-1.5 text-center text-xs text-ink-soft">
-            {t("purchase.whatsAppHint")}
-          </p>
-        </div>
-      ) : null}
+      {/* UX plan §4 (R11) — the three promises that decide the tap, right
+          under the buttons: COD · 7-day exchange · PIN handover. A closed
+          shop says so here instead of a silent disabled button. */}
+      {shopClosed ? (
+        <p
+          className="mt-3 flex items-start gap-2 rounded-sm bg-ivory-100 px-3 py-2 text-xs leading-5 text-ink"
+          data-testid="cta-trust-line"
+          data-state="closed"
+        >
+          <IconClock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-soft" />
+          <span>
+            {t("purchase.trustClosed")}
+            {waOrderHref ? (
+              <>
+                {" "}
+                <a
+                  href={waOrderHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-forest-800 underline underline-offset-2"
+                >
+                  WhatsApp →
+                </a>
+              </>
+            ) : null}
+          </span>
+        </p>
+      ) : (
+        <ul
+          className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-soft"
+          data-testid="cta-trust-line"
+          aria-label={lang === "bn" ? "কেনার নিশ্চয়তা" : "Buying promises"}
+        >
+          <li className="inline-flex items-center gap-1.5">
+            <IconShield className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/faq" className="underline-offset-2 hover:underline">
+              {t("purchase.trustCod")}
+            </Link>
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <IconRefresh className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/returns" className="underline-offset-2 hover:underline">
+              {t("purchase.trustExchange")}
+            </Link>
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <IconCheck className="h-3.5 w-3.5 text-forest-700" />
+            <Link href="/delivery" className="underline-offset-2 hover:underline">
+              {t("purchase.trustPin")}
+            </Link>
+          </li>
+        </ul>
+      )}
 
       {feedback && (
         <p
@@ -668,8 +706,34 @@ export default function PurchasePanel({ product }: { product: Product }) {
         </p>
       )}
 
-      {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
-      <ShareRow product={product} className="mt-6" />
+      {/* UX plan §4 (R11) — ONE primary CTA above; the other ways to act
+          (WhatsApp order, share with family) sit together in one quiet
+          "help" cluster instead of competing full-width buttons. */}
+      <div
+        className="mt-6 rounded-sm bg-ivory-100/60 p-3.5 ring-1 ring-line"
+        data-testid="help-cluster"
+      >
+        <p className="text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          {t("purchase.helpEyebrow")}
+        </p>
+        {waOrderHref ? (
+          <div className="mt-2">
+            <a
+              href={waOrderHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="whatsapp-order"
+              title={t("purchase.whatsAppHint")}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-paper px-4 text-xs font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400"
+            >
+              <IconSend className="h-4 w-4" /> {t("purchase.whatsAppOrder")}
+            </a>
+            <p className="mt-1.5 text-xs text-ink-soft">{t("purchase.whatsAppHint")}</p>
+          </div>
+        ) : null}
+        {/* Share — WhatsApp / Facebook / copy; shoppers decide with family */}
+        <ShareRow product={product} className={waOrderHref ? "mt-4" : "mt-2"} />
+      </div>
 
       {/* Delivery trust card */}
       <div className="mt-8 grid gap-3 sm:grid-cols-3">

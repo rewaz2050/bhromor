@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import PurchasePanel from "../purchase-panel";
 import ShopHero from "@/components/shop/shop-hero";
 import { CartProvider } from "@/components/cart/cart-provider";
@@ -108,6 +108,32 @@ describe("purchase panel — WhatsApp order (P1 #15)", () => {
     // Let the promo fetch settle so "no button" is a real answer, not a first paint.
     await new Promise((r) => setTimeout(r, 100));
     expect(screen.queryByTestId("whatsapp-order")).toBeNull();
+    // the help cluster still carries the share row
+    expect(within(screen.getByTestId("help-cluster")).getByTestId("share-row")).toBeInTheDocument();
+  });
+
+  it("keeps one primary CTA: WhatsApp + share live in the help cluster under a trust line (UX plan §4, R11)", async () => {
+    renderPanel();
+    const cluster = await screen.findByTestId("help-cluster");
+    expect(within(cluster).getByTestId("whatsapp-order")).toBeInTheDocument();
+    expect(within(cluster).getByTestId("share-row")).toBeInTheDocument();
+    const trust = screen.getByTestId("cta-trust-line");
+    expect(within(trust).getByRole("link", { name: "Cash on delivery" })).toHaveAttribute("href", "/faq");
+    expect(within(trust).getByRole("link", { name: "7-day exchange" })).toHaveAttribute("href", "/returns");
+    expect(within(trust).getByRole("link", { name: "PIN-checked handover" })).toHaveAttribute("href", "/delivery");
+    // order on the page: buttons → trust line → help cluster
+    const buyNow = screen.getAllByRole("button", { name: /buy now/i })[0]!;
+    expect(buyNow.compareDocumentPosition(trust) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(trust.compareDocumentPosition(cluster) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says the shop is closed in the trust line instead of a silent disabled button", async () => {
+    currentShop = { ...shopWithPhone, isOpen: false };
+    renderPanel();
+    const trust = await screen.findByTestId("cta-trust-line");
+    expect(trust).toHaveAttribute("data-state", "closed");
+    expect(trust).toHaveTextContent(/The shop is closed right now/);
+    expect(within(trust).getByRole("link", { name: /WhatsApp/ })).toHaveAttribute("target", "_blank");
   });
 });
 
