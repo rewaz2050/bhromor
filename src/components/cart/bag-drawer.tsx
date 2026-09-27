@@ -23,6 +23,7 @@ import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/componen
 import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
 import FreeDeliveryBar from "./free-delivery-bar";
+import { SaveForLaterButton, SavedForLaterNotice, useSaveForLater } from "./save-for-later";
 import StampLine from "@/components/loyalty/stamp-line";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -42,6 +43,8 @@ export default function BagDrawer() {
   } = useCart();
   /** Hook unconditionally — the bag content below is a conditional render. */
   const { shops, products: catalogProducts } = useLiveCatalog();
+  /** UX plan §5 (R11) — "পরে কিনব": line → wishlist, with a one-line confirmation. */
+  const { save: saveForLater, notice: savedNotice } = useSaveForLater();
   /** WhatsApp order for the whole bag (P1 #15) — one shop per cart. */
   const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
   const bagShop =
@@ -144,6 +147,7 @@ export default function BagDrawer() {
             <div className="pt-4">
               <BagShopHeader />
             </div>
+            <SavedForLaterNotice notice={savedNotice} onNavigate={closeBag} className="mt-3" />
             {detail.map(({ product, variantLabel, qty, lineTotal }) => (
               <article
                 key={`${product.id}-${variantLabel}`}
@@ -200,14 +204,23 @@ export default function BagDrawer() {
                         +
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      className="min-h-11 px-1 text-xs text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-forest-800"
-                      aria-label={`${t("bag.remove")} ${product.name}`}
-                      onClick={() => removeItem(product.id, variantLabel)}
-                    >
-                      {t("bag.remove")}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {/* UX plan §5 (R11) — keep it instead of deleting it. */}
+                      <SaveForLaterButton
+                        productId={product.id}
+                        variantLabel={variantLabel}
+                        productName={product.name}
+                        onSave={saveForLater}
+                      />
+                      <button
+                        type="button"
+                        className="min-h-11 px-1 text-xs text-ink-soft underline decoration-line underline-offset-4 transition-colors hover:text-forest-800"
+                        aria-label={`${t("bag.remove")} ${product.name}`}
+                        onClick={() => removeItem(product.id, variantLabel)}
+                      >
+                        {t("bag.remove")}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </article>
