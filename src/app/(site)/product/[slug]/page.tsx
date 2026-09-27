@@ -2,6 +2,8 @@ import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
 import AlsoBoughtRail from "@/components/product/also-bought-rail";
+import PairItWithRail from "@/components/product/pair-it-with-rail";
+import DeliveryAside from "@/components/product/delivery-aside";
 import { alsoBoughtProducts } from "@/lib/db/also-bought";
 import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
 import ProductViewTracker from "@/components/analytics/product-view-tracker";
@@ -13,24 +15,17 @@ import {
   findStorefrontProduct,
   getStorefrontCatalog,
 } from "@/lib/db/storefront";
-import { formatBdt } from "@/lib/format";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
 import StickyBuyBar from "@/components/product/sticky-buy-bar";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
-import ProductCard from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import PriceAlertRow from "@/components/promo/price-alert-row";
 import RestockAlertRow from "@/components/product/restock-alert-row";
 import ProductInfo from "@/components/product/product-info";
 import ReviewsSection from "@/components/reviews/reviews-section";
-import { IconChevron, IconLeaf } from "@/components/ui/icons";
-import {
-  DELIVERY_ETA,
-
-  INSTANT_DELIVERY_TITLE,
-} from "@/lib/delivery";
+import { IconChevron } from "@/components/ui/icons";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -172,6 +167,12 @@ export default async function ProductPage({ params }: PageProps) {
         <StickyBuyBar product={product} />
       </div>
 
+      {/* UX plan §4 (R11) — the AOV lever sits RIGHT under the buy panel:
+          the one-tap set when the pairing is real (P0 #2), then the
+          complement pieces as a short "Pair it with" row. */}
+      <BundleOffer product={product} />
+      <PairItWithRail items={complements} />
+
       {/* Product information — accordion so the page stays short on mobile
           (UX plan §4, R10: bilingual, first section open, fit block honest). */}
       <div className="mt-14 grid gap-8 lg:grid-cols-3 lg:gap-12">
@@ -180,57 +181,11 @@ export default async function ProductPage({ params }: PageProps) {
         <aside className="space-y-6">
           <PriceAlertRow product={product} />
           <RestockAlertRow product={product} />
-          <div className="assurance-pill rounded-md bg-forest-900 p-8 text-ivory-100">
-            <IconLeaf className="h-6 w-6 text-gold-300" />
-            <h2 className="font-display mt-4 text-xl font-medium">
-              {INSTANT_DELIVERY_TITLE}
-            </h2>
-            <p className="mt-3 text-sm leading-7 text-ivory-100/70">
-              Inside Sunamganj Sadar your order arrives in{" "}
-              <strong className="text-gold-300">{DELIVERY_ETA}</strong> from
-              confirmation. Select your para at checkout to see the exact
-              charge and arrival estimate.
-            </p>
-            <p className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm text-ivory-100/85">
-              Delivery from{" "}
-              <span className="font-semibold text-white">
-                {formatBdt(3000)}
-              </span>{" "}
-              in Zone A (Sunamganj City) ·{" "}
-              <span className="font-semibold text-gold-300">
-                60
-              </span>{" "}
-              টি অর্ডারে ডেলিভারি ফ্রি (প্রতিটি কাস্টমারের জন্য) — শুধু সুনামগঞ্জ
-              সিটি (এ জোন)-এ! এ জোনের বাইরে জোন চার্জ প্রযোজ্য।
-            </p>
-          </div>
+          {/* UX plan §4 (R11) — the real zone ladder (and this device's own
+              zone), bilingual; no invented free-delivery rule. */}
+          <DeliveryAside />
         </aside>
       </div>
-
-
-      {/* P0 #2 — the rail and the one-click set are the same idea: the set is
-          offered when the pairing is real, and the pieces stay individually
-          purchasable when it is not. */}
-      <BundleOffer product={product} />
-
-      {complements.length > 0 && (
-        <section
-          aria-labelledby="complete-look-heading"
-          className="mt-10 px-1"
-        >
-          <h2
-            id="complete-look-heading"
-            className="font-display text-2xl text-forest-900"
-          >
-            Or pick the pieces yourself
-          </h2>
-          <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
-            {complements.map((item) => (
-              <ProductCard key={item.id} product={item} />
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* UX plan §4 (R11) — co-purchases from real orders; absent until they exist. */}
       <AlsoBoughtRail items={alsoBoughtItems} />
