@@ -424,6 +424,14 @@ After the existing migrations, apply in order:
   `ps_write_shop_ledger` so a shop-funded waiver comes out of that order's
   payable. Idempotent (a second run says "already prices the free-delivery
   threshold"). **Verify:** the run ends with `NOTICE: FREE DELIVERY OK`.
+  Since 2026-09-27 the patch is whitespace-tolerant: it normalises the
+  installed body (Windows `CR LF`, tabs, re-indentation — a pasted function
+  is byte-different from the repository text) before matching its anchors,
+  and prints `ps_place_order patched (had CR line endings: t/f, tabs: t/f)`.
+  If it still cannot patch, the error names the missing anchor (`declare`,
+  `P0 offers`, `insert columns`, `insert values`) plus the installed body's
+  length / md5 — re-install the function exactly (`supabase/paste-parts`
+  05 → 09, then `202609160001`) and run this file again.
   Then switch it on: Admin → Settings → *ফ্রি ডেলিভারি — প্ল্যাটফর্ম অফার*
   (PROSANTI pays) and/or Vendor → Settings → *ফ্রি ডেলিভারি অফার* (the shop
   pays). Until it is applied, saving a minimum answers 503 naming this file
@@ -721,6 +729,7 @@ direct file-picker upload, add the four Cloudinary variables from
 | Admin → Shops / Riders → Approve or Reject → "Application review is not set up on this database yet" (503) | Migration `202609260002_application_review.sql` not applied → step 1. Meanwhile **Edit → Save** on the card still changes the status (no audit stamp) |
 | Rider's KYC card says "কাগজপত্র আপলোড এখনো চালু হয়নি" / "ছবি আপলোড এখনো কনফিগার করা হয়নি" | First message: migration `202609260002` missing → step 1. Second: Cloudinary env not set → step 6. The application is filed either way; approve after a phone/WhatsApp check of the NID instead |
 | Vendor → Settings → free delivery → "ফ্রি ডেলিভারি এখনো এই ডেটাবেসে চালু হয়নি" (503), or Admin → Shops → Save → "Free delivery is not set up on this database yet" | Migration `202609260003_free_delivery.sql` not applied → step 1 (look for `FREE DELIVERY OK`). Profile saves without the field still work |
+| Running `202609260003_free_delivery.sql` → `free-delivery patch could not find its anchors in ps_place_order (declare / P0 offers / insert)` | The file you ran predates 2026-09-27: it matched the deployed function byte-for-byte, and a function pasted from Windows carries `CR LF` line endings (reproduced 1:1 against a scratch Postgres). Pull the current file and run it again — it normalises line endings / tabs first and ends with `ps_place_order patched (had CR line endings: t …)` + `FREE DELIVERY OK`. Nothing from the failed run was saved (whole file is one transaction). If the new error still names a `MISSING` anchor, the deployed `ps_place_order` is not the repository's text: re-install it (`supabase/paste-parts` 05 → 09, then `202609160001`) and re-run |
 | Admin → Reports → *Funnel* says "Not installed yet — run `202609260004_storefront_events.sql`" | Migration `202609260004_storefront_events.sql` not applied → step 1 (look for `STOREFRONT EVENTS OK`). The storefront keeps sending in the meantime (`/api/events` answers 204 and drops the batch); numbers start from the moment the table exists |
 | Bag shows "delivery is free" but the order was charged | The RPC is authoritative: either the migration is missing (see above — the storefront reads the rule from settings, the database cannot price it yet), the address resolved to the courier zone (z4 is never free), or a coupon / PROSANTI+ already waived it. Check `orders.free_delivery_by` on the row |
 | Shop asks why a payout is lower than subtotal − commission | Its own free-delivery offer paid that order's rider charge: Vendor → Orders → the order shows "আপনার ফ্রি ডেলিভারি অফার (পেআউট থেকে কাটা হবে) −৳60". Platform-funded waivers (`free_delivery_by = 'platform'`) never change the payout |

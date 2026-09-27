@@ -23,7 +23,9 @@
 --
 -- Idempotent — safe to re-run. Patches the installed ps_place_order in place
 -- (same technique as 202609160001) instead of re-pasting the whole RPC, so it
--- works on every generation from 202609130008 (growth promos) onward.
+-- works on every generation from 202609140015 (PROSANTI+) onward — including
+-- a copy that was pasted with Windows line endings or re-indented (the
+-- anchors are whitespace-tolerant since 2026-09-27).
 -- Expect "FREE DELIVERY OK" at the end.
 -- ============================================================================
 
@@ -50,12 +52,27 @@ alter table public.orders
 
 -- ---------------------------------------------------------------------------
 -- 2. ps_place_order — patch the installed definition in place.
+--
+--    Whitespace-tolerant (2026-09-27): the anchors are matched with regexes
+--    after the body's line endings and tabs are normalised, because a
+--    function that was pasted from Windows (CR LF) or re-indented by an
+--    editor is byte-different from the repository text even though it is
+--    the same function — the first cut of this file failed on exactly that
+--    ("could not find its anchors"). The normalised, patched body is what
+--    gets stored, so later patches see plain LF.
 -- ---------------------------------------------------------------------------
 do $free_delivery$
 declare
   v_definition text;
   v_function oid;
   v_block text;
+  v_had_cr boolean;
+  v_had_tab boolean;
+  v_ok_declare boolean;
+  v_ok_rule boolean;
+  v_ok_cols boolean;
+  v_ok_vals boolean;
+  v_md5_installed text;
 begin
   select p.oid, pg_get_functiondef(p.oid)
     into v_function, v_definition
@@ -80,15 +97,27 @@ begin
     raise exception 'ps_place_order predates 202609140015_plus_membership.sql — apply that first';
   end if;
 
-  -- (a) two working variables, declared next to v_zone.
-  v_definition := replace(
+  -- Normalise what a copy-paste may have changed: CR LF / lone CR line
+  -- endings and tabs. The function has no string literal that contains
+  -- either, so this cannot change its behaviour.
+  v_md5_installed := md5(v_definition);
+  v_had_cr  := position(E'\r' in v_definition) > 0;
+  v_had_tab := position(E'\t' in v_definition) > 0;
+  v_definition := replace(replace(v_definition, E'\r\n', E'\n'), E'\r', E'\n');
+  v_definition := replace(v_definition, E'\t', '  ');
+
+  -- (a) two working variables, declared next to v_zone (any indentation).
+  v_definition := regexp_replace(
     v_definition,
-    E'declare\n  v_zone delivery_zones%rowtype;',
+    'declare[[:space:]]+v_zone[[:space:]]+delivery_zones%rowtype;',
     E'declare\n  v_fd_by text := null;\n  v_fd_waived bigint := 0;\n  v_zone delivery_zones%rowtype;'
   );
+  v_ok_declare := v_definition like '%v_fd_by text := null;%';
 
   -- (b) the rule itself, evaluated after coupon / PROSANTI+ zeroed the
-  --     charge (v_charge > 0 guard) and before the total is computed.
+  --     charge (v_charge > 0 guard) and before the total is computed —
+  --     i.e. right above the "P0 automatic offers" block, whatever its
+  --     indentation.
   v_block := E'  -- ------------------------------------------------------------------\n'
     || E'  -- Free delivery threshold (202609260003): the platform rule first\n'
     || E'  -- (PROSANTI-funded), then the shop''s own opt-in (shop-funded — the\n'
@@ -117,22 +146,41 @@ begin
     || E'        v_sur_night := 0; v_sur_rain := 0; v_sur_dist := 0; v_sur_express := 0; v_sur_weight := 0;\n'
     || E'      end if;\n'
     || E'    end;\n'
-    || E'  end if;\n\n'
-    || E'  -- P0 automatic offers';
-  v_definition := replace(v_definition, E'  -- P0 automatic offers', v_block);
+    || E'  end if;\n\n';
+  -- Only the first match is replaced (no 'g' flag); the comment line is
+  -- kept below the inserted block.
+  v_definition := regexp_replace(
+    v_definition,
+    E'\n[ ]*-- P0 automatic offers',
+    E'\n' || v_block || E'  -- P0 automatic offers'
+  );
+  v_ok_rule := v_definition like '%Free delivery threshold (202609260003)%';
 
-  -- (c) persist the attribution on the order row.
-  v_definition := replace(v_definition, E'    is_plus,\n', E'    is_plus, free_delivery_by, free_delivery_waived,\n');
-  v_definition := replace(v_definition, E'    v_plus,\n', E'    v_plus, v_fd_by, v_fd_waived,\n');
+  -- (c) persist the attribution on the order row: the insert's column list
+  --     and its values list (each anchor occurs once in the function).
+  v_definition := regexp_replace(
+    v_definition, E'is_plus,[ ]*\n', E'is_plus, free_delivery_by, free_delivery_waived,\n'
+  );
+  v_definition := regexp_replace(
+    v_definition, E'v_plus,[ ]*\n', E'v_plus, v_fd_by, v_fd_waived,\n'
+  );
+  v_ok_cols := v_definition like '%is_plus, free_delivery_by, free_delivery_waived,%';
+  v_ok_vals := v_definition like '%v_plus, v_fd_by, v_fd_waived,%';
 
-  if (length(v_definition) - length(replace(v_definition, 'v_fd_by', ''))) / length('v_fd_by') < 5 then
-    raise exception 'free-delivery patch could not find its anchors in ps_place_order (declare / P0 offers / insert) — paste the function from 202609140015 and re-run';
-  end if;
-  if v_definition not like '%free_delivery_by, free_delivery_waived,%' or v_definition not like '%v_fd_by, v_fd_waived,%' then
-    raise exception 'free-delivery patch could not extend the orders insert in ps_place_order';
+  if not (v_ok_declare and v_ok_rule and v_ok_cols and v_ok_vals) then
+    raise exception using
+      message = format(
+        'free-delivery patch could not find its anchors in ps_place_order — declare: %s, P0 offers: %s, insert columns: %s, insert values: %s (installed body: %s chars, CR line endings: %s, tabs: %s, md5 %s)',
+        case when v_ok_declare then 'ok' else 'MISSING' end,
+        case when v_ok_rule then 'ok' else 'MISSING' end,
+        case when v_ok_cols then 'ok' else 'MISSING' end,
+        case when v_ok_vals then 'ok' else 'MISSING' end,
+        length(v_definition), v_had_cr, v_had_tab, v_md5_installed),
+      hint = 'The installed ps_place_order is not the text this repository ships. Re-install it exactly: supabase/paste-parts 05 → 09 (base64 chunks of 202609140015, checksummed), then 202609160001_checkout_delivery_pricing.sql, then run this file again.';
   end if;
 
   execute v_definition;
+  raise notice 'ps_place_order patched (had CR line endings: %, tabs: %)', v_had_cr, v_had_tab;
 end
 $free_delivery$;
 
