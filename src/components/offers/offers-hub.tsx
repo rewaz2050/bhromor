@@ -16,7 +16,7 @@ import ListImpression from "@/components/analytics/list-impression";
 import PromoCodeCard from "@/components/home/promo-code-card";
 import ProductRail from "@/components/home/product-rail";
 import { useLanguage } from "@/components/i18n/language-provider";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -81,7 +81,7 @@ export default function OffersHub({ pool }: { pool: Product[] }) {
             </div>
             <div className="grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-3 xl:grid-cols-4">
               {offers.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} sizes={GRID_CARD_SIZES} />
               ))}
             </div>
           </section>

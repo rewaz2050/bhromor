@@ -11,7 +11,7 @@
  * about a price is worse than no badge.
  */
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { afterFirstPaint } from "./defer";
 import type { Product } from "./catalog";
 import {
@@ -40,6 +40,7 @@ const listeners = new Set<Listener>();
 
 const notify = () => {
   for (const l of listeners) l();
+  syncPhase();
 };
 
 const scheduleRefresh = () => {
@@ -110,45 +111,65 @@ export const flashConfigOf = (promos: PromoView) => ({
 });
 
 /**
- * One shared 1s ticker for every countdown on the page: a window opening or
- * closing must move without a reload, and each component must not own its own
- * interval. The clock is read inside the effect, never during render — a
- * component that calls Date.now() while rendering cannot hydrate honestly.
+ * Flash *phase* — the slice of the clock that can change a price: is a window
+ * open, when does it close, when does the next one open. One module-level
+ * check runs once a second (only while something is subscribed) and notifies
+ * ONLY when that slice changes.
+ *
+ * Perf (scroll audit 2026-09-27): the previous `useTicker` put a 1 s
+ * `setState(Date.now())` into EVERY component that quoted a price — with 24
+ * to 100 product cards on a listing that was a React re-render of the whole
+ * grid every second, a visible hitch while scrolling on phones. Now a grid
+ * re-renders at 19:00:00 and at 21:00:00, not sixty times a minute. Countdown
+ * digits live in `FlashTimer`/`FlashCountup`, which tick on their own.
+ *
+ * `msLeft`/`progress` on the snapshot are frozen at the last phase change —
+ * anything that needs a live clock reads `useNow()` (see FlashProgress).
  */
-const tickers = new Set<() => void>();
-let tickerId: ReturnType<typeof setInterval> | null = null;
+const OFFLINE_FLASH: FlashState = flashState(flashConfigOf(OFFLINE_PROMOS), 0);
+let phase: FlashState = OFFLINE_FLASH;
+const phaseListeners = new Set<Listener>();
+let phaseTimer: ReturnType<typeof setInterval> | null = null;
 
-const useTicker = (): number | null => {
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    const tick = () => setNow(Date.now());
-    tickers.add(tick);
-    if (typeof setInterval !== "undefined" && tickerId === null) {
-      tickerId = setInterval(() => {
-        for (const fn of tickers) fn();
-      }, 1000);
-    }
-    return () => {
-      tickers.delete(tick);
-      if (tickers.size === 0 && tickerId !== null) {
-        clearInterval(tickerId);
-        tickerId = null;
-      }
-    };
-  }, []);
-  return now;
+const samePhase = (a: FlashState, b: FlashState): boolean =>
+  a.active === b.active && a.endsAtMs === b.endsAtMs && a.nextStartsAtMs === b.nextStartsAtMs;
+
+const syncPhase = (): void => {
+  const next = flashState(flashConfigOf(view), Date.now());
+  if (samePhase(phase, next)) return;
+  phase = next;
+  for (const l of phaseListeners) l();
 };
 
-/** Countdown numbers are wall-clock, so callers re-render themselves. */
+export const getFlashPhase = (): FlashState => phase;
+export const getFlashPhaseServer = (): FlashState => OFFLINE_FLASH;
+
+export const subscribeFlashPhase = (listener: Listener): (() => void) => {
+  phaseListeners.add(listener);
+  if (phaseTimer === null && typeof setInterval !== "undefined") {
+    phaseTimer = setInterval(syncPhase, 1000);
+  }
+  // A component mounting after the timer went idle must not read a stale
+  // window — refresh once, synchronously (notifies only on a real change).
+  syncPhase();
+  return () => {
+    phaseListeners.delete(listener);
+    if (phaseListeners.size === 0 && phaseTimer !== null) {
+      clearInterval(phaseTimer);
+      phaseTimer = null;
+    }
+  };
+};
+
+/**
+ * Promo view + the current flash phase. Re-renders when the backend view
+ * changes or a window opens/closes — never on the clock alone.
+ */
 export function usePromos() {
   const promos = useSyncExternalStore(subscribePromos, getPromoSnapshot, getPromoSnapshotServer);
-  const now = useTicker();
+  const flash = useSyncExternalStore(subscribeFlashPhase, getFlashPhase, getFlashPhaseServer);
   useEffect(() => afterFirstPaint(() => void load()), []);
   const cfg = useMemo(() => flashConfigOf(promos), [promos]);
-  // `null` = first paint: same "nothing is running" the server rendered. The
-  // live view replaces it as soon as the promo store answers.
-  const stateMs = now ?? promos.flash.asOf;
-  const flash = useMemo(() => flashState(cfg, stateMs), [cfg, stateMs]);
   return { promos, cfg, ready: checked, live, flash };
 }
 
@@ -176,9 +197,8 @@ export function useCampaign() {
     getCampaignSnapshot,
     getCampaignSnapshotServer,
   );
-  const now = useTicker();
   useEffect(() => afterFirstPaint(() => void load()), []);
-  return { campaign: snap, now, ready: checked, live };
+  return { campaign: snap, ready: checked, live };
 }
 
 /** Test-only: drop the shared cache. */
@@ -190,4 +210,5 @@ export const __resetPromos = (): void => {
   promise = null;
   if (timer) clearTimeout(timer);
   timer = null;
+  phase = OFFLINE_FLASH;
 };

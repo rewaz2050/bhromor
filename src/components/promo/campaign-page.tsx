@@ -22,7 +22,7 @@ import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { campaignMatchesProduct } from "@/lib/campaign";
 import { FlashCountup, FlashTimer } from "./flash-timer";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import { IconBolt } from "@/components/ui/icons";
 import { Eyebrow } from "@/components/ui/primitives";
 
@@ -243,7 +243,7 @@ export default function CampaignPage() {
           {picks.length > 0 ? (
             <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-3">
               {picks.map((p) => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} sizes={GRID_CARD_SIZES} />
               ))}
             </div>
           ) : (

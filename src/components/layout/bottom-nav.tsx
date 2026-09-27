@@ -50,7 +50,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Quick navigation"
-      className="storefront-bottom-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-ivory-50/95 pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-ivory-50/85 lg:hidden"
+      className="storefront-bottom-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-ivory-50/97 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {[
         { href: "/", label: t("bottomNav.home"), icon: <IconHome className="h-5 w-5" /> },

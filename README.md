@@ -175,6 +175,18 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## Scroll performance pass (2026-09-27)
+
+"Scrolling smooth na." A code audit of everything the storefront did on each scrolled frame, fixed at the source — full table, rules and an on-device checklist in **[docs/scroll-performance.md](docs/scroll-performance.md)**. The short version:
+
+- **Every product card re-rendered once a second.** The promo store's shared ticker sat inside `useFlashPrice`, so a listing of 60 cards did 60 React renders a minute whether or not a flash window existed. The store now tracks a *phase* (window open / closes at / next opens at) and notifies only when it changes; countdown digits and the strip's progress line tick on their own (`FlashProgress` is one CSS transform transition).
+- **The sticky header is paint-only while the page moves.** No React state per frame (progress goes to the gold line's transform through a ref), one bar height per breakpoint, the announcement bar scrolls away as normal flow instead of folding the header, and `data-scrolled` only toggles a shadow/border.
+- **No backdrop blur on phone chrome.** Header, shop filter bar, bottom nav, bag mini-bar, PDP/checkout sticky bars, drawer scrim, per-card badges/buttons/heart — blur removed on touch devices (near-opaque backgrounds), kept on desktop via `pointer-fine:`. `will-change` gone from per-card and header CSS; a stray duplicate `.reveal-pending` rule that re-added a blur filter to every revealing card is deleted.
+- **One photo per card until asked.** Hover-swap / peek photos mount on the first hover, press or focus instead of downloading and decoding with the card; 2-column grids request 48vw images instead of the rails' 72vw.
+- **Native scrolling everywhere.** The `lenis` wheel hijack is removed (desktop scrolling no longer depends on the main thread); `<html data-scroll-behavior="smooth">` tells Next 16 to jump, not glide, on route changes; styled scrollbars are desktop-only; the footer uses `content-visibility: auto`.
+
+Nothing was measured on a device from the sandbox — the doc ends with what to feel for on a phone. Tests: `src/lib/__tests__/use-promos-phase.test.tsx`, `src/components/layout/__tests__/header-scroll.test.tsx`, `src/components/promo/__tests__/flash-progress.test.tsx`, additions to `product-card.test.tsx`.
+
 ## UX plan R11 — the plan's tail, closed (2026-09-27)
 
 Round 11 of `docs/ux-sales-plan.md` — every item that was still 🔴/🟠/🟢

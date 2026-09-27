@@ -45,7 +45,7 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="bg-forest-950 text-ivory-100">
+    <footer className="below-fold-block bg-forest-950 text-ivory-100">
       <div className="border-b border-white/15">
           <div className="mx-auto grid max-w-7xl items-center gap-7 px-6 py-12 sm:px-8 lg:grid-cols-2 lg:gap-16 lg:py-14">
             <div>

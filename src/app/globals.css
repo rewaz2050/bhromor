@@ -53,39 +53,38 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Lenis smooth scrolling — when active, disable native smooth to avoid double-ease */
-html.lenis,
-html.lenis body {
-  height: auto;
-}
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
+/* Scrolling is native everywhere (scroll audit 2026-09-27). The lenis
+   wheel-hijack that used to run on desktop animated every wheel tick from a
+   requestAnimationFrame loop, so any main-thread work (a re-render, an image
+   decode) showed up as a stutter and the 1.1 s ease read as lag. The
+   browser's own compositor scrolling cannot be blocked by the page.
+   `scroll-behavior: smooth` above is for in-page anchors only — the root
+   layout's `data-scroll-behavior="smooth"` tells Next 16 to jump, not
+   glide, to the top on route changes. */
 
-/* Refined scrollbars — thin, quiet, matches the brand */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--color-line) 85%, var(--color-forest-300)) transparent;
-}
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-*::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-line) 88%, var(--color-forest-200));
-  border-radius: 999px;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--color-forest-200);
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
+/* Refined scrollbars — thin, quiet, matches the brand. Desktop only: phones
+   have overlay scrollbars that the compositor draws for free, and a styled
+   `::-webkit-scrollbar` turns them into page-painted ones (scroll audit
+   2026-09-27). */
+@media (hover: hover) and (pointer: fine) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-line) 85%, var(--color-forest-300)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--color-line) 88%, var(--color-forest-200));
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-forest-200);
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 body {
@@ -393,7 +392,6 @@ body {
   box-shadow: var(--shadow-header);
   /* Entrance animation – runs once, feels premium without being flashy */
   animation: header-enter 640ms var(--ease-refined) both;
-  will-change: transform;
   transform: translateZ(0);
 }
 /* Menubar (2026-09-26) — the primary nav reads as a wayfinding strip, not a
@@ -711,16 +709,18 @@ body {
   border-bottom: 1px solid var(--color-line);
   padding-bottom: 1.15rem;
 }
+/* No `will-change`/`backdrop-filter` on per-card elements (scroll audit
+   2026-09-27): a listing has 24–100 cards, and each of those was a permanent
+   compositor layer plus a live blur — GPU memory and per-frame work on the
+   phones that struggle most. Hover transitions promote on demand. */
 .product-image-primary {
   transition: transform var(--motion-editorial) var(--ease-refined);
-  will-change: transform;
 }
 .product-image-secondary {
   transition: opacity var(--motion-editorial) var(--ease-refined);
 }
 .product-heart {
-  background: rgb(255 253 247 / 88%);
-  backdrop-filter: blur(8px);
+  background: rgb(255 253 247 / 94%);
 }
 .product-heart:disabled {
   opacity: 0.45;
@@ -750,7 +750,8 @@ body {
 }
 .storefront-bottom-nav {
   box-shadow: 0 -4px 24px rgb(20 41 31 / 5%);
-  backdrop-filter: blur(16px) saturate(1.2);
+  /* Phone-only fixed bar: no backdrop blur — it re-blurred the page under
+     it on every scrolled frame (scroll audit 2026-09-27). */
 }
 /* Thumb bar tabs (2026-09-26): the current tab wears a soft pill behind
    its icon (the Material 3 convention people already know from their phone)
@@ -1021,15 +1022,14 @@ body {
    is scoped so the admin surface is untouched, and every transition is
    neutralised by the reduced-motion block above. */
 
-/* Sticky header condenses once the page moves, so browsing stays calm and
-   the content keeps the width. */
+/* Sticky header — paint-only while the page scrolls (scroll audit
+   2026-09-27): one height, no `will-change`, the scrolled state changes a
+   shadow and a border and nothing that lays out. */
 .storefront-header {
   transition:
     box-shadow var(--motion-standard) var(--ease-refined),
-    background-color var(--motion-standard) linear,
     border-color var(--motion-standard) linear;
   border-bottom: 1px solid transparent;
-  will-change: box-shadow, background-color;
 }
 .storefront-header[data-scrolled="true"] {
   box-shadow: var(--shadow-header-scrolled);
@@ -1038,44 +1038,9 @@ body {
 .storefront-header[data-scrolled="false"] {
   box-shadow: var(--shadow-header);
 }
-.announcement-shell {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition:
-    grid-template-rows 420ms var(--ease-refined),
-    opacity 320ms var(--ease-refined),
-    transform 420ms var(--ease-refined);
-  will-change: grid-template-rows, opacity;
-}
-.announcement-shell > * {
-  min-height: 0;
-  overflow: hidden;
-}
-.storefront-header[data-scrolled="true"] .announcement-shell {
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transform: translateY(-4px);
-}
 .storefront-header .header-bar {
-  transition:
-    height 420ms var(--ease-refined),
-    background-color 360ms var(--ease-refined),
-    backdrop-filter 360ms linear,
-    box-shadow 360ms linear;
-  will-change: height, background-color;
+  transition: background-color 360ms var(--ease-refined);
   position: relative;
-}
-.storefront-header .header-bar::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgb(255 253 247 / 0) 0%, rgb(255 253 247 / 0) 100%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 360ms linear;
-}
-.storefront-header[data-scrolled="true"] .header-bar::after {
-  opacity: 1;
 }
 .storefront-header .brand-lockup {
   transition: transform var(--motion-standard) var(--ease-refined);
@@ -1085,16 +1050,16 @@ body {
 }
 .storefront-header .brand-lockup img {
   transition:
-    height var(--motion-standard) var(--ease-refined),
     transform var(--motion-standard) var(--ease-refined),
     filter var(--motion-standard) linear;
-  will-change: height, transform;
 }
 .storefront-header .brand-lockup:hover img {
   transform: scale(1.03) rotate(-0.5deg);
 }
 
-/* Header scroll progress — thin gold line that grows with scroll */
+/* Header scroll progress — thin gold line that grows with scroll. Its
+   transform is written from a requestAnimationFrame (header.tsx); the one
+   `will-change` here keeps that write off the header's own paint. */
 .header-progress {
   position: absolute;
   bottom: 0;
@@ -1103,9 +1068,10 @@ body {
   height: 1.5px;
   background: linear-gradient(90deg, var(--color-gold-300), var(--color-gold-600));
   transform-origin: left;
-  transform: scaleX(var(--scroll-progress, 0));
+  transform: scaleX(0);
   opacity: 0;
   transition: opacity 240ms linear;
+  will-change: transform;
 }
 .storefront-header[data-scrolled="true"] .header-progress {
   opacity: 1;
@@ -1153,7 +1119,6 @@ body {
 }
 .product-card-badge {
   border-radius: 2px;
-  backdrop-filter: blur(6px);
   letter-spacing: 0.16em;
 }
 .product-card-title a {
@@ -1327,22 +1292,19 @@ body {
   }
 }
 
-/* Smooth reveal utility — used by JS Reveal component */
-.reveal-pending {
-  opacity: 0;
-  transform: translateY(18px) scale(0.985);
-  filter: blur(3px);
-  will-change: transform, opacity, filter;
+/* Long-page render budget (scroll audit 2026-09-27): the footer is a tall
+   block that is off-screen for the whole browse — `content-visibility: auto`
+   lets the browser skip its layout and paint until it is near the viewport,
+   with a remembered size so the scrollbar does not jump. */
+.below-fold-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
 }
-.reveal-ready {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  filter: blur(0);
-  transition:
-    opacity 640ms var(--ease-refined),
-    transform 640ms var(--ease-refined),
-    filter 640ms var(--ease-refined);
-}
+
+/* <Reveal> styles live in the motion block above (`.reveal-pending` /
+   `.reveal-shown`, compositor-only). A later duplicate used to re-add
+   `filter: blur(3px)` + `will-change: filter` to every revealing card —
+   removed in the scroll audit 2026-09-27. */
 
 /* Subtle page-wide fade-in on load */
 @keyframes page-fade {

@@ -256,7 +256,7 @@ export function StickyOrderBar({
 }) {
   return (
     <div
-      className="sticky-buy-bar border-t border-line bg-paper/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-paper/90"
+      className="sticky-buy-bar border-t border-line bg-paper/97 px-4 py-3"
       data-visible={visible}
       data-testid="sticky-order-bar"
       inert={!visible}

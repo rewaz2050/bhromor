@@ -134,7 +134,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
           id={bottom ? "bottom-mobile-menu" : "mobile-menu"}
           className="flex min-h-full flex-col"
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line/70 bg-ivory-50/90 px-4 py-3 backdrop-blur-xl supports-[backdrop-filter]:bg-ivory-50/75">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line/70 bg-ivory-50/97 px-4 py-3">
             <Link href="/" className="flex items-center gap-2.5" onClick={closeMenu}>
               <LogoMark className="h-8 w-auto" />
               <span

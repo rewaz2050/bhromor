@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import type { Category, DeliveryZone, Product, Shop } from "@/lib/catalog";
 import { shopServesZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
@@ -142,7 +142,7 @@ export default function ShopProducts({
 
       <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-10 sm:gap-x-6 xl:grid-cols-3" data-list="shop-shelf">
         {visible.map((product) => (
-          <ProductCard key={product.id} product={product} />
+          <ProductCard key={product.id} product={product} sizes={GRID_CARD_SIZES} />
         ))}
       </div>
     </div>

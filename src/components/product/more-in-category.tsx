@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -68,7 +68,7 @@ export default function MoreInCategory({
       </div>
       <div className="mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
         {items.map((p) => (
-          <ProductCard key={p.id} product={p} />
+          <ProductCard key={p.id} product={p} sizes={GRID_CARD_SIZES} />
         ))}
       </div>
       {hiddenCount > 0 && (

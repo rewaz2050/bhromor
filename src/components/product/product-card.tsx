@@ -44,13 +44,28 @@ export function editorialProductName(product: Product): string {
   return name;
 }
 
+/**
+ * `sizes` for a card in a two-up phone grid (shop, wishlist, offers…). The
+ * default below is tuned for the home rails, whose cards are 62–68vw wide;
+ * a 2-column grid card is under half the screen, and asking the CDN for the
+ * rail size there meant decoding 2.25× the pixels per card while scrolling
+ * the one page people scroll most (scroll audit 2026-09-27).
+ */
+export const GRID_CARD_SIZES =
+  "(min-width: 1280px) 300px, (min-width: 1024px) 33vw, 48vw";
+const RAIL_CARD_SIZES =
+  "(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw";
+
 export default function ProductCard({
   product,
   backInStock = false,
+  sizes = RAIL_CARD_SIZES,
 }: {
   product: Product;
   /** UX plan §8 (R11) — the wishlist knows this device last saw it sold out. */
   backInStock?: boolean;
+  /** Responsive `sizes` for the photos — see GRID_CARD_SIZES. */
+  sizes?: string;
 }) {
   const { t, lang } = useLanguage();
   /* UX plan §8 — the saved body (Size Finder) badges the card: "Your size: L".
@@ -97,6 +112,16 @@ export default function ProductCard({
   const peekImages = cardPeekImages(product);
   const [peekIndex, setPeekIndex] = useState(0);
   const [holding, setHolding] = useState(false);
+  /* Scroll audit 2026-09-27: the extra photos used to mount with the card
+     (opacity 0), so a listing downloaded and decoded every photo of every
+     card as it scrolled — 3–5× the bytes and decodes for images nobody had
+     asked to see. They now mount on the first hover/press/focus ("armed")
+     and stay mounted, so a hover swap or a hold peek is still instant after
+     the first one. */
+  const [armed, setArmed] = useState(false);
+  const arm = () => {
+    if (!armed && peekImages.length > 1) setArmed(true);
+  };
   const holdTimer = useRef<number | null>(null);
   const rotorTimer = useRef<number | null>(null);
   const swallowedClick = useRef(false);
@@ -112,6 +137,7 @@ export default function ProductCard({
 
   const beginHold = () => {
     if (peekImages.length < 2 || holding || holdTimer.current !== null) return;
+    setArmed(true);
     setHolding(true);
     holdTimer.current = window.setTimeout(() => {
       holdTimer.current = null;
@@ -162,6 +188,8 @@ export default function ProductCard({
           aria-label={`View ${product.name}`}
           data-testid="card-peek"
           data-peeking={peekIndex > 0 || undefined}
+          onPointerEnter={arm}
+          onFocus={arm}
           onPointerDown={beginHold}
           onPointerUp={endPeek}
           onPointerCancel={endPeek}
@@ -184,16 +212,16 @@ export default function ProductCard({
             src={cover.src}
             alt={cover.alt || product.name}
             fill
-            sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+            sizes={sizes}
             className="product-image-primary object-cover"
           />
-          {peekImages.length > 1 && (
+          {armed && peekImages.length > 1 && (
             <Image
               src={peekImages[1]!.src}
               alt=""
               aria-hidden="true"
               fill
-              sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+              sizes={sizes}
               data-peek-slide={1}
               data-active={peekIndex === 1}
               className={`product-image-secondary absolute inset-0 h-full w-full object-cover ${
@@ -201,7 +229,7 @@ export default function ProductCard({
               }`}
             />
           )}
-          {peekImages.slice(2).map((slide, offset) => {
+          {armed && peekImages.slice(2).map((slide, offset) => {
             const index = offset + 2;
             return (
               <Image
@@ -210,7 +238,7 @@ export default function ProductCard({
                 alt=""
                 aria-hidden="true"
                 fill
-                sizes="(min-width: 1280px) 300px, (min-width: 1024px) 25vw, (min-width: 640px) 50vw, 72vw"
+                sizes={sizes}
                 data-peek-slide={index}
                 data-active={peekIndex === index}
                 className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 data-[active=true]:opacity-100"
@@ -227,7 +255,7 @@ export default function ProductCard({
                   key={slide.src}
                   data-peek-dot={index}
                   data-active={peekIndex === index}
-                  className={`h-1 w-4 rounded-full backdrop-blur-[2px] transition-colors duration-200 ${
+                  className={`h-1 w-4 rounded-full transition-colors duration-200 ${
                     peekIndex === index ? "bg-ivory-50" : "bg-ivory-50/45"
                   }`}
                 />
@@ -239,13 +267,13 @@ export default function ProductCard({
           {hasProductVideo(product) && (
             <span
               data-testid="video-badge"
-              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-forest-950/80 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-ivory-50 backdrop-blur-[2px]"
+              className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-forest-950/80 px-2.5 py-1 text-[0.58rem] font-semibold uppercase tracking-[0.16em] text-ivory-50"
             >
               <span aria-hidden="true">▶</span> {t("product.video")}
             </span>
           )}
           {!product.inStock && (
-            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100 backdrop-blur-[2px]">
+            <span className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-forest-950/85 py-2.5 text-[0.6rem] font-semibold uppercase tracking-[0.28em] text-ivory-100">
               {t("product.soldOut")}
             </span>
           )}
@@ -281,13 +309,13 @@ export default function ProductCard({
               type="button"
               onClick={() => setQuickOpen(true)}
               aria-label={`Quick add ${product.name} to cart`}
-              className="product-quick-add tap-press flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 backdrop-blur-sm hover:bg-forest-800"
+              className="product-quick-add tap-press flex min-h-11 items-center justify-center gap-2 bg-forest-950/94 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.12em] text-ivory-50 hover:bg-forest-800"
             >
               <IconPlus className="h-3.5 w-3.5" /> {t("product.quickAdd")}
             </button>
             <Link
               href={`/product/${product.slug}`}
-              className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 backdrop-blur-sm hover:bg-gold-200 sm:flex"
+              className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 hover:bg-gold-200 sm:flex"
               aria-label={`${t("product.viewDetails")} ${product.name}`}
             >
               {t("product.details")} <IconArrowRight className="h-3.5 w-3.5" />
@@ -300,7 +328,7 @@ export default function ProductCard({
           aria-live="polite"
           className={
             notice
-              ? "absolute inset-x-2 top-14 bg-forest-950/95 px-3 py-2 text-center text-xs text-white backdrop-blur-sm"
+              ? "absolute inset-x-2 top-14 bg-forest-950/95 px-3 py-2 text-center text-xs text-white"
               : "sr-only"
           }
         >

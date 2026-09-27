@@ -5,7 +5,7 @@ import InfoRail from "@/components/info/info-rail";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import ProductRail from "@/components/home/product-rail";
 import ShareLink from "@/components/ui/share-link";
 import { IconHeart, IconTrash } from "@/components/ui/icons";
@@ -211,7 +211,7 @@ export default function WishlistView() {
       ) : null}
       <div className="grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-3 xl:grid-cols-4" data-list="wishlist">
         {saved.map((p) => (
-          <ProductCard key={p.id} product={p} backInStock={returned.includes(p.id)} />
+          <ProductCard key={p.id} product={p} backInStock={returned.includes(p.id)} sizes={GRID_CARD_SIZES} />
         ))}
       </div>
       {/* UX plan §8 — a suggestion rail under the list: complements first,

@@ -141,7 +141,7 @@ export default function ProductGallery({ product }: { product: Product }) {
                   : undefined
               }
             />
-            <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-forest-950/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-ivory-50 backdrop-blur-[2px] transition-opacity group-hover:opacity-0">
+            <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-forest-950/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-ivory-50 transition-opacity group-hover:opacity-0">
               <IconSearch className="h-3 w-3" /> Zoom
             </span>
           </button>

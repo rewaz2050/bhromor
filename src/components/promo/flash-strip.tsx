@@ -12,7 +12,7 @@
 import Link from "next/link";
 import { usePromos } from "@/lib/use-promos";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { FlashCountup, FlashTimer } from "./flash-timer";
+import { FlashCountup, FlashProgress, FlashTimer } from "./flash-timer";
 import { IconArrowRight, IconBolt } from "@/components/ui/icons";
 
 export default function FlashStrip() {
@@ -64,11 +64,7 @@ export default function FlashStrip() {
         </span>
       </div>
       {flash.active && (
-        <span
-          aria-hidden="true"
-          className="block h-0.5 bg-gold-400/80 transition-[width] duration-1000 ease-linear"
-          style={{ width: `${Math.round(flash.progress * 100)}%` }}
-        />
+        <FlashProgress endsAtMs={flash.endsAtMs} msLeftAt={flash.msLeft} progressAt={flash.progress} />
       )}
     </div>
   );

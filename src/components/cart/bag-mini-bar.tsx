@@ -39,7 +39,7 @@ export default function BagMiniBar() {
   return (
     <div
       data-testid="bag-mini-bar"
-      className="bag-mini-bar fixed inset-x-3 z-30 flex items-stretch gap-2 rounded-2xl bg-forest-950/95 p-1.5 text-ivory-50 shadow-lg ring-1 ring-forest-800 backdrop-blur supports-[backdrop-filter]:bg-forest-950/90 lg:hidden"
+      className="bag-mini-bar fixed inset-x-3 z-30 flex items-stretch gap-2 rounded-2xl bg-forest-950/97 p-1.5 text-ivory-50 shadow-lg ring-1 ring-forest-800 lg:hidden"
       style={{ bottom: "calc(4.25rem + env(safe-area-inset-bottom))" }}
     >
       <button

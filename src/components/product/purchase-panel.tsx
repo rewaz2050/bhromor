@@ -760,7 +760,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
 
       {/* Compact buy bar for phones — appears once the main CTA scrolls away */}
       <div
-        className="sticky-buy-bar border-t border-line bg-paper/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-paper/90"
+        className="sticky-buy-bar border-t border-line bg-paper/97 px-4 py-3"
         data-visible={stickyVisible}
         inert={!stickyVisible}
       >

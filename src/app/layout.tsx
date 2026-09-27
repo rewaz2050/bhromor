@@ -4,7 +4,6 @@ import "@fontsource-variable/playfair-display";
 // Noto Serif Bengali lives in (site)/layout: only the storefront uses
 // font-bengali — the rider/vendor/admin apps must not pay for 3 weights.
 import "./globals.css";
-import SmoothScroll from "@/components/ui/smooth-scroll";
 import AnalyticsScripts from "@/components/analytics/analytics-scripts";
 import AnalyticsRouteTracker from "@/components/analytics/analytics-route-tracker";
 import { siteBaseUrl } from "@/lib/site-url";
@@ -44,7 +43,17 @@ export default function RootLayout({
     // `lang` is corrected before first paint by the storefront's inline
     // script (src/app/(site)/layout.tsx) so Bangla typography rules apply
     // from the very first frame; suppress the attribute-mismatch warning.
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+    // data-scroll-behavior="smooth": globals.css sets `scroll-behavior:
+    // smooth` on <html> for in-page anchors; Next 16 only suppresses that
+    // during route transitions when this attribute is present — without it
+    // every product tap from the bottom of a listing glided the new page up
+    // from wherever the old one was (scroll audit 2026-09-27).
+    <html
+      lang="en"
+      className="h-full antialiased"
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <head>
         {/* Media lives on other hosts — warm those connections before the
             catalog images are discovered, especially on mobile networks. */}
@@ -53,7 +62,6 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://img.youtube.com" />
       </head>
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">
-        <SmoothScroll />
         {children}
         {/* Meta Pixel / GA4 — nothing is loaded unless the ids are set. */}
         <AnalyticsScripts />

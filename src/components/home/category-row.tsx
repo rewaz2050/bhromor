@@ -96,7 +96,7 @@ export default function CategoryRow({
                         aria-hidden="true"
                         className="absolute inset-0 bg-gradient-to-t from-forest-950/25 via-transparent to-transparent"
                       />
-                      <span className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-50/92 text-forest-900 backdrop-blur-sm transition-colors group-hover:bg-forest-900 group-hover:text-ivory-50">
+                      <span className="absolute bottom-2 right-2 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-50/95 text-forest-900 transition-colors group-hover:bg-forest-900 group-hover:text-ivory-50">
                         <IconArrowRight className="h-3.5 w-3.5" />
                       </span>
                     </span>

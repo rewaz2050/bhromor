@@ -24,7 +24,7 @@ import { filterProductsForZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
 import { formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
-import ProductCard from "@/components/product/product-card";
+import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
 import GridInterrupt, { GRID_INTERRUPT_EVERY } from "@/components/shop/grid-interrupt";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import Drawer from "@/components/ui/drawer";
@@ -710,7 +710,7 @@ export default function ShopBrowser({
           sorting or opening the filters never means scrolling back up. */}
       <div
         data-testid="shop-sticky-bar"
-        className="sticky top-14 z-20 -mx-4 mt-4 flex items-center gap-2 border-b border-line/70 bg-ivory-50/92 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-ivory-50/80 sm:top-[4.1rem] sm:gap-3 lg:mx-0 lg:px-0"
+        className="sticky top-14 z-20 -mx-4 mt-4 flex items-center gap-2 border-b border-line/70 bg-ivory-50/96 px-4 py-2 pointer-fine:bg-ivory-50/85 pointer-fine:backdrop-blur sm:top-[4.1rem] sm:gap-3 lg:mx-0 lg:px-0"
       >
         <button
           type="button"
@@ -912,7 +912,7 @@ export default function ShopBrowser({
               <ListImpression list="shop-grid" count={visible.length} />
               {shown.map((product, index) => (
                 <Fragment key={product.id}>
-                  <ProductCard product={product} />
+                  <ProductCard product={product} sizes={GRID_CARD_SIZES} />
                   {/* UX plan §4 (R11) — one editorial tile after every eighth card */}
                   {(index + 1) % GRID_INTERRUPT_EVERY === 0 && index + 1 < shown.length ? (
                     <GridInterrupt slot={(index + 1) / GRID_INTERRUPT_EVERY - 1} />

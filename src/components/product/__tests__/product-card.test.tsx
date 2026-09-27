@@ -225,6 +225,41 @@ describe("Editorial product cards", () => {
   });
 });
 
+describe("Card images — one photo per card until asked (scroll audit 2026-09-27)", () => {
+  it("mounts only the cover; the other photos arrive on the first hover/press and then stay", () => {
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    const media = container.querySelector(".product-card-media")!;
+    expect(product.media.filter((m) => (m.kind ?? "image") === "image").length).toBeGreaterThan(1);
+    expect(media.querySelectorAll("img").length).toBe(1);
+    expect(container.querySelector("[data-peek-slide]")).toBeNull();
+
+    // Pointer enters (a mouse hover, or the start of a touch) — arm the swap.
+    fireEvent.pointerEnter(screen.getByTestId("card-peek"));
+    const peekSlides = container.querySelectorAll("[data-peek-slide]");
+    expect(peekSlides.length).toBeGreaterThanOrEqual(1);
+    expect(media.querySelectorAll("img").length).toBe(1 + peekSlides.length);
+    expect(peekSlides[0]).toHaveAttribute("data-active", "false");
+
+    // Leaving does not unmount them again (a second hover must not reload).
+    fireEvent.pointerLeave(screen.getByTestId("card-peek"));
+    expect(container.querySelectorAll("[data-peek-slide]").length).toBe(peekSlides.length);
+  });
+
+  it("keyboard focus arms the swap too", () => {
+    const { container } = render(
+      <CartProvider>
+        <ProductCard product={product} />
+      </CartProvider>,
+    );
+    fireEvent.focus(screen.getByTestId("card-peek"));
+    expect(container.querySelector('[data-peek-slide="1"]')).not.toBeNull();
+  });
+});
+
 describe("Press-and-hold peek", () => {
   afterEach(() => vi.useRealTimers());
 
