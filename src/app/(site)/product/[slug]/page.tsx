@@ -1,6 +1,8 @@
 import { completeTheLook } from "@/lib/merchandising";
 import { moreInCategory } from "@/lib/home-shelves";
 import MoreInCategory from "@/components/product/more-in-category";
+import AlsoBoughtRail from "@/components/product/also-bought-rail";
+import { alsoBoughtProducts } from "@/lib/db/also-bought";
 import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
 import ProductViewTracker from "@/components/analytics/product-view-tracker";
 import type { Metadata } from "next";
@@ -86,6 +88,8 @@ export default async function ProductPage({ params }: PageProps) {
   if (!product) notFound();
 
   const complements = completeTheLook(product, products);
+  // UX plan §4 (R11) — real baskets: what left together with this piece.
+  const alsoBoughtItems = await alsoBoughtProducts(product.id, products);
   // The very last section of the page is the SAME shelf the shopper is on:
   // siblings from this piece's category only (in stock first, never a piece
   // already shown in "complete the look"), with a scoped "See all N in
@@ -227,6 +231,9 @@ export default async function ProductPage({ params }: PageProps) {
           </div>
         </section>
       )}
+
+      {/* UX plan §4 (R11) — co-purchases from real orders; absent until they exist. */}
+      <AlsoBoughtRail items={alsoBoughtItems} />
 
       <div className="mt-10">
         <FlashRail excludeId={product.id} limit={4} />

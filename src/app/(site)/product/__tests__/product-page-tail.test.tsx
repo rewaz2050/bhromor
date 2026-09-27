@@ -34,6 +34,11 @@ vi.mock("@/lib/db/storefront", () => ({
     products.find((p) => p.slug === slug) ?? null,
 }));
 
+// R11 co-purchase rail — a server-only DB read; no baskets in this test.
+vi.mock("@/lib/db/also-bought", () => ({
+  alsoBoughtProducts: async () => [],
+}));
+
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NEXT_NOT_FOUND");
