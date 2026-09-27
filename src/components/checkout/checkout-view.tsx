@@ -1456,6 +1456,7 @@ export default function CheckoutView() {
       fail({
         bn: "সার্ভারে পৌঁছানো যাচ্ছে না — ইন্টারনেট চেক করে আবার চেষ্টা করুন।",
         en: "Could not reach the shop — check your connection and try again.",
+        retryable: true,
       });
       return;
     }
@@ -1559,8 +1560,12 @@ export default function CheckoutView() {
     const firstMessage = data.errors?.[0]?.message || data.error;
     const friendly = friendlyOrderError(firstMessage);
     const extra = (data.errors?.length ?? 0) - 1;
+    // A 5xx with nothing to fix is a "try again", not a form problem.
+    const retryable = res.status >= 500 && Object.keys(fieldMap).length === 0;
     fail(
-      extra > 0 ? { ...friendly, bn: `${friendly.bn} (আরও ${extra}টি ঘর ঠিক করতে হবে)` } : friendly,
+      extra > 0
+        ? { ...friendly, bn: `${friendly.bn} (আরও ${extra}টি ঘর ঠিক করতে হবে)`, retryable }
+        : { ...friendly, retryable },
       Object.keys(fieldMap).length > 0 ? fieldMap : undefined,
     );
   };
@@ -2670,6 +2675,12 @@ export default function CheckoutView() {
                 title={t("checkout.errorTitle")}
                 fixLabel={t("checkout.fixFields")}
                 onFix={firstBadField ? () => jumpToField(firstBadField) : null}
+                retryLabel={t("checkout.retryOrder")}
+                onRetry={
+                  orderError?.retryable && !form.submitting
+                    ? () => ctaRef.current?.click()
+                    : null
+                }
               />
             </div>
 

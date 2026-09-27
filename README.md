@@ -211,6 +211,11 @@ and did not need data the shop does not have. **No migration**; code only.
   the summary), is searchable (`prosanti-paras` datalist from the live zone
   table + the Sadar list) and — site-wide — `text-sm/xs` inputs render at
   16 px on phones so iOS Safari stops zooming on focus.
+- **R11l — one-tap retry** (§6): when the order request dies on the network
+  or the server answers 5xx with nothing to fix, the error banner grows an
+  "আবার চেষ্টা করুন — একই অর্ডার" button (`order-retry`) that re-submits the
+  same form — nothing to re-type. Field errors keep the "fix fields" path
+  (`order-fix-fields`); `FriendlyError.retryable` decides which.
 - **R11g — first screen + listing** (§3, §4): a compact one-field
   "আপনার পাড়ায় ডেলিভারি হয়?" under the quick chips, only until the device
   knows its zone; the install nudge also appears on a first visit once
@@ -239,7 +244,7 @@ Tests: `src/lib/__tests__/{quick-chips,ends-at,install-prompt}.test.ts`,
 `src/lib/db/__tests__/also-bought.test.ts`,
 `src/components/cart/__tests__/save-for-later.test.tsx`,
 `src/components/product/__tests__/{whatsapp-order,also-bought-rail}.test.tsx`,
-`src/components/checkout/__tests__/{checkout-coupon-carry,checkout-area-quote}.test.tsx`,
+`src/components/checkout/__tests__/{checkout-coupon-carry,checkout-area-quote,checkout-retry}.test.tsx`,
 `src/components/promo/__tests__/flash-ends-at.test.tsx`,
 `src/components/home/__tests__/{promo-code-card,home-delivery-check}.test.tsx`,
 `src/components/shop/__tests__/{shop-grid-pages,shop-products,shop-browser}.test.tsx`,
