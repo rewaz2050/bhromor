@@ -3,9 +3,14 @@
  * returns the single best redeemable coupon for the cart ("auto-apply best
  * offer"). Real: prices against the live coupon table; an unconfigured or
  * empty backend answers 503. Returns { none: true } when nothing applies.
+ *
+ * Signed-in customers only (UX plan §5/§6, owner decision 2026-09-27):
+ * the automatic best coupon is an account perk — a guest still types a
+ * code by hand and gets it validated the usual way. 401 without a session.
  */
 
 import { bestCoupon } from "@/lib/coupons";
+import { resolveCustomer } from "@/lib/customer-auth";
 import { loadOrderSnapshot } from "@/lib/db/orders";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
@@ -19,6 +24,10 @@ export async function POST(request: Request) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));
     return res;
+  }
+  const customer = await resolveCustomer(request).catch(() => null);
+  if (!customer) {
+    return apiError("Sign in to have the best coupon applied automatically.", 401);
   }
   let body: unknown;
   try {

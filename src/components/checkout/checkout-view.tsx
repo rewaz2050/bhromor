@@ -23,7 +23,7 @@ import {
   normalizeRefCode,
   referralLink,
 } from "@/lib/referral";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
@@ -506,6 +506,13 @@ export default function CheckoutView() {
   const [showMap, setShowMap] = useState(false);
   const [addrTag, setAddrTag] = useState<AddressTag>("home");
   const [bestLoading, setBestLoading] = useState(false);
+  /* UX plan §5 (R9) — coupon auto-apply is an ACCOUNT perk (owner decision
+     2026-09-27): a signed-in customer gets the best redeemable code placed
+     by itself; a guest sees why signing in pays. `autoCoupon` is the state
+     of that search; removing an auto-placed code stops it for this visit. */
+  const [autoCoupon, setAutoCoupon] = useState<"idle" | "searching" | "applied" | "none" | "error">("idle");
+  const couponDismissedRef = useRef(false);
+  const autoTriedKeyRef = useRef<string | null>(null);
 
   /* P1 #16 — a repeat customer's last address (name, phone, para, house,
      pin) fills the form by itself; the "saved addresses" sheet stays for
@@ -657,6 +664,65 @@ export default function CheckoutView() {
     () => (couponCheck.code ? { code: couponCheck.code } : null),
     [couponCheck.code],
   );
+
+  /**
+   * The single best redeemable coupon for this cart, server-priced. Signed-in
+   * only (the API answers 401 otherwise). `auto` runs quietly on its own;
+   * `manual` is the retry link after a failed search.
+   */
+  const findBestCoupon = useCallback(
+    async (source: "auto" | "manual") => {
+      setBestLoading(true);
+      setAutoCoupon("searching");
+      if (source === "manual") setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
+      try {
+        const res = await fetch("/api/coupons/best", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: detail.map((l) => ({ productId: l.product.id, qty: l.qty })),
+            zoneId: derivedZoneId,
+          }),
+        });
+        const data = (await res.json().catch(() => null)) as {
+          code?: string;
+          none?: boolean;
+          freeDelivery?: boolean;
+          description?: string;
+        } | null;
+        if (res.ok && data?.code) {
+          setAppliedCode(data.code);
+          setAutoCoupon("applied");
+        } else if (res.ok && data?.none) {
+          setAutoCoupon("none");
+          if (source === "manual") setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
+        } else {
+          setAutoCoupon("error");
+          if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+        }
+      } catch {
+        setAutoCoupon("error");
+        if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+      } finally {
+        setBestLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- detail is captured via cartKey by the caller
+    [derivedZoneId, cartKey],
+  );
+
+  /* Auto-apply: once per cart shape, signed-in, nothing applied, not dismissed. */
+  useEffect(() => {
+    if (!ready || !cardChecked || !cardCustomer) return;
+    if (detail.length === 0 || appliedCode || couponDismissedRef.current) return;
+    if (autoTriedKeyRef.current === cartKey) return;
+    const timer = window.setTimeout(() => {
+      autoTriedKeyRef.current = cartKey;
+      void findBestCoupon("auto");
+    }, 500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cartKey stands for detail
+  }, [ready, cardChecked, cardCustomer, appliedCode, cartKey, findBestCoupon]);
 
   /** The one automatic offer this bag earns (flash drop or a complete set). */
   const bagOffer = useBagOffer(detail);
@@ -1105,6 +1171,9 @@ export default function CheckoutView() {
   };
 
   const removeCoupon = () => {
+    // A code the shopper takes off stays off — no re-placing it behind them.
+    couponDismissedRef.current = true;
+    setAutoCoupon("idle");
     setAppliedCode("");
     setCouponCheck({ code: null, discount: 0, problem: null });
     setCouponFreeDelivery(false);
@@ -1112,36 +1181,6 @@ export default function CheckoutView() {
     update("couponCode", "");
   };
 
-  /** Auto-apply the single best redeemable coupon for this cart (server-priced). */
-  const applyBestCoupon = async () => {
-    if (bestLoading || activeCoupon) return;
-    setBestLoading(true);
-    setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
-    try {
-      const res = await fetch("/api/coupons/best", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: detail.map((l) => ({ productId: l.product.id, qty: l.qty })),
-          zoneId: derivedZoneId,
-        }),
-      });
-      const data = (await res.json().catch(() => null)) as {
-        code?: string;
-        freeDelivery?: boolean;
-        description?: string;
-      } | null;
-      if (res.ok && data?.code) {
-        setAppliedCode(data.code);
-      } else {
-        setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
-      }
-    } catch {
-      setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
-    } finally {
-      setBestLoading(false);
-    }
-  };
 
   /** Full address string — house/road + para/upazila/district auto-append. */
   const buildFullAddress = () => {
@@ -2311,6 +2350,14 @@ export default function CheckoutView() {
                       প্রয়োগ হয়েছে ✓
                       {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? " · ফ্রি ডেলিভারি" : ""}
                     </span>
+                    {autoCoupon === "applied" && (
+                      <span
+                        data-testid="coupon-auto"
+                        className="rounded-full bg-gold-100 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-gold-800"
+                      >
+                        {t("checkout.couponAutoChip")}
+                      </span>
+                    )}
                   </span>
                   <button
                     type="button"
@@ -2348,15 +2395,42 @@ export default function CheckoutView() {
                       {t("checkout.apply")}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={applyBestCoupon}
-                    disabled={bestLoading}
-                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
-                  >
-                    <IconSparkles className="h-3.5 w-3.5" />
-                    {bestLoading ? "সেরা অফার খুঁজছে…" : "সেরা অফার অটো-অ্যাপ্লাই করুন"}
-                  </button>
+                  {/* UX plan §5 (R9) — the best coupon places itself for a
+                      signed-in customer; a guest is told exactly why to sign in. */}
+                  {cardChecked && !cardCustomer && (
+                    <p data-testid="coupon-login-nudge" className="mt-2 text-xs leading-5 text-ink-soft">
+                      <IconSparkles className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-gold-600" />
+                      {t("checkout.couponLoginNudge")}{" "}
+                      <Link
+                        href="/account?next=/checkout"
+                        className="font-semibold text-forest-800 underline underline-offset-2"
+                      >
+                        {t("checkout.couponLoginCta")}
+                      </Link>
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "searching" && (
+                    <p role="status" data-testid="coupon-auto-status" className="mt-2 text-xs leading-5 text-ink-soft">
+                      {t("checkout.couponAutoSearching")}
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "none" && (
+                    <p role="status" data-testid="coupon-auto-status" className="mt-2 text-xs leading-5 text-ink-soft">
+                      {t("checkout.couponAutoNone")}
+                    </p>
+                  )}
+                  {cardCustomer && autoCoupon === "error" && (
+                    <button
+                      type="button"
+                      onClick={() => void findBestCoupon("manual")}
+                      disabled={bestLoading}
+                      data-testid="coupon-auto-retry"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-forest-700 underline underline-offset-2 hover:text-forest-900 disabled:opacity-60"
+                    >
+                      <IconSparkles className="h-3.5 w-3.5" />
+                      {t("checkout.couponAutoRetry")}
+                    </button>
+                  )}
                 </>
               )}
               {couponCheck.problem && (

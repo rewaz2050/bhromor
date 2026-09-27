@@ -362,3 +362,46 @@ describe("Product card — your size badge", () => {
     expect(screen.queryByTestId("your-size")).not.toBeInTheDocument();
   });
 });
+
+describe("ProductCard — colour dots + honest rating (UX plan §1.1, R9)", () => {
+  it("shows up to three swatches with a '+N' and the rating only when reviews exist", async () => {
+    const { swatchColors } = await import("@/lib/color-swatch");
+    const base = PRODUCTS[0];
+    const product = {
+      ...base,
+      colors: ["Forest Green", "Ivory", "Red & Cream", "Slate", "Navy"],
+      rating: 4.8,
+      reviewCount: 12,
+    };
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    const swatches = screen.getByTestId("card-swatches");
+    expect(swatches.querySelectorAll("[data-swatch]")).toHaveLength(3);
+    expect(swatches.textContent).toContain("+2");
+    expect(swatches.getAttribute("aria-label")).toBe("Forest Green, Ivory, Red & Cream, Slate, Navy");
+    expect(swatchColors("Forest Green")).toHaveLength(1);
+    const rating = screen.getByTestId("card-rating");
+    expect(rating.textContent).toContain("৪.৮");
+    expect(rating.textContent).toContain("১২");
+    expect(rating.textContent).not.toMatch(/[0-9]/);
+  });
+
+  it("keeps the colour as text when no dot can be rendered honestly, and hides the rating at zero reviews", () => {
+    const product = { ...PRODUCTS[0], colors: ["Heritage"], rating: 0, reviewCount: 0 };
+    render(
+      <LanguageProvider initialLang="en">
+        <CartProvider>
+          <ProductCard product={product} />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    expect(screen.queryByTestId("card-swatches")).toBeNull();
+    expect(screen.getByText("Heritage")).toBeInTheDocument();
+    expect(screen.queryByTestId("card-rating")).toBeNull();
+  });
+});

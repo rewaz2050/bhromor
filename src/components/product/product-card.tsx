@@ -13,6 +13,7 @@ import { productShopId, shopById } from "@/lib/shop-utils";
 import { Price } from "@/components/ui/primitives";
 import { IconArrowRight, IconCheck, IconHeart, IconPlus } from "@/components/ui/icons";
 import QuickAdd from "./quick-add";
+import ColorSwatches from "./color-swatches";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useFlashPrice } from "@/lib/use-promos";
 import { usePriceDropFor } from "@/lib/use-price-watch";
@@ -312,10 +313,25 @@ export default function ProductCard({ product }: { product: Product }) {
               <span aria-hidden="true" className="text-line">
                 /
               </span>
-              <span className="font-medium normal-case tracking-[0.06em] text-ink-soft/80">
-                {product.colors[0]}
-              </span>
+              {/* UX plan §1.1 (R9) — colour dots (≤3, "+N") instead of one name. */}
+              <ColorSwatches colors={product.colors} />
             </>
+          )}
+          {/* Rating only when real reviews exist — never a decorative five stars. */}
+          {product.reviewCount > 0 && product.rating > 0 && (
+            <span
+              data-testid="card-rating"
+              className="ml-auto inline-flex items-center gap-1 normal-case tracking-normal text-gold-700"
+              aria-label={`${product.rating.toFixed(1)} / 5 · ${product.reviewCount}`}
+            >
+              <span aria-hidden="true">★</span>
+              <span className="font-semibold">
+                {lang === "bn" ? bnDigits(product.rating.toFixed(1)) : product.rating.toFixed(1)}
+              </span>
+              <span className="text-ink-soft">
+                ({lang === "bn" ? bnDigits(String(product.reviewCount)) : product.reviewCount})
+              </span>
+            </span>
           )}
         </p>
         <h3

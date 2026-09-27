@@ -7,6 +7,8 @@ import { sanitizeSettings } from "@/lib/settings-store";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { MIN_ORDER_OUTSIDE_SADAR_PAISA } from "@/lib/delivery";
 import { Eyebrow } from "@/components/ui/primitives";
+import L from "@/components/i18n/l";
+import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import { IconTruck, IconMapPin } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import {
@@ -42,7 +44,7 @@ export default async function DeliveryPage() {
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:py-16">
       <Eyebrow>Sunamganj · জেলা → উপজেলা → পাড়া · সহজ অর্ডার</Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
-        Delivery information — Sunamganj
+        <L en="Delivery information — Sunamganj" bn="ডেলিভারির খুঁটিনাটি — সুনামগঞ্জ" />
       </h1>
       <p className="mt-4 leading-7 text-ink-soft">
         অর্ডার করতে এখন শুধু একটি <strong>সহজ ফর্ম</strong> পূরণ করুন —{" "}
@@ -51,6 +53,12 @@ export default async function DeliveryPage() {
         করুন (না পেলে নিজে লিখুন)। তারপর বাসা/রোড লিখে অর্ডার কনফার্ম — ক্যাশ অন
         ডেলিভারি।
       </p>
+
+      {/* UX plan §11 (R9) — the zone checker at the top: "do you come to my
+          para, for how much?" answered before the table is read. */}
+      <div className="mt-8 overflow-hidden rounded-3xl ring-1 ring-line">
+        <HomeDeliveryCheck />
+      </div>
 
       {/* Delivery promise — the same sentence the bag and checkout show */}
       <div className="mt-8 rounded-2xl bg-gold-50 px-5 py-4 text-sm text-forest-900 ring-1 ring-gold-200">
@@ -64,11 +72,13 @@ export default async function DeliveryPage() {
         </span>
         <div>
           <h2 className="font-display text-2xl font-medium">
-            Instant delivery — Sunamganj target
+            <L en="Instant delivery — Sunamganj target" bn="তাড়াতাড়ি ডেলিভারি — সুনামগঞ্জের লক্ষ্য" />
           </h2>
           <p className="mt-2 text-sm leading-7 text-ivory-100/70">
-            Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min — সদরের
-            ভেতরে রাইডার। সদরের বাইরে / অন্য জেলা: {COURIER_ETA_BN}। এটি
+            <L
+              en="Zone A 30–40 min, Zone B 40–50 min, Zone C 50–60 min — our own riders inside Sadar."
+              bn="জোন A ৩০–৪০ মিনিট, জোন B ৪০–৫০ মিনিট, জোন C ৫০–৬০ মিনিট — সদরের ভেতরে আমাদের নিজের রাইডার।"
+            /> সদরের বাইরে / অন্য জেলা: {COURIER_ETA_BN}। এটি
             আমাদের অপারেশনাল টার্গেট — ট্রাফিক ও ক্যাপাসিটি অনুযায়ী কিছুটা
             কম-বেশি হতে পারে।
           </p>
@@ -77,16 +87,16 @@ export default async function DeliveryPage() {
 
       {/* Zones */}
       <h2 className="font-display mt-12 text-2xl font-medium text-forest-900">
-        Delivery zones — Sunamganj
+        <L en="Delivery zones — Sunamganj" bn="ডেলিভারি জোন — সুনামগঞ্জ" />
       </h2>
       <div className="mt-5 overflow-hidden rounded-3xl bg-paper ring-1 ring-line">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-line text-[0.7rem] uppercase tracking-[0.2em] text-ink-soft">
-              <th className="px-5 py-4 font-semibold">Zone</th>
-              <th className="px-5 py-4 font-semibold">Paras (Sunamganj)</th>
-              <th className="px-5 py-4 font-semibold">Delivery charge</th>
-              <th className="px-5 py-4 font-semibold">ETA</th>
+              <th className="px-5 py-4 font-semibold"><L en="Zone" bn="জোন" /></th>
+              <th className="px-5 py-4 font-semibold"><L en="Paras (Sunamganj)" bn="পাড়া (সুনামগঞ্জ)" /></th>
+              <th className="px-5 py-4 font-semibold"><L en="Delivery charge" bn="ডেলিভারি চার্জ" /></th>
+              <th className="px-5 py-4 font-semibold"><L en="ETA" bn="কতক্ষণে" /></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -94,14 +104,14 @@ export default async function DeliveryPage() {
               <tr key={zone.id} className={zone.id === "z4" ? "bg-amber-50/50" : ""}>
                 <td className="px-5 py-4 font-medium text-ink">
                   {zone.name}
-                  {zone.id === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">OUTSIDE</span>}
+                  {zone.id === "z4" && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900"><L en="OUTSIDE" bn="সদরের বাইরে" /></span>}
                 </td>
                 <td className="px-5 py-4 text-ink-soft">
                   {zone.areas.join(", ")}
                 </td>
                 <td className="px-5 py-4 font-semibold text-ink">
                   {formatBdt(zone.charge)}
-                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft">Min {courierMinLabel} order</span>}
+                  {zone.id === "z4" && <span className="block text-[11px] font-normal text-ink-soft"><L en={`Min ${courierMinLabel} order`} bn={`সর্বনিম্ন অর্ডার ${courierMinLabel}`} /></span>}
                 </td>
                 <td className="px-5 py-4 text-ink-soft">
                   {isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel}
@@ -139,7 +149,7 @@ export default async function DeliveryPage() {
       </div>
 
       <div className="prose-prosanti mt-10">
-        <h2>Good to know</h2>
+        <h2><L en="Good to know" bn="জেনে রাখুন" /></h2>
         <ul>
           <li>
             <strong>ডেলিভারি চার্জ ঠিকানা অনুযায়ী</strong> — {DELIVERY_CHARGE_LADDER_BN}।
@@ -162,11 +172,13 @@ export default async function DeliveryPage() {
             কোনো ম্যাপ বা পিন লাগবে না।
           </li>
           <li>
-            Every order can be followed on the{" "}
-            <Link href="/track">Track page</Link> with order ID and phone — PIN required for COD.
+            <L
+              en={<>Every order can be followed on the <Link href="/track">Track page</Link> with order ID and phone — PIN required for COD.</>}
+              bn={<>অর্ডার আইডি আর ফোন নম্বর দিয়ে <Link href="/track">ট্র্যাক পেজে</Link> প্রতিটি অর্ডার দেখা যায় — ক্যাশ অন ডেলিভারিতে PIN লাগে।</>}
+            />
           </li>
           <li>
-            Orders delivered by our own riders — Sunamganj।
+            <L en="Orders are delivered by our own riders — Sunamganj." bn="অর্ডার পৌঁছে দেয় আমাদের নিজের রাইডার — সুনামগঞ্জ।" />
           </li>
         </ul>
       </div>
