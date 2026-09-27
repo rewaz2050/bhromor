@@ -620,6 +620,13 @@ export default function CheckoutView() {
     [form.district, effectiveUpazila, effectivePara],
   );
   const derivedZoneId = derived.zoneId;
+  /** Paras the zone table (live) + the Sadar list know — the datalist. */
+  const knownParas = useMemo(() => {
+    const names = new Set<string>();
+    for (const z of zoneList) for (const a of z.areas) if (a.trim()) names.add(a.trim());
+    for (const p of SADAR_PARA_OPTIONS) if (p.name.trim()) names.add(p.name.trim());
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [zoneList]);
   const zone = useMemo(
     () => zoneList.find((z) => z.id === derivedZoneId) ?? zoneList[0],
     [zoneList, derivedZoneId],
@@ -1924,6 +1931,7 @@ export default function CheckoutView() {
             <input
               ref={paraRef}
               required
+              list="prosanti-paras"
               autoComplete="address-level3"
               value={form.paraCustom}
               onChange={(e) => {
@@ -1936,6 +1944,13 @@ export default function CheckoutView() {
               aria-invalid={!!fieldErrors.area}
               className={inputClass("area")}
             />
+            {/* UX plan §6 (R11) — searchable: every para the zone table knows
+                (typing "Bor" offers Boropara); anything else still types in. */}
+            <datalist id="prosanti-paras">
+              {knownParas.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
             {fieldErrors.area ? (
               <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
             ) : effectivePara.trim() && !form.isPickup ? (

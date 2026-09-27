@@ -62,3 +62,24 @@ describe("area quote (checkout step ①)", () => {
     expect(quote.textContent).toMatch(/min|মিনিট|hr|ঘণ্টা|দিন|day/i);
   });
 });
+
+describe("para field is searchable (UX plan §6, R11)", () => {
+  it("offers every para the zone table knows as a datalist, and still accepts free text", async () => {
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <CheckoutView />
+        </CartProvider>
+      </LanguageProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("more-options")).toBeInTheDocument());
+    const input = screen.getByLabelText("পাড়া বা গ্রামের নাম") as HTMLInputElement;
+    expect(input.getAttribute("list")).toBe("prosanti-paras");
+    const list = document.getElementById("prosanti-paras")!;
+    const options = Array.from(list.querySelectorAll("option")).map((o) => o.getAttribute("value"));
+    for (const zone of DELIVERY_ZONES) for (const area of zone.areas) expect(options).toContain(area);
+    expect(new Set(options).size).toBe(options.length);
+    fireEvent.change(input, { target: { value: "Notun Para (unknown)" } });
+    expect(input.value).toBe("Notun Para (unknown)");
+  });
+});

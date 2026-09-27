@@ -956,6 +956,22 @@ body {
    garment. Below the sm breakpoint it sits in its own strip directly under
    the image; only the heart stays on the photo. (Unlayered, so it wins over
    the positioning utilities without !important.) */
+/* UX plan §6 (R11) — iOS Safari zooms the page whenever a focused field is
+   set below 16px; the checkout and every search/para field then jump and
+   never zoom back. On phones every text field renders at 16px regardless of
+   the utility class it carries (desktop keeps the smaller editorial size).
+   Unlayered so it wins over `text-sm` without !important. */
+@media (max-width: 639px) {
+  input.text-sm,
+  input.text-xs,
+  select.text-sm,
+  select.text-xs,
+  textarea.text-sm,
+  textarea.text-xs {
+    font-size: 1rem;
+  }
+}
+
 @media (max-width: 639px) {
   .product-card-actions {
     position: static;
