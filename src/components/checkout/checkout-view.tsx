@@ -17,6 +17,7 @@ import CheckoutAssurance from "./checkout-assurance";
 import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
 import { useBagOffer } from "@/lib/use-bag-offer";
+import { carriedCoupon, forgetCoupon } from "@/lib/coupon-carry";
 import { validateGift } from "@/lib/gift";
 import {
   clearStoredRef,
@@ -514,6 +515,20 @@ export default function CheckoutView() {
   const [autoCoupon, setAutoCoupon] = useState<"idle" | "searching" | "applied" | "none" | "error">("idle");
   const couponDismissedRef = useRef(false);
   const autoTriedKeyRef = useRef<string | null>(null);
+  /* UX plan §3 (R11) — the code copied from the offers card is PLACED in the
+     field (never applied by itself for a guest — see lib/coupon-carry). */
+  const [carriedCode, setCarriedCode] = useState<string | null>(null);
+  const carryDone = useRef(false);
+  useEffect(() => {
+    if (carryDone.current || !ready) return;
+    carryDone.current = true;
+    const code = carriedCoupon();
+    if (!code) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
+    setCarriedCode(code);
+    setForm((f) => (f.couponCode.trim() ? f : { ...f, couponCode: code }));
+    setMoreOpen(true);
+  }, [ready]);
 
   /* P1 #16 — a repeat customer's last address (name, phone, para, house,
      pin) fills the form by itself; the "saved addresses" sheet stays for
@@ -647,6 +662,8 @@ export default function CheckoutView() {
                 ? `${data.code} — Free Delivery ${data.description ? `· ${data.description}` : ""}`
                 : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
             });
+            // The carried code has done its job once a code is applied.
+            forgetCoupon();
             return;
           }
         } catch {
@@ -2402,6 +2419,11 @@ export default function CheckoutView() {
                       {t("checkout.apply")}
                     </button>
                   </div>
+                  {carriedCode && form.couponCode.trim() === carriedCode && (
+                    <p role="status" data-testid="coupon-carried" className="mt-2 text-xs leading-5 text-forest-800">
+                      {t("checkout.couponCarried")}
+                    </p>
+                  )}
                   {/* UX plan §5 (R9) — the best coupon places itself for a
                       signed-in customer; a guest is told exactly why to sign in. */}
                   {cardChecked && !cardCustomer && (

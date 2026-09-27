@@ -16,7 +16,7 @@ import ProductCard from "@/components/product/product-card";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { FlashTimer } from "./flash-timer";
+import { FlashEndsAt, FlashTimer } from "./flash-timer";
 
 export default function FlashRail({
   excludeId,
@@ -64,6 +64,8 @@ export default function FlashRail({
                 <>
                   {" · "}
                   <FlashTimer endsAtMs={flash.endsAtMs} className="font-semibold text-gold-700" />
+                  {/* UX plan §3 (R11) — the wall clock beside the countdown */}
+                  <FlashEndsAt endsAtMs={flash.endsAtMs} className="ml-2 text-ink-soft" />
                 </>
               ) : null}
             </p>

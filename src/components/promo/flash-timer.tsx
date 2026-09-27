@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { countdownLabel } from "@/lib/promos";
+import { endsAtLabel } from "@/lib/ends-at";
 import { ensurePromos } from "@/lib/use-promos";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatBdt } from "@/lib/format";
@@ -44,6 +45,28 @@ export function FlashTimer({
   return (
     <span className={`tabular-nums ${className}`}>
       {t("promo.endsIn").replace("{time}", countdownLabel(left))}
+    </span>
+  );
+}
+
+/**
+ * UX plan §3 (R11) — "(আজ রাত ১১টায় শেষ)": the wall-clock end next to the
+ * countdown, in the shop's day (Asia/Dhaka). Re-labelled once a minute so
+ * "today" becomes "tomorrow"-safe across midnight; empty once it has passed.
+ */
+export function FlashEndsAt({ endsAtMs, className = "" }: { endsAtMs: number; className?: string }) {
+  const { lang } = useLanguage();
+  const [label, setLabel] = useState(() => endsAtLabel(endsAtMs, lang));
+  useEffect(() => {
+    const tick = () => setLabel(endsAtLabel(endsAtMs, lang));
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [endsAtMs, lang]);
+  if (!label) return null;
+  return (
+    <span data-testid="flash-ends-at" lang={lang === "bn" ? "bn" : undefined} className={className}>
+      ({label})
     </span>
   );
 }
