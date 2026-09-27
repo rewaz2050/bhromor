@@ -1938,6 +1938,24 @@ export default function CheckoutView() {
             />
             {fieldErrors.area ? (
               <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+            ) : effectivePara.trim() && !form.isPickup ? (
+              /* UX plan §6 (R11) — the charge and the clock RIGHT where the
+                 area was chosen, not two steps later. Same numbers as the
+                 summary (server re-derives at placement). */
+              <p
+                role="status"
+                data-testid="area-quote"
+                data-zone={derivedZoneId}
+                className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-forest-800"
+              >
+                <IconTruck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>
+                  {t("checkout.areaQuote")
+                    .replace("{zone}", zone.name)
+                    .replace("{charge}", summary.freeDelivery ? t("checkout.areaQuoteFree") : formatBdt(summary.charge))
+                    .replace("{eta}", etaLabel)}
+                </span>
+              </p>
             ) : (
               <p className="mt-1.5 text-xs text-ink-soft">
                 পাড়া বা গ্রামের নাম লিখলেই ডেলিভারি চার্জ ও সময় দেখা যাবে।
