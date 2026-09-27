@@ -21,7 +21,7 @@ const fmt = (tpl: string, vars: Record<string, string | number>) =>
  *     renders nothing otherwise — see components/promo/flash-rail), and
  *   • every piece the shop marked down (a struck-through list price),
  *     biggest saving first, with a "See all N offers" link into the
- *     `?filter=sale` shop.
+ *     `/offers` hub (UX plan §10, R7).
  * With no code, no drop and no markdowns the block stays away entirely: an
  * "Offers" heading over an empty row is noise, not an offer.
  */
@@ -39,7 +39,7 @@ export default function OffersBlock({ pool, limit = 8 }: { pool: Product[]; limi
         eyebrow={t("home.offersEyebrow")}
         title={t("home.offersTitle")}
         sub={t("home.offersSub")}
-        href="/shop?filter=sale"
+        href="/offers"
         seeAllLabel={fmt(t("home.offersAll"), { count: total })}
         products={offers}
         tone="paper"

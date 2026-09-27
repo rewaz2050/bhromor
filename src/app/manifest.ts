@@ -35,7 +35,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Shop", short_name: "Shop", url: "/shop?utm_source=pwa" },
-      { name: "Offers", short_name: "Offers", url: "/shop?filter=sale&utm_source=pwa" },
+      { name: "Offers", short_name: "Offers", url: "/offers?utm_source=pwa" },
       { name: "Track order", short_name: "Track", url: "/track?utm_source=pwa" },
     ],
   };

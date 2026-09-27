@@ -55,7 +55,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
   const PRIMARY = [
     { label: t("nav.shop"), href: "/shop", icon: <IconBox className="h-[1.1rem] w-[1.1rem]" /> },
     ...(hasOffers
-      ? [{ label: t("nav.offers"), href: "/shop?filter=sale", icon: <IconTag className="h-[1.1rem] w-[1.1rem]" />, offer: true }]
+      ? [{ label: t("nav.offers"), href: "/offers", icon: <IconTag className="h-[1.1rem] w-[1.1rem]" />, offer: true }]
       : []),
     { label: t("nav.shops"), href: "/shops", icon: <IconStore className="h-[1.1rem] w-[1.1rem]" /> },
   ];

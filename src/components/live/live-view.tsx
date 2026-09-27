@@ -19,6 +19,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/components/cart/cart-provider";
+import ProductRail from "@/components/home/product-rail";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { newArrivals } from "@/lib/home-shelves";
+import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { IconArrowRight, IconBag, IconClock, IconExternal } from "@/components/ui/icons";
 import { youtubeEmbedUrl } from "@/lib/media";
 import { formatBdt } from "@/lib/format";
@@ -301,6 +305,33 @@ function UpcomingSessionView({
   );
 }
 
+/**
+ * UX plan §10 (R7) — "/live is never empty": when nothing is on air, the
+ * newest orderable pieces take the stage instead of a closed door. Same
+ * catalog store the shop uses, so it paints from cache on a return visit.
+ */
+function LiveNewArrivals() {
+  const { t } = useLanguage();
+  const { products } = useLiveCatalog();
+  const picks = newArrivals(products, 8);
+  if (picks.length < 2) return null;
+  return (
+    <div className="mt-10 overflow-hidden rounded-3xl ring-1 ring-line">
+      <ProductRail
+        id="live-new-arrivals"
+        testId="live-new-rail"
+        eyebrow={t("live.newEyebrow")}
+        title={t("live.newTitle")}
+        sub={t("live.newSub")}
+        href="/shop?filter=new"
+        seeAllLabel={t("live.newAll")}
+        products={picks}
+        tone="ivory"
+      />
+    </div>
+  );
+}
+
 function EmptyView() {
   return (
     <div className="mx-auto max-w-md rounded-3xl bg-paper p-10 text-center ring-1 ring-line">
@@ -379,7 +410,10 @@ export default function LiveView() {
           <UpcomingSessionView session={session} nowMs={data.fetchedAt} />
         )
       ) : (
-        <EmptyView />
+        <>
+          <EmptyView />
+          <LiveNewArrivals />
+        </>
       )}
     </div>
   );

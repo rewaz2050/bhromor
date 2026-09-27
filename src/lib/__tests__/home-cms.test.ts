@@ -32,6 +32,7 @@ describe("homepage CMS (§31)", () => {
       "recent",
       "stories",
       "trust",
+      "yourStyle",
     ]);
     // UX plan R3 rails default on for saves that predate them.
     expect(merged.sections.bestSellers).toBe(true);

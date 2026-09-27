@@ -239,7 +239,7 @@ export default function CategoryMenu({
             </Link>
             {hasOffers && (
               <Link
-                href="/shop?filter=sale"
+                href="/offers"
                 className="inline-flex min-h-9 items-center gap-2 rounded-full bg-gold-100 px-3.5 text-[0.72rem] font-semibold text-gold-700 ring-1 ring-gold-300/70 transition-colors hover:bg-gold-200"
               >
                 <span

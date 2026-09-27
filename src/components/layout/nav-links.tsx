@@ -16,8 +16,8 @@ export interface NavItem {
 
 /**
  * Which entry owns a location. `/shop` owns the whole browsing surface
- * (product, style, live, campaign pages) except the sale view, which the
- * Offers entry owns exclusively. In-page anchors (`/#collections`) are jumps,
+ * (product, style, live, campaign pages, the sale-filtered grid); the
+ * Offers entry owns `/offers` alone. In-page anchors (`/#collections`) are jumps,
  * not destinations, so they are never "current" — lighting Categories on the
  * home page read as "you are on the categories page".
  */
@@ -38,10 +38,10 @@ export const isNavActive = (
   )
     return false;
   if (path === "/shop") {
-    const isSale = params.get("filter") === "sale";
-    if (queryString) return isSale;
-    if (isSale) return false;
+    if (queryString) return pathname === path;
     // Same ownership the thumb bar uses: a product page is still "shopping".
+    // Since R7 the Offers tab is its own page (/offers), so the sale-filtered
+    // grid is plain shopping too.
     const owned = ["/product", "/style", "/live", "/campaign"];
     return (
       owned.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
@@ -89,7 +89,7 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
             className="nav-editorial-link whitespace-nowrap"
             style={revealStyle}
           >
-            {item.href === "/shop?filter=sale" ? (
+            {item.href === "/offers" ? (
               <span
                 aria-hidden="true"
                 className="relative z-10 mr-1.5 inline-flex h-1.5 w-1.5 rounded-full bg-gold-500 shadow-[0_0_6px_var(--color-gold-400)]"

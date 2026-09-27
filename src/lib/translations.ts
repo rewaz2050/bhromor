@@ -64,7 +64,36 @@ export const translations = {
       subtitle: "The pieces our wardrobe begins with — purposeful, versatile and made to be worn often.",
       shopCollection: "Shop the collection",
     },
+    live: {
+      newEyebrow: "Meanwhile, on the shelf",
+      newTitle: "New arrivals you can order now",
+      newSub: "No stream today — the newest pieces are here, with the bag one tap away just the same.",
+      newAll: "See all new arrivals",
+    },
+    offers: {
+      eyebrow: "Real savings, nothing decorative",
+      title: "Offers",
+      sub: "Every marked-down piece, the drop that is running, the public code and the set of the week — in one place. One automatic offer applies per order; the best one wins at checkout.",
+      gridTitle: "Marked down right now",
+      gridCount: "{n} pieces",
+      setTitle: "The set of the week",
+      emptyTitle: "No offer is running right now",
+      emptySub: "Prices here are honest all year — when something is marked down it shows up on this page first. Until then, here is what is new.",
+      emptyCta: "Browse the shop",
+      newTitle: "New this week",
+      newSeeAll: "See all new arrivals",
+      saleListing: "Open the offers in the shop grid",
+    },
     home: {
+      styleEyebrow: "Your style, remembered on this device",
+      styleTitle: "New in your style",
+      styleSub: "Picked by the size, budget and occasion you set in Style Match — {occasion}.",
+      styleSubPlain: "Picked by the size, budget and occasion you set in Style Match.",
+      styleSeeAll: "Refine in Style Match",
+      styleInviteEyebrow: "Three taps",
+      styleInviteTitle: "Tell us your size, budget and occasion — we shortlist",
+      styleInviteSub: "Real catalog, printed reasons, no invented scores. Your style is remembered on this device.",
+      styleInviteCta: "Try Style Match",
       browseLabel: "Browse",
       chipAll: "All pieces",
       chipNew: "New arrivals",
@@ -813,7 +842,36 @@ export const translations = {
       subtitle: "যে পোশাকগুলো দিয়ে আমাদের ওয়ারড্রোব শুরু — উদ্দেশ্যময়, বহুমুখী আর বারবার পরার জন্য তৈরি।",
       shopCollection: "কালেকশন দেখুন",
     },
+    live: {
+      newEyebrow: "ততক্ষণে, শেলফে",
+      newTitle: "এখনই অর্ডার করার মতো নতুন আসা",
+      newSub: "আজ কোনো লাইভ নেই — নতুন পিসগুলো এখানেই, ব্যাগ একই রকম এক ট্যাপ দূরে।",
+      newAll: "সব নতুন আসা দেখুন",
+    },
+    offers: {
+      eyebrow: "সত্যিকারের সাশ্রয়, সাজানো কিছু নয়",
+      title: "অফার",
+      sub: "যত পিসের দাম কমেছে, যে ড্রপ চলছে, পাবলিক কোড আর সপ্তাহের সেট — সব এক জায়গায়। প্রতি অর্ডারে একটিই অটো-অফার লাগে; চেকআউটে যেটা বেশি লাভের সেটাই জেতে।",
+      gridTitle: "এখন যেগুলোর দাম কমেছে",
+      gridCount: "{n}টি পিস",
+      setTitle: "এই সপ্তাহের সেট",
+      emptyTitle: "এই মুহূর্তে কোনো অফার চলছে না",
+      emptySub: "এখানে দাম সারা বছরই সৎ — কিছুর দাম কমলে আগে এই পেজেই দেখাবে। ততক্ষণে নতুন যা এসেছে দেখুন।",
+      emptyCta: "শপ দেখুন",
+      newTitle: "এই সপ্তাহে নতুন",
+      newSeeAll: "সব নতুন পণ্য দেখুন",
+      saleListing: "শপ-গ্রিডে অফারগুলো খুলুন",
+    },
     home: {
+      styleEyebrow: "আপনার স্টাইল, এই ডিভাইসে মনে রাখা",
+      styleTitle: "আপনার স্টাইলে নতুন",
+      styleSub: "Style Match-এ দেওয়া সাইজ, বাজেট আর অনুষ্ঠান ধরে বাছাই — {occasion}।",
+      styleSubPlain: "Style Match-এ দেওয়া সাইজ, বাজেট আর অনুষ্ঠান ধরে বাছাই।",
+      styleSeeAll: "Style Match-এ ঠিক করুন",
+      styleInviteEyebrow: "৩ ট্যাপে",
+      styleInviteTitle: "আপনার গায়ের মাপ, বাজেট আর অনুষ্ঠান বলুন — বাছাই আমরা করি",
+      styleInviteSub: "আসল ক্যাটালগ, কারণসহ সাজেশন, বানানো রেটিং নয়। আপনার স্টাইল এই ডিভাইসে মনে থাকে।",
+      styleInviteCta: "Style Match দেখুন",
       browseLabel: "দেখুন",
       chipAll: "সব পোশাক",
       chipNew: "নতুন এসেছে",
@@ -1538,4 +1596,6 @@ export type TranslationKey =
   | `trackPush.${keyof typeof translations.en.trackPush}`
   | `accountHero.${keyof typeof translations.en.accountHero}`
   | `accountTabs.${keyof typeof translations.en.accountTabs}`
-  | `accountPitch.${keyof typeof translations.en.accountPitch}`;
+  | `accountPitch.${keyof typeof translations.en.accountPitch}`
+  | `offers.${keyof typeof translations.en.offers}`
+  | `live.${keyof typeof translations.en.live}`;

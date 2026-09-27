@@ -39,16 +39,22 @@ describe("NavLinks — the desktop menubar", () => {
     ).toHaveTextContent("Shop");
   });
 
-  it("keeps the sale tab distinct — /shop?filter=sale is active only there", () => {
+  it("keeps the Offers tab distinct — /offers is active only there (R7 hub)", () => {
+    mockPathname.mockReturnValue("/offers");
+    mockParams.mockReturnValue(new URLSearchParams());
+    const hub = renderNav();
+    const active = hub.container.querySelector('[aria-current="page"]');
+    expect(active).toHaveTextContent("Offers");
+    expect(active).toHaveAttribute("href", "/offers");
+
+    cleanup();
+    // The sale-filtered grid is still "shopping", never the Offers tab, and
+    // plain /shop lights Shop alone.
     mockPathname.mockReturnValue("/shop");
     mockParams.mockReturnValue(new URLSearchParams({ filter: "sale" }));
     const sale = renderNav();
-    expect(sale.container.querySelector('[aria-current="page"]')).toHaveTextContent(
-      "Offers",
-    );
-
+    expect(sale.container.querySelector('[aria-current="page"]')).toHaveTextContent("Shop");
     cleanup();
-    // Plain /shop: the Offers pill must NOT be active even though the path matches.
     mockParams.mockReturnValue(new URLSearchParams());
     const plain = renderNav();
     const current = plain.container.querySelector('[aria-current="page"]');
@@ -77,7 +83,10 @@ describe("NavLinks — the desktop menubar", () => {
   it("isNavActive — the ownership rules in one place", () => {
     const params = (q = "") => new URLSearchParams(q);
     expect(isNavActive("/shop", "/product/x", params())).toBe(true);
-    expect(isNavActive("/shop", "/shop", params("filter=sale"))).toBe(false);
+    // R7: the sale-filtered grid is plain shopping; Offers is its own page.
+    expect(isNavActive("/shop", "/shop", params("filter=sale"))).toBe(true);
+    expect(isNavActive("/offers", "/offers", params())).toBe(true);
+    expect(isNavActive("/offers", "/shop", params("filter=sale"))).toBe(false);
     expect(isNavActive("/shop?filter=sale", "/shop", params("filter=sale"))).toBe(true);
     expect(isNavActive("/shop?filter=sale", "/shop", params())).toBe(false);
     expect(isNavActive("/#collections", "/", params())).toBe(false);

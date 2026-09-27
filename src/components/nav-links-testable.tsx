@@ -18,7 +18,7 @@ export default function NavLinksTestable({
   const NAV: NavItem[] = testItems
     ? [
         { label: "Shop", href: "/shop" },
-        { label: "Offers", href: "/shop?filter=sale" },
+        { label: "Offers", href: "/offers" },
         { label: "Shops", href: "/shops" },
         { label: "Categories", href: "/#collections" },
         { label: "Track", href: "/track" },

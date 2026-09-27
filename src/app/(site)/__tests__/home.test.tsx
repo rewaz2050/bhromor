@@ -163,7 +163,7 @@ describe("Homepage editorial journey", () => {
 
   /* 2026-09-20 — offers sit between the category row and the shelf: every
      piece with a struck-through price, biggest saving first, and a "See all
-     N offers" link into the ?filter=sale shop. */
+     N offers" link into the /offers hub (R7; was the ?filter=sale shop). */
   it("lists the marked-down pieces in the offers rail, biggest saving first", async () => {
     await renderHome();
     const rail = await screen.findByTestId("rail-offers");
@@ -180,9 +180,10 @@ describe("Homepage editorial journey", () => {
     expect(onOffer.length).toBeGreaterThan(1);
     // 22% off (Slate Premium T-Shirt) before 19% off (Heritage Green Panjabi).
     expect(names).toEqual(["View Slate Premium T-Shirt", "View Heritage Green Panjabi"]);
+    // UX plan §10 (R7): "See all" lands on the offers hub, not the sale filter.
     expect(within(rail).getByRole("link", { name: /see all 2 offers/i })).toHaveAttribute(
       "href",
-      "/shop?filter=sale",
+      "/offers",
     );
     // No flash window is running in the test clock → no drop rail.
     expect(screen.queryByTestId("flash-rail")).toBeNull();

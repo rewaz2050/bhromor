@@ -36,7 +36,7 @@ export default function Header() {
   const NAV: NavItem[] = [
     { label: t("nav.shop"), href: "/shop" },
     { label: t("nav.categories"), href: "/#collections", menu: "categories" },
-    ...(hasOffers ? [{ label: t("nav.offers"), href: "/shop?filter=sale" }] : []),
+    ...(hasOffers ? [{ label: t("nav.offers"), href: "/offers" }] : []),
     { label: t("nav.shops"), href: "/shops" },
     { label: t("nav.track"), href: "/track" },
   ];

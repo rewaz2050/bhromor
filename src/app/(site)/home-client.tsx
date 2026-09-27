@@ -16,6 +16,7 @@ import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import CategoryRow from "@/components/home/category-row";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
+import YourStyleRail from "@/components/home/your-style-rail";
 import CuratedRails from "@/components/home/curated-rails";
 import ZonePill from "@/components/layout/zone-pill";
 import CategoryShelfBlock from "@/components/home/category-shelf";
@@ -76,6 +77,8 @@ export default function HomeClient() {
             <CuratedRails pool={pool} showBest={sections.bestSellers} showNew={sections.newArrivals} />
           )}
           {sections.offers && <OffersBlock pool={pool} />}
+          {/* UX plan §10 (R7) — Style Match promoted + remembered. */}
+          {sections.yourStyle && <YourStyleRail pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
           {/* Real approved reviews only — the block disappears when there
               are none rather than showing an empty "be the first" card. */}

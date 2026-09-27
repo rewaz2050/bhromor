@@ -48,11 +48,11 @@ Unit/component suite: 1,533 tests. Browser suite: 14 Chromium checks against a c
 
 ## Premium storefront refresh
 
-The public homepage is a shelf, top to bottom: **compact hero (headline + one button) → recently-viewed strip (returning devices only) → category row → offers → every category with its pieces → customer stories (approved reviews only; hidden when there are none) → delivery check → service promise strip**. There is no screen-filling poster any more — the category row is on the first screen of a phone. The offers block shows the flash drop while a window runs plus every piece with a struck-through price (`/shop?filter=sale` lists them all); with nothing on offer it stays away. Product pages end with the rest of the piece's own category (strictly the same category, never a "you may also like" mix). The curated new-arrival / best-seller paths and the owned visual journal remain available in the shop (`?sort=newest`, `?sort=best`). Product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
+The public homepage is a shelf, top to bottom: **compact hero (headline + one button) → recently-viewed strip (returning devices only) → category row → offers → every category with its pieces → customer stories (approved reviews only; hidden when there are none) → delivery check → service promise strip**. There is no screen-filling poster any more — the category row is on the first screen of a phone. The offers block shows the flash drop while a window runs plus every piece with a struck-through price ("See all" → the `/offers` hub, R7; `/shop?filter=sale` still lists them as a shop filter); with nothing on offer it stays away. After it, the R7 "your style" section: a rail for a device that has used Style Match, a three-tap invite otherwise. Product pages end with the rest of the piece's own category (strictly the same category, never a "you may also like" mix). The curated new-arrival / best-seller paths and the owned visual journal remain available in the shop (`?sort=newest`, `?sort=best`). Product cards keep consistent cream-background catalogue photography and reveal Quick Add / Details controls on interaction.
 
 The palette is warm ivory, deep charcoal/forest and restrained bronze-gold. English display type (Playfair), interface type (Inter) and Bengali copy (Noto Serif Bengali) have explicit roles. No seeded or fake ratings/reviews are rendered anywhere — public home and product pages only ever show real, approved customer reviews (verified badge only when a matching order exists); the moderation queue lives in admin.
 
-Existing CMS hero copy and the six section toggles (hero, recently viewed, category row, offers, customer stories, service strip), search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
+Existing CMS hero copy and the section toggles (hero, recently viewed, category row, best sellers, new arrivals, offers, your style, customer stories, service strip), search, filters, cart, wishlist, and service links remain connected. The mobile layout preserves 44px controls and uses horizontal collection/product rails to reduce page length.
 
 ## Premium feel & usability pass
 
@@ -174,6 +174,45 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 - **Report** — `ps_funnel_report(p_days)` (SQL, security definer, staff route only) → `GET /api/admin/reports/funnel?days=7|28` → the **Funnel** card (`components/admin/funnel-card.tsx`): sessions · bounce · pages/session · session→order; **product page → add to bag → checkout → order** step rates; average order and repeat-customer rate **from the `orders` table** (cancelled + return excluded — the "order" step is real money); add-to-bag by source chips; top searches with a *no results* flag; home scroll-depth bars. 503 → "run `202609260004_storefront_events.sql`". `ps_prune_storefront_events(days)` keeps the table small (optional cron).
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
+
+## UX plan R7 — one Offers hub, Style Match that remembers, a Live page that is never empty (2026-09-27)
+
+Round 7 of `docs/ux-sales-plan.md` (§10 offers hub / live / Style Match).
+No migration.
+
+- **`/offers` hub** (`src/components/offers/offers-hub.tsx`, page is
+  `force-dynamic` and hydrates the storefront catalog like `/shop`): the
+  public promo-code card, the flash-drop rail (timer, up to 8), **every**
+  marked-down piece as a grid (biggest saving first, count in the UI
+  language, "see it as a shop filter" → `/shop?filter=sale`), "the set of
+  the week" (`BundleOffer` on `bundleAnchor` = the first discoverable,
+  in-stock piece that really has complements) and a new-arrivals rail.
+  When nothing is on — no markdowns, no code, no flash, no bundle — an
+  honest empty state with a single `/shop` CTA; the hub never invents an
+  offer.
+- **Every "Offers" entry points at `/offers`**: header, mobile bottom nav,
+  category menu, the home offers block's "See all" and the PWA shortcut
+  (`/offers?utm_source=pwa`). `isNavActive`: the Offers tab lights on
+  `/offers` only; `/shop?filter=sale` is a shop filter and lights **Shop**.
+- **Style Match remembered** (`src/lib/style-memory.ts`,
+  `prosanti.style-query.v1`, 60-day TTL, sanitised on read): the panel on
+  `/style` saves the query 600 ms after it finds ≥1 match. Home gains a
+  CMS-toggleable section `yourStyle` (`your-style-rail.tsx`): a returning
+  device sees **"New in your style"** — Style Match's own ranking, in-stock
+  only, new pieces ahead among equals, the occasion named in the subtitle,
+  ≥2 or hidden; a first visit sees a slim **"Three taps"** invite to
+  `/style`.
+- **`/live` never empty**: with no session on air or scheduled the page
+  keeps its honest "No live shopping right now" card and adds
+  `live-new-rail` — the newest orderable pieces (`newArrivals`, ≥2) with
+  "See all new arrivals" → `/shop?filter=new`.
+- New strings under `offers.*`, `home.style*`, `live.*` (en + bn, Bengali
+  digits in Bengali copy).
+- Tests: offers-hub (anchor, full hub in bn, empty state), nav-links
+  (Offers tab / sale-grid = Shop), home (see-all href), style-memory
+  (save / clear / junk / TTL), your-style-rail (invite, rail, silence
+  below two), live-view (rail order, no rail without stock), home-cms key
+  list.
 
 ## UX plan R6 — search that forgives spelling, a tracker worth reopening, loyalty you can see (2026-09-26)
 
