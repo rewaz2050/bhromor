@@ -44,7 +44,14 @@ export function editorialProductName(product: Product): string {
   return name;
 }
 
-export default function ProductCard({ product }: { product: Product }) {
+export default function ProductCard({
+  product,
+  backInStock = false,
+}: {
+  product: Product;
+  /** UX plan §8 (R11) — the wishlist knows this device last saw it sold out. */
+  backInStock?: boolean;
+}) {
   const { t, lang } = useLanguage();
   /* UX plan §8 — the saved body (Size Finder) badges the card: "Your size: L".
      Only a confident, in-range recommendation the product actually sells. */
@@ -402,6 +409,15 @@ export default function ProductCard({ product }: { product: Product }) {
             <p className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700">
               <IconTrendDown className="h-3 w-3" />
               {t("priceDrop.dropped").replace("{amount}", formatBdt(drop.down))}
+            </p>
+          ) : null}
+          {backInStock && product.inStock ? (
+            <p
+              data-testid="card-back-in-stock"
+              className="mt-1 inline-flex items-center gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-forest-700"
+            >
+              <IconCheck className="h-3 w-3" />
+              {t("wishlist.backInStock")}
             </p>
           ) : null}
           {shop && (

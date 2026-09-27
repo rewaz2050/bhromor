@@ -14,6 +14,7 @@ import { LanguageProvider } from "@/components/i18n/language-provider";
 import { CATEGORIES, PRODUCTS } from "@/lib/catalog";
 import { __resetLiveCatalog, __serveLiveCatalogForTests } from "@/lib/live-catalog";
 import { clearWishlistStore, getWishlist, toggleWishlistStore } from "@/lib/wishlist-store";
+import { STOCK_MEMORY_KEY, returnedToStock } from "@/lib/stock-memory";
 
 const SOLD_OUT_ID = PRODUCTS[0].id;
 const catalog = PRODUCTS.map((p) => (p.id === SOLD_OUT_ID ? { ...p, inStock: false } : p));
@@ -108,5 +109,43 @@ describe("<WishlistView> — a list someone shared", () => {
     await waitFor(() => expect(getWishlist().sort()).toEqual([PRODUCTS[1].id, PRODUCTS[2].id].sort()));
     await waitFor(() => expect(screen.getByTestId("save-shared")).toHaveTextContent("রাখা হয়েছে"));
     expect(screen.getByTestId("save-shared")).toBeDisabled();
+  });
+});
+
+describe("<WishlistView> — back in stock (UX plan §8, R11)", () => {
+  it("badges a saved piece this device last saw sold out, says so once, then remembers today's state", async () => {
+    const returned = PRODUCTS[1]!; // in stock in this catalog
+    const stillOut = PRODUCTS[0]!; // sold out in this catalog
+    toggleWishlistStore(returned.id);
+    toggleWishlistStore(stillOut.id);
+    localStorage.setItem(
+      STOCK_MEMORY_KEY,
+      JSON.stringify({ [returned.id]: { inStock: false, at: 1 }, [stillOut.id]: { inStock: false, at: 1 } }),
+    );
+    mount("bn");
+    const note = await screen.findByTestId("wishlist-back-in-stock");
+    expect(note.textContent).toContain(`"${returned.name}" আবার স্টকে এসেছে`);
+    const badges = screen.getAllByTestId("card-back-in-stock");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]!.closest("article")!.querySelector(`a[href="/product/${returned.slug}"]`)).not.toBeNull();
+    // today's state is remembered → next visit shows nothing
+    const memory = JSON.parse(localStorage.getItem(STOCK_MEMORY_KEY)!) as Record<string, { inStock: boolean }>;
+    expect(memory[returned.id]!.inStock).toBe(true);
+    expect(memory[stillOut.id]!.inStock).toBe(false);
+    cleanup();
+    mount("bn");
+    await screen.findByTestId("wishlist-soldout-note");
+    expect(screen.queryByTestId("wishlist-back-in-stock")).toBeNull();
+    expect(screen.queryByTestId("card-back-in-stock")).toBeNull();
+  });
+
+  it("pure: returnedToStock compares against memory only", () => {
+    const items = [
+      { id: "a", inStock: true },
+      { id: "b", inStock: true },
+      { id: "c", inStock: false },
+    ];
+    expect(returnedToStock(items, { a: { inStock: false, at: 0 }, c: { inStock: false, at: 0 } }).map((p) => p.id)).toEqual(["a"]);
+    expect(returnedToStock(items, {})).toEqual([]);
   });
 });

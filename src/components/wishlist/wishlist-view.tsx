@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import InfoRail from "@/components/info/info-rail";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import ProductCard from "@/components/product/product-card";
@@ -12,6 +12,7 @@ import { IconHeart, IconTrash } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import PriceWatchStrip from "@/components/promo/watch-strip";
 import { goesWith, inStockFirst } from "@/lib/home-shelves";
+import { readStockMemory, rememberStock, returnedToStock } from "@/lib/stock-memory";
 import type { Product } from "@/lib/catalog";
 
 export const WISHLIST_RAIL_MIN = 2;
@@ -50,6 +51,20 @@ export default function WishlistView() {
   // order things were saved in.
   const saved = inStockFirst(products.filter((p) => source.includes(p.id)));
   const [savedShared, setSavedShared] = useState(false);
+  /* UX plan §8 (R11) — "back in stock": what this device last saw sold out
+     and finds on the shelf now. Decided once per visit (after the list is
+     real), then today's state is remembered for the next visit. */
+  const [returnedIds, setReturnedIds] = useState<string[] | null>(null);
+  const savedKey = saved.map((p) => `${p.id}:${p.inStock ? 1 : 0}`).join(",");
+  useEffect(() => {
+    if (!ready || shared || returnedIds !== null || products.length === 0) return;
+    const list = saved;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage comparison must happen post-mount
+    setReturnedIds(returnedToStock(list, readStockMemory()).map((p) => p.id));
+    rememberStock(list);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedKey stands for `saved`
+  }, [ready, shared, returnedIds, products.length, savedKey]);
+  const returned = returnedIds ?? [];
 
   if (!ready && !shared)
     return (
@@ -175,6 +190,20 @@ export default function WishlistView() {
         </div>
       </div>
       {!shared ? <PriceWatchStrip products={saved} /> : null}
+      {returned.length > 0 ? (
+        <p
+          role="status"
+          className="rounded-2xl bg-forest-50 px-4 py-3 text-sm font-medium text-forest-900 ring-1 ring-forest-200"
+          data-testid="wishlist-back-in-stock"
+        >
+          {returned.length === 1
+            ? t("wishlist.backInStockOne").replace(
+                "{name}",
+                saved.find((p) => p.id === returned[0])?.name ?? "",
+              )
+            : t("wishlist.backInStockMany").replace("{n}", String(returned.length))}
+        </p>
+      ) : null}
       {hasSoldOut ? (
         <p className="text-xs leading-5 text-ink-soft" data-testid="wishlist-soldout-note">
           {t("wishlist.soldOutLast")}
@@ -182,7 +211,7 @@ export default function WishlistView() {
       ) : null}
       <div className="grid grid-cols-2 gap-x-5 gap-y-10 md:grid-cols-3 xl:grid-cols-4" data-list="wishlist">
         {saved.map((p) => (
-          <ProductCard key={p.id} product={p} />
+          <ProductCard key={p.id} product={p} backInStock={returned.includes(p.id)} />
         ))}
       </div>
       {/* UX plan §8 — a suggestion rail under the list: complements first,
