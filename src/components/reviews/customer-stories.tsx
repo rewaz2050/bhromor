@@ -6,7 +6,7 @@ import { usePublicReviews } from "@/lib/use-public-reviews";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { coverImage, type Product } from "@/lib/catalog";
 import { isDiscoverable } from "@/lib/merchandising";
-import { averageOf, type Review } from "@/lib/review-store";
+import { averageOf, hasPhotos, type Review } from "@/lib/review-store";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconStar } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -23,8 +23,31 @@ export function approvedStories(reviews: Review[], products: Product[]) {
         products.some((p) => p.id === r.productId && isDiscoverable(p)),
     )
     .sort(
-      (a, b) => Number(!!b.featured) - Number(!!a.featured) || b.date - a.date,
+      (a, b) =>
+        Number(!!b.featured) - Number(!!a.featured) ||
+        hasPhotos(b) - hasPhotos(a) ||
+        b.date - a.date,
     );
+}
+
+/** Buyer photos across approved stories, newest review first — the UGC strip (UX plan §2, R9). */
+export function storyPhotos(
+  stories: Review[],
+  products: Product[],
+  limit = 8,
+): { src: string; review: Review; product: Product }[] {
+  const out: { src: string; review: Review; product: Product }[] = [];
+  const byDate = [...stories].sort((a, b) => b.date - a.date);
+  for (const review of byDate) {
+    const product = products.find((p) => p.id === review.productId);
+    if (!product) continue;
+    for (const src of review.photos ?? []) {
+      if (typeof src !== "string" || !src) continue;
+      out.push({ src, review, product });
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }
 
 /**
@@ -41,10 +64,11 @@ export default function CustomerStories({
   hideWhenEmpty?: boolean;
   limit?: number;
 } = {}) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { reviews } = usePublicReviews({ featured: true });
   const { products } = useLiveCatalog();
   const approved = approvedStories(reviews ?? [], products);
+  const photos = storyPhotos(approved, products);
 
   if (hideWhenEmpty && approved.length === 0) return null;
 
@@ -78,6 +102,35 @@ export default function CustomerStories({
           </div>
         )}
       </div>
+      {photos.length > 0 && (
+        <ul
+          data-testid="stories-photos"
+          aria-label={lang === "bn" ? "ক্রেতাদের ছবি" : "Buyer photos"}
+          className="-mx-4 mb-6 flex snap-x gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0"
+        >
+          {photos.map(({ src, review, product }, i) => (
+            <li key={`${review.id}-${i}`} className="shrink-0 snap-start">
+              <Link
+                href={`/product/${product.slug}#reviews-heading`}
+                className="group relative block h-40 w-32 overflow-hidden rounded-xl bg-ivory-100 ring-1 ring-line sm:h-48 sm:w-40"
+                aria-label={`${product.name} — ${review.author}`}
+              >
+                {/* Plain <img>: buyer photos are data URLs or Cloudinary URLs (review-photos.ts). */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                />
+                <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-forest-950/70 to-transparent px-2 pb-1.5 pt-6 text-[0.65rem] font-medium text-ivory-50">
+                  {product.name}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
       {approved.length ? (
         <div className="grid gap-5 md:grid-cols-3">
           {approved.slice(0, limit).map((review) => {

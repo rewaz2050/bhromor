@@ -75,10 +75,18 @@ export const updateReviewInList = (
   list.map((r) => (r.id === id ? fn(r) : r));
 
 /** Storefront view: approved only, featured first, newest first. */
+/** 1 when the review carries at least one buyer photo — photo reviews rank first (UX plan §4, R9). */
+export const hasPhotos = (r: Review): number => (Array.isArray(r.photos) && r.photos.length > 0 ? 1 : 0);
+
 export const visibleReviews = (list: Review[], productId: string): Review[] =>
   list
     .filter((r) => r.productId === productId && r.status === "approved")
-    .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || b.date - a.date);
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.featured)) - Number(Boolean(a.featured)) ||
+        hasPhotos(b) - hasPhotos(a) ||
+        b.date - a.date,
+    );
 
 export const visibleCount = (list: Review[], productId: string): number =>
   list.filter((r) => r.productId === productId && r.status === "approved").length;

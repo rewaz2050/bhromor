@@ -30,13 +30,13 @@ export default function ReviewAsk({ order }: { order: Order }) {
       <div className="min-w-0">
         <p className="text-sm font-medium text-forest-900">
           {lang === "bn"
-            ? "অর্ডারটি কেমন লাগল?"
-            : "How was the order?"}
+            ? "ছবিসহ রিভিউ দিন — কেমন লাগল?"
+            : "Add a photo review — how was it?"}
         </p>
         <p className="mt-0.5 text-xs leading-5 text-ink-soft">
           {lang === "bn"
-            ? "এক লাইনের একটা রিভিউ পরের ক্রেতাকে ঠিক কাপড়টা বাছতে সাহায্য করে।"
-            : "A one-line review helps the next shopper pick the right piece."}
+            ? "গায়ে-দেওয়া একটা ছবি আর এক লাইন — পরের ক্রেতা ঠিক মাপটা বাছতে পারবেন। ছবির রিভিউ পণ্যের পাতায় সবার আগে দেখায়।"
+            : "One photo of it worn and one line — the next shopper picks the right size. Photo reviews show first on the product page."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {askable.map((item) => (
