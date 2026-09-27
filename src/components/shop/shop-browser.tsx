@@ -35,7 +35,7 @@ import {
   IconChevron,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import type { SortKey } from "@/lib/shop-sort";
+import { sortShelf, type SortKey } from "@/lib/shop-sort";
 import {
   PRICE_BAND_DEFS,
   SHOP_SCROLL_KEY,
@@ -354,38 +354,9 @@ export default function ShopBrowser({
 
     list = list.filter(({ p }) => matchesProduct(p, q));
 
-    const sorted = [...list];
-    switch (sort) {
-      case "newest":
-        sorted.sort(
-          (a, b) => Number(b.p.isNew) - Number(a.p.isNew) || b.index - a.index,
-        );
-        break;
-      case "best":
-        // P2 #1 — real sales from v_product_sales; rows without a live sales
-        // figure (launch catalog) sort after every product that has one.
-        sorted.sort(
-          (a, b) =>
-            (b.p.unitsSold ?? -1) - (a.p.unitsSold ?? -1) || a.index - b.index,
-        );
-        break;
-      case "price-asc":
-        sorted.sort((a, b) => a.p.price - b.p.price || a.index - b.index);
-        break;
-      case "price-desc":
-        sorted.sort((a, b) => b.p.price - a.p.price || a.index - b.index);
-        break;
-      default:
-        // UX plan §3 — the shop's merchandising order, in-stock first;
-        // sold-out pieces close the list instead of opening it.
-        sorted.sort(
-          (a, b) =>
-            Number(b.p.inStock) - Number(a.p.inStock) ||
-            Number(b.p.featured) - Number(a.p.featured) ||
-            a.index - b.index,
-        );
-    }
-    return sorted.map(({ p }) => p);
+    // One sort for every shelf (lib/shop-sort): the merchandising order the
+    // list arrived in is the tie-breaker; "best" is real sales.
+    return sortShelf(list.map(({ p }) => p), sort);
   }, [
     zonedProducts,
     category,

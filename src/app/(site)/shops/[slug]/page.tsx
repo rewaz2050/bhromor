@@ -72,7 +72,7 @@ export default async function ShopPage({ params }: PageProps) {
       <ShopHero shop={shop} zoneNames={zoneNames} />
 
       <div className="mt-10">
-        <ShopProducts products={shelf} shop={shop} zones={zones} />
+        <ShopProducts products={shelf} shop={shop} zones={zones} categories={categories} />
       </div>
     </div>
   );
