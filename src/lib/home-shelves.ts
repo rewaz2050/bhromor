@@ -171,3 +171,36 @@ export const goesWith = (seeds: Product[], products: Product[], limit = 8): Prod
 /** Bangla-aware display name for a category. */
 export const categoryLabel = (category: Category, lang: "en" | "bn"): string =>
   lang === "bn" && category.nameBn ? category.nameBn : category.name;
+
+/**
+ * UX plan §9 (R8) — the shop directory's "peek at the shelf": each shop's
+ * best pieces as thumbnails. Best sellers lead, then featured, then new,
+ * then catalog order; only discoverable, in-stock pieces (a thumbnail of
+ * something you cannot buy is a small lie). Keyed by shop id.
+ */
+export const shopShelfPeeks = (
+  products: Product[],
+  fallbackShopId: string,
+  limit = 3,
+): Record<string, Product[]> => {
+  const byShop: Record<string, { p: Product; index: number }[]> = {};
+  products.forEach((p, index) => {
+    if (!isDiscoverable(p) || !p.inStock) return;
+    const id = p.shopId ?? fallbackShopId;
+    (byShop[id] ??= []).push({ p, index });
+  });
+  const out: Record<string, Product[]> = {};
+  for (const [id, rows] of Object.entries(byShop)) {
+    out[id] = rows
+      .sort(
+        (a, b) =>
+          (b.p.unitsSold ?? 0) - (a.p.unitsSold ?? 0) ||
+          Number(!!b.p.featured) - Number(!!a.p.featured) ||
+          Number(!!b.p.isNew) - Number(!!a.p.isNew) ||
+          a.index - b.index,
+      )
+      .slice(0, limit)
+      .map((r) => r.p);
+  }
+  return out;
+};

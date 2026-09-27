@@ -4,6 +4,7 @@ import {
   getStorefrontZones,
 } from "@/lib/db/storefront";
 import { productShopId } from "@/lib/shop-utils";
+import { shopShelfPeeks } from "@/lib/home-shelves";
 import ShopsDirectory from "@/components/shop/shops-directory";
 
 export const metadata: Metadata = {
@@ -25,12 +26,15 @@ export default async function ShopsPage() {
     const id = productShopId(p, fallbackShopId);
     productCounts[id] = (productCounts[id] ?? 0) + 1;
   }
+  // UX plan §9 (R8) — three thumbnails per card: a shop you can see into.
+  const peeks = shopShelfPeeks(products, fallbackShopId);
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
       <ShopsDirectory
         shops={shops}
         zones={zones}
         productCounts={productCounts}
+        peeks={peeks}
       />
     </div>
   );

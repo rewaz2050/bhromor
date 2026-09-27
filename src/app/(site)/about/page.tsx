@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InfoRail from "@/components/info/info-rail";
 import Image from "next/image";
 import { ButtonLink, Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight, IconBox, IconLeaf, IconShield, IconTruck } from "@/components/ui/icons";
@@ -121,6 +122,8 @@ export default function AboutPage() {
           </div>
         </div>
       </section>
+      {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}
+      <InfoRail />
     </>
   );
 }

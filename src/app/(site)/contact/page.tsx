@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InfoRail from "@/components/info/info-rail";
 import ContactChannels from "@/components/contact/contact-channels";
 import ContactForm from "@/components/contact/contact-form";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
+    <>
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
       <Eyebrow>We reply, quickly</Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
@@ -26,5 +28,8 @@ export default function ContactPage() {
         <ContactForm />
       </div>
     </div>
+    {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}
+    <InfoRail />
+    </>
   );
 }

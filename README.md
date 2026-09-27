@@ -175,6 +175,53 @@ Tests: `src/lib/__tests__/free-delivery.test.ts` (sanitizer, parser, offers/targ
 
 Tests: `src/lib/__tests__/funnel-events.test.ts`, `events-sink.test.ts`, `src/app/api/events/__tests__/route.test.ts`, `src/components/analytics/__tests__/funnel-tracking.test.tsx` (first page view, search settle/dedupe, select_item list credit, quick-add source, list impression, scroll marks), `src/components/admin/__tests__/funnel-card.test.tsx`. **Requires** `supabase/migrations/202609260004_storefront_events.sql`; until it runs the storefront still sends (204, dropped) and the Reports card names the file.
 
+## UX plan R8 — shop cards you can see into, info pages that end in product, no dead ends (2026-09-27)
+
+Round 8 of `docs/ux-sales-plan.md` (§9 shop directory, §11 information
+pages, §1.4 empty states, §1.5 speed audit). No migration.
+
+- **Shop directory card** (`components/shop/shop-card.tsx`): logo when the
+  shop has one, a **"peek at the shelf"** — the shop's three best pieces as
+  thumbnails (`shopShelfPeeks` in `lib/home-shelves.ts`: best sellers →
+  featured → new, discoverable and in stock only; computed on the server
+  page and passed down), and the zone answer both ways: a green
+  **"Delivers to your area"** tick when the picked zone is served, the
+  existing honest badge when it is not. Counts, prep minutes and rating in
+  Bengali digits under Bangla.
+- **Information pages end in product**: `components/info/info-rail.tsx`
+  ("Before you go · The pieces people are buying" — best sellers, new
+  arrivals while sales data is thin, hidden below two) closes about,
+  delivery, returns, FAQ, contact, privacy and terms.
+- **FAQ** is now bilingual and searchable (`lib/faq.ts`,
+  `components/info/faq-list.tsx`): the product search's forgiving folding
+  (case, Bengali spelling variants, synonyms), every word must match the
+  question or the answer in either script, matches open themselves, the
+  count reads "৮টির মধ্যে ১টি প্রশ্ন", and a miss offers "Ask us directly" →
+  `/contact` instead of a blank list.
+- **Contact**: WhatsApp card first (highlighted), then the call, then
+  e-mail — still only channels the shop actually configured.
+- **Empty states** (§1.4): the empty wishlist shows the best-seller rail;
+  the empty bag *drawer* shows the recently-viewed strip (the cart page
+  already did); and the storefront gets its own 404 —
+  `app/(site)/not-found.tsx` inside the site chrome (header, language,
+  bag), bilingual with Bengali digits, one CTA back to `/shop` and the
+  best-seller shelf underneath. `app/(site)/[...missing]/page.tsx` sends
+  every URL no real route claims there; the bare root 404 remains for the
+  admin / rider / vendor apps.
+- **Speed audit** (§1.5): verified what already holds — ISR home with
+  server-hydrated catalog + CMS, `/shop` and `/offers` painted from server
+  rows, `sizes` on every `next/image`, AVIF/WebP with a 31-day optimizer
+  cache, `font-display: swap` everywhere, `Reveal` never hides
+  above-the-fold content, no hero image on phones (LCP is the headline).
+  One change: the first two category tiles on the home page are
+  `priority` — they are the LCP candidates on a phone.
+- New strings under `info.*` and `shops.deliversHere / topPieces /
+  shopLogoAlt` (en + bn).
+- Tests: shops-directory (peeks helper, thumbnails + Bengali digits, tick
+  vs badge + ordering), faq-list (search across scripts, filtering, empty
+  hand-off), info-rail + not-found view, contact-channels order,
+  bag-drawer empty strip.
+
 ## UX plan R7 — one Offers hub, Style Match that remembers, a Live page that is never empty (2026-09-27)
 
 Round 7 of `docs/ux-sales-plan.md` (§10 offers hub / live / Style Match).

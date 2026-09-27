@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import InfoRail from "@/components/info/info-rail";
 import { useState, useSyncExternalStore } from "react";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -72,6 +73,7 @@ export default function WishlistView() {
     );
   if (saved.length === 0) {
     return (
+      <>
       <div className="flex flex-col items-center rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-24 text-center">
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-paper text-gold-500 ring-1 ring-line">
           <IconHeart className="h-7 w-7" />
@@ -93,6 +95,10 @@ export default function WishlistView() {
           {synced ? t("wishlist.manageAccount") : t("wishlist.signInToSync")}
         </Link>
       </div>
+      {/* UX plan §1.4 (R8) — an empty wishlist still shows product: the
+          best sellers, so the first heart is one scroll away. */}
+      <InfoRail id="wishlist-empty-rail" />
+      </>
     );
   }
 

@@ -1,0 +1,94 @@
+/** UX plan §9 (R8) — a shop card you can see into, and a zone answer both ways. */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import ShopsDirectory from "@/components/shop/shops-directory";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+import { DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
+import { shopShelfPeeks } from "@/lib/home-shelves";
+import { MY_ZONE_KEY } from "@/lib/use-my-zone";
+
+const shop = (over: Partial<Shop>): Shop => ({
+  id: "s1",
+  slug: "s1",
+  name: "Shop One",
+  phone: "01711111111",
+  zoneIds: ["z1", "z2"],
+  prepMinutes: 15,
+  commissionPct: 10,
+  status: "active",
+  isOpen: true,
+  ratingAvg: 4.6,
+  ratingCount: 12,
+  ...over,
+});
+
+const SHOPS = [
+  shop({}),
+  shop({ id: "s2", slug: "s2", name: "Shop Two", zoneIds: ["z3"], ratingCount: 0, prepMinutes: 25 }),
+];
+
+const mount = (lang: "en" | "bn" = "bn") =>
+  render(
+    <LanguageProvider initialLang={lang}>
+      <ShopsDirectory
+        shops={SHOPS}
+        zones={DELIVERY_ZONES}
+        productCounts={{ s1: 7, s2: 3 }}
+        peeks={{ s1: PRODUCTS.slice(0, 3), s2: PRODUCTS.slice(3, 4) }}
+      />
+    </LanguageProvider>,
+  );
+
+beforeEach(() => {
+  localStorage.clear();
+  document.cookie = "prosanti-lang=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+});
+afterEach(cleanup);
+
+describe("shopShelfPeeks", () => {
+  it("gives each shop its best-selling, in-stock, discoverable pieces — at most three", () => {
+    const pool = PRODUCTS.map((p, i) => ({
+      ...p,
+      shopId: i % 2 ? "b" : "a",
+      unitsSold: i,
+      inStock: i !== 6,
+    }));
+    const peeks = shopShelfPeeks(pool, "a");
+    expect(peeks.a.length).toBeLessThanOrEqual(3);
+    expect(peeks.b.length).toBeLessThanOrEqual(3);
+    // Highest unitsSold first; the sold-out index 6 (shop a) never appears.
+    expect(peeks.a.map((p) => p.unitsSold)).toEqual([...peeks.a.map((p) => p.unitsSold)].sort((x, y) => y! - x!));
+    expect(peeks.a.some((p) => !p.inStock)).toBe(false);
+    // A product without shopId falls back to the fallback shop.
+    const orphan = shopShelfPeeks([{ ...PRODUCTS[0], shopId: undefined }], "fallback");
+    expect(Object.keys(orphan)).toEqual(["fallback"]);
+  });
+});
+
+describe("<ShopsDirectory> cards", () => {
+  it("shows a three-thumbnail peek into the shop, counts in Bengali digits", () => {
+    mount();
+    const cards = screen.getAllByTestId("shop-card");
+    expect(cards).toHaveLength(2);
+    const peek = within(cards[0]).getByTestId("shop-peek");
+    expect(peek).toHaveAttribute("href", "/shops/s1");
+    expect(peek.querySelectorAll("img")).toHaveLength(3);
+    expect(cards[0].textContent).toContain("৭");
+    expect(cards[0].textContent).toContain("১৫");
+    expect(cards[0].textContent).toContain("৪.৬");
+    expect(cards[0].textContent).not.toMatch(/[0-9]/);
+    // Without a picked zone there is neither a tick nor a warning.
+    expect(screen.queryByTestId("shop-serves-zone")).toBeNull();
+  });
+
+  it("with a zone picked: tick for a shop that delivers there, honest badge for one that does not, serving shops first", () => {
+    localStorage.setItem(MY_ZONE_KEY, "z3");
+    mount("en");
+    const cards = screen.getAllByTestId("shop-card");
+    // s2 serves z3 → floats to the top with the tick.
+    expect(within(cards[0]).getByRole("heading", { level: 2 }).textContent).toBe("Shop Two");
+    expect(within(cards[0]).getByTestId("shop-serves-zone").textContent).toMatch(/Delivers to your area/);
+    expect(cards[1].textContent).toMatch(/Doesn't deliver to your zone/);
+    expect(within(cards[1]).queryByTestId("shop-serves-zone")).toBeNull();
+  });
+});

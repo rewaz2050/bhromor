@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InfoRail from "@/components/info/info-rail";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui/primitives";
 import { ExchangeForm } from "@/components/returns/exchange-form";
@@ -25,6 +26,7 @@ const STEPS = [
 
 export default function ReturnsPage() {
   return (
+    <>
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:py-16 space-y-12">
       <div>
         <Eyebrow>Easy, fair, clear</Eyebrow>
@@ -91,5 +93,8 @@ export default function ReturnsPage() {
         </p>
       </div>
     </div>
+    {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}
+    <InfoRail />
+    </>
   );
 }

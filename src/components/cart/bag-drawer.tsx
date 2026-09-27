@@ -24,6 +24,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import BagOffers from "@/components/promo/bag-offers";
 import FreeDeliveryBar from "./free-delivery-bar";
 import StampLine from "@/components/loyalty/stamp-line";
+import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
@@ -40,7 +41,7 @@ export default function BagDrawer() {
     removeItem,
   } = useCart();
   /** Hook unconditionally — the bag content below is a conditional render. */
-  const { shops } = useLiveCatalog();
+  const { shops, products: catalogProducts } = useLiveCatalog();
   /** WhatsApp order for the whole bag (P1 #15) — one shop per cart. */
   const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
   const bagShop =
@@ -100,6 +101,7 @@ export default function BagDrawer() {
         </button>
       </div>
       {detail.length === 0 ? (
+        <>
         <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ivory-100 text-gold-600 ring-1 ring-line">
             <IconBag className="h-6 w-6" />
@@ -116,6 +118,10 @@ export default function BagDrawer() {
             {t("bag.startShopping")}
           </Link>
         </div>
+        {/* UX plan §1.4 (R8) — an empty bag on a returning device shows the
+            pieces it looked at; a first visit sees nothing extra. */}
+        <RecentlyViewedStrip pool={catalogProducts} limit={4} />
+        </>
       ) : (
         <>
           <div className="border-b border-line bg-forest-50 px-6 py-4">

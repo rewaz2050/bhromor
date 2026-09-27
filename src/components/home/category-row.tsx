@@ -84,6 +84,10 @@ export default function CategoryRow({
                           src={category.image}
                           alt=""
                           fill
+                          /* UX plan §1.5 (R8): the first two tiles are the
+                             LCP candidates on a phone (the hero has no
+                             image there) — preload them; the rest stay lazy. */
+                          priority={index < 2}
                           sizes="(min-width: 1024px) 224px, (min-width: 640px) 200px, 44vw"
                           className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
                         />

@@ -46,24 +46,26 @@ export default function ContactChannels() {
   const whatsapp = info?.whatsapp ?? null;
   const email = info?.email ?? null;
 
+  // UX plan §11 (R8) — WhatsApp first (it is how Sunamganj actually talks
+  // to a shop), then the call, then e-mail; the form sits beside them.
   const channels = [
-    phone
-      ? {
-          key: "call",
-          title: "Call us",
-          lines: [pretty(phone), "Sat–Thu · 9am–9pm"],
-          href: `tel:+88${phone}`,
-        }
-      : null,
     whatsapp
       ? {
           key: "whatsapp",
           title: "WhatsApp",
           lines: [
             pretty(whatsapp),
-            whatsapp === phone ? "Same number" : "Fastest for order support",
+            whatsapp === phone ? "Same number · fastest reply" : "Fastest for order support",
           ],
           href: `https://wa.me/88${whatsapp}`,
+        }
+      : null,
+    phone
+      ? {
+          key: "call",
+          title: "Call us",
+          lines: [pretty(phone), "Sat–Thu · 9am–9pm"],
+          href: `tel:+88${phone}`,
         }
       : null,
     email
@@ -86,7 +88,12 @@ export default function ContactChannels() {
               href={channel.href}
               target={channel.href.startsWith("http") ? "_blank" : undefined}
               rel={channel.href.startsWith("http") ? "noreferrer" : undefined}
-              className="group rounded-3xl bg-paper p-6 ring-1 ring-line transition-shadow hover:shadow-lg"
+              data-testid={`contact-${channel.key}`}
+              className={`group rounded-3xl p-6 ring-1 transition-shadow hover:shadow-lg ${
+                channel.key === "whatsapp"
+                  ? "bg-forest-50 ring-forest-200"
+                  : "bg-paper ring-line"
+              }`}
             >
               <h2 className="font-display text-lg font-medium text-forest-900">
                 {channel.title}

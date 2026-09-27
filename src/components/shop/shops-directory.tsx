@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import type { DeliveryZone, Shop } from "@/lib/catalog";
+import type { DeliveryZone, Product, Shop } from "@/lib/catalog";
 import { shopServesZone } from "@/lib/shop-utils";
 import { useMyZone } from "@/lib/use-my-zone";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -22,10 +22,13 @@ export default function ShopsDirectory({
   shops,
   zones,
   productCounts,
+  peeks = {},
 }: {
   shops: Shop[];
   zones: DeliveryZone[];
   productCounts: Record<string, number>;
+  /** UX plan §9 (R8) — each shop's best three pieces, for the card thumbnails. */
+  peeks?: Record<string, Product[]>;
 }) {
   const { t, lang } = useLanguage();
   const { zoneId } = useMyZone();
@@ -75,6 +78,7 @@ export default function ShopsDirectory({
             productCount={productCounts[shop.id] ?? 0}
             zoneName={zone?.name ?? null}
             servesZone={zone ? shopServesZone(shop, zone.id) : true}
+            topProducts={peeks[shop.id] ?? []}
           />
         ))}
       </div>

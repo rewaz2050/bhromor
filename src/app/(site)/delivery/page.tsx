@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InfoRail from "@/components/info/info-rail";
 import Link from "next/link";
 import { getStorefrontZones } from "@/lib/db/storefront";
 import { readOpsSettings } from "@/lib/db/engagement";
@@ -37,6 +38,7 @@ export default async function DeliveryPage() {
   const courierMinPaisa = ops?.courierMinOrderPaisa ?? MIN_ORDER_OUTSIDE_SADAR_PAISA;
   const courierMinLabel = `৳${Math.round(courierMinPaisa / 100)}`;
   return (
+    <>
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:py-16">
       <Eyebrow>Sunamganj · জেলা → উপজেলা → পাড়া · সহজ অর্ডার</Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
@@ -169,5 +171,8 @@ export default async function DeliveryPage() {
         </ul>
       </div>
     </div>
+    {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}
+    <InfoRail />
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InfoRail from "@/components/info/info-rail";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui/primitives";
 
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
+    <>
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:py-16">
       <Eyebrow>Clear rules</Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
@@ -95,5 +97,8 @@ export default function TermsPage() {
         </p>
       </div>
     </div>
+    {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}
+    <InfoRail />
+    </>
   );
 }
