@@ -16,6 +16,12 @@ import { isPushConfigured, pushSubscriptionsReady } from "@/lib/push";
 import { customerPushReady } from "@/lib/customer-push";
 import { waOutboxReady } from "@/lib/wa-outbox";
 import { cronStatus } from "@/lib/cron";
+import {
+  ROUND_MIGRATIONS,
+  ROUND_MIGRATION_ORDER,
+  ROUND_MIGRATION_WHY,
+  roundProbes,
+} from "@/lib/migration-probes";
 import { apiJson } from "@/lib/api-response";
 import { requireStaff } from "@/lib/staff-auth";
 
@@ -111,6 +117,18 @@ export async function GET(request?: Request) {
     // 202609240003 — the free WhatsApp fallback: when no push reached the
     // shopper, the step waits in `wa_outbox` as a one-tap draft.
     waOutboxReady: false,
+    // The 2026-09-26/27 rounds (docs/go-live.md step 1, in this order). None
+    // of them gates `live` — orders flow without them — but each one has a
+    // screen that answers 503 naming its file until it runs, so the report
+    // says which are still missing instead of leaving that to be discovered.
+    passwordResetReady: false, // 202609260001
+    applicationReviewReady: false, // 202609260002
+    freeDeliveryReady: false, // 202609260003 (columns + patched ps_place_order, one transaction)
+    storefrontEventsReady: false, // 202609260004
+    pushBroadcastsReady: false, // 202609270001
+    shopCoverReady: false, // 202609270002
+    bagSnapshotsReady: false, // 202609270003
+    reviewStampsReady: false, // 202609270004
   };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
@@ -173,6 +191,11 @@ export async function GET(request?: Request) {
       const waOutbox = await waOutboxReady(svc);
       checks.waOutboxReady = waOutbox.ready;
       counts.wa_outbox_pending = waOutbox.count;
+
+      // The eight 2026-09-26/27 files, one probe each (tables / columns).
+      const rounds = await roundProbes(svc);
+      for (const key of ROUND_MIGRATION_ORDER) checks[key] = rounds[key];
+      Object.assign(counts, rounds.counts);
 
       // The clock (202609240002) — is a scheduler wired, and did it knock?
       const cron = await cronStatus(svc);
@@ -305,6 +328,19 @@ export async function GET(request?: Request) {
     nextSteps.push(
       "WhatsApp draft table nai — SQL Editor-e supabase/migrations/202609240003_wa_outbox.sql chalaben; na chalale je customer phone-e notification ON koreni take kono step er message draft hisebe o pabe na (order page e 'Ready to send' asbe na)",
     );
+  }
+  if (checks.reachable) {
+    const missing = ROUND_MIGRATION_ORDER.filter((key) => !checks[key]);
+    for (const key of missing) {
+      nextSteps.push(
+        `SQL Editor-e supabase/migrations/${ROUND_MIGRATIONS[key]} chalaben — ${ROUND_MIGRATION_WHY[key]}`,
+      );
+    }
+    if (missing.length > 1) {
+      nextSteps.push(
+        `Ei ${missing.length}ti file krome chalaben (upor theke niche) — protitar sheshe nijer 'OK' notice ase (docs/go-live.md step 1)`,
+      );
+    }
   }
   if (checks.reachable && !checks.cronConfigured) {
     nextSteps.push(

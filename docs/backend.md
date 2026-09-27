@@ -125,6 +125,7 @@ src/lib/
     └── storefront.ts      # server page reads (live rows, empty otherwise)
 supabase/
 ├── schema.sql                              # base tables, RLS, §34 machine
+├── verify-2026-09-27.sql                   # read-only probe: OK/MISSING per artefact of the 2026-09-26/27 round + SUMMARY
 └── migrations/
     ├── 202609080001_storefront_saved_items.sql  # account wishlists (standalone)
     ├── 202609080002_order_guards.sql            # totals guard, pending/COD-only inserts, ps_use_coupon

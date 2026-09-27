@@ -236,6 +236,11 @@ and did not need data the shop does not have. **No migration**; code only.
   from two categories up) and the same sort as `/shop`; `sortShelf()` in
   `lib/shop-sort.ts` is now the single sort for every shelf.
 
+Checking a live database after the round: `supabase/verify-2026-09-27.sql`
+(read-only, one `OK`/`MISSING` row per table / column / patched function,
+`SUMMARY` must read `ALL 8 MIGRATIONS APPLIED`) or `/api/health` as staff
+(`passwordResetReady` … `reviewStampsReady`, missing files under `nextSteps`).
+
 Still open, by design: true-to-size bar and cm/inch toggle (no fit data),
 pre-order / "opens at …" (shops only have an open/closed toggle), the
 campaign landing page, lookbook/UGC tiles (needs photo reviews).

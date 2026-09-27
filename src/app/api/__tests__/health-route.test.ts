@@ -23,6 +23,12 @@ const state = vi.hoisted(() => ({
   cron: { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" as string | null },
   /** The free WhatsApp fallback (2026-09-24): the draft outbox table. */
   waOutbox: { ready: true, count: 0 },
+  /**
+   * The 2026-09-26/27 round files: a table name ("stamp_ledger") or a
+   * "table.column" ("shops.free_delivery_min") listed here answers the way
+   * PostgREST does when the migration has not run.
+   */
+  missing: new Set<string>(),
 }));
 
 vi.mock("@/lib/cron", () => ({
@@ -57,17 +63,33 @@ vi.mock("@/lib/env", () => ({
  * fallback's "run this migration" next step is pinned.
  */
 const table = (name?: string) => {
-  const result =
-    name === "wa_outbox" && !state.waOutbox.ready
-      ? { count: null, error: { code: "42P01", message: "relation does not exist" } }
-      : { count: name === "wa_outbox" ? state.waOutbox.count : 3, error: null };
+  let selected = "";
+  const result = () => {
+    if (name === "wa_outbox" && !state.waOutbox.ready) {
+      return { count: null, error: { code: "42P01", message: "relation does not exist" } };
+    }
+    if (name && state.missing.has(name)) {
+      return {
+        count: null,
+        error: { code: "PGRST205", message: `Could not find the table 'public.${name}' in the schema cache` },
+      };
+    }
+    if (name && selected && selected !== "*" && state.missing.has(`${name}.${selected}`)) {
+      return { count: null, error: { code: "42703", message: `column ${name}.${selected} does not exist` } };
+    }
+    return { count: name === "wa_outbox" ? state.waOutbox.count : 3, error: null };
+  };
   const chain: Record<string, unknown> = {};
-  for (const method of ["select", "is", "eq", "order", "limit", "not", "in"]) {
+  for (const method of ["is", "eq", "order", "limit", "not", "in"]) {
     chain[method] = () => chain;
   }
+  chain.select = (cols?: string) => {
+    selected = cols ?? "";
+    return chain;
+  };
   chain.then = (ok: unknown, bad: unknown) =>
-    Promise.resolve(result).then(ok as never, bad as never);
-  chain.catch = (bad: unknown) => Promise.resolve(result).catch(bad as never);
+    Promise.resolve(result()).then(ok as never, bad as never);
+  chain.catch = (bad: unknown) => Promise.resolve(result()).catch(bad as never);
   return chain;
 };
 
@@ -100,7 +122,56 @@ beforeEach(() => {
   state.push = { configured: true, tableReady: true, count: 1 };
   state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
   state.waOutbox = { ready: true, count: 0 };
+  state.missing = new Set();
   delete process.env.HEALTH_TOKEN;
+});
+
+describe("GET /api/health — the 2026-09-26/27 migration round", () => {
+  const ROUND = [
+    "passwordResetReady",
+    "applicationReviewReady",
+    "freeDeliveryReady",
+    "storefrontEventsReady",
+    "pushBroadcastsReady",
+    "shopCoverReady",
+    "bagSnapshotsReady",
+    "reviewStampsReady",
+  ] as const;
+
+  it("reports all eight files as applied when their tables and columns answer", async () => {
+    const body = (await (await GET()).json()) as Health & { counts: Record<string, number> };
+    for (const key of ROUND) expect(body.checks[key], key).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("2026092"))).toBe(false);
+    expect(body.counts.stamp_ledger).toBe(3);
+    expect(body.counts.storefront_events).toBe(3);
+  });
+
+  it("names the exact file for a missing table and for a missing column", async () => {
+    state.missing = new Set(["stamp_ledger", "shops.free_delivery_min"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.reviewStampsReady).toBe(false);
+    expect(body.checks.freeDeliveryReady).toBe(false);
+    for (const key of ROUND) {
+      if (key !== "reviewStampsReady" && key !== "freeDeliveryReady") expect(body.checks[key], key).toBe(true);
+    }
+    expect(body.nextSteps.some((s) => s.includes("202609270004_review_stamps.sql"))).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202609260003_free_delivery.sql"))).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202609260004_storefront_events.sql"))).toBe(false);
+    // Two or more missing → the "run them in order" reminder.
+    expect(body.nextSteps.some((s) => s.includes("2ti file krome"))).toBe(true);
+    // None of this touches `live` — orders flow without the round.
+    expect(body.checks.placeOrderRpc).toBe(true);
+  });
+
+  it("does not mistake a permission or shape error for a missing migration", async () => {
+    // Nothing listed as missing, but wa_outbox is the only table wired to fail,
+    // so this simply pins that the round flags stay true alongside another
+    // probe's failure.
+    state.waOutbox = { ready: false, count: 0 };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.waOutboxReady).toBe(false);
+    for (const key of ROUND) expect(body.checks[key], key).toBe(true);
+  });
 });
 
 describe("GET /api/health — who sees what (audit L6)", () => {

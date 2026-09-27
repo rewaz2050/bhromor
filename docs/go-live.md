@@ -478,6 +478,19 @@ After the existing migrations, apply in order:
   save (unverified — the proof columns are dropped on insert), the card
   counts orders only and approving a review stamps nothing.
 
+**Verify the whole 2026-09-26/27 round in one go** (after the eight files
+above): paste `supabase/verify-2026-09-27.sql` (read-only) — one row per
+table / column / patched function, `OK` or `MISSING`, and a `SUMMARY` row
+that must read `ALL 8 MIGRATIONS APPLIED`. The same answer is on the site:
+`/api/health` (signed in as staff) now reports `passwordResetReady`,
+`applicationReviewReady`, `freeDeliveryReady`, `storefrontEventsReady`,
+`pushBroadcastsReady`, `shopCoverReady`, `bagSnapshotsReady`,
+`reviewStampsReady`, and lists any missing file under `nextSteps` (they do
+not gate `live` — orders flow without them). Both were exercised against a
+scratch Postgres built from `bootstrap-fresh.sql` + every later migration:
+all `MISSING` before the round, all `OK` after it, including a
+`ps_place_order` that had been pasted with Windows line endings.
+
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch
 migrations. Never run the entire bootstrap on an existing database.
@@ -608,7 +621,14 @@ Do these on the deployed site, in order:
 - [ ] `GET /api/health` → `"live": true`, all `checks` true (probe verifies
       seed counts + the `ps_place_order` RPC; `/admin` home shows a
       green **LIVE** banner once every check passes, an amber checklist while
-      anything is missing)
+      anything is missing). The eight `…Ready` flags at the end of `checks`
+      are the 2026-09-26/27 migrations — every one `true`, `nextSteps` empty
+      of `2026092…` file names (or run `supabase/verify-2026-09-27.sql`)
+- [ ] Free delivery: Admin → Settings → *ফ্রি ডেলিভারি* on with a minimum, then
+      a test COD order above it to a z1–z3 address → receipt shows delivery
+      ৳0, `orders.free_delivery_by = 'platform'` on the row (a shop's own
+      minimum gives `'shop'`, and its payout in `shop_ledger` is smaller by
+      the waived charge once the order is delivered)
 - [ ] `/checkout` shows the flat ৳60 promise — no launch-offer counter, no free-delivery threshold, no first-10-free copy anywhere
       (check `snapshot.customerOrderCount` on a placed order in Supabase)
 - [ ] `/shop` shows the seeded catalog with live prices
