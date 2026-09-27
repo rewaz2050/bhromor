@@ -2,12 +2,13 @@
 
 **তারিখ:** ২৭ সেপ্টেম্বর ২০২৬
 **প্ল্যান:** `docs/SHOP-VENDOR-FIX-PLAN-2026-09-27.md` (আপনার অনুমোদিত)
-**শাখা:** `arena/01a0e3b1-bhromor`
+**শাখা:** `arena/01a0e3b1-bhromor` · **PR:** [#37](https://github.com/rewaz2050/bhromor/pull/37)
 
 **যাচাই:**
 - `npx tsc --noEmit` → পরিষ্কার (কোনো এরর নেই)
 - `npx vitest run` → **৩০১ ফাইল / ১৮৬৩ টেস্ট পাস, ০ ফেল** (আগের ব্যাসলাইন ২৯৫/১৮২৩; ফাইনাল এই রানে নতুন সব টেস্টসহ পুরো স্যুট একবারে সবুজ)
 - `npx eslint` (না*ছোঁয়া* সব ফাইল: vendor/*, admin/shops|orders|products, quick-add, vendor-dashboard, product-editor) → **০ error, ০ warning**
+- `npx next build` → সফল (নতুন `/vendor/products/quick` ও `/api/vendor/media/sign` রুটসহ)
 - PGlite-এ আসল স্কিমা (bootstrap-fresh + ২০২৬-০৯-২৬/২৭-এর migration) চালিয়ে দুটো constraint প্রমাণ করা হয়েছে (নিচে ফেজ ১-এ)
 
 ---
