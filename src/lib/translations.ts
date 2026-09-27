@@ -256,6 +256,10 @@ export const translations = {
       failed: "Could not turn it on — please try again.",
       brBlocked: "This browser has already blocked notifications. Hand-set steps:",
       notReady: "Phone updates are not available yet — the shop has not finished setting them up.",
+      marketingTitle: "Also tell me about new drops & offers.",
+      marketingBody: "At most one message a week, from the shop itself — no SMS, no email, off with one tap.",
+      marketingOn: "Drops & offers are ON for this phone — at most one a week.",
+      marketingOff: "Drops & offers turned off — order updates stay on.",
     },
     accountHero: {
       pageEyebrow: "A space of your own",
@@ -1073,6 +1077,10 @@ export const translations = {
       failed: "চালু করা গেল না — আবার চেষ্টা করুন।",
       brBlocked: "এই ব্রাউজার আগেই নোটিফিকেশন ব্লক করে রেখেছে। হাতে করে করুন:",
       notReady: "ফোনে খবর এখনো চালু হয়নি — দোকান সেটআপ শেষ করেনি।",
+      marketingTitle: "নতুন ড্রপ ও অফারের খবরও দিন।",
+      marketingBody: "সপ্তাহে সর্বোচ্চ ১টা বার্তা, দোকান থেকেই — কোনো SMS বা ইমেইল নয়; এক ট্যাপে বন্ধ।",
+      marketingOn: "এই ফোনে ড্রপ ও অফারের খবর চালু — সপ্তাহে সর্বোচ্চ ১টা।",
+      marketingOff: "ড্রপ ও অফারের খবর বন্ধ — অর্ডারের আপডেট চালুই থাকল।",
     },
     accountHero: {
       pageEyebrow: "আপনার নিজের একটা জায়গা",

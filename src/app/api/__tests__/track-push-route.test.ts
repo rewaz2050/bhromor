@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   order: null as null | { id: string; customer: { phone: string } },
   saved: [] as Record<string, unknown>[],
   deleted: [] as string[],
+  patched: [] as Record<string, unknown>[],
   tableMissing: false,
   keys: true,
   nextErr: null as null | { code?: string; message?: string },
@@ -54,6 +55,15 @@ vi.mock("@/lib/supabase-server", () => ({
           return { error: null };
         },
       }),
+      update: (patch: Record<string, unknown>) => ({
+        eq: async (_c: string, endpoint: string) => {
+          if (state.tableMissing) {
+            return { error: { code: "42703", message: 'column "marketing" does not exist' } };
+          }
+          state.patched.push({ endpoint, ...patch });
+          return { error: null };
+        },
+      }),
       select: async () => ({
         count: state.tableMissing ? null : 2,
         error: state.tableMissing ? { code: "42P01", message: "does not exist" } : null,
@@ -67,7 +77,7 @@ vi.mock("@/lib/rate-limit", () => ({
   clientIpFromHeaders: () => "1.2.3.4",
 }));
 
-import { DELETE, GET, POST } from "@/app/api/track/push/route";
+import { DELETE, GET, PATCH, POST } from "@/app/api/track/push/route";
 
 const post = (body: unknown) =>
   new Request("http://x/api/track/push", {
@@ -169,5 +179,54 @@ describe("/api/track/push", () => {
     );
     expect(res.status).toBe(200);
     expect(state.deleted).toEqual([subscription.endpoint]);
+  });
+});
+
+describe("broadcast opt-in (UX plan §12, migration 202609270001)", () => {
+  it("PATCH flips `marketing` for exactly the caller's endpoint", async () => {
+    state.patched.length = 0;
+    const res = await PATCH(
+      new Request("http://x/api/track/push", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "https://push.example/abc", marketing: true }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.patched).toHaveLength(1);
+    expect(state.patched[0]).toMatchObject({ endpoint: "https://push.example/abc", marketing: true });
+  });
+
+  it("PATCH rejects a non-boolean flag and a non-https endpoint", async () => {
+    const bad = await PATCH(
+      new Request("http://x/api/track/push", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "https://push.example/abc", marketing: "yes" }),
+      }),
+    );
+    expect(bad.status).toBe(400);
+    const plain = await PATCH(
+      new Request("http://x/api/track/push", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "http://push.example/abc", marketing: true }),
+      }),
+    );
+    expect(plain.status).toBe(422);
+  });
+
+  it("names the broadcast migration when the column is missing", async () => {
+    state.tableMissing = true;
+    const res = await PATCH(
+      new Request("http://x/api/track/push", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: "https://push.example/abc", marketing: false }),
+      }),
+    );
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { error: string }).error).toContain("202609270001_push_broadcasts.sql");
+    state.tableMissing = false;
   });
 });

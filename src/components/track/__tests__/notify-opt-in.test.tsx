@@ -24,6 +24,8 @@ const state = vi.hoisted(() => ({
   testCalls: 0,
   disableCalls: 0,
   enableResult: { ok: true } as { ok: boolean; message?: string },
+  marketing: null as boolean | null,
+  marketingCalls: [] as boolean[],
 }));
 
 vi.mock("@/lib/use-order-push", () => ({
@@ -37,6 +39,12 @@ vi.mock("@/lib/use-order-push", () => ({
       configured: state.configured,
       ready: state.ready,
       loading: false,
+      marketing: state.marketing,
+    },
+    setMarketing: async (on: boolean) => {
+      state.marketingCalls.push(on);
+      state.marketing = on;
+      return { ok: true };
     },
     enable: async () => {
       state.enableCalls += 1;
@@ -209,5 +217,25 @@ describe("NotifyOptIn (track page)", () => {
     );
     expect(container).not.toBeEmptyDOMElement();
     expect(screen.getByTestId("track-notify-enable")).toBeInTheDocument();
+  });
+});
+
+describe("drops & offers opt-in (UX plan §12)", () => {
+  it("offers the weekly broadcast only once order updates are on, default unticked, one tap to opt in", async () => {
+    state.subscribed = false;
+    state.marketing = null;
+    state.marketingCalls.length = 0;
+    const { rerender } = render(<NotifyOptIn orderId="PS-1" phone="01711111111" status="confirmed" />);
+    expect(screen.queryByTestId("track-notify-marketing")).toBeNull();
+
+    state.subscribed = true;
+    state.marketing = false;
+    rerender(<NotifyOptIn orderId="PS-1" phone="01711111111" status="confirmed" />);
+    const row = screen.getByTestId("track-notify-marketing");
+    expect(row.dataset.on).toBe("0");
+    const box = row.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await waitFor(() => expect(state.marketingCalls).toEqual([true]));
   });
 });

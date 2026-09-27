@@ -436,6 +436,15 @@ After the existing migrations, apply in order:
   back-fill. **Verify:** the run ends with `NOTICE: STOREFRONT EVENTS OK`.
   Until it is applied the storefront keeps sending (the API answers 204 and
   drops the batch) and the Reports card says which file to run.
+- `supabase/migrations/202609270001_push_broadcasts.sql` — **weekly drops &
+  offers push** (UX plan §12): adds `customer_push_subscriptions.marketing`
+  (per-device opt-in, default false — the tracker card's "নতুন ড্রপ ও
+  অফারের খবরও দিন" tick) and the `push_broadcasts` log that enforces one
+  broadcast per 7 days from Admin → Growth → *Drops & offers broadcast*.
+  Pure `add column / create table if not exists`; safe to re-run. **Verify:**
+  the run ends with `NOTICE: PUSH BROADCASTS OK`. Until it is applied the
+  tick answers 503 naming this file and the Growth card says to run it;
+  order-milestone pushes are unaffected.
 
 Step 36 (two-tap flow) is required for the shop's Confirm → Ready button.
 Fresh bootstrap/bootstrap-parts now include it and all six area-dispatch

@@ -24,12 +24,14 @@ import { apiError, apiJson } from "@/lib/api-response";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { normalizePhone } from "@/lib/orders";
 import {
+  customerPushMarketingFor,
   customerPushReady,
   customerVapidKey,
   customerPushSaveFailureReason,
   isCustomerPushConfigured,
   removeCustomerPushSubscription,
   saveCustomerPushSubscription,
+  setCustomerPushMarketing,
 } from "@/lib/customer-push";
 
 export const dynamic = "force-dynamic";
@@ -55,15 +57,24 @@ const orderOwnedBy = async (id: string, phone: string) => {
   return order ?? null;
 };
 
-export async function GET() {
+export async function GET(request?: Request) {
   // The card only needs to know whether it *could* work — no order data here.
   if (!isServiceRoleConfigured()) {
-    return apiJson({ configured: isCustomerPushConfigured(), publicKey: customerVapidKey(), ready: false, watching: 0 });
+    return apiJson({ configured: isCustomerPushConfigured(), publicKey: customerVapidKey(), ready: false, watching: 0, marketing: null });
   }
   const db = getSupabaseService();
   const status = db
     ? await customerPushReady(db)
     : { ready: false, count: 0 };
+  // `?endpoint=` → whether THIS device also opted into drops & offers
+  // (UX plan §12). Only the caller's own endpoint makes sense here.
+  let marketing: boolean | null = null;
+  try {
+    const endpoint = request ? new URL(request.url).searchParams.get("endpoint") : null;
+    if (db && endpoint) marketing = await customerPushMarketingFor(db, endpoint);
+  } catch {
+    marketing = null;
+  }
   return apiJson({
     configured: isCustomerPushConfigured(),
     publicKey: customerVapidKey(),
@@ -71,7 +82,42 @@ export async function GET() {
     // say so instead of failing on the tap.
     ready: status.ready,
     watching: status.count,
+    marketing,
   });
+}
+
+/**
+ * PATCH { endpoint, marketing } — the "drops & offers too" opt-in for the
+ * device the caller's browser holds (UX plan §12; migration 202609270001).
+ */
+export async function PATCH(request: Request) {
+  const limited = guard(clientIpFromHeaders(request.headers));
+  if (limited) return limited;
+  if (!isServiceRoleConfigured()) return apiError("Could not update notifications.", 503);
+  const db = getSupabaseService();
+  if (!db) return apiError("Could not update notifications.", 503);
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return apiError("Invalid request.", 400);
+  }
+  if (typeof body.marketing !== "boolean") return apiError("Invalid request.", 400);
+  try {
+    const saved = await setCustomerPushMarketing(db, body.endpoint, body.marketing);
+    if (!saved.ok) {
+      if (saved.reason === "missing_table") {
+        return apiError(
+          "Broadcast opt-in column nai — supabase/migrations/202609270001_push_broadcasts.sql run korun.",
+          503,
+        );
+      }
+      return apiError("Could not update notifications — please try again.", 422);
+    }
+    return apiJson({ ok: true as const, marketing: body.marketing });
+  } catch {
+    return apiError("Could not update notifications — please try again.", 503);
+  }
 }
 
 export async function POST(request: Request) {
