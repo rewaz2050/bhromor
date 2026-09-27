@@ -144,6 +144,24 @@ export default function CampaignPage() {
       >
         {lang === "bn" ? "শপ দেখুন" : "Browse the shop"}
       </Link>
+      {/* UX plan §10 (R9) — "the next one …" teaser once a campaign ends: the
+          early-access list (a real newsletter row) plus the offers hub, where
+          flash drops keep running between festivals. No invented dates. */}
+      <div className="mt-12 text-left" data-testid="campaign-next-teaser">
+        <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-ink-soft">
+          {lang === "bn" ? "পরেরটা মিস করবেন না" : "Don't miss the next one"}
+        </p>
+        <div className="mt-4">
+          <EarlyAccessBox />
+        </div>
+        <p className="mt-4 text-center text-sm text-ink-soft">
+          {lang === "bn" ? "এর মাঝে চলমান ছাড় ও ফ্ল্যাশ ড্রপ — " : "Meanwhile, live discounts and flash drops — "}
+          <Link href="/offers" className="font-semibold text-forest-800 underline-offset-4 hover:underline">
+            {lang === "bn" ? "অফার হাবে" : "in the offers hub"}
+          </Link>
+          .
+        </p>
+      </div>
     </section>
   );
 

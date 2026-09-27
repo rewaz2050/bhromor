@@ -17,6 +17,7 @@ import CategoryRow from "@/components/home/category-row";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
 import YourStyleRail from "@/components/home/your-style-rail";
+import HeroCampaignBand, { useHeroCampaign } from "@/components/home/hero-campaign";
 import CuratedRails from "@/components/home/curated-rails";
 import ZonePill from "@/components/layout/zone-pill";
 import CategoryShelfBlock from "@/components/home/category-shelf";
@@ -102,6 +103,9 @@ export default function HomeClient() {
 function Hero({ cms }: { cms: HomeSettings }) {
   const { hero } = cms;
   const { lang, t } = useLanguage();
+  // UX plan §2 (R9) — campaign-aware: a live/teaser campaign or a running
+  // flash drop takes over the copy and the CTA; an ordinary day is untouched.
+  const campaignCopy = useHeroCampaign();
 
   // When Bengali is selected, use curated translations for hero; otherwise use CMS (English)
   const displayHero =
@@ -119,13 +123,14 @@ function Hero({ cms }: { cms: HomeSettings }) {
     <section
       aria-labelledby="hero-heading"
       data-testid="home-hero"
+      data-campaign={campaignCopy?.kind}
       className="compact-hero relative isolate overflow-hidden bg-forest-950 text-ivory-50"
     >
       <div className="mx-auto flex w-full max-w-7xl items-center gap-6 px-4 py-7 sm:px-6 sm:py-9 lg:gap-10 lg:px-8">
         <div className="hero-copy min-w-0 flex-1">
           <p className="flex items-center gap-3 text-[0.62rem] font-semibold uppercase tracking-[0.3em] text-gold-200">
             <span aria-hidden="true" className="h-px w-6 bg-gold-300/80" />
-            {displayHero.eyebrow}
+            {campaignCopy ? campaignCopy.eyebrow : displayHero.eyebrow}
             <span aria-hidden="true" className="text-gold-300/60">/</span>
             <span lang="bn" className="font-bengali text-sm font-medium normal-case tracking-normal">
               {lang === "bn" ? "PROSANTI" : t("hero.prosanti")}
@@ -135,16 +140,27 @@ function Hero({ cms }: { cms: HomeSettings }) {
             id="hero-heading"
             className="mt-3 font-display text-[clamp(1.75rem,3.6vw,2.75rem)] font-normal leading-[1.06] tracking-[-0.035em]"
           >
-            {displayHero.title1}{" "}
-            <span className="italic text-gold-200">{displayHero.title2}</span>
+            {campaignCopy ? (
+              <span className="italic text-gold-200">{campaignCopy.title}</span>
+            ) : (
+              <>
+                {displayHero.title1}{" "}
+                <span className="italic text-gold-200">{displayHero.title2}</span>
+              </>
+            )}
           </h1>
           <p className="mt-2 max-w-md text-sm leading-6 text-ivory-100/80">
-            {displayHero.subtitle}
+            {campaignCopy ? campaignCopy.subtitle : displayHero.subtitle}
           </p>
+          {campaignCopy && <HeroCampaignBand copy={campaignCopy} />}
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
             <Link
               href="/shop"
-              className="editorial-button bg-ivory-100 text-forest-950 hover:bg-gold-200"
+              className={`editorial-button ${
+                campaignCopy
+                  ? "bg-ivory-50/10 text-ivory-50 ring-1 ring-ivory-50/25 hover:bg-ivory-50/20"
+                  : "bg-ivory-100 text-forest-950 hover:bg-gold-200"
+              }`}
             >
               {displayHero.primaryLabel}
               <IconArrowRight className="h-4 w-4" />
