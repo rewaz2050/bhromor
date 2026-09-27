@@ -445,6 +445,7 @@ export default function CheckoutView() {
   // answers (the client cannot claim it) and the same question is re-asked by
   // the place-order RPC at confirmation; this only makes the quote honest.
   const [plusState, setPlusState] = useState<PlusState>("idle");
+  const [plusInfo, setPlusInfo] = useState<{ pricePaisa: number; enabled: boolean } | null>(null);
   const plusActive = plusState === "active";
   // begin_checkout (pixel/GA, only when configured): once per checkout visit,
   // as soon as the bag has resolved against the live catalog.
@@ -560,9 +561,14 @@ export default function CheckoutView() {
         const res = await fetch(`/api/membership?phone=${encodeURIComponent(phone)}`, {
           cache: "no-store",
         });
-        const data = res.ok ? ((await res.json()) as { state?: string }) : null;
+        const data = res.ok
+          ? ((await res.json()) as { state?: string; pricePaisa?: number; enabled?: boolean })
+          : null;
         if (!cancelled) {
           const st = data?.state;
+          if (data && typeof data.enabled === "boolean") {
+            setPlusInfo({ pricePaisa: Number(data.pricePaisa) || 0, enabled: data.enabled });
+          }
           setPlusState(
             st === "none" || st === "pending" || st === "active" || st === "expired" || st === "rejected"
               ? st
@@ -1576,6 +1582,7 @@ export default function CheckoutView() {
       bagOffer={bagOffer}
       giftWrap={giftValue.wrap}
       plusState={plusState}
+      plusInfo={plusInfo}
       bagShopPrep={bagShop?.prepMinutes ?? 15}
     />
   );

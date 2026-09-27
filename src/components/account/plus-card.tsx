@@ -164,7 +164,7 @@ export default function PlusCard() {
   }
 
   return (
-    <div className="rounded-2xl bg-paper p-6 ring-1 ring-line" data-testid="plus-card">
+    <div id="plus" className="scroll-mt-24 rounded-2xl bg-paper p-6 ring-1 ring-line" data-testid="plus-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg text-forest-900">
