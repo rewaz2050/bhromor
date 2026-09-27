@@ -25,6 +25,7 @@ import ZonePill from "@/components/layout/zone-pill";
 import CategoryShelfBlock from "@/components/home/category-shelf";
 import { ReviewInterrupt, WhyBand } from "@/components/home/shelf-interrupts";
 import BagWaitingBanner from "@/components/home/bag-waiting-banner";
+import QuickChips from "@/components/home/quick-chips";
 import CustomerStories from "@/components/reviews/customer-stories";
 import ScrollDepthTracker from "@/components/analytics/scroll-depth-tracker";
 import { categoryShelves } from "@/lib/home-shelves";
@@ -70,6 +71,8 @@ export default function HomeClient() {
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
       {sections.hero && <Hero cms={settings} />}
+      {/* UX plan §2 (R11) — one tap from the first screen into a filtered shop. */}
+      {!booting && <QuickChips pool={pool} />}
       {/* UX plan §5 (R10) — a returning shopper's bag, right under the hero. */}
       <BagWaitingBanner />
       {booting ? (

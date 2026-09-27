@@ -433,4 +433,25 @@ describe("Homepage editorial journey", () => {
       "/faq",
     );
   });
+
+  it("offers quick chips under the hero — pre-filtered shop links with honest counts (UX plan §2, R11)", async () => {
+    await renderHome();
+    const { quickChips } = await import("@/lib/quick-chips");
+    const expected = quickChips(PRODUCTS);
+    expect(expected.length).toBeGreaterThanOrEqual(2);
+    const row = screen.getByTestId("quick-chips");
+    // right under the hero, before the shelf
+    const hero = screen.getByTestId("home-hero");
+    expect(hero.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const chip of expected) {
+      const link = within(row).getByTestId(`quick-chip-${chip.id}`);
+      expect(link).toHaveAttribute("href", chip.href);
+      expect(link).toHaveTextContent(chip.en);
+      expect(link).toHaveTextContent(String(chip.count));
+    }
+    // every chip in the row is one the shelf can honour
+    expect(within(row).getAllByRole("link").filter((a) => a.dataset.testid?.startsWith("quick-chip-"))).toHaveLength(
+      expected.length,
+    );
+  });
 });
