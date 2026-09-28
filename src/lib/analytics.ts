@@ -15,6 +15,7 @@
 
 import type { Product } from "./catalog";
 import { currentLang, record } from "./events-sink";
+import { currentPageShop } from "./page-shop";
 import type { WireEvent } from "./funnel-events";
 
 export const CURRENCY = "BDT";
@@ -61,7 +62,12 @@ export const itemFromProduct = (product: Product, qty = 1): AnalyticsItem => ({
 });
 
 export type FunnelEvent =
-  | { type: "page_view"; path: string }
+  /**
+   * B4 — `shop` is the storefront being viewed, when the page belongs to one
+   * (set by ShopAttribute, read here). It is what lets a shop see "people who
+   * opened my page" instead of only the product touches.
+   */
+  | { type: "page_view"; path: string; shop?: string }
   | { type: "view_item"; item: AnalyticsItem }
   /** `source`: where the add came from — 'card' | 'pdp' | 'bundle' | 'live' | a rail name. */
   | { type: "add_to_cart"; item: AnalyticsItem; source?: string }
@@ -70,7 +76,7 @@ export type FunnelEvent =
   /** `results`: how many products the shopper saw for the query. */
   | { type: "search"; query: string; results?: number }
   /** UX plan §0 — a rail / grid was shown (`list` names it). */
-  | { type: "view_item_list"; list: string; count: number }
+  | { type: "view_item_list"; list: string; count: number; shop?: string }
   /** UX plan §0 — a product was tapped from a list. */
   | { type: "select_item"; item: AnalyticsItem; list: string }
   /** UX plan §0 — the shopper scrolled past `depth` % of `path`. */
@@ -85,13 +91,19 @@ export const wireEvent = (ev: FunnelEvent, path?: string): WireEvent => {
   if (path) base.p = path;
   switch (ev.type) {
     case "page_view":
-      return { ...base, p: ev.path.split(/[?#]/)[0] };
+      return { ...base, p: ev.path.split(/[?#]/)[0], shop: ev.shop };
     case "view_item":
       return { ...base, pid: ev.item.id, shop: ev.item.shopId, v: ev.item.price };
     case "add_to_cart":
       return { ...base, pid: ev.item.id, shop: ev.item.shopId, src: ev.source, v: ev.item.price * ev.item.qty };
     case "begin_checkout":
-      return { ...base, v: ev.value, meta: { items: ev.items.reduce((n, i) => n + i.qty, 0) } };
+      return {
+        ...base,
+        // One order = one shop, so the first line's shop is the cart's shop.
+        shop: ev.items[0]?.shopId,
+        v: ev.value,
+        meta: { items: ev.items.reduce((n, i) => n + i.qty, 0) },
+      };
     case "purchase":
       return {
         ...base,
@@ -102,7 +114,7 @@ export const wireEvent = (ev: FunnelEvent, path?: string): WireEvent => {
     case "search":
       return { ...base, v: ev.results, meta: { q: ev.query.trim().slice(0, 80).toLowerCase() } };
     case "view_item_list":
-      return { ...base, src: ev.list, v: ev.count };
+      return { ...base, src: ev.list, shop: ev.shop, v: ev.count };
     case "select_item":
       return { ...base, pid: ev.item.id, shop: ev.item.shopId, src: ev.list };
     case "scroll_depth":
@@ -235,7 +247,8 @@ export const track = (ev: FunnelEvent): void => {
   try {
     if (typeof window !== "undefined") {
       const path = window.location?.pathname;
-      const wire = wireEvent(ev, path);
+      // B4 — the storefront on screen, if any (see lib/page-shop.ts).
+      const wire = wireEvent(ev.type === "page_view" && !ev.shop ? { ...ev, shop: currentPageShop() ?? undefined } : ev, path);
       const lang = currentLang();
       record(lang ? { ...wire, lang } : wire);
     }

@@ -11,6 +11,7 @@ import { IconChevron } from "@/components/ui/icons";
 import ShopHero from "@/components/shop/shop-hero";
 import ShopProducts from "@/components/shop/shop-products";
 import FollowShopCard from "@/components/shop/follow-shop-card";
+import ShopAttribute from "@/components/shop/shop-attribute";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -69,6 +70,9 @@ export default async function ShopPage({ params }: PageProps) {
           {shop.name}
         </span>
       </nav>
+
+      {/* B4 — page_view for this storefront carries the shop id. */}
+      <ShopAttribute shopId={shop.id} />
 
       <ShopHero shop={shop} zoneNames={zoneNames} />
 

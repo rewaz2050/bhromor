@@ -15,6 +15,7 @@ import {
   PATCH as vendorShopUpdate,
 } from "../vendor/shop/route";
 import { GET as vendorEarnings } from "../vendor/earnings/route";
+import { GET as vendorFunnel } from "../vendor/funnel/route";
 import {
   GET as vendorPromos,
   PATCH as vendorPromoToggle,
@@ -42,6 +43,8 @@ describe("vendor routes without a session (slice 3)", () => {
     expect((await vendorCategories(get("/api/vendor/categories"))).status).toBe(401);
     // B3: the shop's own promo codes sit behind the same vendor gate.
     expect((await vendorPromos(get("/api/vendor/promos"))).status).toBe(401);
+    // B4: a shop's funnel is its own — behind the same vendor gate.
+    expect((await vendorFunnel(get("/api/vendor/funnel?days=7"))).status).toBe(401);
     expect((await vendorPromoCreate(post("/api/vendor/promos", { code: "EID10" }))).status).toBe(401);
     expect(
       (

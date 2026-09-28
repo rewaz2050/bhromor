@@ -101,5 +101,25 @@
 
 ---
 
+## ✅ B4 · ভেন্ডর ফানেল রিপোর্ট (দোকানের নিজের attribution) — সম্পন্ন
+
+**migration:** `supabase/migrations/202609280004_shop_funnel.sql`
+
+- **Backfill:** `storefront_events`-এ `shop_id` ফাঁকা থাকলে `product_id` থেকে `products.shop_id` বসানো হয় — যা প্রমাণ করা যায়, কেবল তাই; অনুমান করে কিছুই ভরা হয় না।
+- **নতুন ইনডেক্স:** `storefront_events_shop_idx (shop_id, event, created_at desc) where shop_id is not null` — দোকান-ভিত্তিক পড়াই এখন সস্তা।
+- **নতুন ফাংশন `ps_shop_funnel_report(p_shop_id, p_days)`** — সেশন, দোকানের পেজ ভিউ, পণ্য দেখা → ব্যাগে → চেকআউট → অর্ডার, **আসল অর্ডার/রাজস্ব/AOV/কত পিস** (`orders` থেকে; cancelled ও return অর্ডার বাদ), কোথা থেকে ব্যাগে ঢুকেছে, আর দোকানের নিজের **টপ ১০ পণ্য** (দেখা → ব্যাগে → আসল অর্ডার)।
+- **কার্ট-লেভেল attribution:** `page_view`-এও এখন দোকানের আইডি যায় (ক্লায়েন্টে `ShopAttribute` + `src/lib/page-shop.ts`; রুট ট্র্যাকার সেটা স্ট্যাম্প করে), ফলে “**আমার দোকানের পেজ কতজন খুলল**” আসল সংখ্যা — আর আগের দোকানের পেজ ছাড়লে পরের page_view-এ আগের দোকান আটকে থাকে না।
+- **নিরাপত্তা/গোপনীয়তা:** ফাংশনটি service-role only — `anon`/`authenticated`/`public`-এর জন্য `execute` **revoked** (PGlite-এ যাচাই: grant ০)। `storefront_events`-এর RLS অটুট (কোনো policy নেই), তাই ব্রাউজার থেকে কারো ক্লিক পড়া যায় না; রিপোর্ট আসে শুধু service ক্লায়েন্ট দিয়ে, আর `shop_id` আসে **ভেরিফাইড ভেন্ডর সেশন** থেকে (`ctx.shopId`) — query string থেকে কখনো নয়।
+- **PGlite-এ ২১টি চেক সবুজ:** backfill-এর ফলে বাড়তি add-to-cart ধরা পড়া, অন্য দোকানের ট্রাফিক রিপোর্টে ঢোকেনি, ফাঁকা shop_id → সব শূন্য, cancelled অর্ডার রাজস্বে নেই, টপ-প্রোডাক্টের views/adds/orders, **idempotent re-run** (আবার চালালে সংখ্যা বাড়ে না), আর grant চেক।
+
+- **pure মডিউল:** `src/lib/shop-funnel.ts` — `shopFunnelRates()` (view → add → checkout → order → session-to-order), `isThin()`/`SMALL_BASE = 20`, `funnelSteps()` (প্রতিটি ধাপের from/to), `funnelIsQuiet()`, `funnelAdvice()`, `parseShopFunnel()` (junk-এ ভাঙে না), `emptyShopFunnel()`।
+- **সততা নীতি (টেস্টে পিন করা):** ২০টির কম সেশন থাকা ধাপে **রেট দেখানোই হয় না** — “Not enough data yet · 4 of 8” (২-এর ওপর ৫০% দেখিয়ে চালাকি নেই)। কোনো তথ্যই না থাকলে “No visitors recorded yet” (মনে হবে না দোকান খারাপ চলছে)। শেষ ধাপ গোনা হয় **আসল অর্ডার** — cancelled/return বাদ। AOV না থাকলে `—`, ৳০ নয়। পরামর্শ কেবল সেই ধাপের নাম বলে যার পেছনে **যথেষ্ট প্রমাণ** আছে।
+- **ডেটা লেয়ার:** `src/lib/db/vendor-funnel.ts` — `shopFunnelReport()` (ভুল কোড/মেসেজে “migration নেই” চিনে নেয়, আসল ব্যর্থতা গেলায় না), `shopFunnelFor(shopId, days)` (কখনো throw করে না; `missing` মানে migration চালু হয়নি বা service role নেই — আর তা শূন্য দোকান হিসেবে দেখানো হয় না)।
+- **API:** `GET /api/vendor/funnel?days=7|28` (ভেন্ডর গেট + rate limit) — না থাকলে 503 `{missing:true}`, থাকলে রিপোর্ট। হুক `useVendorFunnel()` স্ট্যাটাসও ধরে রাখে, যাতে 503-কে “ফাঁকা সপ্তাহ” না ভাবা হয়।
+- **ভেন্ডর UI:** `src/components/vendor/funnel-card.tsx` — তিনটি সংখ্যা (Visited your shop · Orders · Revenue), চার ধাপের বার (প্রতিটিতে “X of Y · Z%” অথবা “Not enough data yet”), সৎ পরামর্শ, AOV/পিস/পেজ ভিউ, আর “Which products, and where the adds came from” চাপলে পণ্য-ভিত্তিক টেবিল (Seen · Added · Ordered) ও add-to-bag-এর উৎস। ড্যাশবোর্ডে কার্ড, পুরো পেজ `/vendor/funnel` (৭/২৮ দিন), নেভিগেশনেও যোগ করা।
+- **টেস্ট:** `src/lib/__tests__/shop-funnel.test.ts` ১৩টি + `src/lib/__tests__/shop-attribution.test.ts` ৮টি + `src/lib/db/__tests__/shop-funnel.test.ts` ৯টি + `src/components/vendor/__tests__/funnel-card.test.tsx` ৮টি = **৩৮টি নতুন**, সাথে vendor গেট টেস্টে নতুন রুট। `tsc` + `eslint --max-warnings=0` পরিষ্কার; বিদ্যমান funnel/analytics টেস্ট (১৬টি) অক্ষত; **পুরো স্যুট ৩২৮ ফাইল / ২০৫৬ টেস্ট EXIT=0**।
+
+---
+
 ## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2 শেষ** ✅ → **B3ও শেষ** ✅ → এখন B4 (ভেন্ডর ফানেল রিপোর্ট — storefront_events-এ দোকানের attribution), তারপর B5–B6।
+**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2 শেষ** ✅ → **B3 শেষ** ✅ → **B4ও শেষ** ✅ → এখন B5 (ভেরিফাইড-শপ ব্যাজ: admin NID/ট্রেড লাইসেন্স দেখে মার্ক করে + audit), তারপর B6।

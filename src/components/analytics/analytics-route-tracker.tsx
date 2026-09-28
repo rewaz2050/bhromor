@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { track, wireEvent } from "@/lib/analytics";
 import { currentLang, record } from "@/lib/events-sink";
+import { currentPageShop } from "@/lib/page-shop";
 
 /**
  * App Router navigations do not reload the page, so neither tag sees them
@@ -20,7 +21,9 @@ export default function AnalyticsRouteTracker() {
     const first = last.current === null;
     last.current = pathname;
     if (first) {
-      const wire = wireEvent({ type: "page_view", path: pathname });
+      // B4 — a shop's storefront registers itself (ShopAttribute) before this
+      // runs, so the page_view is attributed to that shop on both ends.
+      const wire = wireEvent({ type: "page_view", path: pathname, shop: currentPageShop() ?? undefined });
       const lang = currentLang();
       record(lang ? { ...wire, lang } : wire);
       return;

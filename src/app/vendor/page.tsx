@@ -22,6 +22,7 @@ import {
   useVendorEarnings,
   useVendorOrders,
   useShopFollowers,
+  useVendorFunnel,
   useVendorPromos,
   useVendorReviews,
   useVendorProducts,
@@ -47,6 +48,7 @@ import { shelfState } from "@/lib/product-shelf";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
+import FunnelCard from "@/components/vendor/funnel-card";
 import PromoCard from "@/components/vendor/promo-card";
 import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
@@ -62,6 +64,8 @@ export default function VendorDashboardPage() {
   const reviews = useVendorReviews(authed);
   // B3 — the shop's own promo codes and what they have cost so far.
   const promos = useVendorPromos(authed);
+  // B4 — the shop's own funnel: visits → product → bag → checkout → order.
+  const funnel = useVendorFunnel(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -326,6 +330,16 @@ export default function VendorDashboardPage() {
           loading={orders.loading}
         />
       )}
+
+      <div className="mt-6">
+        <FunnelCard
+          funnel={funnel.funnel}
+          loading={funnel.loading}
+          missing={funnel.missing}
+          error={funnel.error}
+          onRetry={funnel.refresh}
+        />
+      </div>
 
       {me && promos.limits && (
         <div className="mt-6">

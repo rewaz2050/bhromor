@@ -419,6 +419,9 @@ export const useVendorEarnings = (enabled: boolean) => {
 /* B3 (2026-09-28) — the shop's own promo codes                        */
 /* ------------------------------------------------------------------ */
 
+/** The funnel window the dashboard shows (B4). */
+export const VENDOR_FUNNEL_DAYS = 7 as const;
+
 export interface VendorPromoRow {
   id: string;
   code: string;
@@ -485,6 +488,58 @@ export const useVendorPromos = (enabled: boolean) => {
     create,
     setActive,
   };
+};
+
+/* ------------------------------------------------------------------ */
+/* B4 (2026-09-28) — the shop's own funnel                             */
+/* ------------------------------------------------------------------ */
+
+import type { ShopFunnel } from "@/lib/shop-funnel";
+export type { ShopFunnel };
+
+/**
+ * The shop's own funnel (B4). Unlike the other resources this one keeps the
+ * HTTP status, because 503 does NOT mean "empty shop" — it means migration
+ * 202609280004 has not been run, and the card has to say exactly that.
+ */
+export const useVendorFunnel = (enabled: boolean, days: 7 | 28 = 7) => {
+  const path = `/api/vendor/funnel?days=${days}`;
+  const [funnel, setFunnel] = useState<ShopFunnel | null>(null);
+  const [loading, setLoading] = useState(enabled);
+  const [status, setStatus] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    vendorGet<ShopFunnel>(path)
+      .then((d) => {
+        if (cancelled) return;
+        setFunnel(d);
+        setStatus(200);
+        setError(null);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFunnel(null);
+        setStatus(err instanceof VendorApiError ? err.status : null);
+        setError(vendorErrorMessage(err));
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, enabled, nonce]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    setNonce((n) => n + 1);
+  }, []);
+
+  return { funnel, loading, error, status, missing: status === 503, refresh };
 };
 
 /* ------------------------------------------------------------------ */
