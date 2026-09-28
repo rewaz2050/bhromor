@@ -29,6 +29,7 @@ const NAV = [
   { href: "/vendor/products", label: "Products" },
   { href: "/vendor/earnings", label: "Earnings" },
   { href: "/vendor/reviews", label: "Reviews" },
+  { href: "/vendor/promo", label: "Promo codes" },
   { href: "/vendor/settings", label: "Shop settings" },
 ];
 

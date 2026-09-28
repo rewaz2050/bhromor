@@ -330,7 +330,11 @@ export async function loadOrderSnapshot(
     db.from("product_variants").select("*").eq("active", true),
     db.from("product_media").select("*").order("sort_order"),
     db.from("delivery_zones").select("*").eq("active", true),
-    db.from("coupons").select("*").eq("active", true),
+    // B3 — a shop's own code carries its owner's name so the storefront can
+    // say "only for <shop>'s products" instead of a cold refusal. The join is
+    // free here (one row per coupon) and RLS never sees it: the snapshot runs
+    // on the service client.
+    db.from("coupons").select("*, shops(name)").eq("active", true),
     pricingOnly ? emptyResult : db.from("shops").select("*"),
     // ৳1000+-always-free toggle + wallets + promo levers; read failure keeps
     // the defaults.
@@ -389,7 +393,14 @@ export async function loadOrderSnapshot(
     }
   }
   const zones = ((zonesRes.data ?? []) as DbZone[]).map(mapZone);
-  const coupons = ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon);
+  const coupons = ((couponsRes.data ?? []) as (DbCoupon & {
+    shops?: { name: string } | { name: string }[] | null;
+  })[]).map((row) => {
+    const joined = row.shops;
+    const shopName = joined ? (Array.isArray(joined) ? joined[0]?.name : joined.name) : undefined;
+    const coupon = mapCoupon(row);
+    return shopName ? { ...coupon, shopName } : coupon;
+  });
   if (pricingOnly) {
     return { products, zones, coupons, variants, mediaByProduct, shops: [] };
   }

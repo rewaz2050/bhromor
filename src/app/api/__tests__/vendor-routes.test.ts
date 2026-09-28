@@ -15,6 +15,11 @@ import {
   PATCH as vendorShopUpdate,
 } from "../vendor/shop/route";
 import { GET as vendorEarnings } from "../vendor/earnings/route";
+import {
+  GET as vendorPromos,
+  PATCH as vendorPromoToggle,
+  POST as vendorPromoCreate,
+} from "../vendor/promos/route";
 import { GET as vendorCategories } from "../vendor/categories/route";
 import { POST as linkVendor } from "../admin/shops/[id]/link-vendor/route";
 
@@ -35,6 +40,20 @@ describe("vendor routes without a session (slice 3)", () => {
     expect((await vendorShop(get("/api/vendor/shop"))).status).toBe(401);
     expect((await vendorEarnings(get("/api/vendor/earnings"))).status).toBe(401);
     expect((await vendorCategories(get("/api/vendor/categories"))).status).toBe(401);
+    // B3: the shop's own promo codes sit behind the same vendor gate.
+    expect((await vendorPromos(get("/api/vendor/promos"))).status).toBe(401);
+    expect((await vendorPromoCreate(post("/api/vendor/promos", { code: "EID10" }))).status).toBe(401);
+    expect(
+      (
+        await vendorPromoToggle(
+          new Request("http://localhost/api/vendor/promos", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: "c1", active: false }),
+          }),
+        )
+      ).status,
+    ).toBe(401);
     expect(
       (await vendorAdvance(post("/api/vendor/orders/x/advance", { to: "confirmed" }), ctx)).status,
     ).toBe(401);

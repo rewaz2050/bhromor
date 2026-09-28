@@ -79,7 +79,27 @@
 - **স্টোরফ্রন্টে (আসল উদ্দেশ্য):** পণ্যের পেজে (`reviews-section.tsx`) রিভিউয়ের নিচে “Response from the shop” ব্লক — অর্থাৎ দোকান সামনাসামনি জবাব দেয় সেখানেই, যেখানে সব ক্রেতা পড়ে।
 - **টেস্ট:** `src/lib/__tests__/vendor-reply.test.ts` ৯টি + `src/lib/db/__tests__/vendor-reviews.test.ts` ৮টি + `src/components/vendor/__tests__/vendor-reviews-card.test.tsx` ৭টি + `src/components/reviews/__tests__/reviews-section-reply.test.tsx` ৩টি = **২৭টি নতুন, সব সবুজ** (স্যুট এখন ৩২০ ফাইল / ১৯৮৫ টেস্ট)।
 
+## ✅ B3 · ভেন্ডরের নিজের প্রোমো কোড — সম্পন্ন
+
+**migration:** `supabase/migrations/202609280003_vendor_promos.sql`
+
+- `coupons`-এ নতুন কলাম `shop_id` (কোথাও না থাকলে NULL = platform কুপন, আগের মতোই সব দোকানে চলে) + `created_by` (কোন অ্যাকাউন্ট বানাল) + ইনডেক্স `idx_coupons_shop`।
+- নতুন টেবিল `vendor_promo_limits` (একটি `default` সারি) — প্ল্যাটফর্মের ছাদ: **সর্বোচ্চ ২৫%**, একটি কোডে সর্বোচ্চ **৳৫০০** ছাড়, **৩০ দিনের** বেশি নয়, **৩০০ redemption**, একসাথে **৩টি** চালু কোড।
+- RLS: `coupons vendor read/insert/update own` (`ps_vendor_shop()` দিয়ে) — দোকান শুধু নিজের কোড দেখে/লিখতে পারে; ছাদের টেবিল সবার পড়া, admin-এর লেখা।
+- ট্রিগার `ps_guard_vendor_promo`: ছাদ ছাড়িয়ে গেলে, `end date` না দিলে, সময়/ব্যবহার-সীমা ছাড়া কোড বানালে, `free_delivery` বানাতে চাইলে, অন্যের দোকানের নামে লিখলে, `used` কাউন্টার বা `shop_id` হাতড়ালে, ব্যবহৃত কোড পরে নাম বদলালে — **ডেটাবেসই আটকায়** (রুট বাইপাস করলেও নিয়ম টেকে)।
+- `ps_guard_order_coupon_shop`: অর্ডারে কুপনের `shop_id` আর অর্ডারের `shop_id` মিলতে হবে — এক দোকানের কোড অন্য দোকানের অর্ডারে বসতেই পারে না।
+- **টাকা কার থেকে যাচ্ছে — লেজারে লেখা হয়:** `ps_write_shop_ledger` এখন দোকানের **নিজের** প্রোমোর ছাড় নিজের payable থেকে কাটে (অর্থাৎ মালিক দোকানই ছাড়টা বহন করে), প্ল্যাটফর্মের কুপন হলে লাইনটা ছোঁয় না, রিটার্ন অর্ডারে ছাড় শূন্য। PGlite-এ হিসাব মিলিয়ে দেখা: ৳১০০০ অর্ডারে দোকানের কোড → commission ৳১৫০, payable ৳৭৫০, promo_discount ৳১০০; একই অর্ডারে platform কুপন → payable ৳৮৫০, promo_discount ৳০।
+- PGlite-এ ১০টি ভুল চেষ্টা (ছাদের বাইরে %, ৩০ দিনের বেশি, end date ছাড়া, usage limit ছাড়া, free_delivery, অন্যের শপ, `used` এডিট, ব্যবহৃত কোড rename, ৪র্থ চালু কোড, cross-shop অর্ডার) — সব **refused**।
+
+- **pure মডিউল:** `src/lib/vendor-promo.ts` — `DEFAULT_PROMO_LIMITS` (টেবিল না পড়লেও ছাদ থাকে), `promoLimitsFrom()`, কোড ফরম্যাট `^[A-Z0-9]{3,24}$`, `validateVendorPromo()` (ফর্মের টাকা → paisa; প্রতিটি ছাদ ভাঙলে **কোন ছাদ** সেটি নাম ধরে বলে), `promoCapsLines()` (স্ক্রিনে ছাপার জন্য), `promoShareMath()` / `promoShareSummary()` / `promoState()` / `promoRemaining()`।
+- **টাকার হিসাব (B3-এর আসল অংশ):** কোড বানানোর **আগেই** স্ক্রিনে দেখা যায় — ১২০০ টাকার নমুনা অর্ডারে ক্রেতার সাশ্রয়, দোকানের পাওনা (কোড ছাড়া vs কোড সহ), প্ল্যাটফর্মের কমিশন (অপরিবর্তিত), আর **break-even** — “কত % বেশি অর্ডার পেলে ছাড়টা উঠে আসবে”। অর্থাৎ ছাড় মানে লুকানো লস নয়, চোখের সামনে হিসাব।
+- **ডেটা লেয়ার:** `src/lib/db/vendor-promos.ts` — `readPromoLimits()` (পড়তে না পারলে ডিফল্টে পড়ে, কখনো ভাঙে না), `listVendorPromos()` (নিজের কোড, সর্বোচ্চ ১০০), `promoBoard()` (কোড + ছাদ + মোট ব্যবহার + **ledger থেকে আসল দেওয়া ছাড়**), `createVendorPromo()` (আগে বোধগম্য refusal, পরে ডেটাবেসের মেসেজ হুবহু দেখানো; একই কোড দুইবার → 409), `setVendorPromoActive()` (id **এবং** shop_id দুইটাই মিলিয়ে, নইলে 404 — অন্যের কোডে হাত নেই)।
+- **API:** `src/app/api/vendor/promos/route.ts` — `GET` বোর্ড, `POST` (২০/মিনিট → 201), `PATCH` pause/resume (৪০/মিনিট); সব দোকানের নিজের RLS ক্লায়েন্টে, তাই কর্তৃত্ব ডেটাবেসের।
+- **কুপন ইঞ্জিনে পাহারা:** `src/lib/coupons.ts`-এ `Coupon.shopId/shopName`, `couponAppliesToShops()`, `couponShopMismatchReason()` এবং `bestCoupon(..., shopIds)`; `/api/coupons/validate` আর `/api/coupons/best` এখন কার্টের দোকান মেলায় — দোকানের কোড থাকলে **“This code is only for <দোকানের নাম>'s products.”**। নিয়মটা কার্টের **প্রতিটি** লাইনে দোকানটির হওয়া লাগে (mixed cart-এ চলে না) — ঠিক যেমনটা `orders` টেবিলের ট্রিগারেও লেখা।
+- **ভেন্ডর UI:** `src/components/vendor/promo-card.tsx` — মোট ব্যবহার, **“Discount given (your share)”** (ledger-এর টাকা), ছাদগুলো চিপ আকারে ছাপা, টাকার প্রিভিউ, তারপর ফর্ম (কোড/ধরন/৳|% / মিনিমাম অর্ডার/সর্বোচ্চ ছাড়/কত দিন/কতবার/নিজের নোট) এবং কোডের তালিকা — প্রতিটির অবস্থা **Live · Scheduled · Paused · Fully used · Ended** এবং “X used · Y left” সহ Pause/Resume বোতাম। সেভ ব্যর্থ হলে লেখা মুছে যায় না, কারণ উঠে আসে। ড্যাশবোর্ডে কার্ডটি, পুরো পেজ `/vendor/promo`, নেভিগেশনেও যোগ করা।
+- **টেস্ট:** `src/lib/__tests__/vendor-promo.test.ts` ১১টি + `src/lib/db/__tests__/vendor-promos.test.ts` ১০টি + `src/components/vendor/__tests__/promo-card.test.tsx` ৭টি + `src/app/api/__tests__/coupons-shop-scope.test.ts` ৫টি = **৩৩টি নতুন**; সাথে `vendor-routes.test.ts`-এ নতুন দুটি রুটের ভেন্ডর-গেট। ফোকাসড রান ৭ ফাইল / ৪৮ টেস্ট **সব সবুজ**, `tsc` + `eslint --max-warnings=0` পরিষ্কার।
+
 ---
 
 ## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2ও শেষ** ✅ → এখন B3 (ভেন্ডরের নিজের প্রোমো কোড — platform সীমা + কমিশন হিসাব দেখিয়ে), তারপর B4–B6।
+**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2 শেষ** ✅ → **B3ও শেষ** ✅ → এখন B4 (ভেন্ডর ফানেল রিপোর্ট — storefront_events-এ দোকানের attribution), তারপর B5–B6।

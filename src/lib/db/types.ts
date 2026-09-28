@@ -237,6 +237,10 @@ export interface DbCoupon {
   usage_limit: number | null;
   used: number;
   active: boolean;
+  /** B3 — owner of the code (null = platform coupon; migration 202609280003). */
+  shop_id?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
 }
 
 export interface DbOrder {

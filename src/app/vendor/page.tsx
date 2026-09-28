@@ -22,6 +22,7 @@ import {
   useVendorEarnings,
   useVendorOrders,
   useShopFollowers,
+  useVendorPromos,
   useVendorReviews,
   useVendorProducts,
   vendorErrorMessage,
@@ -46,6 +47,7 @@ import { shelfState } from "@/lib/product-shelf";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
+import PromoCard from "@/components/vendor/promo-card";
 import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
 export default function VendorDashboardPage() {
@@ -58,6 +60,8 @@ export default function VendorDashboardPage() {
   const follows = useShopFollowers(authed);
   // B2 — approved reviews of this shop's products, with the reply writer.
   const reviews = useVendorReviews(authed);
+  // B3 — the shop's own promo codes and what they have cost so far.
+  const promos = useVendorPromos(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -321,6 +325,21 @@ export default function VendorDashboardPage() {
           prepMinutes={me.shop.prepMinutes}
           loading={orders.loading}
         />
+      )}
+
+      {me && promos.limits && (
+        <div className="mt-6">
+          <PromoCard
+            promos={promos.promos}
+            limits={promos.limits}
+            usedTotal={promos.usedTotal}
+            discountBornePaisa={promos.discountBornePaisa}
+            commissionPct={Math.round(me.shop.commissionPct ?? 15)}
+            loading={promos.loading}
+            onCreate={promos.create}
+            onToggle={promos.setActive}
+          />
+        </div>
       )}
 
       {me && (

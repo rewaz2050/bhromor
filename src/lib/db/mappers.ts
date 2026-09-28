@@ -110,6 +110,9 @@ export const mapCoupon = (row: DbCoupon): Coupon => ({
   usageLimit: row.usage_limit ?? undefined,
   used: row.used,
   active: row.active,
+  // B3 — a shop-owned code travels with its owner so the storefront can keep
+  // it on that shop's carts (optional: pre-migration rows have no column).
+  shopId: row.shop_id ?? undefined,
 });
 
 export interface ProductRowBundle {

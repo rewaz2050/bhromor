@@ -416,6 +416,78 @@ export const useVendorEarnings = (enabled: boolean) => {
 };
 
 /* ------------------------------------------------------------------ */
+/* B3 (2026-09-28) — the shop's own promo codes                        */
+/* ------------------------------------------------------------------ */
+
+export interface VendorPromoRow {
+  id: string;
+  code: string;
+  type: "percent" | "fixed" | "free_delivery";
+  value: number;
+  minOrder: number;
+  maxDiscount?: number;
+  description?: string;
+  validFrom?: number;
+  validUntil?: number;
+  usageLimit?: number;
+  used: number;
+  active: boolean;
+  createdAt?: number;
+  createdBy?: string;
+}
+
+export interface PromoLimitsRow {
+  maxPercent: number;
+  maxDiscount: number;
+  maxDays: number;
+  maxUsage: number;
+  maxActive: number;
+}
+
+export const useVendorPromos = (enabled: boolean) => {
+  const res = useVendorResource<{
+    promos: VendorPromoRow[];
+    limits: PromoLimitsRow;
+    usedTotal: number;
+    discountBornePaisa: number;
+  }>("/api/vendor/promos", enabled);
+  const { reload } = res;
+  const create = useCallback(
+    async (draft: Record<string, unknown>): Promise<VendorPromoRow> => {
+      const data = await vendorSend<{ promo: VendorPromoRow }>(
+        "/api/vendor/promos",
+        "POST",
+        draft,
+      );
+      reload();
+      return data.promo;
+    },
+    [reload],
+  );
+  const setActive = useCallback(
+    async (id: string, active: boolean): Promise<VendorPromoRow> => {
+      const data = await vendorSend<{ promo: VendorPromoRow }>(
+        "/api/vendor/promos",
+        "PATCH",
+        { id, active },
+      );
+      reload();
+      return data.promo;
+    },
+    [reload],
+  );
+  return {
+    ...res,
+    promos: res.data?.promos ?? [],
+    limits: res.data?.limits ?? null,
+    usedTotal: res.data?.usedTotal ?? 0,
+    discountBornePaisa: res.data?.discountBornePaisa ?? 0,
+    create,
+    setActive,
+  };
+};
+
+/* ------------------------------------------------------------------ */
 /* B2 (2026-09-28) — reviews and the shop's reply                      */
 /* ------------------------------------------------------------------ */
 
