@@ -1,9 +1,9 @@
 /** UX plan §9 (R8) — a shop card you can see into, and a zone answer both ways. */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import ShopsDirectory from "@/components/shop/shops-directory";
 import { LanguageProvider } from "@/components/i18n/language-provider";
-import { DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
+import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Product, type Shop } from "@/lib/catalog";
 import { shopShelfPeeks } from "@/lib/home-shelves";
 import { MY_ZONE_KEY } from "@/lib/use-my-zone";
 
@@ -27,14 +27,22 @@ const SHOPS = [
   shop({ id: "s2", slug: "s2", name: "Shop Two", zoneIds: ["z3"], ratingCount: 0, prepMinutes: 25 }),
 ];
 
+const CATALOG: Product[] = [
+  { ...PRODUCTS[0], shopId: "s1", category: "men" },
+  { ...PRODUCTS[1], shopId: "s1", category: "women" },
+  { ...PRODUCTS[2], shopId: "s2", category: "men" },
+];
+
 const mount = (lang: "en" | "bn" = "bn") =>
   render(
     <LanguageProvider initialLang={lang}>
       <ShopsDirectory
         shops={SHOPS}
         zones={DELIVERY_ZONES}
+        categories={CATEGORIES}
         productCounts={{ s1: 7, s2: 3 }}
         peeks={{ s1: PRODUCTS.slice(0, 3), s2: PRODUCTS.slice(3, 4) }}
+        catalog={CATALOG}
       />
     </LanguageProvider>,
   );
@@ -110,5 +118,65 @@ describe("shop cover image (UX plan §9, R9)", () => {
     expect(cards[0].querySelector('[data-testid="shop-card-cover"]')?.getAttribute("src")).toBe("https://cdn.example/cover.jpg");
     expect(cards[1].dataset.cover).toBeUndefined();
     expect(cards[1].querySelector('[data-testid="shop-card-cover"]')).toBeNull();
+  });
+});
+
+describe("A1 — search, sort and filters", () => {
+  const searchBox = () => screen.getByRole("searchbox");
+
+  it("filters cards by shop name as the shopper types, and says how many matched", () => {
+    mount("en");
+    fireEvent.change(searchBox(), { target: { value: "two" } });
+    const cards = screen.getAllByTestId("shop-card");
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole("heading", { level: 2 }).textContent).toBe("Shop Two");
+    expect(screen.getByTestId("shops-count").textContent).toContain("1 of 2 shops");
+  });
+
+  it("offers a chip per stocked category and filters by it", () => {
+    mount("en");
+    // "Women" is stocked by s1 only; the all-chip is the default.
+    fireEvent.click(screen.getByRole("button", { name: "Women" }));
+    const cards = screen.getAllByTestId("shop-card");
+    expect(cards).toHaveLength(1);
+    expect(within(cards[0]).getByRole("heading", { level: 2 }).textContent).toBe("Shop One");
+    expect(screen.getByRole("button", { name: "Women" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows an honest empty tab with a one-tap way back to every shop", () => {
+    mount("en");
+    fireEvent.change(searchBox(), { target: { value: "no such shop" } });
+    expect(screen.queryAllByTestId("shop-card")).toHaveLength(0);
+    const empty = screen.getByTestId("shops-empty");
+    expect(empty.textContent).toContain("No shop matches that");
+    fireEvent.click(within(empty).getByRole("button", { name: "Clear filters" }));
+    expect(screen.getAllByTestId("shop-card")).toHaveLength(2);
+    expect((searchBox() as HTMLInputElement).value).toBe("");
+  });
+
+  it("the area toggle stays disabled until a zone is picked — and never hides shops silently", () => {
+    mount("en");
+    const toggle = screen.getByRole("checkbox") as HTMLInputElement;
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText("Pick your area to filter")).toBeInTheDocument();
+
+    cleanup();
+    localStorage.setItem(MY_ZONE_KEY, "z3");
+    mount("en");
+    const armed = screen.getByRole("checkbox") as HTMLInputElement;
+    expect(armed).not.toBeDisabled();
+    expect(screen.getByText(/Delivers to Zone C/)).toBeInTheDocument();
+    fireEvent.click(armed);
+    // s1 does not serve z3 → one card left, and the count says one is hidden.
+    expect(screen.getAllByTestId("shop-card")).toHaveLength(1);
+    expect(screen.getByTestId("shops-count").textContent).toContain("1 hidden — not delivering here");
+  });
+
+  it("sorts by the biggest shelf on request", () => {
+    mount("en");
+    fireEvent.click(screen.getByRole("button", { name: "Biggest shelf" }));
+    const cards = screen.getAllByTestId("shop-card");
+    expect(within(cards[0]).getByRole("heading", { level: 2 }).textContent).toBe("Shop One");
+    expect(within(cards[1]).getByRole("heading", { level: 2 }).textContent).toBe("Shop Two");
   });
 });

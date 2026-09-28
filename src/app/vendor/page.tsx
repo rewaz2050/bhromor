@@ -21,10 +21,17 @@ import {
   patchVendorShop,
   useVendorEarnings,
   useVendorOrders,
+  useShopFollowers,
   useVendorProducts,
   vendorErrorMessage,
 } from "@/lib/use-vendor";
-import { isLateOrder, shopPath, splitNeedsAction, todayStats } from "@/lib/vendor-dashboard";
+import {
+  isLateOrder,
+  serviceScore,
+  shopPath,
+  splitNeedsAction,
+  todayStats,
+} from "@/lib/vendor-dashboard";
 import { useVendorOrderAlert } from "@/lib/use-vendor-order-alert";
 import {
   WEEKDAY_LABELS,
@@ -36,6 +43,8 @@ import {
 } from "@/lib/insights";
 import { shelfState } from "@/lib/product-shelf";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
+import ServiceScoreCard from "@/components/vendor/service-score-card";
+import FollowersCard from "@/components/vendor/followers-card";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -43,6 +52,8 @@ export default function VendorDashboardPage() {
   const orders = useVendorOrders(authed);
   const earnings = useVendorEarnings(authed);
   const prods = useVendorProducts(authed);
+  // B1 — followers come from their own row-level-secured read.
+  const follows = useShopFollowers(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -56,6 +67,10 @@ export default function VendorDashboardPage() {
   const work = splitNeedsAction(list);
   const inKitchen = work.preparing.length;
   const today = todayStats(list);
+  // A2 (2026-09-28) — the shop's own service score over the last week, from
+  // the very orders this page already loaded. No order in the window means
+  // no score, not a fake 0%.
+  const service = serviceScore(list, { prepMinutes: me?.shop.prepMinutes ?? 0 });
   const alertOrder = useVendorOrderAlert(list, {
     enabled: me !== null && me.shop.status === "active",
     shopName: me?.shop.name,
@@ -294,6 +309,23 @@ export default function VendorDashboardPage() {
         <div className="mt-3">
           <ErrorBox message={toggleError} />
         </div>
+      )}
+
+      {me && (
+        <ServiceScoreCard
+          score={service}
+          prepMinutes={me.shop.prepMinutes}
+          loading={orders.loading}
+        />
+      )}
+
+      {me && (
+        <FollowersCard
+          followers={follows.followers}
+          neverReached={follows.neverReached}
+          rows={follows.rows}
+          loading={follows.loading}
+        />
       )}
 
       {/* Round 4 — what a new shop still has to do; hides itself once complete. */}

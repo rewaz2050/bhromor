@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function ShopsPage() {
-  const [{ products, shops }, { zones }] = await Promise.all([
+  const [{ products, shops, categories }, { zones }] = await Promise.all([
     getStorefrontCatalog(),
     getStorefrontZones(),
   ]);
@@ -33,8 +33,10 @@ export default async function ShopsPage() {
       <ShopsDirectory
         shops={shops}
         zones={zones}
+        categories={categories}
         productCounts={productCounts}
         peeks={peeks}
+        catalog={products}
       />
     </div>
   );

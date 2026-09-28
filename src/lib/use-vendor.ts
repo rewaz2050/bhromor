@@ -364,10 +364,36 @@ export const useVendorProducts = (enabled: boolean) => {
     [reload],
   );
 
+  /**
+   * POST a brand-new row and hand back what the server created. `saveProduct`
+   * answers "did it save"; the duplicate action needs the row's real id so it
+   * can open the copy for editing (the server, not the client, mints ids).
+   */
+  const createProduct = useCallback(
+    async (product: Product): Promise<Product> => {
+      setSaveError(null);
+      try {
+        const data = await vendorSend<{ product: Product }>(
+          "/api/vendor/products",
+          "POST",
+          product,
+        );
+        refresh();
+        return data.product;
+      } catch (err) {
+        const message = vendorErrorMessage(err);
+        setSaveError(message);
+        throw new Error(message);
+      }
+    },
+    [refresh],
+  );
+
   return {
     ...res,
     products: res.data?.products ?? [],
     saveProduct,
+    createProduct,
     saveError,
     patchProduct,
   };
@@ -387,6 +413,31 @@ export const useVendorEarnings = (enabled: boolean) => {
     enabled,
   );
   return { ...res, earnings: res.data?.earnings ?? null };
+};
+
+/* ------------------------------------------------------------------ */
+/* B1 (2026-09-28) — shop followers                                    */
+/* ------------------------------------------------------------------ */
+
+export interface ShopFollower {
+  phone: string;
+  marketingOk: boolean;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+}
+
+export const useShopFollowers = (enabled: boolean) => {
+  const res = useVendorResource<{
+    followers: number;
+    neverReached: string[];
+    rows: ShopFollower[];
+  }>("/api/vendor/followers", enabled);
+  return {
+    ...res,
+    followers: res.data?.followers ?? 0,
+    neverReached: res.data?.neverReached ?? [],
+    rows: res.data?.rows ?? [],
+  };
 };
 
 export const patchVendorShop = async (patch: Record<string, unknown>): Promise<Shop> => {

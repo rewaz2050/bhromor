@@ -1194,7 +1194,25 @@ export async function createProduct(
   }
   await syncVariants(db, id, input, input.stock);
   await syncMedia(db, id, input);
-  return readProductBundle(db, id);
+  const created = await readProductBundle(db, id);
+  if (created.status === "published" && created.active !== false) {
+    // B1 — a product published straight from the editor is a new arrival the
+    // shop's followers asked to hear about. The fan-out opens its own service
+    // client (subscriptions are service-only) and never throws, so a push
+    // problem cannot fail the save.
+    try {
+      const { announceNewProductToFollowers } = await import("./growth");
+      await announceNewProductToFollowers({
+        shopId: resolvedShop,
+        productName: created.name,
+        productSlug: created.slug,
+        pricePaisa: created.price,
+      });
+    } catch {
+      // saved; the announcement can wait for the next publish
+    }
+  }
+  return created;
 }
 
 export async function updateProduct(
@@ -1386,6 +1404,23 @@ export async function updateProduct(
   }
   if (rawRec.media !== undefined || rawRec.video !== undefined) {
     await syncMedia(db, id, merged);
+  }
+  if (row.status !== "published" && patch.status === "published" && patch.active !== false) {
+    // B1 — the draft became a live listing: this is the "নতুন ডিজাইন এলো"
+    // moment the shop's followers asked to hear about. Fires on the
+    // transition only (an already-published product saved again sends
+    // nothing), and never throws.
+    try {
+      const { announceNewProductToFollowers } = await import("./growth");
+      await announceNewProductToFollowers({
+        shopId: row.shop_id,
+        productName: merged.name,
+        productSlug: nextSlug,
+        pricePaisa: merged.price,
+      });
+    } catch {
+      // saved; the announcement can wait for the next publish
+    }
   }
   return readProductBundle(db, id);
 }

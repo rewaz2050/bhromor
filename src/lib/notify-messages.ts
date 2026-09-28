@@ -84,7 +84,7 @@ export const CUSTOMER_JOURNEY: readonly CustomerEventKind[] = [
  * number, no status machine — folding them into the order union would force
  * order copy for every product event and vice versa.
  */
-export type ProductEventKind = "price-drop" | "back-in-stock";
+export type ProductEventKind = "price-drop" | "back-in-stock" | "new-from-shop";
 
 /**
  * Which `OrderStatus` values are worth a push, and what they mean.
@@ -245,6 +245,10 @@ const PRODUCT_BN: Record<ProductEventKind, EventCopy> = {
     title: "স্টকে ফিরে এসেছে ✅",
     body: "{name} আবার পাওয়া যাচ্ছে {price} — খবর চেয়েছিলেন বলেই জানানো হচ্ছে।",
   },
+  "new-from-shop": {
+    title: "নতুন পণ্য এলো 🧵",
+    body: "{name} এখন {price} — যে দোকানটি ফলো করছেন সেখানে নতুন কিছু উঠেছে।",
+  },
 };
 
 const PRODUCT_EN: Record<ProductEventKind, EventCopy> = {
@@ -255,6 +259,10 @@ const PRODUCT_EN: Record<ProductEventKind, EventCopy> = {
   "back-in-stock": {
     title: "Back in stock ✅",
     body: "{name} is available again at {price} — you asked to be told, so here it is.",
+  },
+  "new-from-shop": {
+    title: "New in the shop 🧵",
+    body: "{name} is now {price} — you follow this shop, so here is what just landed.",
   },
 };
 

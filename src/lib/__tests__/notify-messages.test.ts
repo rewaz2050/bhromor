@@ -154,6 +154,30 @@ describe("watch notifications — price drop / back in stock", () => {
     expect(back.body).toContain("৳1,240");
   });
 
+  it("B1 — tells a follower a shop published something new", () => {
+    const bn = customerProductMessage({
+      kind: "new-from-shop",
+      productName: "রঙধনু বস্ত্রালয় · হাতে বোনা শাড়ি",
+      pricePaisa: 124000,
+      href: "/product/hate-bona-sari",
+    });
+    expect(bn.title).toContain("নতুন পণ্য");
+    expect(bn.body).toContain("রঙধনু বস্ত্রালয় · হাতে বোনা শাড়ি");
+    expect(bn.body).toContain("৳1,240");
+    expect(bn.href).toBe("/product/hate-bona-sari");
+
+    const en = customerProductMessage({
+      kind: "new-from-shop",
+      productName: "Rongdhonu · Handwoven saree",
+      lang: "en",
+    });
+    expect(en.title).toBe("New in the shop 🧵");
+    expect(en.body).toContain("Rongdhonu · Handwoven saree");
+    // No price in the payload → no broken number in the copy.
+    expect(en.body).not.toContain("৳");
+    expect(en.href).toBe("/shop");
+  });
+
   it("never prints a broken price and never sends a link it did not get", () => {
     const noPrice = customerProductMessage({ kind: "back-in-stock", productName: "Panjabi" });
     expect(noPrice.body).not.toContain("৳");

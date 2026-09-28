@@ -434,3 +434,189 @@ export async function referralSummary(
     })),
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* B1 (2026-09-28) — shop follows                                      */
+/* ------------------------------------------------------------------ */
+
+export interface ShopFollowRow {
+  id: string;
+  phone: string;
+  /** The shopper ticked "send me new-product news" on the card. */
+  marketingOk: boolean;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+}
+
+/** What one publish did for the shop: followers, who heard it, who to call. */
+export interface ShopFollowCatchup {
+  followers: number;
+  /** Followers who asked for news (the only ones actually messaged). */
+  marketing: number;
+  reached: string[];
+  waiting: string[];
+}
+
+const EMPTY_CATCHUP: ShopFollowCatchup = {
+  followers: 0,
+  marketing: 0,
+  reached: [],
+  waiting: [],
+};
+
+type DbShopFollow = {
+  id: string;
+  phone: string;
+  marketing_ok: boolean | null;
+  last_notified_at: string | null;
+  created_at: string;
+};
+
+/** One row per (shop, phone) — following twice refreshes, never duplicates. */
+export async function createShopFollow(
+  db: SupabaseClient,
+  input: { shopId: string; phone: string; marketingOk?: boolean },
+): Promise<void> {
+  const phone = normalizePhone(input.phone);
+  const { error } = await db
+    .from("shop_follows")
+    .upsert(
+      {
+        shop_id: input.shopId,
+        phone,
+        marketing_ok: input.marketingOk ?? true,
+      },
+      { onConflict: "shop_id,phone" },
+    );
+  if (error) throw new Error("shop follow write failed");
+}
+
+export async function deleteShopFollow(
+  db: SupabaseClient,
+  input: { shopId: string; phone: string },
+): Promise<void> {
+  const phone = normalizePhone(input.phone);
+  const { error } = await db
+    .from("shop_follows")
+    .delete()
+    .eq("shop_id", input.shopId)
+    .eq("phone", phone);
+  if (error) throw new Error("shop follow delete failed");
+}
+
+/** The shop's own follower list (vendor screen): newest first. */
+export async function listShopFollows(
+  db: SupabaseClient,
+  shopId: string,
+): Promise<ShopFollowRow[]> {
+  const { data, error } = await db
+    .from("shop_follows")
+    .select("id,phone,marketing_ok,last_notified_at,created_at")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) return [];
+  return ((data ?? []) as DbShopFollow[]).map((row) => ({
+    id: row.id,
+    phone: row.phone,
+    marketingOk: row.marketing_ok !== false,
+    lastNotifiedAt: row.last_notified_at,
+    createdAt: row.created_at,
+  }));
+}
+
+/** Best-effort shop name for the push title; the caller usually passes it. */
+const shopNameOf = async (db: SupabaseClient, shopId: string): Promise<string> => {
+  const { data } = await db.from("shops").select("name").eq("id", shopId).maybeSingle();
+  return ((data as { name?: string } | null)?.name ?? "").trim();
+};
+
+/**
+ * A shop published a new product: push it to every follower who asked for
+ * news, then hand the shop the numbers still to call.
+ *
+ * Only followers with `marketing_ok` are messaged — a follow that declined
+ * news is a number the shop may look at, not one it may market to. Reached
+ * numbers get `last_notified_at` stamped, and the rest come back in
+ * `waiting` as a real call list (the same honesty rule as the restock
+ * alerts: no SMS sender exists, so nobody is silently dropped).
+ *
+ * Never throws — a failed fan-out must not break publishing a product.
+ */
+export async function flagNewProductForFollowers(
+  db: SupabaseClient,
+  input: {
+    shopId: string;
+    productName: string;
+    /** `/product/<slug>` for the push link (optional). */
+    productSlug?: string | null;
+    /** The price shown in the push ("এখন ৳১,২৪০"). */
+    pricePaisa?: number | null;
+    /** Skip the extra read when the caller already knows it. */
+    shopName?: string | null;
+  },
+): Promise<ShopFollowCatchup> {
+  try {
+    const followers = await listShopFollows(db, input.shopId);
+    if (followers.length === 0) return EMPTY_CATCHUP;
+    const marketing = followers.filter((f) => f.marketingOk);
+    if (marketing.length === 0) {
+      return { followers: followers.length, marketing: 0, reached: [], waiting: [] };
+    }
+    const shopName =
+      (input.shopName ?? "").trim() ||
+      ((await shopNameOf(db, input.shopId)) as string);
+    const { reached } = await pushProductEvent(db, {
+      phones: marketing.map((f) => f.phone),
+      kind: "new-from-shop",
+      productName: shopName
+        ? `${shopName} · ${input.productName}`
+        : input.productName,
+      pricePaisa: input.pricePaisa ?? null,
+      href: input.productSlug ? `/product/${input.productSlug}` : null,
+    });
+    const heard = new Set(reached);
+    const waiting = marketing.map((f) => f.phone).filter((p) => !heard.has(p));
+    if (reached.length > 0) {
+      await db
+        .from("shop_follows")
+        .update({ last_notified_at: new Date().toISOString() })
+        .eq("shop_id", input.shopId)
+        .in("phone", reached);
+    }
+    return {
+      followers: followers.length,
+      marketing: marketing.length,
+      reached,
+      waiting,
+    };
+  } catch {
+    return EMPTY_CATCHUP;
+  }
+}
+
+/**
+ * Publish-time entry point for the product write paths.
+ *
+ * It opens the SERVICE client itself because the fan-out reads
+ * `customer_push_subscriptions`, which is service-role only (no policies) —
+ * a vendor-session client would read zero devices and the announcement would
+ * vanish without a trace. Callers get the empty catchup back when the key is
+ * missing or the read fails; publishing is never blocked.
+ */
+export async function announceNewProductToFollowers(input: {
+  shopId: string;
+  productName: string;
+  productSlug?: string | null;
+  pricePaisa?: number | null;
+  shopName?: string | null;
+}): Promise<ShopFollowCatchup> {
+  try {
+    const { getSupabaseService } = await import("../supabase-server");
+    const db = getSupabaseService();
+    if (!db) return EMPTY_CATCHUP;
+    return await flagNewProductForFollowers(db, input);
+  } catch {
+    return EMPTY_CATCHUP;
+  }
+}

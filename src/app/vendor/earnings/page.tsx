@@ -18,6 +18,7 @@ import {
 } from "@/components/vendor/vendor-ui";
 import { formatBdt } from "@/lib/format";
 import { useVendorEarnings } from "@/lib/use-vendor";
+import StatementBar from "@/components/vendor/statement-bar";
 
 export default function VendorEarningsPage() {
   const me = useVendor();
@@ -68,6 +69,8 @@ export default function VendorEarningsPage() {
               </p>
             </div>
           </div>
+
+          <StatementBar earnings={earnings} />
 
           {earnings.ledger.length > 0 && (
             <section aria-label="Ledger">

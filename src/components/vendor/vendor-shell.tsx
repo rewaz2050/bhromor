@@ -116,8 +116,8 @@ export default function VendorShell({ children }: { children: ReactNode }) {
 
   return (
     <VendorCtx.Provider value={me}>
-      <div className="min-h-screen bg-cream">
-        <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
+      <div className="min-h-screen bg-cream print:bg-white">
+        <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur print:hidden">
           <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
             <Link href="/vendor" className="flex items-center gap-2">
               <LogoMark className="h-8 w-8" />
@@ -164,7 +164,7 @@ export default function VendorShell({ children }: { children: ReactNode }) {
             })}
           </nav>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-5xl px-4 py-6 print:max-w-none print:p-0">{children}</main>
       </div>
     </VendorCtx.Provider>
   );

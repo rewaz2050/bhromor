@@ -5,8 +5,11 @@ import { describe, expect, it } from "vitest";
 import type { Order } from "../orders";
 import {
   LATE_ORDER_MS,
+  SERVICE_WINDOW_MS,
   isLateOrder,
   newOrderIds,
+  serviceScore,
+  shopDispatchAt,
   shopPath,
   splitNeedsAction,
   todayStats,
@@ -97,5 +100,89 @@ describe("newOrderIds / shopPath", () => {
   it("builds a shareable storefront path", () => {
     expect(shopPath("arian-fashion")).toBe("/shops/arian-fashion");
     expect(shopPath("bhai's shop")).toBe("/shops/bhai's%20shop");
+  });
+});
+
+describe("A2 — serviceScore", () => {
+  const minutes = (n: number) => n * 60_000;
+
+  it("counts cancellations, median dispatch time and on-time share from the timeline", () => {
+    const orders = [
+      // dispatched 8 min after placement (inside a 15-min promise)
+      order({
+        id: "PS-1",
+        status: "delivered",
+        createdAt: NOW - minutes(600),
+        timeline: [{ status: "ready-for-pickup", at: NOW - minutes(592) }],
+      }),
+      // dispatched 40 min after placement (late)
+      order({
+        id: "PS-2",
+        status: "delivered",
+        createdAt: NOW - minutes(500),
+        timeline: [{ status: "ready-for-pickup", at: NOW - minutes(460) }],
+      }),
+      // cancelled — counted, never scored on time
+      order({ id: "PS-3", status: "cancelled", createdAt: NOW - minutes(400) }),
+      // still cooking: no dispatch mark, so it is neither "on time" nor "late"
+      order({ id: "PS-4", status: "preparing", createdAt: NOW - minutes(5) }),
+    ];
+    const score = serviceScore(orders, { now: NOW, prepMinutes: 15 });
+    expect(score.placed).toBe(4);
+    expect(score.cancelled).toBe(1);
+    expect(score.fulfilmentRate).toBeCloseTo(0.75);
+    expect(score.dispatched).toBe(2);
+    // median of [8, 40] → 24
+    expect(score.medianDispatchMinutes).toBe(24);
+    expect(score.onTimeRate).toBeCloseTo(0.5);
+  });
+
+  it("ignores orders older than the window and never counts a return pickup as a sale", () => {
+    const orders = [
+      order({ id: "PS-1", status: "delivered", createdAt: NOW - SERVICE_WINDOW_MS - minutes(1) }),
+      order({ id: "PS-2", status: "delivered", createdAt: NOW - minutes(60) }),
+      order({ id: "PS-3", isReturn: true, returnStatus: "refunded", createdAt: NOW - minutes(30) }),
+      order({ id: "PS-4", isReturn: true, returnStatus: "requested", createdAt: NOW - minutes(20) }),
+    ];
+    const score = serviceScore(orders, { now: NOW });
+    expect(score.placed).toBe(1);
+    expect(score.returns).toBe(2);
+    expect(score.refunded).toBe(1);
+  });
+
+  it("says 'nothing to score' instead of inventing zeros for an empty shop", () => {
+    const score = serviceScore([], { now: NOW, prepMinutes: 20 });
+    expect(score.placed).toBe(0);
+    expect(score.fulfilmentRate).toBeNull();
+    expect(score.medianDispatchMinutes).toBeNull();
+    expect(score.onTimeRate).toBeNull();
+    expect(score.windowDays).toBe(7);
+  });
+
+  it("only scores on-time when the shop has set a prep time", () => {
+    const orders = [
+      order({
+        id: "PS-1",
+        status: "delivered",
+        createdAt: NOW - minutes(100),
+        timeline: [{ status: "ready-for-pickup", at: NOW - minutes(90) }],
+      }),
+    ];
+    expect(serviceScore(orders, { now: NOW, prepMinutes: 0 }).onTimeRate).toBeNull();
+    expect(serviceScore(orders, { now: NOW, prepMinutes: 5 }).onTimeRate).toBe(0);
+    expect(serviceScore(orders, { now: NOW, prepMinutes: 15 }).onTimeRate).toBe(1);
+  });
+
+  it("shopDispatchAt takes the FIRST dispatch mark, whatever the flow skipped", () => {
+    const o = order({
+      createdAt: NOW - minutes(100),
+      timeline: [
+        { status: "pending", at: NOW - minutes(100) },
+        { status: "out-for-delivery", at: NOW - minutes(70) },
+        { status: "ready-for-pickup", at: NOW - minutes(80) },
+      ],
+    });
+    expect(shopDispatchAt(o)).toBe(NOW - minutes(80));
+    expect(shopDispatchAt(order({ timeline: [] }))).toBeNull();
   });
 });
