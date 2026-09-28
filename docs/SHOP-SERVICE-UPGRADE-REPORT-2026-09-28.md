@@ -67,7 +67,7 @@
 - **ভেন্ডর UI:** `/api/vendor/followers` (নিজের RLS-এ পড়া) + `src/components/vendor/followers-card.tsx` → ড্যাশবোর্ডে ফলোয়ার সংখ্যা, “কোন নম্বরগুলো এখনো পৌঁছানো হয়নি” তালিকা, আর সাম্প্রতিক ফলোয়ারদের “told / not told yet” অবস্থা।
 - **টেস্ট (৩২টি নতুন, সব সবুজ):** `src/lib/__tests__/shop-follow.test.ts` ৬টি + `src/lib/db/__tests__/growth-shop-follows.test.ts` ১২টি + `src/lib/db/__tests__/product-publish-followers.test.ts` ৪টি (পাবলিশ হলেই খবর, টাইপো ঠিক করতে গিয়ে আবার খবর নয়) + `src/components/shop/__tests__/follow-shop-card.test.tsx` ৫টি + `src/components/vendor/__tests__/followers-card.test.tsx` ৪টি + `notify-messages`-এ নতুন `new-from-shop` কপির ১টি।
 
-## ✅ B2 · রিভিউয়ে দোকানের উত্তর + ছবিসহ রিভিউ — সম্পন্ন (কমিট `e000e19`)
+## ✅ B2 · রিভিউয়ে দোকানের উত্তর + ছবিসহ রিভিউ — সম্পন্ন (কমিট `fed914f`)
 
 **migration:** `supabase/migrations/202609280002_review_replies.sql` — `reviews.vendor_reply` + `vendor_reply_at` (ডেটাবেসই সময় বসায়) + `vendor_reply_by` (কোন অ্যাকাউন্ট লিখল)। PGlite-এ যাচাই করা: উত্তর লিখলে স্ট্যাম্প বসে, **অন্য কোনো কলাম বদলানোর চেষ্টা ট্রিগারেই আটকে যায়** (`status` বদলাতে গেলে refused), ১২০০ অক্ষরের বেশি হলে চেক কনস্টেইন্টই আটকায়, উত্তর খালি করলে লেখকের নামও মুছে যায়। RLS-এ নতুন পলিসি `reviews vendor reply own` — দোকান শুধু **নিজের শপের** রিভিউতে উত্তর লিখতে পারে।
 
