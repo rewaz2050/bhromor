@@ -79,7 +79,7 @@
 - **স্টোরফ্রন্টে (আসল উদ্দেশ্য):** পণ্যের পেজে (`reviews-section.tsx`) রিভিউয়ের নিচে “Response from the shop” ব্লক — অর্থাৎ দোকান সামনাসামনি জবাব দেয় সেখানেই, যেখানে সব ক্রেতা পড়ে।
 - **টেস্ট:** `src/lib/__tests__/vendor-reply.test.ts` ৯টি + `src/lib/db/__tests__/vendor-reviews.test.ts` ৮টি + `src/components/vendor/__tests__/vendor-reviews-card.test.tsx` ৭টি + `src/components/reviews/__tests__/reviews-section-reply.test.tsx` ৩টি = **২৭টি নতুন, সব সবুজ** (স্যুট এখন ৩২০ ফাইল / ১৯৮৫ টেস্ট)।
 
-## ✅ B3 · ভেন্ডরের নিজের প্রোমো কোড — সম্পন্ন
+## ✅ B3 · ভেন্ডরের নিজের প্রোমো কোড — সম্পন্ন (কমিট `8a9511d`)
 
 **migration:** `supabase/migrations/202609280003_vendor_promos.sql`
 
