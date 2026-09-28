@@ -18,6 +18,7 @@ import type {
 import type { Coupon } from "../coupons";
 import { normalizeKyc } from "../rider-kyc";
 import { DATE_RE, VACATION_NOTE_MAX } from "../shop-vacation";
+import { staffHandle, type VendorStaffMember, type VendorStaffRole } from "../vendor-staff";
 import type {
   Order,
   OrderItem,
@@ -38,6 +39,7 @@ import type {
   DbRider,
   DbShop,
   DbVariant,
+  DbVendorUser,
   DbZone,
 } from "./types";
 
@@ -288,6 +290,31 @@ const mapShopVerification = (row: DbShop) => ({
   tradeLicence: row.trade_licence_checked === true,
   ...(row.verified_at ? { verifiedAt: epoch(row.verified_at) } : {}),
 });
+
+/**
+ * C1 — one name on the shop's roster.
+ *
+ * The row is what the DATABASE knows; the roster is what the OWNER reads, so a
+ * row from before the migration (no name, no login column) still has to say
+ * something — "Owner" with no label beats a blank line in a list of people who
+ * can open the till.
+ */
+export const mapVendorStaff = (
+  row: DbVendorUser,
+  viewerUserId?: string | null,
+): VendorStaffMember => {
+  const loginEmail = (row.login_email ?? "").trim() || null;
+  const role: VendorStaffRole = row.role === "owner" ? "owner" : "staff";
+  return {
+    userId: row.user_id,
+    name: (row.display_name ?? "").trim() || (role === "owner" ? "Shop owner" : "Shop staff"),
+    handle: staffHandle(loginEmail),
+    loginEmail: loginEmail ?? "",
+    role,
+    ...(row.created_at ? { addedAt: epoch(row.created_at) } : {}),
+    ...(viewerUserId && viewerUserId === row.user_id ? { isYou: true } : {}),
+  };
+};
 
 /** bigint columns arrive as strings from PostgREST; anything non-positive = off. */
 const mapFreeDeliveryMin = (raw: number | string | null | undefined): number | null => {

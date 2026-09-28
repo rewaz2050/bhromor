@@ -22,6 +22,13 @@ import {
   POST as vendorPromoCreate,
 } from "../vendor/promos/route";
 import { GET as vendorCategories } from "../vendor/categories/route";
+// C1: the shop's staff roster sits behind the same vendor gate.
+import {
+  GET as vendorStaff,
+  POST as vendorStaffCreate,
+} from "../vendor/staff/route";
+import { DELETE as vendorStaffRevoke } from "../vendor/staff/[id]/route";
+import { POST as vendorStaffPassword } from "../vendor/staff/[id]/password/route";
 import { POST as linkVendor } from "../admin/shops/[id]/link-vendor/route";
 
 const get = (path: string): Request => new Request(`http://localhost${path}`);
@@ -66,6 +73,27 @@ describe("vendor routes without a session (slice 3)", () => {
     ).toBe(401);
     expect(
       (await vendorProductCreate(post("/api/vendor/products", {}))).status,
+    ).toBe(401);
+    expect((await vendorStaff(get("/api/vendor/staff"))).status).toBe(401);
+    expect(
+      (await vendorStaffCreate(post("/api/vendor/staff", { name: "Samina", login: "01712345678" })))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await vendorStaffRevoke(
+          new Request("http://localhost/api/vendor/staff/staff-1", { method: "DELETE" }),
+          ctx,
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await vendorStaffPassword(
+          new Request("http://localhost/api/vendor/staff/staff-1/password", { method: "POST" }),
+          ctx,
+        )
+      ).status,
     ).toBe(401);
     expect(
       (

@@ -13,6 +13,8 @@ import { patchVendorShop, vendorErrorMessage } from "@/lib/use-vendor";
 import { useLiveZones } from "@/lib/use-live-zones";
 import type { Shop } from "@/lib/catalog";
 import ChangePasswordCard from "@/components/account/change-password-card";
+import StaffCard from "@/components/vendor/staff-card";
+import { useVendorStaff } from "@/lib/use-vendor-staff";
 import VendorFreeDeliveryCard from "@/components/vendor/free-delivery-card";
 import MediaUploader from "@/components/admin/media-uploader";
 
@@ -31,6 +33,8 @@ export default function VendorSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { zones } = useLiveZones();
+  // C1 — the roster is the owner's to manage; a staff login cannot read it.
+  const roster = useVendorStaff(me?.role === "owner");
 
   if (!current) return null;
   const values: Record<string, string> = form ?? {
@@ -293,9 +297,26 @@ export default function VendorSettingsPage() {
         />
       )}
 
-      {/* Apply = sign up (2026-09-26): the owner's own password lives here;
-          staff accounts change theirs from the admin side. */}
-      {!isStaff && <ChangePasswordCard className="mt-4" />}
+      {/* C1 — who else can open this shop. Owner only: a staff login cannot
+          read the roster, let alone change it. */}
+      {!isStaff && !roster.loading && (
+        <StaffCard
+          staff={roster.staff}
+          onCreate={roster.create}
+          onRevoke={roster.revoke}
+          onResetPassword={roster.resetPassword}
+        />
+      )}
+      {!isStaff && roster.error && (
+        <p className="mt-4 text-sm text-amber-800">
+          স্টাফ লগইনগুলো লোড করা যায়নি — একটু পরে আবার চেষ্টা করুন।
+        </p>
+      )}
+
+      {/* C1 — the owner's own password lives here, and so does the staff
+          member's: a staff login starts with a one-time password from the
+          owner and is replaced here from their own session. */}
+      <ChangePasswordCard className="mt-4" />
     </div>
   );
 }

@@ -147,6 +147,14 @@ export interface DbVendorUser {
   shop_id: string;
   role: "owner" | "staff";
   created_at: string;
+  /**
+   * C1 (202609280007) — the roster needs a name and a login the owner
+   * recognises. Optional: rows written before the migration have neither,
+   * and the roster falls back to the auth-shaped label in that case.
+   */
+  display_name?: string | null;
+  login_email?: string | null;
+  added_by?: string | null;
 }
 
 export interface DbShopLedger {
