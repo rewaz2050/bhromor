@@ -101,7 +101,7 @@
 
 ---
 
-## ✅ B4 · ভেন্ডর ফানেল রিপোর্ট (দোকানের নিজের attribution) — সম্পন্ন
+## ✅ B4 · ভেন্ডর ফানেল রিপোর্ট (দোকানের নিজের attribution) — সম্পন্ন (কমিট `c335092`)
 
 **migration:** `supabase/migrations/202609280004_shop_funnel.sql`
 
