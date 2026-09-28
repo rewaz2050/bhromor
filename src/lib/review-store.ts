@@ -29,6 +29,16 @@ export interface Review {
    * Absent/empty for reviews without photos.
    */
   photos?: string[];
+  /**
+   * B2 (2026-09-28) — the shop's public answer, written from /vendor. One
+   * reply per review; the shop may reword it and the stamp moves with the
+   * edit (the database sets that clock). Absent = the shop has not answered.
+   */
+  vendorReply?: string;
+  /** Epoch ms of the last reply write (absent with no reply). */
+  vendorReplyAt?: number;
+  /** Which vendor account wrote it — audit trail for staff-run shops. */
+  vendorReplyBy?: string;
 }
 
 export const STATUS_LABEL: Record<ReviewStatus, string> = {

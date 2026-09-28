@@ -165,6 +165,17 @@ export default function AdminReviewsPage() {
                         ))}
                       </div>
                     )}
+                    {/* B2 — what the shop answered in public. Staff moderates the
+                        pair, not just the review: if the reply is the problem,
+                        hiding the review would hide the shop's own words too. */}
+                    {r.vendorReply && (
+                      <div className="mt-2.5 rounded-xl bg-forest-50 p-3 ring-1 ring-forest-100" data-testid="admin-sees-shop-reply">
+                        <p className="text-[0.62rem] font-bold uppercase tracking-wide text-forest-800">
+                          Shop reply{r.vendorReplyBy ? ` · ${r.vendorReplyBy}` : ""}
+                        </p>
+                        <p className="mt-1 text-sm leading-6 text-ink">{r.vendorReply}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

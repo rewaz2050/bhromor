@@ -67,7 +67,19 @@
 - **ভেন্ডর UI:** `/api/vendor/followers` (নিজের RLS-এ পড়া) + `src/components/vendor/followers-card.tsx` → ড্যাশবোর্ডে ফলোয়ার সংখ্যা, “কোন নম্বরগুলো এখনো পৌঁছানো হয়নি” তালিকা, আর সাম্প্রতিক ফলোয়ারদের “told / not told yet” অবস্থা।
 - **টেস্ট (৩২টি নতুন, সব সবুজ):** `src/lib/__tests__/shop-follow.test.ts` ৬টি + `src/lib/db/__tests__/growth-shop-follows.test.ts` ১২টি + `src/lib/db/__tests__/product-publish-followers.test.ts` ৪টি (পাবলিশ হলেই খবর, টাইপো ঠিক করতে গিয়ে আবার খবর নয়) + `src/components/shop/__tests__/follow-shop-card.test.tsx` ৫টি + `src/components/vendor/__tests__/followers-card.test.tsx` ৪টি + `notify-messages`-এ নতুন `new-from-shop` কপির ১টি।
 
+## ✅ B2 · রিভিউয়ে দোকানের উত্তর + ছবিসহ রিভিউ — সম্পন্ন (কমিট `e000e19`)
+
+**migration:** `supabase/migrations/202609280002_review_replies.sql` — `reviews.vendor_reply` + `vendor_reply_at` (ডেটাবেসই সময় বসায়) + `vendor_reply_by` (কোন অ্যাকাউন্ট লিখল)। PGlite-এ যাচাই করা: উত্তর লিখলে স্ট্যাম্প বসে, **অন্য কোনো কলাম বদলানোর চেষ্টা ট্রিগারেই আটকে যায়** (`status` বদলাতে গেলে refused), ১২০০ অক্ষরের বেশি হলে চেক কনস্টেইন্টই আটকায়, উত্তর খালি করলে লেখকের নামও মুছে যায়। RLS-এ নতুন পলিসি `reviews vendor reply own` — দোকান শুধু **নিজের শপের** রিভিউতে উত্তর লিখতে পারে।
+
+- **pure মডিউল:** `src/lib/vendor-reply.ts` — `validateVendorReply()` (খালি/এক শব্দের উত্তর নয়, ১২০০ অক্ষরে কাটা), `hasReply`/`replyBody`/`replyStamp`, `replySummary()` (কতটি উত্তর দেওয়া, কতটি অপেক্ষায়, **অপেক্ষমাণগুলোর গড় রেটিং** — আরামদায়ক সামগ্রিক গড় নয়), `sortForReply()` (উত্তরহীন আগে, সবচেয়ে পুরোনো অভিযোগ সবার উপরে)।
+- **ডেটা লেয়ার:** `src/lib/db/vendor-reviews.ts` — `listVendorReviews()` (নিজের শপের **approved** রিভিউ, পণ্যের নাম + ক্রেতার ছবি সহ; pending রিভিউ স্টাফের কাজ, দোকান দেখে না) আর `saveVendorReply()` (trim করা লেখা, লেখকের ইমেইল audit, খালি হলে 422, পরের শপের রিভিউ হলে 404 — চুপচাপ কিছু না হওয়া নয়)।
+- **API:** `GET/PATCH /api/vendor/reviews` — দুটোই দোকানের নিজের RLS ক্লায়েন্টে, তাই নিয়ম বানায় ডেটাবেসের পলিসি, রুট নয়।
+- **ছবিসহ রিভিউ (P1 #10):** কাস্টমার ছবির ব্যবস্থা আগেই ছিল (`review_photos`, Cloudinary বাসা) — এই ধাপে দোকানের কার্ডে **ছবিগুলোও দেখানো হচ্ছে**, কারণ “আসল ছবি” ছাড়া দোকান বুঝতেই পারত না অভিযোগটা কী নিয়ে।
+- **ভেন্ডর UI:** `src/components/vendor/vendor-reviews-card.tsx` — ড্যাশবোর্ডে “Reviews on your products” কার্ড (শেষ ৩টি, সাথে “See all reviews”), আর পুরো তালিকা `/vendor/reviews` পেজে (নেভিগেশনেও যোগ করা)। ফিল্ডে লেখা থাকে, সেভ ব্যর্থ হলে **লেখা মুছে যায় না** — কারণসহ বলে, আবার চেষ্টা করা যায়। একবার লেখা উত্তর “Reword” দিয়ে বদলানো যায়, স্ট্যাম্প নড়ে যায়।
+- **স্টোরফ্রন্টে (আসল উদ্দেশ্য):** পণ্যের পেজে (`reviews-section.tsx`) রিভিউয়ের নিচে “Response from the shop” ব্লক — অর্থাৎ দোকান সামনাসামনি জবাব দেয় সেখানেই, যেখানে সব ক্রেতা পড়ে।
+- **টেস্ট:** `src/lib/__tests__/vendor-reply.test.ts` ৯টি + `src/lib/db/__tests__/vendor-reviews.test.ts` ৮টি + `src/components/vendor/__tests__/vendor-reviews-card.test.tsx` ৭টি + `src/components/reviews/__tests__/reviews-section-reply.test.tsx` ৩টি = **২৭টি নতুন, সব সবুজ** (স্যুট এখন ৩২০ ফাইল / ১৯৮৫ টেস্ট)।
+
 ---
 
 ## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1ও শেষ** ✅ → এখন B2 (রিভিউয়ে দোকানের উত্তর + ছবিসহ রিভিউ), তারপর B3–B6।
+**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2ও শেষ** ✅ → এখন B3 (ভেন্ডরের নিজের প্রোমো কোড — platform সীমা + কমিশন হিসাব দেখিয়ে), তারপর B4–B6।

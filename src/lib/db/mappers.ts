@@ -416,4 +416,13 @@ export const mapReview = (row: DbReview): Review => ({
   verified: row.verified,
   featured: row.featured || undefined,
   shopId: row.shop_id,
+  // B2 — the shop's reply travels with the review everywhere the review goes
+  // (storefront, admin queue, vendor card). Optional: a pre-migration row has
+  // no such columns at all and must keep working.
+  vendorReply:
+    typeof row.vendor_reply === "string" && row.vendor_reply.trim() !== ""
+      ? row.vendor_reply
+      : undefined,
+  vendorReplyAt: row.vendor_reply_at ? epoch(row.vendor_reply_at) : undefined,
+  vendorReplyBy: row.vendor_reply_by ?? undefined,
 });

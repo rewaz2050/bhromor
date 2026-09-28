@@ -416,6 +416,50 @@ export const useVendorEarnings = (enabled: boolean) => {
 };
 
 /* ------------------------------------------------------------------ */
+/* B2 (2026-09-28) — reviews and the shop's reply                      */
+/* ------------------------------------------------------------------ */
+
+export interface VendorReviewRow {
+  id: string;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  rating: number;
+  author: string;
+  title?: string;
+  body: string;
+  date: number;
+  verified: boolean;
+  featured?: boolean;
+  photos: string[];
+  vendorReply?: string;
+  vendorReplyAt?: number;
+  vendorReplyBy?: string;
+}
+
+export const useVendorReviews = (enabled: boolean) => {
+  const res = useVendorResource<{ reviews: VendorReviewRow[] }>(
+    "/api/vendor/reviews",
+    enabled,
+  );
+  const { reload } = res;
+  const reply = useCallback(
+    async (id: string, text: string): Promise<VendorReviewRow> => {
+      const data = await vendorSend<{ review: VendorReviewRow }>(
+        "/api/vendor/reviews",
+        "PATCH",
+        { id, reply: text },
+      );
+      // In-place re-read: the card keeps its rows while the answer saves.
+      reload();
+      return data.review;
+    },
+    [reload],
+  );
+  return { ...res, reviews: res.data?.reviews ?? [], reply };
+};
+
+/* ------------------------------------------------------------------ */
 /* B1 (2026-09-28) — shop followers                                    */
 /* ------------------------------------------------------------------ */
 

@@ -334,6 +334,10 @@ export interface DbReview {
   /** Proven-purchase phone / public order no (migration 202609270004; absent before it). */
   customer_phone?: string | null;
   order_ref?: string | null;
+  /** B2 — the shop's public reply (migration 202609280002; absent before it). */
+  vendor_reply?: string | null;
+  vendor_reply_at?: string | null;
+  vendor_reply_by?: string | null;
   created_at: string;
 }
 

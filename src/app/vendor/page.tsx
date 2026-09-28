@@ -22,6 +22,7 @@ import {
   useVendorEarnings,
   useVendorOrders,
   useShopFollowers,
+  useVendorReviews,
   useVendorProducts,
   vendorErrorMessage,
 } from "@/lib/use-vendor";
@@ -45,6 +46,7 @@ import { shelfState } from "@/lib/product-shelf";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
+import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -54,6 +56,8 @@ export default function VendorDashboardPage() {
   const prods = useVendorProducts(authed);
   // B1 — followers come from their own row-level-secured read.
   const follows = useShopFollowers(authed);
+  // B2 — approved reviews of this shop's products, with the reply writer.
+  const reviews = useVendorReviews(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
@@ -316,6 +320,16 @@ export default function VendorDashboardPage() {
           score={service}
           prepMinutes={me.shop.prepMinutes}
           loading={orders.loading}
+        />
+      )}
+
+      {me && (
+        <VendorReviewsCard
+          reviews={reviews.reviews}
+          onReply={reviews.reply}
+          loading={reviews.loading}
+          limit={3}
+          allHref="/vendor/reviews"
         />
       )}
 
