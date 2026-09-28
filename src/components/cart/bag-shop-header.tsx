@@ -7,6 +7,7 @@ import {
   isShopOrderable,
   lineShopIds,
   shopById,
+  shopClosedCopy,
 } from "@/lib/shop-utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 
@@ -45,8 +46,12 @@ export default function BagShopHeader() {
         · {t("shops.prepIn").replace("{min}", String(shop.prepMinutes))}
       </span>
       {!open && (
-        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
-          {t("shops.closed")} — {t("shops.shopClosedHint")}
+        <span
+          data-testid="bag-shop-closed"
+          className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900"
+        >
+          {/* B6 — "closed" and "on holiday until the 13th" are different news. */}
+          {shopClosedCopy(shop, t).text} — {t("shops.shopClosedHint")}
         </span>
       )}
     </div>

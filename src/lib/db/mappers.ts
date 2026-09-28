@@ -17,6 +17,7 @@ import type {
 } from "../catalog";
 import type { Coupon } from "../coupons";
 import { normalizeKyc } from "../rider-kyc";
+import { DATE_RE, VACATION_NOTE_MAX } from "../shop-vacation";
 import type {
   Order,
   OrderItem,
@@ -228,6 +229,13 @@ export const mapApplicationReview = (row: {
   return { note, by, at: Number.isFinite(at) ? at : undefined };
 };
 
+/** A `date` column read back as YYYY-MM-DD, whatever the driver hands us. */
+const vacationDate = (value: unknown): string => {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const text = String(value ?? "").trim();
+  return DATE_RE.test(text) ? text.slice(0, 10) : "";
+};
+
 export const mapShop = (row: DbShop): Shop => ({
   id: row.id,
   slug: row.slug,
@@ -256,6 +264,18 @@ export const mapShop = (row: DbShop): Shop => ({
   // this mapper at all (they are read by the admin list only), so no storefront
   // or vendor payload can carry them by accident.
   verification: mapShopVerification(row),
+  // B6 — both dates or nothing: a half-window is not a holiday, and a date is
+  // only ever published as YYYY-MM-DD (some drivers hand back a Date object).
+  vacation:
+    vacationDate(row.vacation_start) && vacationDate(row.vacation_end)
+      ? {
+          start: vacationDate(row.vacation_start),
+          end: vacationDate(row.vacation_end),
+          ...(typeof row.vacation_note === "string" && row.vacation_note !== ""
+            ? { note: row.vacation_note.slice(0, VACATION_NOTE_MAX) }
+            : {}),
+        }
+      : undefined,
 });
 
 /**

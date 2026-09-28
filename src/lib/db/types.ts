@@ -136,6 +136,10 @@ export interface DbShop {
   verified_by?: string | null;
   verified_by_email?: string | null;
   verification_note?: string | null;
+  /** B6 (202609280006) — holiday dates; absent on a database without it. */
+  vacation_start?: string | null;
+  vacation_end?: string | null;
+  vacation_note?: string | null;
 }
 
 export interface DbVendorUser {

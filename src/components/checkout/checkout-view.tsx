@@ -75,6 +75,7 @@ import {
   IconBolt,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { vacationReopenDate } from "@/lib/shop-vacation";
 import {
   DISTRICTS,
   PARA_CUSTOM,
@@ -2640,8 +2641,18 @@ export default function CheckoutView() {
                 </p>
               )}
               {shopClosed && bagShop && (
-                <p role="alert" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-                  “{bagShop.name}” এখন বন্ধ — খুললে আপনার ব্যাগ থেকেই অর্ডার করতে পারবেন।
+                /* B6 — a booked holiday names the day the bag will go through,
+                   so the shopper waits for a date instead of for a rumour. */
+                <p
+                  role="alert"
+                  data-testid="checkout-shop-closed"
+                  className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200"
+                >
+                  {vacationReopenDate(bagShop.vacation)
+                    ? t("checkout.shopHolidayBag")
+                        .replace("{shop}", bagShop.name)
+                        .replace("{date}", vacationReopenDate(bagShop.vacation) ?? "")
+                    : t("checkout.shopClosedBag").replace("{shop}", bagShop.name)}
                 </p>
               )}
               {minOrderShortfall > 0 && (

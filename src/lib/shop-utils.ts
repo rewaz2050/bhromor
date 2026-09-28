@@ -7,6 +7,8 @@
  */
 
 import type { Product, Shop } from "./catalog";
+import type { TranslationKey } from "./translations";
+import { isOnVacation, vacationDaysLeft, vacationReopenDate } from "./shop-vacation";
 
 /** Public shop card — contactEmail is ALWAYS stripped. */
 export const toPublicShop = (shop: Shop): Shop => {
@@ -40,9 +42,38 @@ export const shopById = (
   shopId: string,
 ): Shop | undefined => shops.find((s) => s.id === shopId);
 
-/** A shop can take orders only while active AND open. */
-export const isShopOrderable = (shop: Shop): boolean =>
-  shop.status === "active" && shop.isOpen;
+/**
+ * A shop can take orders only while active AND open AND not on holiday.
+ *
+ * B6: the `now` argument defaults to the real clock, so every existing caller
+ * (cards, the bag, checkout, the purchase panel) honours a booked holiday
+ * without another change — and tests can pin the clock.
+ */
+/**
+ * B6 — why the shop cannot take an order, in the shopper's own words.
+ *
+ * A plain closure is a fact ("Closed"); a booked holiday is a promise, so it
+ * carries the day the shop takes orders again. The wording is the caller's so
+ * the storefront can say it in Bengali.
+ */
+export const shopClosedCopy = (
+  shop: Shop,
+  t: (key: TranslationKey) => string,
+  now: number = Date.now(),
+): { text: string; holiday: boolean } => {
+  const reopen = vacationReopenDate(shop.vacation, now);
+  if (!reopen) return { text: t("shops.closed"), holiday: false };
+  const days = vacationDaysLeft(shop.vacation, now);
+  const key =
+    days > 1 ? "shops.onHolidayDays" : days === 1 ? "shops.onHolidayTomorrow" : "shops.onHoliday";
+  return {
+    holiday: true,
+    text: t(key).replace("{date}", reopen).replace("{n}", String(days)),
+  };
+};
+
+export const isShopOrderable = (shop: Shop, now: number = Date.now()): boolean =>
+  shop.status === "active" && shop.isOpen && !isOnVacation(shop.vacation, now);
 
 export const shopServesZone = (shop: Shop, zoneId: string): boolean =>
   shop.zoneIds.includes(zoneId);

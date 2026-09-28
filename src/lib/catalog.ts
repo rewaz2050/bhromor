@@ -123,6 +123,20 @@ export interface Shop {
    * on the admin row (`ShopVerificationAudit`), never on the storefront.
    */
   verification?: ShopVerification;
+  /**
+   * B6 (2026-09-28) — the shop's holiday dates (both ends, or nothing). Public
+   * on purpose: a shopper is entitled to know the shop is away and when it
+   * takes orders again, instead of hitting a dead checkout.
+   */
+  vacation?: ShopVacation;
+}
+
+/** B6 — a booked closure: `YYYY-MM-DD` … `YYYY-MM-DD`, inclusive. */
+export interface ShopVacation {
+  start: string;
+  end: string;
+  /** Short note the shop writes for itself (shown on the storefront). */
+  note?: string;
 }
 
 /**

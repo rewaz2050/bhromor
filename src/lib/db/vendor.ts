@@ -17,6 +17,7 @@ import {
   orderFlowSchemaGap,
 } from "./admin";
 import type { Category, Product, Shop } from "../catalog";
+import { validateVacation } from "../shop-vacation";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapProduct, mapShop } from "./mappers";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
@@ -54,6 +55,10 @@ export const assertVendorTarget = (to: string): void => {
 };
 
 export interface VendorShopPatch {
+  /** B6 — holiday dates, YYYY-MM-DD (both together, or null to clear). */
+  vacation_start?: string | null;
+  vacation_end?: string | null;
+  vacation_note?: string | null;
   name?: string;
   tagline?: string;
   logo_url?: string;
@@ -87,6 +92,8 @@ export const vendorShopPatch = (
     }
   };
   if (role === "staff") {
+    // B6: booking a holiday is the OWNER's call — it stops the shop's own
+    // sales for days, which is not a thing to leave to a staff login.
     const allowed = new Set(["is_open", "isOpen", "prep_minutes", "prepMinutes"]);
     const extra = Object.keys(body).filter((k) => !allowed.has(k));
     if (extra.length > 0) {
@@ -136,6 +143,32 @@ export const vendorShopPatch = (
     }
     patch.free_delivery_min = parseShopFreeDeliveryMin(raw);
   }
+  // B6 — the holiday. Validated HERE, not only in the form: a direct API call
+  // could otherwise book a 400-day "holiday" (a permanent closure by another
+  // name) or a window that ended last month.
+  if (
+    body.vacation_start !== undefined ||
+    body.vacation_end !== undefined ||
+    body.vacationStart !== undefined ||
+    body.vacationEnd !== undefined ||
+    body.vacationNote !== undefined
+  ) {
+    const checked = validateVacation({
+      start: body.vacation_start ?? body.vacationStart,
+      end: body.vacation_end ?? body.vacationEnd,
+      note: body.vacationNote,
+    });
+    if (!checked.ok) {
+      throw new AdminInputError(
+        Object.values(checked.errors)[0] ?? "Check the holiday dates.",
+        422,
+      );
+    }
+    patch.vacation_start = checked.value.start;
+    patch.vacation_end = checked.value.end;
+    patch.vacation_note = checked.value.note || null;
+  }
+
   if (patch.name !== undefined && patch.name.length < 2) {
     throw new AdminInputError("Shop name is too short.");
   }

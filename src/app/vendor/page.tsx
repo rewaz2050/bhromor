@@ -50,6 +50,9 @@ import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
 import FunnelCard from "@/components/vendor/funnel-card";
 import VerificationCard from "@/components/vendor/verification-card";
+import VacationCard from "@/components/vendor/vacation-card";
+import type { ShopVacation } from "@/lib/catalog";
+import { isOnVacation, vacationVendorLine } from "@/lib/shop-vacation";
 import PromoCard from "@/components/vendor/promo-card";
 import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
@@ -72,7 +75,14 @@ export default function VendorDashboardPage() {
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
 
+  // B6 — the holiday lives in local state until the save answers, because the
+  // dashboard's own `me` is refreshed by a reload, not by this request.
+  const [savedVacation, setSavedVacation] = useState<ShopVacation | null | undefined>(undefined);
   const isOpen = open ?? me?.shop.isOpen ?? false;
+  // B6 — what the dashboard shows as the shop's holiday: the save's answer if
+  // there has been one, otherwise the shop row we loaded with.
+  const vacation = savedVacation !== undefined ? savedVacation : me?.shop.vacation;
+  const onHoliday = isOnVacation(vacation);
   const list = orders.orders;
   // 2026-09-27 — one card per real job (to confirm / preparing / rider
   // waiting) plus a late warning, instead of one lumped "Needs action" that
@@ -130,6 +140,19 @@ export default function VendorDashboardPage() {
       // The shop closed the share sheet — fall through to copying.
     }
     await copyShopLink();
+  };
+
+  const saveVacation = async (patch: {
+    start: string | null;
+    end: string | null;
+    note: string;
+  }): Promise<void> => {
+    const shop = await patchVendorShop({
+      vacationStart: patch.start ?? "",
+      vacationEnd: patch.end ?? "",
+      vacationNote: patch.note,
+    });
+    setSavedVacation(shop.vacation ?? null);
   };
 
   const flipOpen = async () => {
@@ -267,8 +290,8 @@ export default function VendorDashboardPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Shop sign
           </p>
-          <p className="mt-1 font-display text-3xl text-forest-900">
-            {isOpen ? "Open" : "Closed"}
+          <p data-testid="shop-sign" className="mt-1 font-display text-3xl text-forest-900">
+            {onHoliday ? "On holiday" : isOpen ? "Open" : "Closed"}
           </p>
           <button
             type="button"
@@ -278,6 +301,13 @@ export default function VendorDashboardPage() {
           >
             {toggling ? "Saving…" : isOpen ? "Close the shop" : "Open the shop"}
           </button>
+          {/* B6 — the switch is not broken while the holiday covers it: saying
+              so stops the owner from pressing it twice a day. */}
+          {onHoliday && (
+            <p className="mt-1 text-[0.68rem] leading-4 text-amber-800">
+              {vacationVendorLine(vacation)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -337,6 +367,16 @@ export default function VendorDashboardPage() {
           <VerificationCard
             verification={me.shop.verification}
             shopName={me.shop.name}
+          />
+        </div>
+      )}
+
+      {me && (
+        <div className="mt-6">
+          <VacationCard
+            vacation={vacation}
+            onSave={saveVacation}
+            editable={me.role === "owner"}
           />
         </div>
       )}
