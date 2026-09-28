@@ -6,6 +6,7 @@ import { shopChatMessage, waLink } from "@/lib/whatsapp-order";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconSend } from "@/components/ui/icons";
 import FreeDeliveryPill from "./free-delivery-pill";
+import VerifiedBadge from "./verified-badge";
 
 /**
  * Shop storefront header (marketplace slice 4): open state, prep time,
@@ -63,6 +64,10 @@ export default function ShopHero({
         >
           {open ? t("shops.openNow") : t("shops.closed")}
         </span>
+      </div>
+      {/* B5 — the trust answer, in the header the shopper reads first. */}
+      <div className="relative mt-3">
+        <VerifiedBadge verification={shop.verification} variant="full" />
       </div>
       <dl className="relative mt-6 flex flex-wrap gap-x-8 gap-y-3 text-sm">
         <div>

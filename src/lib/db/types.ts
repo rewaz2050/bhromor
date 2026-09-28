@@ -125,6 +125,17 @@ export interface DbShop {
   reviewed_at?: string | null;
   /** Free delivery (202609260003) — the shop's own minimum, paisa; null = off. */
   free_delivery_min?: number | string | null;
+  /**
+   * B5 (202609280005) — verified-shop badge. Optional: a database that has not
+   * run the migration simply has no verification to show. The staff-only
+   * columns (note / officer) are read only by the admin list.
+   */
+  nid_checked?: boolean | null;
+  trade_licence_checked?: boolean | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  verified_by_email?: string | null;
+  verification_note?: string | null;
 }
 
 export interface DbVendorUser {

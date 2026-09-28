@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useShops, type AdminShopClient } from "@/lib/use-shops";
 import { useZones } from "@/lib/use-zones";
 import type { Shop } from "@/lib/catalog";
+import ShopVerificationCard from "@/components/admin/shop-verification-card";
+import type { VerificationHistory } from "@/lib/shop-verification";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
@@ -44,6 +46,9 @@ function ShopCard({
   onStatus,
   onLinkVendor,
   onResetPassword,
+  onVerify,
+  onExpand,
+  verification,
 }: {
   shop: AdminShopClient;
   zones: { id: string; name: string }[];
@@ -54,6 +59,11 @@ function ShopCard({
   onStatus: (id: string, status: Shop["status"], note?: string) => void;
   onLinkVendor: (id: string, identifier: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
+  onVerify: (id: string, patch: { nid: boolean; tradeLicence: boolean; note: string }) => Promise<Shop>;
+  /** B5 — called when the edit panel opens, so the trail loads on demand. */
+  onExpand: () => void;
+  /** B5 — the staff-only trail for this shop (null until loaded). */
+  verification: VerificationHistory | null;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(shop.name);
@@ -197,7 +207,10 @@ function ShopCard({
         />
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (!open) onExpand();
+            setOpen((v) => !v);
+          }}
           className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-ink"
         >
           {open ? "Close" : "Edit"}
@@ -301,6 +314,18 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
+          <ShopVerificationCard
+            key={`verify-${shop.id}-${shop.verification?.nid === true ? "n" : ""}${
+              shop.verification?.tradeLicence === true ? "l" : ""
+            }-${verification?.audit?.at ?? "none"}`}
+            verification={shop.verification}
+            audit={verification?.audit ?? null}
+            events={verification?.events ?? []}
+            onSave={async (patch) => {
+              await onVerify(shop.id, patch);
+            }}
+          />
+
           <ApplicantLoginBox
             kind="vendor"
             name={shop.name}
@@ -331,6 +356,8 @@ export default function AdminShopsPage() {
     setStatus,
     linkVendor,
     resetVendorPassword,
+    verifyShop,
+    verificationHistory,
     reset,
   } = useShops();
   const { zones } = useZones();
@@ -379,6 +406,21 @@ export default function AdminShopsPage() {
   const paged = useMemo(
     () => visible.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE),
     [visible, clampedPage],
+  );
+
+  // B5 — the verification trail is staff-only and per shop, so it is fetched
+  // when a card is actually OPENED, not for the whole list.
+  const [verifications, setVerifications] = useState<Record<string, VerificationHistory>>({});
+  const loadVerification = useCallback(
+    (id: string) => {
+      if (!live) return;
+      void verificationHistory(id)
+        .then((trail) => setVerifications((m) => ({ ...m, [id]: trail })))
+        .catch(() => {
+          /* the badge still works without its history */
+        });
+    },
+    [live, verificationHistory],
   );
 
   const toggleSelected = (id: string) =>
@@ -667,6 +709,9 @@ export default function AdminShopsPage() {
                 onStatus={(id, status, note) => void setStatus(id, status, note)}
                 onLinkVendor={linkVendor}
                 onResetPassword={resetVendorPassword}
+                onVerify={verifyShop}
+                onExpand={() => loadVerification(s.id)}
+                verification={verifications[s.id] ?? null}
               />
             ))}
           </ul>

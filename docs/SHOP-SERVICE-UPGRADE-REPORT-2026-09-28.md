@@ -121,5 +121,24 @@
 
 ---
 
+## ✅ B5 · “ভেরিফায়েড দোকান” ব্যাজ (NID + ট্রেড লাইসেন্স, অডিট সহ) — সম্পন্ন
+
+**migration:** `supabase/migrations/202609280005_shop_verification.sql`
+
+- `shops`-এ নতুন কলাম: `nid_checked`, `trade_licence_checked` (দুটোই আলাদা — স্টাফ যা হাতে ধরে দেখেছে), `verified_at`, `verified_by`, `verified_by_email`, `verification_note` (স্টাফের ব্যক্তিগত নোট)।
+- **ব্যাজ = প্রমাণের ফল, আলাদা কোনো “ভেরিফায়েড” সুইচ নয়:** ট্রিগার `ps_guard_shop_verification` — দুটো চেকই থাকলে `verified_at` বসে; যেকোনো একটি তুলে দিলেই **ব্যাজ, সময় ও অফিসার—তিনটিই মুছে যায়**। অর্থাৎ ব্যাজ কখনো তার পেছনের কাগজের চেয়ে বেশি বাঁচে না। স্টাফ সরাসরি SQL-এ `verified_at` বসাতে গেলেও কাগজ ছাড়া তা টেকে না (PGlite-এ যাচাই)।
+- **দোকান নিজেকে ভেরিফাই করতে পারবে না:** ট্রিগারেই ভেন্ডর সেশনের (এমনকি সরাসরি anon key + নিজের JWT-এর) সব verification কলাম বদল **refused** — তবুও দোকানের নিজের প্রোফাইল এডিট (tagline ইত্যাদি) ঠিকঠাক চলে। নতুন শপ রো জন্মেই ভেরিফায়েড হতে পারে না; উপরে একটি check কনস্ট্রেইন্ট (`shops_no_self_verification`)। ফাকি দেওয়ার কোনো রাস্তা নেই।
+- **অডিট যাতে টিকে:** নতুন টেবিল `shop_verification_events` — **append-only** (কোনো update/delete policy নেই + ট্রিগার `ps_guard_verification_append_only` সরাসরি “history cannot be rewritten” বলে ফেলে)। কে/কখন/কী লিখল — ব্যাজ তুলে নিয়ে আবার দিলেও ইতিহাস থাকে। টেবিলে `anon`/`authenticated`/`public`-এর কোনো grant নেই (PGlite-এ যাচাই: ০)।
+- **PGlite-এ ১৮টি চেক সবুজ:** দুটো চেক → ব্যাজ, একটা তুললে ব্যাজ+অফিসার মুছে যাওয়া, কাগজ ছাড়া স্ট্যাম্প টেকা না, ভেন্ডরের হাত পা বাঁধা, অথচ প্রোফাইল এডিট চলা, ইতিহাসের ২ ঘটনা, রিরাইট/ডিলিট refused, **idempotent re-run** (আবার চালালে কিছুই বাড়ে না)।
+
+- **pure মডিউল:** `src/lib/shop-verification.ts` — `isVerified()` (দুটো চেক **এবং** স্ট্যাম্প — পুরোনো তারিখ দিয়ে ব্যাজ চালানো যাবে না), `missingChecks()`, `verificationPromise()` (“ID and trade licence checked by PROSANTI” — অস্পষ্ট সবুজ টিক নয়), `verifiedOnLabel()`, `notCheckedLine()` (“Documents not checked by PROSANTI yet” — কাউকে সন্দেহজনক বলা হচ্ছে না, কারণ বেশিরভাগ অযাচাই দোকান কেবল **প্রক্রিয়াহীন**), `vendorVerificationLine()` (দোকান নিজে বুঝবে কী বাকি), `validateVerificationPatch()` (খালি জমা বন্ধ — চুপচাপ ব্যাজ মুছবে না), `actionFor()`/`auditLine()`/`parseVerificationEvent()`।
+- **গোপনীয়তা (টেস্টে পিন করা):** `mapShop()` শুধু দুটো বুলিয়ান + তারিখ বহন করে; **নোট, অফিসারের আইডি/ইমেইল কোনোভাবেই Shop-এ আসে না** — তাই স্টোরফ্রন্ট বা ভেন্ডর payload-এ লিক হওয়ার সুযোগই নেই (`src/lib/db/__tests__/shop-verification-mapping.test.ts`)। অ্যাডমিন সাইড আলাদা রিড (`shopVerificationHistory`)।
+- **অ্যাডমিন:** `/admin/shops`-এর Edit প্যানেলে “Verification” কার্ড — দুটো টিক (Owner’s National ID seen / Trade licence seen), ব্যক্তিগত নোট, Save; **সেভের আগেই** সতর্কতা — “Saving removes the badge from this shop’s storefront” বা “Saving puts the badge…”। নিচে “Who checked”: কে, কবে, আর সর্বশেষ ঘটনাগুলো (Verified / Badge removed / Note)। অফিসার আসে **ভেরিফায়েড স্টাফ সেশন** থেকে — রিকোয়েস্ট বডি থেকে কখনো নয় (টেস্টে attacker email পাঠিয়ে দেখানো)। API: `POST` / `GET /api/admin/shops/[id]/verification` — `admin`/`super_admin` ছাড়া ঢোকাই নেই।
+- **স্টোরফ্রন্ট:** `src/components/shop/verified-badge.tsx` — কার্ডে (`shop-card`) ও দোকানের পেজের হেডারে (`shop-hero`, তারিখসহ) “Verified shop”; যাচাই হয়নি এমন দোকানে নিরপেক্ষ “Not checked yet” (লাল রঙে “unverified” নয়)। বাংলা/ইংরেজি দুই ভাষাতেই কী (`shops.verified`, `shops.notCheckedShort`…)।
+- **ভেন্ডরের দিক:** `/vendor` ড্যাশবোর্ডে “Verified shop badge” কার্ড — ব্যাজ আছে কি না, কোন কাগজ বাকি, আর কী পাঠাতে হবে; স্টাফের নোট/নাম সেখানে কখনো দেখায় না (কার্ডে সেই প্রপই নেই)।
+- **টেস্ট:** `src/lib/__tests__/shop-verification.test.ts` ১৫টি + `src/lib/db/__tests__/shop-verification.test.ts` ১২টি + `src/lib/db/__tests__/shop-verification-mapping.test.ts` ৪টি + `src/components/shop/__tests__/verified-badge.test.tsx` ৫টি + `src/components/admin/__tests__/shop-verification-card.test.tsx` ৮টি + `src/components/vendor/__tests__/verification-card.test.tsx` ৪টি + `src/app/api/__tests__/shop-verification-route.test.ts` ৫টি = **৫৩টি নতুন**। `tsc` + `eslint --max-warnings=0` পরিষ্কার; shop/vendor/admin-এর আগের ১০৩টি টেস্ট অক্ষত; **পুরো স্যুট ৩৩৫ ফাইল / ২১০৯ টেস্ট EXIT=0**।
+
+---
+
 ## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2 শেষ** ✅ → **B3 শেষ** ✅ → **B4ও শেষ** ✅ → এখন B5 (ভেরিফাইড-শপ ব্যাজ: admin NID/ট্রেড লাইসেন্স দেখে মার্ক করে + audit), তারপর B6।
+**ব্যাচ A শেষ** ✅ → **B1 শেষ** ✅ → **B2 শেষ** ✅ → **B3 শেষ** ✅ → **B4 শেষ** ✅ → **B5ও শেষ** ✅ → এখন B6 (ছুটির সময়সূচি: তারিখ-রেঞ্জ দিলে ওই সময় চেকআউটে দোকান বন্ধ, পরে নিজেই খুলে যাবে)।

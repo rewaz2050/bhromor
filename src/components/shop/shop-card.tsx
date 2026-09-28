@@ -8,6 +8,7 @@ import { isShopOrderable } from "@/lib/shop-utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconCheck } from "@/components/ui/icons";
 import FreeDeliveryPill from "./free-delivery-pill";
+import VerifiedBadge from "./verified-badge";
 
 /**
  * Public shop card (marketplace slice 4; UX plan §9, R8): logo, open state,
@@ -132,6 +133,8 @@ export default function ShopCard({
         )}
         {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
         <FreeDeliveryPill shop={shop} />
+        {/* B5 — trust at a glance, where the shopper decides whether to tap. */}
+        <VerifiedBadge verification={shop.verification} />
       </div>
 
       {zoneName && servesZone && (

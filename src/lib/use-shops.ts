@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Shop } from "./catalog";
 import { useStaffLive } from "./use-staff-live";
+import type { VerificationHistory } from "./shop-verification";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 
 export interface AdminShopClient extends Shop {
@@ -137,6 +138,35 @@ export function useShops() {
     [live],
   );
 
+  /**
+   * B5 — staff verify a shop: tick what was held and seen. Returns the saved
+   * shop so the row on screen carries the badge the database just wrote.
+   */
+  const verifyShop = useCallback(
+    async (
+      id: string,
+      patch: { nid: boolean; tradeLicence: boolean; note: string },
+    ): Promise<Shop> => {
+      const data = await apiSend<{ shop: Shop }>(
+        `/api/admin/shops/${encodeURIComponent(id)}/verification`,
+        "POST",
+        patch,
+      );
+      setError(null);
+      return data.shop;
+    },
+    [],
+  );
+
+  /** B5 — the staff-only trail (note, officer, history) for one shop. */
+  const verificationHistory = useCallback(
+    async (id: string): Promise<VerificationHistory> =>
+      apiGet<VerificationHistory>(
+        `/api/admin/shops/${encodeURIComponent(id)}/verification`,
+      ),
+    [],
+  );
+
   const shops: AdminShopClient[] = liveShops ?? [];
   return {
     shops,
@@ -145,6 +175,8 @@ export function useShops() {
     setStatus,
     linkVendor,
     resetVendorPassword,
+    verifyShop,
+    verificationHistory,
     reset: refresh,
     live,
     loading: live && (!checked || liveShops === null),

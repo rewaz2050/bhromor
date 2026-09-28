@@ -49,6 +49,7 @@ import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
 import FunnelCard from "@/components/vendor/funnel-card";
+import VerificationCard from "@/components/vendor/verification-card";
 import PromoCard from "@/components/vendor/promo-card";
 import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
@@ -329,6 +330,15 @@ export default function VendorDashboardPage() {
           prepMinutes={me.shop.prepMinutes}
           loading={orders.loading}
         />
+      )}
+
+      {me && (
+        <div className="mt-6">
+          <VerificationCard
+            verification={me.shop.verification}
+            shopName={me.shop.name}
+          />
+        </div>
       )}
 
       <div className="mt-6">

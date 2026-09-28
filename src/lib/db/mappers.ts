@@ -252,6 +252,21 @@ export const mapShop = (row: DbShop): Shop => ({
     ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
     : {}),
   review: mapApplicationReview(row),
+  // B5 — the badge is public; the staff note and the officer are not part of
+  // this mapper at all (they are read by the admin list only), so no storefront
+  // or vendor payload can carry them by accident.
+  verification: mapShopVerification(row),
+});
+
+/**
+ * B5 — the badge from the row. Absent columns (pre-migration database) mean
+ * "nothing checked", never "verified": a shop is trusted on evidence, not on a
+ * missing column.
+ */
+const mapShopVerification = (row: DbShop) => ({
+  nid: row.nid_checked === true,
+  tradeLicence: row.trade_licence_checked === true,
+  ...(row.verified_at ? { verifiedAt: epoch(row.verified_at) } : {}),
 });
 
 /** bigint columns arrive as strings from PostgREST; anything non-positive = off. */
