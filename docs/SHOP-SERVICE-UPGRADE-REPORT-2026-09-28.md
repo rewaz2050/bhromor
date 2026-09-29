@@ -299,5 +299,18 @@
 
 ---
 
-## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1–B6 শেষ** ✅ → **C1 শেষ** ✅ (`5ac9d35`) → **C2 শেষ** ✅ (`fa7ebc5`) → **C3 শেষ** ✅ (`0ac82f7`) → **C4 শেষ** ✅ (`ed94b39`) → **C5 শেষ** ✅ (`ff8faf1`) → **C6 শেষ** ✅ (`741d122`) → ব্যাচ C-এর শেষ আইটেম **C7: Product CSV import/export**।
+## C7 — দোকানের পণ্য CSV-তে একসাথে আনা-নেওয়া (কমিট `a957d6a`)
+
+**সমস্যা:** অনেক পণ্য একসাথে তুলতে একটার পর একটা ফর্ম পূরণ করতে হতো; আবার নিজের ক্যাটালগ spreadsheet-এ নেওয়ার কোনো পথ ছিল না।
+
+**যা যোগ হলো:**
+- `/vendor/products`-এ **Catalog CSV** কার্ড: নিজের দোকানের সব পণ্য export, সঠিক কলামসহ ফাঁকা template download, এবং CSV import। ফিচারটি পণ্যের তালিকা ফাঁকা থাকলেও দেখা যায়।
+- `GET /api/vendor/products/csv` শুধু লগইন করা vendor-এর নিজস্ব shop-এর পণ্য CSV দেয়; `?template=1` ফাঁকা template। UTF-8 BOM থাকায় Excel-এ বাংলা ঠিক থাকে; CSV quoting-এ comma, quote ও newline নিরাপদে থাকে; spreadsheet formula injection ঠেকাতে ঝুঁকিপূর্ণ cell export-এ neutralize করা হয়।
+- Import সর্বোচ্চ **১ MB / ১০০ পণ্য**। `SKU` এই shop-এ আগে থাকলে সেটি update, নতুন SKU হলে **draft** তৈরি—কোনো নতুন পণ্য CSV থেকে publish হয় না। অন্য shop-এর পণ্য কখনো SKU match-এ ধরা হয় না। Platform curation/publication status CSV দিয়ে বদলায় না। প্রতিটি row-এর validation error line নম্বরসহ ফেরে।
+- CSV-তে structured media/details/colors/sizes/size-stock JSON হিসেবে থাকে; price টাকা (৳) হিসেবে পড়া/লেখা হয় এবং API-তে integer paisa-তে নির্ভুলভাবে রূপান্তরিত হয়।
+
+**টেস্ট ও যাচাই:** নতুন pure-parser test-এ **৪টি**—বাংলা/BOM ও quote round-trip, template header, reordered columns + multiline/CRLF, malformed/duplicate/missing headers এবং formula-safe value। `tsc --noEmit` পরিষ্কার; C7-র সব পরিবর্তনে ESLint পরিষ্কার; production build EXIT=0; `git diff --check` পরিষ্কার। পূর্ণ Vitest suite **৩৬০ ফাইল / ২৩৬৬ টেস্ট EXIT=0**। পুরো repo-র `eslint --max-warnings=0` একটি আগের, অসংশ্লিষ্ট test ফাইলে বিদ্যমান unused `no-console` disable warning-এ থেমেছে (`src/components/admin/__tests__/product-editor-save-errors.test.tsx:100`); C7 ফাইলগুলো lint-এ পরিষ্কার।
+
+---
+
+**এই অনুমোদিত upgrade-plan-এর সব আইটেম সম্পন্ন:** **ব্যাচ A** ✅ → **B1–B6** ✅ → **C1** ✅ (`5ac9d35`) → **C2** ✅ (`fa7ebc5`) → **C3** ✅ (`0ac82f7`) → **C4** ✅ (`ed94b39`) → **C5** ✅ (`ff8faf1`) → **C6** ✅ (`741d122`) → **C7** ✅।
