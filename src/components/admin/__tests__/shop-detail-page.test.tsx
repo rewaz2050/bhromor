@@ -82,6 +82,16 @@ const file = (over: Record<string, unknown> = {}) => ({
     lines: [],
     payouts: [{ id: "pay1", amount: 150_000, method: "bkash", reference: "TX9", at: NOW - 20 * DAY }],
   },
+  commission: {
+    current: 12.5,
+    changes: 1,
+    last: { id: "c2", shopId: "shop-1", fromPct: 15, toPct: 12.5, at: NOW - 40 * DAY, actorId: "staff-1", actorEmail: "nazmul@prosanti.example" },
+    lines: [
+      { id: "c1", shopId: "shop-1", fromPct: null, toPct: 15, at: NOW - 200 * DAY, actorId: null, actorEmail: null },
+      { id: "c2", shopId: "shop-1", fromPct: 15, toPct: 12.5, at: NOW - 40 * DAY, actorId: "staff-1", actorEmail: "nazmul@prosanti.example" },
+    ],
+    available: true,
+  },
   reviews: {
     count: 9,
     average: 4.2,
@@ -166,6 +176,29 @@ describe("admin shop file (C3)", () => {
     renderPage();
     await waitFor(() => expect(screen.getByTestId("shop-flag-balance-due")).toBeTruthy());
     expect(screen.getByTestId("shop-flag-balance-due")).toHaveTextContent(/20 days ago/);
+  });
+
+  it("shows the commission as a trail, not as a bare number", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("shop-commission")).toBeTruthy());
+    const card = screen.getByTestId("shop-commission");
+    expect(screen.getByTestId("commission-now")).toHaveTextContent("12.5%");
+    // The join line has no "from", the move reads as an arrow.
+    expect(card).toHaveTextContent("Started at 15%");
+    expect(card).toHaveTextContent("15% → 12.5%");
+    expect(card).toHaveTextContent("nazmul@prosanti.example");
+    expect(screen.getByTestId("commission-summary")).toHaveTextContent("1 change");
+  });
+
+  it("says when the database stopped short of recording commission moves", async () => {
+    const base = file();
+    state.detail = {
+      ...base,
+      commission: { current: 15, changes: 0, last: null, lines: [], available: false },
+    };
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId("shop-commission")).toBeTruthy());
+    expect(screen.getByTestId("shop-commission")).toHaveTextContent(/not being recorded/i);
   });
 
   it("says plainly when the shop is not on PROSANTI — never an empty file", async () => {

@@ -13,6 +13,8 @@ vi.mock("server-only", () => ({}));
 
 const state = vi.hoisted(() => ({
   tables: {} as Record<string, Record<string, unknown>[]>,
+  /** Tables this database "does not have" — answers 42P01 like PostgREST. */
+  missing: [] as string[],
   /** Set to make the next shop read fail. */
   shopError: null as { message: string } | null,
 }));
@@ -59,7 +61,11 @@ const table = (name: string) => {
         ? { data: null, error: state.shopError }
         : { data: rows()[0] ?? null, error: null },
     then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-      Promise.resolve({ data: rows(), error: null }).then(resolve, reject),
+      Promise.resolve(
+        state.missing.includes(name)
+          ? { data: null, error: { code: "42P01", message: `relation "${name}" does not exist` } }
+          : { data: rows(), error: null },
+      ).then(resolve, reject),
   };
   return obj;
 };
@@ -96,6 +102,7 @@ let load: typeof import("@/lib/db/admin-shop").loadAdminShopDetail;
 
 beforeEach(async () => {
   state.shopError = null;
+  state.missing = [];
   state.tables = {
     shops: [shopRow()],
     vendor_users: [
@@ -137,6 +144,12 @@ beforeEach(async () => {
     shop_payouts: [
       { id: "pay1", shop_id: "shop-1", amount: 150000, method: "bkash", reference: "TX1", paid_at: "2026-09-10T10:00:00Z" },
       { id: "pay2", shop_id: "shop-2", amount: 999000, method: "bank", reference: "TX2", paid_at: "2026-09-11T10:00:00Z" },
+    ],
+    shop_commission_history: [
+      { id: 1, shop_id: "shop-1", created_at: "2026-01-05T00:00:00Z", old_pct: null, new_pct: 15.0, actor_id: null, actor_email: null },
+      { id: 2, shop_id: "shop-1", created_at: "2026-03-01T00:00:00Z", old_pct: 15.0, new_pct: 12.5, actor_id: "staff-1", actor_email: "nazmul@prosanti.example" },
+      { id: 3, shop_id: "shop-1", created_at: "2026-04-01T00:00:00Z", old_pct: 12.5, new_pct: 18.0, actor_id: "staff-2", actor_email: "other@prosanti.example" },
+      { id: 4, shop_id: "shop-2", created_at: "2026-04-01T00:00:00Z", old_pct: 10.0, new_pct: 20.0, actor_id: "staff-3", actor_email: "third@prosanti.example" },
     ],
     reviews: [
       { id: "r1", shop_id: "shop-1", product_id: "p1", rating: 5, author: "Rahim", title: null, body: "Lovely", status: "approved", created_at: "2026-09-01T00:00:00Z" },
@@ -212,6 +225,46 @@ describe("loadAdminShopDetail — catalog and reviews", () => {
     expect(detail?.reviews.public).toBe(1);
     expect(detail?.reviews.pending).toBe(1);
     expect(detail?.reviews.recent).toHaveLength(2);
+  });
+});
+
+describe("loadAdminShopDetail — the commission trail (C4)", () => {
+  it("counts MOVES, not lines — the join is not a change", async () => {
+    const detail = await load(fakeDb(), "shop-1");
+    expect(detail?.commission.lines).toHaveLength(3);
+    expect(detail?.commission.changes).toBe(2);
+    expect(detail?.commission.current).toBe(15);
+  });
+
+  it("reads the newest move as the last line, with the officer who made it", async () => {
+    const detail = await load(fakeDb(), "shop-1");
+    expect(detail?.commission.last?.toPct).toBe(18);
+    expect(detail?.commission.last?.fromPct).toBe(12.5);
+    expect(detail?.commission.last?.actorEmail).toBe("other@prosanti.example");
+  });
+
+  it("reads the join line as 'no rate before it'", async () => {
+    const detail = await load(fakeDb(), "shop-1");
+    expect(detail?.commission.lines[0]?.fromPct).toBeNull();
+    expect(detail?.commission.lines[0]?.toPct).toBe(15);
+  });
+
+  it("never shows another shop's trail", async () => {
+    const detail = await load(fakeDb(), "shop-1");
+    expect(
+      detail?.commission.lines.some((l) => l.actorEmail === "third@prosanti.example"),
+    ).toBe(false);
+  });
+
+  it("says the history is unavailable rather than pretending nothing moved", async () => {
+    // A database without the migration answers 42P01: the rest of the file
+    // must still load, and the card must be able to say why it is empty.
+    state.missing = ["shop_commission_history"];
+    const detail = await load(fakeDb(), "shop-1");
+    expect(detail).not.toBeNull();
+    expect(detail?.commission.available).toBe(false);
+    expect(detail?.commission.lines).toEqual([]);
+    expect(detail?.orders.count).toBe(5); // the rest of the file is intact
   });
 });
 

@@ -25,6 +25,7 @@ import type {
   DbVendorUser,
 } from "./types";
 import type { Shop } from "@/lib/catalog";
+import { listCommissionHistory, type CommissionChange } from "./commission-audit";
 
 /** How far back the page looks. Past this, the card says "of the last N". */
 export const DOSSIER_ORDER_WINDOW = 500;
@@ -132,6 +133,18 @@ export interface AdminShopCatalog {
   windowFull: boolean;
 }
 
+export interface AdminShopCommission {
+  /** The rate on the shop row right now. */
+  current: number;
+  /** How many times it has been moved (0 when only the join line exists). */
+  changes: number;
+  /** The newest line — null when there is no trail at all. */
+  last: CommissionChange | null;
+  lines: CommissionChange[];
+  /** False when migration 202609290001 is not installed on this database. */
+  available: boolean;
+}
+
 export interface AdminShopDetail {
   shop: Shop;
   staff: AdminShopStaffRow[];
@@ -139,6 +152,7 @@ export interface AdminShopDetail {
   orders: AdminShopOrders;
   ledger: AdminShopLedger;
   reviews: AdminShopReviews;
+  commission: AdminShopCommission;
 }
 
 const at = (value: string | null | undefined): number | null => {
@@ -180,7 +194,7 @@ export async function loadAdminShopDetail(
   if (shopError || !shopRow) return null;
   const shop = mapShop(shopRow as DbShop);
 
-  const [staffRes, productsRes, ordersRes, ledgerRes, payoutsRes, reviewsRes] =
+  const [staffRes, productsRes, ordersRes, ledgerRes, payoutsRes, reviewsRes, commissionRes] =
     await Promise.all([
       // C1 — who can sign in as this shop, newest last (owners first).
       db
@@ -217,6 +231,13 @@ export async function loadAdminShopDetail(
         .eq("shop_id", shopId)
         .order("created_at", { ascending: false })
         .limit(200),
+      // C4 — the commission trail. Degraded, never fatal: a database that has
+      // not run the migration still shows the rest of the file, and says the
+      // history is not installed rather than pretending the rate never moved.
+      listCommissionHistory(db, shopId).then(
+        (lines) => ({ lines, available: true }),
+        () => ({ lines: [] as CommissionChange[], available: false }),
+      ),
     ]);
 
   const staffRows = (staffRes.data ?? []) as Pick<
@@ -348,5 +369,15 @@ export async function loadAdminShopDetail(
     })),
   };
 
-  return { shop, staff, catalog, orders, ledger, reviews };
+  const commissionLines = commissionRes.lines;
+  const commission: AdminShopCommission = {
+    current: Number(shop.commissionPct ?? 0),
+    // The first line is the rate the shop joined with, not a move.
+    changes: Math.max(0, commissionLines.length - 1),
+    last: commissionLines.at(-1) ?? null,
+    lines: commissionLines,
+    available: commissionRes.available,
+  };
+
+  return { shop, staff, catalog, orders, ledger, reviews, commission };
 }

@@ -9,7 +9,8 @@
  * rules can be tested against every awkward shop there is.
  */
 
-import type { AdminShopDetail } from "@/lib/db/admin-shop";
+import type { AdminShopCommission, AdminShopDetail } from "@/lib/db/admin-shop";
+import type { CommissionChange } from "@/lib/db/commission-audit";
 import type { TranslationKey } from "@/lib/translations";
 import { isShopOrderable, shopClosedCopy } from "@/lib/shop-utils";
 import {
@@ -32,7 +33,9 @@ export interface AttentionFlag {
     | "not-verified"
     | "no-owner-login"
     | "balance-due"
-    | "reviews-waiting";
+    | "reviews-waiting"
+    | "commission-raised"
+    | "commission-trail-missing";
   tone: AttentionTone;
   text: string;
   /** Where staff go to fix it, when there is somewhere. */
@@ -165,6 +168,26 @@ export const attentionFlags = (
     });
   }
 
+  // C4 — the rate PROSANTI takes is the number a shop argues about, so a
+  // recent rise belongs on the page: the shop will ask, and staff should know
+  // before they are asked.
+  if (!detail.commission.available) {
+    flags.push({
+      id: "commission-trail-missing",
+      tone: "note",
+      text: "Commission changes are not being recorded on this database yet — run the commission audit migration.",
+    });
+  } else {
+    const raised = commissionRaisedWithin(detail.commission, now);
+    if (raised) {
+      flags.push({
+        id: "commission-raised",
+        tone: "note",
+        text: `Commission was raised to ${pctLabel(detail.commission.current)} ${daysAgoLabel(raised.at, now)}.`,
+      });
+    }
+  }
+
   const rank: Record<AttentionTone, number> = { stop: 0, warn: 1, note: 2 };
   return flags.sort((a, b) => rank[a.tone] - rank[b.tone]);
 };
@@ -190,6 +213,82 @@ export const dossierHeadline = (detail: AdminShopDetail): DossierHeadline => ({
   reviewCount: detail.reviews.count,
   earned: detail.ledger.earned,
 });
+
+/* ------------------------------------------------------------------ */
+/* C4 — the commission trail                                           */
+/* ------------------------------------------------------------------ */
+
+/** A rate is quoted the way a shop says it: 12.5%, never 12.50000%. */
+export const pctLabel = (value: number): string =>
+  `${Number(value.toFixed(2)).toLocaleString("en-GB")}%`;
+
+/**
+ * One line of the trail, as a sentence: "Started at 15%" for the join, then
+ * "15% → 12.5%". The arrow is the whole point — a list of rates on their own
+ * makes the reader work out what moved.
+ */
+export const commissionChangeLabel = (change: CommissionChange): string =>
+  change.fromPct === null
+    ? `Started at ${pctLabel(change.toPct)}`
+    : `${pctLabel(change.fromPct)} → ${pctLabel(change.toPct)}`;
+
+/** Who moved it, said honestly when nobody was signed in. */
+export const commissionActorLabel = (change: CommissionChange): string =>
+  change.actorEmail
+    ? `by ${change.actorEmail}`
+    : change.actorId
+      ? "by a staff session (no e-mail on file)"
+      : "nobody was signed in";
+
+const daysAgoLabel = (at: number | null, now: number): string => {
+  if (at === null) return "recently";
+  const days = Math.floor((now - at) / DAY_MS);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+};
+
+/**
+ * "3 changes · last by x@y, 12 Oct 2026" — the line under the rate. The date
+ * is absolute on purpose: an audit trail that says "recently" is not an audit
+ * trail.
+ */
+export const commissionTrailSummary = (commission: AdminShopCommission): string => {
+  if (!commission.available) return "History is not being recorded yet.";
+  if (commission.lines.length === 0) return "No history yet.";
+  if (commission.changes === 0) {
+    return `Unchanged since the shop joined at ${pctLabel(commission.current)}.`;
+  }
+  const last = commission.last;
+  const when =
+    last?.at === null || last?.at === undefined
+      ? ""
+      : `, ${new Date(last.at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+  return `${commission.changes} change${commission.changes === 1 ? "" : "s"} · last ${commissionActorLabel(last as CommissionChange)}${when}`;
+};
+
+/**
+ * The last time the rate went UP (a shop pays more), when it was recent
+ * enough to still be the reason a shop is on the phone. Downward moves are
+ * good news and are not worth a flag.
+ */
+export const COMMISSION_RAISE_WINDOW_DAYS = 30;
+
+export const commissionRaisedWithin = (
+  commission: AdminShopCommission,
+  now: number,
+  windowDays: number = COMMISSION_RAISE_WINDOW_DAYS,
+): CommissionChange | null => {
+  let found: CommissionChange | null = null;
+  for (const line of commission.lines) {
+    if (line.fromPct === null) continue;
+    if (line.toPct <= line.fromPct) continue;
+    const ageDays = line.at === null ? null : (now - line.at) / DAY_MS;
+    if (ageDays !== null && ageDays > windowDays) continue;
+    if (!found || (line.at ?? 0) >= (found.at ?? 0)) found = line;
+  }
+  return found;
+};
 
 /** How long the shop has been on PROSANTI, in whole days (null if unknown). */
 export const shopAgeDays = (createdAt: number | null | undefined, now: number): number | null =>

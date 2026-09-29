@@ -19,7 +19,15 @@ import { IconArrowRight, IconStar } from "@/components/ui/icons";
 import { formatBdt } from "@/lib/format";
 import { describeLoginEmail } from "@/lib/phone-login";
 import { vacationReopenDate } from "@/lib/shop-vacation";
-import { attentionFlags, dossierHeadline, type AttentionFlag } from "@/lib/shop-dossier";
+import {
+  attentionFlags,
+  commissionActorLabel,
+  commissionChangeLabel,
+  commissionTrailSummary,
+  dossierHeadline,
+  pctLabel,
+  type AttentionFlag,
+} from "@/lib/shop-dossier";
 import { useAdminShop } from "@/lib/use-admin-shop";
 import type { AdminShopDetail } from "@/lib/db/admin-shop";
 
@@ -192,6 +200,7 @@ export default function AdminShopDetailPage() {
         <CatalogCard detail={detail} />
         <OrdersCard detail={detail} />
         <MoneyCard detail={detail} />
+        <CommissionCard detail={detail} />
         <ReviewsCard detail={detail} />
       </div>
 
@@ -458,6 +467,68 @@ const MoneyCard = ({ detail }: { detail: AdminShopDetail }) => {
           ))}
         </ul>
       )}
+    </Card>
+  );
+};
+
+const CommissionCard = ({ detail }: { detail: AdminShopDetail }) => {
+  const { commission, shop } = detail;
+  return (
+    <Card
+      title="Commission"
+      testId="shop-commission"
+      action={{ href: "/admin/shops", label: "Change it in the queue" }}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="font-display text-3xl text-forest-900" data-testid="commission-now">
+          {pctLabel(commission.current)}
+        </p>
+        <p className="text-[0.7rem] text-ink-soft" data-testid="commission-summary">
+          {commissionTrailSummary(commission)}
+        </p>
+      </div>
+
+      {!commission.available ? (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200">
+          Changes are not being recorded on this database yet — run
+          supabase/migrations/202609290001_commission_audit.sql.
+        </p>
+      ) : commission.lines.length === 0 ? (
+        <p className="mt-3 text-sm text-ink-soft">
+          No history yet — the trail starts the moment the shop joins.
+        </p>
+      ) : (
+        <ol className="mt-3 space-y-2">
+          {commission.lines.map((line) => (
+            <li
+              key={line.id}
+              data-testid={`commission-line-${line.id}`}
+              className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-ivory-100 px-3 py-2"
+            >
+              <span className="text-sm font-medium text-ink">
+                {commissionChangeLabel(line)}
+              </span>
+              <span className="text-right text-[0.7rem] text-ink-soft">
+                <span className="block">{commissionActorLabel(line)}</span>
+                {line.at !== null && (
+                  <span className="block">
+                    {new Date(line.at).toLocaleDateString("en-GB", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <p className="mt-2 text-[0.68rem] leading-5 text-ink-soft">
+        The rate decides what PROSANTI keeps from {shop.name}&apos;s orders, and the database writes
+        this list itself — no screen can move the rate without a line appearing here.
+      </p>
     </Card>
   );
 };

@@ -10,6 +10,10 @@ import { describe, expect, it } from "vitest";
 import {
   BALANCE_DUE_AFTER_DAYS,
   attentionFlags,
+  commissionActorLabel,
+  commissionChangeLabel,
+  commissionTrailSummary,
+  pctLabel,
   dossierHeadline,
   shopAgeDays,
   type AttentionFlag,
@@ -62,6 +66,14 @@ const detail = (over: Partial<AdminShopDetail> = {}): AdminShopDetail => ({
     payouts: [],
   },
   reviews: { count: 12, average: 4.2, public: 11, pending: 0, recent: [] },
+  // C4 — joined at 15% and never moved, so a healthy shop has nothing to say.
+  commission: {
+    current: 15,
+    changes: 0,
+    last: { id: "c1", shopId: "shop-1", fromPct: null, toPct: 15, at: NOW - 200 * DAY, actorId: null, actorEmail: null },
+    lines: [{ id: "c1", shopId: "shop-1", fromPct: null, toPct: 15, at: NOW - 200 * DAY, actorId: null, actorEmail: null }],
+    available: true,
+  },
   ...over,
 });
 
@@ -210,6 +222,140 @@ describe("attentionFlags — the quiet problems", () => {
     );
     expect(flags[0].tone).toBe("stop");
     expect(flags.at(-1)?.tone).toBe("note");
+  });
+});
+
+describe("attentionFlags — the commission trail (C4)", () => {
+  const line = (from: number | null, to: number, daysAgo: number, email: string | null = "nazmul@prosanti.example") => ({
+    id: `c-${from}-${to}`,
+    shopId: "shop-1",
+    fromPct: from,
+    toPct: to,
+    at: NOW - daysAgo * DAY,
+    actorId: "staff-1",
+    actorEmail: email,
+  });
+
+  it("says the rate went up while it is still recent enough to explain a call", () => {
+    const flags = attentionFlags(
+      detail({
+        shop: shop({ commissionPct: 18 }),
+        commission: {
+          current: 18,
+          changes: 1,
+          last: line(15, 18, 4),
+          lines: [line(null, 15, 200), line(15, 18, 4)],
+          available: true,
+        },
+      }),
+      NOW,
+    );
+    const flag = flags.find((f) => f.id === "commission-raised");
+    expect(flag?.text).toMatch(/raised to 18% 4 days ago/);
+  });
+
+  it("says nothing when the rate came DOWN — that is not a complaint", () => {
+    const flags = attentionFlags(
+      detail({
+        shop: shop({ commissionPct: 12 }),
+        commission: {
+          current: 12,
+          changes: 1,
+          last: line(15, 12, 2),
+          lines: [line(null, 15, 200), line(15, 12, 2)],
+          available: true,
+        },
+      }),
+      NOW,
+    );
+    expect(ids(flags)).not.toContain("commission-raised");
+  });
+
+  it("stops mentioning a rise once the shop has lived with it a while", () => {
+    const flags = attentionFlags(
+      detail({
+        shop: shop({ commissionPct: 18 }),
+        commission: {
+          current: 18,
+          changes: 1,
+          last: line(15, 18, 60),
+          lines: [line(null, 15, 200), line(15, 18, 60)],
+          available: true,
+        },
+      }),
+      NOW,
+    );
+    expect(ids(flags)).not.toContain("commission-raised");
+  });
+
+  it("says so when the database is not recording commission changes yet", () => {
+    const flags = attentionFlags(
+      detail({ commission: { current: 15, changes: 0, last: null, lines: [], available: false } }),
+      NOW,
+    );
+    const flag = flags.find((f) => f.id === "commission-trail-missing");
+    expect(flag?.text).toMatch(/not being recorded/i);
+  });
+});
+
+describe("the commission trail, read (C4)", () => {
+  const change = (over: Record<string, unknown> = {}) =>
+    ({
+      id: "c1",
+      shopId: "shop-1",
+      fromPct: 15,
+      toPct: 12.5,
+      at: NOW,
+      actorId: "staff-1",
+      actorEmail: "nazmul@prosanti.example",
+      ...over,
+    }) as never;
+
+  it("writes the move as an arrow, not as two numbers", () => {
+    expect(commissionChangeLabel(change())).toBe("15% → 12.5%");
+  });
+
+  it("reads the first line as the rate the shop joined with", () => {
+    expect(commissionChangeLabel(change({ fromPct: null, toPct: 15 }))).toBe("Started at 15%");
+  });
+
+  it("names the officer, and admits it when there was none", () => {
+    expect(commissionActorLabel(change())).toBe("by nazmul@prosanti.example");
+    expect(commissionActorLabel(change({ actorEmail: null, actorId: "staff-1" }))).toMatch(
+      /no e-mail on file/,
+    );
+    expect(commissionActorLabel(change({ actorEmail: null, actorId: null }))).toMatch(
+      /nobody was signed in/,
+    );
+  });
+
+  it("summarises an untouched rate without pretending there was a change", () => {
+    const summary = commissionTrailSummary({
+      current: 15,
+      changes: 0,
+      last: change({ fromPct: null, toPct: 15 }) as never,
+      lines: [change({ fromPct: null, toPct: 15 }) as never],
+      available: true,
+    });
+    expect(summary).toMatch(/unchanged since the shop joined at 15%/i);
+  });
+
+  it("counts the moves and names the last officer", () => {
+    const summary = commissionTrailSummary({
+      current: 12.5,
+      changes: 2,
+      last: change() as never,
+      lines: [change({ fromPct: null, toPct: 15 }) as never, change() as never],
+      available: true,
+    });
+    expect(summary).toMatch(/2 changes/);
+    expect(summary).toMatch(/nazmul@prosanti.example/);
+  });
+
+  it("never quotes a rate with a tail of zeroes", () => {
+    expect(pctLabel(15)).toBe("15%");
+    expect(pctLabel(12.5)).toBe("12.5%");
+    expect(pctLabel(12.5001)).toBe("12.5%");
   });
 });
 
