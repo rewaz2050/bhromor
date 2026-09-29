@@ -15,7 +15,10 @@ vi.mock("server-only", () => ({}));
 
 import { vendorShopPatch } from "@/lib/db/vendor";
 
-const TODAY = "2026-09-28";
+// Computed, never typed: the module's own idea of "today" is the UTC date, and
+// a hardcoded one turns this test into a time bomb that starts failing the
+// next morning (it did, on 2026-09-29, with a 422 no shop had asked for).
+const TODAY = new Date().toISOString().slice(0, 10);
 
 const patchFor = (body: Record<string, unknown>, role: "owner" | "staff" = "owner") =>
   vendorShopPatch(body, role);
