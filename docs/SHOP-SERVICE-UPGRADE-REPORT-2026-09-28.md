@@ -285,5 +285,19 @@
 
 ---
 
+## C6 — ভেন্ডরের নিজের subcategory: platform-এর টপ-লেভেল রেখে দোকানের নিজস্ব নাম (কমিট `741d122`)
+
+**সমস্যা:** পণ্যের টপ-লেভেল category (যেমন Men/Women) PROSANTI-র নিয়ন্ত্রণে — এটা ঠিকই আছে। কিন্তু দোকানের নিজের সাজানোর নাম (যেমন “Eid edit”, “Office wear”) ছিল শুধু ফর্মের free-text। অন্য পণ্যে আবার ব্যবহার করতে নাম মনে রেখে টাইপ করতে হতো; দোকানের নিজের কোনো সংরক্ষিত তালিকা ছিল না।
+
+**যা বানালাম:**
+- **Top-level category বদলায়নি।** নতুন `shop_product_categories` টেবিলে প্রতিটি দোকান একটি platform category-র নিচে নিজের subcategory নাম যোগ করে; পণ্য আগের মতোই `category_id` + `subcategory`-তেই সেভ হয়। কোনো existing product field, storefront catalog shape বা URL বদলায়নি।
+- `GET /api/vendor/categories` এখন platform category-র সঙ্গে ওই দোকানের নিজের subcategory-ও ফেরত দেয়; `POST` নতুন subcategory যোগ করে। শুধু নিজের shop-এর verified vendor session (owner/staff) — RLS-ও নিজের shop-এ সীমা দেয়; top-level category active না হলে database ও API দুই দিকেই বারণ। একই category-তে একই নাম দ্বিতীয়বার যোগ করলে **409**।
+- `/vendor/products`-এ **“Your shelves → Product subcategories”** কার্ড: platform category বেছে নতুন নাম যোগ, নিজের যোগ করা নামের তালিকা। Product add/edit ফর্মের subcategory autocomplete-এ ওই নামগুলো দেখা যায়; লেখাটি free-text-ই থাকে, তাই পুরনো পণ্য/অস্বাভাবিক নামও নষ্ট হয় না। Vendor editor-এ নিজের option যোগের পথ দেখানো হয়েছে।
+- `supabase/migrations/202609290003_vendor_product_categories.sql`: FK ও cascade, (shop, parent category, lowercase name)-এ duplicate guard, vendor-only SELECT/INSERT RLS; আলাদা UPDATE/DELETE permission নেই — ভুল করে পণ্য ব্যবহার করছে এমন নাম মুছে ফেলার ঝুঁকি নেই।
+
+**টেস্ট:** ২টি নতুন ফাইলে **৮টি** — `vendor-categories.test.ts` ৫ (platform category অক্ষত, shop-এর নিজস্ব তালিকা, trim/validate, disabled parent, duplicate), `category-manager-card.test.tsx` ৩ (যোগ, category-সহ তালিকা, duplicate error); vendor route-এর “সেশন নেই → ৪০১” গার্ডেও POST যোগ। PGlite-এ fresh bootstrap + **৪৮টি migration**: নিজের subcategory যোগ/পড়া, অন্য দোকানে লেখা আটকানো, পণ্য আগের `subcategory` text field-এই থাকে — **৩টি migration/RLS check**। `tsc --noEmit`, `eslint --max-warnings=0`, `git diff --check` পরিষ্কার; production build EXIT=0; **পুরো স্যুট ৩৫৯ ফাইল / ২৩৬২ টেস্ট EXIT=0**।
+
+---
+
 ## পরের আইটেম
-**ব্যাচ A শেষ** ✅ → **B1–B6 শেষ** ✅ → **C1 শেষ** ✅ → **C2 শেষ** ✅ → **C3 শেষ** ✅ (`0ac82f7`) → **C4 শেষ** ✅ (`ed94b39`) → **C5 শেষ** ✅ (`ff8faf1`) → ব্যাচ C-এর পরের আইটেম **C6: ভেন্ডরের নিজের ক্যাটাগরি** (প্ল্যাটফর্মের টপ-ক্যাটাগরি অপরিবর্তিত; দোকান তাদের পণ্যের তালিকা নিজের উপ-ক্যাটাগরিতে সাজাতে পারবে)।
+**ব্যাচ A শেষ** ✅ → **B1–B6 শেষ** ✅ → **C1 শেষ** ✅ (`5ac9d35`) → **C2 শেষ** ✅ (`fa7ebc5`) → **C3 শেষ** ✅ (`0ac82f7`) → **C4 শেষ** ✅ (`ed94b39`) → **C5 শেষ** ✅ (`ff8faf1`) → **C6 শেষ** ✅ (`741d122`) → ব্যাচ C-এর শেষ আইটেম **C7: Product CSV import/export**।
