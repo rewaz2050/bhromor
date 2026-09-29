@@ -97,8 +97,6 @@ describe("ProductEditor — draft without a photo (B8)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Published" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(onSave).not.toHaveBeenCalled());
-    // eslint-disable-next-line no-console
-    console.log("DBG-HEAD:", document.body.textContent?.slice(0, 300));
     expect(await screen.findByText(/Add at least one product image/)).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
   });
