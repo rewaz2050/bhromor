@@ -2,6 +2,9 @@
  * Product page tail (2026-09-20): the LAST section of a product page is the
  * rest of the piece's own category — nothing from other categories, never
  * the piece itself — and it sits below the reviews.
+ *
+ * C5 — the page itself now lives at `/shops/<shop>/p/<piece>`, so a piece is
+ * addressed by its shop as well as its name.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, within } from "@testing-library/react";
@@ -30,8 +33,20 @@ vi.mock("@/lib/db/storefront", () => ({
     shops: [launchShop()],
     live: true,
   }),
-  findStorefrontProduct: (products: typeof PRODUCTS, slug: string) =>
-    products.find((p) => p.slug === slug) ?? null,
+  findStorefrontShop: (shops: Shop[], slug: string) =>
+    shops.find((s) => s.slug === slug),
+  findShopProduct: (
+    products: typeof PRODUCTS,
+    shops: Shop[],
+    shopSlug: string,
+    productSlug: string,
+  ) => {
+    const shop = shops.find((s) => s.slug === shopSlug);
+    if (!shop) return undefined;
+    return products.find(
+      (p) => p.slug === productSlug && (p.shopId ?? shops[0]?.id) === shop.id,
+    );
+  },
 }));
 
 // R11 co-purchase rail — a server-only DB read; no baskets in this test.
@@ -48,7 +63,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-import ProductPage from "../[slug]/page";
+import ProductPage from "../page";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import { __resetRecentlyViewed, getViewed, recordView } from "@/lib/recently-viewed";
@@ -68,8 +83,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-async function renderProduct(slug: string) {
-  const ui = await ProductPage({ params: Promise.resolve({ slug }) });
+async function renderProduct(shopSlug: string, productSlug: string) {
+  const ui = await ProductPage({
+    params: Promise.resolve({ slug: shopSlug, product: productSlug }),
+  });
   const view = render(
     <LanguageProvider>
       <CartProvider>{ui}</CartProvider>
@@ -84,7 +101,7 @@ async function renderProduct(slug: string) {
 describe("Product page — same-category shelf at the very bottom", () => {
   it("ends with the rest of the piece's own category, below the reviews", async () => {
     const product = PRODUCTS.find((p) => p.slug === "heritage-green-panjabi")!;
-    const { container } = await renderProduct(product.slug);
+    const { container } = await renderProduct("prosanti-direct", product.slug);
 
     const tail = container.querySelector('[data-testid="more-in-category"]') as HTMLElement;
     expect(tail).not.toBeNull();
@@ -122,6 +139,13 @@ describe("Product page — same-category shelf at the very bottom", () => {
     expect(
       within(tail).getByRole("heading", { level: 2 }).querySelector("a"),
     ).toHaveAttribute("href", `/shop?category=${product.category}`);
+
+    // C5 — the breadcrumb names the shop whose shelf this piece sits on.
+    const trail = within(container).getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(trail).getByRole("link", { name: "PROSANTI Direct" })).toHaveAttribute(
+      "href",
+      "/shops/prosanti-direct",
+    );
   });
 
   it("remembers the view and shows earlier views ABOVE the same-category shelf", async () => {
@@ -130,7 +154,7 @@ describe("Product page — same-category shelf at the very bottom", () => {
 
     // First visit on this device: nothing viewed before → no rail, but the
     // view itself is remembered.
-    let view = await renderProduct(product.slug);
+    let view = await renderProduct("prosanti-direct", product.slug);
     expect(view.container.querySelector('[data-testid="recently-viewed"]')).toBeNull();
     expect(getViewed().map((e) => e.id)).toEqual([product.id]);
     cleanup();
@@ -138,7 +162,7 @@ describe("Product page — same-category shelf at the very bottom", () => {
     // Another piece was viewed earlier → it shows, the current piece does not,
     // and the category shelf is still the very last section.
     recordView(other.id, Date.now() - 1000);
-    view = await renderProduct(product.slug);
+    view = await renderProduct("prosanti-direct", product.slug);
     const rail = view.container.querySelector('[data-testid="recently-viewed"]') as HTMLElement;
     expect(rail).not.toBeNull();
     expect(within(rail).getByRole("link", { name: `View ${other.name}` })).toBeInTheDocument();
@@ -153,7 +177,7 @@ describe("Product page — same-category shelf at the very bottom", () => {
 describe("Product page — the AOV lever right under the buy panel (UX plan §4, R11)", () => {
   it("puts 'Pair it with' before the details/reviews and quotes the real zone ladder in the delivery card", async () => {
     const product = PRODUCTS.find((p) => p.slug === "heritage-green-panjabi")!;
-    const { container } = await renderProduct(product.slug);
+    const { container } = await renderProduct("prosanti-direct", product.slug);
 
     const pair = container.querySelector('[data-testid="pair-it-with"]') as HTMLElement | null;
     const complements = (await import("@/lib/merchandising")).completeTheLook(product, PRODUCTS);

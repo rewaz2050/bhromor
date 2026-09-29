@@ -197,7 +197,7 @@ export default function BroadcastCard() {
                 onBlur={() => setHref(sanitizeBroadcastHref(href))}
                 placeholder="/offers"
               />
-              <p className={hint}>Same-site path only — /offers, /campaign, /shop?filter=new or /product/&lt;slug&gt;.</p>
+              <p className={hint}>Same-site path only — /offers, /campaign, /shop?filter=new or /shops/&lt;shop&gt;/p/&lt;slug&gt;.</p>
             </div>
           </div>
 

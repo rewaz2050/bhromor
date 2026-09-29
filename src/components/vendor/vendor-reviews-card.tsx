@@ -16,6 +16,7 @@
  * Presentational + plain props for the tests; the page passes the hook.
  */
 
+import { legacyProductPath } from "@/lib/product-url";
 import { useState } from "react";
 import Link from "next/link";
 import { REPLY_MAX, hasReply, replyBody, replyStamp, replySummary, sortForReply } from "@/lib/vendor-reply";
@@ -80,7 +81,7 @@ function ReviewRow({
         <span className="ml-auto text-xs font-medium text-forest-800" data-testid="review-product">
           {review.productSlug ? (
             <Link
-              href={`/product/${encodeURIComponent(review.productSlug)}`}
+              href={legacyProductPath(review.productSlug)}
               className="underline underline-offset-2"
             >
               {review.productName}

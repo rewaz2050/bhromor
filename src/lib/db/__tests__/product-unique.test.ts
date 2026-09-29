@@ -1,15 +1,17 @@
 /**
- * Marketplace-wide uniqueness, 2026-09-27.
+ * What has to be unique, and where — 2026-09-27, revised by C5 (2026-09-29).
  *
- * `products.slug` and `products.sku` are unique across EVERY shop (they come
- * from the single-shop schema), while a vendor's RLS client only sees its own
- * shop. Before this round the second shop's "Panjabi" died with "Slug or SKU
- * is already in use." for a name it had never used — and the shop could not
- * add the product at all. The create path now keeps the platform-wide
- * uniqueness and picks the next free spelling instead.
+ * C5: a slug belongs to the shop that sells the piece (`products` carries
+ * unique (shop_id, slug) now), so two shops may both sell "Panjabi" and each
+ * keeps the name it typed — the storefront address carries the shop. Before
+ * this the second shop was refused with "Slug or SKU is already in use." for a
+ * name it had never used, or quietly renamed to "panjabi-2".
  *
- * The same round fixed the variant grid: retiring a sold-from size used to
- * leave its numbered SKU behind (product_variants.sku is unique too), so the
+ * SKU is still unique across every shop: it is the code the warehouse, the
+ * payout report and the CSV import count by.
+ *
+ * The earlier round also fixed the variant grid: retiring a sold-from size used
+ * to leave its numbered SKU behind (product_variants.sku is unique too), so the
  * next size/colour change failed with a duplicate key.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -54,6 +56,8 @@ const productRow = (over: Row = {}): Row => ({
  */
 const dbFor = (opts: {
   productInserts: (n: number, row: Row) => Result;
+  /** What a products SELECT answers — a non-empty array is "already taken". */
+  productSelect?: Result;
   variants?: Row[];
 }) => {
   const seen = {
@@ -94,7 +98,7 @@ const dbFor = (opts: {
         if (payload && payload.slug !== undefined) {
           return opts.productInserts(productInsertCount, payload);
         }
-        return { data: productRow(), error: null };
+        return opts.productSelect ?? { data: productRow(), error: null };
       }
       if (table === "product_variants") {
         if (payload) {
@@ -123,7 +127,7 @@ const dbFor = (opts: {
 
 const DUPLICATE_SLUG = {
   code: "23505",
-  message: 'duplicate key value violates unique constraint "products_slug_key"',
+  message: 'duplicate key value violates unique constraint "products_shop_id_slug_key"',
 };
 const DUPLICATE_SKU = {
   code: "23505",
@@ -140,16 +144,26 @@ const INPUT = {
   media: [{ src: "https://x/y.jpg", alt: "" }],
 };
 
-describe("createProduct — another shop's slug/SKU", () => {
-  it("retries with a free slug instead of refusing the shop", async () => {
+describe("createProduct — a slug belongs to the shop, a SKU to the platform", () => {
+  it("keeps the name the shop typed when ANOTHER shop already sells it", async () => {
     const { db, seen } = dbFor({
-      productInserts: (n, row) =>
-        n === 1 ? { data: null, error: DUPLICATE_SLUG } : { data: { id: "p1" }, error: null },
+      productInserts: () => ({ data: { id: "p1" }, error: null }),
     });
     await createProduct(db, INPUT, "shop-b");
-    expect(seen.productRows.map((r) => r.slug)).toEqual(["panjabi", "panjabi-2"]);
-    // The SKU was never in the way, so it keeps the shop's own spelling.
+    // No "-2": the two pieces have different addresses, so nothing collides.
+    expect(seen.productRows.map((r) => r.slug)).toEqual(["panjabi"]);
     expect(seen.productRows.every((r) => r.sku === "PS-PANJABI")).toBe(true);
+  });
+
+  it("refuses a name this shop already uses, and says which shop", async () => {
+    const { db } = dbFor({
+      productInserts: () => ({ data: { id: "p1" }, error: null }),
+      productSelect: { data: [productRow()], error: null },
+    });
+    await expect(createProduct(db, INPUT, "shop-b")).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining("in this shop"),
+    });
   });
 
   it("retries with a free SKU when that is what collided", async () => {
@@ -159,10 +173,11 @@ describe("createProduct — another shop's slug/SKU", () => {
     });
     await createProduct(db, INPUT, "shop-b");
     expect(seen.productRows.map((r) => r.sku)).toEqual(["PS-PANJABI", "PS-PANJABI-2"]);
+    // The slug was never in the way, so the shop's own name survives.
     expect(seen.productRows.every((r) => r.slug === "panjabi")).toBe(true);
   });
 
-  it("keeps trying until the storefront URL is free", async () => {
+  it("keeps trying until the slug is free inside the shop", async () => {
     const { db, seen } = dbFor({
       productInserts: (n) =>
         n <= 3 ? { data: null, error: DUPLICATE_SLUG } : { data: { id: "p1" }, error: null },
@@ -183,7 +198,6 @@ describe("createProduct — another shop's slug/SKU", () => {
 });
 
 describe("updateProduct — variant SKU release", () => {
-  const EXISTING = productRow({ id: "p1", slug: "tee", sku: "BT-A", price: 100000 });
   const SOLD_M_SIZE = {
     id: "v-m",
     product_id: "p1",

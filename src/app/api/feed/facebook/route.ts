@@ -10,8 +10,8 @@ import { buildMetaFeed } from "@/lib/marketing-feeds";
 export const revalidate = 3600;
 
 export async function GET() {
-  const { products } = await getStorefrontCatalog();
-  return new Response(buildMetaFeed(products), {
+  const { products, shops } = await getStorefrontCatalog();
+  return new Response(buildMetaFeed(products, shops), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Cache-Control": "public, max-age=3600",

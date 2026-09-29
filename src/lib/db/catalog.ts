@@ -58,7 +58,7 @@ const toBundle = (
  * Perf (audit 2026-09-17 P1.2): the seven-query read is wrapped in the Next
  * data cache for `PUBLIC_CACHE_SECONDS`, tagged so admin/vendor catalog
  * writes (`revalidateCatalogCaches`) rebuild it on the next request. The
- * storefront pages (`/`, `/shop`, `/product/[slug]`, `/api/products`) all
+ * storefront pages (`/`, `/shop`, `/shops/[slug]/p/[product]`, `/api/products`) all
  * share ONE cached copy instead of each re-reading the whole catalog.
  *
  * The read goes through the cookie-less anon client, so the cache entry is

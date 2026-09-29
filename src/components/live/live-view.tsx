@@ -15,6 +15,7 @@
  * without refreshing.
  */
 
+import { useProductHref } from "@/lib/use-product-href";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -81,6 +82,7 @@ function PieceCard({
   onAir?: boolean;
 }) {
   const { addItem, openBag } = useCart();
+  const hrefFor = useProductHref();
   return (
     <div
       className={`group relative flex flex-col overflow-hidden rounded-3xl bg-paper ring-1 transition-shadow hover:shadow-lg ${
@@ -88,7 +90,7 @@ function PieceCard({
       }`}
     >
       <Link
-        href={`/product/${piece.slug}`}
+        href={hrefFor(piece)}
         className="relative block aspect-[4/5] overflow-hidden bg-ivory-100"
       >
         {piece.image ? (
@@ -118,7 +120,7 @@ function PieceCard({
       </Link>
       <div className="flex flex-1 flex-col gap-2 p-3.5">
         <Link
-          href={`/product/${piece.slug}`}
+          href={hrefFor(piece)}
           className="line-clamp-2 text-sm font-medium leading-5 text-ink hover:underline"
         >
           {piece.name}

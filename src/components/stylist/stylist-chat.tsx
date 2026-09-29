@@ -14,6 +14,7 @@
  *     and only when the shop has a plausible BD mobile (P1 #15 rule).
  */
 
+import { useProductHref } from "@/lib/use-product-href";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Product, Shop } from "@/lib/catalog";
@@ -62,6 +63,7 @@ export default function StylistChat({
   const [turns, setTurns] = useState<StylistTopic[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const { suggestion } = useSizeSuggestion(product);
+  const hrefFor = useProductHref();
 
   const ask = (topic: StylistTopic) => {
     if (turns.includes(topic) && topic !== "human") return;
@@ -151,7 +153,7 @@ export default function StylistChat({
             {pairing.map((p) => (
               <li key={p.id}>
                 <Link
-                  href={`/product/${p.slug}`}
+                  href={hrefFor(p)}
                   className="flex items-center justify-between gap-3 rounded-xl bg-paper px-4 py-3 ring-1 ring-line transition-colors hover:ring-forest-400"
                 >
                   <span className="min-w-0">

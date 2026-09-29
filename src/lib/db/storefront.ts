@@ -60,3 +60,40 @@ export const findStorefrontProduct = (
   products: Product[],
   slug: string,
 ): Product | undefined => products.find((p) => p.slug === slug);
+
+/** A shop by its URL slug. */
+export const findStorefrontShop = (
+  shops: Shop[],
+  slug: string,
+): Shop | undefined => shops.find((s) => s.slug === slug);
+
+/**
+ * C5 — the piece at `/shops/<shopSlug>/p/<productSlug>`.
+ *
+ * The shop is part of the address, so the slug only has to be unique inside
+ * it: two shops may both sell "premium-cotton-panjabi" and still each own a
+ * page. Rows saved before the marketplace carry no `shopId`; they belong to
+ * the first shop, the same rule `productShopId` applies everywhere else.
+ */
+export const findShopProduct = (
+  products: Product[],
+  shops: Shop[],
+  shopSlug: string,
+  productSlug: string,
+): Product | undefined => {
+  const shop = findStorefrontShop(shops, shopSlug);
+  if (!shop) return undefined;
+  const fallbackShopId = shops[0]?.id ?? "";
+  return products.find(
+    (p) => p.slug === productSlug && (p.shopId ?? fallbackShopId) === shop.id,
+  );
+};
+
+/**
+ * Every piece carrying this slug, across shops — the pre-C5 spelling
+ * (`/product/<slug>`) can only be answered by looking at all of them.
+ */
+export const findStorefrontProductsBySlug = (
+  products: Product[],
+  slug: string,
+): Product[] => products.filter((p) => p.slug === slug);

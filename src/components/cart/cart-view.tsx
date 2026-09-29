@@ -1,5 +1,6 @@
 "use client";
 
+import { productHref } from "@/lib/product-url";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
@@ -121,7 +122,7 @@ export default function CartView() {
             return (
               <li key={product.id + line.variantLabel} className="flex gap-5 py-6">
                 <Link
-                  href={`/product/${product.slug}`}
+                  href={productHref(product, shops)}
                   className="relative block aspect-[4/5] w-24 shrink-0 overflow-hidden rounded-xl bg-ivory-100 ring-1 ring-line sm:w-28"
                 >
                   <Image
@@ -139,7 +140,7 @@ export default function CartView() {
                         {product.subCategory}
                       </p>
                       <Link
-                        href={`/product/${product.slug}`}
+                        href={productHref(product, shops)}
                         className="font-display mt-1 block truncate text-lg font-medium text-ink transition-colors hover:text-forest-700"
                       >
                         {product.name}

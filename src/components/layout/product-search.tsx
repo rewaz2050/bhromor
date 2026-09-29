@@ -1,5 +1,6 @@
 "use client";
 
+import { productHref } from "@/lib/product-url";
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -42,7 +43,8 @@ export default function ProductSearch() {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  const { products: PRODUCTS, categories: CATEGORIES } = useLiveCatalog();
+  const { products: PRODUCTS, categories: CATEGORIES, shops } =
+    useLiveCatalog();
   const searching = query.trim().length > 0;
   const matches = searching
     ? PRODUCTS.filter((product) => matchesProduct(product, query))
@@ -289,7 +291,7 @@ export default function ProductSearch() {
                     {popularNow(PRODUCTS).map((product) => (
                       <li key={product.id}>
                         <Link
-                          href={`/product/${product.slug}`}
+                          href={productHref(product, shops)}
                           onClick={close}
                           className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm text-forest-900 hover:underline"
                         >
@@ -309,7 +311,7 @@ export default function ProductSearch() {
               {suggestions.map((product) => (
                 <li key={product.id}>
                   <Link
-                    href={`/product/${product.slug}`}
+                    href={productHref(product, shops)}
                     onClick={() => {
                       if (searching) remember(query);
                       close();

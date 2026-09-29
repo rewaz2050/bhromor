@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductHref } from "@/lib/use-product-href";
 import Image from "next/image";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -16,6 +17,7 @@ import { useRecentlyViewed } from "@/lib/use-recently-viewed";
  */
 export default function RecentlyViewedStrip({ pool, limit = 6 }: { pool: Product[]; limit?: number }) {
   const { t, lang } = useLanguage();
+  const hrefFor = useProductHref();
   const items = useRecentlyViewed(pool, { limit });
   if (items.length === 0) return null;
   return (
@@ -47,7 +49,7 @@ export default function RecentlyViewedStrip({ pool, limit = 6 }: { pool: Product
             return (
               <li key={p.id} className="shrink-0">
                 <Link
-                  href={`/product/${p.slug}`}
+                  href={hrefFor(p)}
                   className="flex min-h-11 w-56 items-center gap-3 rounded-md bg-paper p-1.5 pr-3 ring-1 ring-line transition-colors hover:ring-forest-400"
                 >
                   <span className="relative block h-14 w-12 shrink-0 overflow-hidden bg-ivory-100">

@@ -10,28 +10,30 @@ import {
 } from "@/lib/og-card";
 import { ogImageSource } from "@/lib/og-media";
 import { siteBaseUrl } from "@/lib/site-url";
-import {
-  findStorefrontProductsBySlug,
-  getStorefrontCatalog,
-} from "@/lib/db/storefront";
+import { findShopProduct, getStorefrontCatalog } from "@/lib/db/storefront";
 import { coverImage } from "@/lib/catalog";
 import OgCardFrame from "@/components/og/og-card-frame";
 
 /**
- * Share preview for a pre-C5 product link. A unique old slug keeps its piece's
- * branded preview; if two shops now share that name, avoid showing an arbitrary
- * shop's piece as the preview — the legacy page itself asks which shop.
+ * Share preview for a product link — the card that has to sell the piece
+ * inside a WhatsApp chat: cover photo, name, price (strike-through when the
+ * piece sits on a compare-at) and the door-delivery promise. Route handler
+ * instead of the file convention — inside a route group the convention
+ * never registers (upstream NEXT-1102).
+ *
+ * C5 — resolved by shop AND slug, the way the page itself is: two shops may
+ * sell a piece of the same name.
  */
+
 export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ slug: string }> },
+  { params }: { params: Promise<{ slug: string; product: string }> },
 ) {
-  const { slug } = await params;
-  const { products } = await getStorefrontCatalog();
-  const matches = findStorefrontProductsBySlug(products, slug);
-  const product = matches.length === 1 ? matches[0]! : undefined;
+  const { slug, product: productSlug } = await params;
+  const { products, shops } = await getStorefrontCatalog();
+  const product = findShopProduct(products, shops, slug, productSlug);
 
   const title = ogFitTitle(product?.name ?? "PROSANTI");
   const cover = product ? coverImage(product) : null;

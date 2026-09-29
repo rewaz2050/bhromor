@@ -273,7 +273,8 @@ export default function ProductEditor({
         return "The first media must be a photo — use “Cover” on an image row.";
       }
     }
-    // Duplicate slugs silently broke /product/[slug] (two rows, one URL).
+    // C5 — a slug only has to be unique INSIDE a shop now (two shops may
+    // both sell "Panjabi"), but never inside the same shop.
     const slug = slugify(draft.slug || draft.name);
     const clash = products.find((p) => p.slug === slug && p.id !== product?.id);
     if (clash) return `The URL slug “${slug}” is already used by ${clash.name}.`;

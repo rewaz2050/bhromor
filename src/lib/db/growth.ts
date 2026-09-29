@@ -15,6 +15,7 @@
  * loses a number from the list.
  */
 
+import { legacyProductPath } from "@/lib/product-url";
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -167,7 +168,8 @@ export async function flagPriceDropForStaff(
     productName: string;
     fromPaisa: number;
     toPaisa: number;
-    /** `/product/<slug>` for the push link (optional — falls back to /shop). */
+    /** The push link (C5: `/shops/<shop>/p/<slug>` when the shop is known,
+     *  otherwise `/product/<slug>`, which redirects). Falls back to /shop. */
     productSlug?: string | null;
   },
 ): Promise<number> {
@@ -189,7 +191,7 @@ export async function flagPriceDropForStaff(
     kind: "price-drop",
     productName: input.productName,
     pricePaisa: input.toPaisa,
-    href: input.productSlug ? `/product/${input.productSlug}` : null,
+    href: input.productSlug ? legacyProductPath(input.productSlug) : null,
   });
   const missed = rows.filter((r) => !reached.has(r.phone));
   await notifyStaff(db, {
@@ -293,7 +295,8 @@ export async function flagRestockForStaff(
   input: {
     productId: string;
     productName: string;
-    /** `/product/<slug>` for the push link (optional — falls back to /shop). */
+    /** The push link (C5: `/shops/<shop>/p/<slug>` when the shop is known,
+     *  otherwise `/product/<slug>`, which redirects). Falls back to /shop. */
     productSlug?: string | null;
     /** The current price, shown in the push ("আবার পাওয়া যাচ্ছে ৳১,২৪০"). */
     pricePaisa?: number | null;
@@ -312,7 +315,7 @@ export async function flagRestockForStaff(
     kind: "back-in-stock",
     productName: input.productName,
     pricePaisa: input.pricePaisa ?? null,
-    href: input.productSlug ? `/product/${input.productSlug}` : null,
+    href: input.productSlug ? legacyProductPath(input.productSlug) : null,
   });
   const missed = rows.filter((r) => !reached.has(r.phone));
   await notifyStaff(db, {
@@ -548,7 +551,7 @@ export async function flagNewProductForFollowers(
   input: {
     shopId: string;
     productName: string;
-    /** `/product/<slug>` for the push link (optional). */
+    /** The push link (C5: see above — shop-scoped when the shop is known). */
     productSlug?: string | null;
     /** The price shown in the push ("এখন ৳১,২৪০"). */
     pricePaisa?: number | null;
@@ -573,7 +576,7 @@ export async function flagNewProductForFollowers(
         ? `${shopName} · ${input.productName}`
         : input.productName,
       pricePaisa: input.pricePaisa ?? null,
-      href: input.productSlug ? `/product/${input.productSlug}` : null,
+      href: input.productSlug ? legacyProductPath(input.productSlug) : null,
     });
     const heard = new Set(reached);
     const waiting = marketing.map((f) => f.phone).filter((p) => !heard.has(p));

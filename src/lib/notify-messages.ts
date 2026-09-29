@@ -293,7 +293,7 @@ export interface ProductMessageInput {
   productName: string;
   /** Integer paisa (§69) — shown in the shopper's own taka formatting. */
   pricePaisa?: number | null;
-  /** `/product/<slug>` from the caller (the shop's product URL shape). */
+  /** C5 — `/shops/<shop>/p/<slug>` when the caller knows the shop, else `/product/<slug>`. */
   href?: string | null;
   lang?: Language;
 }

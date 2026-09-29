@@ -1061,7 +1061,11 @@ export const readProductBundle = async (
  */
 const duplicateProductColumn = (error: unknown): "slug" | "sku" | null => {
   const message = (error as { message?: string })?.message ?? "";
-  if (/products_slug_key|unique constraint "slug"|products_slug/.test(message)) return "slug";
+  // C5 — the slug index is now (shop_id, slug); both spellings are accepted
+  // so a database restored from either shape still tells us which column it was.
+  if (/products_slug_key|products_shop_id_slug_key|unique constraint "slug"|products_slug/.test(message)) {
+    return "slug";
+  }
   if (/products_sku_key|unique constraint "sku"|products_sku/.test(message)) return "sku";
   return null;
 };
@@ -1102,24 +1106,34 @@ export async function createProduct(
   }
   const slugBase =
     input.slug && input.slug !== "" ? input.slug : slugify(input.name);
-  // Duplicate probe — but it only sees the rows THIS caller may read (a
-  // vendor's RLS client sees its own shop only). A clash inside the shop is
-  // a real duplicate worth refusing; a clash with another shop's product is
-  // invisible here and is resolved by the insert retry just below.
-  const { data: dupe } = await db
+  // C5 — a slug has to be unique INSIDE the shop that sells the piece
+  // (`products` now carries unique (shop_id, slug)): two shops may both sell
+  // "Panjabi", each at its own address, under the name the shop typed. The
+  // storefront URL carries the shop, so nothing collides.
+  const { data: sameShop } = await db
     .from("products")
     .select("id")
-    .or(`slug.eq.${slugBase},sku.eq.${input.sku}`)
+    .eq("shop_id", resolvedShop)
+    .eq("slug", slugBase)
     .limit(1);
-  if (dupe && dupe.length > 0) {
-    throw new AdminInputError("Slug or SKU is already in use.", 409);
+  if (sameShop && sameShop.length > 0) {
+    throw new AdminInputError(
+      "That slug is already in use in this shop — add a word to the name.",
+      409,
+    );
   }
-  // `products.slug` and `products.sku` are unique across EVERY shop (they
-  // predate the marketplace). Two shops may therefore both want "Panjabi" —
-  // the second one used to be refused with "Slug or SKU is already in use.",
-  // for a name it had never used, and could not add the product at all
-  // (2026-09-27). We keep the platform-wide uniqueness the storefront URLs
-  // depend on and simply pick the next free spelling, then log it.
+  // SKU is still unique across EVERY shop: it is the code the warehouse, the
+  // payout report and the CSV import count by, so it cannot be shared.
+  const { data: skuTaken } = await db
+    .from("products")
+    .select("id")
+    .eq("sku", input.sku)
+    .limit(1);
+  if (skuTaken && skuTaken.length > 0) {
+    throw new AdminInputError("SKU is already in use.", 409);
+  }
+  // What is left is the race: two saves landing at once. The insert below
+  // retries with the next free spelling of whichever column collided.
   const slugFor = (n: number): string => (n === 0 ? slugBase : `${slugBase}-${n + 1}`);
   const skuFor = (n: number): string => (n === 0 ? input.sku : `${input.sku}-${n + 1}`);
   let data: { id?: string } | null = null;
@@ -1169,8 +1183,8 @@ export async function createProduct(
     error = (res.error ?? null) as { code?: string; message?: string } | null;
     if (!error && data?.id) break;
     if (error?.code !== "23505") break;
-    // Which marketplace-wide unique index answered? RLS hides the other
-    // shop's row from the vendor, so the constraint name is the only clue.
+    // Which unique index answered? RLS hides the other shop's row from the
+    // vendor, so the constraint name is the only clue.
     const which = duplicateProductColumn(error);
     if (which !== "sku") slugN += 1;
     if (which !== "slug") skuN += 1;
@@ -1249,14 +1263,20 @@ export async function updateProduct(
   const nextSlug =
     input.slug && input.slug !== "" ? input.slug : row.slug;
   if (nextSlug !== row.slug) {
+    // C5 — inside THIS shop only: another shop's "panjabi" is not this
+    // piece's business, and both pages can exist side by side.
     const { data: dupe } = await db
       .from("products")
       .select("id")
+      .eq("shop_id", row.shop_id)
       .eq("slug", nextSlug)
       .neq("id", id)
       .limit(1);
     if (dupe && dupe.length > 0) {
-      throw new AdminInputError("That slug is already in use.", 409);
+      throw new AdminInputError(
+        "That slug is already in use in this shop — add a word to the name.",
+        409,
+      );
     }
   }
   if (merged.sku !== row.sku) {

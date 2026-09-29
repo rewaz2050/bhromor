@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductHref } from "@/lib/use-product-href";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconSparkles } from "@/components/ui/icons";
@@ -18,6 +19,8 @@ const MAX_ASKS = 3;
 export default function ReviewAsk({ order }: { order: Order }) {
   const { lang } = useLanguage();
   const { settings } = usePublicSettings();
+  // Before the early returns — hooks are unconditional (C5 product links).
+  const hrefFor = useProductHref();
   if (order.status !== "delivered") return null;
   const askable = order.items
     .filter((item) => item.slug)
@@ -52,7 +55,7 @@ export default function ReviewAsk({ order }: { order: Order }) {
           {askable.map((item) => (
             <Link
               key={`${item.productId}-${item.slug}`}
-              href={`/product/${item.slug}#reviews-heading`}
+              href={`${hrefFor({ slug: item.slug })}#reviews-heading`}
               data-testid="review-ask-link"
               onClick={() =>
                 // The form on the product page proves the purchase with this

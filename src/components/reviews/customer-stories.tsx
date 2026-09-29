@@ -1,5 +1,6 @@
 "use client";
 
+import { productHref } from "@/lib/product-url";
 import Image from "next/image";
 import Link from "next/link";
 import { usePublicReviews } from "@/lib/use-public-reviews";
@@ -66,7 +67,7 @@ export default function CustomerStories({
 } = {}) {
   const { t, lang } = useLanguage();
   const { reviews } = usePublicReviews({ featured: true });
-  const { products } = useLiveCatalog();
+  const { products, shops } = useLiveCatalog();
   const approved = approvedStories(reviews ?? [], products);
   const photos = storyPhotos(approved, products);
 
@@ -111,7 +112,7 @@ export default function CustomerStories({
           {photos.map(({ src, review, product }, i) => (
             <li key={`${review.id}-${i}`} className="shrink-0 snap-start">
               <Link
-                href={`/product/${product.slug}#reviews-heading`}
+                href={`${productHref(product, shops)}#reviews-heading`}
                 className="group relative block h-40 w-32 overflow-hidden rounded-xl bg-ivory-100 ring-1 ring-line sm:h-48 sm:w-40"
                 aria-label={`${product.name} — ${review.author}`}
               >
@@ -164,7 +165,7 @@ export default function CustomerStories({
                   </span>
                 </p>
                 <Link
-                  href={`/product/${product.slug}#reviews-heading`}
+                  href={`${productHref(product, shops)}#reviews-heading`}
                   className="mt-4 flex items-center gap-3 self-start text-sm font-medium text-forest-800 hover:text-forest-950"
                 >
                   {cover.src ? (

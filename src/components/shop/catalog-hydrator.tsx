@@ -10,7 +10,7 @@ import { hydrateLiveCatalog } from "@/lib/live-catalog";
  * products on first paint instead of after a second /api/products fetch.
  *
  * Renders nothing. Mount it once on a server page that read the catalog
- * (`/shop`, `/product/[slug]`, `/shops/[slug]`); pages without server rows
+ * (`/shop`, `/shops/[slug]/p/[product]`, `/shops/[slug]`); pages without rows
  * keep the fetch-once path in `LiveCatalogBoot`.
  *
  * Why a LAYOUT effect: the hydration render must see the same (empty)

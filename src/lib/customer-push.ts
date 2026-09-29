@@ -505,7 +505,7 @@ export const pushProductEvent = async (
     kind: ProductEventKind;
     productName: string;
     pricePaisa?: number | null;
-    /** `/product/<slug>` — see `customerProductMessage`. */
+    /** C5 — `/shops/<shop>/p/<slug>` when the shop is known, else `/product/<slug>`. */
     href?: string | null;
     capMs?: number;
   },

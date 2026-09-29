@@ -13,6 +13,7 @@
  *   • wa.me deep links only (no app installs, no account, no token).
  */
 
+import { productPath } from "@/lib/product-url";
 import type { Language } from "./translations";
 import type { Product, Shop } from "./catalog";
 import { formatBdt } from "./format";
@@ -137,9 +138,13 @@ export const shopChatMessage = (
 export const sizeAskMessage = (
   product: Pick<Product, "name" | "slug">,
   size: string,
-  shop: Pick<Shop, "name">,
+  shop: Pick<Shop, "name" | "slug">,
   lang: Language = "en",
-): string =>
-  lang === "bn"
-    ? `আসসালামু আলাইকুম ${shop.name}, PROSANTI-তে "${product.name}"-এর ${size} সাইজটা শেষ দেখাচ্ছে। এটা কবে আসবে জানাবেন? (/product/${product.slug})`
-    : `Hello ${shop.name}, size ${size} of "${product.name}" shows sold out on PROSANTI. Could you tell me when it will be back? (/product/${product.slug})`;
+): string => {
+  // C5 — the shop-scoped address, so the shop opens its OWN piece's page
+  // (two shops may sell a piece of the same name).
+  const link = productPath(shop.slug, product.slug);
+  return lang === "bn"
+    ? `আসসালামু আলাইকুম ${shop.name}, PROSANTI-তে "${product.name}"-এর ${size} সাইজটা শেষ দেখাচ্ছে। এটা কবে আসবে জানাবেন? (${link})`
+    : `Hello ${shop.name}, size ${size} of "${product.name}" shows sold out on PROSANTI. Could you tell me when it will be back? (${link})`;
+};
