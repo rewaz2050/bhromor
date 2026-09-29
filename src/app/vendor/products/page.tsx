@@ -21,6 +21,7 @@ import {
 import ShelfRowActions from "@/components/admin/shelf-row-actions";
 import DuplicateProductButton from "@/components/vendor/duplicate-product-button";
 import VendorCategoryManagerCard from "@/components/vendor/category-manager-card";
+import ProductCsvTools from "@/components/vendor/product-csv-tools";
 import BulkEditBar from "@/components/vendor/bulk-edit-bar";
 import { formatBdt } from "@/lib/format";
 import {
@@ -111,6 +112,7 @@ export default function VendorProductsPage() {
         }
       />
 
+      <ProductCsvTools />
       <VendorCategoryManagerCard />
 
       {loading ? (
