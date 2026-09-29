@@ -195,4 +195,3 @@ export const POST = vendorRoute(
   },
   { limit: 5 },
 );
-
