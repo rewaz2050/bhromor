@@ -12,6 +12,7 @@ interface SignResponse {
   folder: string;
   signature: string;
   resource: "image" | "video";
+  allowedFormats: string;
   uploadUrl: string;
 }
 
@@ -91,6 +92,7 @@ export default function MediaUploader({
       form.append("api_key", sign.apiKey);
       form.append("timestamp", String(sign.timestamp));
       form.append("folder", sign.folder);
+      form.append("allowed_formats", sign.allowedFormats);
       form.append("signature", sign.signature);
       const res = await fetch(sign.uploadUrl, { method: "POST", body: form });
       const data = (await res.json().catch(() => null)) as {

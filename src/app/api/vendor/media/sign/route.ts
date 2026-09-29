@@ -9,9 +9,9 @@
  * and got /api/rider/media/sign; this is the vendor's counterpart.
  *
  * Vendor-gated (vendorRoute: an active shop + a per-vendor rate limit) and
- * the folder is pinned to the shop's OWN namespace — prosanti/products for
- * photo/video, prosanti/shops for the logo/cover — never the homepage or
- * brand shelves. Anything else falls back to prosanti/products.
+ * the folder is pinned to this shop's own Cloudinary namespace, never another
+ * shop or the homepage/brand shelves. A request may select only product media
+ * or shop assets; the verified shop id always comes from the server session.
  */
 
 import { isCloudinaryConfigured } from "@/lib/env";
@@ -30,7 +30,7 @@ export const VENDOR_DEFAULT_FOLDER = "prosanti/products";
 
 export const POST = vendorRoute(
   "media-sign",
-  async (_ctx, request) => {
+  async (ctx, request) => {
     if (!isCloudinaryConfigured()) {
       return apiError(
         "Image upload is not set up yet — paste an image URL below instead.",
@@ -38,7 +38,7 @@ export const POST = vendorRoute(
         { code: "NOT_CONFIGURED" },
       );
     }
-    let folder: string = VENDOR_DEFAULT_FOLDER;
+    let folder = `prosanti/vendors/${ctx.shopId}/products`;
     let resource: "image" | "video" = "image";
     try {
       const body = (await request.json()) as {
@@ -46,9 +46,12 @@ export const POST = vendorRoute(
         resource?: unknown;
       };
       const wanted = sanitizeCloudinaryFolder(body?.folder, VENDOR_DEFAULT_FOLDER);
-      folder = (VENDOR_FOLDERS as readonly string[]).includes(wanted)
-        ? wanted
-        : VENDOR_DEFAULT_FOLDER;
+      const assetKind = (VENDOR_FOLDERS as readonly string[]).includes(wanted) && wanted === "prosanti/shops"
+        ? "shop-assets"
+        : "products";
+      // A shop's uploads are physically namespaced by its server-verified id;
+      // a vendor cannot select another shop's folder in the request body.
+      folder = `prosanti/vendors/${ctx.shopId}/${assetKind}`;
       if (body?.resource === "video") resource = "video";
     } catch {
       // Empty/invalid body → product-photo defaults.

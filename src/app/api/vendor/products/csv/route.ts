@@ -193,5 +193,7 @@ export const POST = vendorRoute(
     }
     return NextResponse.json({ imported, updated, failed });
   },
-  { limit: 5 },
+  // UTF-8 Bangla can use up to 3 bytes per CSV character; keep this cap
+  // just above the 1 MB character limit while bounding the request stream.
+  { limit: 5, maxBodyBytes: 3_100_000 },
 );

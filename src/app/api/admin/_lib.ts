@@ -8,6 +8,7 @@ import { requireStaff, requireStaffRole, StaffAuthError, type StaffContext, type
 import { AdminInputError } from "@/lib/db/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiError } from "@/lib/api-response";
+import { requestWithBodyLimit } from "@/lib/request-body-limit";
 
 export type StaffHandler = (
   ctx: StaffContext,
@@ -18,11 +19,18 @@ export type StaffHandler = (
 export const staffRoute = (
   name: string,
   handler: StaffHandler,
-  opts: { limit?: number; windowMs?: number; roles?: readonly StaffRole[] } = {},
+  opts: { limit?: number; windowMs?: number; roles?: readonly StaffRole[]; maxBodyBytes?: number } = {},
 ) => {
   const limit = opts.limit ?? 60;
   const windowMs = opts.windowMs ?? 60_000;
   return async (request: Request, routeContext?: unknown): Promise<NextResponse> => {
+    let boundedRequest: Request;
+    try {
+      boundedRequest = await requestWithBodyLimit(request, opts.maxBodyBytes ?? 1_100_000);
+    } catch (err) {
+      if (err instanceof AdminInputError) return apiError(err.message, err.status);
+      return apiError("Request body could not be read.", 400);
+    }
     let staff: StaffContext;
     try {
       staff =
@@ -42,7 +50,7 @@ export const staffRoute = (
       return res;
     }
     try {
-      return await handler(staff, request, routeContext);
+      return await handler(staff, boundedRequest, routeContext);
     } catch (err) {
       if (err instanceof AdminInputError) {
         return apiError(err.message, err.status);

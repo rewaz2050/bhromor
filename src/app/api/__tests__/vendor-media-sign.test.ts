@@ -43,7 +43,7 @@ vi.mock("@/lib/env", async () => {
   };
 });
 
-import { POST, VENDOR_DEFAULT_FOLDER } from "../vendor/media/sign/route";
+import { POST } from "../vendor/media/sign/route";
 
 const post = (body?: unknown): Request =>
   new Request("http://localhost/api/vendor/media/sign", {
@@ -78,11 +78,13 @@ describe("POST /api/vendor/media/sign", () => {
       folder: string;
       resource: string;
       uploadUrl: string;
+      allowedFormats: string;
       signature: string;
     };
     expect(body.cloudName).toBe("demo-cloud");
-    expect(body.folder).toBe("prosanti/products");
+    expect(body.folder).toBe("prosanti/vendors/shop-1/products");
     expect(body.resource).toBe("image");
+    expect(body.allowedFormats).toBe("avif,jpeg,jpg,png,webp");
     expect(body.uploadUrl).toContain("/image/upload");
     expect(body.signature).toMatch(/^[a-f0-9]{40}$/);
   });
@@ -90,16 +92,22 @@ describe("POST /api/vendor/media/sign", () => {
   it("allows the shop's banner folder and a video resource", async () => {
     const res = await POST(post({ folder: "prosanti/shops", resource: "video" }));
     const body = (await res.json()) as { folder: string; resource: string; uploadUrl: string };
-    expect(body.folder).toBe("prosanti/shops");
+    expect(body.folder).toBe("prosanti/vendors/shop-1/shop-assets");
     expect(body.resource).toBe("video");
     expect(body.uploadUrl).toContain("/video/upload");
   });
 
+  it("keeps malformed requests inside this shop's default upload folder", async () => {
+    const res = await POST(post());
+    const body = (await res.json()) as { folder: string };
+    expect(body.folder).toBe("prosanti/vendors/shop-1/products");
+  });
+
   it("never signs the platform's own shelves (homepage/brand)", async () => {
-    for (const folder of ["prosanti/homepage", "prosanti/brand", "../etc", "evil"]) {
+    for (const folder of ["prosanti/homepage", "prosanti/brand", "prosanti/vendors/other-shop/products", "../etc", "evil"]) {
       const res = await POST(post({ folder }));
       const body = (await res.json()) as { folder: string };
-      expect(body.folder).toBe(VENDOR_DEFAULT_FOLDER);
+      expect(body.folder).toBe("prosanti/vendors/shop-1/products");
     }
   });
 });

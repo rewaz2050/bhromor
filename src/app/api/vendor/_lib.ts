@@ -9,6 +9,7 @@ import { requireVendor, VendorAuthError, type VendorContext } from "@/lib/vendor
 import { AdminInputError } from "@/lib/db/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { apiError } from "@/lib/api-response";
+import { requestWithBodyLimit } from "@/lib/request-body-limit";
 
 export type VendorHandler = (
   ctx: VendorContext,
@@ -19,11 +20,18 @@ export type VendorHandler = (
 export const vendorRoute = (
   name: string,
   handler: VendorHandler,
-  opts: { limit?: number; windowMs?: number } = {},
+  opts: { limit?: number; windowMs?: number; maxBodyBytes?: number } = {},
 ) => {
   const limit = opts.limit ?? 60;
   const windowMs = opts.windowMs ?? 60_000;
   return async (request: Request, routeContext?: unknown): Promise<NextResponse> => {
+    let boundedRequest: Request;
+    try {
+      boundedRequest = await requestWithBodyLimit(request, opts.maxBodyBytes ?? 1_100_000);
+    } catch (err) {
+      if (err instanceof AdminInputError) return apiError(err.message, err.status);
+      return apiError("Request body could not be read.", 400);
+    }
     let vendor: VendorContext;
     try {
       vendor = await requireVendor();
@@ -44,7 +52,7 @@ export const vendorRoute = (
       return res;
     }
     try {
-      return await handler(vendor, request, routeContext);
+      return await handler(vendor, boundedRequest, routeContext);
     } catch (err) {
       if (err instanceof AdminInputError) {
         return apiError(err.message, err.status);

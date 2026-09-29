@@ -43,6 +43,15 @@ const post = (path: string, body: unknown): Request =>
   });
 
 describe("vendor routes without a session (slice 3)", () => {
+  it("rejects oversized request bodies before auth/JSON processing", async () => {
+    const request = new Request("http://localhost/api/vendor/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload: "x".repeat(1_100_001) }),
+    });
+    expect((await vendorProductCreate(request)).status).toBe(413);
+  });
+
   it("401s every read without Supabase keys / session", async () => {
     const ctx = { params: Promise.resolve({ id: "PS-1" }) };
     expect((await vendorMe(get("/api/vendor/me"))).status).toBe(401);
