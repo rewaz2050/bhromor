@@ -101,6 +101,9 @@ export async function POST(request: Request) {
       code: coupon.code,
       discount: 0,
       freeDelivery: true as const,
+      // C2 — the screens need the kind: a free-delivery code rides every
+      // parcel of a split checkout, a fixed one is used once.
+      type: coupon.type,
       description: coupon.description,
     });
   }

@@ -10,6 +10,7 @@ import {
   shopClosedCopy,
 } from "@/lib/shop-utils";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { MULTI_SHOP_MAX } from "@/lib/multi-shop";
 
 /**
  * Which shop the bag belongs to (marketplace slice 4, D1). One order =
@@ -23,10 +24,27 @@ export default function BagShopHeader() {
   if (detail.length === 0) return null;
 
   const ids = lineShopIds(detail, shops[0]?.id ?? "");
+  /* C2 — several shops are no longer a dead end: one tap places one order per
+     shop. Only a bag covering more shops than a checkout can carry is stopped,
+     and it says so with the number instead of a vague "not allowed". */
   if (ids.length > 1) {
+    const tooMany = ids.length > MULTI_SHOP_MAX;
     return (
-      <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 ring-1 ring-amber-200">
-        {t("shops.mixedBag").replace("{n}", String(ids.length))}
+      <p
+        data-testid="bag-shops"
+        className={`rounded-2xl px-4 py-3 text-sm font-medium ring-1 ${
+          tooMany
+            ? "bg-amber-50 text-amber-900 ring-amber-200"
+            : "bg-forest-50 text-forest-900 ring-forest-200"
+        }`}
+      >
+        {tooMany
+          ? t("shops.tooManyShops")
+              .replace("{n}", String(ids.length))
+              .replace("{max}", String(MULTI_SHOP_MAX))
+          : t("shops.multiShopBag")
+              .replace("{n}", String(ids.length))
+              .replace("{n}", String(ids.length))}
       </p>
     );
   }

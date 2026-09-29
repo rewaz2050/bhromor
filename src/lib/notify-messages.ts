@@ -128,6 +128,12 @@ export interface MessageInput {
   total?: number | null;
   /** The promised delivery window in the shopper's language (reminder only). */
   when?: string | null;
+  /**
+   * C2 — how many orders this one checkout created. A bag with two shops'
+   * items becomes two parcels, and the shopper deserves to hear that on the
+   * lock screen instead of discovering a second parcel at the door.
+   */
+  orderCount?: number | null;
   lang?: Language;
 }
 
@@ -340,9 +346,15 @@ export const customerPushMessage = (input: MessageInput): CustomerMessage => {
         ? ` · মোট ${formatBdt(input.total)}`
         : ` · Total ${formatBdt(input.total)}`
       : "";
+  const parcels =
+    typeof input.orderCount === "number" && input.orderCount > 1 && input.kind === "placed"
+      ? lang === "bn"
+        ? ` · ${input.orderCount}টি আলাদা অর্ডার`
+        : ` · ${input.orderCount} separate orders`
+      : "";
   return {
     title: copy.title,
-    body: `${body}${total}`,
+    body: `${body}${total}${parcels}`,
     href: `/track?id=${encodeURIComponent(orderNo)}&phone=${encodeURIComponent(
       (input.phone ?? "").trim(),
     )}`,

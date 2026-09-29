@@ -450,6 +450,8 @@ export const pushOrderMilestone = async (
     total?: number | null;
     /** The promised delivery window, for the scheduler's reminder. */
     when?: string | null;
+    /** C2 — orders placed by the same tap (one per shop). */
+    orderCount?: number | null;
   },
 ): Promise<number> => {
   const orderNo = clean(input.orderNo, 40);
@@ -464,6 +466,7 @@ export const pushOrderMilestone = async (
         phone: input.phone,
         total: input.total ?? null,
         when: input.when ?? null,
+        orderCount: input.orderCount ?? null,
         lang,
       }),
   });
@@ -573,7 +576,13 @@ export const notifyCustomerOfStatus = async (
  */
 export const notifyCustomerOrderPlaced = async (
   db: SupabaseClient,
-  input: { phone: string | null | undefined; orderNo: string; total?: number | null },
+  input: {
+    phone: string | null | undefined;
+    orderNo: string;
+    total?: number | null;
+    /** C2 — a multi-shop checkout places one order per shop. */
+    orderCount?: number | null;
+  },
 ): Promise<number> => pushOrderMilestone(db, { ...input, kind: "placed" });
 
 /** Payment decisions have no status machine of their own — an explicit event. */
