@@ -190,6 +190,15 @@ function ShopCard({
             >
               Orders →
             </Link>
+            {/* C3 — the shop's whole file: profile, logins, catalog, orders,
+                money and reviews on one page instead of four filtered lists. */}
+            <Link
+              href={`/admin/shops/${encodeURIComponent(shop.id)}`}
+              className="font-semibold text-forest-800 underline underline-offset-2"
+              data-testid={`shop-file-${shop.id}`}
+            >
+              Open file →
+            </Link>
             {shop.zoneIds.length === 0 && shop.status === "active" && (
               <span className="font-semibold text-rose-800">
                 ⚠ no delivery zone — orders cannot arrive
