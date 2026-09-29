@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { optimizedMediaUrl } from "@/lib/media-url";
 import { useCatalog } from "@/lib/use-catalog";
@@ -477,6 +478,14 @@ export default function ProductEditor({
                 <option key={s} value={s} />
               ))}
             </datalist>
+            {hideCuration ? (
+              <span className={hint}>
+                Your saved subcategories appear here. Add one from{" "}
+                <Link className="font-semibold underline underline-offset-2" href="/vendor/products">
+                  Products → Your shelves
+                </Link>.
+              </span>
+            ) : null}
           </label>
           <label className="block sm:col-span-2">
             <span className={label}>Short description</span>

@@ -399,12 +399,31 @@ export const useVendorProducts = (enabled: boolean) => {
   };
 };
 
+export interface VendorProductCategoryRow {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
 export const useVendorCategories = (enabled: boolean) => {
-  const res = useVendorResource<{ categories: Category[] }>(
-    "/api/vendor/categories",
-    enabled,
-  );
-  return { ...res, categories: res.data?.categories ?? [] };
+  const res = useVendorResource<{
+    categories: Category[];
+    vendorCategories: VendorProductCategoryRow[];
+  }>("/api/vendor/categories", enabled);
+  return {
+    ...res,
+    categories: res.data?.categories ?? [],
+    vendorCategories: res.data?.vendorCategories ?? [],
+    createCategory: async (categoryId: string, name: string) => {
+      const result = await vendorSend<{ category: VendorProductCategoryRow }>(
+        "/api/vendor/categories",
+        "POST",
+        { categoryId, name },
+      );
+      res.reload();
+      return result.category;
+    },
+  };
 };
 
 export const useVendorEarnings = (enabled: boolean) => {

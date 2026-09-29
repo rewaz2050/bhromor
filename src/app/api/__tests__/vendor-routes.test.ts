@@ -21,7 +21,10 @@ import {
   PATCH as vendorPromoToggle,
   POST as vendorPromoCreate,
 } from "../vendor/promos/route";
-import { GET as vendorCategories } from "../vendor/categories/route";
+import {
+  GET as vendorCategories,
+  POST as vendorCategoryCreate,
+} from "../vendor/categories/route";
 // C1: the shop's staff roster sits behind the same vendor gate.
 import {
   GET as vendorStaff,
@@ -48,6 +51,9 @@ describe("vendor routes without a session (slice 3)", () => {
     expect((await vendorShop(get("/api/vendor/shop"))).status).toBe(401);
     expect((await vendorEarnings(get("/api/vendor/earnings"))).status).toBe(401);
     expect((await vendorCategories(get("/api/vendor/categories"))).status).toBe(401);
+    expect(
+      (await vendorCategoryCreate(post("/api/vendor/categories", { categoryId: "men", name: "Eid Edit" }))).status,
+    ).toBe(401);
     // B3: the shop's own promo codes sit behind the same vendor gate.
     expect((await vendorPromos(get("/api/vendor/promos"))).status).toBe(401);
     // B4: a shop's funnel is its own — behind the same vendor gate.
