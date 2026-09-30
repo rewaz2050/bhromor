@@ -84,7 +84,7 @@ export const CUSTOMER_JOURNEY: readonly CustomerEventKind[] = [
  * number, no status machine — folding them into the order union would force
  * order copy for every product event and vice versa.
  */
-export type ProductEventKind = "price-drop" | "back-in-stock";
+export type ProductEventKind = "price-drop" | "back-in-stock" | "new-from-shop";
 
 /**
  * Which `OrderStatus` values are worth a push, and what they mean.
@@ -128,6 +128,12 @@ export interface MessageInput {
   total?: number | null;
   /** The promised delivery window in the shopper's language (reminder only). */
   when?: string | null;
+  /**
+   * C2 — how many orders this one checkout created. A bag with two shops'
+   * items becomes two parcels, and the shopper deserves to hear that on the
+   * lock screen instead of discovering a second parcel at the door.
+   */
+  orderCount?: number | null;
   lang?: Language;
 }
 
@@ -245,6 +251,10 @@ const PRODUCT_BN: Record<ProductEventKind, EventCopy> = {
     title: "স্টকে ফিরে এসেছে ✅",
     body: "{name} আবার পাওয়া যাচ্ছে {price} — খবর চেয়েছিলেন বলেই জানানো হচ্ছে।",
   },
+  "new-from-shop": {
+    title: "নতুন পণ্য এলো 🧵",
+    body: "{name} এখন {price} — যে দোকানটি ফলো করছেন সেখানে নতুন কিছু উঠেছে।",
+  },
 };
 
 const PRODUCT_EN: Record<ProductEventKind, EventCopy> = {
@@ -255,6 +265,10 @@ const PRODUCT_EN: Record<ProductEventKind, EventCopy> = {
   "back-in-stock": {
     title: "Back in stock ✅",
     body: "{name} is available again at {price} — you asked to be told, so here it is.",
+  },
+  "new-from-shop": {
+    title: "New in the shop 🧵",
+    body: "{name} is now {price} — you follow this shop, so here is what just landed.",
   },
 };
 
@@ -279,7 +293,7 @@ export interface ProductMessageInput {
   productName: string;
   /** Integer paisa (§69) — shown in the shopper's own taka formatting. */
   pricePaisa?: number | null;
-  /** `/product/<slug>` from the caller (the shop's product URL shape). */
+  /** C5 — `/shops/<shop>/p/<slug>` when the caller knows the shop, else `/product/<slug>`. */
   href?: string | null;
   lang?: Language;
 }
@@ -332,9 +346,15 @@ export const customerPushMessage = (input: MessageInput): CustomerMessage => {
         ? ` · মোট ${formatBdt(input.total)}`
         : ` · Total ${formatBdt(input.total)}`
       : "";
+  const parcels =
+    typeof input.orderCount === "number" && input.orderCount > 1 && input.kind === "placed"
+      ? lang === "bn"
+        ? ` · ${input.orderCount}টি আলাদা অর্ডার`
+        : ` · ${input.orderCount} separate orders`
+      : "";
   return {
     title: copy.title,
-    body: `${body}${total}`,
+    body: `${body}${total}${parcels}`,
     href: `/track?id=${encodeURIComponent(orderNo)}&phone=${encodeURIComponent(
       (input.phone ?? "").trim(),
     )}`,

@@ -318,7 +318,8 @@ export const useVendorProducts = (enabled: boolean) => {
   const { refresh, reload } = res;
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  /** ProductEditor-shaped save: POST for new rows, PATCH for edits. */
+  /** ProductEditor-shaped save: POST for new rows, PATCH for edits. Throws
+   * the API's message so the editor can show the real reason. */
   const saveProduct = useCallback(async (
     product: Product,
     isNew: boolean,
@@ -337,8 +338,9 @@ export const useVendorProducts = (enabled: boolean) => {
       refresh();
       return true;
     } catch (err) {
-      setSaveError(vendorErrorMessage(err));
-      return false;
+      const message = vendorErrorMessage(err);
+      setSaveError(message);
+      throw new Error(message);
     }
   }, [refresh]);
 
@@ -362,21 +364,66 @@ export const useVendorProducts = (enabled: boolean) => {
     [reload],
   );
 
+  /**
+   * POST a brand-new row and hand back what the server created. `saveProduct`
+   * answers "did it save"; the duplicate action needs the row's real id so it
+   * can open the copy for editing (the server, not the client, mints ids).
+   */
+  const createProduct = useCallback(
+    async (product: Product): Promise<Product> => {
+      setSaveError(null);
+      try {
+        const data = await vendorSend<{ product: Product }>(
+          "/api/vendor/products",
+          "POST",
+          product,
+        );
+        refresh();
+        return data.product;
+      } catch (err) {
+        const message = vendorErrorMessage(err);
+        setSaveError(message);
+        throw new Error(message);
+      }
+    },
+    [refresh],
+  );
+
   return {
     ...res,
     products: res.data?.products ?? [],
     saveProduct,
+    createProduct,
     saveError,
     patchProduct,
   };
 };
 
+export interface VendorProductCategoryRow {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
 export const useVendorCategories = (enabled: boolean) => {
-  const res = useVendorResource<{ categories: Category[] }>(
-    "/api/vendor/categories",
-    enabled,
-  );
-  return { ...res, categories: res.data?.categories ?? [] };
+  const res = useVendorResource<{
+    categories: Category[];
+    vendorCategories: VendorProductCategoryRow[];
+  }>("/api/vendor/categories", enabled);
+  return {
+    ...res,
+    categories: res.data?.categories ?? [],
+    vendorCategories: res.data?.vendorCategories ?? [],
+    createCategory: async (categoryId: string, name: string) => {
+      const result = await vendorSend<{ category: VendorProductCategoryRow }>(
+        "/api/vendor/categories",
+        "POST",
+        { categoryId, name },
+      );
+      res.reload();
+      return result.category;
+    },
+  };
 };
 
 export const useVendorEarnings = (enabled: boolean) => {
@@ -385,6 +432,202 @@ export const useVendorEarnings = (enabled: boolean) => {
     enabled,
   );
   return { ...res, earnings: res.data?.earnings ?? null };
+};
+
+/* ------------------------------------------------------------------ */
+/* B3 (2026-09-28) — the shop's own promo codes                        */
+/* ------------------------------------------------------------------ */
+
+/** The funnel window the dashboard shows (B4). */
+export const VENDOR_FUNNEL_DAYS = 7 as const;
+
+export interface VendorPromoRow {
+  id: string;
+  code: string;
+  type: "percent" | "fixed" | "free_delivery";
+  value: number;
+  minOrder: number;
+  maxDiscount?: number;
+  description?: string;
+  validFrom?: number;
+  validUntil?: number;
+  usageLimit?: number;
+  used: number;
+  active: boolean;
+  createdAt?: number;
+  createdBy?: string;
+}
+
+export interface PromoLimitsRow {
+  maxPercent: number;
+  maxDiscount: number;
+  maxDays: number;
+  maxUsage: number;
+  maxActive: number;
+}
+
+export const useVendorPromos = (enabled: boolean) => {
+  const res = useVendorResource<{
+    promos: VendorPromoRow[];
+    limits: PromoLimitsRow;
+    usedTotal: number;
+    discountBornePaisa: number;
+  }>("/api/vendor/promos", enabled);
+  const { reload } = res;
+  const create = useCallback(
+    async (draft: Record<string, unknown>): Promise<VendorPromoRow> => {
+      const data = await vendorSend<{ promo: VendorPromoRow }>(
+        "/api/vendor/promos",
+        "POST",
+        draft,
+      );
+      reload();
+      return data.promo;
+    },
+    [reload],
+  );
+  const setActive = useCallback(
+    async (id: string, active: boolean): Promise<VendorPromoRow> => {
+      const data = await vendorSend<{ promo: VendorPromoRow }>(
+        "/api/vendor/promos",
+        "PATCH",
+        { id, active },
+      );
+      reload();
+      return data.promo;
+    },
+    [reload],
+  );
+  return {
+    ...res,
+    promos: res.data?.promos ?? [],
+    limits: res.data?.limits ?? null,
+    usedTotal: res.data?.usedTotal ?? 0,
+    discountBornePaisa: res.data?.discountBornePaisa ?? 0,
+    create,
+    setActive,
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* B4 (2026-09-28) — the shop's own funnel                             */
+/* ------------------------------------------------------------------ */
+
+import type { ShopFunnel } from "@/lib/shop-funnel";
+export type { ShopFunnel };
+
+/**
+ * The shop's own funnel (B4). Unlike the other resources this one keeps the
+ * HTTP status, because 503 does NOT mean "empty shop" — it means migration
+ * 202609280004 has not been run, and the card has to say exactly that.
+ */
+export const useVendorFunnel = (enabled: boolean, days: 7 | 28 = 7) => {
+  const path = `/api/vendor/funnel?days=${days}`;
+  const [funnel, setFunnel] = useState<ShopFunnel | null>(null);
+  const [loading, setLoading] = useState(enabled);
+  const [status, setStatus] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    vendorGet<ShopFunnel>(path)
+      .then((d) => {
+        if (cancelled) return;
+        setFunnel(d);
+        setStatus(200);
+        setError(null);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFunnel(null);
+        setStatus(err instanceof VendorApiError ? err.status : null);
+        setError(vendorErrorMessage(err));
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, enabled, nonce]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    setNonce((n) => n + 1);
+  }, []);
+
+  return { funnel, loading, error, status, missing: status === 503, refresh };
+};
+
+/* ------------------------------------------------------------------ */
+/* B2 (2026-09-28) — reviews and the shop's reply                      */
+/* ------------------------------------------------------------------ */
+
+export interface VendorReviewRow {
+  id: string;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  rating: number;
+  author: string;
+  title?: string;
+  body: string;
+  date: number;
+  verified: boolean;
+  featured?: boolean;
+  photos: string[];
+  vendorReply?: string;
+  vendorReplyAt?: number;
+  vendorReplyBy?: string;
+}
+
+export const useVendorReviews = (enabled: boolean) => {
+  const res = useVendorResource<{ reviews: VendorReviewRow[] }>(
+    "/api/vendor/reviews",
+    enabled,
+  );
+  const { reload } = res;
+  const reply = useCallback(
+    async (id: string, text: string): Promise<VendorReviewRow> => {
+      const data = await vendorSend<{ review: VendorReviewRow }>(
+        "/api/vendor/reviews",
+        "PATCH",
+        { id, reply: text },
+      );
+      // In-place re-read: the card keeps its rows while the answer saves.
+      reload();
+      return data.review;
+    },
+    [reload],
+  );
+  return { ...res, reviews: res.data?.reviews ?? [], reply };
+};
+
+/* ------------------------------------------------------------------ */
+/* B1 (2026-09-28) — shop followers                                    */
+/* ------------------------------------------------------------------ */
+
+export interface ShopFollower {
+  phone: string;
+  marketingOk: boolean;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+}
+
+export const useShopFollowers = (enabled: boolean) => {
+  const res = useVendorResource<{
+    followers: number;
+    neverReached: string[];
+    rows: ShopFollower[];
+  }>("/api/vendor/followers", enabled);
+  return {
+    ...res,
+    followers: res.data?.followers ?? 0,
+    neverReached: res.data?.neverReached ?? [],
+    rows: res.data?.rows ?? [],
+  };
 };
 
 export const patchVendorShop = async (patch: Record<string, unknown>): Promise<Shop> => {

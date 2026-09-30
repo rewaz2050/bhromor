@@ -18,7 +18,7 @@ export interface BroadcastDraft {
   titleBn: string;
   body: string;
   bodyBn: string;
-  /** Same-origin path only (`/offers`, `/campaign`, `/product/<slug>`). */
+  /** Same-origin path only (`/offers`, `/campaign`, `/shops/<shop>/p/<slug>`). */
   href: string;
 }
 

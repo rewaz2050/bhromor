@@ -1,5 +1,6 @@
 "use client";
 
+import { productHref } from "@/lib/product-url";
 import Image from "next/image";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -67,7 +68,7 @@ export function WhyBand() {
 export function ReviewInterrupt() {
   const { t } = useLanguage();
   const { reviews } = usePublicReviews({ featured: true });
-  const { products } = useLiveCatalog();
+  const { products, shops } = useLiveCatalog();
   const approved = approvedStories(reviews ?? [], products);
   const [pick] = storyPhotos(approved, products, 1);
   if (!pick) return null;
@@ -81,7 +82,7 @@ export function ReviewInterrupt() {
     >
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         <Link
-          href={`/product/${product.slug}#reviews`}
+          href={`${productHref(product, shops)}#reviews`}
           className="group grid gap-5 rounded-md bg-paper p-4 ring-1 ring-line transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-600 sm:grid-cols-[minmax(0,220px)_1fr] sm:p-5"
         >
           <span className="relative block aspect-[4/5] overflow-hidden rounded-sm bg-ivory-200">

@@ -16,7 +16,13 @@ const product = (over: Partial<Product> = {}): Product =>
     ...over,
   }) as Product;
 
-const shop = { phone: "01712345678", address: "Kandirpar", tagline: "Fine panjabi", isOpen: true };
+const shop = {
+  phone: "01712345678",
+  address: "Kandirpar",
+  tagline: "Fine panjabi",
+  isOpen: true,
+  status: "active" as const,
+};
 
 describe("vendorChecklist", () => {
   it("has five steps and no payout step", () => {
@@ -48,6 +54,21 @@ describe("vendorChecklist", () => {
     expect(byId.products.cta).toBe("Add another product");
     expect(byId.photo.done).toBe(false);
     expect(byId.photo.detail).toMatch(/1 live product without a photo/);
+  });
+
+  it("asks a PENDING shop to wait instead of offering a broken Open button (2026-09-27)", () => {
+    const steps = vendorChecklist({ ...shop, isOpen: false, status: "pending" }, []);
+    const open = steps.find((s) => s.id === "open")!;
+    expect(open.title).toMatch(/approval/i);
+    expect(open.cta).toBe("");
+    expect(open.href).toBeNull();
+    expect(checklistProgress(steps).complete).toBe(false);
+
+    const rejected = vendorChecklist({ ...shop, isOpen: false, status: "rejected" }, []).find(
+      (s) => s.id === "open",
+    )!;
+    expect(rejected.title).toMatch(/re-apply/i);
+    expect(rejected.detail).toMatch(/sign-in page/i);
   });
 
   it("is complete when everything is in place", () => {

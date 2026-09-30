@@ -23,7 +23,36 @@ export interface Coupon {
   usageLimit?: number; // undefined = unlimited
   used: number;
   active: boolean;
+  /**
+   * B3 (2026-09-28) — the shop that owns this code. Absent/null = a platform
+   * coupon (staff-created, applies anywhere). A shop's code only ever applies
+   * to that shop's own products: the marketplace sells one shop per order, so
+   * a code that reached another shop's cart would be the shop paying for
+   * somebody else's sale.
+   */
+  shopId?: string;
+  /** Shop name for the "only for <shop>" message (filled by the server). */
+  shopName?: string;
 }
+
+/**
+ * B3 — may this code be used for a cart made of these shops?
+ * Platform coupons: yes, always (as before). A shop's code: only when EVERY
+ * line in the cart belongs to that shop — a mixed cart would otherwise make
+ * one shop fund a discount on another shop's goods (the orders table has the
+ * same rule in ps_guard_order_coupon_shop).
+ */
+export const couponAppliesToShops = (
+  coupon: Coupon,
+  shopIds: readonly string[],
+): boolean =>
+  !coupon.shopId || (shopIds.length > 0 && shopIds.every((id) => id === coupon.shopId));
+
+/** The shopper-facing reason a shop's code was refused. */
+export const couponShopMismatchReason = (coupon: Coupon): string =>
+  coupon.shopName
+    ? `This code is only for ${coupon.shopName}'s products.`
+    : "This code is only for the shop that issued it.";
 
 export const normalizeCode = (code: string): string =>
   code.trim().toUpperCase().replace(/\s+/g, "");
@@ -129,9 +158,12 @@ export const bestCoupon = (
   subtotal: number,
   zoneId?: string,
   now: number = Date.now(),
+  /** B3 — the shops in the cart; a shop's own code is skipped elsewhere. */
+  shopIds: readonly string[] = [],
 ): BestCoupon | null => {
   let best: BestCoupon | null = null;
   for (const coupon of coupons) {
+    if (!couponAppliesToShops(coupon, shopIds)) continue;
     const redeemable = isCouponRedeemable(coupon, subtotal, zoneId, now);
     if (!redeemable.ok) continue;
     if (coupon.type === "free_delivery") {

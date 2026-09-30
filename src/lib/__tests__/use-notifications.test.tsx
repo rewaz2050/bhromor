@@ -118,7 +118,12 @@ describe("useNotifications alerts", () => {
     // First load: the hook learns the current unread count (no alert yet).
     state.notifications = [row("n1", { title: "Old" })];
     const { result } = renderHook(() => useNotifications());
-    await waitFor(() => expect(state.polls).toBeGreaterThan(0));
+    // The hook only alerts once the first poll has given it a BASELINE unread
+    // count (it compares `unread > prev && prev !== 0`, so the very first read
+    // is never an alert). Waiting for that baseline on the hook's own output —
+    // instead of for the fetch to START — is what stops this test from racing
+    // the poll and failing a run in three.
+    await waitFor(() => expect(result.current.unread).toBe(1));
     expect(showPanelNotice).not.toHaveBeenCalled();
 
     // Next poll: a new unread notice arrives → beep + alert.

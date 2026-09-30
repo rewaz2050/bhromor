@@ -96,8 +96,12 @@ export function useCatalog() {
         await refresh();
         return true;
       } catch (err) {
-        setError(apiErrorMessage(err));
-        return false;
+        const message = apiErrorMessage(err);
+        setError(message);
+        // Thrown as well as stored: the product editor shows the reason on
+        // the first failure (it used to read the *previous* render's
+        // `error`, so every failure looked like "Could not save").
+        throw new Error(message);
       }
     },
     [live, refresh],

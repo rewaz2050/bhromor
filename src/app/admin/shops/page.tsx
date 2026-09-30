@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import { useShops, type AdminShopClient } from "@/lib/use-shops";
 import { useZones } from "@/lib/use-zones";
 import type { Shop } from "@/lib/catalog";
+import ShopVerificationCard from "@/components/admin/shop-verification-card";
+import type { VerificationHistory } from "@/lib/shop-verification";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
@@ -14,6 +17,17 @@ import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-del
 
 type Filter = Shop["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
+
+/** Shops per page (2026-09-27, Phase 2) — the queue outgrew one long list. */
+const PAGE_SIZE = 8;
+
+/** "3 days" — how long a pending application has been waiting. */
+const pendingAge = (createdAt?: number): { days: number; label: string } | null => {
+  if (!createdAt) return null;
+  const days = Math.floor((Date.now() - createdAt) / 86_400_000);
+  if (days <= 0) return { days: 0, label: "today" };
+  return { days, label: `${days} day${days > 1 ? "s" : ""}` };
+};
 
 const BADGE: Record<Shop["status"], string> = {
   pending: "bg-amber-100 text-amber-900",
@@ -26,18 +40,30 @@ function ShopCard({
   shop,
   zones,
   live,
+  selected,
+  onToggleSelect,
   onSave,
   onStatus,
   onLinkVendor,
   onResetPassword,
+  onVerify,
+  onExpand,
+  verification,
 }: {
   shop: AdminShopClient;
   zones: { id: string; name: string }[];
   live: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
   onSave: (s: Shop) => Promise<boolean>;
   onStatus: (id: string, status: Shop["status"], note?: string) => void;
-  onLinkVendor: (id: string, email: string) => Promise<boolean>;
+  onLinkVendor: (id: string, identifier: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
+  onVerify: (id: string, patch: { nid: boolean; tradeLicence: boolean; note: string }) => Promise<Shop>;
+  /** B5 — called when the edit panel opens, so the trail loads on demand. */
+  onExpand: () => void;
+  /** B5 — the staff-only trail for this shop (null until loaded). */
+  verification: VerificationHistory | null;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(shop.name);
@@ -108,6 +134,13 @@ function ShopCard({
   return (
     <li className="rounded-2xl bg-paper p-5 ring-1 ring-line">
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label={`Select ${shop.name}`}
+          className="h-4 w-4 shrink-0 rounded accent-forest-700"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-display text-base font-medium text-forest-900">
@@ -121,6 +154,20 @@ function ShopCard({
                 {shop.isOpen ? "Open" : "Closed"}
               </span>
             )}
+            {shop.status === "pending" &&
+              (() => {
+                const age = pendingAge(shop.createdAt);
+                if (!age) return null;
+                const late = age.days >= 2;
+                return (
+                  <span
+                    title="How long this application has been waiting"
+                    className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${late ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-900"}`}
+                  >
+                    waiting {age.label}
+                  </span>
+                );
+              })()}
           </div>
           <p className="mt-1 truncate text-xs text-ink-soft">
             {describeLoginEmail(shop.contactEmail)} · {shop.phone || "no phone"} ·{" "}
@@ -128,6 +175,34 @@ function ShopCard({
             {shop.commissionPct}% commission
             {shop.ratingCount > 0 && (
               <> · ★ {shop.ratingAvg.toFixed(1)} ({shop.ratingCount})</>
+            )}
+          </p>
+          <p className="mt-1 flex flex-wrap gap-3 text-xs">
+            <Link
+              href={`/admin/products?shop=${encodeURIComponent(shop.id)}`}
+              className="font-semibold text-forest-800 underline underline-offset-2"
+            >
+              This shop&rsquo;s products →
+            </Link>
+            <Link
+              href={`/admin/orders?shop=${encodeURIComponent(shop.id)}`}
+              className="font-semibold text-forest-800 underline underline-offset-2"
+            >
+              Orders →
+            </Link>
+            {/* C3 — the shop's whole file: profile, logins, catalog, orders,
+                money and reviews on one page instead of four filtered lists. */}
+            <Link
+              href={`/admin/shops/${encodeURIComponent(shop.id)}`}
+              className="font-semibold text-forest-800 underline underline-offset-2"
+              data-testid={`shop-file-${shop.id}`}
+            >
+              Open file →
+            </Link>
+            {shop.zoneIds.length === 0 && shop.status === "active" && (
+              <span className="font-semibold text-rose-800">
+                ⚠ no delivery zone — orders cannot arrive
+              </span>
             )}
           </p>
           <ReviewSummary status={shop.status} review={shop.review} />
@@ -141,7 +216,10 @@ function ShopCard({
         />
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (!open) onExpand();
+            setOpen((v) => !v);
+          }}
           className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-ink"
         >
           {open ? "Close" : "Edit"}
@@ -245,6 +323,18 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
+          <ShopVerificationCard
+            key={`verify-${shop.id}-${shop.verification?.nid === true ? "n" : ""}${
+              shop.verification?.tradeLicence === true ? "l" : ""
+            }-${verification?.audit?.at ?? "none"}`}
+            verification={shop.verification}
+            audit={verification?.audit ?? null}
+            events={verification?.events ?? []}
+            onSave={async (patch) => {
+              await onVerify(shop.id, patch);
+            }}
+          />
+
           <ApplicantLoginBox
             kind="vendor"
             name={shop.name}
@@ -275,14 +365,23 @@ export default function AdminShopsPage() {
     setStatus,
     linkVendor,
     resetVendorPassword,
+    verifyShop,
+    verificationHistory,
     reset,
   } = useShops();
   const { zones } = useZones();
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newCommission, setNewCommission] = useState("15");
+  const [newPrep, setNewPrep] = useState("15");
+  const [newZoneIds, setNewZoneIds] = useState<string[]>([]);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const counts = useMemo(() => {
@@ -296,10 +395,58 @@ export default function AdminShopsPage() {
     for (const s of shops) c[s.status] = (c[s.status] ?? 0) + 1;
     return c;
   }, [shops]);
-  const visible = useMemo(
-    () => shops.filter((s) => (filter === "all" ? true : s.status === filter)),
-    [shops, filter],
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return shops
+      .filter((s) => (filter === "all" ? true : s.status === filter))
+      .filter(
+        (s) =>
+          q === "" ||
+          s.name.toLowerCase().includes(q) ||
+          s.slug.toLowerCase().includes(q) ||
+          s.phone.toLowerCase().includes(q) ||
+          (s.contactEmail ?? "").toLowerCase().includes(q),
+      );
+  }, [shops, filter, query]);
+
+  // Pagination (2026-09-27): the queue no longer renders as one endless list.
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, pageCount);
+  const paged = useMemo(
+    () => visible.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE),
+    [visible, clampedPage],
   );
+
+  // B5 — the verification trail is staff-only and per shop, so it is fetched
+  // when a card is actually OPENED, not for the whole list.
+  const [verifications, setVerifications] = useState<Record<string, VerificationHistory>>({});
+  const loadVerification = useCallback(
+    (id: string) => {
+      if (!live) return;
+      void verificationHistory(id)
+        .then((trail) => setVerifications((m) => ({ ...m, [id]: trail })))
+        .catch(() => {
+          /* the badge still works without its history */
+        });
+    },
+    [live, verificationHistory],
+  );
+
+  const toggleSelected = (id: string) =>
+    setSelected((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+
+  /** Approve / suspend everything ticked, one call each so a failure tells. */
+  const bulk = async (status: "active" | "suspended") => {
+    if (selected.length === 0) return;
+    const verb = status === "active" ? "Approve" : "Suspend";
+    if (!window.confirm(`${verb} ${selected.length} shop(s)?`)) return;
+    setBulkBusy(true);
+    for (const id of selected) {
+      await setStatus(id, status, status === "suspended" ? "Suspended by staff." : "");
+    }
+    setBulkBusy(false);
+    setSelected([]);
+  };
 
   const create = async () => {
     const name = newName.trim();
@@ -307,15 +454,34 @@ export default function AdminShopsPage() {
       setCreateError("Shop name is too short.");
       return;
     }
+    const commission = Number(newCommission);
+    if (!Number.isFinite(commission) || commission < 0 || commission > 90) {
+      setCreateError("Commission must be between 0 and 90 percent.");
+      return;
+    }
+    const prep = Math.floor(Number(newPrep));
+    if (!Number.isFinite(prep) || prep < 0 || prep > 240) {
+      setCreateError("Prep time must be between 0 and 240 minutes.");
+      return;
+    }
+    // Zones at creation (2026-09-27, B11): a shop saved without them can be
+    // approved but no order can ever reach it — say so instead of letting
+    // staff find out from a customer.
+    if (newZoneIds.length === 0) {
+      const go = window.confirm(
+        "No delivery zone selected — an active shop without a zone receives no orders. Create it anyway?",
+      );
+      if (!go) return;
+    }
     const ok = await saveShop({
       id: "",
       slug: "",
       name,
       phone: newPhone.trim(),
       contactEmail: newEmail.trim().toLowerCase() || undefined,
-      zoneIds: [],
-      prepMinutes: 15,
-      commissionPct: 15,
+      zoneIds: newZoneIds,
+      prepMinutes: prep,
+      commissionPct: commission,
       status: "pending",
       isOpen: false,
       ratingAvg: 0,
@@ -325,6 +491,9 @@ export default function AdminShopsPage() {
     setNewName("");
     setNewPhone("");
     setNewEmail("");
+    setNewCommission("15");
+    setNewPrep("15");
+    setNewZoneIds([]);
     setCreateError(null);
     setCreating(false);
   };
@@ -363,12 +532,59 @@ export default function AdminShopsPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Search name, phone, email, slug…"
+          aria-label="Search shops"
+          className={`${field} max-w-xs`}
+        />
+        {selected.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-full bg-forest-50 px-3 py-1.5 ring-1 ring-forest-200">
+            <span className="text-xs font-semibold text-forest-900">
+              {selected.length} selected
+            </span>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void bulk("active")}
+              className="rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
+            >
+              {bulkBusy ? "Working…" : "Approve selected"}
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy}
+              onClick={() => void bulk("suspended")}
+              className="rounded-full px-3 py-1 text-xs font-semibold text-rose-800 ring-1 ring-rose-300 hover:bg-rose-50 disabled:opacity-60"
+            >
+              Suspend selected
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="text-xs font-semibold text-ink-soft underline underline-offset-2"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
         {FILTERS.map((s) => (
           <button
             key={s}
             type="button"
-            onClick={() => setFilter(s)}
+            onClick={() => {
+              setFilter(s);
+              setPage(1);
+            }}
             aria-pressed={filter === s}
             className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium transition-colors ${
               filter === s
@@ -413,8 +629,63 @@ export default function AdminShopsPage() {
               placeholder="Contact email"
               aria-label="Contact email"
             />
+            <label className="block">
+              <span className={label}>Commission (%)</span>
+              <input
+                className={field}
+                type="number"
+                min="0"
+                max="90"
+                step="any"
+                value={newCommission}
+                onChange={(e) => setNewCommission(e.target.value)}
+                aria-label="Commission percent"
+              />
+            </label>
+            <label className="block">
+              <span className={label}>Prep time (min)</span>
+              <input
+                className={field}
+                type="number"
+                min="0"
+                max="240"
+                value={newPrep}
+                onChange={(e) => setNewPrep(e.target.value)}
+                aria-label="Prep minutes"
+              />
+            </label>
+            <div className="sm:col-span-3">
+              <span className={label}>Serves zones</span>
+              <div className="flex flex-wrap gap-2">
+                {zones.map((z) => {
+                  const checked = newZoneIds.includes(z.id);
+                  return (
+                    <label
+                      key={z.id}
+                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors ${checked ? "bg-forest-800 text-ivory-50 ring-forest-800" : "bg-white text-ink-soft ring-line"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={() =>
+                          setNewZoneIds((ids) =>
+                            checked ? ids.filter((x) => x !== z.id) : [...ids, z.id],
+                          )
+                        }
+                      />
+                      {z.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          <p className={hint}>Manual intake lands pending — approve after verification. Zones, prep and commission are set in Edit.</p>
+          <p className={hint}>
+            Manual intake lands pending — approve after verification. Zones,
+            commission and prep are editable later, but a shop without a zone
+            can never receive an order.
+          </p>
           <button
             type="button"
             onClick={() => void create()}
@@ -433,20 +704,50 @@ export default function AdminShopsPage() {
           </p>
         </div>
       ) : (
-        <ul className="space-y-4">
-          {visible.map((s) => (
-            <ShopCard
-              key={s.id}
-              shop={s}
-              zones={zones}
-              live={live}
-              onSave={saveShop}
-              onStatus={(id, status, note) => void setStatus(id, status, note)}
-              onLinkVendor={linkVendor}
-              onResetPassword={resetVendorPassword}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-4">
+            {paged.map((s) => (
+              <ShopCard
+                key={s.id}
+                shop={s}
+                zones={zones}
+                live={live}
+                selected={selected.includes(s.id)}
+                onToggleSelect={() => toggleSelected(s.id)}
+                onSave={saveShop}
+                onStatus={(id, status, note) => void setStatus(id, status, note)}
+                onLinkVendor={linkVendor}
+                onResetPassword={resetVendorPassword}
+                onVerify={verifyShop}
+                onExpand={() => loadVerification(s.id)}
+                verification={verifications[s.id] ?? null}
+              />
+            ))}
+          </ul>
+          {pageCount > 1 && (
+            <nav className="flex items-center justify-center gap-3" aria-label="Shop pages">
+              <button
+                type="button"
+                disabled={clampedPage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line hover:text-ink disabled:opacity-50"
+              >
+                ← Previous
+              </button>
+              <span className="text-xs text-ink-soft">
+                Page {clampedPage} of {pageCount} · {visible.length} shops
+              </span>
+              <button
+                type="button"
+                disabled={clampedPage >= pageCount}
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line hover:text-ink disabled:opacity-50"
+              >
+                Next →
+              </button>
+            </nav>
+          )}
+        </>
       )}
     </div>
   );

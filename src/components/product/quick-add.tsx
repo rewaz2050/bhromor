@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductHref } from "@/lib/use-product-href";
 import { InlineSizeGuide } from "./size-guide";
 import { useState } from "react";
 import { haptic } from "@/lib/haptics";
@@ -23,6 +24,7 @@ export default function QuickAdd({
   onClose: () => void;
 }) {
   const { t, lang } = useLanguage();
+  const hrefFor = useProductHref();
   const [size, setSize] = useState(() => pickSelectableSize(product, null));
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
@@ -167,7 +169,7 @@ export default function QuickAdd({
             : t("product.selectSize")}
       </button>
       <Link
-        href={`/product/${product.slug}`}
+        href={hrefFor(product)}
         onClick={onClose}
         className="mt-3 flex min-h-11 items-center justify-center text-xs underline underline-offset-4"
       >

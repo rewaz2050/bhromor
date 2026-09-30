@@ -16,7 +16,7 @@
 import CheckoutAssurance from "./checkout-assurance";
 import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import { GiftStep, ReferralField, GIFT_OFF, giftFeeFor, giftPayload, type GiftFormValue } from "./gift-referral-step";
-import { useBagOffer } from "@/lib/use-bag-offer";
+import { useBagOffer, useBagOffersByShop } from "@/lib/use-bag-offer";
 import { carriedCoupon, forgetCoupon } from "@/lib/coupon-carry";
 import { validateGift } from "@/lib/gift";
 import {
@@ -38,10 +38,13 @@ import type { Product } from "@/lib/catalog";
 import {
   isShopOrderable,
   lineShopIds,
+  productShopId,
   shopById,
+  shopClosedCopy,
 } from "@/lib/shop-utils";
 import { getDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
+import { bnDigits } from "@/lib/arrival";
 import {
   DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
@@ -75,6 +78,7 @@ import {
   IconBolt,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { vacationReopenDate } from "@/lib/shop-vacation";
 import {
   DISTRICTS,
   PARA_CUSTOM,
@@ -111,6 +115,8 @@ import {
   StickyOrderBar,
 } from "./checkout-ui";
 import OrderSummaryCard, { type PlusState, type PriceSummary } from "./order-summary-card";
+import ShopSplitCard from "./shop-split-card";
+import { MULTI_SHOP_MAX, groupBasketByShop, primaryShopId } from "@/lib/multi-shop";
 import {
   fieldForServerError,
   firstErrorField,
@@ -399,9 +405,46 @@ export default function CheckoutView() {
       shops,
       lineShopIds(detail, shops[0]?.id ?? "")[0] ?? "",
     ) ?? null;
+  /**
+   * C2 — the bag, split by the shop that sells each line.
+   *
+   * One order stays one shop (the shop packs its own parcel and is paid its
+   * own share), so a bag with two shops' items is two orders from one tap.
+   * Everything below prices each parcel on its own, which is the only honest
+   * way to quote two deliveries.
+   */
+  const basketGroups = useMemo(() => {
+    const fallback = shops[0]?.id ?? "";
+    const productOf = new Map(detail.map((l) => [l.productId, l.product]));
+    return groupBasketByShop(
+      detail.map((l) => ({
+        productId: l.productId,
+        variantLabel: l.variantLabel,
+        qty: l.qty,
+        unitPrice: l.product.price,
+      })),
+      (id) => productShopId(productOf.get(id) ?? { shopId: undefined }, fallback),
+      fallback,
+    );
+  }, [detail, shops]);
+  const multiShop = basketGroups.length > 1;
+  const tooManyShopsInBag = basketGroups.length > MULTI_SHOP_MAX;
+  const primaryShop = primaryShopId(basketGroups);
+
+  /** The shops in this bag that are not taking orders — named, not blurred. */
+  const closedShops = useMemo(
+    () =>
+      basketGroups
+        .map((group) => shopById(shops, group.shopId))
+        .filter((shop): shop is NonNullable<typeof shop> => !!shop && !isShopOrderable(shop)),
+    [basketGroups, shops],
+  );
+
   const [form, setForm] = useState<FormState>(initialForm);
   const [placed, setPlaced] = useState<{
     orderId: string;
+    /** C2 — the other orders the same tap placed (one per shop). */
+    orders?: { id: string; total: number; charge: number; shopName?: string }[];
     phone: string;
     eta: string;
     charge: number;
@@ -439,6 +482,12 @@ export default function CheckoutView() {
     ok: boolean;
     text: string;
   } | null>(null);
+  /* C2 — what the code is worth on EACH shop's parcel. Two shops mean the code
+     is checked against each parcel on its own: a percent takes its share of
+     each, and a fixed amount lands once (on the biggest parcel) instead of
+     quietly doubling. */
+  const [couponByShop, setCouponByShop] = useState<Record<string, number>>({});
+  const [couponFreeByShop, setCouponFreeByShop] = useState<Record<string, boolean>>({});
   /* P1 #8 — the shop's OWN wallet numbers (no merchant account). A method
      with no configured number is simply not offered — COD always works. */
   const [wallets, setWallets] = useState<{ bkash?: string; nagad?: string } | null>(null);
@@ -646,15 +695,84 @@ export default function CheckoutView() {
           freeDelivery?: boolean;
           reason?: string | null;
           description?: string;
+          /** C2 — 'percent' | 'fixed' | 'free_delivery'; a fixed code is used once. */
+          type?: string;
         }
         let data: ValidateResponse | null = null;
         try {
+          // C2 — with several shops the code is priced against each parcel:
+          // the server does exactly the same at placement, so the quote cannot
+          // promise money a single order would refuse.
+          if (multiShop && basketGroups.length > 1) {
+            const answers = await Promise.all(
+              basketGroups.map(async (group) => {
+                const res = await fetch("/api/coupons/validate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    code: appliedCode,
+                    items: group.lines.map((l) => ({ productId: l.productId, qty: l.qty })),
+                    zoneId: derivedZoneId,
+                  }),
+                });
+                const body = (await res.json().catch(() => null)) as ValidateResponse | null;
+                return { shopId: group.shopId, ok: res.ok, body };
+              }),
+            );
+            const usable = answers.filter((a) => a.ok && a.body?.valid && a.body.code);
+            if (usable.length === 0) {
+              setCouponFreeByShop({});
+              setCouponByShop({});
+              setCouponFreeDelivery(false);
+              setCouponCheck({
+                code: null,
+                discount: 0,
+                problem:
+                  answers.find((a) => a.body?.reason)?.body?.reason ??
+                  "That code is no longer valid for this order.",
+              });
+              return;
+            }
+            const fixed = usable.some((a) => a.body?.type === "fixed");
+            // A fixed amount is ONE discount: it rides the biggest parcel.
+            const carrying = fixed
+              ? usable.filter((a) => a.shopId === primaryShop)
+              : usable;
+            const chosen = carrying.length > 0 ? carrying : usable.slice(0, 1);
+            const discountBy: Record<string, number> = {};
+            const freeBy: Record<string, boolean> = {};
+            let total = 0;
+            let anyFree = false;
+            for (const entry of chosen) {
+              const isFree = !!entry.body?.freeDelivery;
+              const value = isFree ? 0 : Math.max(0, entry.body?.discount ?? 0);
+              discountBy[entry.shopId] = value;
+              freeBy[entry.shopId] = isFree;
+              total += value;
+              anyFree = anyFree || isFree;
+            }
+            setCouponByShop(discountBy);
+            setCouponFreeByShop(freeBy);
+            setCouponFreeDelivery(anyFree);
+            const firstCode = chosen[0]?.body?.code ?? "";
+            setCouponCheck({ code: firstCode, discount: total, problem: null });
+            setCouponMsg({
+              ok: true,
+              text: anyFree
+                ? `${firstCode} — ${chosen.length > 1 ? "প্রতিটি পার্সেলে " : ""}Free Delivery`
+                : `${firstCode} applied — ${formatBdt(total)} off${chosen.length > 1 ? ` (${chosen.length}টি দোকানের পার্সেলে)` : ""}.`,
+            });
+            forgetCoupon();
+            return;
+          }
           const res = await fetch("/api/coupons/validate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code: appliedCode, items, zoneId: derivedZoneId }),
           });
           data = (await res.json().catch(() => null)) as ValidateResponse | null;
+          setCouponByShop({});
+          setCouponFreeByShop({});
           if (res.ok && data?.valid && data.code) {
             const isFree = !!data.freeDelivery;
             setCouponFreeDelivery(isFree);
@@ -688,7 +806,7 @@ export default function CheckoutView() {
     }, 350);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appliedCode, cartKey, derivedZoneId]);
+  }, [appliedCode, cartKey, derivedZoneId, multiShop, basketGroups, primaryShop]);
 
   const activeCoupon = useMemo(
     () => (couponCheck.code ? { code: couponCheck.code } : null),
@@ -756,6 +874,22 @@ export default function CheckoutView() {
 
   /** The one automatic offer this bag earns (flash drop or a complete set). */
   const bagOffer = useBagOffer(detail);
+  /* C2 — the same offer rules, per parcel. A "complete set" split across two
+     shops is not a set ANY shop can honour, so it must not be quoted. */
+  const offerGroups = useMemo(
+    () =>
+      basketGroups.map((group) => {
+        const keys = new Set(group.lines.map((l) => `${l.productId}::${l.variantLabel}`));
+        return {
+          shopId: group.shopId,
+          lines: detail
+            .filter((l) => keys.has(`${l.productId}::${l.variantLabel}`))
+            .map((l) => ({ product: l.product, qty: l.qty, lineTotal: l.lineTotal })),
+        };
+      }),
+    [basketGroups, detail],
+  );
+  const offersByShop = useBagOffersByShop(offerGroups);
   const giftCheck = useMemo(
     () => validateGift(giftPayload(giftValue), settings.gift),
     [giftValue, settings.gift],
@@ -805,6 +939,55 @@ export default function CheckoutView() {
     const isRain = settings.rainSurchargeEnabled;
     const isExpress =
       form.deliveryWindow === "express" && settings.expressDeliveryEnabled;
+    // C2 — every parcel is priced on its own: its own weight, its own
+    // delivery, its own free-delivery rule, its own coupon share.
+    const parcels = basketGroups.map((group) => {
+      const shop = shopById(shops, group.shopId) ?? null;
+      const groupCouponFree = multiShop
+        ? (couponFreeByShop[group.shopId] ?? false)
+        : couponFreeDelivery && !!activeCoupon;
+      const groupDiscount = multiShop
+        ? (couponByShop[group.shopId] ?? 0)
+        : activeCoupon
+          ? couponCheck.discount
+          : 0;
+      const groupOffer = multiShop ? (offersByShop[group.shopId] ?? null) : bagOffer;
+      const alreadyFree = groupCouponFree || plusActive;
+      const thresholdOffer = freeDeliveryFor(
+        group.subtotal,
+        freeDeliveryOffers(settings.freeDelivery, shop),
+        { courier: zone.id === "z4", pickup: form.isPickup, alreadyFree },
+      );
+      const groupBreakdown = deliveryBreakdown({
+        zone,
+        subtotal: group.subtotal,
+        weightKg: group.weightKg,
+        isNight,
+        isRain,
+        isExpress,
+        isPickup: form.isPickup,
+        tipAmount: 0,
+        couponFree: alreadyFree,
+        thresholdFree: thresholdOffer?.by ?? null,
+        shopPrepMinutes: shop?.prepMinutes ?? 15,
+        queueCount: 0,
+        rates: settings.surcharges,
+      });
+      const groupPromo = Math.min(
+        groupOffer?.discount ?? 0,
+        Math.max(0, group.subtotal - groupDiscount),
+      );
+      return {
+        group,
+        shop,
+        breakdown: groupBreakdown,
+        discount: groupDiscount,
+        couponFree: groupCouponFree,
+        promo: groupPromo,
+        offer: groupOffer,
+        total: orderTotal(group.subtotal, groupBreakdown.totalCharge, groupDiscount + groupPromo),
+      };
+    });
     const weightKg = detail.reduce((s, l) => s + l.qty * 0.5, 0);
     // Free-delivery threshold (2026-09-26): the platform rule, then the
     // shop's own — the same helpers the validator and ps_place_order mirror.
@@ -829,35 +1012,71 @@ export default function CheckoutView() {
       queueCount: 0,
       rates: settings.surcharges,
     });
-    const charge = breakdown.totalCharge;
-    const discount = activeCoupon ? couponCheck.discount : 0;
+    // One parcel: exactly the arithmetic this screen has always used. Several:
+    // the sum of the parcels, which is what the buyer actually pays.
+    const charge = parcels.reduce((sum, p) => sum + p.breakdown.totalCharge, 0);
+    const fullCharge = parcels.reduce((sum, p) => sum + p.breakdown.baseCharge, 0);
+    const discount = parcels.reduce((sum, p) => sum + p.discount, 0);
+    const promoTotal = parcels.reduce((sum, p) => sum + p.promo, 0);
+    const parcelsTotal = parcels.reduce((sum, p) => sum + p.total, 0);
+    const firstFree = parcels.find((p) => p.breakdown.thresholdFree)?.breakdown.thresholdFree ?? null;
     // Everything the shop can honour is re-derived from the same settings the
     // badges use; the RPC recomputes it again at placement.
-    const promo = bagOffer?.discount ?? 0;
-    const capped = Math.min(promo + referralCredit, Math.max(0, subtotal - discount));
+    const promo = promoTotal;
+    const capped = Math.min(
+      promo + referralCredit,
+      Math.max(0, subtotal - discount),
+    );
     return {
       charge,
-      fullCharge: breakdown.baseCharge,
-      freeDelivery: breakdown.freeDelivery,
-      couponFree: couponFreeDelivery && !!activeCoupon,
+      fullCharge,
+      freeDelivery: parcels.length > 0 && parcels.every((p) => p.breakdown.freeDelivery),
+      couponFree: parcels.some((p) => p.couponFree),
       plusFree: plusActive && !form.isPickup,
-      thresholdFree: breakdown.thresholdFree,
+      thresholdFree: firstFree,
       discount,
       promo: capped,
-      promoKind: bagOffer?.kind ?? null,
+      promoKind: (parcels.find((p) => p.offer)?.offer ?? bagOffer)?.kind ?? null,
       giftFee,
       referral: referralCredit,
       tip: form.tipAmount * 100,
-      total:
-        orderTotal(subtotal, charge, discount + capped) +
-        form.tipAmount * 100 +
-        giftFee,
+      total: parcelsTotal + form.tipAmount * 100 + giftFee,
       itemCount: detail.reduce((n, l) => n + l.qty, 0),
       isOutside: derivedZoneId === "z4",
       breakdown,
       distanceKm,
       isNight,
       isRain,
+      // C2 — the per-parcel view the screen lists above the combined card.
+      parcels: parcels.map((p) => ({
+        shopId: p.group.shopId,
+        shopName: p.shop?.name ?? "দোকান",
+        qty: p.group.qty,
+        subtotal: p.group.subtotal,
+        delivery: p.breakdown.totalCharge,
+        freeDelivery: p.breakdown.freeDelivery,
+        freeBy: p.breakdown.freeDelivery
+          ? p.couponFree
+            ? "coupon"
+            : plusActive
+              ? "plus"
+              : (p.breakdown.thresholdFree ?? null)
+          : null,
+        discount: p.discount,
+        promo: p.promo,
+        total: p.total,
+        closed: p.shop && !isShopOrderable(p.shop) ? shopClosedCopy(p.shop, t).text : null,
+        carries:
+          p.group.shopId === primaryShop
+            ? form.tipAmount > 0 && giftFee > 0
+              ? "both"
+              : giftFee > 0
+                ? "gift"
+                : form.tipAmount > 0
+                  ? "tip"
+                  : null
+            : null,
+      })),
     };
   }, [
     bagOffer,
@@ -877,11 +1096,29 @@ export default function CheckoutView() {
     plusActive,
     form.tipAmount,
     derivedZoneId,
+    basketGroups,
+    multiShop,
+    couponByShop,
+    couponFreeByShop,
+    offersByShop,
+    primaryShop,
+    shops,
+    t,
   ]);
 
   const empty = detail.length === 0;
-  const shopClosed = bagShop ? !isShopOrderable(bagShop) : false;
-  const mixedBag = lineShopIds(detail, shops[0]?.id ?? "").length > 1;
+  /* C2 — with several shops, the last parcel to be packed decides when the
+     order is ready, so the promise is the slowest kitchen's, not the first. */
+  const bagPrepMinutes = Math.max(
+    15,
+    ...basketGroups.map((g) => shopById(shops, g.shopId)?.prepMinutes ?? 15),
+  );
+  /**
+   * C2 — a mixed bag is no longer a dead end: it becomes one order per shop.
+   * What IS a dead end is a bag covering more shops than one checkout can
+   * carry, or a shop in the bag that is not taking orders today.
+   */
+  const anyShopClosed = closedShops.length > 0;
 
   /* P0 #3 — the minimum outside Sunamganj Sadar, said BEFORE the tap. */
   const courierFloor = settings.courierMinOrderPaisa;
@@ -901,7 +1138,8 @@ export default function CheckoutView() {
   const step2Done = step1Done && (form.payMethod === "cod" || form.trxid.trim().length >= 6);
   const currentStep: 1 | 2 | 3 = !step1Done ? 1 : !step2Done ? 2 : 3;
 
-  const submitBlocked = form.submitting || mixedBag || shopClosed || minOrderShortfall > 0;
+  const submitBlocked =
+    form.submitting || tooManyShopsInBag || anyShopClosed || minOrderShortfall > 0;
 
   /* Sticky bar — phones only, appears once the real button scrolls away. */
   useEffect(() => {
@@ -961,6 +1199,41 @@ export default function CheckoutView() {
           </button>
         </div>
         <p className="mt-2 text-xs text-ink-soft">{t("checkout.screenshotHint")}</p>
+
+        {/* C2 — one tap, several shops: every order is named here, because a
+            shopper holding one number will wait at the door for a parcel that
+            is coming from the other shop. */}
+        {placed.orders && placed.orders.length > 1 && (
+          <div
+            className="mx-auto mt-3 max-w-sm rounded-2xl bg-forest-50 p-4 text-left ring-1 ring-forest-200"
+            data-testid="receipt-orders"
+          >
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-forest-900">
+              এক চেকআউটে {bnDigits(String(placed.orders.length))}টি অর্ডার
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {placed.orders.map((entry) => (
+                <li key={entry.id} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="min-w-0 text-ink">
+                    <span className="select-all font-mono font-semibold text-forest-900">
+                      {entry.id}
+                    </span>
+                    {entry.shopName && (
+                      <span className="block text-[0.7rem] text-ink-soft">{entry.shopName}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-semibold text-forest-900">
+                    {formatBdt(entry.total)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-[0.68rem] leading-5 text-forest-900">
+              প্রতিটি দোকান নিজের পার্সেল আলাদাভাবে পাঠাবে — তাই{" "}
+              {bnDigits(String(placed.orders.length))}টি ডেলিভারি আসবে।
+            </p>
+          </div>
+        )}
 
         {/* 2026-09-24 — the shopper's phone, offered HERE because this is the
             one moment they are certainly looking: one tap and every step of
@@ -1467,11 +1740,14 @@ export default function CheckoutView() {
     } catch {}
     const data = (body ?? {}) as {
       order?: Order;
+      /** C2 — one row per shop, in the order the parcels were built. */
+      orders?: Order[];
       error?: string;
       errors?: { field: string; message: string }[];
       field?: string;
       smartCard?: { stamps: number; target: number; justCompleted: boolean };
     };
+    const placedOrders = data.orders ?? (data.order ? [data.order] : []);
 
     if (res.ok && data.order) {
       persistAddress();
@@ -1509,10 +1785,18 @@ export default function CheckoutView() {
       haptic("success");
       setPlaced({
         orderId: data.order.id,
+        // C2 — every order this tap created, so the receipt can name each
+        // parcel and the shopper stops wondering where the second one is.
+        orders: placedOrders.map((placedOrder, index) => ({
+          id: placedOrder.id,
+          total: placedOrder.total,
+          charge: placedOrder.deliveryCharge,
+          shopName: summary.parcels?.[index]?.shopName ?? bagShop?.name ?? undefined,
+        })),
         phone: form.phone,
         ordered: detail.map((l) => l.product),
         eta: form.isPickup
-          ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+          ? `Ready in ${bagPrepMinutes} min`
           : isCourierZone(derivedZoneId)
             ? courierEta(lang)
             : (summary.breakdown?.eta ?? data.order.etaLabel),
@@ -1579,7 +1863,7 @@ export default function CheckoutView() {
   const deliveryPromise = lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN;
   // P1 #17 — outside the rider area the honest answer is days, not minutes.
   const etaLabel = form.isPickup
-    ? `Ready in ${bagShop?.prepMinutes ?? 15} min`
+    ? `Ready in ${bagPrepMinutes} min`
     : isCourierZone(derivedZoneId)
       ? courierEta(lang)
       : (summary.breakdown?.eta ?? zone.etaLabel);
@@ -1612,7 +1896,7 @@ export default function CheckoutView() {
       giftWrap={giftValue.wrap}
       plusState={plusState}
       plusInfo={plusInfo}
-      bagShopPrep={bagShop?.prepMinutes ?? 15}
+      bagShopPrep={bagPrepMinutes}
     />
   );
 
@@ -2133,7 +2417,7 @@ export default function CheckoutView() {
                       className={`rounded-full px-3 py-1.5 text-xs ring-1 ${form.pickupSlot === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
                     >
                       {slot === "now"
-                        ? `এখনই (${bagShop?.prepMinutes ?? 15} মিনিট)`
+                        ? `এখনই (${bagPrepMinutes} মিনিট)`
                         : DELIVERY_SLOT_LABELS[slot as DeliverySlotKey][lang]}
                     </button>
                   ))}
@@ -2633,17 +2917,38 @@ export default function CheckoutView() {
             {/* The summary card on phones lives HERE, in the step; desktop keeps the aside. */}
             <div className="lg:hidden">{summaryCard(true)}</div>
 
+            {/* C2 — what this tap becomes: one order per shop, each with its
+                own delivery. Shown before the total, not after the tap. */}
+            {multiShop && summary.parcels && (
+              <div className="lg:hidden">
+                <ShopSplitCard parcels={summary.parcels} courier={summary.isOutside} />
+              </div>
+            )}
+
             <div className="space-y-3 lg:space-y-3">
-              {mixedBag && (
-                <p role="alert" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-                  ব্যাগে {lineShopIds(detail, shops[0]?.id ?? "").length}টি আলাদা দোকানের পণ্য আছে — একটি অর্ডার একটি দোকান থেকেই হয়। দোকান আলাদা করে অর্ডার করুন।
+              {/* C2 — several shops are fine now; too many are not, because
+                  every parcel is a real delivery to arrange. */}
+              {tooManyShopsInBag && (
+                <p role="alert" data-testid="too-many-shops" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
+                  ব্যাগে {basketGroups.length}টি দোকানের পণ্য আছে — এক চেকআউটে সর্বোচ্চ {MULTI_SHOP_MAX}টি দোকান সম্ভব। কয়েকটি পণ্য ব্যাগ থেকে সরিয়ে আলাদা করে অর্ডার করুন।
                 </p>
               )}
-              {shopClosed && bagShop && (
-                <p role="alert" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-                  “{bagShop.name}” এখন বন্ধ — খুললে আপনার ব্যাগ থেকেই অর্ডার করতে পারবেন।
+              {/* One line per shop that cannot take the order: closed for the
+                  day, or away on a booked holiday (B6). */}
+              {closedShops.map((shop) => (
+                <p
+                  key={shop.id}
+                  role="alert"
+                  data-testid="checkout-shop-closed"
+                  className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200"
+                >
+                  {vacationReopenDate(shop.vacation)
+                    ? t("checkout.shopHolidayBag")
+                        .replace("{shop}", shop.name)
+                        .replace("{date}", vacationReopenDate(shop.vacation) ?? "")
+                    : t("checkout.shopClosedBag").replace("{shop}", shop.name)}
                 </p>
-              )}
+              ))}
               {minOrderShortfall > 0 && (
                 <p
                   role="alert"
@@ -2695,7 +3000,7 @@ export default function CheckoutView() {
                 : `${t("checkout.placeOrder")} · ${formatBdt(summary.total)}`}
               {!form.submitting && <IconArrowRight className="h-4 w-4" />}
             </button>
-            {(mixedBag || shopClosed) && (
+            {(tooManyShopsInBag || anyShopClosed) && (
               <p className="mt-3 text-xs text-amber-800">উপরের ব্যাগ-সমস্যাটি ঠিক করে তারপর অর্ডার করুন।</p>
             )}
             <p className="mt-4 text-xs leading-5 text-ink-soft">
@@ -2725,7 +3030,14 @@ export default function CheckoutView() {
 
       {/* Order summary — desktop rail (phones get it inside step ③) */}
       <aside className="hidden lg:block">
-        <div className="sticky top-28">{summaryCard(false)}</div>
+        <div className="sticky top-28 space-y-3">
+          {summaryCard(false)}
+          {/* C2 — the parcels, on the desktop rail too: the delivery total
+              only makes sense once the split is visible. */}
+          {multiShop && summary.parcels && (
+            <ShopSplitCard parcels={summary.parcels} courier={summary.isOutside} />
+          )}
+        </div>
       </aside>
     </div>
   );

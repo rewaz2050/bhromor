@@ -21,9 +21,21 @@ import {
   patchVendorShop,
   useVendorEarnings,
   useVendorOrders,
+  useShopFollowers,
+  useVendorFunnel,
+  useVendorPromos,
+  useVendorReviews,
   useVendorProducts,
   vendorErrorMessage,
 } from "@/lib/use-vendor";
+import {
+  isLateOrder,
+  serviceScore,
+  shopPath,
+  splitNeedsAction,
+  todayStats,
+} from "@/lib/vendor-dashboard";
+import { useVendorOrderAlert } from "@/lib/use-vendor-order-alert";
 import {
   WEEKDAY_LABELS,
   hourLabel,
@@ -34,6 +46,15 @@ import {
 } from "@/lib/insights";
 import { shelfState } from "@/lib/product-shelf";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
+import ServiceScoreCard from "@/components/vendor/service-score-card";
+import FollowersCard from "@/components/vendor/followers-card";
+import FunnelCard from "@/components/vendor/funnel-card";
+import VerificationCard from "@/components/vendor/verification-card";
+import VacationCard from "@/components/vendor/vacation-card";
+import type { ShopVacation } from "@/lib/catalog";
+import { isOnVacation, vacationVendorLine } from "@/lib/shop-vacation";
+import PromoCard from "@/components/vendor/promo-card";
+import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -41,16 +62,42 @@ export default function VendorDashboardPage() {
   const orders = useVendorOrders(authed);
   const earnings = useVendorEarnings(authed);
   const prods = useVendorProducts(authed);
+  // B1 — followers come from their own row-level-secured read.
+  const follows = useShopFollowers(authed);
+  // B2 — approved reviews of this shop's products, with the reply writer.
+  const reviews = useVendorReviews(authed);
+  // B3 — the shop's own promo codes and what they have cost so far.
+  const promos = useVendorPromos(authed);
+  // B4 — the shop's own funnel: visits → product → bag → checkout → order.
+  const funnel = useVendorFunnel(authed);
   const [toggling, setToggling] = useState(false);
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [shareNote, setShareNote] = useState<string | null>(null);
 
+  // B6 — the holiday lives in local state until the save answers, because the
+  // dashboard's own `me` is refreshed by a reload, not by this request.
+  const [savedVacation, setSavedVacation] = useState<ShopVacation | null | undefined>(undefined);
   const isOpen = open ?? me?.shop.isOpen ?? false;
+  // B6 — what the dashboard shows as the shop's holiday: the save's answer if
+  // there has been one, otherwise the shop row we loaded with.
+  const vacation = savedVacation !== undefined ? savedVacation : me?.shop.vacation;
+  const onHoliday = isOnVacation(vacation);
   const list = orders.orders;
-  const needsAction = list.filter(
-    (o) => o.status === "pending" || o.status === "confirmed",
-  );
-  const inKitchen = list.filter((o) => o.status === "preparing").length;
+  // 2026-09-27 — one card per real job (to confirm / preparing / rider
+  // waiting) plus a late warning, instead of one lumped "Needs action" that
+  // hid a 40-minute-old unconfirmed order among the fresh ones.
+  const work = splitNeedsAction(list);
+  const inKitchen = work.preparing.length;
+  const today = todayStats(list);
+  // A2 (2026-09-28) — the shop's own service score over the last week, from
+  // the very orders this page already loaded. No order in the window means
+  // no score, not a fake 0%.
+  const service = serviceScore(list, { prepMinutes: me?.shop.prepMinutes ?? 0 });
+  const alertOrder = useVendorOrderAlert(list, {
+    enabled: me !== null && me.shop.status === "active",
+    shopName: me?.shop.name,
+  });
   // P2 #23 — real demand analytics over the shop's most recent ≤100 orders
   // (the same list this page already shows — cancellations never count).
   const weekday = weekdayProfile(list);
@@ -65,11 +112,48 @@ export default function VendorDashboardPage() {
     return st === "out" || st === "low";
   });
 
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const todayRevenue = list
-    .filter((o) => o.createdAt >= startOfDay.getTime() && o.status !== "cancelled")
-    .reduce((s, o) => s + o.total, 0);
+  const shareUrl =
+    me?.shop.slug && typeof window !== "undefined"
+      ? `${window.location.origin}${shopPath(me.shop.slug)}`
+      : me?.shop.slug
+        ? shopPath(me.shop.slug)
+        : "";
+
+  const copyShopLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareNote("Link copied — paste it anywhere.");
+    } catch {
+      setShareNote(shareUrl);
+    }
+  };
+
+  const shareShop = async () => {
+    if (!shareUrl) return;
+    try {
+      if (typeof navigator !== "undefined" && "share" in navigator) {
+        await navigator.share({ title: me?.shop.name ?? "My shop", url: shareUrl });
+        return;
+      }
+    } catch {
+      // The shop closed the share sheet — fall through to copying.
+    }
+    await copyShopLink();
+  };
+
+  const saveVacation = async (patch: {
+    start: string | null;
+    end: string | null;
+    note: string;
+  }): Promise<void> => {
+    const shop = await patchVendorShop({
+      vacationStart: patch.start ?? "",
+      vacationEnd: patch.end ?? "",
+      vacationNote: patch.note,
+    });
+    setSavedVacation(shop.vacation ?? null);
+  };
 
   const flipOpen = async () => {
     setToggling(true);
@@ -91,14 +175,61 @@ export default function VendorDashboardPage() {
         sub={`${me?.role === "owner" ? "Owner" : "Staff"} account · ${me?.shop.prepMinutes ?? 15} min prep · ${Math.round(me?.shop.commissionPct ?? 15)}% commission`}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* The ring (2026-09-27): the dashboard is not a silent poll any more. */}
+      {me?.shop.status === "active" && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-forest-50 px-4 py-3 ring-1 ring-forest-200">
+          <p className="text-xs text-forest-900">
+            <span className="font-semibold">
+              {alertOrder.state.armed ? "New orders ring on this device." : "New orders are silent right now."}
+            </span>{" "}
+            {alertOrder.state.permission === "denied"
+              ? "The browser blocked notifications — allow them in the address-bar lock, then tap Test."
+              : "Keep this page open on the counter phone; the bell works while the dashboard is open."}
+          </p>
+          <div className="flex gap-2">
+            {alertOrder.state.armed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void alertOrder.testAlert()}
+                  className="rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+                >
+                  Test the bell
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alertOrder.disableAlerts()}
+                  className="rounded-full px-4 py-1.5 text-xs font-semibold text-ink-soft ring-1 ring-line hover:text-ink"
+                >
+                  Turn off
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void alertOrder.enableAlerts()}
+                className="rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+              >
+                Turn the bell on
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
           <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
-            Needs action
+            To confirm
           </p>
           <p className="mt-1 font-display text-3xl text-forest-900">
-            {orders.loading ? "…" : needsAction.length}
+            {orders.loading ? "…" : work.fresh.length}
           </p>
+          {work.late.length > 0 && !orders.loading && (
+            <p className="mt-1 rounded-lg bg-amber-100 px-2 py-1 text-[0.68rem] font-semibold text-amber-900">
+              ⚠ {work.late.length} waiting over 10 minutes
+            </p>
+          )}
           <Link
             href="/vendor/orders?status=pending"
             className="mt-1 inline-block text-xs font-semibold text-forest-800 underline underline-offset-2"
@@ -122,10 +253,31 @@ export default function VendorDashboardPage() {
         </div>
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
           <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Ready for rider
+          </p>
+          <p className="mt-1 font-display text-3xl text-forest-900">
+            {orders.loading ? "…" : work.readyForRider.length}
+          </p>
+          <Link
+            href="/vendor/orders?status=ready-for-pickup"
+            className="mt-1 inline-block text-xs font-semibold text-forest-800 underline underline-offset-2"
+          >
+            View →
+          </Link>
+        </div>
+        <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+          <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Today&rsquo;s sales
           </p>
           <p className="mt-1 font-display text-3xl text-forest-900">
-            {orders.loading ? "…" : formatBdt(todayRevenue)}
+            {orders.loading ? "…" : formatBdt(today.revenue)}
+          </p>
+          <p className="mt-1 text-[0.68rem] text-ink-soft">
+            {orders.loading
+              ? "…"
+              : `${today.orders} orders · avg ${formatBdt(today.average)}${
+                  today.cancelled > 0 ? ` · ${today.cancelled} cancelled` : ""
+                }`}
           </p>
           <Link
             href="/vendor/earnings"
@@ -138,8 +290,8 @@ export default function VendorDashboardPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Shop sign
           </p>
-          <p className="mt-1 font-display text-3xl text-forest-900">
-            {isOpen ? "Open" : "Closed"}
+          <p data-testid="shop-sign" className="mt-1 font-display text-3xl text-forest-900">
+            {onHoliday ? "On holiday" : isOpen ? "Open" : "Closed"}
           </p>
           <button
             type="button"
@@ -149,13 +301,128 @@ export default function VendorDashboardPage() {
           >
             {toggling ? "Saving…" : isOpen ? "Close the shop" : "Open the shop"}
           </button>
+          {/* B6 — the switch is not broken while the holiday covers it: saying
+              so stops the owner from pressing it twice a day. */}
+          {onHoliday && (
+            <p className="mt-1 text-[0.68rem] leading-4 text-amber-800">
+              {vacationVendorLine(vacation)}
+            </p>
+          )}
         </div>
       </div>
+
+      {/* Your shop, shareable (2026-09-27): the owner finally has the link. */}
+      {me && (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
+              Your shop
+            </p>
+            <p className="mt-0.5 truncate text-sm text-ink">
+              {shareUrl || shopPath(me.shop.slug)}
+            </p>
+            {shareNote && <p className="mt-1 text-xs text-forest-800">{shareNote}</p>}
+          </div>
+          {me.shop.freeDeliveryMinPaisa ? (
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.68rem] font-semibold text-emerald-800">
+              Free delivery over {formatBdt(me.shop.freeDeliveryMinPaisa)}
+            </span>
+          ) : (
+            <span className="rounded-full bg-ivory-200 px-3 py-1 text-[0.68rem] font-semibold text-ink-soft">
+              No free-delivery offer
+            </span>
+          )}
+          <Link
+            href={shopPath(me.shop.slug)}
+            className="rounded-full px-4 py-1.5 text-xs font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100"
+          >
+            View storefront
+          </Link>
+          <button
+            type="button"
+            onClick={() => void shareShop()}
+            className="rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+          >
+            Share link
+          </button>
+        </div>
+      )}
 
       {toggleError && (
         <div className="mt-3">
           <ErrorBox message={toggleError} />
         </div>
+      )}
+
+      {me && (
+        <ServiceScoreCard
+          score={service}
+          prepMinutes={me.shop.prepMinutes}
+          loading={orders.loading}
+        />
+      )}
+
+      {me && (
+        <div className="mt-6">
+          <VerificationCard
+            verification={me.shop.verification}
+            shopName={me.shop.name}
+          />
+        </div>
+      )}
+
+      {me && (
+        <div className="mt-6">
+          <VacationCard
+            vacation={vacation}
+            onSave={saveVacation}
+            editable={me.role === "owner"}
+          />
+        </div>
+      )}
+
+      <div className="mt-6">
+        <FunnelCard
+          funnel={funnel.funnel}
+          loading={funnel.loading}
+          missing={funnel.missing}
+          error={funnel.error}
+          onRetry={funnel.refresh}
+        />
+      </div>
+
+      {me && promos.limits && (
+        <div className="mt-6">
+          <PromoCard
+            promos={promos.promos}
+            limits={promos.limits}
+            usedTotal={promos.usedTotal}
+            discountBornePaisa={promos.discountBornePaisa}
+            commissionPct={Math.round(me.shop.commissionPct ?? 15)}
+            loading={promos.loading}
+            onCreate={promos.create}
+            onToggle={promos.setActive}
+          />
+        </div>
+      )}
+
+      {me && (
+        <VendorReviewsCard
+          reviews={reviews.reviews}
+          onReply={reviews.reply}
+          loading={reviews.loading}
+          limit={3}
+          allHref="/vendor/reviews"
+        />
+      )}
+
+      {me && (
+        <FollowersCard
+          followers={follows.followers}
+          neverReached={follows.neverReached}
+          rows={follows.rows}
+          loading={follows.loading}
+        />
       )}
 
       {/* Round 4 — what a new shop still has to do; hides itself once complete. */}
@@ -170,6 +437,30 @@ export default function VendorDashboardPage() {
             }}
             opening={toggling}
           />
+        </div>
+      )}
+
+      {lowStock.length > 0 && (
+        <div className="mt-6 rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-200">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-900">
+            Restock soon
+          </h3>
+          <ul className="mt-2 space-y-1.5">
+            {lowStock.slice(0, 5).map((pp) => (
+              <li key={pp.id} className="flex items-center gap-3 text-sm">
+                <span className="min-w-0 flex-1 truncate text-ink">{pp.name}</span>
+                <span className="shrink-0 text-xs font-semibold text-amber-900">
+                  {shelfState(pp) === "out" ? "Sold out" : "Low"}
+                </span>
+                <Link
+                  href={`/vendor/products/${encodeURIComponent(pp.id)}`}
+                  className="shrink-0 text-xs font-semibold text-forest-800 underline underline-offset-2"
+                >
+                  Restock →
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -196,8 +487,13 @@ export default function VendorDashboardPage() {
                     className="flex items-center gap-3 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line transition hover:ring-forest-400"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-forest-900">
+                      <p className="flex items-center gap-2 truncate text-sm font-semibold text-forest-900">
                         {o.id} · {o.customer.name}
+                        {isLateOrder(o) && (
+                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wide text-amber-900">
+                            late
+                          </span>
+                        )}
                       </p>
                       <p className="text-xs text-ink-soft">
                         {formatDateTime(o.createdAt)} · {formatBdt(o.total)}

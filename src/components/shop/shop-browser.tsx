@@ -1,5 +1,6 @@
 "use client";
 
+import { PRODUCT_LINK_SELECTOR } from "@/lib/product-url";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -281,7 +282,7 @@ export default function ShopBrowser({
    * there. A push navigation creates a new entry, so it never inherits it.
    */
   const rememberScroll = (event: React.MouseEvent<HTMLElement>) => {
-    const anchor = (event.target as Element | null)?.closest?.("a[href^='/product/']");
+    const anchor = (event.target as Element | null)?.closest?.(PRODUCT_LINK_SELECTOR);
     if (!anchor) return;
     try {
       window.history.replaceState({ ...(window.history.state ?? {}), [SHOP_SCROLL_KEY]: window.scrollY }, "");

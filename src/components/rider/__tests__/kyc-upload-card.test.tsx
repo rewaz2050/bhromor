@@ -40,7 +40,7 @@ describe("KycUploadCard", () => {
   it("uploads through sign → Cloudinary → save and updates the badge", async () => {
     fetchMock
       .mockResolvedValueOnce(json(stateEmpty))
-      .mockResolvedValueOnce(json({ cloudName: "demo", apiKey: "k", timestamp: 1, folder: "prosanti/rider-kyc", signature: "s", uploadUrl: "https://api.cloudinary.com/v1_1/demo/image/upload" }))
+      .mockResolvedValueOnce(json({ cloudName: "demo", apiKey: "k", timestamp: 1, folder: "prosanti/rider-kyc", allowedFormats: "avif,jpeg,jpg,png,webp", signature: "s", uploadUrl: "https://api.cloudinary.com/v1_1/demo/image/upload" }))
       .mockResolvedValueOnce(json({ secure_url: URL_OK }))
       .mockResolvedValueOnce(json({ ...stateEmpty, kyc: { nid_front: URL_OK }, missing: ["nid_back", "selfie"] }));
     render(<KycUploadCard />);

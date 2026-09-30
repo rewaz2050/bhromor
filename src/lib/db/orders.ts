@@ -330,7 +330,11 @@ export async function loadOrderSnapshot(
     db.from("product_variants").select("*").eq("active", true),
     db.from("product_media").select("*").order("sort_order"),
     db.from("delivery_zones").select("*").eq("active", true),
-    db.from("coupons").select("*").eq("active", true),
+    // B3 — a shop's own code carries its owner's name so the storefront can
+    // say "only for <shop>'s products" instead of a cold refusal. The join is
+    // free here (one row per coupon) and RLS never sees it: the snapshot runs
+    // on the service client.
+    db.from("coupons").select("*, shops(name)").eq("active", true),
     pricingOnly ? emptyResult : db.from("shops").select("*"),
     // ৳1000+-always-free toggle + wallets + promo levers; read failure keeps
     // the defaults.
@@ -389,7 +393,14 @@ export async function loadOrderSnapshot(
     }
   }
   const zones = ((zonesRes.data ?? []) as DbZone[]).map(mapZone);
-  const coupons = ((couponsRes.data ?? []) as DbCoupon[]).map(mapCoupon);
+  const coupons = ((couponsRes.data ?? []) as (DbCoupon & {
+    shops?: { name: string } | { name: string }[] | null;
+  })[]).map((row) => {
+    const joined = row.shops;
+    const shopName = joined ? (Array.isArray(joined) ? joined[0]?.name : joined.name) : undefined;
+    const coupon = mapCoupon(row);
+    return shopName ? { ...coupon, shopName } : coupon;
+  });
   if (pricingOnly) {
     return { products, zones, coupons, variants, mediaByProduct, shops: [] };
   }
@@ -565,18 +576,19 @@ export const placementErrorFrom = (error: {
   );
 };
 
-export async function placeLiveOrder(
+/**
+ * C2 — the RPC arguments for ONE order. Shared by the single-order path and
+ * the per-shop batch, so a parcel's money is built exactly once.
+ */
+const orderRpcArgs = (
   draft: ValidOrderDraft,
   snapshot: OrderSnapshot,
-): Promise<Order | null> {
-  const db = getSupabaseService();
-  if (!db) return null;
-
+): { order: Record<string, unknown>; items: Record<string, unknown>[] } => {
   const variantByLine = draft.items.map((it) =>
     resolveVariant(snapshot.variants, it.product.id, it.variantLabel),
   );
-  const { data: orderId, error } = await db.rpc("ps_place_order", {
-    p_order: {
+  return {
+    order: {
       customer_name: draft.customer.name,
       customer_phone: draft.customer.phone,
       area: draft.customer.para || draft.customer.area,
@@ -618,12 +630,26 @@ export async function placeLiveOrder(
       payment_method: draft.paymentMethod ?? "cod",
       payment_ref: draft.paymentRef ?? null,
     },
-    p_items: draft.items.map((it, i) => ({
+    items: draft.items.map((it, i) => ({
       product_id: it.product.id,
       variant_id: variantByLine[i]?.id ?? null,
       variant_label: it.variantLabel,
       qty: it.qty,
     })),
+  };
+};
+
+export async function placeLiveOrder(
+  draft: ValidOrderDraft,
+  snapshot: OrderSnapshot,
+): Promise<Order | null> {
+  const db = getSupabaseService();
+  if (!db) return null;
+
+  const { order, items } = orderRpcArgs(draft, snapshot);
+  const { data: orderId, error } = await db.rpc("ps_place_order", {
+    p_order: order,
+    p_items: items,
   });
   if (error || !orderId) {
     const raw = (error ?? {}) as {
@@ -659,6 +685,61 @@ export async function placeLiveOrder(
     );
   }
   return placed;
+}
+
+/**
+ * C2 — one tap, one order per shop, ALL OR NOTHING.
+ *
+ * `ps_place_multi_order` loops over the parcels inside a single function, and
+ * a Postgres function is one transaction: if the third shop is out of stock
+ * or closed, the first two orders are rolled back with it. The buyer never
+ * holds half a checkout and never pays for a parcel that is not coming.
+ */
+export async function placeLiveMultiOrder(
+  drafts: ValidOrderDraft[],
+  snapshot: OrderSnapshot,
+): Promise<Order[] | null> {
+  const db = getSupabaseService();
+  if (!db) return null;
+  if (drafts.length <= 1) {
+    const single = drafts[0] ? await placeLiveOrder(drafts[0], snapshot) : null;
+    return single ? [single] : null;
+  }
+  const { data: ids, error } = await db.rpc("ps_place_multi_order", {
+    p_orders: drafts.map((draft) => orderRpcArgs(draft, snapshot)),
+  });
+  if (error || !ids) {
+    const raw = (error ?? {}) as {
+      code?: string;
+      message?: string;
+      details?: string;
+      hint?: string;
+    };
+    console.error(
+      "[orders] ps_place_multi_order failed",
+      JSON.stringify({
+        code: raw.code ?? null,
+        message: raw.message ?? "rpc returned no order ids",
+        details: raw.details ?? null,
+        hint: raw.hint ?? null,
+        shops: drafts.length,
+      }),
+    );
+    throw placementErrorFrom(raw);
+  }
+  const orders: Order[] = [];
+  for (const id of (ids as string[]) ?? []) {
+    const placed = await findLiveOrderById(db, id, drafts[0].customer.phone);
+    if (placed) orders.push(placed);
+  }
+  if (orders.length === 0) {
+    console.error(
+      "[orders] multi-order placed but read-back failed",
+      JSON.stringify({ ids, phone: drafts[0].customer.phone }),
+    );
+    return null;
+  }
+  return orders;
 }
 
 /* ------------------------------------------------------------------ */

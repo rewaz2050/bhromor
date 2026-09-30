@@ -81,7 +81,11 @@ export default function OnboardingChecklist({
               {!step.done && <p className="text-xs text-ink-soft">{step.detail}</p>}
             </div>
             {!step.done &&
-              (step.href ? (
+              (step.cta === "" ? (
+                <span className="rounded-full bg-ivory-200 px-3 py-1 text-[0.68rem] font-semibold text-ink-soft">
+                  Waiting on staff
+                </span>
+              ) : step.href ? (
                 <Link
                   href={step.href}
                   className="inline-flex min-h-11 items-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-white hover:bg-forest-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-800 focus-visible:ring-offset-2"

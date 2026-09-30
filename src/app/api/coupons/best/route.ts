@@ -10,6 +10,7 @@
  */
 
 import { bestCoupon } from "@/lib/coupons";
+import { productShopId } from "@/lib/shop-utils";
 import { resolveCustomer } from "@/lib/customer-auth";
 import { loadOrderSnapshot } from "@/lib/db/orders";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
@@ -55,6 +56,8 @@ export async function POST(request: Request) {
   }
 
   const lines: { productCategory: string; subtotal: number }[] = [];
+  // B3 — the shops in this cart; a shop's own code is only a candidate here.
+  const cartShops = new Set<string>();
   for (const item of rawItems) {
     const product = snapshot.products.find((p) => p.id === item?.productId);
     const qty =
@@ -62,10 +65,11 @@ export async function POST(request: Request) {
     if (!product || !Number.isFinite(qty) || qty < 1 || qty > 10) {
       return apiError("The cart changed — please review it and retry.", 422);
     }
+    cartShops.add(productShopId(product, ""));
     lines.push({ productCategory: product.category, subtotal: product.price * qty });
   }
   const subtotal = lines.reduce((s, l) => s + l.subtotal, 0);
-  const best = bestCoupon(snapshot.coupons, lines, subtotal, zoneId);
+  const best = bestCoupon(snapshot.coupons, lines, subtotal, zoneId, Date.now(), [...cartShops]);
   if (!best) return apiJson({ none: true as const });
   return apiJson(best);
 }

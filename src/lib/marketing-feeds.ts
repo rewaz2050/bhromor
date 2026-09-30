@@ -11,7 +11,8 @@
  * than dropped, so Meta/Google keep their history.
  */
 
-import type { Product } from "./catalog";
+import { productHref } from "@/lib/product-url";
+import type { Product, Shop } from "./catalog";
 import { absoluteUrl } from "./site-url";
 
 export const FEED_BRAND = "PROSANTI";
@@ -70,7 +71,10 @@ export const META_FEED_HEADER = [
   "brand",
 ].join(",");
 
-export const buildMetaFeed = (products: Product[]): string => {
+export const buildMetaFeed = (
+  products: Product[],
+  shops: Pick<Shop, "id" | "slug">[] = [],
+): string => {
   const rows = products.map((product) => {
     const images = productImages(product);
     const fields = [
@@ -80,7 +84,7 @@ export const buildMetaFeed = (products: Product[]): string => {
       availabilityOf(product),
       "new",
       feedPriceMeta(product.price),
-      absoluteUrl(`/product/${product.slug}`),
+      absoluteUrl(productHref(product, shops)),
       images[0] ?? feedImageUrl("/images/hero.jpg"),
       images.slice(1, 5).join(","),
       FEED_BRAND,
@@ -94,7 +98,11 @@ export const buildMetaFeed = (products: Product[]): string => {
 /* Google Merchant Center (free listings) — RSS 2.0 with g: namespace  */
 /* ------------------------------------------------------------------ */
 
-export const buildGoogleFeed = (products: Product[], origin: string): string => {
+export const buildGoogleFeed = (
+  products: Product[],
+  origin: string,
+  shops: Pick<Shop, "id" | "slug">[] = [],
+): string => {
   const items = products
     .map((product) => {
       const images = productImages(product);
@@ -103,7 +111,7 @@ export const buildGoogleFeed = (products: Product[], origin: string): string => 
         `      <g:id>${xmlEscape(product.id)}</g:id>`,
         `      <title>${xmlEscape(clip(product.name, 150))}</title>`,
         `      <description>${xmlEscape(clip(product.shortDescription, 2000))}</description>`,
-        `      <g:link>${xmlEscape(absoluteUrl(`/product/${product.slug}`))}</g:link>`,
+        `      <g:link>${xmlEscape(absoluteUrl(productHref(product, shops)))}</g:link>`,
         `      <g:image_link>${xmlEscape(images[0] ?? feedImageUrl("/images/hero.jpg"))}</g:image_link>`,
         ...images.slice(1, 5).map(
           (src) => `      <g:additional_image_link>${xmlEscape(src)}</g:additional_image_link>`,

@@ -1,12 +1,18 @@
 /**
  * Staff link-rider (marketplace phase 3, slice 6).
- * POST { email } → finds the Auth user and links it as this rider's login.
- * Works before approval too: rider API access unlocks when staff flips the
- * rider to active (the rider wrapper checks status, slice 8).
+ * POST { email } or { phone } → finds the Auth user and links it as this
+ * rider's login. Works before approval too: rider API access unlocks when
+ * staff flips the rider to active (the rider wrapper checks status, slice 8).
+ *
+ * 2026-09-27: the mobile number works too — a rider who left the e-mail
+ * empty signs in with a synthetic `<phone>@…` address, and the old
+ * e-mail-only form made those riders impossible to link from the panel.
  */
 import { staffRoute, routeId } from "../../../_lib";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { AdminInputError } from "@/lib/db/admin";
+import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "@/lib/phone";
+import { describeLoginEmail, phoneLoginEmail } from "@/lib/phone-login";
 import { apiJson } from "@/lib/api-response";
 
 export const POST = staffRoute(
@@ -16,10 +22,21 @@ export const POST = staffRoute(
     if (!id) throw new AdminInputError("Rider not found.", 404);
     const body = (await request.json().catch(() => null)) as {
       email?: string;
+      phone?: string;
     } | null;
     const email = (body?.email ?? "").trim().toLowerCase().slice(0, 160);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new AdminInputError("Enter a valid email address.");
+    const typedPhone = (body?.phone ?? "").trim();
+    let lookup = email;
+    let byPhone = false;
+    if (typedPhone !== "") {
+      const phone = normalizeBdPhone(asciiDigits(typedPhone));
+      if (!isPlausibleBdPhone(phone)) {
+        throw new AdminInputError("Enter a valid mobile number (01XXXXXXXXX).");
+      }
+      lookup = phoneLoginEmail(phone);
+      byPhone = true;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new AdminInputError("Enter the rider's email address or mobile number.");
     }
     const { data: rider, error: riderError } = await db
       .from("riders")
@@ -37,17 +54,19 @@ export const POST = staffRoute(
       await service.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (listError) throw new Error("user lookup failed");
     const match = listed.users.find(
-      (u) => (u.email ?? "").toLowerCase() === email,
+      (u) => (u.email ?? "").toLowerCase() === lookup,
     );
     if (!match) {
       throw new AdminInputError(
-        "No account uses that email yet — ask the rider to sign up first.",
+        byPhone
+          ? "No account uses that mobile number yet — ask the rider to apply or sign up first."
+          : "No account uses that email yet — ask the rider to sign up first.",
         404,
       );
     }
 
     const row = rider as { id: string; user_id: string | null };
-    if (row.user_id === match.id) return apiJson({ linked: email });
+    if (row.user_id === match.id) return apiJson({ linked: describeLoginEmail(lookup) });
     if (row.user_id) {
       throw new AdminInputError(
         "This rider already has a linked login.",
@@ -76,7 +95,7 @@ export const POST = staffRoute(
       }
       throw new Error("rider link failed");
     }
-    return apiJson({ linked: email });
+    return apiJson({ linked: describeLoginEmail(lookup) });
   },
   { limit: 20 },
 );

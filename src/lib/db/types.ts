@@ -125,6 +125,21 @@ export interface DbShop {
   reviewed_at?: string | null;
   /** Free delivery (202609260003) — the shop's own minimum, paisa; null = off. */
   free_delivery_min?: number | string | null;
+  /**
+   * B5 (202609280005) — verified-shop badge. Optional: a database that has not
+   * run the migration simply has no verification to show. The staff-only
+   * columns (note / officer) are read only by the admin list.
+   */
+  nid_checked?: boolean | null;
+  trade_licence_checked?: boolean | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  verified_by_email?: string | null;
+  verification_note?: string | null;
+  /** B6 (202609280006) — holiday dates; absent on a database without it. */
+  vacation_start?: string | null;
+  vacation_end?: string | null;
+  vacation_note?: string | null;
 }
 
 export interface DbVendorUser {
@@ -132,6 +147,14 @@ export interface DbVendorUser {
   shop_id: string;
   role: "owner" | "staff";
   created_at: string;
+  /**
+   * C1 (202609280007) — the roster needs a name and a login the owner
+   * recognises. Optional: rows written before the migration have neither,
+   * and the roster falls back to the auth-shaped label in that case.
+   */
+  display_name?: string | null;
+  login_email?: string | null;
+  added_by?: string | null;
 }
 
 export interface DbShopLedger {
@@ -237,6 +260,10 @@ export interface DbCoupon {
   usage_limit: number | null;
   used: number;
   active: boolean;
+  /** B3 — owner of the code (null = platform coupon; migration 202609280003). */
+  shop_id?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
 }
 
 export interface DbOrder {
@@ -334,6 +361,10 @@ export interface DbReview {
   /** Proven-purchase phone / public order no (migration 202609270004; absent before it). */
   customer_phone?: string | null;
   order_ref?: string | null;
+  /** B2 — the shop's public reply (migration 202609280002; absent before it). */
+  vendor_reply?: string | null;
+  vendor_reply_at?: string | null;
+  vendor_reply_by?: string | null;
   created_at: string;
 }
 

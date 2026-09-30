@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductHref } from "@/lib/use-product-href";
 import { useEffect, useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { absoluteUrl } from "@/lib/site-url";
@@ -28,7 +29,8 @@ export default function ShareRow({
   className?: string;
 }) {
   const { t, lang } = useLanguage();
-  const [pageUrl, setPageUrl] = useState(() => absoluteUrl(`/product/${product.slug}`));
+  const hrefFor = useProductHref();
+  const [pageUrl, setPageUrl] = useState(() => absoluteUrl(hrefFor(product)));
   const [native, setNative] = useState(false);
   const [notice, setNotice] = useTransientValue("");
 
@@ -36,9 +38,9 @@ export default function ShareRow({
     // The canonical URL is known on the server; the real one (custom domain,
     // preview host) only in the browser. Swap after mount, hydration-safe.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only values read post-mount
-    setPageUrl(`${window.location.origin}/product/${product.slug}`);
+    setPageUrl(`${window.location.origin}${hrefFor(product)}`);
     setNative(canNativeShare());
-  }, [product.slug]);
+  }, [product, hrefFor]);
 
   const text = shareText(product, lang);
   const copyLink = async () => {

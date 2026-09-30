@@ -11,8 +11,8 @@ import { siteBaseUrl } from "@/lib/site-url";
 export const revalidate = 3600;
 
 export async function GET() {
-  const { products } = await getStorefrontCatalog();
-  return new Response(buildGoogleFeed(products, siteBaseUrl()), {
+  const { products, shops } = await getStorefrontCatalog();
+  return new Response(buildGoogleFeed(products, siteBaseUrl(), shops), {
     headers: {
       "Content-Type": "application/rss+xml; charset=utf-8",
       "Cache-Control": "public, max-age=3600",

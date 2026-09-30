@@ -116,6 +116,41 @@ export interface Shop {
   freeDeliveryMinPaisa?: number | null;
   /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
   review?: ApplicationReview;
+  /**
+   * B5 (2026-09-28) — the verified-shop badge. Public-safe ON PURPOSE: the
+   * two document checks and the date are exactly what a shopper may see. The
+   * staff note and the officer who ticked the boxes are NOT here — they live
+   * on the admin row (`ShopVerificationAudit`), never on the storefront.
+   */
+  verification?: ShopVerification;
+  /**
+   * B6 (2026-09-28) — the shop's holiday dates (both ends, or nothing). Public
+   * on purpose: a shopper is entitled to know the shop is away and when it
+   * takes orders again, instead of hitting a dead checkout.
+   */
+  vacation?: ShopVacation;
+}
+
+/** B6 — a booked closure: `YYYY-MM-DD` … `YYYY-MM-DD`, inclusive. */
+export interface ShopVacation {
+  start: string;
+  end: string;
+  /** Short note the shop writes for itself (shown on the storefront). */
+  note?: string;
+}
+
+/**
+ * B5 — what PROSANTI staff actually held and looked at. The badge is derived
+ * from it (both checks → verified), so it can never claim more than the
+ * evidence: lift either check and the badge goes with it.
+ */
+export interface ShopVerification {
+  /** Staff saw the owner's National ID. */
+  nid: boolean;
+  /** Staff saw the trade licence. */
+  tradeLicence: boolean;
+  /** Epoch ms when the shop last became verified; absent = not verified. */
+  verifiedAt?: number;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   orderFlowSchemaGap,
 } from "./admin";
 import type { Category, Product, Shop } from "../catalog";
+import { validateVacation } from "../shop-vacation";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapProduct, mapShop } from "./mappers";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
@@ -54,6 +55,10 @@ export const assertVendorTarget = (to: string): void => {
 };
 
 export interface VendorShopPatch {
+  /** B6 — holiday dates, YYYY-MM-DD (both together, or null to clear). */
+  vacation_start?: string | null;
+  vacation_end?: string | null;
+  vacation_note?: string | null;
   name?: string;
   tagline?: string;
   logo_url?: string;
@@ -87,6 +92,8 @@ export const vendorShopPatch = (
     }
   };
   if (role === "staff") {
+    // B6: booking a holiday is the OWNER's call — it stops the shop's own
+    // sales for days, which is not a thing to leave to a staff login.
     const allowed = new Set(["is_open", "isOpen", "prep_minutes", "prepMinutes"]);
     const extra = Object.keys(body).filter((k) => !allowed.has(k));
     if (extra.length > 0) {
@@ -136,6 +143,32 @@ export const vendorShopPatch = (
     }
     patch.free_delivery_min = parseShopFreeDeliveryMin(raw);
   }
+  // B6 — the holiday. Validated HERE, not only in the form: a direct API call
+  // could otherwise book a 400-day "holiday" (a permanent closure by another
+  // name) or a window that ended last month.
+  if (
+    body.vacation_start !== undefined ||
+    body.vacation_end !== undefined ||
+    body.vacationStart !== undefined ||
+    body.vacationEnd !== undefined ||
+    body.vacationNote !== undefined
+  ) {
+    const checked = validateVacation({
+      start: body.vacation_start ?? body.vacationStart,
+      end: body.vacation_end ?? body.vacationEnd,
+      note: body.vacationNote,
+    });
+    if (!checked.ok) {
+      throw new AdminInputError(
+        Object.values(checked.errors)[0] ?? "Check the holiday dates.",
+        422,
+      );
+    }
+    patch.vacation_start = checked.value.start;
+    patch.vacation_end = checked.value.end;
+    patch.vacation_note = checked.value.note || null;
+  }
+
   if (patch.name !== undefined && patch.name.length < 2) {
     throw new AdminInputError("Shop name is too short.");
   }
@@ -422,16 +455,119 @@ export async function patchVendorShop(
   return mapShop(data as DbShop);
 }
 
+export interface VendorProductCategory {
+  id: string;
+  categoryId: string;
+  name: string;
+}
+
+export async function listShopProductCategories(
+  db: SupabaseClient,
+  shopId: string,
+): Promise<VendorProductCategory[]> {
+  const { data, error } = await db
+    .from("shop_product_categories")
+    .select("id, category_id, name")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error("vendor category list failed");
+  return ((data ?? []) as { id: string; category_id: string; name: string }[]).map((row) => ({
+    id: row.id,
+    categoryId: row.category_id,
+    name: row.name,
+  }));
+}
+
+export async function listVendorCategoryData(
+  db: SupabaseClient,
+  shopId: string,
+): Promise<{ categories: Category[]; vendorCategories: VendorProductCategory[] }> {
+  const [{ data, error }, vendorCategories] = await Promise.all([
+    db
+      .from("categories")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order"),
+    listShopProductCategories(db, shopId),
+  ]);
+  if (error) throw new Error("vendor category list failed");
+  const categories = ((data ?? []) as DbCategory[]).map(mapCategory);
+  const names = new Map<string, string[]>();
+  for (const row of vendorCategories) {
+    const list = names.get(row.categoryId) ?? [];
+    if (!list.some((name) => name.toLocaleLowerCase() === row.name.toLocaleLowerCase())) {
+      list.push(row.name);
+      names.set(row.categoryId, list);
+    }
+  }
+  return {
+    vendorCategories,
+    categories: categories.map((category) => ({
+      ...category,
+      // The form keeps free text; this list only makes a vendor's own names
+      // available as one-tap suggestions under platform-owned top-levels.
+      subCategories: [
+        ...category.subCategories,
+        ...(names.get(category.id) ?? []).filter((name) =>
+          !category.subCategories.some(
+            (existing) => existing.toLocaleLowerCase() === name.toLocaleLowerCase(),
+          ),
+        ),
+      ],
+    })),
+  };
+}
+
 export async function listVendorCategories(
   db: SupabaseClient,
+  shopId?: string,
 ): Promise<Category[]> {
-  const { data, error } = await db
+  if (!shopId) {
+    const { data, error } = await db
+      .from("categories")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order");
+    if (error) throw new Error("vendor category list failed");
+    return ((data ?? []) as DbCategory[]).map(mapCategory);
+  }
+  return (await listVendorCategoryData(db, shopId)).categories;
+}
+
+export async function createVendorProductCategory(
+  db: SupabaseClient,
+  shopId: string,
+  raw: unknown,
+): Promise<{ id: string; categoryId: string; name: string }> {
+  const input = (raw ?? {}) as Record<string, unknown>;
+  const categoryId = typeof input.categoryId === "string" ? input.categoryId.trim() : "";
+  const name = typeof input.name === "string" ? input.name.trim().replace(/\s+/g, " ") : "";
+  if (!categoryId) throw new AdminInputError("Choose a platform category.", 422);
+  if (name.length < 2 || name.length > 60) {
+    throw new AdminInputError("Subcategory must be 2–60 characters.", 422);
+  }
+  const { data: parent, error: parentError } = await db
     .from("categories")
-    .select("*")
-    .eq("active", true)
-    .order("sort_order");
-  if (error) throw new Error("vendor category list failed");
-  return ((data ?? []) as DbCategory[]).map(mapCategory);
+    .select("id, active")
+    .eq("id", categoryId)
+    .single();
+  if (parentError || !parent || (parent as { active?: boolean }).active !== true) {
+    throw new AdminInputError("That platform category is not available.", 422);
+  }
+  const { data, error } = await db
+    .from("shop_product_categories")
+    .insert({ shop_id: shopId, category_id: categoryId, name })
+    .select("id, category_id, name")
+    .single();
+  if (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "23505") {
+      throw new AdminInputError("That subcategory already exists in this category.", 409);
+    }
+    throw new Error("vendor category create failed");
+  }
+  const row = data as { id: string; category_id: string; name: string };
+  return { id: row.id, categoryId: row.category_id, name: row.name };
 }
 
 /* ------------------------------------------------------------------ */

@@ -13,7 +13,10 @@ import { patchVendorShop, vendorErrorMessage } from "@/lib/use-vendor";
 import { useLiveZones } from "@/lib/use-live-zones";
 import type { Shop } from "@/lib/catalog";
 import ChangePasswordCard from "@/components/account/change-password-card";
+import StaffCard from "@/components/vendor/staff-card";
+import { useVendorStaff } from "@/lib/use-vendor-staff";
 import VendorFreeDeliveryCard from "@/components/vendor/free-delivery-card";
+import MediaUploader from "@/components/admin/media-uploader";
 
 const field =
   "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
@@ -30,6 +33,8 @@ export default function VendorSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { zones } = useLiveZones();
+  // C1 — the roster is the owner's to manage; a staff login cannot read it.
+  const roster = useVendorStaff(me?.role === "owner");
 
   if (!current) return null;
   const values: Record<string, string> = form ?? {
@@ -189,6 +194,14 @@ export default function VendorSettingsPage() {
                 onChange={(e) => set("logoUrl", e.target.value)}
                 placeholder="https://…"
               />
+              {/* A vendor session cannot sign through the staff-only
+                  /api/media/sign (403) — 2026-09-27. */}
+              <MediaUploader
+                compact
+                signPath="/api/vendor/media/sign"
+                folder="prosanti/shops"
+                onUploaded={(url) => set("logoUrl", url)}
+              />
             </label>
           </div>
           <label className="block">
@@ -203,6 +216,12 @@ export default function VendorSettingsPage() {
             <span className="mt-1.5 block text-xs leading-5 text-ink-soft">
               ঐচ্ছিক — খালি রাখলে আগের মতোই সবুজ হেডার আর শেলফের ৩টা ছবি দেখাবে। আপনার দোকানের সামনের ছবি বা সাজানো তাকের ছবি সবচেয়ে ভালো কাজ করে।
             </span>
+            <MediaUploader
+              compact
+              signPath="/api/vendor/media/sign"
+              folder="prosanti/shops"
+              onUploaded={(url) => set("coverUrl", url)}
+            />
             {values.coverUrl.startsWith("http") && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={values.coverUrl} alt="" className="mt-3 aspect-[3/1] w-full rounded-xl object-cover ring-1 ring-line" />
@@ -278,9 +297,26 @@ export default function VendorSettingsPage() {
         />
       )}
 
-      {/* Apply = sign up (2026-09-26): the owner's own password lives here;
-          staff accounts change theirs from the admin side. */}
-      {!isStaff && <ChangePasswordCard className="mt-4" />}
+      {/* C1 — who else can open this shop. Owner only: a staff login cannot
+          read the roster, let alone change it. */}
+      {!isStaff && !roster.loading && (
+        <StaffCard
+          staff={roster.staff}
+          onCreate={roster.create}
+          onRevoke={roster.revoke}
+          onResetPassword={roster.resetPassword}
+        />
+      )}
+      {!isStaff && roster.error && (
+        <p className="mt-4 text-sm text-amber-800">
+          স্টাফ লগইনগুলো লোড করা যায়নি — একটু পরে আবার চেষ্টা করুন।
+        </p>
+      )}
+
+      {/* C1 — the owner's own password lives here, and so does the staff
+          member's: a staff login starts with a one-time password from the
+          owner and is replaced here from their own session. */}
+      <ChangePasswordCard className="mt-4" />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import { useLiveZones } from "@/lib/use-live-zones";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 import { APPLICANT_PASSWORD_MIN, passwordProblem } from "@/lib/applicant-password";
+import { isPlausibleBdPhone, tidyPhoneInput } from "@/lib/phone";
 import PasswordInput from "@/components/ui/password-input";
 import {
   AlreadyAppliedLink,
@@ -60,14 +61,15 @@ export default function RiderApplyPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = name.trim();
-    const cleanPhone = phone.trim().replace(/[\s-]/g, "");
+    // Same tolerant normalisation as the shop form (+88, Bangla digits).
+    const cleanPhone = tidyPhoneInput(phone);
     const cleanEmail = email.trim().toLowerCase();
 
     if (cleanName.length < 2) {
       setError("আপনার পুরো নাম লিখুন।");
       return;
     }
-    if (!/^(\+?88)?01[0-9]{9}$/.test(cleanPhone)) {
+    if (!isPlausibleBdPhone(cleanPhone)) {
       setError("সঠিক ১১-সংখ্যার মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)।");
       return;
     }

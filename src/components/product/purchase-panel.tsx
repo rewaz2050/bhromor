@@ -46,6 +46,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { shopClosedCopy } from "@/lib/shop-utils";
 import { haptic } from "@/lib/haptics";
 
 export default function PurchasePanel({ product }: { product: Product }) {
@@ -251,8 +252,15 @@ export default function PurchasePanel({ product }: { product: Product }) {
               {shop.name}
             </Link>
             {!isShopOrderable(shop) && (
-              <span className="ml-2 rounded-full bg-ivory-200 px-2.5 py-0.5 text-xs font-semibold text-ink-soft">
-                {t("shops.closed")}
+              <span
+                className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  shopClosedCopy(shop, t).holiday
+                    ? "bg-amber-100 text-amber-900"
+                    : "bg-ivory-200 text-ink-soft"
+                }`}
+              >
+                {/* B6 — a holiday says when the shop is back. */}
+                {shopClosedCopy(shop, t).text}
               </span>
             )}
           </p>

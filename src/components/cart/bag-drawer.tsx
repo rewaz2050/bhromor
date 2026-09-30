@@ -1,5 +1,6 @@
 "use client";
 
+import { productHref } from "@/lib/product-url";
 import ArrivalCue from "@/components/delivery/arrival-cue";
 import CodReminder from "./cod-reminder";
 import { coverImage } from "@/lib/catalog";
@@ -154,7 +155,7 @@ export default function BagDrawer() {
                 className="flex gap-4 border-b border-line py-6"
               >
                 <Link
-                  href={`/product/${product.slug}`}
+                  href={productHref(product, shops)}
                   onClick={closeBag}
                   className="relative h-32 w-24 shrink-0 bg-ivory-100"
                 >
@@ -168,7 +169,7 @@ export default function BagDrawer() {
                 </Link>
                 <div className="min-w-0 flex-1">
                   <Link
-                    href={`/product/${product.slug}`}
+                    href={productHref(product, shops)}
                     onClick={closeBag}
                     className="font-display text-lg"
                   >
@@ -238,7 +239,7 @@ export default function BagDrawer() {
                 {recommendations.map((product) => (
                   <Link
                     key={product.id}
-                    href={`/product/${product.slug}`}
+                    href={productHref(product, shops)}
                     onClick={closeBag}
                     className="group"
                   >

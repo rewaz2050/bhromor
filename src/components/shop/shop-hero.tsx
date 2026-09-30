@@ -1,11 +1,12 @@
 "use client";
 
 import type { Shop } from "@/lib/catalog";
-import { isShopOrderable } from "@/lib/shop-utils";
+import { isShopOrderable, shopClosedCopy } from "@/lib/shop-utils";
 import { shopChatMessage, waLink } from "@/lib/whatsapp-order";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconSend } from "@/components/ui/icons";
 import FreeDeliveryPill from "./free-delivery-pill";
+import VerifiedBadge from "./verified-badge";
 
 /**
  * Shop storefront header (marketplace slice 4): open state, prep time,
@@ -21,6 +22,7 @@ export default function ShopHero({
 }) {
   const { t, lang } = useLanguage();
   const open = isShopOrderable(shop);
+  const closed = shopClosedCopy(shop, t);
   const waChatHref = waLink(shop.phone, shopChatMessage(shop, lang));
   return (
     <header
@@ -58,12 +60,30 @@ export default function ShopHero({
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
             open
               ? "bg-forest-100 text-forest-900"
-              : "bg-ivory-100/15 text-ivory-100"
+              : closed.holiday
+                ? "bg-amber-100 text-amber-900"
+                : "bg-ivory-100/15 text-ivory-100"
           }`}
+          data-testid="shop-open-state"
         >
-          {open ? t("shops.openNow") : t("shops.closed")}
+          {/* B6 — the date the shop takes orders again, not a bare "closed". */}
+          {open ? t("shops.openNow") : closed.text}
         </span>
       </div>
+      {/* B5 — the trust answer, in the header the shopper reads first. */}
+      <div className="relative mt-3">
+        <VerifiedBadge verification={shop.verification} variant="full" />
+      </div>
+      {/* B6 — the shop's own words about its holiday ("Closed for Eid"), the
+          one line that turns a date into a reason. */}
+      {!open && closed.holiday && shop.vacation?.note && (
+        <p
+          data-testid="shop-holiday-note"
+          className="relative mt-3 max-w-xl rounded-2xl bg-amber-100/95 px-4 py-2 text-sm font-medium text-amber-900"
+        >
+          {shop.vacation.note}
+        </p>
+      )}
       <dl className="relative mt-6 flex flex-wrap gap-x-8 gap-y-3 text-sm">
         <div>
           <dt className="text-xs uppercase tracking-widest text-ivory-100/60">

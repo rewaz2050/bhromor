@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Product } from "../catalog";
+import type { Product, Shop } from "../catalog";
 import {
   META_FEED_HEADER,
   buildGoogleFeed,
@@ -67,6 +67,17 @@ describe("marketing feeds — Google Merchant / Meta catalog", () => {
     expect(row).toContain("https://res.cloudinary.com/demo/image/upload/detail.jpg");
     expect(row).not.toContain("clip.mp4");
     expect(row?.endsWith("PROSANTI")).toBe(true);
+  });
+
+  it("C5 feeds use the shop-scoped canonical address when the shop is known", () => {
+    const shop = { id: "s1", slug: "prosanti-direct" } as Pick<Shop, "id" | "slug">;
+    const scopedProduct = product({ shopId: "s1" });
+    const csv = buildMetaFeed([scopedProduct], [shop]);
+    const xml = buildGoogleFeed([scopedProduct], ORIGIN, [shop]);
+    expect(csv).toContain("https://prosanti.store/shops/prosanti-direct/p/heritage-green-panjabi");
+    expect(xml).toContain(
+      "<g:link>https://prosanti.store/shops/prosanti-direct/p/heritage-green-panjabi</g:link>",
+    );
   });
 
   it("Meta CSV: quotes fields that contain commas and lists out-of-stock instead of dropping", () => {

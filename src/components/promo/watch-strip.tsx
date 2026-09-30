@@ -10,6 +10,7 @@
  * the shop — the alert path that actually exists here.
  */
 
+import { useProductHref } from "@/lib/use-product-href";
 import Link from "next/link";
 import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
@@ -21,11 +22,12 @@ import { IconBell, IconCheck, IconTrendDown } from "@/components/ui/icons";
 
 function WatchRow({ product }: { product: Product }) {
   const { t } = useLanguage();
+  const hrefFor = useProductHref();
   const { watching, toggle, drop } = usePriceAlert(product);
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5">
       <Link
-        href={`/product/${product.slug}`}
+        href={hrefFor(product)}
         className="min-w-0 flex-1 truncate text-sm font-medium text-forest-900 hover:underline"
       >
         {product.name}

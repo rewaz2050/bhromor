@@ -17,6 +17,8 @@ import type {
 } from "../catalog";
 import type { Coupon } from "../coupons";
 import { normalizeKyc } from "../rider-kyc";
+import { DATE_RE, VACATION_NOTE_MAX } from "../shop-vacation";
+import { staffHandle, type VendorStaffMember, type VendorStaffRole } from "../vendor-staff";
 import type {
   Order,
   OrderItem,
@@ -37,6 +39,7 @@ import type {
   DbRider,
   DbShop,
   DbVariant,
+  DbVendorUser,
   DbZone,
 } from "./types";
 
@@ -110,6 +113,9 @@ export const mapCoupon = (row: DbCoupon): Coupon => ({
   usageLimit: row.usage_limit ?? undefined,
   used: row.used,
   active: row.active,
+  // B3 — a shop-owned code travels with its owner so the storefront can keep
+  // it on that shop's carts (optional: pre-migration rows have no column).
+  shopId: row.shop_id ?? undefined,
 });
 
 export interface ProductRowBundle {
@@ -225,6 +231,13 @@ export const mapApplicationReview = (row: {
   return { note, by, at: Number.isFinite(at) ? at : undefined };
 };
 
+/** A `date` column read back as YYYY-MM-DD, whatever the driver hands us. */
+const vacationDate = (value: unknown): string => {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const text = String(value ?? "").trim();
+  return DATE_RE.test(text) ? text.slice(0, 10) : "";
+};
+
 export const mapShop = (row: DbShop): Shop => ({
   id: row.id,
   slug: row.slug,
@@ -249,7 +262,59 @@ export const mapShop = (row: DbShop): Shop => ({
     ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
     : {}),
   review: mapApplicationReview(row),
+  // B5 — the badge is public; the staff note and the officer are not part of
+  // this mapper at all (they are read by the admin list only), so no storefront
+  // or vendor payload can carry them by accident.
+  verification: mapShopVerification(row),
+  // B6 — both dates or nothing: a half-window is not a holiday, and a date is
+  // only ever published as YYYY-MM-DD (some drivers hand back a Date object).
+  vacation:
+    vacationDate(row.vacation_start) && vacationDate(row.vacation_end)
+      ? {
+          start: vacationDate(row.vacation_start),
+          end: vacationDate(row.vacation_end),
+          ...(typeof row.vacation_note === "string" && row.vacation_note !== ""
+            ? { note: row.vacation_note.slice(0, VACATION_NOTE_MAX) }
+            : {}),
+        }
+      : undefined,
 });
+
+/**
+ * B5 — the badge from the row. Absent columns (pre-migration database) mean
+ * "nothing checked", never "verified": a shop is trusted on evidence, not on a
+ * missing column.
+ */
+const mapShopVerification = (row: DbShop) => ({
+  nid: row.nid_checked === true,
+  tradeLicence: row.trade_licence_checked === true,
+  ...(row.verified_at ? { verifiedAt: epoch(row.verified_at) } : {}),
+});
+
+/**
+ * C1 — one name on the shop's roster.
+ *
+ * The row is what the DATABASE knows; the roster is what the OWNER reads, so a
+ * row from before the migration (no name, no login column) still has to say
+ * something — "Owner" with no label beats a blank line in a list of people who
+ * can open the till.
+ */
+export const mapVendorStaff = (
+  row: DbVendorUser,
+  viewerUserId?: string | null,
+): VendorStaffMember => {
+  const loginEmail = (row.login_email ?? "").trim() || null;
+  const role: VendorStaffRole = row.role === "owner" ? "owner" : "staff";
+  return {
+    userId: row.user_id,
+    name: (row.display_name ?? "").trim() || (role === "owner" ? "Shop owner" : "Shop staff"),
+    handle: staffHandle(loginEmail),
+    loginEmail: loginEmail ?? "",
+    role,
+    ...(row.created_at ? { addedAt: epoch(row.created_at) } : {}),
+    ...(viewerUserId && viewerUserId === row.user_id ? { isYou: true } : {}),
+  };
+};
 
 /** bigint columns arrive as strings from PostgREST; anything non-positive = off. */
 const mapFreeDeliveryMin = (raw: number | string | null | undefined): number | null => {
@@ -416,4 +481,13 @@ export const mapReview = (row: DbReview): Review => ({
   verified: row.verified,
   featured: row.featured || undefined,
   shopId: row.shop_id,
+  // B2 — the shop's reply travels with the review everywhere the review goes
+  // (storefront, admin queue, vendor card). Optional: a pre-migration row has
+  // no such columns at all and must keep working.
+  vendorReply:
+    typeof row.vendor_reply === "string" && row.vendor_reply.trim() !== ""
+      ? row.vendor_reply
+      : undefined,
+  vendorReplyAt: row.vendor_reply_at ? epoch(row.vendor_reply_at) : undefined,
+  vendorReplyBy: row.vendor_reply_by ?? undefined,
 });

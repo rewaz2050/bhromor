@@ -72,7 +72,7 @@ describe("ApplicantLoginBox", () => {
   it("keeps the manual link form for rows without a login", async () => {
     const onLink = vi.fn(async () => true);
     render(<ApplicantLoginBox {...base} kind="rider" onLink={onLink} status="pending" linked={false} />);
-    const input = screen.getByLabelText("Rider account email");
+    const input = screen.getByLabelText("Rider account email or mobile");
     fireEvent.change(input, { target: { value: "rider@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Link rider" }));
     await waitFor(() => expect(onLink).toHaveBeenCalledWith("rider@example.com"));

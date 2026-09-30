@@ -19,6 +19,10 @@ import {
   Skeleton,
 } from "@/components/vendor/vendor-ui";
 import ShelfRowActions from "@/components/admin/shelf-row-actions";
+import DuplicateProductButton from "@/components/vendor/duplicate-product-button";
+import VendorCategoryManagerCard from "@/components/vendor/category-manager-card";
+import ProductCsvTools from "@/components/vendor/product-csv-tools";
+import BulkEditBar from "@/components/vendor/bulk-edit-bar";
 import { formatBdt } from "@/lib/format";
 import {
   SHELF_FILTERS,
@@ -31,11 +35,14 @@ import { useVendorProducts } from "@/lib/use-vendor";
 
 export default function VendorProductsPage() {
   const me = useVendor();
-  const { products, loading, error, refresh, patchProduct } = useVendorProducts(
-    me !== null,
-  );
+  const { products, loading, error, refresh, patchProduct, createProduct, saveProduct } =
+    useVendorProducts(me !== null);
   const [filter, setFilter] = useState<ShelfState | "all">("all");
   const [query, setQuery] = useState("");
+  // A4 (2026-09-28) — bulk price/stock. Selection is by id, so a re-filter
+  // never silently drops a row the seller picked.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
   // Deep link from the dashboard's restock line (/vendor/products?shelf=out).
   // Read once in an effect — useSearchParams would force a Suspense boundary.
   useEffect(() => {
@@ -47,6 +54,11 @@ export default function VendorProductsPage() {
   }, []);
 
   const counts = useMemo(() => shelfCounts(products), [products]);
+  // A3 — what the shop already uses, so a duplicate never clashes with it.
+  const cloneContext = useMemo(
+    () => ({ slugs: products.map((p) => p.slug), skus: products.map((p) => p.sku) }),
+    [products],
+  );
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter(
@@ -61,6 +73,23 @@ export default function VendorProductsPage() {
 
   const attention = counts.out + counts.low;
 
+  const toggleRow = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const allVisibleSelected = visible.length > 0 && visible.every((p) => selected.has(p.id));
+  const toggleAllVisible = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) for (const p of visible) next.delete(p.id);
+      else for (const p of visible) next.add(p.id);
+      return next;
+    });
+  const selectedRows = products.filter((p) => selected.has(p.id));
+
   return (
     <div>
       <PageHeader
@@ -70,8 +99,21 @@ export default function VendorProductsPage() {
             ? `${counts.live + counts.low} on sale · ${counts.out} sold out · ${counts.low} running low — restock the loud ones first.`
             : "Drafts stay invisible until you publish them; archived pieces keep their order history."
         }
-        action={<PrimaryLink href="/vendor/products/new">+ New product</PrimaryLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <PrimaryLink href="/vendor/products/quick">⚡ Quick add</PrimaryLink>
+            <Link
+              href="/vendor/products/new"
+              className="inline-flex min-h-11 items-center rounded-full bg-paper px-5 text-sm font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-50"
+            >
+              Full editor
+            </Link>
+          </div>
+        }
       />
+
+      <ProductCsvTools />
+      <VendorCategoryManagerCard />
 
       {loading ? (
         <Skeleton lines={4} />
@@ -81,7 +123,17 @@ export default function VendorProductsPage() {
         <EmptyState
           title="No products yet"
           sub="Add your first product — publish it when the photos and price are ready."
-          action={<PrimaryLink href="/vendor/products/new">+ New product</PrimaryLink>}
+          action={
+          <div className="flex flex-wrap gap-2">
+            <PrimaryLink href="/vendor/products/quick">⚡ Quick add</PrimaryLink>
+            <Link
+              href="/vendor/products/new"
+              className="inline-flex min-h-11 items-center rounded-full bg-paper px-5 text-sm font-semibold text-forest-800 ring-1 ring-forest-300 hover:bg-forest-50"
+            >
+              Full editor
+            </Link>
+          </div>
+        }
         />
       ) : (
         <>
@@ -110,6 +162,16 @@ export default function VendorProductsPage() {
                 </button>
               ))}
             </div>
+            <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleAllVisible}
+                aria-label="Select all shown products"
+                className="h-4 w-4 accent-forest-800"
+              />
+              Select all
+            </label>
             <label className="ml-auto flex min-w-[12rem] flex-1 items-center sm:max-w-xs">
               <span className="sr-only">Search products</span>
               <input
@@ -121,6 +183,22 @@ export default function VendorProductsPage() {
               />
             </label>
           </div>
+
+          {selectedRows.length > 0 && (
+            <BulkEditBar
+              products={selectedRows}
+              onApply={(product) => saveProduct(product, false)}
+              onDone={(saved) => {
+                setBulkNote(`${saved} ${saved === 1 ? "product" : "products"} updated.`);
+                setSelected(new Set());
+              }}
+            />
+          )}
+          {bulkNote && (
+            <p role="status" className="mb-3 text-xs font-semibold text-forest-800">
+              {bulkNote}
+            </p>
+          )}
 
           {visible.length === 0 ? (
             <EmptyState
@@ -157,6 +235,13 @@ export default function VendorProductsPage() {
                     data-testid="vendor-product-row"
                   >
                     <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(p.id)}
+                        onChange={() => toggleRow(p.id)}
+                        aria-label={`Select ${p.name}`}
+                        className="mt-1 h-4 w-4 shrink-0 accent-forest-800"
+                      />
                       <Link
                         href={`/vendor/products/${encodeURIComponent(p.id)}`}
                         className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-ivory-100 ring-1 ring-line"
@@ -210,6 +295,11 @@ export default function VendorProductsPage() {
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <ShelfRowActions product={p} onPatch={patchProduct} size="sm" />
+                          <DuplicateProductButton
+                            product={p}
+                            context={cloneContext}
+                            create={createProduct}
+                          />
                           {(state === "out" || state === "low") && (
                             <Link
                               href={`/vendor/products/${encodeURIComponent(p.id)}`}

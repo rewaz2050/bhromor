@@ -12,6 +12,7 @@ import { IconCheck, IconStar } from "@/components/ui/icons";
 import { optimizedMediaUrl } from "@/lib/media-url";
 import { compressReviewPhoto, MAX_PHOTOS } from "@/lib/review-photos";
 import { readReviewProof } from "@/lib/review-proof";
+import { hasReply, replyBody } from "@/lib/vendor-reply";
 import { usePublicSettings } from "@/lib/use-public-settings";
 
 const dayLabel = (ms: number): string =>
@@ -266,6 +267,20 @@ export default function ReviewsSection({ product }: { product: Product }) {
                           className="h-20 w-20"
                         />
                       ))}
+                    </div>
+                  )}
+                  {/* B2 — the shop's public answer, from /vendor. Shown to
+                      every shopper: an answered complaint is evidence, not a
+                      footnote, so it sits right under the review it answers. */}
+                  {hasReply(r) && (
+                    <div
+                      className="mt-3 rounded-2xl bg-forest-50 p-4 ring-1 ring-forest-100"
+                      data-testid="review-shop-reply"
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-wider text-forest-800">
+                        Response from the shop
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-ink">{replyBody(r)}</p>
                     </div>
                   )}
                 </li>

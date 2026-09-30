@@ -1,5 +1,6 @@
 "use client";
 
+import { legacyProductPath } from "@/lib/product-url";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useOrders } from "@/lib/use-orders";
@@ -359,7 +360,7 @@ export default function AdminReportsPage() {
                   <td className="py-2.5 pr-3">
                     <span className="mr-2 text-xs font-semibold text-gold-600">{i + 1}</span>
                     <Link
-                      href={`/product/${p.slug}`}
+                      href={legacyProductPath(p.slug)}
                       className="font-medium text-ink underline-offset-2 hover:underline"
                     >
                       {p.name}

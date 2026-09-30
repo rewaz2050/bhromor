@@ -18,8 +18,11 @@ const state = vi.hoisted(() => ({
   snapshotThrows: false,
   validateResult: { ok: true } as Record<string, unknown>,
   validateCalls: 0,
+  /** Every payload the route handed to the validator — one per shop (C2). */
+  validatePayloads: [] as Record<string, unknown>[],
   placementError: null as Error | null,
   placedOrder: null as Record<string, unknown> | null,
+  multiDrafts: 0,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -56,6 +59,14 @@ vi.mock("@/lib/db/orders", () => ({
     if (state.placementError) throw state.placementError;
     return state.placedOrder;
   },
+  placeLiveMultiOrder: async (drafts: unknown[]) => {
+    if (state.placementError) throw state.placementError;
+    state.multiDrafts = drafts.length;
+    return (drafts as unknown[]).map((_, i) => ({
+      ...(state.placedOrder as Record<string, unknown>),
+      id: i === 0 ? "PS-1001" : `PS-100${i + 1}`,
+    }));
+  },
 }));
 
 vi.mock("@/lib/db/engagement", () => ({
@@ -72,8 +83,9 @@ vi.mock("@/lib/customer-auth", () => ({
 }));
 
 vi.mock("@/lib/order-validation", () => ({
-  validateOrderPayload: () => {
+  validateOrderPayload: (payload: unknown) => {
     state.validateCalls += 1;
+    state.validatePayloads.push((payload ?? {}) as Record<string, unknown>);
     return state.validateResult;
   },
 }));
@@ -117,6 +129,8 @@ beforeEach(() => {
   state.snapshotThrows = false;
   state.validateResult = { ok: true, draft: { customer: { name: "রহিম", phone: "01712345678" } } };
   state.validateCalls = 0;
+  state.validatePayloads = [];
+  state.multiDrafts = 0;
   state.placementError = null;
   state.placedOrder = {
     id: "PS-1001",

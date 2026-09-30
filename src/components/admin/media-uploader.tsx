@@ -12,6 +12,7 @@ interface SignResponse {
   folder: string;
   signature: string;
   resource: "image" | "video";
+  allowedFormats: string;
   uploadUrl: string;
 }
 
@@ -30,10 +31,18 @@ export default function MediaUploader({
   onUploaded,
   folder = "prosanti/products",
   compact = false,
+  signPath = "/api/media/sign",
 }: {
   onUploaded: (url: string, label: string, kind: MediaKind) => void;
   folder?: string;
   compact?: boolean;
+  /**
+   * Which gated route signs the upload. The staff UI uses the default; the
+   * vendor editor/settings pass /api/vendor/media/sign — a vendor session is
+   * refused by the staff route (403 "This account is not staff"), which used
+   * to make every shop photo upload fail (2026-09-27).
+   */
+  signPath?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -63,7 +72,7 @@ export default function MediaUploader({
     try {
       let sign: SignResponse;
       try {
-        sign = await apiSend<SignResponse>("/api/media/sign", "POST", {
+        sign = await apiSend<SignResponse>(signPath, "POST", {
           folder,
           resource: isVideo ? "video" : "image",
         });
@@ -83,6 +92,7 @@ export default function MediaUploader({
       form.append("api_key", sign.apiKey);
       form.append("timestamp", String(sign.timestamp));
       form.append("folder", sign.folder);
+      form.append("allowed_formats", sign.allowedFormats);
       form.append("signature", sign.signature);
       const res = await fetch(sign.uploadUrl, { method: "POST", body: form });
       const data = (await res.json().catch(() => null)) as {

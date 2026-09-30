@@ -8,6 +8,8 @@
 
 import type { Product } from "@/lib/catalog";
 import {
+  couponAppliesToShops,
+  couponShopMismatchReason,
   discountAmount,
   eligibleSubtotal,
   findCoupon,
@@ -17,6 +19,7 @@ import {
   type Coupon,
 } from "@/lib/coupons";
 import { loadOrderSnapshot } from "@/lib/db/orders";
+import { productShopId } from "@/lib/shop-utils";
 import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -62,6 +65,9 @@ export async function POST(request: Request) {
   }
 
   const lines: { productCategory: string; subtotal: number }[] = [];
+  // B3 — which shops this cart is made of. One order = one shop, so this is
+  // normally a single id; a mixed bag is refused by checkout anyway.
+  const cartShops = new Set<string>();
   for (const item of rawItems) {
     const product = products.find((p) => p.id === item?.productId);
     const qty =
@@ -69,12 +75,18 @@ export async function POST(request: Request) {
     if (!product || !Number.isFinite(qty) || qty < 1 || qty > 10) {
       return apiError("The cart changed — please review it and retry.", 422);
     }
+    cartShops.add(productShopId(product, ""));
     lines.push({ productCategory: product.category, subtotal: product.price * qty });
   }
   const subtotal = lines.reduce((s, l) => s + l.subtotal, 0);
   const coupon = findCoupon(coupons, code);
   if (!coupon) {
     return apiJson({ valid: false as const, reason: "Unknown code — double-check the spelling." });
+  }
+  // A shop's own code is that shop's marketing, paid out of that shop's share:
+  // letting it discount another shop's cart would make one shop fund another.
+  if (!couponAppliesToShops(coupon, [...cartShops])) {
+    return apiJson({ valid: false as const, reason: couponShopMismatchReason(coupon) });
   }
   const redeemable = isCouponRedeemable(coupon, subtotal, zoneId);
   if (!redeemable.ok) {
@@ -89,6 +101,9 @@ export async function POST(request: Request) {
       code: coupon.code,
       discount: 0,
       freeDelivery: true as const,
+      // C2 — the screens need the kind: a free-delivery code rides every
+      // parcel of a split checkout, a fixed one is used once.
+      type: coupon.type,
       description: coupon.description,
     });
   }

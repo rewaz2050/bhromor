@@ -1,5 +1,6 @@
 "use client";
 
+import { PRODUCT_LINK_SELECTOR, productHref } from "@/lib/product-url";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -170,7 +171,7 @@ export default function ProductCard({
   /* UX plan §0 — `select_item`: any tap that leads to the product page,
      credited to the rail / grid the card sits in (nearest data-list). */
   const onCardClick = (event: React.MouseEvent<HTMLElement>) => {
-    const anchor = (event.target as Element | null)?.closest?.("a[href^='/product/']");
+    const anchor = (event.target as Element | null)?.closest?.(PRODUCT_LINK_SELECTOR);
     if (!anchor) return;
     track({
       type: "select_item",
@@ -183,7 +184,7 @@ export default function ProductCard({
     <article className="product-card group relative flex min-w-0 flex-col" onClick={onCardClick}>
       <div className="product-card-media relative overflow-hidden bg-ivory-100">
         <Link
-          href={`/product/${product.slug}`}
+          href={productHref(product, shops)}
           className="relative block aspect-[4/5] select-none"
           aria-label={`View ${product.name}`}
           data-testid="card-peek"
@@ -314,7 +315,7 @@ export default function ProductCard({
               <IconPlus className="h-3.5 w-3.5" /> {t("product.quickAdd")}
             </button>
             <Link
-              href={`/product/${product.slug}`}
+              href={productHref(product, shops)}
               className="product-view-details hidden min-h-11 items-center justify-center gap-2 bg-ivory-50/95 px-3 py-2 text-[0.61rem] font-semibold uppercase tracking-[0.1em] text-forest-950 hover:bg-gold-200 sm:flex"
               aria-label={`${t("product.viewDetails")} ${product.name}`}
             >
@@ -374,7 +375,7 @@ export default function ProductCard({
           className={`product-card-title mt-1.5 font-display text-xl font-normal leading-tight tracking-[-0.015em] ${bnFirst ? "font-bengali" : ""}`}
         >
           <Link
-            href={`/product/${product.slug}`}
+            href={productHref(product, shops)}
             aria-label={bnFirst ? bnName : product.name}
             className="text-forest-950 hover:text-forest-700"
           >

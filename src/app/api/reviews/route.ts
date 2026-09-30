@@ -80,14 +80,17 @@ export async function GET(request: Request) {
     if (!db) return apiJson({ reviews: [] });
     let productId: string | null = null;
     if (product !== "") {
-      // Accept the public slug or the internal id.
+      // Accept the public slug or the internal id. The id is the real key —
+      // C5 lets two shops sell a piece of the same name, so a slug can answer
+      // more than one piece; `.limit(1)` keeps this read working instead of
+      // erroring on two rows, and the storefront always sends the id.
       const { data: bySlug } = await db
         .from("products")
         .select("id")
         .eq("slug", product)
-        .single();
+        .limit(1);
       productId =
-        ((bySlug as { id: string } | null)?.id ?? null) || product;
+        ((bySlug as { id: string }[] | null)?.[0]?.id ?? null) || product;
     }
     let query = db
       .from("reviews")

@@ -74,7 +74,7 @@ export const resolveCatalogCategory = (id: string): Category | undefined =>
 
 /**
  * Seed the registry from rows a server component already rendered (audit
- * 2026-09-17 P2.1). `/shop`, `/product/[slug]` and `/shops/[slug]` read the
+ * 2026-09-17 P2.1). `/shop`, `/shops/[slug]/p/[product]` and `/shops/[slug]` read the
  * catalog on the server; before this the browser then fetched /api/products
  * AGAIN before the bag, purchase panel or search could resolve a product.
  * Hydrating from the SSR payload makes those surfaces live on first paint

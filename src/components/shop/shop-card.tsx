@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { coverImage, type Product, type Shop } from "@/lib/catalog";
 import { bnDigits } from "@/lib/arrival";
-import { isShopOrderable } from "@/lib/shop-utils";
+import { isShopOrderable, shopClosedCopy } from "@/lib/shop-utils";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconCheck } from "@/components/ui/icons";
 import FreeDeliveryPill from "./free-delivery-pill";
+import VerifiedBadge from "./verified-badge";
 
 /**
  * Public shop card (marketplace slice 4; UX plan §9, R8): logo, open state,
@@ -31,6 +32,8 @@ export default function ShopCard({
 }) {
   const { t, lang } = useLanguage();
   const open = isShopOrderable(shop);
+  // B6 — a booked holiday says when the shop is back; a plain closed day does not.
+  const closed = shopClosedCopy(shop, t);
   const digits = (n: number | string) => (lang === "bn" ? bnDigits(String(n)) : String(n));
   const href = `/shops/${shop.slug}`;
   const peek = topProducts.slice(0, 3);
@@ -81,10 +84,16 @@ export default function ShopCard({
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-            open ? "bg-forest-100 text-forest-800" : "bg-ivory-200 text-ink-soft"
+            open
+              ? "bg-forest-100 text-forest-800"
+              : closed.holiday
+                ? "bg-amber-100 text-amber-900"
+                : "bg-ivory-200 text-ink-soft"
           }`}
+          data-testid="shop-open-state"
         >
-          {open ? t("shops.openNow") : t("shops.closed")}
+          {/* B6 — a planned closure says when the shop is back, not just "closed". */}
+          {open ? t("shops.openNow") : closed.text}
         </span>
       </div>
 
@@ -132,6 +141,8 @@ export default function ShopCard({
         )}
         {/* Free-delivery threshold (2026-09-26) — only when a rule is armed. */}
         <FreeDeliveryPill shop={shop} />
+        {/* B5 — trust at a glance, where the shopper decides whether to tap. */}
+        <VerifiedBadge verification={shop.verification} />
       </div>
 
       {zoneName && servesZone && (

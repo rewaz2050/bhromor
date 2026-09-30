@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCatalog } from "@/lib/use-catalog";
@@ -29,6 +29,13 @@ export default function AdminProductsPage() {
   const [vis, setVis] = useState<Vis>("all");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
+  /** Deep link from Admin → Shops ("this shop's products", 2026-09-27/B12). */
+  const [shopId, setShopId] = useState("");
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("shop");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- adopt the URL once on mount
+    if (wanted) setShopId(wanted);
+  }, []);
 
   // Shelf state (Live / Low / Sold out / Draft / Archived) is the same
   // model the vendor list uses (product-shelf.ts). Until 2026-09-18 a
@@ -39,6 +46,7 @@ export default function AdminProductsPage() {
     return products
       .filter((p) => (vis === "all" ? true : shelfState(p) === vis))
       .filter((p) => (category === "all" ? true : p.category === category))
+      .filter((p) => (shopId === "" ? true : p.shopId === shopId))
       .filter(
         (p) =>
           q === "" ||
@@ -47,7 +55,7 @@ export default function AdminProductsPage() {
           p.sku.toLowerCase().includes(q) ||
           p.subCategory.toLowerCase().includes(q),
       );
-  }, [products, vis, query, category]);
+  }, [products, vis, query, category, shopId]);
 
   const counts = useMemo(() => shelfCounts(products), [products]);
   const countOf = (id: Vis) => counts[id];
@@ -104,6 +112,15 @@ export default function AdminProductsPage() {
           A 15–30 second phone clip (fabric in daylight, how it drapes, the fit) on YouTube — paste the
           link in the product&rsquo;s &ldquo;YouTube video&rdquo; field and it plays in the gallery and
           earns a &ldquo;▶ Video&rdquo; badge on the card.
+        </p>
+      )}
+
+      {shopId !== "" && (
+        <p className="rounded-xl bg-forest-50 px-4 py-3 text-sm text-forest-900 ring-1 ring-forest-200">
+          Showing <strong>one shop&rsquo;s</strong> products only.{" "}
+          <Link href="/admin/products" className="font-semibold underline underline-offset-2">
+            Clear the shop filter
+          </Link>
         </p>
       )}
 

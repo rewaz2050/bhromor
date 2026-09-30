@@ -13,6 +13,7 @@
  * order is validated, so removing one piece simply removes the saving.
  */
 
+import { useProductHref } from "@/lib/use-product-href";
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -39,6 +40,7 @@ const bundleConfigOf = (partial: Partial<BundleConfig> | undefined): BundleConfi
 export default function BundleOffer({ product }: { product: Product }) {
   const { t } = useLanguage();
   const { products } = useLiveCatalog();
+  const hrefFor = useProductHref();
   const { promos } = usePromos();
   const { profile } = useSizeProfile();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("bundle");
@@ -103,7 +105,7 @@ export default function BundleOffer({ product }: { product: Product }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <Link
-                    href={`/product/${line.product.slug}`}
+                    href={hrefFor(line.product)}
                     className="block truncate text-sm font-medium text-forest-900 hover:underline"
                   >
                     {line.product.name}

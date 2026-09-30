@@ -26,6 +26,7 @@ import { formatBdt } from "@/lib/format";
 import { bnDigits } from "@/lib/arrival";
 import { SUNAMGANJ_HUB } from "@/lib/sunamganj";
 import type { BagOffer } from "@/lib/use-bag-offer";
+import type { ShopParcel } from "./shop-split-card";
 
 export interface PriceSummary {
   charge: number;
@@ -48,6 +49,11 @@ export interface PriceSummary {
   distanceKm: number | undefined;
   isNight: boolean;
   isRain: boolean;
+  /**
+   * C2 — the parcels this checkout becomes, one per shop. Absent (or one
+   * entry) means an ordinary single-shop bag.
+   */
+  parcels?: ShopParcel[];
 }
 
 export type PlusState = "idle" | "checking" | "none" | "pending" | "active" | "expired" | "rejected";

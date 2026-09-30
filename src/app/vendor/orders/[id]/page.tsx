@@ -147,7 +147,17 @@ export default function VendorOrderDetailPage({
       <PageHeader
         title={order.id}
         sub={`${formatDateTime(order.createdAt)} · ${where} · ${pay.label}`}
-        action={<StatusPill status={order.status} />}
+        action={
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusPill status={order.status} />
+            <Link
+              href={`/vendor/orders/${encodeURIComponent(order.id)}/slip`}
+              className="inline-flex min-h-9 items-center rounded-full border border-line bg-paper px-3 py-1 text-[0.7rem] font-semibold text-forest-800 hover:bg-ivory-100"
+            >
+              Packing slip
+            </Link>
+          </span>
+        }
       />
 
       {actionError && (

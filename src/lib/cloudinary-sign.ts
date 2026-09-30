@@ -34,6 +34,7 @@ export interface CloudinarySignature {
   folder: string;
   signature: string;
   resource: "image" | "video";
+  allowedFormats: string;
   uploadUrl: string;
 }
 
@@ -43,7 +44,8 @@ export const signCloudinaryUpload = (
   resource: "image" | "video" = "image",
 ): CloudinarySignature => {
   const timestamp = Math.floor(Date.now() / 1000);
-  const toSign = `folder=${folder}&timestamp=${timestamp}${cloudinaryApiSecret() ?? ""}`;
+  const allowedFormats = resource === "image" ? "avif,jpeg,jpg,png,webp" : "mov,mp4,webm";
+  const toSign = `allowed_formats=${allowedFormats}&folder=${folder}&timestamp=${timestamp}${cloudinaryApiSecret() ?? ""}`;
   const signature = createHash("sha1").update(toSign).digest("hex");
   const cloudName = cloudinaryCloudName() ?? "";
   return {
@@ -53,6 +55,7 @@ export const signCloudinaryUpload = (
     folder,
     signature,
     resource,
+    allowedFormats,
     uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${resource}/upload`,
   };
 };

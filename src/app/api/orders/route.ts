@@ -10,13 +10,13 @@
  * Rate-limited per IP; validation failures are 422 with field errors.
  */
 
-import { validateOrderPayload } from "@/lib/order-validation";
+import { validateSplitOrder } from "@/lib/order-split";
 import { isPlusMember } from "@/lib/db/membership";
 import {
   OrderPlacementError,
   countStampsForPhone,
   loadOrderSnapshot,
-  placeLiveOrder,
+  placeLiveMultiOrder,
 } from "@/lib/db/orders";
 import { samePhone } from "@/lib/orders";
 import { notifyStaff, readOpsSettings } from "@/lib/db/engagement";
@@ -94,7 +94,10 @@ export async function POST(request: Request) {
           .then(sanitizeSettings)
           .catch(() => null)
       : null;
-    const validation = validateOrderPayload(payloadForValidation, {
+    // C2 — one tap may cover several shops. The payload is split BEFORE
+    // validation so every shop's order is priced, stock-checked and
+    // zone-checked on its own; the batch RPC then places them atomically.
+    const validation = validateSplitOrder(payloadForValidation, {
       ...snapshot,
       plusActive,
       settings: opsSettings ?? undefined,
@@ -104,38 +107,48 @@ export async function POST(request: Request) {
         errors: validation.errors,
       });
     }
-    const order = await placeLiveOrder(validation.draft, snapshot);
-    if (!order) {
+    const orders = await placeLiveMultiOrder(validation.drafts, snapshot);
+    if (!orders || orders.length === 0) {
       return apiError("Could not place the order — please try again.", 503);
     }
+    const order = orders[0];
     const staffDb = getSupabaseService();
     if (staffDb) {
       // → Admin notification (live inbox): full address ladder + money.
-      const d = validation.draft;
-      const details = [
-        d.customer.name,
-        `${d.customer.para} · ${d.customer.upazila} · ${d.customer.district}`,
-        `${(order.total / 100).toLocaleString("en-IN")} taka COD`,
-      ];
-      if (d.isPickup) details.push("Store Pickup");
-      else if (plusActive) details.push("PROSANTI+ — delivery + surcharges free");
-      else if (order.freeDeliveryBy === "shop") details.push("ফ্রি ডেলিভারি (দোকানের অফার)");
-      else if (order.freeDeliveryBy === "platform") details.push("ফ্রি ডেলিভারি (PROSANTI অফার)");
-      else if (order.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
-      if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
-      await notifyStaff(staffDb, {
-        kind: "order",
-        title: `নতুন অর্ডার ${order.id} — কনফার্মেশন দরকার`,
-        body: details.join(" · "),
-        href: `/admin/orders/${order.id}`,
-      });
+      // C2 — one note PER PARCEL: two shops on one tap must look like two
+      // deliveries in the inbox, not one order with a surprise inside.
+      for (const [index, placed] of orders.entries()) {
+        // The drafts and the placed rows line up one-for-one; the floor keeps
+        // the note honest even if a read-back ever dropped one.
+        const d = validation.drafts[Math.min(index, validation.drafts.length - 1)];
+        const details = [
+          d.customer.name,
+          `${d.customer.para} · ${d.customer.upazila} · ${d.customer.district}`,
+          `${(placed.total / 100).toLocaleString("en-IN")} taka COD`,
+          ...(orders.length > 1 ? [`${index + 1}/${orders.length} — এক চেকআউট`] : []),
+        ];
+        if (d.isPickup) details.push("Store Pickup");
+        else if (plusActive) details.push("PROSANTI+ — delivery + surcharges free");
+        else if (placed.freeDeliveryBy === "shop") details.push("ফ্রি ডেলিভারি (দোকানের অফার)");
+        else if (placed.freeDeliveryBy === "platform")
+          details.push("ফ্রি ডেলিভারি (PROSANTI অফার)");
+        else if (placed.deliveryCharge === 0) details.push("ফ্রি ডেলিভারি");
+        if ((d.tipAmount ?? 0) > 0) details.push(`টিপ ৳${(d.tipAmount ?? 0) / 100}`);
+        await notifyStaff(staffDb, {
+          kind: "order",
+          title: `নতুন অর্ডার ${placed.id} — কনফার্মেশন দরকার`,
+          body: details.join(" · "),
+          href: `/admin/orders/${placed.id}`,
+        });
+      }
       // 2026-09-24: if this phone already opted in on /track, the shopper gets
       // "অর্ডার পেয়েছি" with a filled-in tracker link — the receipt screen is
       // often already closed by the time they wonder how it is going.
       await notifyCustomerOrderPlaced(staffDb, {
         phone: order.customer?.phone,
         orderNo: order.id,
-        total: order.total,
+        total: orders.reduce((sum, o) => sum + o.total, 0),
+        ...(orders.length > 1 ? { orderCount: orders.length } : {}),
       });
     }
     // Smart Card: stamps ride on the signed-in account; when the card fills,
@@ -161,7 +174,9 @@ export async function POST(request: Request) {
         });
       }
     }
-    return apiJson({ order, smartCard }, 201);
+    // C2 — `orders` is the truth (one row per shop); `order` stays as the
+    // first of them so any older reader of this response keeps working.
+    return apiJson({ orders, order, smartCard }, 201);
   } catch (err) {
     if (err instanceof OrderPlacementError) {
       return apiError(err.message, err.status, { field: err.field });

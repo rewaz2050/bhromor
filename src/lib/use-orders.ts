@@ -31,11 +31,14 @@ interface OrdersPageResponse {
 export interface UseOrdersOptions {
   /** Server-side search (order no / customer name / phone). */
   q?: string;
+  /** Only this shop's orders — the Admin → Shops deep link (2026-09-27). */
+  shop?: string;
 }
 
-const pageUrl = (q: string, cursor: string | null): string => {
+const pageUrl = (q: string, cursor: string | null, shop = ""): string => {
   const params = new URLSearchParams({ limit: String(ORDERS_PAGE_SIZE) });
   if (q) params.set("q", q);
+  if (shop) params.set("shop", shop);
   if (cursor) params.set("cursor", cursor);
   return `/api/admin/orders?${params.toString()}`;
 };
@@ -44,12 +47,13 @@ const pageUrl = (q: string, cursor: string | null): string => {
 const fetchPages = async (
   q: string,
   pages: number,
+  shop = "",
 ): Promise<{ orders: Order[]; nextCursor: string | null }> => {
   const out: Order[] = [];
   let cursor: string | null = null;
   for (let i = 0; i < pages; i += 1) {
     const data: OrdersPageResponse = await apiGet<OrdersPageResponse>(
-      pageUrl(q, cursor),
+      pageUrl(q, cursor, shop),
     );
     out.push(...data.orders);
     cursor = data.nextCursor ?? null;
@@ -65,19 +69,23 @@ const mergeById = (prev: Order[], next: Order[]): Order[] => {
 
 export function useOrders(options: UseOrdersOptions = {}) {
   const q = (options.q ?? "").trim();
+  const shop = (options.shop ?? "").trim();
   const { live, checked } = useStaffLive();
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** How many pages the user has opened, remembered per query so a new
-   *  search starts from page one again (derived, not reset in an effect). */
-  const [opened, setOpened] = useState({ q, pages: 1 });
-  const pages = opened.q === q ? opened.pages : 1;
+   *  search (or shop filter) starts from page one again (derived, not reset
+   *  in an effect). The shop rides in the key: switching shops must not keep
+   *  the other shop's extra pages. */
+  const queryKey = shop === "" ? q : `${q}\u0000${shop}`;
+  const [opened, setOpened] = useState({ q: queryKey, pages: 1 });
+  const pages = opened.q === queryKey ? opened.pages : 1;
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const page = await fetchPages(q, pages);
+      const page = await fetchPages(q, pages, shop);
       setLiveOrders(page.orders);
       setNextCursor(page.nextCursor);
       setError(null);
@@ -86,14 +94,14 @@ export function useOrders(options: UseOrdersOptions = {}) {
       setError(apiErrorMessage(err));
       return false;
     }
-  }, [pages, q]);
+  }, [pages, q, shop]);
 
   const loadMore = useCallback(async (): Promise<boolean> => {
     if (!live || !nextCursor || loadingMore) return false;
     setLoadingMore(true);
     try {
-      const data = await apiGet<OrdersPageResponse>(pageUrl(q, nextCursor));
-      setOpened({ q, pages: pages + 1 });
+      const data = await apiGet<OrdersPageResponse>(pageUrl(q, nextCursor, shop));
+      setOpened({ q: queryKey, pages: pages + 1 });
       setLiveOrders((prev) => mergeById(prev ?? [], data.orders));
       setNextCursor(data.nextCursor ?? null);
       setError(null);
@@ -104,7 +112,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
     } finally {
       setLoadingMore(false);
     }
-  }, [live, loadingMore, nextCursor, pages, q]);
+  }, [live, loadingMore, nextCursor, pages, q, shop, queryKey]);
 
   useEffect(() => {
     if (!live) return;

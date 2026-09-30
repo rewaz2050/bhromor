@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { updateSupabaseSession } from "@/lib/supabase-middleware";
+import { distributedRateLimit } from "@/lib/distributed-rate-limit";
 
 /**
  * Next 16 renamed the `middleware` file convention to `proxy` (the old name
@@ -8,6 +9,8 @@ import { updateSupabaseSession } from "@/lib/supabase-middleware";
  * the staff routes see the session the browser just created.
  */
 export async function proxy(request: NextRequest) {
+  const limited = await distributedRateLimit(request);
+  if (limited) return limited;
   return updateSupabaseSession(request);
 }
 
