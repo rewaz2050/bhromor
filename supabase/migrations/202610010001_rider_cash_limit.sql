@@ -7,7 +7,6 @@ create or replace function ps_rider_cash_limit_paisa()
 returns bigint language sql stable security definer set search_path = public as $$
   select greatest(0, coalesce(nullif((value->>'riderCashLimitPaisa')::bigint, 0), 500000))
   from site_settings where key = 'ops'
-  union all select 500000
   limit 1
 $$;
 
