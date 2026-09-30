@@ -1,7 +1,7 @@
 /**
- * Migration probes for /api/health — the eight files from the 2026-09-26/27
- * rounds, each answered from the live database through PostgREST (no SQL
- * access needed): a missing table (42P01 / PGRST205) or a missing column
+ * Migration probes for /api/health — the round files from 2026-09-26 onward
+ * (plus the 2026-09-30 rider-money pair), each answered from the live database
+ * through PostgREST (no SQL access needed): a missing table (42P01 / PGRST205) or a missing column
  * (42703 / PGRST204) means "that file has not run"; any other error means
  * the artefact exists (the probe only asks whether it is there).
  *
@@ -76,7 +76,8 @@ export type RoundProbeKey =
   | "shopCoverReady"
   | "bagSnapshotsReady"
   | "reviewStampsReady"
-  | "riderEarningsReady";
+  | "riderEarningsReady"
+  | "riderPayoutsReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -93,6 +94,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   bagSnapshotsReady: "202609270003_bag_snapshots.sql",
   reviewStampsReady: "202609270004_review_stamps.sql",
   riderEarningsReady: "202609300001_rider_delivery_accounting.sql",
+  riderPayoutsReady: "202609300002_rider_money.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -106,6 +108,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "bagSnapshotsReady",
   "reviewStampsReady",
   "riderEarningsReady",
+  "riderPayoutsReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -128,9 +131,11 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale review approve korle smart card e stamp jog hobe na ar 'verified' review er order-ref rakha jabe na",
   riderEarningsReady:
     "na chalale rider tip order theke 100% rider-er wallet-e credit hobe na (UI promise thakleo) ar 7-diner delivery counter purano orders.updated_at onujayi bhul marte pare",
+  riderPayoutsReady:
+    "na chalale rider per-delivery fee (Admin → Money te set kora) wallet-e joma hobe na, /rider/earnings page 'আয়ের পেজ এখনো চালু হয়নি' dekhabe ar kono payout request neoya jabe na",
 };
 
-/** All eight, in parallel — one round trip each. */
+/** All of them, in parallel — one round trip each. */
 export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
   const [
     passwordReset,
@@ -147,6 +152,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     reviewOrderRef,
     riderEarningsTable,
     riderWalletColumn,
+    riderPayoutsTable,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -162,6 +168,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     columnReady(db, "reviews", "order_ref"),
     tableReady(db, "rider_earnings"),
     columnReady(db, "riders", "earnings_balance"),
+    tableReady(db, "rider_payout_requests"),
   ]);
 
   return {
@@ -179,6 +186,9 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // 202609300001 — both artefacts ship in one transaction; either missing
     // means the tip wallet / delivered_at stamp has not landed.
     riderEarningsReady: riderEarningsTable.ready && riderWalletColumn,
+    // 202609300002 — the payout table ships with the per-delivery fees and the
+    // two money RPCs; its presence is the honest "Phase 2 has landed" signal.
+    riderPayoutsReady: riderPayoutsTable.ready,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,
@@ -186,6 +196,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
       bag_snapshots: bagSnapshots.count,
       stamp_ledger: stampLedger.count,
       rider_earnings: riderEarningsTable.count,
+      rider_payout_requests: riderPayoutsTable.count,
     },
   };
 };

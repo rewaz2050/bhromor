@@ -496,6 +496,16 @@ export default function RiderPage() {
               হাতের ক্যাশ নয়। Payout হবে Admin approve করলে।
             </p>
           )}
+          {/* 202609300002 — the full statement: tips, per-delivery fees,
+              payout history and the withdrawal request. Always reachable,
+              also when the wallet is still empty. */}
+          <Link
+            href="/rider/earnings"
+            data-testid="rider-earnings-link"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-forest-800 underline underline-offset-2"
+          >
+            📊 আমার আয়ের হিসাব ও উত্তোলন →
+          </Link>
 
           {/* Progress bar toward ৳5,000 cap */}
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ivory-200 ring-1 ring-line/40">

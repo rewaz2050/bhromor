@@ -203,3 +203,61 @@ staff-side suspend আর "অনলাইন" দেখায় না।
 
 **পরের ধাপ (Permission-এর অপেক্ষায়):** Phase 2 (C/D/M/N — per-delivery fee, rider payout,
 admin money dashboard), Phase 3 (dashboard redesign), তারপর B2/B5/B6/B11/B12।
+
+
+---
+
+## 8. Phase 2 — rider money system (৩০ সেপ্টেম্বর ২০২৬)
+
+Permission: *"একটা একটা করে সব করো p1, p2, p3"* → Phase 1 merge-এর পর Phase 2।
+নতুন migration: **`supabase/migrations/202609300002_rider_money.sql`** (idempotent,
+202609300001 ছাড়াও একা চালানো যায় — দরকারি column/table নিজেই বানায়)।
+
+**৮.১ (C) Per-delivery আয়।** `ps_rider_deliver` এখন ডেলিভারিতে ১০০% টিপের সঙ্গে
+`site_settings`-এর **base fee** (`rider_base_fee_paisa`) আর COD অর্ডারে **COD handling
+fee** (`rider_cod_handling_fee_paisa`) credit করে — দুটোই `ps_setting_int` দিয়ে প্রতি
+ডেলিভারিতে live পড়া হয়, তাই রেট বদলালে **পরের ডেলিভারি থেকে** কার্যকর, পুরোনোতে
+backfill হয় না। ডিফল্ট **৳০ ইচ্ছাকৃত**: rider-এর ওয়ালেটে মালিকের না-বলা রেট জমা করা
+একটা টাকার সিদ্ধান্ত, schema-র নয় — রেট সেট না করা পর্যন্ত Admin → Money-তে হলুদ
+সতর্কবার্তা থাকে আর শুধু টিপ জমা হয়। প্রতিটি credit একই `rider_earnings` জার্নালে
+(`delivery_fee` / `cod_handling`; unique `(order_id, kind)` gate অপরিবর্তিত), তাই
+`riders.earnings_balance` সবসময় ওই rider-এর জার্নাল-যোগফল।
+
+**৮.২ (D) Rider payout (staff-approved)।** `rider_payout_requests` টেবিল +
+`ps_rider_request_payout`: rider নিজের ওয়ালেট থেকে উত্তোলন চায় — **একসাথে একটির বেশি
+pending নয়** — আর টাকা **সাথে সাথেই hold হয়** (wallet debit + ঋণাত্মক `payout` row,
+request-এর সাথে linked), তাই একই টাকা দুইবার খরচ হতে পারে না। Staff সিদ্ধান্ত দেয়
+`ps_admin_decide_rider_payout` দিয়ে: **paid** হলে wallet-এ কিছু নড়ে না (hold-টাই
+পরিশোধ), **rejected** হলে টাকা ফেরত যায় ও `payout_refund` জার্নাল হয়। ফলে
+`earnings_balance` যেকোনো মুহূর্তে জার্নালের সাথে মিলিয়ে দেখা যায় (drift check টেস্টে
+আছে)।
+
+**৮.৩ (M) Admin → Money।** `ps_admin_money_summary()` (staff-only) লেজার থেকেই পুরো
+অবস্থান বলে: income (commission + delivery charge + সংগৃহীত টিপ), rider wallet payable,
+pending/paid payout, shop payable, riders-এর হাতে থাকা COD cash (pending claim সহ)।
+পেজে payout queue (bKash/bank reference দিয়ে approve, note দিয়ে reject) আর রেট এডিটর —
+যেটি **একই** `site_settings` কী-তে লেখে যেটি deliver RPC পড়ে (এক এডিটর, এক source of
+truth)। টাকা টাকায় লেখা হয়, paisa-তে জমা হয়; ভুল ইনপুট 422 দেয়, চুপচাপ ৳০ করে না।
+
+**৮.৪ (N) /rider/earnings।** rider-এর নিজের statement: ওয়ালেট (প্ল্যাটফর্ম পাওনা) বনাম
+হাতের COD ক্যাশ (দায়) বনাম এখন পর্যন্ত উত্তোলন — তিনটা কখনো মেশে না; আজ/৭ দিন/সর্বমোট,
+kind-ভিত্তিক ভাঙা (টিপ, ডেলিভারি ফি, ক্যাশ হ্যান্ডলিং), অর্ডার নম্বরসহ জার্নাল ফিড,
+payout history (status chip) আর উত্তোলনের ফর্ম (সর্বনিম্ন payout hint, এক pending থাকলে
+দ্বিতীয়টার বদলে status কার্ড)। রাইডার ড্যাশবোর্ডে "📊 আমার আয়ের হিসাব ও উত্তোলন →"
+লিংক।
+
+**৮.৫ Health + tooling।** ১০ম round probe `riderPayoutsReady` (`rider_payout_requests`)
+— না চললে `/api/health` ঠিক ফাইলের নাম বলে। `bootstrap-fresh.sql`-এ নতুন Feature
+section (header এখন "through 202609300002"), `diagnose.sql`-এ row 58–63,
+`npm run split:bootstrap` → **১৬** part।
+
+**Verification।** Migration-টা embedded PostgreSQL-এ (PGlite, minimal schema + উভয়
+migration) চালিয়ে **২৬টি চেক** পাস: ভুল PIN/state guard, COD বনাম prepaid credit,
+double-credit replay-safe, hold/decrease/refund হিসাব, suspended rider নিষিদ্ধ,
+wallet ≡ জার্নাল drift check, admin summary টোটাল, double re-apply no-op। নতুন টেস্ট
+৫০টি (মোট **2436**), সব gate (`lint` / `typecheck` / `test` / `build`) পাস।
+
+**Deploy।** মালিককে SQL Editor-এ ক্রমে `202609300001` → `202609300002` চালাতে হবে;
+তার আগে rider শুধু টিপ পায় (৳০ fee), payout route 503 দেয় ফাইলের নাম বলে, আর
+`/rider/earnings` + Admin → Money "backend update pending" দেখায় — বাকি অ্যাপ
+অপরিবর্তিত।
