@@ -351,6 +351,23 @@ export default function VendorOrderDetailPage({
             )}
           </section>
 
+          {order.rider && (
+            <section className="rounded-2xl bg-sky-50 p-5 ring-1 ring-sky-200" aria-label="Assigned rider">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-800">Assigned rider</h3>
+                  <p className="mt-2 text-base font-semibold text-sky-950">🚴 {order.rider.name}</p>
+                  <p className="text-sm text-sky-900">{order.rider.ratingAvg.toFixed(1)}★ · {order.rider.ratingCount} ratings</p>
+                </div>
+                <a href={`tel:${order.rider.phone}`} className="rounded-full bg-sky-800 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-900">
+                  Call rider
+                </a>
+              </div>
+              <p className="mt-3 text-xs text-sky-800">রাইডার pickup বা delivery নিয়ে যোগাযোগ করতে পারবেন।</p>
+            </section>
+          )}
+
+
           <section className="rounded-2xl bg-paper p-5 ring-1 ring-line">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               Timeline

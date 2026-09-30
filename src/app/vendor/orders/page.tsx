@@ -184,6 +184,16 @@ function Queue() {
                     {formatBdt(o.total)}
                   </span>
                   <StatusPill status={o.status} />
+                  {o.rider && (
+                    <a
+                      href={`tel:${o.rider.phone}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-900 ring-1 ring-sky-200 hover:bg-sky-100"
+                      title={`Call rider ${o.rider.name}`}
+                    >
+                      🚴 {o.rider.name} · Call
+                    </a>
+                  )}
                   {action?.kind === "action" && (
                     <button
                       type="button"
