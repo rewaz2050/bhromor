@@ -1,4 +1,4 @@
--- PART 10/15 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 10/16 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Admin repair: order status updates, payment verify, rider guard (202609160003) ====
 -- ============================================================================
 -- Checkout repair 3 (2026-09-16): NO order status could be changed, no
