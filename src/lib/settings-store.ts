@@ -32,6 +32,8 @@ import {
 
 export interface AdminSettings {
   lowStockThreshold: number;
+  /** Maximum COD cash a rider may carry before dispatch pauses (paisa). */
+  riderCashLimitPaisa: number;
   // Loyalty Stamp Card settings (§10-Order Reward Engine)
   loyaltyEnabled: boolean;
   loyaltyTargetOrders: number;
@@ -72,6 +74,7 @@ export interface AdminSettings {
 
 export const SETTINGS_DEFAULTS: AdminSettings = {
   lowStockThreshold: 5,
+  riderCashLimitPaisa: 500_000,
   loyaltyEnabled: true,
   loyaltyTargetOrders: 10,
   loyaltyRewardTitle: "এক্সক্লুসিভ গিফট হ্যাম্পার",
@@ -130,6 +133,12 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
     Number.isFinite(p.lowStockThreshold)
       ? Math.max(0, Math.floor(p.lowStockThreshold))
       : SETTINGS_DEFAULTS.lowStockThreshold;
+
+  const riderCashLimitPaisa = moneyCap(
+    p.riderCashLimitPaisa,
+    SETTINGS_DEFAULTS.riderCashLimitPaisa,
+    5_000_000,
+  );
 
   const loyaltyEnabled =
     typeof p.loyaltyEnabled === "boolean"
@@ -198,6 +207,7 @@ export const sanitizeSettings = (raw: unknown): AdminSettings => {
 
   return {
     lowStockThreshold: threshold,
+    riderCashLimitPaisa,
     loyaltyEnabled,
     loyaltyTargetOrders,
     loyaltyRewardTitle,

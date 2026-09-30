@@ -1,5 +1,6 @@
 "use client";
 
+import { useSettings } from "@/lib/use-settings";
 import { useMemo, useState } from "react";
 import { availabilityLabel, isOnShift } from "@/lib/rider-hours";
 import { useNow } from "@/lib/use-now";
@@ -47,6 +48,7 @@ function RiderCard({
   onLinkRider,
   onResetPassword,
   onSettle,
+  cashLimitPaisa,
 }: {
   rider: Rider;
   zones: { id: string; name: string }[];
@@ -56,6 +58,7 @@ function RiderCard({
   onLinkRider: (id: string, email: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
   onSettle: (r: Rider) => Promise<boolean>;
+  cashLimitPaisa: number;
 }) {
   // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
   const now = useNow();
@@ -126,7 +129,7 @@ function RiderCard({
             {describeLoginEmail(rider.contactEmail)} · {rider.phone} ·{" "}
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
-              <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
+              <> · <strong className={rider.cashInHand >= cashLimitPaisa ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
             )}
             {/* 202609300001 — wallet owed to the rider (tips/fees), separate
                 from the COD cash they physically hold. */}
@@ -280,6 +283,7 @@ function RiderCard({
 
 /** Marketplace phase 3 — staff rider queue: approve / suspend / zones. */
 export default function AdminRidersPage() {
+  const { settings } = useSettings();
   const {
     riders,
     live,
@@ -585,6 +589,7 @@ export default function AdminRidersPage() {
               onLinkRider={linkRider}
               onResetPassword={resetRiderPassword}
               onSettle={(r) => settleCash(r.id, "cash", "")}
+              cashLimitPaisa={settings.riderCashLimitPaisa}
             />
           ))}
         </ul>

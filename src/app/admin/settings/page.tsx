@@ -32,6 +32,7 @@ export default function AdminSettingsPage() {
   const catalogApi = useCatalog();
 
   const [threshold, setThreshold] = useState(String(settings.lowStockThreshold));
+  const [riderCashLimitTaka, setRiderCashLimitTaka] = useState(String(Math.round(settings.riderCashLimitPaisa / 100)));
   const [loyaltyEnabled, setLoyaltyEnabled] = useState(settings.loyaltyEnabled);
   const [loyaltyTarget, setLoyaltyTarget] = useState(String(settings.loyaltyTargetOrders));
   const [loyaltyRewardTitle, setLoyaltyRewardTitle] = useState(settings.loyaltyRewardTitle);
@@ -65,6 +66,7 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot adoption
     setThreshold(String(settings.lowStockThreshold));
+    setRiderCashLimitTaka(String(Math.round(settings.riderCashLimitPaisa / 100)));
     setLoyaltyEnabled(settings.loyaltyEnabled);
     setLoyaltyTarget(String(settings.loyaltyTargetOrders));
     setLoyaltyRewardTitle(settings.loyaltyRewardTitle);
@@ -85,6 +87,7 @@ export default function AdminSettingsPage() {
     setContactEmail(settings.contact.email);
   }, [
     settings.lowStockThreshold,
+    settings.riderCashLimitPaisa,
     settings.loyaltyEnabled,
     settings.loyaltyTargetOrders,
     settings.loyaltyRewardTitle,
@@ -181,6 +184,18 @@ export default function AdminSettingsPage() {
   const freeDeliveryValid =
     !freeDeliveryEnabled ||
     (freeDeliveryMinPaisa >= FREE_DELIVERY_MIN_PAISA && freeDeliveryMinPaisa <= FREE_DELIVERY_MAX_PAISA);
+  const commitRiderCashLimit = () => {
+    const takaValue = Number(riderCashLimitTaka);
+    const paisa = Math.round(takaValue * 100);
+    if (!Number.isFinite(paisa) || paisa < 0 || paisa > 5_000_000) {
+      notify("Rider cash limit ৳0 থেকে ৳50,000-এর মধ্যে দিন");
+      return;
+    }
+    void saveSettings({ ...settings, riderCashLimitPaisa: paisa }).then((ok) =>
+      notify(ok ? "Rider cash limit saved — dispatch uses it after migration" : "Could not save — please try again"),
+    );
+  };
+
   const commitFreeDelivery = () => {
     if (!freeDeliveryValid) {
       notify(
@@ -457,6 +472,18 @@ export default function AdminSettingsPage() {
               ))}
             </div>
             <button type="button" onClick={commitDeliverySurcharges} className="mt-3 rounded-xl bg-gold-400 px-4 py-2 text-xs font-semibold text-forest-900">Save Delivery Settings</button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-end gap-4 rounded-xl bg-amber-50 p-5 ring-1 ring-amber-200">
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-ink">Rider COD cash limit</p>
+              <p className="text-xs text-ink-soft">Maximum cash a rider may carry before new COD jobs are paused.</p>
+            </div>
+            <label className="block">
+              <span className={label}>Taka</span>
+              <input className={`${field} w-32`} type="number" min="0" max="50000" value={riderCashLimitTaka} onChange={(e) => setRiderCashLimitTaka(e.target.value)} />
+            </label>
+            <button type="button" onClick={commitRiderCashLimit} className="rounded-xl bg-forest-800 px-4 py-2.5 text-sm font-semibold text-ivory-50">Save</button>
           </div>
 
           {/* Free delivery threshold (2026-09-26) — platform rule. The shop's

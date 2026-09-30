@@ -7,7 +7,7 @@ import { formatBdt } from "@/lib/format";
 import { paymentSummary } from "@/lib/payment-labels";
 
 /** Mirrors the dispatch SQL gates (202609250001): cash cap + 2-trip load. */
-const CASH_LIMIT_PAISA = 500000;
+const CASH_LIMIT_PAISA = 500_000; // SQL-backed default; live cap is enforced by the dispatch RPC
 const LOAD_LIMIT = 2;
 
 export function AdminBatchAssign({

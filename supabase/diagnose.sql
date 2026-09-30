@@ -216,3 +216,7 @@ select
   (select count(*) from delivery_zones where id in ('z1','z2','z3','z4')) as sunamganj_zones,
   (select count(*) from site_settings where key in ('homepage','ops')) as site_settings_rows,
   (select count(*) from customers)                                    as customers;
+
+-- 202610010001 — configurable rider cash cap helper
+select '202610010001_rider_cash_limit.sql' as migration,
+       exists (select 1 from pg_proc where proname = 'ps_rider_cash_limit_paisa') as present;

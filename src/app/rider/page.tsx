@@ -53,6 +53,22 @@ export default function RiderPage() {
   const activeRider = session.rider;
   const riderJobsApi = useRiderJobs(isLive, activeRider?.id);
   const riderStats = useRiderStats(isLive);
+  const [cashLimitPaisa, setCashLimitPaisa] = useState(500_000);
+
+  useEffect(() => {
+    if (!isLive) return;
+    let cancelled = false;
+    void fetch("/api/settings", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { settings?: { riderCashLimitPaisa?: number } } | null) => {
+        const value = data?.settings?.riderCashLimitPaisa;
+        if (!cancelled && typeof value === "number" && Number.isFinite(value) && value > 0) {
+          setCashLimitPaisa(value);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [isLive]);
 
   const [onlineOverride, setOnlineOverride] = useState<boolean | null>(null);
   const isOnline = onlineOverride ?? activeRider?.isOnline ?? false;
@@ -88,7 +104,7 @@ export default function RiderPage() {
     flashTimer.current = window.setTimeout(() => setFlash(null), 3500);
   };
 
-  const CASH_LIMIT_PAISA = 500000;
+  const CASH_LIMIT_PAISA = cashLimitPaisa;
   const cashInHand = activeRider?.cashInHand ?? 0;
   const isCashLimitReached = cashInHand >= CASH_LIMIT_PAISA;
 
@@ -507,7 +523,7 @@ export default function RiderPage() {
             📊 আমার আয়ের হিসাব ও উত্তোলন →
           </Link>
 
-          {/* Progress bar toward ৳5,000 cap */}
+          {/* Progress bar toward configured cash cap */}
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ivory-200 ring-1 ring-line/40">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
