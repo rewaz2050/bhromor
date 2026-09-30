@@ -70,6 +70,10 @@ export default function RiderPage() {
   const [proofUploading, setProofUploading] = useState(false);
   const [failedReason, setFailedReason] = useState("");
   const [showFailed, setShowFailed] = useState<string | null>(null);
+  // Inline error for the failed-attempt form — it used to land in pinError,
+  // which only renders inside the PIN modal, so every server refusal was
+  // silently dropped (audit B7).
+  const [failedError, setFailedError] = useState<string | null>(null);
 
   useEffect(
     () => () => {
@@ -131,7 +135,11 @@ export default function RiderPage() {
     }
     setActionError(null);
     setOnlineOverride(nextState);
-    void session.refresh();
+    // Server truth wins as soon as it lands: an optimistic override that
+    // lived forever used to paint "online" over a staff-side suspend/off
+    // until the next full reload (audit K).
+    await session.refresh();
+    setOnlineOverride(null);
     if (nextState && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -306,6 +314,9 @@ export default function RiderPage() {
   };
 
   const pendingClaim = riderJobsApi.pendingClaim;
+  // 202609300001 — the rider's wallet (tips credited at delivery), shown in
+  // the cash card so custody (COD) and earnings (platform debt) never blur.
+  const earningsBalance = riderStats.stats?.earningsBalance ?? 0;
   // Unaccepted invitations are not trips — the "চলমান" counter must only
   // count work this rider actually holds.
   const activeTrips = tasks.filter((t) => t.state !== "offered").length;
@@ -472,6 +483,17 @@ export default function RiderPage() {
               ⏳ {formatBdt(pendingClaim.amount)} জমার দাবি Admin-এর কাছে অপেক্ষায় আছে
               ({pendingClaim.method.toUpperCase()}
               {pendingClaim.reference ? ` · ${pendingClaim.reference}` : ""})। Approve হলে balance কমবে।
+            </p>
+          )}
+          {/* 202609300001 — earnings wallet (tips): NOT cash-in-hand, never
+              settleable as COD; shows the platform's debt to the rider. */}
+          {earningsBalance > 0 && (
+            <p
+              className="mt-2 rounded-xl bg-gold-50 p-2.5 text-xs font-semibold text-forest-950 ring-1 ring-gold-300"
+              data-testid="rider-earnings"
+            >
+              🏅 আপনার আয় (টিপ ইত্যাদি): {formatBdt(earningsBalance)} — এটা ওয়ালেট,
+              হাতের ক্যাশ নয়। Payout হবে Admin approve করলে।
             </p>
           )}
 
@@ -799,7 +821,10 @@ export default function RiderPage() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setShowFailed(showFailed === task.id ? null : task.id)}
+                        onClick={() => {
+                          setFailedError(null);
+                          setShowFailed(showFailed === task.id ? null : task.id);
+                        }}
                         className="text-[11px] text-rose-700 underline"
                       >
                         Customer unreachable? Report failed attempt
@@ -808,33 +833,62 @@ export default function RiderPage() {
                         <div className="rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 space-y-2">
                           <input
                             value={failedReason}
-                            onChange={(e) => setFailedReason(e.target.value)}
+                            onChange={(e) => {
+                              setFailedReason(e.target.value);
+                              setFailedError(null);
+                            }}
+                            minLength={5}
+                            maxLength={300}
                             placeholder="Reason: phone off, address wrong, etc"
                             className="w-full rounded-lg bg-white px-3 py-2 text-xs ring-1 ring-line"
+                            aria-label="Failed attempt reason"
                           />
+                          {failedError && (
+                            <p role="alert" className="text-xs font-semibold text-rose-800">
+                              {failedError}
+                            </p>
+                          )}
                           <div className="flex gap-2">
                             <button
                               type="button"
+                              disabled={failedReason.trim().length < 5}
                               onClick={async () => {
-                                const res = await fetch(`/api/rider/assignments/${task.id}/failed`, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ reason: failedReason }),
-                                });
+                                setFailedError(null);
+                                const res = await fetch(
+                                  `/api/rider/assignments/${task.id}/failed`,
+                                  {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ reason: failedReason }),
+                                  },
+                                );
                                 if (res.ok) {
                                   showFlash("Failed attempt recorded");
                                   setShowFailed(null);
                                   setFailedReason("");
+                                  setFailedError(null);
+                                  void riderJobsApi.refresh();
                                 } else {
-                                  const d = (await res.json().catch(() => null)) as { error?: string } | null;
-                                  setPinError(d?.error || "Failed");
+                                  const d = (await res.json().catch(() => null)) as {
+                                    error?: string;
+                                  } | null;
+                                  setFailedError(d?.error || "Failed — try again.");
                                 }
                               }}
-                              className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white"
+                              className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
                             >
                               Submit failed
                             </button>
-                            <button type="button" onClick={() => setShowFailed(null)} className="text-xs text-ink-soft">Cancel</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowFailed(null);
+                                setFailedError(null);
+                              }}
+                              className="text-xs text-ink-soft"
+                            >
+                              Cancel
+                            </button>
                           </div>
                         </div>
                       )}

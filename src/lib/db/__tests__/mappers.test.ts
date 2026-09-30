@@ -381,6 +381,8 @@ describe("mapRider (marketplace slice 6)", () => {
       lastLocationAt: undefined,
       currentLoad: 0,
       totalDeliveries: 0,
+      // 202609300001 — wallet owed to the rider; absent row → 0, never undefined
+      earningsBalance: 0,
       // P2 #22 — no shift on the row means ALWAYS available (explicit, not undefined)
       availability: { days: null, fromHour: null, toHour: null },
       // Round 4 (2026-09-26): no verdict yet, no KYC uploaded — never undefined kyc

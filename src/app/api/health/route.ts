@@ -121,15 +121,18 @@ export async function GET(request?: Request) {
     // of them gates `live` — orders flow without them — but each one has a
     // screen that answers 503 naming its file until it runs, so the report
     // says which are still missing instead of leaving that to be discovered.
-    passwordResetReady: false, // 202609260001
-    applicationReviewReady: false, // 202609260002
-    freeDeliveryReady: false, // 202609260003 (columns + patched ps_place_order, one transaction)
-    storefrontEventsReady: false, // 202609260004
-    pushBroadcastsReady: false, // 202609270001
-    shopCoverReady: false, // 202609270002
-    bagSnapshotsReady: false, // 202609270003
-    reviewStampsReady: false, // 202609270004
-  };
+  passwordResetReady: false, // 202609260001
+  applicationReviewReady: false, // 202609260002
+  freeDeliveryReady: false, // 202609260003 (columns + patched ps_place_order, one transaction)
+  storefrontEventsReady: false, // 202609260004
+  pushBroadcastsReady: false, // 202609270001
+  shopCoverReady: false, // 202609270002
+  bagSnapshotsReady: false, // 202609270003
+  reviewStampsReady: false, // 202609270004
+  // 202609300001 — rider tip wallet + delivered_at stamp (the tip promise
+  // both UIs make is only money-tracked once this file has run).
+  riderEarningsReady: false,
+};
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;
 

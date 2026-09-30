@@ -201,6 +201,12 @@ export interface Rider {
   totalDeliveries?: number;
   /** P2 #22 — the rider's own shift; drives auto-dispatch (see lib/rider-hours.ts). */
   availability?: import("./rider-hours").RiderAvailability;
+  /**
+   * Platform wallet owed to this rider — tips credited at delivery
+   * (202609300001), later per-delivery fees. Separate from cashInHand
+   * (COD custody the rider physically holds).
+   */
+  earningsBalance?: number;
   /** Round 4 — last staff decision. STAFF ONLY. */
   review?: ApplicationReview;
   /** Round 4 — uploaded KYC document URLs (doc id → https). STAFF + the rider. */

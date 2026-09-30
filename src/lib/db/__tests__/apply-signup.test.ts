@@ -397,6 +397,49 @@ describe("applyRider — apply = sign up", () => {
     expect(state.deleteAccount).toHaveBeenCalledWith(expect.anything(), "u-new");
   });
 
+  it("answers a UNIQUE phone collision with a clear 409, not a generic 503 (audit B4)", async () => {
+    // The dupe probe skips suspended/rejected rows, so a recycled number (or
+    // a suspended rider's) reaches the INSERT and trips riders.phone UNIQUE.
+    state.respond = (table, ops, payload) => {
+      if (table === "riders" && ops.includes("insert")) {
+        return {
+          data: null,
+          error: {
+            code: "23505",
+            message: 'duplicate key value violates unique constraint "riders_phone_key"',
+          },
+        };
+      }
+      return riderHappy(table, ops, payload);
+    };
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toMatchObject({
+      status: 409,
+    });
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toThrow(
+      /mobile number already has a rider account/i,
+    );
+    // The stray login is still cleaned up before the error is thrown.
+    expect(state.deleteAccount).toHaveBeenCalledWith(expect.anything(), "u-new");
+  });
+
+  it("answers a UNIQUE login collision for a different reason than the phone", async () => {
+    state.respond = (table, ops, payload) => {
+      if (table === "riders" && ops.includes("insert")) {
+        return {
+          data: null,
+          error: {
+            code: "23505",
+            message: 'duplicate key value violates unique constraint "riders_user_id_key"',
+          },
+        };
+      }
+      return riderHappy(table, ops, payload);
+    };
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toThrow(
+      /login already has a rider account/i,
+    );
+  });
+
   it("refuses a reused login that is already a rider", async () => {
     state.createAccount.mockResolvedValue({ userId: "u-old", created: false });
     state.respond = (table, ops, payload) => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import RiderPage from "../page";
 import type { RiderJob } from "@/lib/db/riders";
 import type { Order } from "@/lib/orders";
@@ -7,6 +7,8 @@ import type { Order } from "@/lib/orders";
 const state = vi.hoisted(() => ({
   jobs: [] as unknown[],
   isOnline: false,
+  /** 202609300001 — the tip wallet shown by /api/rider/stats. */
+  earnings: 0,
 }));
 
 vi.mock("@/lib/use-rider", () => ({
@@ -32,7 +34,13 @@ vi.mock("@/lib/use-rider", () => ({
     signOut: vi.fn(),
   }),
   useRiderStats: () => ({
-    stats: { totalDeliveries: 41, weekDeliveries: 9, ratingAvg: 4.8, ratingCount: 12 },
+    stats: {
+      totalDeliveries: 41,
+      weekDeliveries: 9,
+      ratingAvg: 4.8,
+      ratingCount: 12,
+      earningsBalance: state.earnings,
+    },
     loading: false,
     refresh: vi.fn(async () => {}),
   }),
@@ -83,8 +91,12 @@ const job = (state: RiderJob["state"], o: Order, expiresAt = Date.now() + 60_000
 beforeEach(() => {
   state.jobs = [];
   state.isOnline = false;
+  state.earnings = 0;
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("Rider Mobile Portal (/rider)", () => {
   it("renders rider header, online toggle, cash meter, and task sections", () => {
@@ -169,6 +181,49 @@ describe("Rider Mobile Portal (/rider)", () => {
     render(<RiderPage />);
     expect(screen.getByText("পিকআপ কনফার্ম করুন")).toBeInTheDocument();
     expect(screen.getByText("আমার রাইডার প্রোফাইল")).toBeInTheDocument();
+  });
+
+  it("shows the tip wallet as earnings, separate from COD cash-in-hand (202609300001)", () => {
+    state.earnings = 1500; // ৳15
+    render(<RiderPage />);
+    const wallet = screen.getByTestId("rider-earnings");
+    expect(wallet).toHaveTextContent(/আপনার আয়/);
+    expect(wallet).toHaveTextContent("৳15");
+    expect(wallet).toHaveTextContent(/হাতের ক্যাশ নয়/);
+  });
+
+  it("keeps the tip wallet hidden while it is empty", () => {
+    render(<RiderPage />);
+    expect(screen.queryByTestId("rider-earnings")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a failed-attempt refusal inline instead of dropping it (audit B7)", async () => {
+    state.isOnline = true;
+    state.jobs = [job("accepted", order({}))];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        json: async () => ({ error: "Please provide a reason (at least 5 chars)." }),
+      })),
+    );
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/Report failed attempt/i));
+    const reason = screen.getByLabelText("Failed attempt reason");
+    fireEvent.change(reason, { target: { value: "phone off" } });
+    fireEvent.click(screen.getByText("Submit failed"));
+    expect(await screen.findByText(/at least 5 chars/i)).toBeInTheDocument();
+  });
+
+  it("will not submit a failed attempt shorter than five characters", () => {
+    state.isOnline = true;
+    state.jobs = [job("accepted", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/Report failed attempt/i));
+    fireEvent.change(screen.getByLabelText("Failed attempt reason"), {
+      target: { value: "abc" },
+    });
+    expect(screen.getByText("Submit failed")).toBeDisabled();
   });
 
 });
