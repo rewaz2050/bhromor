@@ -103,7 +103,14 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('54',  'Commission audit trail',                   '202609290001_commission_audit.sql',         'table', 'shop_commission_history'),
   ('55',  'Shop-scoped product slugs',                '202609290002_shop_scoped_slugs.sql',        'column', 'storefront_saved_items.product_id'),
   ('56',  'Vendor product categories',                '202609290003_vendor_product_categories.sql', 'table', 'shop_product_categories'),
-  ('57',  'Rider tip wallet + delivered_at stamp',    '202609300001_rider_delivery_accounting.sql', 'column', 'riders.earnings_balance')
+  ('57',  'Rider tip wallet + delivered_at stamp',    '202609300001_rider_delivery_accounting.sql', 'column', 'riders.earnings_balance'),
+  -- Phase 2 rider money (2026-09-30): fees + payouts + dashboards.
+  ('58',  'Rider payout requests (one pending, wallet hold)', '202609300002_rider_money.sql', 'table', 'rider_payout_requests'),
+  ('59',  'Rider journal is signed + linked to payouts',      '202609300002_rider_money.sql', 'column', 'rider_earnings.payout_id'),
+  ('60',  'Payout request RPC (rider files, money held)',     '202609300002_rider_money.sql', 'function', 'ps_rider_request_payout'),
+  ('61',  'Payout decision RPC (staff paid/rejected)',        '202609300002_rider_money.sql', 'function', 'ps_admin_decide_rider_payout'),
+  ('62',  'Admin money summary RPC',                          '202609300002_rider_money.sql', 'function', 'ps_admin_money_summary'),
+  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary')
 )
 select step as ord,
        label,

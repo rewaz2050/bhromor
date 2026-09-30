@@ -132,6 +132,9 @@ export async function GET(request?: Request) {
   // 202609300001 — rider tip wallet + delivered_at stamp (the tip promise
   // both UIs make is only money-tracked once this file has run).
   riderEarningsReady: false,
+  // 202609300002 — per-delivery fees + the rider payout flow + the admin
+  // money dashboard; riders keep earning ৳0 per delivery until it runs.
+  riderPayoutsReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

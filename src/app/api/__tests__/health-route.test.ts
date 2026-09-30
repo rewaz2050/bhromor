@@ -137,9 +137,10 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     "bagSnapshotsReady",
     "reviewStampsReady",
     "riderEarningsReady",
+    "riderPayoutsReady",
   ] as const;
 
-  it("reports all nine files as applied when their tables and columns answer", async () => {
+  it("reports every round file as applied when their tables and columns answer", async () => {
     const body = (await (await GET()).json()) as Health & { counts: Record<string, number> };
     for (const key of ROUND) expect(body.checks[key], key).toBe(true);
     expect(body.nextSteps.some((s) => s.includes("2026092"))).toBe(false);
@@ -158,6 +159,16 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     body = (await (await GET()).json()) as Health;
     expect(body.checks.riderEarningsReady).toBe(false);
     expect(body.nextSteps.some((s) => s.includes("202609300001_rider_delivery_accounting.sql"))).toBe(true);
+  });
+
+  it("names the rider money file when the payout table is missing (202609300002)", async () => {
+    state.missing = new Set(["rider_payout_requests"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.riderPayoutsReady).toBe(false);
+    expect(body.checks.riderEarningsReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202609300002_rider_money.sql")),
+    ).toBe(true);
   });
 
   it("names the exact file for a missing table and for a missing column", async () => {

@@ -197,6 +197,14 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.queryByTestId("rider-earnings")).not.toBeInTheDocument();
   });
 
+  it("links to the full earnings statement (202609300002)", () => {
+    render(<RiderPage />);
+    expect(screen.getByTestId("rider-earnings-link")).toHaveAttribute(
+      "href",
+      "/rider/earnings",
+    );
+  });
+
   it("surfaces a failed-attempt refusal inline instead of dropping it (audit B7)", async () => {
     state.isOnline = true;
     state.jobs = [job("accepted", order({}))];

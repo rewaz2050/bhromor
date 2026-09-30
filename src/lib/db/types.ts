@@ -90,6 +90,41 @@ export interface DbRiderSettlement {
   settled_by: string | null;
 }
 
+/** 202609300002 — one rider wallet movement (signed; append-only). */
+export interface DbRiderEarning {
+  id: string;
+  rider_id: string;
+  order_id: string | null;
+  kind:
+    | "tip"
+    | "delivery_fee"
+    | "cod_handling"
+    | "incentive"
+    | "payout"
+    | "payout_refund"
+    | "adjustment";
+  amount: number;
+  payout_id: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** 202609300002 — a rider's withdrawal request against earnings_balance. */
+export interface DbRiderPayoutRequest {
+  id: string;
+  rider_id: string;
+  amount: number;
+  method: "bkash" | "nagad" | "bank" | "cash";
+  account: string;
+  status: "pending" | "paid" | "rejected";
+  requested_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  decided_by_email: string | null;
+  note: string | null;
+  reference: string;
+}
+
 export interface DbCategory {
   id: string;
   name: string;

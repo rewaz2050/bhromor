@@ -57,7 +57,7 @@ const readError = async (
   }
 };
 
-const riderFetch = async <T,>(
+export const riderFetch = async <T,>(
   path: string,
   method: "GET" | "POST" | "PATCH" = "GET",
   body?: unknown,
