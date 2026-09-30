@@ -1,4 +1,4 @@
--- PART 12/12 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 12/15 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: dispatch withdraw/resume + settle claims + PIN lockout + health (202609250003…006) ====
 -- P0 audit fixes (2026-09-25): superseded riders resume instantly after manual
 -- expiry, rider self-settle becomes a staff-approved claim, the delivery PIN
@@ -847,6 +847,24 @@ $$;
 
 revoke all on function ps_checkout_health() from public, anon, authenticated;
 grant execute on function ps_checkout_health() to service_role;
+
+commit;
+
+-- ============================================================================
+-- Feature: delivery (rider) ratings — the customer closes the quality loop
+-- (202609250008). One rating per order; service-role only (RLS, no policies).
+-- ============================================================================
+
+begin;
+
+create table if not exists delivery_ratings (
+  order_id   uuid primary key references orders (id) on delete cascade,
+  rider_id   uuid not null references riders (id),
+  stars      int  not null check (stars between 1 and 5),
+  created_at timestamptz not null default now()
+);
+
+alter table delivery_ratings enable row level security;
 
 commit;
 

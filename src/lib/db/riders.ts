@@ -106,19 +106,24 @@ export class RiderInputError extends Error {
 
 /**
  * PostgREST signals for "this database is behind the deployed app" — a
- * function or table the app calls has not been created yet (the owner has
- * not run the latest `supabase/migrations/*` in the SQL editor). Postgres
- * reports undefined_function/undefined_table (42883/42P01) and PostgREST
- * wraps stale-cache misses as PGRST202/PGRST205.
+ * function, table or COLUMN the app calls has not been created yet (the
+ * owner has not run the latest `supabase/migrations/*` in the SQL editor).
+ * Postgres reports undefined_function/undefined_table/undefined_column
+ * (42883/42P01/42703) and PostgREST wraps stale-cache misses as
+ * PGRST202/PGRST205/PGRST204.
  */
 export const isMissingDbObject = (
   err: { code?: string | null; message?: string | null } | null | undefined,
 ): boolean => {
   if (!err) return false;
-  if (["42883", "42P01", "PGRST202", "PGRST205", "42704"].includes(err.code ?? "")) {
+  if (
+    ["42883", "42P01", "PGRST202", "PGRST205", "42704", "42703", "PGRST204"].includes(
+      err.code ?? "",
+    )
+  ) {
     return true;
   }
-  return /does not exist|could not find the (table|function)|schema cache/i.test(
+  return /does not exist|could not find the (table|function|column)|schema cache/i.test(
     err.message ?? "",
   );
 };
@@ -321,6 +326,20 @@ export async function applyRider(
     .single();
   if (error || !data) {
     if (accountCreated) await deleteApplicantAccount(db, userId);
+    // riders.phone is UNIQUE while the dupe probe above deliberately skips
+    // suspended/rejected rows (so a rejected row never blocks its own login
+    // from re-applying). A DIFFERENT login carrying a suspended rider's — or
+    // a recycled — phone number therefore used to fall through to the generic
+    // 503 "Could not save the application" AFTER the auth account had been
+    // created and deleted. Say what actually happened (audit B4).
+    if (error && (error.code === "23505" || /already exists/i.test(error.message ?? ""))) {
+      throw new RiderInputError(
+        /phone/i.test(error.message ?? "")
+          ? "This mobile number already has a rider account — sign in at /rider/login, or contact PROSANTI support if the number is yours."
+          : "This login already has a rider account — sign in at /rider/login.",
+        409,
+      );
+    }
     throw new Error("rider application failed");
   }
   return { id: (data as { id: string }).id, userId, accountCreated, loginEmail: email, resubmitted: false };
@@ -933,11 +952,16 @@ export const settleClaimsReady = async (
 export interface RiderStats {
   /** Lifetime completed deliveries (maintained by the dispatch trigger). */
   totalDeliveries: number;
-  /** Deliveries completed in the last 7 days (order delivery time). */
+  /** Deliveries completed in the last 7 days (assignment delivered_at). */
   weekDeliveries: number;
   /** Customer delivery ratings (202609250008), 0 when not yet rated. */
   ratingAvg: number;
   ratingCount: number;
+  /**
+   * Platform wallet owed to this rider — tips credited at delivery
+   * (202609300001), later per-delivery fees. NOT the COD cash-in-hand.
+   */
+  earningsBalance: number;
 }
 
 /**
@@ -950,29 +974,59 @@ export async function getRiderStats(
   riderId: string,
 ): Promise<RiderStats> {
   const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [riderRow, week] = await Promise.all([
-    service
+  const readRider = async () => {
+    const row = await service
       .from("riders")
-      .select("total_deliveries,rating_avg,rating_count")
+      .select("total_deliveries,rating_avg,rating_count,earnings_balance")
       .eq("id", riderId)
-      .single(),
-    service
-      .from("delivery_assignments")
-      .select("order_id,orders!inner(updated_at)", { count: "exact", head: true })
-      .eq("rider_id", riderId)
-      .eq("state", "delivered")
-      .gte("orders.updated_at", since),
+      .single();
+    if (row.error && isMissingDbObject(row.error)) {
+      // Pre-202609300001 row: the wallet column does not exist yet — the
+      // scoreboard must still answer, just without the earnings figure.
+      return service
+        .from("riders")
+        .select("total_deliveries,rating_avg,rating_count")
+        .eq("id", riderId)
+        .single();
+    }
+    return row;
+  };
+  const [riderRow, week] = await Promise.all([
+    readRider(),
+    (async () => {
+      // 202609300001 stamps delivered_at — the actual delivery moment. On a
+      // database where that column is not applied yet the filter answers
+      // "column does not exist" and we keep the old orders.updated_at basis
+      // instead of blanking the counter (pending-migration degradation).
+      const fresh = await service
+        .from("delivery_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("rider_id", riderId)
+        .eq("state", "delivered")
+        .gte("delivered_at", since);
+      if (fresh.error && isMissingDbObject(fresh.error)) {
+        return service
+          .from("delivery_assignments")
+          .select("order_id,orders!inner(updated_at)", { count: "exact", head: true })
+          .eq("rider_id", riderId)
+          .eq("state", "delivered")
+          .gte("orders.updated_at", since);
+      }
+      return fresh;
+    })(),
   ]);
   const rider = (riderRow.data ?? {}) as {
     total_deliveries?: number | null;
     rating_avg?: number | string | null;
     rating_count?: number | null;
+    earnings_balance?: number | string | null;
   };
   return {
     totalDeliveries: Number(rider.total_deliveries ?? 0),
     weekDeliveries: week.count ?? 0,
     ratingAvg: Number(rider.rating_avg ?? 0),
     ratingCount: Number(rider.rating_count ?? 0),
+    earningsBalance: Number(rider.earnings_balance ?? 0),
   };
 }
 

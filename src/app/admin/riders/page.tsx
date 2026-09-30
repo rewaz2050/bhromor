@@ -128,6 +128,11 @@ function RiderCard({
             {rider.cashInHand > 0 && (
               <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
             )}
+            {/* 202609300001 — wallet owed to the rider (tips/fees), separate
+                from the COD cash they physically hold. */}
+            {(rider.earningsBalance ?? 0) > 0 && (
+              <> · <strong className="text-forest-700">owed to rider {formatBdt(rider.earningsBalance ?? 0)}</strong></>
+            )}
             {/* P2 #22 — a rider can be "Online" yet outside their own shift;
                 auto-dispatch will skip them until the shift window opens. */}
             {rider.status === "active" && (rider.availability?.fromHour ?? null) !== null && (
@@ -419,7 +424,14 @@ export default function AdminRidersPage() {
             টাকা হাতে পাওয়ার পরেই Approve (Settle) করুন — rider-এর দাবি মানেই টাকা পৌঁছেছে, এমন নয়।
           </p>
           <ul className="mt-3 space-y-2">
-            {settleClaims.map((claim) => (
+            {settleClaims.map((claim) => {
+              // The claim freezes the amount at filing time; Approve settles
+              // the LIVE balance (the rider may have delivered more since).
+              // Show both so the confirm can never quote a stale number
+              // (audit B8).
+              const liveCash =
+                riders.find((r) => r.id === claim.riderId)?.cashInHand ?? claim.amount;
+              return (
               <li
                 key={claim.id}
                 className="flex flex-wrap items-center gap-3 rounded-xl bg-ivory-50 p-3 ring-1 ring-line"
@@ -427,6 +439,11 @@ export default function AdminRidersPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-forest-900">
                     {claim.riderName ?? claim.riderId} · {formatBdt(claim.amount)}
+                    {liveCash !== claim.amount && (
+                      <span className="ml-1 font-normal text-amber-800">
+                        (live balance {formatBdt(liveCash)})
+                      </span>
+                    )}
                   </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {claim.method.toUpperCase()}
@@ -445,7 +462,7 @@ export default function AdminRidersPage() {
                   onClick={() => {
                     if (
                       window.confirm(
-                        `${formatBdt(claim.amount)} টাকা কি আসলেই পেয়েছেন? Approve করলে ${claim.riderName ?? "rider"}-এর balance শূন্য হবে।`,
+                        `${formatBdt(claim.amount)} টাকা কি আসলেই পেয়েছেন? Approve করলে ${claim.riderName ?? "rider"}-এর বর্তমান balance ${formatBdt(liveCash)} শূন্য হবে${liveCash !== claim.amount ? " (দাবির পর আরও ডেলিভারি এনেছেন)" : ""}।`,
                       )
                     ) {
                       void settleCash(claim.riderId, claim.method, claim.reference);
@@ -466,7 +483,8 @@ export default function AdminRidersPage() {
                   Reject
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </section>
       )}

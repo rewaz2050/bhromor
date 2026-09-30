@@ -42,6 +42,8 @@ export interface DbRider {
   avail_from_hour?: number | null;
   avail_to_hour?: number | null;
   avail_days?: number[] | null;
+  /** 202609300001 — platform wallet owed to the rider (tips, later fees). */
+  earnings_balance?: number | string | null;
   /** Round 4 — review audit + KYC (202609260002). */
   review_note?: string | null;
   reviewed_by?: string | null;

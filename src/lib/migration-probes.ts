@@ -75,7 +75,8 @@ export type RoundProbeKey =
   | "pushBroadcastsReady"
   | "shopCoverReady"
   | "bagSnapshotsReady"
-  | "reviewStampsReady";
+  | "reviewStampsReady"
+  | "riderEarningsReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -91,6 +92,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   shopCoverReady: "202609270002_shop_cover.sql",
   bagSnapshotsReady: "202609270003_bag_snapshots.sql",
   reviewStampsReady: "202609270004_review_stamps.sql",
+  riderEarningsReady: "202609300001_rider_delivery_accounting.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -103,6 +105,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "shopCoverReady",
   "bagSnapshotsReady",
   "reviewStampsReady",
+  "riderEarningsReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -123,6 +126,8 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale abandoned-bag reminder (30 min por 'আপনার ব্যাগে … অপেক্ষা করছে') ar bag snapshot save hobe na",
   reviewStampsReady:
     "na chalale review approve korle smart card e stamp jog hobe na ar 'verified' review er order-ref rakha jabe na",
+  riderEarningsReady:
+    "na chalale rider tip order theke 100% rider-er wallet-e credit hobe na (UI promise thakleo) ar 7-diner delivery counter purano orders.updated_at onujayi bhul marte pare",
 };
 
 /** All eight, in parallel — one round trip each. */
@@ -140,6 +145,8 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     bagSnapshots,
     stampLedger,
     reviewOrderRef,
+    riderEarningsTable,
+    riderWalletColumn,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -153,6 +160,8 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     tableReady(db, "bag_snapshots"),
     tableReady(db, "stamp_ledger"),
     columnReady(db, "reviews", "order_ref"),
+    tableReady(db, "rider_earnings"),
+    columnReady(db, "riders", "earnings_balance"),
   ]);
 
   return {
@@ -167,12 +176,16 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // reviews.order_ref rides with stamp_ledger in the same file; if only one
     // of the two is there the flag stays false so the next step names the file.
     ...(stampLedger.ready && !reviewOrderRef ? { reviewStampsReady: false } : {}),
+    // 202609300001 — both artefacts ship in one transaction; either missing
+    // means the tip wallet / delivered_at stamp has not landed.
+    riderEarningsReady: riderEarningsTable.ready && riderWalletColumn,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,
       push_broadcasts: pushBroadcasts.count,
       bag_snapshots: bagSnapshots.count,
       stamp_ledger: stampLedger.count,
+      rider_earnings: riderEarningsTable.count,
     },
   };
 };

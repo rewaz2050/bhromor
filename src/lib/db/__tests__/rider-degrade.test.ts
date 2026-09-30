@@ -30,6 +30,18 @@ describe("isMissingDbObject", () => {
     expect(isMissingDbObject(MISSING_TABLE)).toBe(true);
     expect(isMissingDbObject({ code: "PGRST202", message: "not found" })).toBe(true);
     expect(isMissingDbObject({ message: "relation \"public.x\" does not exist" })).toBe(true);
+    // 202609300001 — a missing COLUMN (riders.earnings_balance /
+    // delivery_assignments.delivered_at) is the same "database is behind"
+    // signal as a missing table or function.
+    expect(
+      isMissingDbObject({ code: "42703", message: 'column "earnings_balance" does not exist' }),
+    ).toBe(true);
+    expect(
+      isMissingDbObject({
+        code: "PGRST204",
+        message: "Could not find the 'delivered_at' column of 'delivery_assignments'",
+      }),
+    ).toBe(true);
   });
 
   it("never matches real failures", () => {

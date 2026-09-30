@@ -364,6 +364,8 @@ export interface RiderStatsView {
   weekDeliveries: number;
   ratingAvg: number;
   ratingCount: number;
+  /** 202609300001 — platform wallet (tips, later fees); absent pre-migration. */
+  earningsBalance?: number;
 }
 
 /**

@@ -136,14 +136,28 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     "shopCoverReady",
     "bagSnapshotsReady",
     "reviewStampsReady",
+    "riderEarningsReady",
   ] as const;
 
-  it("reports all eight files as applied when their tables and columns answer", async () => {
+  it("reports all nine files as applied when their tables and columns answer", async () => {
     const body = (await (await GET()).json()) as Health & { counts: Record<string, number> };
     for (const key of ROUND) expect(body.checks[key], key).toBe(true);
     expect(body.nextSteps.some((s) => s.includes("2026092"))).toBe(false);
     expect(body.counts.stamp_ledger).toBe(3);
     expect(body.counts.storefront_events).toBe(3);
+  });
+
+  it("names the rider tip-wallet file when the earnings column/table is missing (202609300001)", async () => {
+    state.missing = new Set(["riders.earnings_balance"]);
+    let body = (await (await GET()).json()) as Health;
+    expect(body.checks.riderEarningsReady).toBe(false);
+    expect(body.nextSteps.some((s) => s.includes("202609300001_rider_delivery_accounting.sql"))).toBe(true);
+
+    // The journal table missing is the same answer: one file ships both.
+    state.missing = new Set(["rider_earnings"]);
+    body = (await (await GET()).json()) as Health;
+    expect(body.checks.riderEarningsReady).toBe(false);
+    expect(body.nextSteps.some((s) => s.includes("202609300001_rider_delivery_accounting.sql"))).toBe(true);
   });
 
   it("names the exact file for a missing table and for a missing column", async () => {

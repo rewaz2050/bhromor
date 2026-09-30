@@ -1,6 +1,8 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
--- Generated from schema.sql + the 32 in-order migrations.
+-- Generated from schema.sql + the in-order migrations through
+-- 202609300001 (every file in supabase/migrations/, chronologically;
+-- append-only sections after the base chain carry their own banner).
 --
 -- WHEN TO USE THIS FILE:
 --   Only on a FRESH Supabase project (no PROSANTI tables yet).
@@ -9420,3 +9422,2502 @@ create table if not exists delivery_ratings (
 alter table delivery_ratings enable row level security;
 
 commit;
+
+-- ==== Feature: password reset requests (202609260001) ====
+-- Password reset requests without SMS or e-mail (2026-09-26).
+--
+-- The vendor / rider onboarding sends no e-mail and no SMS, so "I forgot my
+-- password" cannot be a reset link. Instead it is a REQUEST the person files
+-- from the login page (email + phone on file), which staff verify by phone
+-- and approve; approval opens a 24-hour window in which the same person sets
+-- a new password themselves. No secret is ever generated or transported:
+-- identity = the email + phone pair, the staff phone call, and the window.
+--
+-- Rows are written only by the API with the service role; staff read and
+-- decide through RLS. One open (pending / approved) request per login.
+begin;
+
+create table if not exists password_reset_requests(
+  id            uuid primary key default gen_random_uuid(),
+  kind          text not null check (kind in ('vendor','rider')),
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  subject_id    uuid not null,                       -- shops.id / riders.id
+  subject_name  text not null default '',
+  email         text not null,
+  phone         text not null,                       -- normalized 01XXXXXXXXX
+  status        text not null default 'pending'
+                check (status in ('pending','approved','rejected','used','expired')),
+  note          text,                                -- staff note on reject
+  requested_at  timestamptz not null default now(),
+  requested_ip  text,
+  reviewed_at   timestamptz,
+  reviewed_by   uuid,
+  expires_at    timestamptz,                         -- approval window end
+  used_at       timestamptz
+);
+
+create unique index if not exists password_reset_requests_one_open
+  on password_reset_requests(user_id) where status in ('pending','approved');
+create index if not exists idx_password_reset_requests_queue
+  on password_reset_requests(status, requested_at desc);
+
+alter table password_reset_requests enable row level security;
+
+-- Staff (manager / admin / super_admin) read and decide. Nobody else has a
+-- policy: the login page never touches the table directly, it talks to
+-- /api/auth/reset-request which uses the service role.
+drop policy if exists "password_reset_requests staff all" on password_reset_requests;
+create policy "password_reset_requests staff all" on password_reset_requests
+  for all using (ps_is_admin()) with check (ps_is_admin());
+
+notify pgrst, 'reload schema';
+commit;
+
+-- ==== Feature: application review (202609260002) ====
+-- Round 4 (2026-09-26): application review + rider KYC.
+--
+--   * shops / riders gain a fourth status, 'rejected', so staff can answer
+--     an application with a reason instead of leaving it pending forever or
+--     suspending a shop that never opened.
+--   * review_note / reviewed_by / reviewed_by_email / reviewed_at record
+--     every decision (approve, reject, suspend, re-open) — the applicant
+--     sees the note on the login page and can fix the details and
+--     re-apply with the same login, which UPDATES the rejected row back
+--     to 'pending' (one login = one shop / one rider stays true).
+--   * riders.kyc holds the document URLs a pending rider uploads from the
+--     login page (nid_front, nid_back, selfie, license) — staff see them
+--     on the Admin → Riders card before pressing Approve.
+--
+-- Idempotent; safe to re-run.
+
+begin;
+
+-- ---------------------------------------------------------------- shops
+alter table shops drop constraint if exists shops_status_check;
+alter table shops
+  add constraint shops_status_check
+  check (status in ('pending', 'active', 'suspended', 'rejected'));
+
+alter table shops
+  add column if not exists review_note       text,
+  add column if not exists reviewed_by       uuid,
+  add column if not exists reviewed_by_email text,
+  add column if not exists reviewed_at       timestamptz;
+
+-- ---------------------------------------------------------------- riders
+alter table riders drop constraint if exists riders_status_check;
+alter table riders
+  add constraint riders_status_check
+  check (status in ('pending', 'active', 'suspended', 'rejected'));
+
+alter table riders
+  add column if not exists review_note       text,
+  add column if not exists reviewed_by       uuid,
+  add column if not exists reviewed_by_email text,
+  add column if not exists reviewed_at       timestamptz,
+  add column if not exists kyc               jsonb not null default '{}'::jsonb,
+  add column if not exists kyc_submitted_at  timestamptz;
+
+-- No guard change needed: since 202609160003 a rider's DIRECT write to
+-- their own row may only flip is_online (jsonb whitelist), so the new
+-- review/KYC columns are staff- and service-role-only automatically.
+-- KYC uploads go through /api/rider/kyc, which writes with the service role
+-- after verifying the rider's own session.
+
+-- Storefront reads of shops are already limited to status = 'active' by the
+-- public policies; a rejected shop is as invisible as a pending one.
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: free delivery (202609260003) ====
+-- ============================================================================
+-- Free delivery threshold (2026-09-26)
+--
+-- Two rules, both optional, both server-priced:
+--
+--   * PLATFORM rule — Admin → Settings → "Free delivery": on/off + minimum
+--     subtotal. Lives in site_settings['ops'].freeDelivery (no schema
+--     change). PROSANTI funds it: the shop's payout is untouched.
+--   * SHOP rule — Vendor → Settings → "ফ্রি ডেলিভারি": each shop may opt in
+--     with its own minimum (shops.free_delivery_min, paisa; NULL = off).
+--     The shop funds it: ps_write_shop_ledger deducts the waived delivery
+--     amount from that order's payable.
+--
+-- Precedence at placement: platform first (if it covers the order the shop
+-- pays nothing), then the shop's own rule. Rider zones only — the courier
+-- leg (z4) is never free; pickup / return orders were already free; a
+-- free-delivery coupon or an active PROSANTI+ term still wins (no
+-- attribution, no deduction).
+--
+-- orders.free_delivery_by ('platform' | 'shop' | NULL) and
+-- orders.free_delivery_waived (paisa) record what happened, for the ledger,
+-- the admin order page and the vendor's earnings.
+--
+-- Idempotent — safe to re-run. Patches the installed ps_place_order in place
+-- (same technique as 202609160001) instead of re-pasting the whole RPC, so it
+-- works on every generation from 202609140015 (PROSANTI+) onward — including
+-- a copy that was pasted with Windows line endings or re-indented (the
+-- anchors are whitespace-tolerant since 2026-09-27).
+-- Expect "FREE DELIVERY OK" at the end.
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Columns
+-- ---------------------------------------------------------------------------
+alter table public.shops
+  add column if not exists free_delivery_min bigint;
+alter table public.shops drop constraint if exists shops_free_delivery_min_check;
+alter table public.shops
+  add constraint shops_free_delivery_min_check
+  check (free_delivery_min is null or free_delivery_min > 0);
+
+alter table public.orders
+  add column if not exists free_delivery_by text;
+alter table public.orders drop constraint if exists orders_free_delivery_by_check;
+alter table public.orders
+  add constraint orders_free_delivery_by_check
+  check (free_delivery_by is null or free_delivery_by in ('platform', 'shop'));
+alter table public.orders
+  add column if not exists free_delivery_waived bigint not null default 0;
+
+-- ---------------------------------------------------------------------------
+-- 2. ps_place_order — patch the installed definition in place.
+--
+--    Whitespace-tolerant (2026-09-27): the anchors are matched with regexes
+--    after the body's line endings and tabs are normalised, because a
+--    function that was pasted from Windows (CR LF) or re-indented by an
+--    editor is byte-different from the repository text even though it is
+--    the same function — the first cut of this file failed on exactly that
+--    ("could not find its anchors"). The normalised, patched body is what
+--    gets stored, so later patches see plain LF.
+-- ---------------------------------------------------------------------------
+do $free_delivery$
+declare
+  v_definition text;
+  v_function oid;
+  v_block text;
+  v_had_cr boolean;
+  v_had_tab boolean;
+  v_ok_declare boolean;
+  v_ok_rule boolean;
+  v_ok_cols boolean;
+  v_ok_vals boolean;
+  v_md5_installed text;
+begin
+  select p.oid, pg_get_functiondef(p.oid)
+    into v_function, v_definition
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname = 'ps_place_order'
+    and oidvectortypes(p.proargtypes) = 'jsonb, jsonb'
+  order by p.oid desc
+  limit 1;
+
+  if v_function is null then
+    raise exception 'ps_place_order(jsonb,jsonb) is missing — apply the checkout migrations first';
+  end if;
+
+  if v_definition like '%v_fd_by%' then
+    raise notice 'ps_place_order already prices the free-delivery threshold — nothing to patch';
+    return;
+  end if;
+
+  if v_definition not like '%is_plus,%' then
+    raise exception 'ps_place_order predates 202609140015_plus_membership.sql — apply that first';
+  end if;
+
+  -- Normalise what a copy-paste may have changed: CR LF / lone CR line
+  -- endings and tabs. The function has no string literal that contains
+  -- either, so this cannot change its behaviour.
+  v_md5_installed := md5(v_definition);
+  v_had_cr  := position(E'\r' in v_definition) > 0;
+  v_had_tab := position(E'\t' in v_definition) > 0;
+  v_definition := replace(replace(v_definition, E'\r\n', E'\n'), E'\r', E'\n');
+  v_definition := replace(v_definition, E'\t', '  ');
+
+  -- (a) two working variables, declared next to v_zone (any indentation).
+  v_definition := regexp_replace(
+    v_definition,
+    'declare[[:space:]]+v_zone[[:space:]]+delivery_zones%rowtype;',
+    E'declare\n  v_fd_by text := null;\n  v_fd_waived bigint := 0;\n  v_zone delivery_zones%rowtype;'
+  );
+  v_ok_declare := v_definition like '%v_fd_by text := null;%';
+
+  -- (b) the rule itself, evaluated after coupon / PROSANTI+ zeroed the
+  --     charge (v_charge > 0 guard) and before the total is computed —
+  --     i.e. right above the "P0 automatic offers" block, whatever its
+  --     indentation.
+  v_block := E'  -- ------------------------------------------------------------------\n'
+    || E'  -- Free delivery threshold (202609260003): the platform rule first\n'
+    || E'  -- (PROSANTI-funded), then the shop''s own opt-in (shop-funded — the\n'
+    || E'  -- ledger deducts free_delivery_waived from the payout). Rider zones\n'
+    || E'  -- only; pickup, return, coupon-free and PROSANTI+ orders skip this.\n'
+    || E'  -- ------------------------------------------------------------------\n'
+    || E'  if v_charge > 0 and not v_is_pickup and not v_is_return and v_zone.id <> ''z4'' then\n'
+    || E'    declare\n'
+    || E'      v_fd_platform bigint;\n'
+    || E'      v_fd_shop bigint;\n'
+    || E'    begin\n'
+    || E'      select nullif(s.value->''freeDelivery''->>''minSubtotalPaisa'', '''')::bigint\n'
+    || E'        into v_fd_platform\n'
+    || E'        from site_settings s\n'
+    || E'       where s.key = ''ops''\n'
+    || E'         and coalesce((s.value->''freeDelivery''->>''enabled'')::boolean, false);\n'
+    || E'      v_fd_shop := v_shop.free_delivery_min;\n'
+    || E'      if v_fd_platform is not null and v_fd_platform > 0 and v_subtotal >= v_fd_platform then\n'
+    || E'        v_fd_by := ''platform'';\n'
+    || E'      elsif v_fd_shop is not null and v_fd_shop > 0 and v_subtotal >= v_fd_shop then\n'
+    || E'        v_fd_by := ''shop'';\n'
+    || E'      end if;\n'
+    || E'      if v_fd_by is not null then\n'
+    || E'        v_fd_waived := v_charge;\n'
+    || E'        v_charge := 0;\n'
+    || E'        v_sur_night := 0; v_sur_rain := 0; v_sur_dist := 0; v_sur_express := 0; v_sur_weight := 0;\n'
+    || E'      end if;\n'
+    || E'    end;\n'
+    || E'  end if;\n\n';
+  -- Only the first match is replaced (no 'g' flag); the comment line is
+  -- kept below the inserted block.
+  v_definition := regexp_replace(
+    v_definition,
+    E'\n[ ]*-- P0 automatic offers',
+    E'\n' || v_block || E'  -- P0 automatic offers'
+  );
+  v_ok_rule := v_definition like '%Free delivery threshold (202609260003)%';
+
+  -- (c) persist the attribution on the order row: the insert's column list
+  --     and its values list (each anchor occurs once in the function).
+  v_definition := regexp_replace(
+    v_definition, E'is_plus,[ ]*\n', E'is_plus, free_delivery_by, free_delivery_waived,\n'
+  );
+  v_definition := regexp_replace(
+    v_definition, E'v_plus,[ ]*\n', E'v_plus, v_fd_by, v_fd_waived,\n'
+  );
+  v_ok_cols := v_definition like '%is_plus, free_delivery_by, free_delivery_waived,%';
+  v_ok_vals := v_definition like '%v_plus, v_fd_by, v_fd_waived,%';
+
+  if not (v_ok_declare and v_ok_rule and v_ok_cols and v_ok_vals) then
+    raise exception using
+      message = format(
+        'free-delivery patch could not find its anchors in ps_place_order — declare: %s, P0 offers: %s, insert columns: %s, insert values: %s (installed body: %s chars, CR line endings: %s, tabs: %s, md5 %s)',
+        case when v_ok_declare then 'ok' else 'MISSING' end,
+        case when v_ok_rule then 'ok' else 'MISSING' end,
+        case when v_ok_cols then 'ok' else 'MISSING' end,
+        case when v_ok_vals then 'ok' else 'MISSING' end,
+        length(v_definition), v_had_cr, v_had_tab, v_md5_installed),
+      hint = 'The installed ps_place_order is not the text this repository ships. Re-install it exactly: supabase/paste-parts 05 → 09 (base64 chunks of 202609140015, checksummed), then 202609160001_checkout_delivery_pricing.sql, then run this file again.';
+  end if;
+
+  execute v_definition;
+  raise notice 'ps_place_order patched (had CR line endings: %, tabs: %)', v_had_cr, v_had_tab;
+end
+$free_delivery$;
+
+-- ---------------------------------------------------------------------------
+-- 3. Ledger: a shop-funded waiver comes out of that order's payable.
+--    Same body as 202609160003 plus the deduction; jsonb reads keep it
+--    working on databases that never got the optional order columns.
+-- ---------------------------------------------------------------------------
+create or replace function ps_write_shop_ledger()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_pct numeric;
+  v_commission bigint;
+  v_payable bigint;
+  v_delivery bigint;
+  v_tip bigint;
+  v_sur bigint;
+  v_row jsonb := to_jsonb(new);
+  v_fd_waived bigint;
+begin
+  if new.status = 'delivered' and old.status is distinct from new.status then
+    select commission_pct into v_pct from shops where id = new.shop_id;
+    if v_pct is null then v_pct := 15; end if;
+    v_commission := floor((new.subtotal * v_pct) / 100);
+    v_payable := new.subtotal - v_commission;
+    v_delivery := coalesce(new.delivery_charge, 0);
+    v_tip := coalesce((v_row->>'tip_amount')::bigint, 0);
+    v_sur := coalesce((v_row->>'surcharge_night')::bigint, 0)
+           + coalesce((v_row->>'surcharge_rain')::bigint, 0)
+           + coalesce((v_row->>'surcharge_distance')::bigint, 0)
+           + coalesce((v_row->>'surcharge_express')::bigint, 0)
+           + coalesce((v_row->>'surcharge_weight')::bigint, 0);
+    -- Free delivery the SHOP offered: the rider is still paid, so the waived
+    -- amount leaves the shop's share (never below zero on this line).
+    v_fd_waived := coalesce((v_row->>'free_delivery_waived')::bigint, 0);
+    if coalesce(v_row->>'free_delivery_by', '') = 'shop' and v_fd_waived > 0 then
+      v_payable := greatest(0, v_payable - v_fd_waived);
+    end if;
+    -- A return order is the reverse leg: the shop pays the product share back.
+    if coalesce((v_row->>'is_return')::boolean, false) then
+      v_payable := -(new.subtotal - v_commission);
+    end if;
+    if new.shop_id is null then
+      return new;
+    end if;
+    insert into shop_ledger (shop_id, order_id, subtotal, commission, payable, delivery_charge, tip_amount, surcharge_total)
+    values (new.shop_id, new.id, new.subtotal, v_commission, v_payable, v_delivery, v_tip, v_sur)
+    on conflict (order_id) do update set
+      subtotal = excluded.subtotal,
+      commission = excluded.commission,
+      payable = excluded.payable,
+      delivery_charge = excluded.delivery_charge,
+      tip_amount = excluded.tip_amount,
+      surcharge_total = excluded.surcharge_total;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_ledger_on_delivered on orders;
+create trigger trg_orders_ledger_on_delivered
+  after update of status on orders
+  for each row execute function ps_write_shop_ledger();
+
+-- ---------------------------------------------------------------------------
+-- 4. Proof
+-- ---------------------------------------------------------------------------
+do $$
+declare v_ok boolean;
+begin
+  select pg_get_functiondef(p.oid) like '%v_fd_by%'
+    into v_ok
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'ps_place_order'
+    and oidvectortypes(p.proargtypes) = 'jsonb, jsonb'
+  order by p.oid desc limit 1;
+  if not coalesce(v_ok, false) then
+    raise exception 'ps_place_order was not patched';
+  end if;
+  raise notice 'FREE DELIVERY OK';
+end $$;
+
+commit;
+
+-- ==== Feature: storefront events (202609260004) ====
+-- ============================================================================
+-- Storefront funnel events (2026-09-26) — UX plan §0 "measure first"
+--
+-- The shop's OWN, first-party funnel: the browser batches a handful of
+-- anonymous events (page_view, view_item, add_to_cart, begin_checkout,
+-- purchase, search, scroll_depth, view_item_list, select_item) to
+-- POST /api/events, which inserts them here with the service role. No
+-- vendor tag needed, no cookies, nothing personal: a per-tab session id
+-- (random, sessionStorage) is the only join key.
+--
+--   * storefront_events — append-only; RLS on with NO policies and all
+--     privileges revoked from anon/authenticated → only the service role
+--     (API route) and the report function below can touch it.
+--   * ps_funnel_report(p_days) — one JSON blob for Admin → Reports → "Funnel":
+--     sessions, bounce, pages/session, PDP → add-to-cart → checkout → order
+--     conversion, add-to-cart by source (card / pdp / bundle / live), top
+--     searches with their result counts (zero = demand we don't stock), and
+--     how far down the home page people scroll. Orders / AOV / repeat come
+--     from `orders` itself (cancelled + return orders excluded), so the
+--     "order" step is real money, not a client-side ping.
+--
+-- Retention: rows older than 90 days are pruned by ps_prune_storefront_events()
+-- (call it from a daily cron / the API — optional, the table is small).
+--
+-- Idempotent — safe to re-run. Expect "STOREFRONT EVENTS OK" at the end.
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Table
+-- ---------------------------------------------------------------------------
+create table if not exists public.storefront_events (
+  id          bigint generated always as identity primary key,
+  created_at  timestamptz not null default now(),
+  session_id  text not null check (char_length(session_id) between 8 and 64),
+  event       text not null check (event in (
+                'page_view', 'view_item_list', 'select_item', 'view_item',
+                'add_to_cart', 'begin_checkout', 'purchase', 'search', 'scroll_depth')),
+  path        text,
+  product_id  text,
+  shop_id     text,
+  source      text,
+  value       bigint,
+  meta        jsonb not null default '{}'::jsonb,
+  lang        text check (lang is null or lang in ('bn', 'en'))
+);
+
+create index if not exists storefront_events_created_idx
+  on public.storefront_events (created_at desc);
+create index if not exists storefront_events_session_idx
+  on public.storefront_events (session_id, created_at);
+create index if not exists storefront_events_event_created_idx
+  on public.storefront_events (event, created_at desc);
+
+alter table public.storefront_events enable row level security;
+revoke all on public.storefront_events from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 2. Retention helper (optional; service role / cron only)
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_prune_storefront_events(p_keep_days int default 90)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_deleted bigint;
+begin
+  delete from public.storefront_events
+  where created_at < now() - make_interval(days => greatest(p_keep_days, 7));
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$$;
+revoke execute on function public.ps_prune_storefront_events(int) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3. Funnel report
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_funnel_report(p_days int default 7)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_since timestamptz := now() - make_interval(days => least(greatest(coalesce(p_days, 7), 1), 90));
+  v_sessions bigint;
+  v_page_views bigint;
+  v_bounced bigint;
+  v_pdp bigint;
+  v_atc bigint;
+  v_checkout bigint;
+  v_purchase bigint;
+  v_orders bigint;
+  v_revenue bigint;
+  v_customers bigint;
+  v_repeat bigint;
+  v_home_sessions bigint;
+  v_atc_by_source jsonb;
+  v_top_searches jsonb;
+  v_home_scroll jsonb;
+begin
+  -- Sessions = distinct tabs that produced at least one page_view.
+  select count(distinct session_id), count(*)
+    into v_sessions, v_page_views
+  from public.storefront_events
+  where created_at >= v_since and event = 'page_view';
+
+  select count(*) into v_bounced
+  from (
+    select session_id
+    from public.storefront_events
+    where created_at >= v_since and event = 'page_view'
+    group by session_id
+    having count(*) = 1
+  ) b;
+
+  select
+    count(distinct session_id) filter (where event = 'view_item'),
+    count(distinct session_id) filter (where event = 'add_to_cart'),
+    count(distinct session_id) filter (where event = 'begin_checkout'),
+    count(distinct session_id) filter (where event = 'purchase'),
+    count(distinct session_id) filter (where event = 'page_view' and path = '/')
+    into v_pdp, v_atc, v_checkout, v_purchase, v_home_sessions
+  from public.storefront_events
+  where created_at >= v_since;
+
+  -- Real orders from the orders table (not the client ping).
+  select count(*), coalesce(sum(total), 0)
+    into v_orders, v_revenue
+  from public.orders o
+  where o.created_at >= v_since
+    and o.status <> 'cancelled'
+    and not coalesce(o.is_return, false);
+
+  with window_customers as (
+    select distinct coalesce(o.customer_id::text, o.customer_phone) as ckey
+    from public.orders o
+    where o.created_at >= v_since
+      and o.status <> 'cancelled'
+      and not coalesce(o.is_return, false)
+  )
+  select
+    count(*),
+    count(*) filter (where exists (
+      select 1 from public.orders p
+      where coalesce(p.customer_id::text, p.customer_phone) = w.ckey
+        and p.created_at < v_since
+        and p.status <> 'cancelled'
+        and not coalesce(p.is_return, false)
+    ))
+    into v_customers, v_repeat
+  from window_customers w;
+
+  select coalesce(jsonb_agg(jsonb_build_object('source', source, 'count', n) order by n desc), '[]'::jsonb)
+    into v_atc_by_source
+  from (
+    select coalesce(nullif(source, ''), 'other') as source, count(*) as n
+    from public.storefront_events
+    where created_at >= v_since and event = 'add_to_cart'
+    group by 1
+  ) s;
+
+  select coalesce(jsonb_agg(jsonb_build_object('query', q, 'count', n, 'max_results', mx) order by n desc, q), '[]'::jsonb)
+    into v_top_searches
+  from (
+    select lower(left(meta->>'q', 80)) as q, count(*) as n, max(coalesce(value, 0)) as mx
+    from public.storefront_events
+    where created_at >= v_since and event = 'search' and coalesce(meta->>'q', '') <> ''
+    group by 1
+    order by n desc, q
+    limit 12
+  ) t;
+
+  select coalesce(jsonb_agg(jsonb_build_object('depth', depth, 'sessions', n) order by depth), '[]'::jsonb)
+    into v_home_scroll
+  from (
+    select value as depth, count(distinct session_id) as n
+    from public.storefront_events
+    where created_at >= v_since and event = 'scroll_depth' and path = '/'
+      and value in (25, 50, 75, 100)
+    group by 1
+  ) d;
+
+  return jsonb_build_object(
+    'days', least(greatest(coalesce(p_days, 7), 1), 90),
+    'sessions', v_sessions,
+    'page_views', v_page_views,
+    'bounced_sessions', v_bounced,
+    'pdp_sessions', v_pdp,
+    'atc_sessions', v_atc,
+    'checkout_sessions', v_checkout,
+    'purchase_sessions', v_purchase,
+    'orders', v_orders,
+    'aov', case when v_orders > 0 then (v_revenue / v_orders) else null end,
+    'customers', v_customers,
+    'repeat_customers', v_repeat,
+    'atc_by_source', v_atc_by_source,
+    'top_searches', v_top_searches,
+    'home_sessions', v_home_sessions,
+    'home_scroll', v_home_scroll
+  );
+end;
+$$;
+revoke execute on function public.ps_funnel_report(int) from public, anon, authenticated;
+
+commit;
+
+do $$ begin raise notice 'STOREFRONT EVENTS OK'; end $$;
+
+-- ==== Feature: push broadcasts (202609270001) ====
+-- ============================================================================
+-- 202609270001_push_broadcasts.sql
+-- Customer push BROADCAST (UX plan §12, R9) — "নতুন ড্রপের খবর" without SMS
+-- or email: the shopper who already turned on order notifications can also
+-- opt in to at most ONE shop message a week (a drop, an offer), sent from
+-- Admin → Growth to every opted-in device at once.
+--
+--   • `customer_push_subscriptions.marketing` — the opt-in, per device,
+--     default FALSE. Order milestones never look at it; only the broadcast
+--     fan-out does. A device that never ticked the box is never broadcast to.
+--   • `push_broadcasts` — one row per send: what was said (both languages),
+--     where it pointed, how many devices accepted, who pressed the button.
+--     The "one per 7 days" rule is enforced from `sent_at` of the newest row
+--     server-side, so nobody can spam the list by reloading the page.
+--
+-- Service-role only, RLS with no policies (same posture as the parent table).
+-- Safe to run twice. Expect "PUSH BROADCASTS OK" at the end.
+-- ============================================================================
+
+begin;
+
+alter table public.customer_push_subscriptions
+  add column if not exists marketing boolean not null default false;
+
+create index if not exists idx_customer_push_marketing
+  on public.customer_push_subscriptions (marketing)
+  where marketing;
+
+create table if not exists public.push_broadcasts (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  title_bn   text not null default '',
+  body       text not null,
+  body_bn    text not null default '',
+  href       text not null default '/offers',
+  devices    integer not null default 0,
+  accepted   integer not null default 0,
+  sent_by    text,
+  sent_at    timestamptz not null default now()
+);
+
+create index if not exists idx_push_broadcasts_sent_at
+  on public.push_broadcasts (sent_at desc);
+
+alter table public.push_broadcasts enable row level security;
+
+do $$ begin raise notice 'PUSH BROADCASTS OK'; end $$;
+
+commit;
+
+-- ==== Feature: shop cover (202609270002) ====
+-- ============================================================================
+-- 202609270002_shop_cover.sql
+-- Shop cover image (UX plan §9, R9) — one landscape photo per shop, shown as
+-- the storefront header background and as the banner on the /shops card.
+-- Optional: an empty string means "no cover" and every surface falls back to
+-- what it shows today. The vendor sets it from Vendor → Settings (URL; the
+-- same trust model as logo_url). Safe to run twice; expect "SHOP COVER OK".
+-- ============================================================================
+
+begin;
+
+alter table public.shops
+  add column if not exists cover_url text not null default '';
+
+do $$ begin raise notice 'SHOP COVER OK'; end $$;
+
+commit;
+
+-- ==== Feature: bag snapshots (202609270003) ====
+-- 202609270003_bag_snapshots.sql — the abandoned bag (UX plan §5, R10).
+--
+-- A shopper who opted in to "drops & offers" push on a device
+-- (customer_push_subscriptions.marketing, migration 202609270001) and then
+-- left pieces in the bag gets ONE reminder about 24 hours later — never SMS,
+-- never email, never a second nag for the same bag.
+--
+--   • one row per push device (endpoint), written by the storefront through
+--     PUT /api/bag/snapshot whenever the bag changes; a bag emptied at
+--     checkout writes count = 0 so nothing is sent;
+--   • `touched_at` is the last change, `reminded_at` the one reminder;
+--     the scheduler (/api/cron/tick → abandoned-bags) picks rows with
+--     count > 0, untouched for 24–72 h, not reminded in the last 7 days;
+--   • the endpoint references the subscription row, so a device that
+--     unsubscribes (or dies) takes its snapshot with it;
+--   • service-role only — RLS on, no policies.
+
+begin;
+
+create table if not exists public.bag_snapshots (
+  endpoint    text primary key
+              references public.customer_push_subscriptions (endpoint) on delete cascade,
+  count       integer not null default 0 check (count >= 0),
+  subtotal    integer not null default 0 check (subtotal >= 0),   -- paisa
+  top_name    text not null default '',
+  top_slug    text not null default '',
+  lang        text not null default 'bn',
+  touched_at  timestamptz not null default now(),
+  reminded_at timestamptz
+);
+
+create index if not exists idx_bag_snapshots_due
+  on public.bag_snapshots (touched_at)
+  where count > 0;
+
+alter table public.bag_snapshots enable row level security;
+
+do $$ begin raise notice 'BAG SNAPSHOTS OK'; end $$;
+
+commit;
+
+-- ==== Feature: review stamps (202609270004) ====
+-- 202609270004_review_stamps.sql — "রিভিউ লিখুন, স্ট্যাম্প পান" (UX plan §4/§7, R10).
+--
+-- The Smart Card counted orders only. Now an APPROVED review of a piece the
+-- shopper really bought (a delivered order on that phone containing the
+-- product — the same proof the "verified purchase" badge needs) earns one
+-- stamp, written to a ledger when staff approve it.
+--
+--   • reviews.customer_phone / reviews.order_ref — who wrote it, proven at
+--     submission (never trusted from the form alone);
+--   • stamp_ledger — one row per stamp that is not an order; unique
+--     (kind, ref_id) so approving → hiding → approving never pays twice;
+--   • the card's count = non-cancelled orders + ledger rows for the phone;
+--   • service-role only (RLS on, no policies).
+
+begin;
+
+alter table public.reviews
+  add column if not exists customer_phone text,
+  add column if not exists order_ref text;
+
+create index if not exists idx_reviews_customer_phone
+  on public.reviews (customer_phone)
+  where customer_phone is not null;
+
+create table if not exists public.stamp_ledger (
+  id         uuid primary key default gen_random_uuid(),
+  phone      text not null,
+  kind       text not null default 'review' check (kind in ('review')),
+  ref_id     uuid not null,
+  note       text not null default '',
+  created_at timestamptz not null default now(),
+  unique (kind, ref_id)
+);
+
+create index if not exists idx_stamp_ledger_phone on public.stamp_ledger (phone);
+
+alter table public.stamp_ledger enable row level security;
+
+do $$ begin raise notice 'REVIEW STAMPS OK'; end $$;
+
+commit;
+
+-- ==== Feature: shop follows (202609280001) ====
+-- ============================================================================
+-- B1 (2026-09-28): shop follows — "tell me when this shop has something new".
+-- ============================================================================
+-- The storefront already had a per-product ask (stock_watches: "call me when
+-- THIS is back") and a customer push pipeline. What was missing is the
+-- shop-level version: a shopper who liked a shop had no way to hear about the
+-- next drop, so every new product started from zero reach.
+--
+-- Honesty, same as the rest of the platform: there is no SMS/email sender, and
+-- push only works for a phone that opted in. A follow row is therefore a
+-- promise to TRY: the shop's new product pushes to every follower whose phone
+-- has a device subscribed, and the rest stay on the shop's call list in
+-- /vendor (a real number to dial), never a silently-dropped message.
+--
+-- `marketing_ok` is the shopper's own choice on the card: asked for the news
+-- (true) or only order updates (false — the follow is then only useful for
+-- keeping the shop's follower count honest, and the shop is told so).
+--
+-- Additive + idempotent.
+-- ============================================================================
+
+begin;
+
+create table if not exists shop_follows (
+  id                uuid primary key default gen_random_uuid(),
+  shop_id           uuid not null references shops (id) on delete cascade,
+  phone             text not null check (phone ~ '^[0-9]{11}$'),
+  -- The shopper ticked "send me new-product news" on the follow card.
+  marketing_ok      boolean not null default true,
+  -- When this follower was last reached (push delivered or handed to staff).
+  last_notified_at  timestamptz,
+  created_at        timestamptz not null default now(),
+  unique (shop_id, phone)
+);
+
+create index if not exists idx_shop_follows_shop on shop_follows (shop_id);
+create index if not exists idx_shop_follows_phone on shop_follows (phone);
+
+alter table shop_follows enable row level security;
+
+-- The storefront never writes this table directly: /api/shop-follow uses the
+-- service role. The insert policy exists so a hand-pasted insert from a
+-- customer session is still format-checked.
+drop policy if exists "shop follow public insert" on shop_follows;
+create policy "shop follow public insert" on shop_follows
+  for insert with check (phone ~ '^[0-9]{11}$');
+
+-- A shop reads its own followers (the "N followers + who to call" list on
+-- /vendor); the same `ps_vendor_shop()` helper the ledger uses. Staff read
+-- everything for support. The announcement fan-out itself runs on the
+-- service role, because customer_push_subscriptions has no policies.
+drop policy if exists "shop follows vendor read" on shop_follows;
+create policy "shop follows vendor read" on shop_follows
+  for select using (shop_id = ps_vendor_shop());
+drop policy if exists "shop follows admin all" on shop_follows;
+create policy "shop follows admin all" on shop_follows
+  for all using (ps_is_admin()) with check (ps_is_admin());
+
+commit;
+
+-- ==== Feature: review replies (202609280002) ====
+-- ============================================================================
+-- B2 (2026-09-28): the shop's reply on a review.
+-- ============================================================================
+-- Until now a review was a one-way message: a shopper could say "the sleeve was
+-- short", the shop could see it on its dashboard (RLS already let a vendor read
+-- reviews of its own products) and had no way to answer. The public page showed
+-- the complaint with no answer next to it.
+--
+-- Three columns, one per reply: the text, when it was last written, and which
+-- account wrote it (audit — a shop with staff accounts will one day have more
+-- than one person behind the counter).
+--
+-- Vendors may edit ONLY these columns, and only on their own reviews: the
+-- `reviews vendor reply own` policy scopes the row, and the guard trigger
+-- below rejects any other column change, so a vendor calling Supabase
+-- directly (anon key + JWT) hits the same wall as the API.
+--
+-- Additive + idempotent.
+-- ============================================================================
+
+begin;
+
+alter table reviews
+  add column if not exists vendor_reply    text,
+  add column if not exists vendor_reply_at timestamptz,
+  add column if not exists vendor_reply_by text;
+
+-- A reply is a sentence, not an essay; and an empty string is "no reply",
+-- so it is never stored (null instead).
+alter table reviews drop constraint if exists reviews_vendor_reply_len;
+alter table reviews add constraint reviews_vendor_reply_len
+  check (vendor_reply is null or char_length(vendor_reply) between 3 and 1200);
+
+create index if not exists idx_reviews_unanswered
+  on reviews (shop_id)
+  where status = 'approved' and vendor_reply is null;
+
+-- Vendors: update their own reviews (the policy), but see the trigger.
+drop policy if exists "reviews vendor reply own" on reviews;
+create policy "reviews vendor reply own" on reviews
+  for update using (shop_id = ps_vendor_shop())
+  with check (shop_id = ps_vendor_shop());
+
+create or replace function ps_guard_review_vendor_update()
+returns trigger language plpgsql as $$
+begin
+  -- Staff moderation carries on untouched (ps_is_admin() is the same helper
+  -- the RLS policies use).
+  if (select ps_is_admin()) then
+    return new;
+  end if;
+  if new.id          is distinct from old.id
+     or new.shop_id     is distinct from old.shop_id
+     or new.product_id  is distinct from old.product_id
+     or new.customer_id is distinct from old.customer_id
+     or new.author      is distinct from old.author
+     or new.rating      is distinct from old.rating
+     or new.title       is distinct from old.title
+     or new.body        is distinct from old.body
+     or new.status      is distinct from old.status
+     or new.verified    is distinct from old.verified
+     or new.featured    is distinct from old.featured
+  then
+    raise exception 'a shop may only write its reply on a review (migration 202609280002)';
+  end if;
+  -- The timestamp is the database's, never the client's.
+  if new.vendor_reply is distinct from old.vendor_reply then
+    new.vendor_reply_at := now();
+    if new.vendor_reply is null then
+      new.vendor_reply_by := null;
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_review_vendor_update on reviews;
+create trigger trg_guard_review_vendor_update
+  before update on reviews
+  for each row execute function ps_guard_review_vendor_update();
+
+commit;
+
+-- ==== Feature: vendor promos (202609280003) ====
+-- ============================================================================
+-- B3 (2026-09-28): the shop's own promo codes.
+-- ============================================================================
+-- Until now only staff could create coupons (`/admin/coupons`), so a shop that
+-- wanted to run "EID10 for my sarees" had to ask PROSANTI and wait.
+--
+-- This migration gives a shop its own codes, with the two rules that keep the
+-- marketplace honest:
+--
+--   1. PLATFORM CAPS. A shop may not promise more than the platform allows:
+--      at most `max_percent` off, a fixed discount no bigger than
+--      `max_discount`, a code no longer than `max_days`, at most `max_usage`
+--      redemptions, and no more than `max_active` live codes at once. Staff
+--      can change every cap in `vendor_promo_limits` without a deploy.
+--      A vendor calling Supabase directly (anon key + JWT) hits the same wall
+--      as the API: the guard trigger below, not the route, is the authority.
+--
+--   2. THE DISCOUNT LEAVES THE SHOP'S OWN SHARE. A platform coupon is
+--      PROSANTI's marketing spend; a shop's coupon is the shop's. So for a
+--      coupon whose `shop_id` matches the order's shop, the ledger subtracts
+--      the discount from that shop's payable and records it in
+--      `shop_ledger.promo_discount`. Commission is untouched — the platform
+--      never quietly pays for a shop's own discount. The vendor screen shows
+--      this arithmetic BEFORE the code is saved ("you will get ≈ …").
+--
+-- Codes stay usable only on their own shop's products: a `coupons.shop_id`
+-- that is set must equal the order's shop, enforced by a trigger on `orders`
+-- (so it holds for every generation of ps_place_order).
+--
+-- Additive + idempotent. Expect "VENDOR PROMOS OK".
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Columns: who owns a code, and who typed it.
+-- ---------------------------------------------------------------------------
+alter table public.coupons
+  add column if not exists shop_id uuid references public.shops (id) on delete cascade;
+alter table public.coupons
+  add column if not exists created_by text;
+
+create index if not exists idx_coupons_shop on public.coupons (shop_id);
+
+-- ---------------------------------------------------------------------------
+-- 2. The caps (one row, staff-editable — no migration to change a number).
+--    `max_discount` is paisa (§69): 50000 = ৳500.
+-- ---------------------------------------------------------------------------
+create table if not exists public.vendor_promo_limits (
+  id             text primary key default 'default',
+  max_percent    int  not null default 25  check (max_percent between 1 and 100),
+  max_discount   bigint not null default 50000 check (max_discount > 0),
+  max_days       int  not null default 30  check (max_days between 1 and 180),
+  max_usage      int  not null default 300 check (max_usage between 1 and 100000),
+  max_active     int  not null default 3   check (max_active between 1 and 50),
+  updated_at     timestamptz not null default now()
+);
+
+insert into public.vendor_promo_limits (id) values ('default')
+  on conflict (id) do nothing;
+
+alter table public.vendor_promo_limits enable row level security;
+
+-- Everyone may READ the caps (the vendor form prints them, the storefront
+-- needs nothing from them but reading them is harmless).
+drop policy if exists "promo limits public read" on public.vendor_promo_limits;
+create policy "promo limits public read" on public.vendor_promo_limits
+  for select using (true);
+
+drop policy if exists "promo limits admin write" on public.vendor_promo_limits;
+create policy "promo limits admin write" on public.vendor_promo_limits
+  for all using (ps_is_admin()) with check (ps_is_admin());
+
+-- ---------------------------------------------------------------------------
+-- 3. Vendors get their own codes — and only their own.
+-- ---------------------------------------------------------------------------
+drop policy if exists "coupons vendor read own" on public.coupons;
+create policy "coupons vendor read own" on public.coupons
+  for select using (shop_id = ps_vendor_shop());
+
+drop policy if exists "coupons vendor insert own" on public.coupons;
+create policy "coupons vendor insert own" on public.coupons
+  for insert with check (shop_id = ps_vendor_shop() and ps_vendor_shop() is not null);
+
+drop policy if exists "coupons vendor update own" on public.coupons;
+create policy "coupons vendor update own" on public.coupons
+  for update using (shop_id = ps_vendor_shop())
+  with check (shop_id = ps_vendor_shop());
+
+-- The guard: caps, ownership and immutability — for vendor sessions only.
+create or replace function ps_guard_vendor_promo()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_limits vendor_promo_limits%rowtype;
+  v_shop uuid;
+  v_active int;
+begin
+  -- Staff keeps the whole table (this is where platform coupons are born).
+  if (select ps_is_admin()) then
+    return new;
+  end if;
+
+  select * into v_limits from vendor_promo_limits where id = 'default';
+  if v_limits.id is null then
+    v_limits.max_percent := 25; v_limits.max_discount := 50000;
+    v_limits.max_days := 30;    v_limits.max_usage := 300;
+    v_limits.max_active := 3;
+  end if;
+
+  v_shop := ps_vendor_shop();
+  if v_shop is null then
+    raise exception 'only a shop may create a promo here';
+  end if;
+  if new.shop_id is distinct from v_shop then
+    raise exception 'a shop may only create promos for itself';
+  end if;
+
+  -- Delivery money is the platform's: a shop discounts its product, never
+  -- the courier leg. (A shop that wants free delivery uses its own setting.)
+  if new.type not in ('percent', 'fixed') then
+    raise exception 'a shop promo must be percent or fixed';
+  end if;
+  if new.type = 'percent' and (new.value < 1 or new.value > v_limits.max_percent) then
+    raise exception 'percent must be between 1 and % (the platform cap)', v_limits.max_percent;
+  end if;
+  if new.type = 'fixed' and (new.value < 1 or new.value > v_limits.max_discount) then
+    raise exception 'fixed discount must be between 1 and % paisa (the platform cap)', v_limits.max_discount;
+  end if;
+  if new.max_discount is not null and new.type <> 'percent' then
+    raise exception 'a discount cap only applies to percent promos';
+  end if;
+  if new.max_discount is not null and new.max_discount > v_limits.max_discount then
+    raise exception 'the discount cap may not exceed % paisa', v_limits.max_discount;
+  end if;
+  if new.valid_until is null then
+    raise exception 'a shop promo must have an end date';
+  end if;
+  if new.valid_until > now() + make_interval(days => v_limits.max_days) then
+    raise exception 'a shop promo may run at most % days', v_limits.max_days;
+  end if;
+  if new.valid_from is not null and new.valid_from < now() - interval '5 minutes' then
+    raise exception 'a shop promo cannot start in the past';
+  end if;
+  if new.usage_limit is null then
+    raise exception 'a shop promo must have a usage limit';
+  end if;
+  if new.usage_limit < 1 or new.usage_limit > v_limits.max_usage then
+    raise exception 'usage limit must be between 1 and %', v_limits.max_usage;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    -- The redemption counter and the owner are facts, not fields.
+    if new.used is distinct from old.used then
+      raise exception 'the usage counter is written by the checkout, not by the shop';
+    end if;
+    if new.shop_id is distinct from old.shop_id then
+      raise exception 'a promo cannot change hands';
+    end if;
+    if new.code is distinct from old.code and old.used > 0 then
+      raise exception 'a promo that has been used cannot be renamed';
+    end if;
+  end if;
+
+  if coalesce(new.active, true) and (tg_op = 'INSERT' or not coalesce(old.active, false)) then
+    select count(*) into v_active
+      from coupons
+     where shop_id = v_shop
+       and active
+       and (tg_op = 'INSERT' or id <> old.id);
+    if v_active >= v_limits.max_active then
+      raise exception 'at most % live promos per shop', v_limits.max_active;
+    end if;
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists trg_guard_vendor_promo on public.coupons;
+create trigger trg_guard_vendor_promo
+  before insert or update on public.coupons
+  for each row execute function ps_guard_vendor_promo();
+
+-- ---------------------------------------------------------------------------
+-- 4. A shop's code only works on that shop's order.
+--    A trigger (not a patch of ps_place_order) so it holds on every installed
+--    generation of the RPC.
+-- ---------------------------------------------------------------------------
+create or replace function ps_guard_order_coupon_shop()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_owner uuid;
+begin
+  if new.coupon_id is null then
+    return new;
+  end if;
+  select shop_id into v_owner from coupons where id = new.coupon_id;
+  -- Platform coupons (shop_id null) apply anywhere, as they always did.
+  if v_owner is not null and v_owner is distinct from new.shop_id then
+    raise exception 'coupon belongs to another shop';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_guard_coupon_shop on public.orders;
+create trigger trg_orders_guard_coupon_shop
+  before insert or update of coupon_id on public.orders
+  for each row execute function ps_guard_order_coupon_shop();
+
+-- ---------------------------------------------------------------------------
+-- 5. The ledger: a shop's own discount leaves the shop's own share.
+-- ---------------------------------------------------------------------------
+alter table public.shop_ledger
+  add column if not exists promo_discount bigint not null default 0;
+
+create or replace function ps_write_shop_ledger()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_pct numeric;
+  v_commission bigint;
+  v_payable bigint;
+  v_delivery bigint;
+  v_tip bigint;
+  v_sur bigint;
+  v_row jsonb := to_jsonb(new);
+  v_fd_waived bigint;
+  v_coupon_shop uuid;
+  v_promo bigint := 0;
+begin
+  if new.status = 'delivered' and old.status is distinct from new.status then
+    select commission_pct into v_pct from shops where id = new.shop_id;
+    if v_pct is null then v_pct := 15; end if;
+    v_commission := floor((new.subtotal * v_pct) / 100);
+    v_payable := new.subtotal - v_commission;
+    v_delivery := coalesce(new.delivery_charge, 0);
+    v_tip := coalesce((v_row->>'tip_amount')::bigint, 0);
+    v_sur := coalesce((v_row->>'surcharge_night')::bigint, 0)
+           + coalesce((v_row->>'surcharge_rain')::bigint, 0)
+           + coalesce((v_row->>'surcharge_distance')::bigint, 0)
+           + coalesce((v_row->>'surcharge_express')::bigint, 0)
+           + coalesce((v_row->>'surcharge_weight')::bigint, 0);
+    -- Free delivery the SHOP offered: the rider is still paid, so the waived
+    -- amount leaves the shop's share (never below zero on this line).
+    v_fd_waived := coalesce((v_row->>'free_delivery_waived')::bigint, 0);
+    if coalesce(v_row->>'free_delivery_by', '') = 'shop' and v_fd_waived > 0 then
+      v_payable := greatest(0, v_payable - v_fd_waived);
+    end if;
+    -- B3: the SHOP's own promo code. The shopper's discount is real money the
+    -- shop chose to give away, so it comes out of this shop's share — the
+    -- platform's commission is never used to fund it. A platform coupon
+    -- (shop_id null) is PROSANTI's own spend and leaves this line alone.
+    if new.coupon_id is not null and new.shop_id is not null then
+      select shop_id into v_coupon_shop from coupons where id = new.coupon_id;
+      if v_coupon_shop = new.shop_id and coalesce(new.discount, 0) > 0 then
+        v_promo := least(coalesce(new.discount, 0), greatest(0, v_payable));
+        v_payable := greatest(0, v_payable - v_promo);
+      end if;
+    end if;
+    -- A return order is the reverse leg: the shop pays the product share back.
+    if coalesce((v_row->>'is_return')::boolean, false) then
+      v_payable := -(new.subtotal - v_commission);
+      v_promo := 0;
+    end if;
+    if new.shop_id is null then
+      return new;
+    end if;
+    insert into shop_ledger (shop_id, order_id, subtotal, commission, payable, delivery_charge, tip_amount, surcharge_total, promo_discount)
+    values (new.shop_id, new.id, new.subtotal, v_commission, v_payable, v_delivery, v_tip, v_sur, v_promo)
+    on conflict (order_id) do update set
+      subtotal = excluded.subtotal,
+      commission = excluded.commission,
+      payable = excluded.payable,
+      delivery_charge = excluded.delivery_charge,
+      tip_amount = excluded.tip_amount,
+      surcharge_total = excluded.surcharge_total,
+      promo_discount = excluded.promo_discount;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_ledger_on_delivered on public.orders;
+create trigger trg_orders_ledger_on_delivered
+  after update of status on orders
+  for each row execute function ps_write_shop_ledger();
+
+commit;
+
+do $$
+begin
+  raise notice 'VENDOR PROMOS OK';
+end $$;
+
+-- ==== Feature: shop funnel (202609280004) ====
+-- ============================================================================
+-- Shop-wise funnel (2026-09-28) — B4 of the shop-service upgrade
+--
+-- Admin → Reports already has the whole-market funnel (202609260004). This is
+-- the same idea, scoped to ONE shop, for that shop's own dashboard: how many
+-- people opened its storefront, looked at a product, put one in the bag,
+-- started checkout, and how many orders really happened.
+--
+--   * `storefront_events` already carries shop_id (the product-level events
+--     sent it from day one). Two gaps closed here:
+--       1. historical rows that have a product_id but no shop_id are backfilled
+--          from `products` — attribution we can prove, nothing guessed;
+--       2. a `page_view` of a shop's storefront now carries the shop id too
+--          (client: ShopAttribute + lib/page-shop.ts), which is what makes
+--          "opened my page" countable at all.
+--   * `ps_shop_funnel_report(p_shop_id, p_days)` — one JSON blob per shop:
+--     sessions, page views, the four step counts, real orders/revenue/AOV from
+--     `orders` (cancelled and return orders excluded), where the add-to-bags
+--     came from, and the shop's own top products by views → adds → orders.
+--     The function is scoped to the shop id it is GIVEN; the API passes the
+--     shop id of the verified vendor session, never a client-supplied one.
+--
+-- Privacy: nothing personal exists in storefront_events (anonymous per-tab
+-- session id only) and this function adds no new exposure. RLS on the table is
+-- untouched — no policies, no grants to anon/authenticated — so the report is
+-- reachable only through the service role (the vendor API route, after
+-- requireVendor has proved who is asking).
+--
+-- Idempotent — safe to re-run. Expect "SHOP FUNNEL OK" at the end.
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Attribution backfill (provable only: product_id -> products.shop_id)
+-- ---------------------------------------------------------------------------
+update public.storefront_events e
+   set shop_id = p.shop_id::text
+  from public.products p
+ where e.shop_id is null
+   and e.product_id is not null
+   and p.id::text = e.product_id
+   and p.shop_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- 2. Index for the per-shop reads (the table keeps its 90-day retention)
+-- ---------------------------------------------------------------------------
+create index if not exists storefront_events_shop_idx
+  on public.storefront_events (shop_id, event, created_at desc)
+  where shop_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- 3. The per-shop report
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_shop_funnel_report(
+  p_shop_id text,
+  p_days int default 7
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_shop_id text := nullif(btrim(coalesce(p_shop_id, '')), '');
+  v_days int := least(greatest(coalesce(p_days, 7), 1), 90);
+  v_since timestamptz := now() - make_interval(days => least(greatest(coalesce(p_days, 7), 1), 90));
+  v_shop_page_views bigint;
+  v_sessions bigint;
+  v_pdp bigint;
+  v_atc bigint;
+  v_checkout bigint;
+  v_purchase bigint;
+  v_orders bigint;
+  v_revenue bigint;
+  v_units bigint;
+  v_atc_by_source jsonb;
+  v_top_products jsonb;
+begin
+  -- No shop id = nothing to report (never another shop's numbers).
+  if v_shop_id is null then
+    return jsonb_build_object('days', v_days, 'shop_id', null, 'sessions', 0, 'page_views', 0,
+      'pdp_sessions', 0, 'atc_sessions', 0, 'checkout_sessions', 0, 'purchase_sessions', 0,
+      'orders', 0, 'revenue', 0, 'aov', null, 'units', 0, 'atc_by_source', '[]'::jsonb,
+      'top_products', '[]'::jsonb);
+  end if;
+
+  select
+    count(*) filter (where event = 'page_view'),
+    count(distinct session_id),
+    count(distinct session_id) filter (where event = 'view_item'),
+    count(distinct session_id) filter (where event = 'add_to_cart'),
+    count(distinct session_id) filter (where event = 'begin_checkout'),
+    count(distinct session_id) filter (where event = 'purchase')
+    into v_shop_page_views, v_sessions, v_pdp, v_atc, v_checkout, v_purchase
+  from public.storefront_events
+  where created_at >= v_since
+    and shop_id = v_shop_id;
+
+  -- Real money from `orders`, not the client ping (same rule as the market
+  -- report): cancelled and return orders are not a sale.
+  select count(*), coalesce(sum(o.total), 0)
+    into v_orders, v_revenue
+  from public.orders o
+  where o.created_at >= v_since
+    and o.shop_id::text = v_shop_id
+    and o.status <> 'cancelled'
+    and not coalesce(o.is_return, false);
+
+  -- Pieces really sold (from order_items, so partial/returned lines are not
+  -- counted as sales).
+  select coalesce(sum(oi.qty), 0)
+    into v_units
+  from public.order_items oi
+  join public.orders o on o.id = oi.order_id
+  where o.created_at >= v_since
+    and o.shop_id::text = v_shop_id
+    and o.status <> 'cancelled'
+    and not coalesce(o.is_return, false);
+
+  select coalesce(jsonb_agg(jsonb_build_object('source', source, 'count', n) order by n desc), '[]'::jsonb)
+    into v_atc_by_source
+  from (
+    select coalesce(nullif(source, ''), 'other') as source, count(*) as n
+    from public.storefront_events
+    where created_at >= v_since
+      and shop_id = v_shop_id
+      and event = 'add_to_cart'
+    group by 1
+  ) s;
+
+  -- The shop's own products: looked at, added, and actually ordered. Views and
+  -- adds come from the events (text product ids), orders from order_items of
+  -- this shop's orders in the window — three honest numbers per product, so
+  -- "seen a lot, never bought" is visible instead of guessed.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'product_id', product_id,
+           'name', name,
+           'slug', slug,
+           'views', views,
+           'adds', adds,
+           'orders', orders)
+         order by views desc, adds desc, name), '[]'::jsonb)
+    into v_top_products
+  from (
+    select
+      coalesce(p.id::text, ev.product_id) as product_id,
+      coalesce(nullif(p.name_bn, ''), p.name, '(removed product)') as name,
+      p.slug as slug,
+      ev.views,
+      ev.adds,
+      coalesce(ord.orders, 0) as orders
+    from (
+      select product_id,
+             count(*) filter (where event = 'view_item') as views,
+             count(*) filter (where event = 'add_to_cart') as adds
+      from public.storefront_events
+      where created_at >= v_since
+        and shop_id = v_shop_id
+        and product_id is not null
+      group by product_id
+    ) ev
+    left join public.products p on p.id::text = ev.product_id
+    left join (
+      select oi.product_id::text as product_id, count(distinct oi.order_id) as orders
+      from public.order_items oi
+      join public.orders o on o.id = oi.order_id
+      where o.created_at >= v_since
+        and o.shop_id::text = v_shop_id
+        and o.status <> 'cancelled'
+        and not coalesce(o.is_return, false)
+        and oi.product_id is not null
+      group by 1
+    ) ord on ord.product_id = ev.product_id
+    order by ev.views desc, ev.adds desc
+    limit 10
+  ) t;
+
+  return jsonb_build_object(
+    'days', v_days,
+    'shop_id', v_shop_id,
+    'sessions', v_sessions,
+    'page_views', v_shop_page_views,
+    'pdp_sessions', v_pdp,
+    'atc_sessions', v_atc,
+    'checkout_sessions', v_checkout,
+    'purchase_sessions', v_purchase,
+    'orders', v_orders,
+    'revenue', v_revenue,
+    'aov', case when v_orders > 0 then (v_revenue / v_orders) else null end,
+    'units', v_units,
+    'atc_by_source', v_atc_by_source,
+    'top_products', v_top_products
+  );
+end;
+$$;
+
+revoke execute on function public.ps_shop_funnel_report(text, int) from public, anon, authenticated;
+
+commit;
+
+do $$ begin raise notice 'SHOP FUNNEL OK'; end $$;
+
+-- ==== Feature: shop verification (202609280005) ====
+-- ============================================================================
+-- Verified shop badge (2026-09-28) — B5 of the shop-service upgrade
+--
+-- The first question a new customer asks about an unknown shop is "can I trust
+-- it?". A badge only answers that if it means something specific and cannot be
+-- awarded by the shop itself. So:
+--
+--   * TWO DOCUMENT CHECKS, not one vague "verified" switch: the owner's NID and
+--     the trade licence. Staff tick what they actually held and looked at.
+--   * THE BADGE IS DERIVED FROM THE EVIDENCE. Both checks in → verified_at is
+--     stamped. Remove either check → the badge, the timestamp and the officer
+--     are CLEARED by the trigger below, so a badge can never outlive the
+--     documents behind it (not even against a direct SQL update).
+--   * A SHOP CANNOT VERIFY ITSELF. Every verification column is added to
+--     ps_guard_shop_vendor_update: a vendor session (or a direct anon-key call
+--     with the shop's own JWT) that tries to set them is refused.
+--   * AN AUDIT TRAIL THAT SURVIVES THE NEXT EDIT. `shop_verification_events`
+--     is append-only (no update/delete policy, plus a trigger that refuses
+--     both), so "who verified this, when, and what did they write" stays
+--     answerable even after the badge is taken away and given back.
+--
+-- Privacy: the shop's own note and the officer's e-mail are staff-only. The
+-- storefront reads the two booleans and the date — never the note.
+--
+-- Idempotent — safe to re-run. Expect "SHOP VERIFICATION OK" at the end.
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. Columns
+-- ---------------------------------------------------------------------------
+alter table public.shops
+  add column if not exists nid_checked           boolean not null default false,
+  add column if not exists trade_licence_checked boolean not null default false,
+  add column if not exists verified_at           timestamptz,
+  add column if not exists verified_by           uuid,
+  add column if not exists verified_by_email     text,
+  add column if not exists verification_note     text;
+
+-- ---------------------------------------------------------------------------
+-- 2. The audit log (append-only)
+-- ---------------------------------------------------------------------------
+create table if not exists public.shop_verification_events (
+  id                    bigint generated always as identity primary key,
+  shop_id               uuid not null references public.shops (id) on delete cascade,
+  created_at            timestamptz not null default now(),
+  action                text not null check (action in ('verified', 'unverified', 'note')),
+  nid_checked           boolean not null,
+  trade_licence_checked boolean not null,
+  note                  text,
+  actor_id              uuid,
+  actor_email           text
+);
+
+create index if not exists shop_verification_events_shop_idx
+  on public.shop_verification_events (shop_id, created_at desc);
+
+alter table public.shop_verification_events enable row level security;
+
+drop policy if exists "verification events admin read" on public.shop_verification_events;
+create policy "verification events admin read" on public.shop_verification_events
+  for select using (ps_is_admin());
+
+drop policy if exists "verification events admin insert" on public.shop_verification_events;
+create policy "verification events admin insert" on public.shop_verification_events
+  for insert with check (ps_is_admin());
+
+-- No UPDATE / DELETE policy exists on purpose; the trigger makes that explicit
+-- rather than relying on "the policy was never written".
+create or replace function ps_guard_verification_append_only()
+returns trigger language plpgsql as $$
+begin
+  raise exception 'verification history cannot be rewritten';
+end $$;
+
+drop trigger if exists trg_verification_events_no_update on public.shop_verification_events;
+create trigger trg_verification_events_no_update
+  before update or delete on public.shop_verification_events
+  for each row execute function ps_guard_verification_append_only();
+
+-- ---------------------------------------------------------------------------
+-- 3. The badge follows the evidence (and only staff may move it)
+-- ---------------------------------------------------------------------------
+create or replace function ps_guard_shop_verification()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- A brand-new row is never born verified, whoever inserts it (an INSERT has
+  -- no OLD row to compare against, hence the separate branch).
+  if tg_op = 'INSERT' then
+    if not (select ps_is_admin()) then
+      new.nid_checked := false;
+      new.trade_licence_checked := false;
+      new.verified_at := null;
+      new.verified_by := null;
+      new.verified_by_email := null;
+      new.verification_note := null;
+      return new;
+    end if;
+  end if;
+
+  -- Staff keeps the whole table; this is their job to set.
+  if (select ps_is_admin()) then
+    -- Badge = BOTH documents checked. Anything less and the stamp goes: a
+    -- badge may not outlive the evidence it stands on.
+    if not (new.nid_checked and new.trade_licence_checked) then
+      new.verified_at := null;
+      new.verified_by := null;
+      new.verified_by_email := null;
+    elsif new.verified_at is null then
+      -- Granted straight in SQL (no API): the time is known, the officer is
+      -- not — leave verified_by null rather than inventing a name.
+      new.verified_at := now();
+    end if;
+    return new;
+  end if;
+
+  -- Everyone else (a vendor session included): the verification columns are
+  -- not theirs to touch, even by a direct Supabase call.
+  if new.nid_checked is distinct from old.nid_checked
+     or new.trade_licence_checked is distinct from old.trade_licence_checked
+     or new.verified_at is distinct from old.verified_at
+     or new.verified_by is distinct from old.verified_by
+     or new.verified_by_email is distinct from old.verified_by_email
+     or new.verification_note is distinct from old.verification_note then
+    raise exception 'only staff can verify a shop';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_shops_guard_verification on public.shops;
+create trigger trg_shops_guard_verification
+  before insert or update on public.shops
+  for each row execute function ps_guard_shop_verification();
+
+-- A shop row created by a vendor-side insert must never arrive pre-verified.
+alter table public.shops
+  drop constraint if exists shops_no_self_verification;
+alter table public.shops
+  add constraint shops_no_self_verification
+  check (verified_at is null or (nid_checked and trade_licence_checked));
+
+commit;
+
+do $$ begin raise notice 'SHOP VERIFICATION OK'; end $$;
+
+-- ==== Feature: shop vacation (202609280006) ====
+-- ============================================================================
+-- Shop holiday / vacation schedule (2026-09-28) — B6 of the shop-service upgrade
+--
+-- Until now a shop could only be closed "right now": the vendor flips `is_open`
+-- and has to remember to flip it back. Eid, a family wedding, a week's stock
+-- trip — all of them meant either staying open on paper (orders arrive, nobody
+-- is there) or closing and hoping to remember to reopen.
+--
+-- This adds a DATE RANGE. The shop books 10–12 Oct in advance:
+--
+--   * the storefront shows it as closed for those days, with the reopening date,
+--     so a shopper is told something real instead of hitting a dead checkout;
+--   * an order cannot be PLACED in that window — enforced by a trigger on
+--     `orders`, which every generation of ps_place_order goes through, rather
+--     than by patching each copy of the RPC;
+--   * when the last day passes the shop is open again ON ITS OWN — nothing to
+--     run, nothing to remember. The reopening is derived from the dates, not
+--     from a cron job that might not fire.
+--
+-- Deliberately NOT touched: `is_open`. A holiday does not overwrite the shop's
+-- own daily switch — while the holiday runs the shop is closed, and the day
+-- after it ends the shop is exactly as it left itself.
+--
+-- A vendor may set its own holiday (it only costs that shop its own sales), but
+-- not an endless one: at most `ps_vacation_max_days()` (45) days, both dates
+-- together or not at all, and the window cannot be backdated.
+--
+-- Idempotent — safe to re-run. Expect "SHOP VACATION OK" at the end.
+-- ============================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. The cap, in one place (staff can change it without a migration) — defined
+--    first because the span CHECK below calls it while being created.
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_vacation_max_days()
+returns int
+language sql
+immutable
+as $$ select 45 $$;
+
+-- ---------------------------------------------------------------------------
+-- 2. Columns
+-- ---------------------------------------------------------------------------
+alter table public.shops
+  add column if not exists vacation_start date,
+  add column if not exists vacation_end   date,
+  add column if not exists vacation_note  text;
+
+-- Both dates together or neither; the window runs forward; and it is a holiday,
+-- not a permanent closure.
+alter table public.shops drop constraint if exists shops_vacation_pair_check;
+alter table public.shops
+  add constraint shops_vacation_pair_check
+  check ((vacation_start is null) = (vacation_end is null));
+
+alter table public.shops drop constraint if exists shops_vacation_order_check;
+alter table public.shops
+  add constraint shops_vacation_order_check
+  check (vacation_start is null or vacation_end >= vacation_start);
+
+alter table public.shops drop constraint if exists shops_vacation_span_check;
+alter table public.shops
+  add constraint shops_vacation_span_check
+  check (
+    vacation_start is null
+    or (vacation_end - vacation_start) <= public.ps_vacation_max_days()
+  );
+
+-- Is this shop on holiday at `p_at` (default: now)?
+create or replace function public.ps_shop_on_vacation(p_shop public.shops, p_at timestamptz default now())
+returns boolean
+language sql
+immutable
+as $$
+  select p_shop.vacation_start is not null
+     and p_at::date >= p_shop.vacation_start
+     and p_at::date <= p_shop.vacation_end
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 3. No orders while the shop is away — on the orders table itself, so it
+--    holds for every generation of ps_place_order and for any direct write.
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_guard_order_shop_open()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_shop public.shops;
+begin
+  if new.shop_id is null then
+    return new;
+  end if;
+  -- A return is the reverse leg of a sale already made: the shop's holiday
+  -- must not block the pickup of goods going back.
+  if coalesce(new.is_return, false) then
+    return new;
+  end if;
+
+  select * into v_shop from public.shops where id = new.shop_id;
+  if not found then
+    return new; -- unknown shop: not this trigger's business
+  end if;
+
+  if v_shop.status <> 'active' then
+    raise exception 'shop is not taking orders';
+  end if;
+  if not v_shop.is_open then
+    raise exception 'shop closed';
+  end if;
+  if public.ps_shop_on_vacation(v_shop) then
+    raise exception 'shop on holiday until %',
+      to_char(v_shop.vacation_end + 1, 'DD Mon YYYY');
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_guard_shop_open on public.orders;
+create trigger trg_orders_guard_shop_open
+  before insert on public.orders
+  for each row execute function public.ps_guard_order_shop_open();
+
+-- ---------------------------------------------------------------------------
+-- 4. A holiday that has passed stops being news: the moment the window ends the
+--    row is cleared, so no screen (and no report) has to know about old dates.
+--    Runs on any read or write of the shop row — cheap, and it means "is there
+--    a holiday?" is always answerable without comparing dates everywhere.
+-- ---------------------------------------------------------------------------
+create or replace function public.ps_expire_shop_vacation()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.vacation_end is not null and new.vacation_end < (now() at time zone 'UTC')::date then
+    new.vacation_start := null;
+    new.vacation_end := null;
+    new.vacation_note := null;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_shops_expire_vacation on public.shops;
+create trigger trg_shops_expire_vacation
+  before update on public.shops
+  for each row execute function public.ps_expire_shop_vacation();
+
+-- Rows whose window has already elapsed are quietened now, so the UI does not
+-- have to explain a holiday that ended weeks ago.
+update public.shops
+   set vacation_start = null,
+       vacation_end = null,
+       vacation_note = null
+ where vacation_end is not null
+   and vacation_end < (now() at time zone 'UTC')::date;
+
+commit;
+
+do $$ begin raise notice 'SHOP VACATION OK'; end $$;
+
+-- ==== Feature: vendor staff (202609280007) ====
+-- =====================================================================
+-- C1 (2026-09-28) — a shop's owner hires their own staff.
+--
+-- A busy shop is not one person: somebody confirms orders while the owner
+-- is at the market, somebody else packs. Until now only PROSANTI staff
+-- could create a vendor login (Admin → Shops → Link vendor), so the
+-- owner's hands were tied — and the workaround (handing over the owner's
+-- own password) is worse than no login at all: that password also opens
+-- payouts, the profile and the shop's own sign.
+--
+-- So the owner may now open STAFF logins for their shop. The rules that
+-- make that safe:
+--   • a staff login is a STAFF login — no path here creates or becomes an
+--     owner (the API only ever writes role='staff', and the trigger below
+--     makes role and shop immutable on a row that already exists);
+--   • only the owner of THAT shop may add or revoke (RLS + the API, which
+--     checks the session role again);
+--   • there is a cap, because every staff login is a real auth account;
+--   • revoking removes the shop's ACCESS, never the person's login — the
+--     same account may be a customer or a rider, and deleting it would
+--     take their parcels and history with it;
+--   • the shop can never be left with no owner (the last owner row cannot
+--     be deleted or demoted by anyone, staff panel included).
+--
+-- Idempotent: safe to run twice.
+-- =====================================================================
+
+-- --------------------------------------------------------------------
+-- 1. Who is on the roster: a name and the login they sign in with.
+-- --------------------------------------------------------------------
+alter table vendor_users add column if not exists display_name text;
+alter table vendor_users add column if not exists login_email text;
+alter table vendor_users add column if not exists added_by    uuid;
+
+-- Existing rows (everyone linked by staff so far) keep their identity:
+-- the login is filled from the auth account so the roster is not blank.
+update vendor_users v
+   set login_email = u.email
+  from auth.users u
+ where u.id = v.user_id
+   and v.login_email is null;
+
+-- --------------------------------------------------------------------
+-- 2. Helpers. Both are SECURITY DEFINER: a policy on vendor_users may
+--    not query vendor_users itself (infinite recursion).
+-- --------------------------------------------------------------------
+
+/** The caller's role in their own shop, or NULL when they are not a vendor. */
+create or replace function ps_vendor_role()
+returns text language sql stable security definer set search_path = public as $$
+  select role from vendor_users where user_id = auth.uid();
+$$;
+
+/** How many staff logins one shop may have (a login is a real account). */
+create or replace function ps_vendor_staff_max()
+returns int language sql immutable as $$ select 5 $$;
+
+-- --------------------------------------------------------------------
+-- 3. Policies: every vendor sees their own row; only an OWNER sees the
+--    shop's roster and may add or revoke staff.
+-- --------------------------------------------------------------------
+drop policy if exists "vendor_users self read" on vendor_users;
+create policy "vendor_users self read" on vendor_users
+  for select using (user_id = auth.uid());
+
+drop policy if exists "vendor_users owner roster" on vendor_users;
+create policy "vendor_users owner roster" on vendor_users
+  for select using (shop_id = ps_vendor_shop() and ps_vendor_role() = 'owner');
+
+drop policy if exists "vendor_users owner insert" on vendor_users;
+create policy "vendor_users owner insert" on vendor_users
+  for insert with check (
+    shop_id = ps_vendor_shop()
+    and ps_vendor_role() = 'owner'
+    and role = 'staff'
+  );
+
+drop policy if exists "vendor_users owner update" on vendor_users;
+create policy "vendor_users owner update" on vendor_users
+  for update using (
+    shop_id = ps_vendor_shop()
+    and ps_vendor_role() = 'owner'
+    and role = 'staff'
+  ) with check (
+    shop_id = ps_vendor_shop()
+    and ps_vendor_role() = 'owner'
+    and role = 'staff'
+  );
+
+drop policy if exists "vendor_users owner delete" on vendor_users;
+create policy "vendor_users owner delete" on vendor_users
+  for delete using (
+    shop_id = ps_vendor_shop()
+    and ps_vendor_role() = 'owner'
+    and role = 'staff'
+  );
+
+-- --------------------------------------------------------------------
+-- 4. The guard. RLS decides WHO may write; this decides WHAT may be
+--    written, and it stands for the service role too (which bypasses
+--    RLS) — so a bug in a screen cannot promote a member of staff.
+-- --------------------------------------------------------------------
+create or replace function ps_guard_vendor_users()
+returns trigger language plpgsql as $$
+declare
+  v_staff int;
+  v_owners int;
+begin
+  if tg_op = 'INSERT' then
+    if new.role = 'staff' then
+      select count(*) into v_staff
+        from vendor_users
+       where shop_id = new.shop_id and role = 'staff';
+      if v_staff >= ps_vendor_staff_max() then
+        raise exception 'A shop may have at most % staff logins — revoke one first.',
+          ps_vendor_staff_max();
+      end if;
+    end if;
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    -- A row is bound to ONE person, ONE shop and ONE role, for life.
+    -- Changing any of the three is how a staff login becomes an owner's,
+    -- so it is refused here rather than in whatever screen forgot to check.
+    if new.user_id is distinct from old.user_id then
+      raise exception 'A vendor login cannot be handed to another person.';
+    end if;
+    if new.shop_id is distinct from old.shop_id then
+      raise exception 'A vendor login cannot be moved to another shop.';
+    end if;
+    if new.role is distinct from old.role then
+      raise exception 'A vendor login''s role cannot be changed — revoke it and grant a new one.';
+    end if;
+    return new;
+  end if;
+
+  -- DELETE: the shop must keep an owner. Without this, one delete leaves a
+  -- shop that nobody can administer — not even PROSANTI, without SQL.
+  if old.role = 'owner' then
+    select count(*) into v_owners
+      from vendor_users
+     where shop_id = old.shop_id and role = 'owner' and user_id <> old.user_id;
+    if v_owners = 0 then
+      raise exception 'This is the shop''s last owner login — it cannot be removed.';
+    end if;
+  end if;
+  return old;
+end $$;
+
+drop trigger if exists trg_vendor_users_guard on vendor_users;
+create trigger trg_vendor_users_guard
+  before insert or update or delete on vendor_users
+  for each row execute function ps_guard_vendor_users();
+
+-- A shop's roster should be readable at a glance and cheap to count.
+create index if not exists vendor_users_shop_role_idx on vendor_users (shop_id, role);
+
+do $$ begin raise notice 'VENDOR STAFF OK'; end $$;
+
+-- ==== Feature: multi shop checkout (202609280008) ====
+-- =====================================================================
+-- C2 (2026-09-28) — one checkout, one order per shop.
+--
+-- One order = one shop is not a limitation to work around, it is how the
+-- marketplace works: the shop packs its own parcel, the ledger pays the
+-- shop its own share, and the vendor dashboard shows the shop its own
+-- orders. So a bag with two shops' items becomes TWO orders — not one
+-- order with an "also from" column.
+--
+-- The rule that makes it trustworthy is ATOMICITY: the buyer taps once and
+-- either every shop's order exists or none does. A function body is one
+-- transaction in Postgres, so looping over ps_place_order inside a single
+-- call gives that for free — and it reuses every cent of the pricing,
+-- stock, coupon and shop guards ps_place_order already enforces, instead
+-- of a second copy of them that could drift.
+--
+-- Bounded on purpose: a checkout may cover at most ps_multi_order_max_shops()
+-- shops. Two or three parcels is a family order; six is a courier contract.
+-- =====================================================================
+
+/** How many shops one checkout may cover. */
+create or replace function ps_multi_order_max_shops()
+returns int language sql immutable as $$ select 3 $$;
+
+/**
+ * Place one order per shop, atomically.
+ *
+ *   p_orders: jsonb array of { "order": <p_order jsonb>, "items": <p_items jsonb> }
+ *
+ * Returns the new order ids in the same order as the input. If ANY shop's
+ * order is refused — out of stock, shop closed, coupon minimum not met,
+ * zone floor — the whole exception rolls back every order in the batch, so
+ * the buyer never ends up holding half a checkout.
+ */
+create or replace function ps_place_multi_order(p_orders jsonb)
+returns uuid[]
+language plpgsql security definer set search_path = public as $$
+declare
+  v_ids        uuid[] := array[]::uuid[];
+  v_entry      jsonb;
+  v_id         uuid;
+  v_shops      text[] := array[]::text[];
+  v_shop       text;
+begin
+  if p_orders is null or jsonb_typeof(p_orders) <> 'array' then
+    raise exception 'order batch must be an array';
+  end if;
+  if jsonb_array_length(p_orders) = 0 then
+    raise exception 'empty order batch';
+  end if;
+  if jsonb_array_length(p_orders) > ps_multi_order_max_shops() then
+    raise exception 'A single checkout can cover at most % shops — check out the rest separately.',
+      ps_multi_order_max_shops();
+  end if;
+
+  for v_entry in select value from jsonb_array_elements(p_orders) loop
+    if jsonb_typeof(v_entry -> 'items') <> 'array' then
+      raise exception 'each order in the batch needs its items';
+    end if;
+    -- One shop, twice, is one shop's checkout with a typing mistake behind
+    -- it: two orders for the same shop would double a rider trip for no
+    -- reason the buyer asked for.
+    select array_agg(distinct p.shop_id::text)
+      into v_shops
+      from jsonb_array_elements(v_entry -> 'items') as it
+      join products p on p.id = (it ->> 'product_id')::uuid;
+    if coalesce(array_length(v_shops, 1), 0) > 1 then
+      raise exception 'each order in the batch must belong to one shop';
+    end if;
+    v_shop := v_shops[1];
+    if exists (select 1 from unnest(v_ids) as placed
+                 join orders o on o.id = placed
+                where o.shop_id::text = v_shop) then
+      raise exception 'the same shop appears twice in one checkout';
+    end if;
+
+    v_id := ps_place_order(coalesce(v_entry -> 'order', '{}'::jsonb), v_entry -> 'items');
+    v_ids := v_ids || v_id;
+  end loop;
+
+  return v_ids;
+end $$;
+
+-- ps_place_order itself is service-role-only (202609160004). The batch
+-- wrapper must be no looser: it can create orders too.
+do $$
+begin
+  execute 'revoke all on function public.ps_place_multi_order(jsonb) from public, anon, authenticated';
+  execute 'grant execute on function public.ps_place_multi_order(jsonb) to service_role';
+end $$;
+
+do $$ begin raise notice 'MULTI SHOP CHECKOUT OK'; end $$;
+
+-- ==== Feature: commission audit (202609290001) ====
+-- =====================================================================
+-- C4 (2026-09-29) — the commission trail.
+--
+-- PROSANTI takes a cut of every order, so the number that decides it is the
+-- most consequential figure in a shop's file. It is also the one a shop
+-- disputes: "আমার তো ১২% ছিল" — and until now there was nothing to answer
+-- with but the number sitting there today.
+--
+-- So the change itself now writes its own history, from a TRIGGER rather than
+-- from a screen. A screen can be bypassed, forgotten, or written again later;
+-- a trigger on the row cannot. Whether the rate moves from the admin panel,
+-- from the Supabase dashboard, or from a psql prompt at midnight, the trail
+-- appears the same way: who, when, and from how much to how much.
+--
+-- Append-only. There is no UPDATE or DELETE policy, and a trigger refuses
+-- both outright rather than relying on a policy nobody wrote. A shop's money
+-- history is not a document anybody edits.
+--
+-- Idempotent — safe to re-run. Expect "COMMISSION AUDIT OK" at the end.
+-- =====================================================================
+
+begin;
+
+-- ---------------------------------------------------------------------------
+-- 1. The log
+-- ---------------------------------------------------------------------------
+create table if not exists public.shop_commission_history (
+  id           bigint generated always as identity primary key,
+  shop_id      uuid not null references public.shops (id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  /**
+   * The rate before the change. NULL means "the rate this shop joined with" —
+   * a later "15 → 12" only means something if the starting point is on the
+   * record too, so the insert that creates the shop writes the first line.
+   */
+  old_pct      numeric(5, 2),
+  new_pct      numeric(5, 2) not null,
+  /** Who moved it. Null when the write carried no staff session (onboarding). */
+  actor_id     uuid,
+  actor_email  text,
+  constraint shop_commission_history_range
+    check (new_pct >= 0 and new_pct <= 90 and (old_pct is null or (old_pct >= 0 and old_pct <= 90))),
+  /** A line that records no movement would be noise in a money trail. */
+  constraint shop_commission_history_moved
+    check (old_pct is null or old_pct <> new_pct)
+);
+
+create index if not exists shop_commission_history_shop_idx
+  on public.shop_commission_history (shop_id, created_at desc);
+
+alter table public.shop_commission_history enable row level security;
+
+-- Staff-only on purpose: the actor's e-mail is a colleague's address, and the
+-- trail is the evidence in a dispute with a shop — not public reading.
+drop policy if exists "commission history admin read" on public.shop_commission_history;
+create policy "commission history admin read" on public.shop_commission_history
+  for select using (ps_is_admin());
+
+drop policy if exists "commission history admin insert" on public.shop_commission_history;
+create policy "commission history admin insert" on public.shop_commission_history
+  for insert with check (ps_is_admin());
+
+-- Append-only: no UPDATE or DELETE policy exists, and this says so out loud
+-- instead of leaving it to be inferred from a missing policy. The one DELETE
+-- it allows is the cascade that removes a shop altogether — a shop leaving
+-- PROSANTI takes its trail with it, which is not the same as crossing a line
+-- out. (RLS already refuses a direct DELETE; this is the belt to its braces.)
+create or replace function ps_guard_commission_history_append_only()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'commission history cannot be rewritten';
+  end if;
+  if exists (select 1 from public.shops where id = old.shop_id) then
+    raise exception 'commission history cannot be rewritten';
+  end if;
+  return old; -- the shop itself is gone: let the cascade take the trail
+end $$;
+
+drop trigger if exists trg_commission_history_no_rewrite on public.shop_commission_history;
+create trigger trg_commission_history_no_rewrite
+  before update or delete on public.shop_commission_history
+  for each row execute function ps_guard_commission_history_append_only();
+
+-- ---------------------------------------------------------------------------
+-- 2. Who did it — read from the session the write arrived with.
+--
+-- Every staff write in this codebase runs on the STAFF session (RLS-bound
+-- client), so the request's own claims name the officer. A service-role write
+-- carries no claims; the line is still written with a null actor, because
+-- "somebody moved it and nobody was signed in" is exactly what an audit
+-- should show rather than hide.
+-- ---------------------------------------------------------------------------
+create or replace function ps_actor_email()
+returns text language plpgsql stable set search_path = public as $$
+declare
+  v_claims text := nullif(current_setting('request.jwt.claims', true), '');
+  v_email  text := nullif(current_setting('request.jwt.claim.email', true), '');
+begin
+  if v_claims is null then
+    return v_email;                 -- no session: nobody to name
+  end if;
+  begin
+    return coalesce(nullif((v_claims::jsonb ->> 'email'), ''), v_email);
+  exception when others then
+    -- A claims value that is not JSON (an empty string, a stray setting) must
+    -- never stop a commission change from being recorded: the rate moved, and
+    -- "the rate moved but we cannot say who did it" is the honest answer.
+    return v_email;
+  end;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 3. The trail writes itself
+-- ---------------------------------------------------------------------------
+create or replace function ps_audit_shop_commission()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    -- The rate the shop joined with: the baseline every later change reads
+    -- against ("15% when it joined" → "15 → 12 on 12 Oct").
+    insert into public.shop_commission_history (shop_id, old_pct, new_pct, actor_id, actor_email)
+    values (new.id, null, new.commission_pct, auth.uid(), ps_actor_email());
+    return null;
+  end if;
+
+  -- An UPDATE that leaves the rate alone writes nothing: renaming a shop is
+  -- not a money event, and a trail full of those is a trail nobody reads.
+  if new.commission_pct is distinct from old.commission_pct then
+    insert into public.shop_commission_history (shop_id, old_pct, new_pct, actor_id, actor_email)
+    values (new.id, old.commission_pct, new.commission_pct, auth.uid(), ps_actor_email());
+  end if;
+  return null;
+end $$;
+
+drop trigger if exists trg_shops_audit_commission on public.shops;
+create trigger trg_shops_audit_commission
+  after insert or update of commission_pct on public.shops
+  for each row execute function ps_audit_shop_commission();
+
+commit;
+
+do $$ begin raise notice 'COMMISSION AUDIT OK'; end $$;
+
+-- ==== Feature: shop scoped slugs (202609290002) ====
+-- C5 — a product slug belongs to the shop that sells the piece.
+--
+-- Two shops both sell "Premium Cotton Panjabi". Before this migration the SECOND
+-- shop could not add it at all: `products.slug` was unique across every shop
+-- (it comes from the single-shop schema), so the name was refused for a name
+-- that shop had never used, and the create path quietly renamed it to
+-- "premium-cotton-panjabi-2" — an address nobody would type or share.
+--
+-- Since C5 the storefront address carries the shop (`/shops/<shop>/p/<piece>`),
+-- so a slug only has to be unique inside the shop that owns the piece. SKU stays
+-- unique platform-wide: it is the code the warehouse, the payout report and the
+-- CSV import count by.
+--
+-- One consequence is handled here: `storefront_saved_items` remembered a saved
+-- piece by slug alone. Once two shops may share a slug, "the saved
+-- cotton-panjabi" would light up the other shop's piece too — so the row now
+-- also carries the product id, which is what identifies a piece everywhere
+-- else (reviews, price watches, stock watches and orders all key on id).
+
+begin;
+
+-- 1. Drop the platform-wide unique on slug, whatever it was named when this
+--    database was built (inline `unique` in the original schema, an explicit
+--    constraint elsewhere), and replace it with (shop_id, slug).
+do $$
+declare
+  v_conname text;
+begin
+  for v_conname in
+    select con.conname
+      from pg_constraint con
+      join pg_class rel on rel.oid = con.conrelid
+      join pg_namespace ns on ns.oid = rel.relnamespace
+     where ns.nspname = 'public'
+       and rel.relname = 'products'
+       and con.contype = 'u'
+       and array_length(con.conkey, 1) = 1
+       and exists (
+         select 1
+           from pg_attribute att
+          where att.attrelid = con.conrelid
+            and att.attnum = con.conkey[1]
+            and att.attname = 'slug'
+       )
+  loop
+    execute format('alter table public.products drop constraint %I', v_conname);
+  end loop;
+end $$;
+
+alter table public.products
+  add constraint products_shop_id_slug_key unique (shop_id, slug);
+
+-- 2. Saved items remember the piece itself, not only its name.
+alter table public.storefront_saved_items
+  add column if not exists product_id uuid
+    references public.products (id) on delete cascade;
+
+-- Backfill what is already saved: every saved slug was unique when it was
+-- written, so the piece it meant is the only piece carrying that slug.
+update public.storefront_saved_items s
+   set product_id = p.id
+  from public.products p
+ where s.product_id is null
+   and p.slug = s.product_slug;
+
+create index if not exists idx_saved_items_product
+  on public.storefront_saved_items (product_id);
+
+-- Saving the same piece twice under two spellings is still one saved piece.
+-- Replace the old (customer_id, product_slug) primary key: it prevented a
+-- customer from saving two shops' pieces with the same name. PostgreSQL's
+-- default UNIQUE semantics allow multiple NULL product_ids, which keeps legacy
+-- slug-only rows valid while making every new product-id pair unique.
+do $$
+declare
+  v_pk text;
+begin
+  select conname into v_pk
+    from pg_constraint
+   where conrelid = 'public.storefront_saved_items'::regclass
+     and contype = 'p';
+  if v_pk is not null then
+    execute format('alter table public.storefront_saved_items drop constraint %I', v_pk);
+  end if;
+end $$;
+
+alter table public.storefront_saved_items
+  add constraint storefront_saved_items_customer_product_key
+  unique (customer_id, product_id);
+
+commit;
+
+-- ==== Feature: vendor product categories (202609290003) ====
+-- C6 — shop-owned product subcategories. The top-level taxonomy remains
+-- platform-owned (`public.categories`); this table is a shop's own list of
+-- suggestions beneath one of those platform categories. Products continue to
+-- store the chosen name in their existing `subcategory` text field, so a
+-- vendor-defined list does not change catalog shape or public URLs.
+
+begin;
+
+create table if not exists public.shop_product_categories (
+  id          uuid primary key default gen_random_uuid(),
+  shop_id     uuid not null references public.shops (id) on delete cascade,
+  category_id text not null references public.categories (id) on delete restrict,
+  name        text not null check (length(btrim(name)) between 1 and 60),
+  created_at  timestamptz not null default now()
+);
+
+create unique index if not exists uq_shop_product_categories_name
+  on public.shop_product_categories (shop_id, category_id, lower(name));
+
+create index if not exists idx_shop_product_categories_shop_parent
+  on public.shop_product_categories (shop_id, category_id, created_at);
+
+alter table public.shop_product_categories enable row level security;
+alter table public.shop_product_categories force row level security;
+revoke all on public.shop_product_categories from anon, authenticated;
+grant select, insert on public.shop_product_categories to authenticated;
+
+-- Vendors only read and add suggestions for their own shop. The API repeats
+-- validation for good messages; RLS is the authority if someone calls SQL.
+drop policy if exists "vendors read own product categories" on public.shop_product_categories;
+create policy "vendors read own product categories"
+  on public.shop_product_categories for select to authenticated
+  using (shop_id = (select public.ps_vendor_shop()));
+
+drop policy if exists "vendors add own product categories" on public.shop_product_categories;
+create policy "vendors add own product categories"
+  on public.shop_product_categories for insert to authenticated
+  with check (
+    shop_id = (select public.ps_vendor_shop())
+    and exists (
+      select 1 from public.categories c
+       where c.id = category_id and c.active
+    )
+  );
+
+commit;
+
+-- ==== Feature: rider delivery accounting (202609300001) ====
+-- ============================================================================
+-- Rider delivery accounting (2026-09-30) — docs/AUDIT-RIDER-MONEY-2026-09-30.md
+--
+--   A. TIP → RIDER (P0 money bug). The rider app shows "💝 Tip for you",
+--      the vendor earnings copy promises "tips go 100% to the rider", and
+--      checkout books tip_amount as a *rider* tip — but no code path ever
+--      paid it: ps_write_shop_ledger recorded tip_amount for the shop's
+--      information (excluded from shop balance) and ps_rider_deliver only
+--      moved COD cash. On COD the rider collected the tip inside
+--      orders.total and settled every paisa to the office; the tip was
+--      simply lost in the platform's hands. Now ps_rider_deliver credits
+--      the tip to a new append-only rider_earnings journal and to
+--      riders.earnings_balance (the platform's wallet debt to the rider).
+--      Payouts stay a staff-approved flow (Phase 2); this file only makes
+--      the money tracked instead of vanished. NO historical backfill —
+--      crediting past tips is a real-money decision for the owner, not a
+--      schema default.
+--
+--   B. delivered_at (P2 scoreboard accuracy). getRiderStats counted the
+--      7-day window off orders.updated_at, which any later order touch
+--      (proof, return, admin edit) rewrites — the number drifted. Stamp
+--      the real delivery moment on the assignment and count that.
+--
+-- Idempotent — safe to re-run. Run after 202609250005 (PIN lockout: the
+-- ps_rider_deliver body this recreates).
+-- ============================================================================
+
+begin;
+
+-- ----------------------------------------------------------------------------
+-- A1. Rider earnings: wallet balance + journal.
+--     RLS on, no policies (like delivery_ratings): only the SECURITY DEFINER
+--      deliver RPC and service/staff writers touch it; riders read their own
+--      numbers through /api/rider/* (service client), never directly.
+-- ----------------------------------------------------------------------------
+alter table riders
+  add column if not exists earnings_balance bigint not null default 0;
+
+create table if not exists rider_earnings (
+  id         uuid primary key default gen_random_uuid(),
+  rider_id   uuid not null references riders (id) on delete cascade,
+  order_id   uuid not null references orders (id) on delete cascade,
+  kind       text not null default 'tip'
+             check (kind in ('tip', 'delivery_fee', 'incentive')),
+  amount     bigint not null check (amount > 0),
+  created_at timestamptz not null default now()
+);
+
+-- One tip per delivered order — the belt under the deliver RPC's state
+-- guard: a re-run (manual repair, double click, migration re-apply) can
+-- never double-credit the wallet.
+create unique index if not exists rider_earnings_one_per_order_kind
+  on rider_earnings (order_id, kind);
+create index if not exists idx_rider_earnings_rider
+  on rider_earnings (rider_id);
+alter table rider_earnings enable row level security;
+
+-- ----------------------------------------------------------------------------
+-- B1. The real delivery moment, stamped by the same function.
+-- ----------------------------------------------------------------------------
+alter table delivery_assignments
+  add column if not exists delivered_at timestamptz;
+
+-- One-time backfill: orders.updated_at ≈ delivery time for rows that are
+-- already delivered (and the old wrong-in-a-different-way basis anyway).
+update delivery_assignments a
+set delivered_at = o.updated_at
+from orders o
+where a.order_id = o.id
+  and a.state = 'delivered'
+  and a.delivered_at is null;
+
+-- ----------------------------------------------------------------------------
+-- A2 + B2. ps_rider_deliver — the 202609250005 (PIN lockout) body, plus:
+--   * tip credit (idempotent: insert wins once, then the wallet moves);
+--   * delivered_at stamp on the picked_up → delivered transition.
+-- Same signature → existing grants and the deliver_check pairing stand.
+-- ----------------------------------------------------------------------------
+create or replace function ps_rider_deliver(p_assignment_id uuid, p_code text, p_proof_url text default null)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_cash bigint;
+begin
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  if v_assignment.state <> 'picked_up' then
+    raise exception 'delivery not allowed from %', v_assignment.state;
+  end if;
+
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+  -- Read-only re-verification: attempts are counted by
+  -- ps_rider_deliver_check (a raise here would roll any count back).
+  if v_order.delivery_code_locked_until is not null
+     and v_order.delivery_code_locked_until > now() then
+    raise exception 'delivery code locked — too many wrong attempts, try again in 15 minutes';
+  end if;
+  if coalesce(v_order.delivery_code, '') is distinct from upper(trim(coalesce(p_code, ''))) then
+    raise exception 'delivery code mismatch';
+  end if;
+
+  -- Store proof URL if provided (Cloudinary)
+  if p_proof_url is not null and trim(p_proof_url) <> '' then
+    update orders
+    set delivery_proof_url = trim(p_proof_url),
+        delivery_proof_uploaded_at = now(),
+        updated_at = now()
+    where id = v_order.id;
+  end if;
+
+  -- P1 #8: the rider only ever carries cash for COD orders — a wallet order
+  -- was paid into the shop's own bKash/Nagad wallet at checkout.
+  v_cash := case when v_order.payment = 'cod' then v_order.total else 0 end;
+
+  if v_order.status is distinct from 'delivered' then
+    update orders
+    set status = 'delivered', updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (
+      v_order.id,
+      'delivered',
+      'Delivery confirmed with code + proof ' || coalesce(trim(p_proof_url), 'no-photo') || ' · '
+        || case
+             when v_order.payment = 'bkash' then 'paid via bKash at checkout'
+             when v_order.payment = 'nagad' then 'paid via Nagad at checkout'
+             else 'COD collected'
+           end,
+      auth.uid()
+    );
+  end if;
+
+  update orders
+  set delivery_code_attempts = 0, delivery_code_locked_until = null, updated_at = now()
+  where id = v_order.id;
+
+  update delivery_assignments
+  set state = 'delivered',
+      -- coalesce: keep the first stamp if this is ever re-run under a repair.
+      delivered_at = coalesce(delivered_at, now())
+  where id = v_assignment.id
+  returning * into v_assignment;
+
+  update riders
+  set cash_in_hand = cash_in_hand + v_cash
+  where id = v_assignment.rider_id;
+
+  -- 202609300001 (A): the tip is the RIDER's — 100%, exactly as both UIs
+  -- promise. The unique index makes the journal insert the once-only gate;
+  -- FOUND is false when the row was already there, so the wallet never
+  -- double-moves even under a repaired re-run.
+  if coalesce(v_order.tip_amount, 0) > 0 then
+    insert into rider_earnings (rider_id, order_id, kind, amount)
+    values (v_assignment.rider_id, v_order.id, 'tip', v_order.tip_amount)
+    on conflict (order_id, kind) do nothing;
+    if found then
+      update riders
+      set earnings_balance = earnings_balance + v_order.tip_amount
+      where id = v_assignment.rider_id;
+    end if;
+  end if;
+
+  return v_assignment;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: perf indexes (202609170002) ====
+-- ============================================================================
+-- 202609170002_perf_indexes.sql
+-- Audit 2026-09-17 P1.5 — composite indexes for the hot order/dispatch reads.
+--
+-- Every list the staff, rider and vendor screens poll today is served by a
+-- single-column index followed by a sort or a second filter in memory:
+--
+--   orders                (status)             → admin list filters by status
+--                                                 AND orders by created_at desc
+--   delivery_assignments  (rider_id)           → rider board filters by rider
+--                                                 AND state
+--   orders                (shop_id)            → vendor list filters by shop
+--                                                 AND orders by created_at desc
+--   orders.rider_id       (no index at all)    → rider "my deliveries" scan
+--
+-- With a few hundred orders the difference is milliseconds; at a few tens of
+-- thousands it is the difference between an index range scan and a sort of
+-- the whole status bucket on every poll. Cheap to add now, painful later.
+--
+-- SAFE TO RE-RUN: every statement is `create index if not exists`. No table
+-- rewrite, no lock beyond a normal `create index` (small tables — seconds).
+-- ============================================================================
+
+-- Admin → Orders: `where status = $1 order by created_at desc, id desc`
+-- (keyset pagination, see listOrders).
+create index if not exists idx_orders_status_created
+  on orders (status, created_at desc, id desc);
+
+-- Vendor → Orders: `where shop_id = $1 order by created_at desc limit 100`.
+create index if not exists idx_orders_shop_created
+  on orders (shop_id, created_at desc);
+
+-- Rider → my deliveries / tracking: `where rider_id = $1`. Most orders never
+-- have a rider, so a partial index stays tiny.
+create index if not exists idx_orders_rider
+  on orders (rider_id)
+  where rider_id is not null;
+
+-- Rider board: `where rider_id = $1 and state in (…) order by offered_at desc`.
+create index if not exists idx_assignments_rider_state
+  on delivery_assignments (rider_id, state, offered_at desc);
+
+-- Dispatch board "awaiting" filter: `where state in ('offered','accepted',
+-- 'picked_up')` → the live rows only (a partial index over the unique-offer
+-- predicate, so it stays as small as the active board).
+create index if not exists idx_assignments_live_state
+  on delivery_assignments (state, order_id)
+  where state in ('offered', 'accepted', 'picked_up');
+
+-- Return/exchange pickups link to their parent; toDomainMany reads
+-- `where return_parent_id in (…) order by created_at desc`.
+create index if not exists idx_orders_return_parent
+  on orders (return_parent_id, created_at desc)
+  where return_parent_id is not null;
+
+-- Referral first-order proof + rewards (P1.4 scoped reads).
+create index if not exists idx_referral_rewards_referee
+  on referral_rewards (referee_phone);
+
+analyze orders;
+analyze delivery_assignments;
+analyze referral_rewards;
+
+-- ----------------------------------------------------------------------------
+-- VERIFY — expect 7 rows, every one "OK"
+-- ----------------------------------------------------------------------------
+select name,
+       case when exists (select 1 from pg_indexes
+                          where schemaname = 'public' and indexname = name)
+            then 'OK' else 'MISSING' end as result
+from unnest(array[
+  'idx_orders_status_created',
+  'idx_orders_shop_created',
+  'idx_orders_rider',
+  'idx_assignments_rider_state',
+  'idx_assignments_live_state',
+  'idx_orders_return_parent',
+  'idx_referral_rewards_referee'
+]) as t(name)
+order by name;
