@@ -99,3 +99,42 @@ export const listRiderHistory = async (
   }
   return { items, nextCursor };
 };
+
+/** Dhaka midnight (UTC+6, no DST) of the day containing `now`, as an ISO string. */
+export const dhakaMidnightIso = (now: number = Date.now()): string => {
+  const shifted = new Date(now + 6 * 3_600_000);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 6 * 3_600_000).toISOString();
+};
+
+/**
+ * Today's scoreboard (Dhaka day): deliveries completed and what they earned.
+ * Decoration on top of real work — any failure (or a database where the
+ * columns/tables are not migrated yet) simply omits the figure, never errors.
+ */
+export const getRiderToday = async (
+  service: SupabaseClient,
+  riderId: string,
+  now: number = Date.now(),
+): Promise<{ todayDeliveries?: number; todayEarned?: number }> => {
+  const since = dhakaMidnightIso(now);
+  const [deliveries, earnings] = await Promise.all([
+    service
+      .from("delivery_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("rider_id", riderId)
+      .eq("state", "delivered")
+      .gte("delivered_at", since),
+    service
+      .from("rider_earnings")
+      .select("amount")
+      .eq("rider_id", riderId)
+      .in("kind", EARNED_KINDS)
+      .gte("created_at", since),
+  ]);
+  const out: { todayDeliveries?: number; todayEarned?: number } = {};
+  if (!deliveries.error && typeof deliveries.count === "number") out.todayDeliveries = deliveries.count;
+  if (!earnings.error) {
+    out.todayEarned = ((earnings.data ?? []) as { amount: number | string }[]).reduce((n, r) => n + Number(r.amount), 0);
+  }
+  return out;
+};

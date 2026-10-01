@@ -370,6 +370,9 @@ export interface RiderStatsView {
   ratingCount: number;
   /** 202609300001 — platform wallet (tips, later fees); absent pre-migration. */
   earningsBalance?: number;
+  /** Today (Dhaka) — deliveries completed and what they credited; absent when unavailable. */
+  todayDeliveries?: number;
+  todayEarned?: number;
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { listRiderHistory } from "../rider-history";
+import { dhakaMidnightIso, getRiderToday, listRiderHistory } from "../rider-history";
 
 type Result = { data: unknown; error: unknown };
 
@@ -10,7 +10,7 @@ type Result = { data: unknown; error: unknown };
 const client = (tables: Record<string, Result>, log: string[] = []) => ({
   from: (table: string) => {
     const chain: Record<string, unknown> = {};
-    for (const m of ["select", "order", "limit", "in", "eq", "lt"]) {
+    for (const m of ["select", "order", "limit", "in", "eq", "lt", "gte"]) {
       chain[m] = (...args: unknown[]) => {
         log.push(`${table}.${m}(${args.map((a) => (Array.isArray(a) ? a.join("|") : String(a))).join(",")})`);
         return chain;
@@ -100,5 +100,33 @@ describe("listRiderHistory (Phase C)", () => {
 
   it("empty history", async () => {
     expect(await listRiderHistory(client({ delivery_assignments: { data: [], error: null } }) as never, "r1")).toEqual({ items: [], nextCursor: null });
+  });
+});
+
+describe("getRiderToday (Phase C2)", () => {
+  it("Dhaka midnight is UTC+6 (18:00 UTC the evening before)", () => {
+    expect(dhakaMidnightIso(Date.parse("2026-10-01T10:00:00Z"))).toBe("2026-09-30T18:00:00.000Z");
+    // 19:00 UTC is already the next Dhaka day
+    expect(dhakaMidnightIso(Date.parse("2026-10-01T19:00:00Z"))).toBe("2026-10-01T18:00:00.000Z");
+  });
+
+  it("counts today's delivered trips and sums only earning kinds since midnight", async () => {
+    const log: string[] = [];
+    const c = client({
+      delivery_assignments: { data: null, error: null, count: 4 } as never,
+      rider_earnings: { data: [{ amount: "4000" }, { amount: 1000 }], error: null },
+    }, log);
+    const out = await getRiderToday(c as never, "r1", Date.parse("2026-10-01T10:00:00Z"));
+    expect(out).toEqual({ todayDeliveries: 4, todayEarned: 5000 });
+    expect(log).toContain("delivery_assignments.gte(delivered_at,2026-09-30T18:00:00.000Z)");
+    expect(log).toContain("rider_earnings.in(kind,tip|delivery_fee|cod_handling|incentive)");
+  });
+
+  it("omits a figure whose table or column is missing instead of failing", async () => {
+    const out = await getRiderToday(client({
+      delivery_assignments: { data: null, error: { message: "column delivered_at does not exist" } },
+      rider_earnings: { data: null, error: { message: "relation does not exist" } },
+    }) as never, "r1");
+    expect(out).toEqual({});
   });
 });

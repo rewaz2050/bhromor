@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   isOnline: false,
   /** 202609300001 — the tip wallet shown by /api/rider/stats. */
   earnings: 0,
+  today: undefined as { todayDeliveries: number; todayEarned?: number } | undefined,
   deliver: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
 }));
 
@@ -41,6 +42,7 @@ vi.mock("@/lib/use-rider", () => ({
       ratingAvg: 4.8,
       ratingCount: 12,
       earningsBalance: state.earnings,
+      ...state.today,
     },
     loading: false,
     refresh: vi.fn(async () => {}),
@@ -93,6 +95,7 @@ beforeEach(() => {
   state.jobs = [];
   state.isOnline = false;
   state.earnings = 0;
+  state.today = undefined;
   state.deliver.mockClear();
 });
 afterEach(() => {
@@ -155,6 +158,21 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(countdown).toHaveTextContent(/একসেপ্ট করার সময় বাকি/);
     expect(countdown).toHaveTextContent(/4[0-5] সেকেন্ড/);
     expect(screen.getByText("অর্ডার একসেপ্ট করুন")).toBeInTheDocument();
+  });
+
+  it("shows today's deliveries + earnings only when the figures exist, and a stepper on the job", () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    const { unmount } = render(<RiderPage />);
+    expect(screen.queryByTestId("rider-today")).not.toBeInTheDocument();
+    expect(screen.getByTestId("trip-stepper").querySelector('[data-step="picked_up"]')).toHaveAttribute("data-status", "active");
+    unmount();
+    state.today = { todayDeliveries: 3, todayEarned: 21000 };
+    render(<RiderPage />);
+    const today = screen.getByTestId("rider-today");
+    expect(today).toHaveTextContent("3 ডেলিভারি");
+    expect(today).toHaveTextContent("210");
+    expect(today).toHaveAttribute("href", "/rider/earnings");
   });
 
   it("a return pickup never asks the rider for money", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRiderJobs, useRiderSession, useRiderStats } from "@/lib/use-rider";
@@ -8,6 +8,8 @@ import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
+import { useOfferAlert } from "@/lib/use-offer-alert";
+import TripStepper from "@/components/rider/trip-stepper";
 import { shouldSendFix, type SentFix } from "@/lib/location-throttle";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
@@ -120,6 +122,12 @@ export default function RiderPage() {
   const hasOffer = tasks.some((t) => t.state === "offered");
   const hasActiveTrip = tasks.some((t) => t.state !== "offered");
   const now = useNow(hasOffer ? 1000 : 60_000);
+  // Vibrate + flash the tab title when an offer that was not on the board before arrives.
+  const offerIds = useMemo(() => tasks.filter((t) => t.state === "offered").map((t) => t.id), [tasks]);
+  useOfferAlert(
+    offerIds,
+    useCallback((n: number) => setFlash(n > 1 ? `${n}টি নতুন অফার এসেছে!` : "নতুন অফার এসেছে!"), []),
+  );
 
   const deliveredCount = useMemo(
     () => riderJobsApi.jobs.filter((j) => j.state === "delivered").length,
@@ -445,6 +453,25 @@ export default function RiderPage() {
         )}
 
 
+        {/* Today (Dhaka): what the day has earned so far. Hidden until the
+            figures arrive — never a fake ৳0. */}
+        {riderStats.stats?.todayDeliveries !== undefined && (
+          <Link
+            href="/rider/earnings"
+            data-testid="rider-today"
+            className="flex items-center justify-between rounded-2xl bg-forest-900 px-4 py-3 text-ivory-50 shadow-sm"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ivory-100/70">আজকের হিসাব</span>
+            <span className="text-sm font-semibold">
+              {riderStats.stats.todayDeliveries} ডেলিভারি
+              {riderStats.stats.todayEarned !== undefined && (
+                <span className="ml-2 text-gold-300">{formatBdt(riderStats.stats.todayEarned)}</span>
+              )}
+              <span className="ml-1 text-ivory-100/60">›</span>
+            </span>
+          </Link>
+        )}
+
         {/* Cash-in-hand safety meter card */}
         <section
           aria-label="Cash in hand"
@@ -648,6 +675,8 @@ export default function RiderPage() {
                         {isOut ? "পথে আছেন" : task.state === "offered" ? "নতুন অফার" : "পিকআপ রেডি"}
                       </span>
                     </div>
+
+                    <TripStepper state={task.state} />
 
                     {left !== null && (
                       <div

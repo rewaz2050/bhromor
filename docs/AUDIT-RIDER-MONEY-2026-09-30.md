@@ -423,3 +423,13 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
   (netted অংশসহ), সাইন আউট।
 - **হোম** এখন: header + অনলাইন টগল, ক্যাশ-সীমা কার্ড, স্ট্যাটস, সক্রিয় ট্রিপ।
 - e2e `dashboards.spec.ts` প্রোফাইল-সেভ ধাপ নতুন পেজে সরানো হয়েছে (playwright এখানে চালানো হয়নি)।
+
+## 17. Phase C2 — রাইডার হোম: ট্রিপ স্টেপার, নতুন-অফার অ্যালার্ট, আজকের হিসাব
+
+কোনো migration লাগে না।
+
+- **ট্রিপ স্টেপার** (`src/components/rider/trip-stepper.tsx`): অফার → দোকানে → পথে → ডেলিভারি। জব কার্ডের হেডারের নিচে বসে; বর্তমান ধাপ highlight, আগেরগুলো ✓।
+- **অফার অ্যালার্ট** (`src/lib/use-offer-alert.ts`): বোর্ডে আগে-না-থাকা offer এলে ফোন vibrate করে, ব্যানার flash হয়, আর অফার pending থাকা পর্যন্ত ট্যাব টাইটেলে `🔔 (n) নতুন অফার` দেখায়। প্রথম লোডে অ্যালার্ট হয় না (ওগুলো "নতুন" না)।
+- **আজকের হিসাব**: `getRiderToday` (`src/lib/db/rider-history.ts`) ঢাকার মধ্যরাত থেকে delivered সংখ্যা ও আয় (tip + fee + COD handling + incentive)। `/api/rider/stats` এখন `todayDeliveries` / `todayEarned` যোগ করে। কোনো কলাম/টেবিল না থাকলে বা error হলে ওই সংখ্যা বাদ যায় (নকল ৳0 দেখায় না, স্কোরবোর্ড কখনো fail করে না)। হোমে কার্ডে ট্যাপ করলে `/rider/earnings`।
+- টেস্ট: `trip-stepper`, `use-offer-alert`, `rider-stats-route`, `rider-history` (db) ও `rider-page`।
+- সীমা: অ্যালার্ট শুধু অ্যাপ খোলা থাকলে কাজ করে — অ্যাপ বন্ধ থাকলে web-push (item I) লাগবে। iOS Safari-তে `navigator.vibrate` নেই (শুধু ব্যানার + টাইটেল)।
