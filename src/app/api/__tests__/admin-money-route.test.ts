@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   decisions: [] as unknown[],
   /** Which client object each RPC-bearing helper received. */
   summaryClient: null as unknown,
+  pnlCall: null as null | { client: unknown; window: { from: string | null } },
+  pnlFails: false,
   decideClients: null as null | { staffDb: unknown; service: unknown },
   settingsWrites: [] as unknown[],
   summary: { riderPayable: 14000 } as unknown,
@@ -44,6 +46,11 @@ vi.mock("@/lib/db/rider-money", async (importOriginal) => {
   const { AdminInputError } = await import("@/lib/db/admin");
   return {
     ...orig,
+    getAdminMoneyPnl: async (client: unknown, window: unknown) => {
+      state.pnlCall = { client, window: window as { from: string | null } };
+      if (state.pnlFails) throw new Error("pnl boom");
+      return { commission: 100 };
+    },
     getAdminMoneySummary: async (client: unknown) => {
       state.summaryClient = client;
       return state.summary;
@@ -83,6 +90,8 @@ beforeEach(() => {
   state.ctx = { user: { id: "staff-1", email: "owner@prosanti.test" }, db: STAFF_DB, role: "admin" };
   state.decisions = [];
   state.summaryClient = null;
+  state.pnlCall = null;
+  state.pnlFails = false;
   state.decideClients = null;
   state.settingsWrites = [];
   state.summary = { riderPayable: 14000 };
@@ -108,6 +117,33 @@ describe("GET /api/admin/money", () => {
     state.summary = null;
     const body = (await (await call("GET")(request())).json()) as { ready: boolean };
     expect(body.ready).toBe(false);
+  });
+});
+
+describe("GET /api/admin/money — net result (N7)", () => {
+  const get = async (qs = "") => {
+    const res = await call("GET")(new Request(`http://localhost/api/admin/money${qs}`));
+    return (await res.json()) as { range: string; pnl: { commission: number } | null; ready: boolean };
+  };
+
+  it("defaults to 30 days and reads with the staff client", async () => {
+    const body = await get();
+    expect(body.range).toBe("30d");
+    expect(body.pnl?.commission).toBe(100);
+    expect(state.pnlCall?.client).toBe(STAFF_DB);
+  });
+
+  it("honours ?range=all (open window) and ignores junk", async () => {
+    expect((await get("?range=all")).range).toBe("all");
+    expect(state.pnlCall?.window.from).toBeNull();
+    expect((await get("?range=banana")).range).toBe("30d");
+  });
+
+  it("a failing P&L never blocks the page", async () => {
+    state.pnlFails = true;
+    const body = await get();
+    expect(body.ready).toBe(true);
+    expect(body.pnl).toBeNull();
   });
 });
 

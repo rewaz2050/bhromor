@@ -313,3 +313,24 @@ shop-কেও দিতে পারে, অথবা দুইটাই"*। �
 shop-এর নিজের bKash/Nagad নম্বর, checkout-এ সেই নম্বর দেখানো, আর shop → platform commission/delivery charge হিসাব
 (ledger-এ ঋণাত্মক payable)। দরকার হলে পরের item হিসেবে করা যাবে।
 `/api/health` probe `paymentVerifierReady`, `bootstrap-fresh.sql` (এখনো ১৭ part), `diagnose.sql` row 68 sync করা।
+
+## 11. Item G (N7) — net P&L (১ অক্টোবর ২০২৬)
+
+আগে Admin → Money-র "Platform income" ছিল চারটা **gross** কার্ড: commission, delivery charge, **tips** (যা rider-এর টাকা,
+platform-এর আয় নয়) আর "rider pay" (tip + fee মেশানো)। প্ল্যাটফর্ম আসলে লাভ করছে কিনা বোঝার উপায় ছিল না।
+নতুন migration **`202610010003_money_pnl.sql`** (read-only RPC `ps_admin_money_pnl(from, to)`, staff JWT-এ):
+
+```
++ Commission                         (shop_ledger, delivered order)
++ Delivery ও surcharge charge        (orders.delivery_charge)
++ Shop-funded free delivery          (shop যে waived charge payable থেকে ফেরত দেয়)
+− Rider pay (fee + COD handling + incentive ± adjustment)
+− PROSANTI যে discount নিজে বহন করে  (orders.discount − shop-funded promo)
+= Net operating result   (+ প্রতি delivered order, + প্রতি trip-এ delivery charge − rider pay)
+```
+- Tips ফলাফলের **বাইরে** (pass-through): collected বনাম rider-কে credited, ফারাক আলাদা লেখা।
+- Period: Today (Dhaka মধ্যরাত) / 7 days / 30 days / All time। পুরোনো gross কার্ডগুলো "Gross flows (all time, not a profit figure)" নামে নিচে।
+- Delivery-র সময় = rider-এর `delivered_at`, না থাকলে history-র 'delivered' লাইন, না থাকলে `updated_at` (`orders`-এ `delivered_at` নেই —
+  Postgres টেস্ট লিখতে গিয়ে এটা ধরা পড়ে, তাই টেস্ট ছাড়া SQL ভুল হত)।
+- Migration না চললে পেজ ফাইলের নাম বলে; বাকি পেজ অপরিবর্তিত। `diagnose.sql` row 69, bootstrap sync।
+- যা বাইরে: refund/cancel-এর খরচ, payment-gateway ফি (নেই — personal wallet), অফলাইন খরচ (অফিস, marketing)। তাই এটা *operating* result।

@@ -20,6 +20,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingDbObject, RiderInputError } from "./riders";
 import { AdminInputError } from "./admin";
 import type { DbRiderEarning, DbRiderPayoutRequest } from "./types";
+import type { MoneyPnl } from "@/lib/money-pnl";
 
 /* ------------------------------------------------------------------ */
 /* C — per-delivery pay rates (site_settings, flat keys like           */
@@ -534,4 +535,37 @@ export const decideRiderPayout = async (
       .eq("id", row.id);
   }
   return mapPayout(row);
+};
+
+/**
+ * Net P&L for a window (202610010003). Staff JWT client, same reason as the
+ * summary. null = the migration has not run (the page then says so).
+ */
+export const getAdminMoneyPnl = async (
+  staffDb: SupabaseClient,
+  window: { from: string | null; to: string | null },
+): Promise<MoneyPnl | null> => {
+  const { data, error } = await staffDb.rpc("ps_admin_money_pnl", {
+    p_from: window.from,
+    p_to: window.to,
+  });
+  if (error) {
+    if (isMissingDbObject(error)) return null;
+    throw new Error(error.message);
+  }
+  const raw = (data ?? {}) as Record<string, unknown>;
+  const keys: (keyof MoneyPnl)[] = [
+    "deliveredOrders",
+    "returnLegs",
+    "commission",
+    "deliveryIncome",
+    "shopFundedFreeDelivery",
+    "riderFees",
+    "riderAdjustments",
+    "discountsGiven",
+    "shopFundedDiscounts",
+    "tipsCollected",
+    "tipsToRiders",
+  ];
+  return Object.fromEntries(keys.map((k) => [k, num(raw[k])])) as unknown as MoneyPnl;
 };

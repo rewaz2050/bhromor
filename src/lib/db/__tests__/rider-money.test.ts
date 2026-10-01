@@ -12,6 +12,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   decideRiderPayout,
+  getAdminMoneyPnl,
   getAdminMoneySummary,
   getRiderMoneySummary,
   listRiderMoneyEntries,
@@ -385,5 +386,34 @@ describe("admin money", () => {
     await expect(
       decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("getAdminMoneyPnl (audit N7)", () => {
+  it("passes the window to the RPC and normalises numbers", async () => {
+    const seen: unknown[] = [];
+    const pnl = await getAdminMoneyPnl(
+      client({
+        rpc: (fn, params) => {
+          seen.push([fn, params]);
+          return { data: { commission: "5000", deliveryIncome: 12000, riderFees: "4000" }, error: null };
+        },
+      }) as never,
+      { from: "2026-09-30T18:00:00.000Z", to: null },
+    );
+    expect(seen).toEqual([["ps_admin_money_pnl", { p_from: "2026-09-30T18:00:00.000Z", p_to: null }]]);
+    expect(pnl?.commission).toBe(5000);
+    expect(pnl?.riderFees).toBe(4000);
+    expect(pnl?.discountsGiven).toBe(0);
+  });
+
+  it("is null when the migration has not run, and throws on a real failure", async () => {
+    expect(await getAdminMoneyPnl(client({}) as never, { from: null, to: null })).toBeNull();
+    await expect(
+      getAdminMoneyPnl(client({ rpc: () => ({ data: null, error: { message: "boom" } }) }) as never, {
+        from: null,
+        to: null,
+      }),
+    ).rejects.toThrow("boom");
   });
 });

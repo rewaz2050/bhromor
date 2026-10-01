@@ -18,26 +18,36 @@
 import { apiError, apiJson } from "@/lib/api-response";
 import {
   decideRiderPayout,
+  getAdminMoneyPnl,
   getAdminMoneySummary,
   listRiderPayoutQueue,
   readRiderPaySettings,
   writeRiderPaySettings,
 } from "@/lib/db/rider-money";
+import { parsePnlRange, pnlWindow } from "@/lib/money-pnl";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { staffRoute } from "../_lib";
 
 export const dynamic = "force-dynamic";
 
-export const GET = staffRoute("money-read", async ({ db }) => {
+export const GET = staffRoute("money-read", async ({ db }, request) => {
   const service = getSupabaseService();
   if (!service) return apiError("Service role is not configured.", 503);
-  const [summary, queue, settings] = await Promise.all([
+  const range = parsePnlRange(new URL(request.url).searchParams.get("range"));
+  const [summary, queue, settings, pnl] = await Promise.all([
     // The RPC checks ps_is_admin() → needs the staff JWT, not the service key.
     getAdminMoneySummary(db),
     listRiderPayoutQueue(service),
     readRiderPaySettings(db),
+    // Net P&L (202610010003) — null until that file runs; never blocks the page.
+    getAdminMoneyPnl(db, pnlWindow(range)).catch((err: unknown) => {
+      console.error("[admin/money] pnl failed:", err instanceof Error ? err.message : err);
+      return null;
+    }),
   ]);
   return apiJson({
+    range,
+    pnl,
     /** false → 202609300002 has not run; the page explains what to do. */
     ready: summary !== null && queue !== null,
     summary,

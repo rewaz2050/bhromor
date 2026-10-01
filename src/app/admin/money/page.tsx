@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatBdt } from "@/lib/format";
+import { computeNet, PNL_RANGES, type PnlRange } from "@/lib/money-pnl";
 import {
   useAdminMoney,
   type RiderPayoutQueueRowView,
@@ -23,6 +24,40 @@ import {
 
 const fmtWhen = (ts: number): string =>
   ts > 0 ? new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+
+const RANGE_LABEL: Record<PnlRange, string> = {
+  today: "Today",
+  "7d": "7 days",
+  "30d": "30 days",
+  all: "All time",
+};
+
+const signed = (paisa: number): string => (paisa < 0 ? `−${formatBdt(-paisa)}` : formatBdt(paisa));
+
+const Line = ({
+  label,
+  value,
+  sign,
+  hint,
+  testId,
+}: {
+  label: string;
+  value: number;
+  sign: "+" | "−" | "";
+  hint?: string;
+  testId?: string;
+}) => (
+  <div className="flex items-baseline justify-between gap-3 px-4 py-2.5 text-sm" data-testid={testId}>
+    <div>
+      <p className="text-forest-900">
+        <span className="mr-2 inline-block w-3 text-ink-soft">{sign}</span>
+        {label}
+      </p>
+      {hint && <p className="ml-5 text-[11px] text-ink-soft">{hint}</p>}
+    </div>
+    <p className="font-semibold tabular-nums text-forest-900">{formatBdt(Math.abs(value))}</p>
+  </div>
+);
 
 const paisaToTaka = (paisa: number): string => String(Math.round(paisa) / 100);
 
@@ -214,9 +249,62 @@ export default function AdminMoneyPage() {
         </div>
       )}
 
-      {/* Platform income */}
+      {/* Net result (N7) — what the platform actually keeps */}
+      {money.pnl ? (
+        (() => {
+          const p = money.pnl;
+          const n = computeNet(p);
+          return (
+            <section className="space-y-3" data-testid="net-pnl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-display text-lg font-bold text-forest-900">Net result</h2>
+                <div className="inline-flex rounded-full bg-ivory-100 p-1 ring-1 ring-line" role="tablist" aria-label="Period">
+                  {PNL_RANGES.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      role="tab"
+                      aria-selected={money.range === r}
+                      onClick={() => money.setRange(r)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${money.range === r ? "bg-forest-800 text-white" : "text-ink-soft hover:text-forest-900"}`}
+                    >
+                      {RANGE_LABEL[r]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="divide-y divide-line rounded-2xl bg-paper ring-1 ring-line">
+                <Line sign="+" label="Commission" value={p.commission} hint="Shop ledger, delivered orders" testId="pnl-commission" />
+                <Line sign="+" label="Delivery & surcharge charges" value={p.deliveryIncome} hint={`${p.deliveredOrders} delivered orders`} testId="pnl-delivery" />
+                {p.shopFundedFreeDelivery > 0 && (
+                  <Line sign="+" label="Free delivery paid back by shops" value={p.shopFundedFreeDelivery} />
+                )}
+                <Line sign="−" label="Rider pay (fees, COD handling, incentives)" value={n.riderCost} hint="Tips excluded — they pass straight through" testId="pnl-rider" />
+                <Line sign="−" label="Discounts PROSANTI absorbed" value={n.platformDiscounts} hint={`${formatBdt(p.discountsGiven)} given, ${formatBdt(p.shopFundedDiscounts)} funded by shops`} testId="pnl-discounts" />
+                <div className="flex items-baseline justify-between gap-3 bg-forest-800 px-4 py-3 text-white first:rounded-t-2xl last:rounded-b-2xl" data-testid="pnl-net">
+                  <p className="text-sm font-semibold uppercase tracking-wider">Net operating result</p>
+                  <p className="font-display text-2xl tabular-nums">{signed(n.net)}</p>
+                </div>
+              </div>
+              <p className="text-[11px] text-ink-soft" data-testid="pnl-unit">
+                {n.perOrder === null
+                  ? "No delivered orders in this period."
+                  : `${signed(n.perOrder)} per delivered order · delivery charges minus rider pay: ${signed(n.deliveryMarginPerOrder ?? 0)} per trip.`}{" "}
+                Tips ({formatBdt(p.tipsCollected)} collected, {formatBdt(p.tipsToRiders)} credited to riders
+                {n.tipsHeld !== 0 ? `, ${signed(n.tipsHeld)} not yet credited` : ""}) are the riders&apos; money and are not part of the result.
+              </p>
+            </section>
+          );
+        })()
+      ) : (
+        <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200" data-testid="pnl-missing">
+          Net result needs <code>supabase/migrations/202610010003_money_pnl.sql</code> — run it in the Supabase SQL editor.
+        </p>
+      )}
+
+      {/* Gross flows, all time */}
       <section className="space-y-3">
-        <h2 className="font-display text-lg font-bold text-forest-900">Platform income</h2>
+        <h2 className="font-display text-lg font-bold text-forest-900">Gross flows <span className="text-sm font-normal text-ink-soft">(all time, not a profit figure)</span></h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card
             label="Commission"

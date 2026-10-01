@@ -44,7 +44,7 @@ create function ps_vendor_shop() returns uuid language sql stable security defin
   select shop_id from vendor_users where user_id = auth.uid() $$;
 create table orders (
  id uuid primary key default gen_random_uuid(), status ps_order_status default 'confirmed',
- is_pickup boolean default false, payment_verified_at timestamptz,
+ is_pickup boolean default false, payment_verified_at timestamptz, discount bigint default 0,
  payment text default 'cod', total bigint default 0, subtotal bigint default 0,
  delivery_charge bigint default 0, tip_amount bigint default 0,
  is_return boolean default false, shop_id uuid, updated_at timestamptz,
@@ -58,7 +58,7 @@ create table delivery_assignments (
  rider_id uuid references riders(id), state text default 'offered', cancelled_by text
    check (state in ('offered','accepted','picked_up','delivered','cancelled','expired'))
 );
-create table order_status_history(order_id uuid, status text, note text, changed_by uuid);
+create table order_status_history(order_id uuid, status text, note text, changed_by uuid, created_at timestamptz default now());
 create table site_settings (key text primary key, value jsonb);
 create table shop_ledger (order_id uuid, commission bigint default 0, payable bigint default 0);
 create table shop_payouts (amount bigint default 0);
@@ -79,6 +79,7 @@ for (const f of [
   '202609300002_rider_money.sql',
   '202610010001_rider_fixes_phase_a.sql',
   '202610010002_payment_verifier.sql',
+  '202610010003_money_pnl.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -437,6 +438,72 @@ try {
   await as(null);
   await assert.rejects(db.query(`update shops set payment_verifier = 'nobody' where id = $1`, [shopA]), /check/);
   console.log('PASS: payment verifier — platform / shop / both, per shop, default unchanged');
+
+  // ------------------------------------------------------------------- G --
+  // N7: net P&L from the ledgers.
+  const pnl = async (from = null, to = null) => {
+    const r = await db.query('select ps_admin_money_pnl($1, $2) as j', [from, to]);
+    return typeof r.rows[0].j === 'string' ? JSON.parse(r.rows[0].j) : r.rows[0].j;
+  };
+  await as(null);
+  await assert.rejects(pnl(), /forbidden/, 'service role (no uid) is refused');
+  await as(riderUser);
+  await assert.rejects(pnl(), /forbidden/, 'a rider is refused');
+
+  await as(null);
+  // wipe what earlier sections left, so the figures below are exact.
+  await db.exec(`delete from rider_earnings; delete from shop_ledger; delete from delivery_assignments where order_id in (select id from orders where status = 'delivered'); delete from orders where status = 'delivered'`);
+  const mkDelivered = async (o) => {
+    const id = await scalar(
+      `insert into orders(status, delivery_charge, discount, tip_amount, is_return, updated_at, payment)
+       values ('delivered', $1, $2, $3, $4, $5::timestamptz, 'cod') returning id`,
+      [o.delivery, o.discount ?? 0, o.tip ?? 0, o.ret ?? false, o.at]);
+    // delivery moment: from the history line (like orders delivered by staff)
+    await db.query(`insert into order_status_history(order_id, status, note) values ($1, 'delivered', null)`, [id]);
+    await db.query(`update order_status_history set created_at = $2::timestamptz where order_id = $1`, [id, o.at]);
+    await db.query('insert into shop_ledger(order_id, commission, payable) values ($1, $2, 0)', [id, o.commission ?? 0]);
+    return id;
+  };
+  const recent = new Date(Date.now() - 2 * 86400000).toISOString();
+  const old = new Date(Date.now() - 60 * 86400000).toISOString();
+  const d1 = await mkDelivered({ delivery: 6000, discount: 1000, tip: 2000, commission: 5000, at: recent });
+  const d2 = await mkDelivered({ delivery: 6000, commission: 3000, at: recent });
+  const dOld = await mkDelivered({ delivery: 9999, commission: 7777, at: old });
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount) values
+    ($1, $2, 'delivery_fee', 4000), ($1, $2, 'tip', 2000), ($1, $3, 'delivery_fee', 4000)`, [rider, d1, d2]);
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount, created_at)
+    values ($1, $2, 'delivery_fee', 4000, $3)`, [rider, dOld, old]);
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount) values ($1, null, 'adjustment', -500)`, [rider]);
+
+  await as(staffId);
+  const week = await pnl(new Date(Date.now() - 7 * 86400000).toISOString());
+  assert.deepEqual(
+    { n: week.deliveredOrders, c: week.commission, d: week.deliveryIncome, f: week.riderFees, a: week.riderAdjustments,
+      disc: week.discountsGiven, shop: week.shopFundedDiscounts, tc: week.tipsCollected, tr: week.tipsToRiders },
+    { n: 2, c: 8000, d: 12000, f: 8000, a: -500, disc: 1000, shop: 0, tc: 2000, tr: 2000 },
+    'the window excludes the 60-day-old order and its fee',
+  );
+  const all = await pnl();
+  assert.equal(all.deliveredOrders, 3);
+  assert.equal(all.commission, 15777);
+  assert.equal(all.riderFees, 12000);
+
+  // shop-funded promo (202609280003 column present): only the platform's part counts.
+  await as(null);
+  await db.query('alter table shop_ledger add column promo_discount bigint not null default 0');
+  await db.query('update shop_ledger set promo_discount = 400 where order_id = $1', [d1]);
+  await as(staffId);
+  const withPromo = await pnl(new Date(Date.now() - 7 * 86400000).toISOString());
+  assert.equal(withPromo.shopFundedDiscounts, 400);
+
+  // a return leg is counted separately, not as a delivered order
+  await as(null);
+  await mkDelivered({ delivery: 0, ret: true, at: recent });
+  await as(staffId);
+  const withReturn = await pnl(new Date(Date.now() - 7 * 86400000).toISOString());
+  assert.equal(withReturn.deliveredOrders, 2);
+  assert.equal(withReturn.returnLegs, 1);
+  console.log('PASS: net P&L — windows, shop-funded promo, adjustments, return legs, staff-only');
 } finally {
   await db.close();
 }
