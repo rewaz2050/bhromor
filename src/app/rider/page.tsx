@@ -10,6 +10,7 @@ import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
 import { shouldSendFix, type SentFix } from "@/lib/location-throttle";
+import { setupRiderPush } from "@/lib/rider-push-client";
 import type { Order } from "@/lib/orders";
 import type { RiderJob } from "@/lib/db/riders";
 import {
@@ -81,6 +82,8 @@ export default function RiderPage() {
   const [settleRef, setSettleRef] = useState("");
   const flashTimer = useRef<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
@@ -420,6 +423,21 @@ export default function RiderPage() {
             }`}
           />
           {isOnline ? "অনলাইন" : "অফলাইন"}
+        </button>
+        <button
+          type="button"
+          disabled={pushBusy}
+          onClick={() => {
+            setPushBusy(true);
+            void setupRiderPush().then((error) => {
+              setPushBusy(false);
+              if (error) setActionError(error);
+              else { setPushEnabled(true); showFlash("নতুন delivery offer-এর notification চালু হয়েছে"); }
+            });
+          }}
+          className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${pushEnabled ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-paper text-forest-800 ring-line"}`}
+        >
+          {pushBusy ? "…" : pushEnabled ? "🔔 Push on" : "🔔 Push চালু করুন"}
         </button>
       </header>
 
