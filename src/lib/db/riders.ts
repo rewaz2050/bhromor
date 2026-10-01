@@ -50,6 +50,7 @@ export interface RiderJob {
   expiresAt: number;
   order: Order;
   pickupShop?: { name: string; address: string; phone: string };
+  earningsPaisa?: number;
 }
 
 /** A rider pay-in. Shown to the rider so they can reconcile COD vs deposit. */
@@ -543,6 +544,11 @@ export async function listRiderHistory(
   const { data: orderRows, error: orderError } = await service.from("orders").select("*").in("id", orderIds);
   if (orderError) throw new Error("rider history order read failed");
   const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[], true);
+  const earningsByOrder = new Map<string, number>();
+  const { data: earningRows } = await service.from("rider_earnings").select("order_id,amount").eq("rider_id", riderId).in("order_id", orderIds);
+  for (const row of earningRows ?? []) {
+    if (row.order_id) earningsByOrder.set(row.order_id, (earningsByOrder.get(row.order_id) ?? 0) + Number(row.amount ?? 0));
+  }
   const needle = (opts.search ?? "").trim().toUpperCase().slice(0, 40);
   const result: RiderJob[] = [];
   for (const assignment of rows) {
@@ -555,6 +561,7 @@ export async function listRiderHistory(
       offeredAt: epoch(assignment.offered_at),
       expiresAt: epoch(assignment.expires_at),
       order: riderOrderView(order, assignment.state),
+      earningsPaisa: earningsByOrder.get(assignment.order_id) ?? 0,
     });
     if (result.length >= limit) break;
   }
