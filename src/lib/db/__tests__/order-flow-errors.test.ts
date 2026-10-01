@@ -121,6 +121,12 @@ describe("advanceOrderAsStaff — schema refusal vs rule refusal", () => {
     ).rejects.toMatchObject({ status: 422, message: expect.stringMatching(/verify or reject/i) });
   });
 
+  it("explains why staff cannot hand-deliver a rider's order, with a 409 (audit N8)", async () => {
+    await expect(
+      advanceOrderAsStaff(fakeDb({ code: "P0001", message: "rider delivery in progress" }), "PS-1", "delivered"),
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/only the rider can complete.*release/i) });
+  });
+
   it("still folds an unknown non-schema failure into the generic 422 (logged)", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(

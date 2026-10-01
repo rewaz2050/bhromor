@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   attempts: [] as { db: unknown; id: string; reason: string; service: unknown }[],
   attemptResult: { final: false, attempts: 1, maxAttempts: 2 } as unknown,
   resolutions: [] as { db: unknown; ref: string; action: string; note?: string }[],
+  releases: [] as { db: unknown; id: string; reason: string }[],
 }));
 
 vi.mock("@/lib/rider-auth", () => ({
@@ -41,6 +42,9 @@ vi.mock("@/lib/db/riders", async (importOriginal) => {
       state.attempts.push({ db, id, reason, service });
       return state.attemptResult;
     },
+    releaseDispatchAssignment: async (db: unknown, id: string, reason: string) => {
+      state.releases.push({ db, id, reason });
+    },
     resolveFailedDelivery: async (db: unknown, ref: string, action: string, note?: string) => {
       state.resolutions.push({ db, ref, action, note });
     },
@@ -48,6 +52,7 @@ vi.mock("@/lib/db/riders", async (importOriginal) => {
 });
 
 import { POST as riderFailed } from "../rider/assignments/[id]/failed/route";
+import { POST as adminRelease } from "../admin/deliveries/[id]/release/route";
 import { POST as adminResolve } from "../admin/orders/[id]/failed-delivery/route";
 
 const json = (body: unknown) => ({
@@ -60,6 +65,7 @@ const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 beforeEach(() => {
   state.attempts = [];
   state.resolutions = [];
+  state.releases = [];
   state.attemptResult = { final: false, attempts: 1, maxAttempts: 2 };
 });
 
@@ -115,5 +121,24 @@ describe("POST /api/admin/orders/:id/failed-delivery", () => {
     );
     expect(res.status).toBe(422);
     expect(state.resolutions).toHaveLength(0);
+  });
+});
+
+describe("POST /api/admin/deliveries/:id/release", () => {
+  const ASG = "22222222-2222-4222-8222-222222222222";
+
+  it("releases on the staff's JWT client", async () => {
+    const res = await adminRelease(
+      new Request("http://localhost/x", json({ reason: " rider unreachable " })),
+      ctx(ASG),
+    );
+    expect(res.status).toBe(200);
+    expect(state.releases).toEqual([{ db: STAFF_DB, id: ASG, reason: "rider unreachable" }]);
+  });
+
+  it("needs a real assignment id and a reason before the RPC", async () => {
+    expect((await adminRelease(new Request("http://localhost/x", json({ reason: "rider unreachable" })), ctx("nope"))).status).toBe(422);
+    expect((await adminRelease(new Request("http://localhost/x", json({ reason: "no" })), ctx(ASG))).status).toBe(422);
+    expect(state.releases).toHaveLength(0);
   });
 });

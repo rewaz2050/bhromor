@@ -12,6 +12,7 @@ import {
   failedRiderAttempt,
   listAwaitingDispatchOrders,
   listFailedDeliveries,
+  releaseDispatchAssignment,
   resolveFailedDelivery,
 } from "../riders";
 
@@ -138,5 +139,37 @@ describe("failed delivery lists", () => {
     };
     const db = { from: (t: string) => chain(t === "orders" ? orderRows : []) };
     expect(await listAwaitingDispatchOrders(db as never)).toEqual([]);
+  });
+});
+
+describe("releaseDispatchAssignment", () => {
+  const staff = (error: { message: string; code?: string } | null = null) => {
+    const rpc = vi.fn(async () => ({ data: null, error }));
+    return { rpc } as unknown as { rpc: ReturnType<typeof vi.fn> };
+  };
+
+  it("releases through the staff client with the reason", async () => {
+    const db = staff();
+    await releaseDispatchAssignment(db as never, "a1", "rider unreachable");
+    expect(db.rpc).toHaveBeenCalledWith("ps_admin_release_assignment", {
+      p_assignment_id: "a1",
+      p_reason: "rider unreachable",
+    });
+  });
+
+  it("maps: finished job → 409, short reason → 422, migration pending → 503", async () => {
+    await expect(
+      releaseDispatchAssignment(staff({ message: "assignment not active" }) as never, "a1", "rider unreachable"),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      releaseDispatchAssignment(staff({ message: "a reason is required" }) as never, "a1", "no"),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      releaseDispatchAssignment(
+        staff({ code: "42883", message: "function does not exist" }) as never,
+        "a1",
+        "rider unreachable",
+      ),
+    ).rejects.toMatchObject({ status: 503 });
   });
 });

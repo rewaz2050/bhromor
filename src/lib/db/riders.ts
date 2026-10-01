@@ -1250,3 +1250,38 @@ export async function resolveFailedDelivery(
     throw dispatchRpcError(error.message);
   }
 }
+
+/**
+ * Staff takes a job away from an unresponsive rider (accepted or picked up).
+ * Never-collected → back to the area queue; parcel in hand → the failed
+ * delivery list. Runs on the STAFF's own client (ps_is_admin needs auth.uid()).
+ */
+export async function releaseDispatchAssignment(
+  db: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await db.rpc("ps_admin_release_assignment", {
+    p_assignment_id: assignmentId,
+    p_reason: reason,
+  });
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("reason is required")) {
+      throw new AdminInputError("Give a short reason (at least 5 characters).", 422);
+    }
+    if (msg.includes("assignment not active")) {
+      throw new AdminInputError(
+        "That job is no longer active — the rider may have just finished it.",
+        409,
+      );
+    }
+    if (isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Release backend not installed yet — run supabase/migrations/202610010001_rider_fixes_phase_a.sql.",
+        503,
+      );
+    }
+    throw dispatchRpcError(error.message);
+  }
+}

@@ -96,6 +96,30 @@ export function useAdminDeliveries() {
     [live, liveJobs, refresh],
   );
 
+  /** Take an accepted / picked-up job away from an unresponsive rider. */
+  const release = useCallback(
+    async (id: string, reason: string): Promise<boolean> => {
+      if (!live) return false;
+      setBusyId(id);
+      try {
+        await apiSend<{ ok: boolean }>(
+          `/api/admin/deliveries/${encodeURIComponent(id)}/release`,
+          "POST",
+          { reason },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [live, refresh],
+  );
+
   /** Redispatch or cancel an order whose final delivery attempt failed. */
   const resolveFailed = useCallback(
     async (orderId: string, action: "redispatch" | "cancel", note = ""): Promise<boolean> => {
@@ -129,6 +153,7 @@ export function useAdminDeliveries() {
     awaitingOrders,
     failedDeliveries: liveFailed,
     resolveFailed,
+    release,
     live,
     loading: loadingDeliveries,
     error: error ?? ridersError,

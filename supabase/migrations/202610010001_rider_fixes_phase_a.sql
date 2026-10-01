@@ -27,6 +27,16 @@
 --          existing cancel trigger; a prepaid order is flagged for refund).
 --      No cash is ever collected on a failed attempt, so COD custody is untouched.
 --
+--   E (N8). ADMIN COULD HAND-DELIVER AN ORDER A RIDER WAS CARRYING.
+--      Marking an order delivered from the admin panel skipped the customer PIN,
+--      the proof, the rider's COD custody and the rider's earnings, left the
+--      assignment open forever, yet still wrote the shop ledger. ps_advance_order
+--      now refuses 'delivered' while a rider assignment is accepted/picked_up
+--      (counter pickups are unaffected). ps_admin_release_assignment is the
+--      sanctioned override: it takes the job from an unresponsive rider — back
+--      to the area queue if the parcel was never collected, or into the
+--      failed-delivery list if the rider has it.
+--
 -- Idempotent — safe to re-run. Same signature as 202609300002 → grants stand.
 -- ============================================================================
 
@@ -311,6 +321,175 @@ revoke all on function ps_rider_failed_attempt(uuid, text) from public, anon;
 grant execute on function ps_rider_failed_attempt(uuid, text) to authenticated, service_role;
 revoke all on function ps_admin_resolve_failed_delivery(uuid, text, text) from public, anon;
 grant execute on function ps_admin_resolve_failed_delivery(uuid, text, text) to authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- E. Admin cannot hand-deliver an order a rider is carrying.
+--    ps_advance_order = the 202609170001 body + the guard below (same
+--    signature → grants stand). ps_admin_release_assignment is the sanctioned
+--    way to take a job away from an unresponsive rider.
+-- ----------------------------------------------------------------------------
+create or replace function ps_advance_order(
+  p_order_id uuid,
+  p_to ps_order_status,
+  p_note text default null
+) returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_from_pos int;
+  v_to_pos   int;
+  v_is_admin boolean;
+  v_shop uuid;
+  v_payment_rejected boolean;
+begin
+  v_is_admin := (select ps_is_admin());
+  v_shop := (select ps_vendor_shop());
+
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if not v_is_admin then
+    if v_shop is null or v_order.shop_id is distinct from v_shop then
+      raise exception 'forbidden';
+    end if;
+    if p_to not in ('confirmed', 'preparing', 'ready-for-pickup', 'cancelled') then
+      raise exception 'forbidden';
+    end if;
+  end if;
+
+  -- P1 #8: a bKash/Nagad order may not START FULFILMENT before the shop has
+  -- verified the payment in its own wallet (ps_verify_payment flips
+  -- payment_status to 'verified'). 'confirmed' and 'cancelled' stay legal —
+  -- canceling releases the reservation via trg_orders_release_on_cancel.
+  if v_order.payment in ('bkash', 'nagad')
+     and v_order.payment_status = 'pending_verification'
+     and p_to in ('preparing', 'ready-for-pickup', 'courier-assigned', 'out-for-delivery', 'delivered') then
+    raise exception 'payment not verified';
+  end if;
+
+  -- legal moves
+  if v_order.status = p_to then
+    return v_order;                          -- idempotent
+  end if;
+
+  -- 202610010001 (N8): a home-delivery order with a rider on it is closed ONLY
+  -- by that rider (ps_rider_deliver: customer PIN + proof + COD custody + the
+  -- rider's earnings). A manual "delivered" here skipped all four, left the
+  -- assignment open forever and wrote the shop ledger while no cash was on any
+  -- rider's books. Staff who need to override first release the rider
+  -- (ps_admin_release_assignment). Counter pickups never have a rider.
+  if p_to = 'delivered'
+     and not coalesce(v_order.is_pickup, false)
+     and exists (
+       select 1 from delivery_assignments
+       where order_id = p_order_id and state in ('accepted', 'picked_up')
+     ) then
+    raise exception 'rider delivery in progress';
+  end if;
+  if p_to = 'cancelled' then
+    if v_order.status not in ('pending', 'confirmed', 'preparing') then
+      raise exception 'cannot cancel from %', v_order.status;
+    end if;
+  else
+    select position into v_from_pos from ps_order_flow where status = v_order.status;
+    select position into v_to_pos   from ps_order_flow where status = p_to;
+    if v_to_pos is null or v_from_pos is null then
+      raise exception 'illegal transition % -> %', v_order.status, p_to;
+    end if;
+    -- 202609170001: the one allowed skip — Confirmed straight to Ready for
+    -- pickup ("two-tap flow"). 'preparing' is optional bookkeeping now.
+    if v_to_pos <> v_from_pos + 1
+       and not (v_order.status = 'confirmed' and p_to = 'ready-for-pickup') then
+      raise exception 'illegal transition % -> %', v_order.status, p_to;
+    end if;
+  end if;
+
+  -- P1 #8 (2): a cancelled wallet order's payment is settled as REJECTED —
+  -- the customer's track page says "not accepted", never "under
+  -- verification" on a cancelled order.
+  v_payment_rejected := p_to = 'cancelled'
+    and v_order.payment in ('bkash', 'nagad')
+    and v_order.payment_status = 'pending_verification';
+
+  update orders
+  set status = p_to,
+      payment_status = case when v_payment_rejected then 'rejected' else payment_status end,
+      payment_verified_at = case when v_payment_rejected then now() else payment_verified_at end,
+      updated_at = now()
+  where id = p_order_id;
+  insert into order_status_history (order_id, status, note, changed_by)
+  values (p_order_id, p_to, p_note, auth.uid());
+  if v_payment_rejected then
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (p_order_id, p_to,
+      'Payment rejected — order cancelled (refund from the shop wallet, offline)',
+      auth.uid());
+  end if;
+  return v_order;
+end $$;
+
+create or replace function ps_admin_release_assignment(p_assignment_id uuid, p_reason text)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_reason text := trim(coalesce(p_reason, ''));
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if length(v_reason) < 5 then
+    raise exception 'a reason is required';
+  end if;
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found then
+    raise exception 'assignment not found';
+  end if;
+  if v_assignment.state not in ('accepted', 'picked_up') then
+    raise exception 'assignment not active';
+  end if;
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if v_assignment.state = 'accepted' then
+    -- The parcel never left the shop: free the rider (5-minute cooldown, like
+    -- any withdrawal) and put the order back in the area queue.
+    update delivery_assignments
+    set state = 'cancelled', cancelled_by = 'withdrawn'
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, status = 'ready-for-pickup', updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup', 'Rider released by staff: ' || v_reason, auth.uid());
+  else
+    -- The parcel is with the rider: it is a failed delivery for staff to
+    -- resolve (redispatch once the shop has it back, or cancel).
+    update delivery_assignments
+    set state = 'failed', failed_reason = 'Released by staff: ' || v_reason
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, delivery_failed_at = now(), updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, v_order.status,
+            'Rider released by staff with the parcel in hand: ' || v_reason
+              || ' — redispatch or cancel from Deliveries.', auth.uid());
+  end if;
+  return v_assignment;
+end $$;
+
+revoke all on function ps_admin_release_assignment(uuid, text) from public, anon;
+grant execute on function ps_admin_release_assignment(uuid, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
 

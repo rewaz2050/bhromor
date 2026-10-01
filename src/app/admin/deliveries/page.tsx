@@ -30,6 +30,7 @@ export default function AdminDeliveriesPage() {
     awaitingOrders,
     failedDeliveries,
     resolveFailed,
+    release,
     loading,
     error,
     clearError,
@@ -370,6 +371,26 @@ export default function AdminDeliveriesPage() {
                       >
                         {busyId === job.id ? "Working…" : "Cancel"}
                       </button>}
+                      {(job.state === "accepted" || job.state === "picked_up") && (
+                        <button
+                          type="button"
+                          disabled={busyId === job.id}
+                          onClick={() => {
+                            const reason = window.prompt(
+                              job.state === "accepted"
+                                ? `Release ${job.riderName}? The order goes back to the area queue. Reason:`
+                                : `Release ${job.riderName} while carrying the parcel? It moves to Failed deliveries for you to redispatch or cancel. Reason:`,
+                              "rider unreachable",
+                            );
+                            if (reason && reason.trim().length >= 5) {
+                              void release(job.id, reason.trim());
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          {busyId === job.id ? "Working…" : "Release rider"}
+                        </button>
+                      )}
                       {job.state === "accepted" && (
                         <span className="ml-auto inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-emerald-700">
                           <IconCheck className="h-3.5 w-3.5" />

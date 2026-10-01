@@ -32,8 +32,16 @@ create table riders (
  status text default 'active', is_online boolean default true,
  cash_in_hand bigint default 0, current_load int default 0, total_deliveries int default 0
 );
+create type ps_order_status as enum (
+ 'pending', 'confirmed', 'preparing', 'ready-for-pickup',
+ 'courier-assigned', 'out-for-delivery', 'delivered', 'cancelled');
+create table ps_order_flow (position smallint primary key, status ps_order_status unique not null);
+insert into ps_order_flow values (0,'pending'),(1,'confirmed'),(2,'preparing'),(3,'ready-for-pickup'),
+ (4,'courier-assigned'),(5,'out-for-delivery'),(6,'delivered');
+create function ps_vendor_shop() returns uuid language sql stable as $$ select null::uuid $$;
 create table orders (
- id uuid primary key default gen_random_uuid(), status text default 'confirmed',
+ id uuid primary key default gen_random_uuid(), status ps_order_status default 'confirmed',
+ is_pickup boolean default false, payment_verified_at timestamptz,
  payment text default 'cod', total bigint default 0, subtotal bigint default 0,
  delivery_charge bigint default 0, tip_amount bigint default 0,
  is_return boolean default false, shop_id uuid, updated_at timestamptz,
@@ -44,7 +52,7 @@ create table orders (
 );
 create table delivery_assignments (
  id uuid primary key default gen_random_uuid(), order_id uuid references orders(id),
- rider_id uuid references riders(id), state text default 'offered'
+ rider_id uuid references riders(id), state text default 'offered', cancelled_by text
    check (state in ('offered','accepted','picked_up','delivered','cancelled','expired'))
 );
 create table order_status_history(order_id uuid, status text, note text, changed_by uuid);
@@ -125,7 +133,7 @@ try {
   // End-to-end payout: a tip credit, a request by the rider, a decision by staff.
   await as(null);
   const o = await scalar(
-    `insert into orders(status, payment, total, tip_amount) values ('picked_up', 'cod', 100000, 5000) returning id`,
+    `insert into orders(status, payment, total, tip_amount) values ('out-for-delivery', 'cod', 100000, 5000) returning id`,
   );
   // delivery code + assignment in picked_up state
   await db.query(`update orders set delivery_code = '1234' where id = $1`, [o]);
@@ -180,7 +188,7 @@ try {
     on conflict (key) do update set value = excluded.value`);
   const leg = async ({ total, payment = 'cod', isReturn = false }) => {
     const ord = await scalar(
-      `insert into orders(status, payment, total, is_return, delivery_code) values ('picked_up', $1, $2, $3, '1234') returning id`,
+      `insert into orders(status, payment, total, is_return, delivery_code) values ('out-for-delivery', $1, $2, $3, '1234') returning id`,
       [payment, total, isReturn],
     );
     const a = await scalar(
@@ -292,6 +300,77 @@ try {
   await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel')`, [wallet]);
   assert.match(await scalar(`select note from order_status_history where order_id = $1 and status = 'cancelled'`, [wallet]), /refund the customer offline/);
   console.log('PASS: staff redispatch / cancel (prepaid cancel flags a refund)');
+
+  // ------------------------------------------------------------------- E --
+  // N8: admin cannot hand-deliver an order a rider is carrying.
+  const mk = async (state, { pickup = false } = {}) => {
+    await as(null);
+    const ord = await scalar(
+      `insert into orders(status, payment, total, is_pickup, rider_id, delivery_code)
+       values ('out-for-delivery', 'cod', 60000, $1, $2, '1234') returning id`, [pickup, rider]);
+    const a = await scalar(
+      `insert into delivery_assignments(order_id, rider_id, state) values ($1, $2, $3) returning id`,
+      [ord, rider, state]);
+    return { ord, a };
+  };
+  const cashNow = async () => Number(await scalar('select cash_in_hand from riders where id = $1', [rider]));
+  const advance = (ord, to = 'delivered') => db.query(`select ps_advance_order($1, $2::ps_order_status)`, [ord, to]);
+
+  for (const state of ['accepted', 'picked_up']) {
+    const m = await mk(state);
+    await as(staffId);
+    await assert.rejects(advance(m.ord), /rider delivery in progress/, `staff cannot deliver a ${state} job by hand`);
+    assert.equal(await scalar('select status from orders where id = $1', [m.ord]), 'out-for-delivery');
+  }
+  // A counter pickup has no rider: staff may hand it over.
+  const pick = await mk('cancelled', { pickup: true });
+  await as(staffId);
+  await advance(pick.ord);
+  assert.equal(await scalar('select status from orders where id = $1', [pick.ord]), 'delivered');
+  // No assignment at all (the shop's/admin's own run): allowed.
+  await as(null);
+  const own = await scalar(`insert into orders(status) values ('out-for-delivery') returning id`);
+  await as(staffId);
+  await advance(own);
+  assert.equal(await scalar('select status from orders where id = $1', [own]), 'delivered');
+  // The rider's own delivery path is untouched and still books the cash.
+  const own2 = await mk('picked_up');
+  const cashBefore = await cashNow();
+  await as(riderUser);
+  await db.query(`select ps_rider_deliver($1, '1234', null)`, [own2.a]);
+  assert.equal(await cashNow(), cashBefore + 60000);
+  assert.equal(await scalar('select status from orders where id = $1', [own2.ord]), 'delivered');
+  // Staff re-sending 'delivered' on a finished order stays idempotent.
+  await as(staffId);
+  await advance(own2.ord);
+  console.log('PASS: staff cannot hand-deliver a rider-carried order; counters, own runs and riders unaffected');
+
+  // Release: the sanctioned override.
+  const acc = await mk('accepted');
+  const pk = await mk('picked_up');
+  const loadBefore = await load();
+  await as(riderUser);
+  await assert.rejects(db.query(`select * from ps_admin_release_assignment($1, 'rider unreachable')`, [acc.a]), /forbidden/);
+  await as(staffId);
+  await assert.rejects(db.query(`select * from ps_admin_release_assignment($1, 'no')`, [acc.a]), /reason is required/);
+  const [relA] = (await db.query(`select * from ps_admin_release_assignment($1, 'rider unreachable')`, [acc.a])).rows;
+  assert.equal(relA.state, 'cancelled');
+  assert.equal(relA.cancelled_by, 'withdrawn');
+  const ordA = (await rows('select status, rider_id from orders where id = $1', [acc.ord]))[0];
+  assert.equal(ordA.status, 'ready-for-pickup', 'never collected → back in the area queue');
+  assert.equal(ordA.rider_id, null);
+  const [relP] = (await db.query(`select * from ps_admin_release_assignment($1, 'bike broke down')`, [pk.a])).rows;
+  assert.equal(relP.state, 'failed');
+  const ordP = (await rows('select status, rider_id, delivery_failed_at from orders where id = $1', [pk.ord]))[0];
+  assert.equal(ordP.status, 'out-for-delivery', 'parcel is with the rider');
+  assert.equal(ordP.rider_id, null);
+  assert.notEqual(ordP.delivery_failed_at, null, 'lands on the failed-delivery list');
+  assert.equal(await load(), loadBefore - 2, 'both load slots freed');
+  await assert.rejects(db.query(`select * from ps_admin_release_assignment($1, 'again please')`, [acc.a]), /not active/);
+  // Once released nobody is carrying it, so staff may close it by hand.
+  await advance(pk.ord);
+  assert.equal(await scalar('select status from orders where id = $1', [pk.ord]), 'delivered');
+  console.log('PASS: staff release — never-collected goes back to the queue, carried parcel lands on the failed list');
 } finally {
   await db.close();
 }

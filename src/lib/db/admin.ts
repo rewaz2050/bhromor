@@ -338,6 +338,12 @@ export async function advanceOrderAsStaff(
         422,
       );
     }
+    if (msg.includes("rider delivery in progress")) {
+      throw new AdminInputError(
+        "A rider is delivering this order — only the rider can complete it (customer code, proof and COD cash are recorded then). If the rider is unreachable, release them on Admin → Deliveries first.",
+        409,
+      );
+    }
     if (msg.includes("illegal transition") || msg.includes("cannot cancel")) {
       throw new AdminInputError(
         "That status change is not allowed from here.",
