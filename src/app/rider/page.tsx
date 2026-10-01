@@ -469,11 +469,13 @@ export default function RiderPage() {
           </div>
         )}
 
-        <RiderProfile key={activeRider.id} rider={activeRider} onSaved={session.refresh} />
+        <div id="rider-profile"><RiderProfile key={activeRider.id} rider={activeRider} onSaved={session.refresh} />
 
         {/* P2 #22 — the rider's own shift. Auto-dispatch only offers jobs
             inside it (enforced in the database, not just here), so this card
             is real scheduling, not decoration. */}
+        </div>
+
         <RiderShiftCard rider={activeRider} onSave={session.setAvailability} flash={setFlash} />
 
         {/* Cash-in-hand safety meter card */}
@@ -652,7 +654,7 @@ export default function RiderPage() {
         </div>
 
         {/* Active Jobs Section */}
-        <section aria-label="Active tasks">
+        <section id="active-tasks" aria-label="Active tasks">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-base font-semibold text-forest-900">
               অ্যাসাইন্ড অর্ডার সমূহ ({tasks.length})
@@ -897,6 +899,13 @@ export default function RiderPage() {
                       </button>
                       {showFailed === task.id && (
                         <div className="rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 space-y-2">
+                          <div className="flex flex-wrap gap-1.5" aria-label="Common failed attempt reasons">
+                            {["Phone unreachable", "Wrong address", "Customer unavailable", "Shop closed"].map((reason) => (
+                              <button key={reason} type="button" onClick={() => { setFailedReason(reason); setFailedError(null); }} className={`rounded-full px-2.5 py-1 text-[11px] ring-1 ${failedReason === reason ? "bg-rose-700 text-white ring-rose-700" : "bg-white text-rose-900 ring-rose-200"}`}>
+                                {reason}
+                              </button>
+                            ))}
+                          </div>
                           <input
                             value={failedReason}
                             onChange={(e) => {
@@ -966,6 +975,13 @@ export default function RiderPage() {
           )}
         </section>
       </div>
+
+      <nav aria-label="Rider navigation" className="sticky bottom-3 z-20 mx-4 mb-4 grid grid-cols-4 gap-1 rounded-2xl bg-forest-900/95 p-1.5 text-center shadow-xl backdrop-blur">
+        <a href="#active-tasks" className="rounded-xl bg-white/15 px-2 py-2 text-[11px] font-semibold text-white">🚴 Jobs</a>
+        <Link href="/rider/earnings" className="rounded-xl px-2 py-2 text-[11px] font-semibold text-ivory-100/80 hover:bg-white/10">৳ Earnings</Link>
+        <Link href="/rider/history" className="rounded-xl px-2 py-2 text-[11px] font-semibold text-ivory-100/80 hover:bg-white/10">🧾 History</Link>
+        <a href="#rider-profile" className="rounded-xl px-2 py-2 text-[11px] font-semibold text-ivory-100/80 hover:bg-white/10">👤 Profile</a>
+      </nav>
 
       {/* PIN Verification Modal */}
       {selectedPinTask && (
