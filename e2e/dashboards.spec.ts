@@ -58,11 +58,14 @@ test('rider profile save and shared invitation acceptance work on mobile', async
     if (path === '/api/rider/jobs') return {jobs:[{id:'assignment-1',orderId:order.id,state:accepted?'accepted':'offered',offeredAt:Date.now(),expiresAt:Date.now()+90000,order:{...order,status:accepted?'courier-assigned':'ready-for-pickup'},pickupShop:shop}]};
   });
   await page.setViewportSize({width:390,height:844});
-  await page.goto('/rider');
+  // The profile form lives on the Profile tab (bottom nav), not the home screen.
+  await page.goto('/rider/profile');
   await page.getByText('আমার রাইডার প্রোফাইল', {exact:true}).click();
   await page.getByLabel('নাম', {exact:true}).fill('Updated Rider');
   await page.getByRole('button', {name:'প্রোফাইল সেভ করুন'}).click();
   await expect(page.getByRole('status').filter({hasText:'প্রোফাইল সেভ হয়েছে'})).toBeVisible();
+  await page.getByRole('navigation', {name:'Rider navigation'}).getByRole('link').first().click();
+  await expect(page).toHaveURL(/\/rider$/);
   await expect(page.getByRole('link', {name:'দোকানে কল'})).toHaveAttribute('href',`tel:${shop.phone}`);
   await expect(page.getByRole('link', {name:'কল দিন',exact:true})).toHaveCount(0);
   await page.getByRole('button', {name:'অর্ডার একসেপ্ট করুন'}).click();

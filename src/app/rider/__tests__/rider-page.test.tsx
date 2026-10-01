@@ -182,7 +182,9 @@ describe("Rider Mobile Portal (/rider)", () => {
     state.jobs = [job("accepted", order({}))];
     render(<RiderPage />);
     expect(screen.getByText("পিকআপ কনফার্ম করুন")).toBeInTheDocument();
-    expect(screen.getByText("আমার রাইডার প্রোফাইল")).toBeInTheDocument();
+    // The profile + shift forms live on the Profile tab now, not the home screen.
+    expect(screen.queryByText("আমার রাইডার প্রোফাইল")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Shift settings")).not.toBeInTheDocument();
   });
 
   it("shows the tip wallet as earnings, separate from COD cash-in-hand (202609300001)", () => {
