@@ -68,6 +68,9 @@ export default function RiderPage() {
   const [accepting, setAccepting] = useState<string | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
   const [proofUploading, setProofUploading] = useState(false);
+  // N9: a photo is required; if one truly cannot be taken the rider says why.
+  const [noPhotoOpen, setNoPhotoOpen] = useState(false);
+  const [noPhotoReason, setNoPhotoReason] = useState("");
   const [failedReason, setFailedReason] = useState("");
   const [showFailed, setShowFailed] = useState<string | null>(null);
   // Inline error for the failed-attempt form — it used to land in pinError,
@@ -251,11 +254,12 @@ export default function RiderPage() {
           }
         | null;
       if (!signRes.ok || !signData?.cloudName || !signData.uploadUrl) {
+        setNoPhotoOpen(true);
         setPinError(
           signData?.error ||
             (signRes.status === 503
               ? "Photo upload is not configured yet — you can still deliver without a photo."
-              : "Photo upload unavailable right now — you can still deliver without a photo."),
+              : "ছবি আপলোড এখন সম্ভব হচ্ছে না — আবার চেষ্টা করুন, না হলে নিচে কারণ লিখে ডেলিভারি করুন।"),
         );
         return;
       }
@@ -275,6 +279,7 @@ export default function RiderPage() {
       setProofUrl(upData.secure_url);
       showFlash("📸 Proof photo uploaded!");
     } catch (e) {
+      setNoPhotoOpen(true);
       setPinError(e instanceof Error && e.message ? e.message : "Photo upload failed");
     } finally {
       setProofUploading(false);
@@ -282,11 +287,18 @@ export default function RiderPage() {
   };
 
   const handleVerifyPin = async (task: RiderTask) => {
-    const ok = await riderJobsApi.deliver(task.id, enteredPin.trim(), proofUrl);
+    const ok = await riderJobsApi.deliver(
+      task.id,
+      enteredPin.trim(),
+      proofUrl,
+      proofUrl ? null : noPhotoReason.trim() || null,
+    );
     if (!ok) {
       setPinError(riderJobsApi.error ?? "ভুল কোড!");
       return;
     }
+    setNoPhotoOpen(false);
+    setNoPhotoReason("");
     setActionError(null);
     setSelectedPinTask(null);
     setEnteredPin("");
@@ -825,6 +837,8 @@ export default function RiderPage() {
                             setEnteredPin("");
                             setPinError("");
                             setProofUrl(null);
+                            setNoPhotoOpen(false);
+                            setNoPhotoReason("");
                           }}
                           className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-700 text-xs font-semibold text-ivory-50 hover:bg-emerald-800"
                         >
@@ -969,7 +983,7 @@ export default function RiderPage() {
 
             {/* Cloudinary Proof Photo */}
             <div className="space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">📸 Delivery Proof Photo (Cloudinary)</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">📸 Delivery Proof Photo</p>
               <input
                 type="file"
                 accept="image/*"
@@ -995,7 +1009,32 @@ export default function RiderPage() {
                   <p className="p-2 text-[10px] break-all text-ink-soft">{proofUrl}</p>
                 </div>
               )}
-              <p className="text-[11px] text-ink-soft">Photo ta Cloudinary te jabe - `prosanti/delivery-proofs` folder. Optional but recommended.</p>
+              {!proofUrl && !noPhotoOpen && (
+                <button
+                  type="button"
+                  onClick={() => setNoPhotoOpen(true)}
+                  className="text-[11px] font-semibold text-ink-soft underline"
+                >
+                  ছবি তুলতে পারছি না
+                </button>
+              )}
+              {!proofUrl && noPhotoOpen && (
+                <div className="space-y-1">
+                  <label htmlFor="no-photo-reason" className="text-[11px] font-semibold text-ink-soft">
+                    ছবি ছাড়া ডেলিভারির কারণ (অ্যাডমিন দেখবে)
+                  </label>
+                  <input
+                    id="no-photo-reason"
+                    type="text"
+                    maxLength={200}
+                    value={noPhotoReason}
+                    onChange={(e) => setNoPhotoReason(e.target.value)}
+                    placeholder="যেমন: ক্যামেরা কাজ করছে না"
+                    className="w-full rounded-xl bg-ivory-100 px-3 py-2 text-xs ring-1 ring-line"
+                  />
+                </div>
+              )}
+              <p className="text-[11px] text-ink-soft">ডেলিভারির ছবি বাধ্যতামূলক — কাস্টমারের হাতে পার্সেল দেওয়ার ছবি তুলুন।</p>
             </div>
 
             <div className="flex gap-2.5 pt-2">

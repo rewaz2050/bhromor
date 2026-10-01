@@ -309,8 +309,12 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
   const deliver = useCallback(
-    (id: string, code: string, proofUrl?: string | null) =>
-      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, { code, proofUrl }),
+    (id: string, code: string, proofUrl?: string | null, noPhotoReason?: string | null) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, {
+        code,
+        proofUrl,
+        ...(noPhotoReason ? { noPhotoReason } : {}),
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enabled],
   );

@@ -1285,3 +1285,31 @@ export async function releaseDispatchAssignment(
     throw dispatchRpcError(error.message);
   }
 }
+
+/**
+ * A delivery closed without a proof photo (the rider said why): leave the
+ * reason on the order's timeline so staff and disputes can see it. Best effort
+ * — the delivery itself already succeeded.
+ */
+export async function recordNoPhotoDelivery(
+  service: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    const { data } = await service
+      .from("delivery_assignments")
+      .select("order_id")
+      .eq("id", assignmentId)
+      .maybeSingle();
+    const orderId = (data as { order_id?: string } | null)?.order_id;
+    if (!orderId) return;
+    await service.from("order_status_history").insert({
+      order_id: orderId,
+      status: "delivered",
+      note: `Delivered without a proof photo — rider says: ${reason}`,
+    });
+  } catch (err) {
+    console.error("[rider] could not record the no-photo reason", err);
+  }
+}

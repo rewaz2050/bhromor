@@ -1,6 +1,9 @@
 import { apiJson } from "@/lib/api-response";
 import { assignmentOrderRef, deliverRiderAssignment } from "@/lib/db/riders";
 import { RiderInputError } from "@/lib/db/riders";
+import { recordNoPhotoDelivery } from "@/lib/db/riders";
+import { decideProof } from "@/lib/delivery-proof";
+import { cloudinaryCloudName, isCloudinaryConfigured } from "@/lib/env";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { notifyCustomerOfStatus } from "@/lib/customer-push";
 import { riderRoute, routeId } from "../../../_lib";
@@ -16,20 +19,29 @@ export const POST = riderRoute(
     const body = (await request.json().catch(() => null)) as {
       code?: unknown;
       proofUrl?: unknown;
+      noPhotoReason?: unknown;
     } | null;
     const code = typeof body?.code === "string" ? body.code.trim() : "";
     if (!/^\d{4}$/.test(code)) {
       throw new RiderInputError("Enter the 4-digit delivery code.", 422);
     }
-    const proofUrl = typeof body?.proofUrl === "string" ? body.proofUrl.trim().slice(0, 500) : null;
-    // Basic Cloudinary URL validation - allow https cloudinary or any https for flexibility
-    if (proofUrl && !/^https:\/\//.test(proofUrl)) {
-      throw new RiderInputError("Proof photo must be a valid https URL (Cloudinary).", 422);
-    }
+    // N9: proof is checked BEFORE the code, so a missing photo never burns one
+    // of the rider's PIN attempts.
+    const proof = decideProof({
+      proofUrl: body?.proofUrl,
+      noPhotoReason: body?.noPhotoReason,
+      cloudName: cloudinaryCloudName(),
+      uploadsConfigured: isCloudinaryConfigured(),
+    });
+    if (!proof.ok) throw new RiderInputError(proof.message, 422);
+    const { proofUrl, noPhotoReason } = proof;
     await deliverRiderAssignment(ctx.db, assignmentId, code, proofUrl);
     // The last milestone (2026-09-24) — sent after the RPC succeeded, so a
     // wrong code never tells the shopper their parcel arrived.
     const service = getSupabaseService();
+    if (service && noPhotoReason) {
+      await recordNoPhotoDelivery(service, assignmentId, noPhotoReason);
+    }
     if (service) {
       const ref = await assignmentOrderRef(service, assignmentId);
       if (ref) {

@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   isOnline: false,
   /** 202609300001 — the tip wallet shown by /api/rider/stats. */
   earnings: 0,
+  deliver: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
 }));
 
 vi.mock("@/lib/use-rider", () => ({
@@ -53,7 +54,7 @@ vi.mock("@/lib/use-rider", () => ({
     accept: vi.fn(),
     pickup: vi.fn(),
     reject: vi.fn(),
-    deliver: vi.fn(),
+    deliver: (...args: unknown[]) => state.deliver(...args),
     setOnline: vi.fn(async () => true),
     updateLocation: vi.fn(async () => true),
     settle: vi.fn(async () => true),
@@ -92,6 +93,7 @@ beforeEach(() => {
   state.jobs = [];
   state.isOnline = false;
   state.earnings = 0;
+  state.deliver.mockClear();
 });
 afterEach(() => {
   cleanup();
@@ -272,5 +274,40 @@ describe("Rider Mobile Portal (/rider)", () => {
     });
     fireEvent.click(screen.getByText("Submit failed"));
     expect(await screen.findByText(/পার্সেল দোকানে ফেরত দিন/)).toBeInTheDocument();
+  });
+
+  it("delivery needs a proof photo; 'can't take a photo' asks for a reason and sends it (audit N9)", async () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    expect(screen.getByText(/ডেলিভারির ছবি বাধ্যতামূলক/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ছবি ছাড়া ডেলিভারির কারণ/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value: "4821" } });
+
+    fireEvent.click(screen.getByText("ছবি তুলতে পারছি না"));
+    fireEvent.change(screen.getByLabelText(/ছবি ছাড়া ডেলিভারির কারণ/), {
+      target: { value: "ক্যামেরা কাজ করছে না" },
+    });
+    fireEvent.click(screen.getByText("ডেলিভারি সম্পন্ন করুন"));
+
+    await vi.waitFor(() => expect(state.deliver).toHaveBeenCalled());
+    expect(state.deliver).toHaveBeenCalledWith(
+      "asg-PS-20260918-0007",
+      "4821",
+      null,
+      "ক্যামেরা কাজ করছে না",
+    );
+  });
+
+  it("with no photo and no reason the rider app sends neither (the server then refuses)", async () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value: "4821" } });
+    fireEvent.click(screen.getByText("ডেলিভারি সম্পন্ন করুন"));
+    await vi.waitFor(() => expect(state.deliver).toHaveBeenCalled());
+    expect(state.deliver).toHaveBeenCalledWith("asg-PS-20260918-0007", "4821", null, null);
   });
 });
