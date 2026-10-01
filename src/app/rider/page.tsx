@@ -750,6 +750,22 @@ export default function RiderPage() {
                       </div>
                     )}
 
+                    {task.state !== "offered" && (
+                      <div className="rounded-xl bg-forest-50 p-3 ring-1 ring-forest-100" aria-label="Delivery progress">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-forest-700">Trip progress</p>
+                        <ol className="grid grid-cols-3 gap-2 text-center text-[11px]">
+                          {(["Accepted", "Picked up", "Delivered"] as const).map((step, index) => {
+                            const active = (task.state === "accepted" && index === 0) || (task.state === "picked_up" && index <= 1);
+                            const done = task.state === "picked_up" && index === 0;
+                            return <li key={step} className={`rounded-lg px-1 py-2 ${active || done ? "bg-forest-800 font-bold text-white" : "bg-white/70 text-ink-soft"}`}>
+                              <span className="block text-base">{done ? "✓" : index + 1}</span>{step}
+                            </li>;
+                          })}
+                        </ol>
+                        <p className="mt-2 text-center text-[11px] text-ink-soft">{task.state === "accepted" ? "দোকান থেকে পার্সেল নিয়ে pickup কনফার্ম করুন" : "কাস্টমারের কাছে গিয়ে PIN দিয়ে delivery সম্পন্ন করুন"}</p>
+                      </div>
+                    )}
+
                     {/* Customer & Area details */}
                     <div className="rounded-xl bg-ivory-100/60 p-3 space-y-2 text-xs">
                       <div className="flex items-start gap-2">
