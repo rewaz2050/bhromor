@@ -22,7 +22,7 @@ const state = vi.hoisted(() => ({
 
 const table = (rows: unknown[]) => {
   const obj: Record<string, unknown> = { data: rows, error: null };
-  for (const m of ["select", "eq", "in", "order", "limit", "or"]) obj[m] = () => obj;
+  for (const m of ["select", "eq", "in", "order", "limit", "or", "not"]) obj[m] = () => obj;
   obj.maybeSingle = async () => ({ data: rows[0] ?? null, error: null });
   obj.single = async () => ({ data: rows[0] ?? null, error: null });
   obj.then = (resolve: (v: unknown) => unknown) =>

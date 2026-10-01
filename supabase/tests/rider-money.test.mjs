@@ -103,7 +103,7 @@ const riderUser = await uuid();
 const strangerUser = await uuid();
 await db.query(`insert into admin_users(id, role) values ($1, 'admin')`, [staffId]);
 const rider = await scalar(`insert into riders(user_id) values ($1) returning id`, [riderUser]);
-const stranger = await scalar(`insert into riders(user_id) values ($1) returning id`, [strangerUser]);
+await db.query(`insert into riders(user_id) values ($1)`, [strangerUser]);
 
 try {
   // ---------------------------------------------------------------- N1–N3 --

@@ -110,7 +110,12 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('60',  'Payout request RPC (rider files, money held)',     '202609300002_rider_money.sql', 'function', 'ps_rider_request_payout'),
   ('61',  'Payout decision RPC (staff paid/rejected)',        '202609300002_rider_money.sql', 'function', 'ps_admin_decide_rider_payout'),
   ('62',  'Admin money summary RPC',                          '202609300002_rider_money.sql', 'function', 'ps_admin_money_summary'),
-  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary')
+  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary'),
+  -- Rider fixes Phase A (2026-10-01): failed deliveries, release rider, COD fee.
+  ('64',  'Failed-delivery flag on orders',                   '202610010001_rider_fixes_phase_a.sql', 'column', 'orders.delivery_failed_at'),
+  ('65',  'Failed-attempt RPC (attempt cap, frees the rider)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_rider_failed_attempt'),
+  ('66',  'Staff resolves a failed delivery (redispatch/cancel)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_resolve_failed_delivery'),
+  ('67',  'Staff releases an unresponsive rider',             '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_release_assignment')
 )
 select step as ord,
        label,

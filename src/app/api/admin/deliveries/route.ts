@@ -31,7 +31,14 @@ export const GET = staffRoute("deliveries-list", async ({ db }) => {
     listDispatchJobs(db),
     listAwaitingDispatchOrders(db),
     // Final failed attempts waiting for a redispatch / cancel decision.
-    listFailedDeliveries(db),
+    // A failure here must not blank the live board, so it degrades to none.
+    listFailedDeliveries(db).catch((err: unknown) => {
+      console.error(
+        "[admin/deliveries] failed-delivery list failed:",
+        err instanceof Error ? err.message : err,
+      );
+      return [];
+    }),
   ]);
   return apiJson({ deliveries, awaitingOrders, failedDeliveries });
 });

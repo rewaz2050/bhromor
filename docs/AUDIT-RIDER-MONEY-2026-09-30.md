@@ -261,3 +261,28 @@ wallet ≡ জার্নাল drift check, admin summary টোটাল, dou
 তার আগে rider শুধু টিপ পায় (৳০ fee), payout route 503 দেয় ফাইলের নাম বলে, আর
 `/rider/earnings` + Admin → Money "backend update pending" দেখায় — বাকি অ্যাপ
 অপরিবর্তিত।
+
+## 9. Phase A — P0/P1 fix-gulo (১ অক্টোবর ২০২৬)
+
+Permission: *"Suru koro and ek ek kore complete koro"*। নতুন migration: **`supabase/migrations/202610010001_rider_fixes_phase_a.sql`**
+(একটাই transaction, idempotent, `notify pgrst` সহ; `202609300001` + `202609300002`-এর পরে চালাতে হবে)।
+প্রতিটি item আলাদা commit।
+
+| Item | Bug | Fix | Commit |
+|---|---|---|---|
+| A (N1–N3) | Admin payout approve, Admin money summary ও `/rider/earnings` summary — তিনটাই service-role client-এ চলত, কিন্তু RPC `auth.uid()` দিয়ে staff/rider চেনে ⇒ সব সময় `forbidden` | তিনটাই caller-এর নিজের JWT client-এ চলে। পুরোনো PGlite টেস্ট `ps_is_admin`/`auth.uid` stub করত বলে এটা ধরা পড়েনি — এখন real `auth.uid()` + `request.jwt.claims` দিয়ে টেস্ট (`npm run test:money`) | `e813f1b` |
+| B (N4) | Return-pickup (zero-total, default `cod`) rider-কে COD handling fee দিত, অথচ কোনো ক্যাশ নেওয়া হয়নি | fee শুধু তখনই যখন সত্যিই ক্যাশ collect হয়েছে; return leg শুধু base fee পায় | `bf0c56d` |
+| C (N5) | Failed attempt শুধু counter বাড়াত: job live থেকে যেত (rider-এর load slot আটকে), attempt অসীম, staff-এর কোনো উপায় নেই; "Awaiting dispatch"-এ দেখালেও "Send area requests" সব সময় fail | পার্সেল হাতে (`picked_up`) থাকলেই report করা যায়; `delivery_max_attempts` (`site_settings`, default 2, সীমা 1–5); শেষ attempt-এ assignment `failed`, rider মুক্ত, order-এ `delivery_failed_at`; Admin → Deliveries-এ "Failed deliveries — needs action" (Redispatch / Cancel); cancel-এ note বাধ্যতামূলক, prepaid wallet হলে refund অফলাইনে করতে history-তে লেখা থাকে | `703f7b3` |
+| E (N8) | Admin "delivered" চাপলে rider-এর PIN/proof/COD custody/earnings কিছুই হত না, assignment `picked_up` পড়ে থাকত, অথচ shop ledger লেখা হত | `ps_advance_order` এখন rider-এর accepted/picked_up job থাকলে `delivered` refuse করে (409 + কী করতে হবে বলে)। Counter pickup ও rider-ছাড়া order অপরিবর্তিত। Rider নিখোঁজ হলে নতুন **Release rider** (`ps_admin_release_assignment`): পার্সেল নেওয়া না হলে area queue-তে ফেরত, rider-এর হাতে থাকলে Failed deliveries-এ | `38c4d54` |
+| F (N9) | Proof photo ঐচ্ছিক, আর যেকোনো `https://` লিংক গ্রহণযোগ্য | Proof হতে হবে `https://res.cloudinary.com/<আমাদের cloud>/…`। Upload configured থাকলে ছবি বাধ্যতামূলক; তোলা না গেলে (ক্যামেরা/নেটওয়ার্ক) কারণ (≥৫ অক্ষর) লিখলে ডেলিভারি হয়, কারণটা order timeline-এ থাকে। যাচাই **PIN-এর আগে**, তাই ছবি ছাড়া চেষ্টা PIN attempt পোড়ায় না। Cloudinary configured না থাকলে বাধ্যতামূলক নয় | `1fdd067` |
+
+**Tooling।** `/api/health`-এ ১১তম probe `riderFixesReady` (`orders.delivery_failed_at`) — না চললে ঠিক ফাইলের নাম বলে।
+`bootstrap-fresh.sql` (header "through 202610010001") ও `bootstrap-parts/` (এখন **১৭** part) এবং `diagnose.sql` (row 64–67) sync করা।
+
+**জানা সীমা / পরের ধাপ।**
+- Failed delivery-তে rider কোনো fee পায় না — এটা business সিদ্ধান্ত, এখনো নেওয়া হয়নি।
+- Final failure-এর পর staff সিদ্ধান্ত না নেওয়া পর্যন্ত customer tracking-এ "out for delivery" দেখায়।
+- Redispatch-এর পর একই rider আবার offer পেতে পারে।
+- `delivery_max_attempts` এখনো শুধু `site_settings` key; admin UI আসবে item J-তে।
+- Cloudinary "dynamic folder" mode-এ folder URL-এ থাকে না, তাই proof URL-এ folder যাচাই ইচ্ছাকৃতভাবে করা হয়নি; শুধু cloud name।
+- **D (N6)** — bKash/Nagad wallet পেমেন্ট verify করবে কে (platform staff না shop) — মালিকের সিদ্ধান্তের অপেক্ষায়।
