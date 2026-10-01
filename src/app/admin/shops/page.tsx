@@ -14,6 +14,12 @@ import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
 import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
 import { describeLoginEmail } from "@/lib/phone-login";
 import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-delivery";
+import {
+  PAYMENT_VERIFIERS,
+  PAYMENT_VERIFIER_HELP,
+  PAYMENT_VERIFIER_LABEL,
+  type PaymentVerifier,
+} from "@/lib/payment-verifier";
 
 type Filter = Shop["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -76,6 +82,8 @@ function ShopCard({
   const [freeDeliveryTaka, setFreeDeliveryTaka] = useState(
     shop.freeDeliveryMinPaisa ? String(Math.round(shop.freeDeliveryMinPaisa / 100)) : "",
   );
+  // N6: who decides this shop's bKash/Nagad payments (absent = column not migrated).
+  const [verifier, setVerifier] = useState<PaymentVerifier>(shop.paymentVerifier ?? "both");
   const [zoneIds, setZoneIds] = useState<string[]>([...shop.zoneIds]);
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
@@ -124,6 +132,11 @@ function ShopCard({
       zoneIds,
       isOpen,
       ...freeDeliveryPatch,
+      // Sent only when the column exists or the admin actually changed it, so
+      // a database without 202610010002 keeps saving every other field.
+      ...(shop.paymentVerifier !== undefined || verifier !== "both"
+        ? { paymentVerifier: verifier }
+        : {}),
     });
     setSaving(false);
     if (!ok) return; // page banner carries the hook error
@@ -272,6 +285,24 @@ function ShopCard({
             />
             <span className="mt-1 block text-xs text-ink-soft">
               The shop pays: the waived rider charge is deducted from its payout. Rider zones only — never courier, pickup, coupon or PROSANTI+. The platform rule lives in Settings.
+            </span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className={label}>Who verifies this shop&apos;s bKash / Nagad payments</span>
+            <select
+              className={field}
+              value={verifier}
+              onChange={(e) => setVerifier(e.target.value as PaymentVerifier)}
+              data-testid="shop-payment-verifier"
+            >
+              {PAYMENT_VERIFIERS.map((v) => (
+                <option key={v} value={v}>
+                  {PAYMENT_VERIFIER_LABEL[v]}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-ink-soft" data-testid="shop-payment-verifier-help">
+              {PAYMENT_VERIFIER_HELP[verifier]}
             </span>
           </label>
           <div className="sm:col-span-2">

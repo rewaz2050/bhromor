@@ -38,7 +38,10 @@ create type ps_order_status as enum (
 create table ps_order_flow (position smallint primary key, status ps_order_status unique not null);
 insert into ps_order_flow values (0,'pending'),(1,'confirmed'),(2,'preparing'),(3,'ready-for-pickup'),
  (4,'courier-assigned'),(5,'out-for-delivery'),(6,'delivered');
-create function ps_vendor_shop() returns uuid language sql stable as $$ select null::uuid $$;
+create table shops (id uuid primary key default gen_random_uuid(), name text default 'S');
+create table vendor_users (user_id uuid primary key, shop_id uuid references shops(id));
+create function ps_vendor_shop() returns uuid language sql stable security definer as $$
+  select shop_id from vendor_users where user_id = auth.uid() $$;
 create table orders (
  id uuid primary key default gen_random_uuid(), status ps_order_status default 'confirmed',
  is_pickup boolean default false, payment_verified_at timestamptz,
@@ -75,6 +78,7 @@ for (const f of [
   '202609300001_rider_delivery_accounting.sql',
   '202609300002_rider_money.sql',
   '202610010001_rider_fixes_phase_a.sql',
+  '202610010002_payment_verifier.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -371,6 +375,68 @@ try {
   await advance(pk.ord);
   assert.equal(await scalar('select status from orders where id = $1', [pk.ord]), 'delivered');
   console.log('PASS: staff release — never-collected goes back to the queue, carried parcel lands on the failed list');
+
+  // ------------------------------------------------------------------- D --
+  // N6: who may verify a wallet payment is admin's per-shop choice.
+  const shopA = await scalar(`insert into shops default values returning id`);
+  const shopB = await scalar(`insert into shops default values returning id`);
+  const vendorA = await uuid();
+  const vendorB = await uuid();
+  await db.query(`insert into vendor_users(user_id, shop_id) values ($1, $2), ($3, $4)`, [vendorA, shopA, vendorB, shopB]);
+  const pending = async (shop) => {
+    await as(null);
+    return scalar(
+      `insert into orders(status, payment, payment_status, shop_id, total)
+       values ('confirmed', 'bkash', 'pending_verification', $1, 50000) returning id`, [shop]);
+  };
+  const setMode = async (shop, mode) => { await as(null); await db.query('update shops set payment_verifier = $2 where id = $1', [shop, mode]); };
+  const verify = (id, action = 'verified') => db.query(`select * from ps_verify_payment($1, $2, 'ok')`, [id, action]);
+  const payStatus = (id) => scalar('select payment_status from orders where id = $1', [id]);
+  const lastNote = (id) => scalar(`select note from order_status_history where order_id = $1 order by ctid desc limit 1`, [id]);
+
+  // default 'both' = the old behaviour: staff AND the shop may decide.
+  assert.equal(await scalar('select payment_verifier from shops where id = $1', [shopA]), 'both');
+  let po = await pending(shopA);
+  await as(vendorA); await verify(po);
+  assert.equal(await payStatus(po), 'verified');
+  assert.match(await lastNote(po), /verified by the shop/);
+  po = await pending(shopA);
+  await as(staffId); await verify(po);
+  assert.match(await lastNote(po), /verified by PROSANTI staff/);
+
+  // platform → the shop is shut out, staff decide.
+  await setMode(shopA, 'platform');
+  po = await pending(shopA);
+  await as(vendorA);
+  await assert.rejects(verify(po), /reserved for the platform/);
+  await assert.rejects(verify(po, 'rejected'), /reserved for the platform/);
+  assert.equal(await payStatus(po), 'pending_verification');
+  await as(staffId); await verify(po, 'rejected');
+  assert.equal(await payStatus(po), 'rejected');
+  assert.match(await lastNote(po), /rejected by PROSANTI staff/);
+
+  // shop → staff are shut out, only the OWNING shop decides.
+  await setMode(shopA, 'shop');
+  po = await pending(shopA);
+  await as(staffId);
+  await assert.rejects(verify(po), /delegated to the shop/);
+  await as(vendorB);
+  await assert.rejects(verify(po), /forbidden/, 'another shop can never decide it');
+  await as(vendorA); await verify(po);
+  assert.equal(await payStatus(po), 'verified');
+
+  // the setting is per shop: shop B is still 'both'.
+  const ob = await pending(shopB);
+  await as(staffId); await verify(ob);
+  assert.equal(await payStatus(ob), 'verified');
+
+  // a shop-less order is staff business; a stranger is refused; junk is rejected.
+  await as(null);
+  const noShop = await scalar(`insert into orders(status, payment, payment_status) values ('confirmed','nagad','pending_verification') returning id`);
+  await as(staffId); await verify(noShop);
+  await as(null);
+  await assert.rejects(db.query(`update shops set payment_verifier = 'nobody' where id = $1`, [shopA]), /check/);
+  console.log('PASS: payment verifier — platform / shop / both, per shop, default unchanged');
 } finally {
   await db.close();
 }

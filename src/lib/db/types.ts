@@ -181,6 +181,8 @@ export interface DbShop {
   verified_by?: string | null;
   verified_by_email?: string | null;
   verification_note?: string | null;
+  /** N6 (202610010002) — who verifies wallet payments; absent before it. */
+  payment_verifier?: string | null;
   /** B6 (202609280006) — holiday dates; absent on a database without it. */
   vacation_start?: string | null;
   vacation_end?: string | null;

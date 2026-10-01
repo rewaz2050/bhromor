@@ -616,6 +616,7 @@ export default function AdminOrderDetailPage() {
                 total={order.total}
                 customerPhone={order.customer.phone}
                 orderStatus={order.status}
+                verifier={order.paymentVerifier}
                 onDecided={refresh}
               />
             </dl>

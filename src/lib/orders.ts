@@ -232,6 +232,11 @@ export interface Order {
   paymentStatus?: "pending_verification" | "verified" | "rejected";
   /** P1 #8 — when the shop verified/rejected the wallet payment. */
   paymentVerifiedAt?: number;
+  /**
+   * N6 — who may decide this order's wallet payment (the shop's setting).
+   * Filled on the single-order admin/vendor reads only; absent = both.
+   */
+  paymentVerifier?: "platform" | "shop" | "both";
   /** P2 #17 — free-delivery waiver applied by an ACTIVE PROSANTI+ term. */
   isPlus?: boolean;
   /**

@@ -42,6 +42,7 @@ import type {
   DbVendorUser,
   DbZone,
 } from "./types";
+import { parsePaymentVerifier } from "@/lib/payment-verifier";
 
 const epoch = (iso: string): number => {
   const ms = Date.parse(iso);
@@ -260,6 +261,9 @@ export const mapShop = (row: DbShop): Shop => ({
   // become a write the database can't take.
   ...(row.free_delivery_min !== undefined
     ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
+    : {}),
+  ...(row.payment_verifier !== undefined
+    ? { paymentVerifier: parsePaymentVerifier(row.payment_verifier) }
     : {}),
   review: mapApplicationReview(row),
   // B5 — the badge is public; the staff note and the officer are not part of

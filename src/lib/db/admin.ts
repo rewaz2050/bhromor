@@ -54,6 +54,8 @@ import type {
   DbVariant,
   DbZone,
 } from "./types";
+import { requirePaymentVerifier } from "@/lib/payment-verifier";
+import { shopPaymentVerifier } from "@/lib/db/payment-verifier";
 
 export class AdminInputError extends Error {
   status: number;
@@ -289,6 +291,10 @@ export async function getOrderDetail(
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const order = await toDomain(db, data as DbOrder);
   if (!order) throw new Error("order detail failed");
+  // N6: the payment card needs to know whether staff may decide this one.
+  if (order.payment !== "cod" && order.paymentStatus === "pending_verification") {
+    order.paymentVerifier = await shopPaymentVerifier(db, (data as DbOrder).shop_id);
+  }
   return order;
 }
 
@@ -563,6 +569,12 @@ export async function verifyPaymentAsStaff(
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Staff role required.", 403);
+    }
+    if (msg.includes("delegated to the shop")) {
+      throw new AdminInputError(
+        "This shop verifies its own wallet payments — switch its payment verifier to staff or both (Admin → Shops) to decide this one.",
+        409,
+      );
     }
     if (msg.includes("not a wallet payment")) {
       throw new AdminInputError(
@@ -2189,8 +2201,19 @@ export async function upsertShop(
     /** Free delivery (2026-09-26): the shop's own minimum, paisa; null clears it. */
     free_delivery_min?: number | string | null;
     freeDeliveryMinPaisa?: number | string | null;
+    /** N6 — who verifies bKash/Nagad payments: platform | shop | both. */
+    payment_verifier?: string;
+    paymentVerifier?: string;
   };
   const name = clean(body.name, 80);
+  // N6: only written when sent; junk is refused, never silently defaulted.
+  const verifierSent = body.payment_verifier !== undefined || body.paymentVerifier !== undefined;
+  const paymentVerifier = verifierSent
+    ? requirePaymentVerifier(body.payment_verifier ?? body.paymentVerifier)
+    : undefined;
+  if (verifierSent && paymentVerifier === null) {
+    throw new AdminInputError("Pick who verifies payments: platform, shop or both.");
+  }
   if (name.length < 2) throw new AdminInputError("Shop name is too short.");
   // Only written when the form sent the key — a database without migration
   // 202609260003 keeps saving every other field.
@@ -2239,6 +2262,7 @@ export async function upsertShop(
       status,
       is_open: status === "active" ? isOpen : false,
       ...(freeDeliveryMin !== undefined ? { free_delivery_min: freeDeliveryMin } : {}),
+      ...(paymentVerifier ? { payment_verifier: paymentVerifier } : {}),
     };
     const { data, error } = await db
       .from("shops")
@@ -2247,6 +2271,16 @@ export async function upsertShop(
       .select("*")
       .single();
     if (error || !data) {
+      if (
+        paymentVerifier &&
+        ((error as { code?: string } | null)?.code === "PGRST204" ||
+          /payment_verifier/.test((error as { message?: string } | null)?.message ?? ""))
+      ) {
+        throw new AdminInputError(
+          "Payment verifier is not set up on this database yet — run supabase/migrations/202610010002_payment_verifier.sql.",
+          503,
+        );
+      }
       if (
         freeDeliveryMin !== undefined &&
         ((error as { code?: string } | null)?.code === "PGRST204" ||
@@ -2282,10 +2316,17 @@ export async function upsertShop(
       status: "pending",
       is_open: false,
       ...(freeDeliveryMin ? { free_delivery_min: freeDeliveryMin } : {}),
+      ...(paymentVerifier ? { payment_verifier: paymentVerifier } : {}),
     })
     .select("*")
     .single();
   if (error) {
+    if (paymentVerifier && (error.code === "PGRST204" || /payment_verifier/.test(error.message ?? ""))) {
+      throw new AdminInputError(
+        "Payment verifier is not set up on this database yet — run supabase/migrations/202610010002_payment_verifier.sql.",
+        503,
+      );
+    }
     if (error.code === "23505") {
       throw new AdminInputError("That shop slug is taken.", 409);
     }

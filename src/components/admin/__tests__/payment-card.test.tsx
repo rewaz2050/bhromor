@@ -120,4 +120,44 @@ describe("PaymentCard (admin order detail)", () => {
       "/api/vendor/orders/PS-20260909-0042/payment",
     ]);
   });
+
+  describe("who may decide (audit N6)", () => {
+    const pending = {
+      ...props,
+      payment: "bkash" as const,
+      paymentStatus: "pending_verification" as const,
+      orderStatus: "preparing",
+    };
+
+    it("staff get no buttons when the shop verifies its own payments — and are told how to step in", () => {
+      render(<PaymentCard {...pending} verifier="shop" />);
+      expect(screen.queryByText("Payment verified")).not.toBeInTheDocument();
+      expect(screen.queryByText("Reject payment")).not.toBeInTheDocument();
+      expect(screen.getByTestId("payment-not-yours")).toHaveTextContent(/Waiting for the shop/);
+      expect(screen.getByRole("link", { name: /Admin → Shops/ })).toHaveAttribute("href", "/admin/shops");
+    });
+
+    it("the shop gets no buttons when staff verify — and is told nothing is needed", () => {
+      render(<PaymentCard {...pending} actor="vendor" verifier="platform" />);
+      expect(screen.queryByText("Payment verified")).not.toBeInTheDocument();
+      expect(screen.queryByText("Reject payment")).not.toBeInTheDocument();
+      expect(screen.getByTestId("payment-not-yours")).toHaveTextContent(/PROSANTI staff verify/);
+    });
+
+    it.each([
+      ["staff", "platform"],
+      ["staff", "both"],
+      ["vendor", "shop"],
+      ["vendor", "both"],
+    ] as const)("%s still decide when the setting is %s", (actor, verifier) => {
+      render(<PaymentCard {...pending} actor={actor} verifier={verifier} />);
+      expect(screen.getByText("Payment verified")).toBeInTheDocument();
+      expect(screen.queryByTestId("payment-not-yours")).not.toBeInTheDocument();
+    });
+
+    it("an absent setting behaves like 'both' (old database)", () => {
+      render(<PaymentCard {...pending} actor="vendor" />);
+      expect(screen.getByText("Payment verified")).toBeInTheDocument();
+    });
+  });
 });

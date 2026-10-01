@@ -78,7 +78,8 @@ export type RoundProbeKey =
   | "reviewStampsReady"
   | "riderEarningsReady"
   | "riderPayoutsReady"
-  | "riderFixesReady";
+  | "riderFixesReady"
+  | "paymentVerifierReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -97,6 +98,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   riderEarningsReady: "202609300001_rider_delivery_accounting.sql",
   riderPayoutsReady: "202609300002_rider_money.sql",
   riderFixesReady: "202610010001_rider_fixes_phase_a.sql",
+  paymentVerifierReady: "202610010002_payment_verifier.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -112,6 +114,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "riderEarningsReady",
   "riderPayoutsReady",
   "riderFixesReady",
+  "paymentVerifierReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -138,6 +141,8 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale rider per-delivery fee (Admin → Money te set kora) wallet-e joma hobe na, /rider/earnings page 'আয়ের পেজ এখনো চালু হয়নি' dekhabe ar kono payout request neoya jabe na",
   riderFixesReady:
     "na chalale rider-er payout/COD handling fee bhul hishab thakbe (return-e fee), 'delivery fail' report staff-er kache pouchabe na (job atke thakbe) ar admin 'Release rider' / failed-delivery redispatch kaj korbe na",
+  paymentVerifierReady:
+    "na chalale Admin → Shops e 'Who verifies bKash/Nagad payments' save 503 dibe ar shop ar staff duijon-i agei moto payment verify korte parbe (platform-only / shop-only niyom kaj korbe na)",
 };
 
 /** All of them, in parallel — one round trip each. */
@@ -159,6 +164,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     riderWalletColumn,
     riderPayoutsTable,
     deliveryFailedColumn,
+    paymentVerifierColumn,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -176,6 +182,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     columnReady(db, "riders", "earnings_balance"),
     tableReady(db, "rider_payout_requests"),
     columnReady(db, "orders", "delivery_failed_at"),
+    columnReady(db, "shops", "payment_verifier"),
   ]);
 
   return {
@@ -199,6 +206,8 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // 202610010001 — Phase A fixes ship in one transaction; the failed-delivery
     // column is the visible artefact (the RPCs ride in the same file).
     riderFixesReady: deliveryFailedColumn,
+    // 202610010002 — the per-shop "who verifies wallet payments" column.
+    paymentVerifierReady: paymentVerifierColumn,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,

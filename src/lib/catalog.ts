@@ -114,6 +114,11 @@ export interface Shop {
    * lives in the ops settings. Public: the bag's progress bar reads it.
    */
   freeDeliveryMinPaisa?: number | null;
+  /**
+   * N6 (2026-10-01) — who decides this shop's bKash/Nagad payments. Absent on
+   * a database without migration 202610010002 (then: both, as before).
+   */
+  paymentVerifier?: "platform" | "shop" | "both";
   /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
   review?: ApplicationReview;
   /**

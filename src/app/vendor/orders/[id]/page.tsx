@@ -305,6 +305,7 @@ export default function VendorOrderDetailPage({
             total={order.total}
             customerPhone={order.customer.phone}
             orderStatus={order.status}
+            verifier={order.paymentVerifier}
             onDecided={reload}
           />
         </section>

@@ -286,3 +286,30 @@ Permission: *"Suru koro and ek ek kore complete koro"*। নতুন migration
 - `delivery_max_attempts` এখনো শুধু `site_settings` key; admin UI আসবে item J-তে।
 - Cloudinary "dynamic folder" mode-এ folder URL-এ থাকে না, তাই proof URL-এ folder যাচাই ইচ্ছাকৃতভাবে করা হয়নি; শুধু cloud name।
 - **D (N6)** — bKash/Nagad wallet পেমেন্ট verify করবে কে (platform staff না shop) — মালিকের সিদ্ধান্তের অপেক্ষায়।
+
+## 10. Item D (N6) — bKash/Nagad payment কে verify করবে (১ অক্টোবর ২০২৬)
+
+মালিকের সিদ্ধান্ত: *"দুইটাই রাখো, আর power থাকবে admin staff-এর কাছে — admin চাইলে নিজের কাছে রাখতে পারে,
+shop-কেও দিতে পারে, অথবা দুইটাই"*। নতুন migration: **`supabase/migrations/202610010002_payment_verifier.sql`**
+(idempotent, `202609160003`-এর `ps_verify_payment` body + অনুমতির নিয়ম)।
+
+| `shops.payment_verifier` | Staff | Shop |
+|---|---|---|
+| `platform` | ✅ | ❌ ("reserved for the platform") |
+| `shop` | ❌ ("delegated to the shop") | ✅ (শুধু নিজের order) |
+| `both` (**default**) | ✅ | ✅ |
+
+- Default `both` = আগের আচরণ, তাই migration চালালে কোনো shop-এর কিছু বদলায় না — admin বেছে নিলে তবেই।
+- Admin → Shops → shop edit → **"Who verifies this shop's bKash / Nagad payments"** dropdown (সাথে ব্যাখ্যা)। Column না থাকলে
+  (migration বাকি) অন্য সব ফিল্ড আগের মতো save হয়; verifier বদলালে 503 + ফাইলের নাম।
+- Payment card (admin ও vendor দুই জায়গায়): যে পক্ষের অধিকার নেই তাকে বোতামের বদলে ব্যাখ্যা — staff দেখে
+  "Waiting for the shop… Admin → Shops-এ বদলান", shop দেখে "PROSANTI staff verify করে, আপনার কিছু করতে হবে না"।
+- Order history-র note এখন বলে **কে** সিদ্ধান্ত নিয়েছে ("verified by the shop / by PROSANTI staff")।
+- Real-Postgres টেস্ট: ৩টি মোড, ভুল shop, shop-ছাড়া order, ভুল মান reject, প্রতি shop আলাদা।
+
+**যা বদলায়নি (জেনে রাখুন)।** Customer এখনো **PROSANTI-র** wallet নম্বরে টাকা দেয় এবং `shop_ledger` ডেলিভারিতে shop-এর
+`payable` credit করে (platform-collected মডেল)। তাই `shop` মোডে shop এমন টাকার verify করে যা তার wallet-এ আসেনি —
+শুধু তখনই বেছে নিন যখন shop সত্যিই টাকাটা দেখতে পায়। সত্যিকারের "shop নিজের wallet-এ টাকা নেয়" মডেল চাইলে আলাদা কাজ:
+shop-এর নিজের bKash/Nagad নম্বর, checkout-এ সেই নম্বর দেখানো, আর shop → platform commission/delivery charge হিসাব
+(ledger-এ ঋণাত্মক payable)। দরকার হলে পরের item হিসেবে করা যাবে।
+`/api/health` probe `paymentVerifierReady`, `bootstrap-fresh.sql` (এখনো ১৭ part), `diagnose.sql` row 68 sync করা।

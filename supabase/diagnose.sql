@@ -115,7 +115,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('64',  'Failed-delivery flag on orders',                   '202610010001_rider_fixes_phase_a.sql', 'column', 'orders.delivery_failed_at'),
   ('65',  'Failed-attempt RPC (attempt cap, frees the rider)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_rider_failed_attempt'),
   ('66',  'Staff resolves a failed delivery (redispatch/cancel)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_resolve_failed_delivery'),
-  ('67',  'Staff releases an unresponsive rider',             '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_release_assignment')
+  ('67',  'Staff releases an unresponsive rider',             '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_release_assignment'),
+  -- Who verifies wallet payments (2026-10-01): per-shop platform/shop/both.
+  ('68',  'Per-shop payment verifier (platform/shop/both)',   '202610010002_payment_verifier.sql', 'column', 'shops.payment_verifier')
 )
 select step as ord,
        label,

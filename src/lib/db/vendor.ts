@@ -32,6 +32,7 @@ import type {
   DbShop,
   DbVariant,
 } from "./types";
+import { shopPaymentVerifier } from "@/lib/db/payment-verifier";
 
 /* ------------------------------------------------------------------ */
 /* Pure guards (unit-tested)                                           */
@@ -223,6 +224,9 @@ export async function getVendorOrderDetail(
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const order = await toDomain(db, data as DbOrder);
   if (!order) throw new Error("vendor order detail failed");
+  if (order.payment !== "cod" && order.paymentStatus === "pending_verification") {
+    order.paymentVerifier = await shopPaymentVerifier(db, shopId);
+  }
   return order;
 }
 
@@ -315,6 +319,12 @@ export async function verifyPaymentAsVendor(
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Only the shop that owns this order can decide its payment.", 403);
+    }
+    if (msg.includes("reserved for the platform")) {
+      throw new AdminInputError(
+        "PROSANTI staff verify the wallet payments for your shop — you will see the result here.",
+        403,
+      );
     }
     if (msg.includes("not a wallet payment")) {
       throw new AdminInputError(

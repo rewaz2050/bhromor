@@ -2,7 +2,7 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
 -- Generated from schema.sql + the in-order migrations through
--- 202610010001 (every file in supabase/migrations/, chronologically;
+-- 202610010002 (every file in supabase/migrations/, chronologically;
 -- append-only sections after the base chain carry their own banner).
 --
 -- WHEN TO USE THIS FILE:

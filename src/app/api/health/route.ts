@@ -137,6 +137,8 @@ export async function GET(request?: Request) {
   riderPayoutsReady: false,
   // 202610010001 — failed-delivery flow, COD-fee fix, release-rider override.
   riderFixesReady: false,
+  // 202610010002 — admin chooses who verifies each shop's wallet payments.
+  paymentVerifierReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

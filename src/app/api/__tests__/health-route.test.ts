@@ -139,6 +139,7 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     "riderEarningsReady",
     "riderPayoutsReady",
     "riderFixesReady",
+    "paymentVerifierReady",
   ] as const;
 
   it("reports every round file as applied when their tables and columns answer", async () => {
@@ -179,6 +180,16 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     expect(body.checks.riderPayoutsReady).toBe(true);
     expect(
       body.nextSteps.some((s) => s.includes("202610010001_rider_fixes_phase_a.sql")),
+    ).toBe(true);
+  });
+
+  it("names the payment-verifier file when shops.payment_verifier is missing (202610010002)", async () => {
+    state.missing = new Set(["shops.payment_verifier"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.paymentVerifierReady).toBe(false);
+    expect(body.checks.riderFixesReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202610010002_payment_verifier.sql")),
     ).toBe(true);
   });
 
