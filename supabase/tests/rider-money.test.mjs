@@ -61,7 +61,7 @@ create table delivery_assignments (
 create table order_status_history(order_id uuid, status text, note text, changed_by uuid, created_at timestamptz default now());
 create table site_settings (key text primary key, value jsonb);
 create table shop_ledger (order_id uuid, commission bigint default 0, payable bigint default 0);
-create table shop_payouts (amount bigint default 0);
+create table shop_payouts (id uuid primary key default gen_random_uuid(), shop_id uuid, amount bigint default 0, method text default 'bank', reference text default '', paid_by uuid);
 -- 202609090005 + 202609250004 (settlement tables; ps_admin_settle_rider writes both).
 create table rider_settlements (
  id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
@@ -99,6 +99,7 @@ for (const f of [
   '202610010003_money_pnl.sql',
   '202610010004_cod_netting.sql',
   '202610010005_vendor_rider_view.sql',
+  '202610010006_money_audit.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -604,6 +605,67 @@ try {
   await as(riderUser);
   await assert.rejects(db.query('select ps_vendor_order_rider($1)', [hOrder]), /forbidden/);
   console.log('PASS: vendor rider view — own shop only, active jobs only');
+
+  // T: every money approval leaves an append-only line, written by triggers.
+  const audit = (event) => rows(`select * from money_audit_log where event = $1 order by at, id`, [event]);
+
+  // earlier blocks (A–K) already moved money as staff: payout paid, settle with netting
+  const paid = (await audit('rider_payout_paid'))[0];
+  assert.ok(paid, 'the staff payout decision was logged');
+  assert.equal(paid.actor_id, staffId);
+  assert.equal(paid.detail.reference, 'TRX1');
+  const netted = (await audit('rider_settle')).find((r) => Number(r.detail.netted) === 120000);
+  assert.ok(netted, 'the netted settlement is logged with its netted part');
+  assert.equal(netted.actor_id, staffId);
+  assert.equal(Number(netted.amount), 300000);
+
+  // shop payout, payment decision, rate + wallet changes — each as staff
+  await as(staffId);
+  const tShop = await scalar(`insert into shops(name) values ('T') returning id`);
+  await db.query(`insert into shop_payouts(shop_id, amount, method, reference) values ($1, 90000, 'bkash', 'SP-1')`, [tShop]);
+  const sp = (await audit('shop_payout'))[0];
+  assert.equal(Number(sp.amount), 90000);
+  assert.equal(sp.subject_id, tShop);
+  assert.equal(sp.actor_id, staffId);
+
+  await as(null);
+  const tOrder = await scalar(`insert into orders(payment, payment_status, total) values ('bkash', 'pending_verification', 55000) returning id`);
+  await as(staffId);
+  await db.query(`update orders set payment_status = 'verified' where id = $1`, [tOrder]);
+  const pv = (await audit('payment_verified')).find((r) => r.subject_id === tOrder);
+  assert.ok(pv && Number(pv.amount) === 55000 && pv.actor_id === staffId);
+  // a verified COD order that never was pending leaves no payment line
+  await db.query(`update orders set payment_status = 'verified' where id = $1`, [tOrder]);
+  assert.equal((await audit('payment_verified')).filter((r) => r.subject_id === tOrder).length, 1, 'no change, no line');
+
+  await db.query(`insert into site_settings(key, value) values ('rider_base_fee_paisa', '4000'::jsonb)
+                  on conflict (key) do update set value = excluded.value`);
+  await db.query(`update site_settings set value = '5000'::jsonb where key = 'rider_base_fee_paisa'`);
+  const rc = (await audit('rate_change')).filter((r) => r.subject_id === 'rider_base_fee_paisa');
+  const lastRate = rc[rc.length - 1];
+  assert.deepEqual([lastRate.detail.from, lastRate.detail.to], [4000, 5000]);
+
+  await db.query(`insert into site_settings(key, value) values ('ops', '{"wallets":{"bkash":"01711111111"}}'::jsonb)
+                  on conflict (key) do update set value = excluded.value`);
+  await db.query(`update site_settings set value = '{"wallets":{"bkash":"01799999999","nagad":"01788888888"}}'::jsonb where key = 'ops'`);
+  const wc = await audit('wallet_numbers_changed');
+  assert.ok(wc.length >= 2);
+  assert.deepEqual(wc[wc.length - 1].detail.methods, ['bkash', 'nagad']);
+  assert.ok(!JSON.stringify(wc).includes('0179'), 'the wallet numbers themselves are never logged');
+  await db.query(`update site_settings set value = jsonb_set(value, '{promo}', 'true') where key = 'ops'`);
+  assert.equal((await audit('wallet_numbers_changed')).length, wc.length, 'unrelated ops edits are not logged');
+
+  // a service-role insert is still attributed to the person the row names
+  await as(null);
+  await db.query(`insert into shop_payouts(shop_id, amount, reference, paid_by) values ($1, 1000, 'SP-2', $2)`, [tShop, staffId]);
+  const viaService = (await audit('shop_payout')).find((r) => r.detail.reference === 'SP-2');
+  assert.equal(viaService.actor_id, staffId, 'paid_by attributes a service-role write');
+
+  // append-only, for every role
+  await as(null);
+  await assert.rejects(db.query(`update money_audit_log set amount = 1`), /append-only/);
+  await assert.rejects(db.query(`delete from money_audit_log`), /append-only/);
+  console.log('PASS: money audit trail — triggers log approvals, never wallet numbers, append-only');
 } finally {
   await db.close();
 }

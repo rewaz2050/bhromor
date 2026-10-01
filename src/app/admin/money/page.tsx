@@ -364,6 +364,10 @@ export default function AdminMoneyPage() {
           ·{" "}
           <Link href="/admin/payouts" className="font-semibold underline underline-offset-2">
             Shop payouts
+          </Link>{" "}
+          ·{" "}
+          <Link href="/admin/money/audit" className="font-semibold underline underline-offset-2">
+            Audit trail
           </Link>
         </p>
       </section>

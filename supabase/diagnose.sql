@@ -123,7 +123,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- COD netting against the rider wallet (2026-10-01).
   ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount'),
   -- Shop sees the rider on its order (2026-10-01).
-  ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider')
+  ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider'),
+  -- Append-only money audit trail (2026-10-01).
+  ('72',  'Money audit trail (who approved which payout/settle)', '202610010006_money_audit.sql', 'table', 'money_audit_log')
 )
 select step as ord,
        label,

@@ -1,4 +1,4 @@
--- PART 4/17 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 4/18 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 13/23 — delivery proof via Cloudinary  (source: supabase/migrations/202609090013_delivery_proof_cloudinary.sql)
 -- ============================================================================

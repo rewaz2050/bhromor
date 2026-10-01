@@ -363,3 +363,25 @@ Shop "Ready — request riders" চাপার পর আর কিছুই �
   "Parcel নিয়ে গেছে"), `tel:` Call বাটন। পেজ আগে থেকেই poll করে, তাই rider accept করলেই কার্ড আসে।
 - Migration না চললে কার্ড নেই, পেজ ঠিক চলে।
 - সিদ্ধান্ত: counter-pickup order-এ কার্ড নেই। Rider-এর ফোন shop-কে দেখানো platform-এর নীতিগত সিদ্ধান্ত — চাইলে শুধু নাম দেখিয়ে ফোন লুকানো যায়।
+
+## 14. Item T — money audit trail (১ অক্টোবর ২০২৬)
+
+আগে "কে এই payout approve করল / কে settle করল / কে wallet number বদলাল" — কিছু জায়গায় আংশিক (`decided_by`, history note),
+কিছু জায়গায় একেবারেই নেই। **`202610010006_money_audit.sql`**: `money_audit_log` + **database trigger**, app-code নয়, তাই কোনো
+route/ভবিষ্যৎ feature লগ করতে ভুলতে পারে না। Table append-only (UPDATE/DELETE trigger-এ বন্ধ, service role-এও)।
+
+| Event | কখন |
+|---|---|
+| `shop_payout` | shop payout record হলে |
+| `rider_payout_paid` / `rider_payout_rejected` | rider payout request pending → paid/rejected |
+| `rider_settle` | staff rider-এর COD settle করলে (netted অংশসহ) |
+| `settle_claim_rejected` | settle claim reject |
+| `payment_verified` / `payment_rejected` | bKash/Nagad payment সিদ্ধান্ত (admin বা shop — actor দেখায় কে) |
+| `rider_adjustment` | rider wallet-এ adjustment / incentive |
+| `rate_change` | rider pay rate (base fee, COD handling, min payout) — আগে → পরে |
+| `wallet_numbers_changed` | customer যে bKash/Nagad নম্বরে টাকা দেয় সেটা বদলালে (শুধু কোন method, **নম্বর কখনো লগে নয়**) |
+
+- actor = `auth.uid()` + email; `NULL` মানে service role/DB session ("system / service")।
+- Admin → Money → **Audit trail** (`/admin/money/audit`): newest-first তালিকা, event filter। পড়া শুধু `ps_is_admin()` (RLS)।
+- Migration না চললে পেজ ফাইলের নাম বলে। `diagnose.sql` row 72, bootstrap sync।
+- সীমা: migration চালানোর আগের ঘটনা লগে নেই। Order-delivery/status বদল এখানে নয় (সেগুলো `order_status_history`-তে)।
