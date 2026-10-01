@@ -370,6 +370,7 @@ describe("admin money", () => {
     });
     const payout = await decideRiderPayout(
       svc as never,
+      svc as never,
       { id: "staff-1", email: "owner@prosanti.test" },
       { payoutId: "p1", decision: "paid", reference: "TRX1" },
     );
@@ -382,7 +383,7 @@ describe("admin money", () => {
       rpc: () => ({ data: null, error: { message: "payout already paid" } }),
     });
     await expect(
-      decideRiderPayout(svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
+      decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
     ).rejects.toMatchObject({ status: 409 });
   });
 });

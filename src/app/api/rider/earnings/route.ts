@@ -23,7 +23,8 @@ export const dynamic = "force-dynamic";
 
 export const GET = riderRoute("earnings", async (ctx) => {
   const [summary, entries, payouts] = await Promise.all([
-    getRiderMoneySummary(ctx.service),
+    // ps_rider_money_summary resolves the rider via auth.uid() → rider JWT client.
+    getRiderMoneySummary(ctx.db),
     listRiderMoneyEntries(ctx.service, ctx.rider.id),
     listRiderPayouts(ctx.service, ctx.rider.id),
   ]);
@@ -66,7 +67,7 @@ export const POST = riderRoute(
       throw new RiderInputError("bKash/Nagad/ব্যাংক নম্বর দিন।", 422);
     }
     const payout = await requestRiderPayout(ctx.db, { amount, method, account });
-    const summary = await getRiderMoneySummary(ctx.service);
+    const summary = await getRiderMoneySummary(ctx.db);
     return apiJson({ requested: true, payout, summary }, 201);
   },
   { limit: 10 },

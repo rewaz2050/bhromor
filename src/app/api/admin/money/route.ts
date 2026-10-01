@@ -9,9 +9,11 @@
  *         minimum payout) into `site_settings`, where the deliver RPC reads
  *         them with `ps_setting_int`.
  *
- * The summary + payout queue live behind RLS-free, service-only tables/RPCs,
- * so those reads use the service client — `staffRoute` has already verified
- * the caller is staff.
+ * The payout QUEUE reads RLS-closed tables, so it uses the service client
+ * (`staffRoute` has already verified the caller is staff). The two RPCs
+ * (summary, decide) gate on `ps_is_admin()` = `auth.uid()`, so they run on the
+ * staff member's own JWT client — the service key has no uid and would be
+ * refused with "forbidden" every time.
  */
 import { apiError, apiJson } from "@/lib/api-response";
 import {
@@ -30,7 +32,8 @@ export const GET = staffRoute("money-read", async ({ db }) => {
   const service = getSupabaseService();
   if (!service) return apiError("Service role is not configured.", 503);
   const [summary, queue, settings] = await Promise.all([
-    getAdminMoneySummary(service),
+    // The RPC checks ps_is_admin() → needs the staff JWT, not the service key.
+    getAdminMoneySummary(db),
     listRiderPayoutQueue(service),
     readRiderPaySettings(db),
   ]);
@@ -45,7 +48,7 @@ export const GET = staffRoute("money-read", async ({ db }) => {
 
 export const POST = staffRoute(
   "money-payout-decide",
-  async ({ user }, request) => {
+  async ({ user, db }, request) => {
     const service = getSupabaseService();
     if (!service) return apiError("Service role is not configured.", 503);
     const body = (await request.json().catch(() => null)) as {
@@ -65,7 +68,7 @@ export const POST = staffRoute(
     if (decision === "paid" && reference.trim().length < 3 && note.trim().length < 3) {
       return apiError("Give the bKash/bank reference (or a note) for the record.", 422);
     }
-    const payout = await decideRiderPayout(service, user, {
+    const payout = await decideRiderPayout(db, service, user, {
       payoutId,
       decision,
       note,
