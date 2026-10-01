@@ -60,7 +60,11 @@ create function ps_setting_int(p_key text, p_default bigint) returns bigint lang
 `);
 
 const root = new URL('../migrations/', import.meta.url);
-for (const f of ['202609300001_rider_delivery_accounting.sql', '202609300002_rider_money.sql']) {
+for (const f of [
+  '202609300001_rider_delivery_accounting.sql',
+  '202609300002_rider_money.sql',
+  '202610010001_rider_fixes_phase_a.sql',
+]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
   await db.exec(sql); // repeat-safe
@@ -151,6 +155,37 @@ try {
   );
   assert.equal(drift, 0, 'earnings_balance equals the journal sum');
   console.log('PASS: wallet equals journal');
+
+  // ------------------------------------------------------------------- B --
+  // N4: a return leg (zero-total order, payment defaulting to 'cod') must not
+  // pay a COD handling fee for cash that never existed. The base fee still
+  // applies — the rider drove the leg.
+  await as(null);
+  await db.query(`insert into site_settings(key, value) values
+    ('rider_base_fee_paisa', '4000'), ('rider_cod_handling_fee_paisa', '1000')
+    on conflict (key) do update set value = excluded.value`);
+  const leg = async ({ total, payment = 'cod', isReturn = false }) => {
+    const ord = await scalar(
+      `insert into orders(status, payment, total, is_return, delivery_code) values ('picked_up', $1, $2, $3, '1234') returning id`,
+      [payment, total, isReturn],
+    );
+    const a = await scalar(
+      `insert into delivery_assignments(order_id, rider_id, state) values ($1, $2, 'picked_up') returning id`,
+      [ord, rider],
+    );
+    await as(riderUser);
+    await db.query(`select ps_rider_deliver($1, '1234', null)`, [a]);
+    await as(null);
+    return rows(`select kind, amount from rider_earnings where order_id = $1 order by kind`, [ord]);
+  };
+  const kinds = (r) => r.map((x) => `${x.kind}:${x.amount}`).join(',');
+  assert.equal(kinds(await leg({ total: 50000 })), 'cod_handling:1000,delivery_fee:4000', 'real COD: both fees');
+  assert.equal(kinds(await leg({ total: 0, isReturn: true })), 'delivery_fee:4000', 'return leg: base fee only');
+  assert.equal(kinds(await leg({ total: 0 })), 'delivery_fee:4000', 'fully discounted COD: no cash → no handling fee');
+  assert.equal(kinds(await leg({ total: 50000, payment: 'bkash' })), 'delivery_fee:4000', 'prepaid: no handling fee');
+  const cash = await scalar('select cash_in_hand from riders where id = $1', [rider]);
+  assert.equal(Number(cash), 150000, 'custody: the earlier ৳1000 + only the one real ৳500 COD leg');
+  console.log('PASS: COD handling fee only when cash was collected; return legs get the base fee');
 } finally {
   await db.close();
 }
