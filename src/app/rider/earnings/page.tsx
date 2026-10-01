@@ -26,6 +26,7 @@ const KIND_LABEL: Record<RiderMoneyKind, string> = {
   payout: "🏦 উত্তোলন (হোল্ড)",
   payout_refund: "↩️ উত্তোলন বাতিল (ফেরত)",
   adjustment: "⚖️ সমন্বয়",
+  cod_netting: "🤝 ক্যাশ জমার সাথে সমন্বয়",
 };
 
 const STATUS_LABEL: Record<"pending" | "paid" | "rejected", string> = {

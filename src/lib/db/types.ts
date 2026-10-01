@@ -94,6 +94,8 @@ export interface DbRiderSettlement {
   amount: number;
   method: string;
   reference: string;
+  /** 202610010004 — part of `amount` paid from the rider wallet (absent pre-migration). */
+  netted_amount?: number | null;
   settled_at: string;
   settled_by: string | null;
 }
@@ -110,7 +112,8 @@ export interface DbRiderEarning {
     | "incentive"
     | "payout"
     | "payout_refund"
-    | "adjustment";
+    | "adjustment"
+    | "cod_netting";
   amount: number;
   payout_id: string | null;
   note: string | null;

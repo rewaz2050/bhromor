@@ -18,7 +18,8 @@ export type RiderMoneyKind =
   | "incentive"
   | "payout"
   | "payout_refund"
-  | "adjustment";
+  | "adjustment"
+  | "cod_netting";
 
 export interface RiderMoneySummaryView {
   balance: number;

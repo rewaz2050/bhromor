@@ -62,6 +62,16 @@ create table order_status_history(order_id uuid, status text, note text, changed
 create table site_settings (key text primary key, value jsonb);
 create table shop_ledger (order_id uuid, commission bigint default 0, payable bigint default 0);
 create table shop_payouts (amount bigint default 0);
+-- 202609090005 + 202609250004 (settlement tables; ps_admin_settle_rider writes both).
+create table rider_settlements (
+ id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
+ amount int not null, method text not null default 'cash', reference text not null default '',
+ settled_at timestamptz not null default now(), settled_by uuid
+);
+create table rider_settle_claims (
+ id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
+ amount bigint not null, status text not null default 'pending', decided_at timestamptz, decided_by uuid
+);
 
 -- The REAL gates (supabase/schema.sql + 202609090005_riders.sql).
 create function ps_is_admin() returns boolean language sql stable security definer set search_path = public as $$
@@ -74,12 +84,20 @@ create function ps_setting_int(p_key text, p_default bigint) returns bigint lang
 `);
 
 const root = new URL('../migrations/', import.meta.url);
+// The REAL pre-netting settle function (202609250004), so 202610010004's drop +
+// re-create is exercised exactly like production.
+{
+  const settle = readFileSync(new URL('202609250004_settle_claims.sql', root), 'utf8');
+  const fn = settle.match(/create or replace function ps_admin_settle_rider\([\s\S]*?end \$\$;/)[0];
+  await db.exec(fn);
+}
 for (const f of [
   '202609300001_rider_delivery_accounting.sql',
   '202609300002_rider_money.sql',
   '202610010001_rider_fixes_phase_a.sql',
   '202610010002_payment_verifier.sql',
   '202610010003_money_pnl.sql',
+  '202610010004_cod_netting.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -504,6 +522,57 @@ try {
   assert.equal(withReturn.deliveredOrders, 2);
   assert.equal(withReturn.returnLegs, 1);
   console.log('PASS: net P&L — windows, shop-funded promo, adjustments, return legs, staff-only');
+
+  // K: COD netting against the rider wallet on settle.
+  await as(null);
+  const kRider = await scalar(`insert into riders(user_id, cash_in_hand) values ($1, 300000) returning id`, [await uuid()]);
+  const kBal = async () => Number(await scalar('select earnings_balance from riders where id = $1', [kRider]));
+  const kCash = async () => Number(await scalar('select cash_in_hand from riders where id = $1', [kRider]));
+  await db.query(`update riders set earnings_balance = 120000 where id = $1`, [kRider]);
+  await db.query(`insert into rider_earnings(rider_id, kind, amount, note) values ($1, 'adjustment', 120000, 'seed')`, [kRider]);
+
+  // service role / a rider cannot settle at all
+  await assert.rejects(db.query(`select * from ps_admin_settle_rider($1, 'cash', '', true)`, [kRider]), /forbidden/);
+
+  await as(staffId);
+  // default (no netting) keeps the old behaviour: wallet untouched
+  const kPlain = await scalar(`insert into riders(user_id, cash_in_hand, earnings_balance) values ($1, 1000, 500) returning id`, [await uuid()]);
+  await db.query(`select * from ps_admin_settle_rider($1, 'cash', 'plain')`, [kPlain]);
+  assert.equal(Number(await scalar('select earnings_balance from riders where id = $1', [kPlain])), 500, 'no netting by default');
+  assert.equal(Number(await scalar('select netted_amount from rider_settlements where rider_id = $1', [kPlain])), 0);
+
+  // netting: cash 300000 vs wallet 120000 -> net 120000, rider hands over 180000
+  const [st] = await rows(`select * from ps_admin_settle_rider($1, 'cash', 'visit', true)`, [kRider]);
+  assert.equal(Number(st.amount), 300000, 'the whole cash debt is cleared');
+  assert.equal(Number(st.netted_amount), 120000);
+  assert.equal(st.reference, 'visit');
+  assert.equal(await kCash(), 0);
+  assert.equal(await kBal(), 0, 'wallet debited by the netted part');
+  const journal = Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [kRider]));
+  assert.equal(journal, 0, 'earnings_balance still equals the journal');
+  assert.equal(Number(await scalar(`select count(*) from rider_earnings where rider_id = $1 and kind = 'cod_netting' and settlement_id = $2`, [kRider, st.id])), 1);
+
+  // wallet bigger than cash: net only the cash, the rest stays payable
+  await as(null);
+  const kBig = await scalar(`insert into riders(user_id, cash_in_hand, earnings_balance) values ($1, 50000, 200000) returning id`, [await uuid()]);
+  await db.query(`insert into rider_earnings(rider_id, kind, amount) values ($1, 'adjustment', 200000)`, [kBig]);
+  await as(staffId);
+  const [st2] = await rows(`select * from ps_admin_settle_rider($1, 'cash', '', true)`, [kBig]);
+  assert.equal(Number(st2.netted_amount), 50000);
+  assert.equal(Number(await scalar('select earnings_balance from riders where id = $1', [kBig])), 150000);
+
+  // empty wallet: netting requested but nothing to net -> a normal settle
+  await as(null);
+  const kEmpty = await scalar(`insert into riders(user_id, cash_in_hand) values ($1, 7000) returning id`, [await uuid()]);
+  await as(staffId);
+  const [st3] = await rows(`select * from ps_admin_settle_rider($1, 'cash', '', true)`, [kEmpty]);
+  assert.equal(Number(st3.netted_amount), 0);
+  assert.equal(Number(await scalar(`select count(*) from rider_earnings where rider_id = $1`, [kEmpty])), 0);
+
+  // netting is not income, and cannot be forged by hand
+  await as(null);
+  await assert.rejects(db.query(`insert into rider_earnings(rider_id, kind, amount) values ($1, 'cod_netting', -5)`, [kRider]), /netting_check|violates/);
+  console.log('PASS: COD netting — opt-in, capped at the wallet, journal-balanced, staff-only');
 } finally {
   await db.close();
 }

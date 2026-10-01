@@ -100,13 +100,14 @@ export function useRiders(pollMs = 0) {
       id: string,
       method: string,
       reference: string,
+      netWallet = false,
     ): Promise<boolean> => {
       if (!live) return false;
       try {
         await apiSend(
           `/api/admin/riders/${encodeURIComponent(id)}/settle`,
           "POST",
-          { method, reference },
+          { method, reference, ...(netWallet ? { netWallet: true } : {}) },
         );
         setError(null);
         await refresh();

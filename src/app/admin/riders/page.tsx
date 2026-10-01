@@ -47,6 +47,7 @@ function RiderCard({
   onLinkRider,
   onResetPassword,
   onSettle,
+  onSettleNet,
 }: {
   rider: Rider;
   zones: { id: string; name: string }[];
@@ -56,6 +57,7 @@ function RiderCard({
   onLinkRider: (id: string, email: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
   onSettle: (r: Rider) => Promise<boolean>;
+  onSettleNet: (r: Rider) => Promise<boolean>;
 }) {
   // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
   const now = useNow();
@@ -161,6 +163,28 @@ function RiderCard({
             className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 transition-colors hover:bg-amber-200"
           >
             Settle Cash ({formatBdt(rider.cashInHand)})
+          </button>
+        )}
+        {rider.cashInHand > 0 && (rider.earningsBalance ?? 0) > 0 && (
+          // Audit K: the rider owes cash AND is owed wallet money — net them so
+          // they hand over only the difference and no payout is wired back.
+          <button
+            type="button"
+            data-testid="settle-net"
+            onClick={() => {
+              const net = Math.min(rider.cashInHand, rider.earningsBalance ?? 0);
+              if (
+                window.confirm(
+                  `${rider.name}: cash ${formatBdt(rider.cashInHand)} জমা দেওয়ার কথা, wallet-এ পাওনা ${formatBdt(rider.earningsBalance ?? 0)}।\n` +
+                    `Net করলে wallet থেকে ${formatBdt(net)} কাটা হবে; rider-এর হাত থেকে নগদ নেবেন ${formatBdt(rider.cashInHand - net)}।\nনিশ্চিত?`,
+                )
+              ) {
+                void onSettleNet(rider);
+              }
+            }}
+            className="rounded-full bg-forest-100 px-3 py-1.5 text-xs font-semibold text-forest-900 ring-1 ring-forest-300 transition-colors hover:bg-forest-200"
+          >
+            Net with wallet (−{formatBdt(Math.min(rider.cashInHand, rider.earningsBalance ?? 0))})
           </button>
         )}
         <ReviewActions
@@ -585,6 +609,7 @@ export default function AdminRidersPage() {
               onLinkRider={linkRider}
               onResetPassword={resetRiderPassword}
               onSettle={(r) => settleCash(r.id, "cash", "")}
+              onSettleNet={(r) => settleCash(r.id, "cash", "", true)}
             />
           ))}
         </ul>

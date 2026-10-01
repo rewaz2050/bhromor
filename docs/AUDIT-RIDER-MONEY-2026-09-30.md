@@ -334,3 +334,18 @@ platform-এর আয় নয়) আর "rider pay" (tip + fee মেশা�
   Postgres টেস্ট লিখতে গিয়ে এটা ধরা পড়ে, তাই টেস্ট ছাড়া SQL ভুল হত)।
 - Migration না চললে পেজ ফাইলের নাম বলে; বাকি পেজ অপরিবর্তিত। `diagnose.sql` row 69, bootstrap sync।
 - যা বাইরে: refund/cancel-এর খরচ, payment-gateway ফি (নেই — personal wallet), অফলাইন খরচ (অফিস, marketing)। তাই এটা *operating* result।
+
+## 12. Item K — COD netting on settle (১ অক্টোবর ২০২৬)
+
+সমস্যা: একই rider-এর কাছে platform ৳৫,০০০ ক্যাশ পায় (COD), আবার rider-এর wallet-এ platform-এর কাছে ৳১,২০০ পাওনা।
+আগে rider ৳৫,০০০ জমা দিত, তারপর আলাদা payout করে ৳১,২০০ ফেরত যেত। এখন **`202610010004_cod_netting.sql`**:
+
+- Admin → Riders-এ যে rider-এর `cash held` আর `owed to rider` দুটোই আছে, তার কার্ডে নতুন বাটন **"Net with wallet (−৳X)"**।
+  `net = min(cash_in_hand, earnings_balance)`; rider হাতে দেয় `cash − net`। পুরো COD দেনা শূন্য হয়।
+- Settlement row-তে `amount` = পুরো দেনা, `netted_amount` = wallet থেকে কাটা অংশ। Wallet-এ একটি ঋণাত্মক journal row (`cod_netting`,
+  settlement-এর সাথে বাঁধা) — তাই `earnings_balance = Σ journal` অক্ষুণ্ণ।
+- `cod_netting` আয় নয়: rider-এর today/week/lifetime আর admin P&L দুটোই নির্দিষ্ট earning kind গোনে, তাই বিকৃত হয় না।
+- Wallet-এ pending payout থাকলে সেটা আগেই balance থেকে কাটা (hold), তাই শুধু মুক্ত টাকাই net হয়।
+- Opt-in: সাধারণ "Settle Cash" আগের মতোই; migration না চললে সাধারণ settle কাজ করে, net চাইলে ফাইলের নাম বলা 503।
+- Rider দেখে: settlement ইতিহাসে "এর মধ্যে ৳X wallet থেকে সমন্বয়", earnings খাতায় "🤝 ক্যাশ জমার সাথে সমন্বয়"।
+- Rider-এর নিজের "টাকা জমা দিয়েছি" দাবির Approve শুধু নগদ (rider নিজে বলছে নগদ দিয়েছে) — netting শুধু staff-এর সরাসরি settle-এ।

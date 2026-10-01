@@ -58,6 +58,8 @@ export interface RiderSettlement {
   amount: number;
   method: string;
   reference: string;
+  /** Part of `amount` that was netted against the rider's wallet (202610010004). */
+  nettedAmount: number;
   at: number;
 }
 
@@ -370,6 +372,7 @@ export async function listRiderSettlements(
     amount: row.amount,
     method: row.method,
     reference: row.reference,
+    nettedAmount: Number(row.netted_amount ?? 0),
     at: epoch(row.settled_at),
   }));
 }
@@ -681,12 +684,22 @@ export async function settleRiderCashByAdmin(
   riderId: string,
   method: string,
   reference: string,
+  netWallet = false,
 ): Promise<void> {
+  // p_net_wallet is only sent when asked for, so a plain settle keeps working
+  // on a database where 202610010004 has not run yet.
   const { error } = await service.rpc("ps_admin_settle_rider", {
     p_rider_id: riderId,
     p_method: method,
     p_reference: reference,
+    ...(netWallet ? { p_net_wallet: true } : {}),
   });
+  if (error && netWallet && isMissingDbObject(error)) {
+    throw new AdminInputError(
+      "Netting against the rider wallet needs supabase/migrations/202610010004_cod_netting.sql — run it in the Supabase SQL Editor, or settle without netting.",
+      503,
+    );
+  }
   if (error) throw dispatchRpcError(error.message);
 }
 

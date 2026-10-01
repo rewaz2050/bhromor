@@ -119,7 +119,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Who verifies wallet payments (2026-10-01): per-shop platform/shop/both.
   ('68',  'Per-shop payment verifier (platform/shop/both)',   '202610010002_payment_verifier.sql', 'column', 'shops.payment_verifier'),
   -- Net platform P&L (2026-10-01).
-  ('69',  'Admin net P&L RPC (income - rider pay - discounts)', '202610010003_money_pnl.sql', 'function', 'ps_admin_money_pnl')
+  ('69',  'Admin net P&L RPC (income - rider pay - discounts)', '202610010003_money_pnl.sql', 'function', 'ps_admin_money_pnl'),
+  -- COD netting against the rider wallet (2026-10-01).
+  ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount')
 )
 select step as ord,
        label,

@@ -561,6 +561,11 @@ export default function RiderPage() {
                     <p className="font-semibold text-forest-900">
                       {formatBdt(s.amount)} · {s.method.toUpperCase()}
                     </p>
+                    {s.nettedAmount > 0 && (
+                      <p className="mt-0.5 text-forest-800">
+                        এর মধ্যে {formatBdt(s.nettedAmount)} আপনার wallet-এর পাওনা থেকে সমন্বয়; নগদ দিয়েছেন {formatBdt(s.amount - s.nettedAmount)}
+                      </p>
+                    )}
                     <p className="mt-0.5 text-ink-soft">
                       {new Date(s.at).toLocaleString("bn-BD", {
                         day: "numeric",

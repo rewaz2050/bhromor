@@ -11,7 +11,7 @@ export const POST = staffRoute(
   async ({ db }, request, context) => {
     const id = await routeId(context as { params?: Promise<{ id?: string }> });
     const body: unknown = await request.json().catch(() => null);
-    const b = (body ?? {}) as { method?: unknown; reference?: unknown };
+    const b = (body ?? {}) as { method?: unknown; reference?: unknown; netWallet?: unknown };
     const method =
       typeof b.method === "string" ? b.method.trim().slice(0, 32) : "cash";
     const reference =
@@ -19,7 +19,7 @@ export const POST = staffRoute(
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return apiError("A valid rider id is required.", 422);
     }
-    await settleRiderCashByAdmin(db, id, method, reference);
+    await settleRiderCashByAdmin(db, id, method, reference, b.netWallet === true);
     return apiJson({ ok: true });
   },
   { limit: 20 },
