@@ -21,6 +21,7 @@ import { isMissingDbObject, RiderInputError } from "./riders";
 import { AdminInputError } from "./admin";
 import type { DbRiderEarning, DbRiderPayoutRequest } from "./types";
 import type { MoneyPnl } from "@/lib/money-pnl";
+import { normalizeDaily, type MoneyDaily } from "@/lib/money-daily";
 
 /* ------------------------------------------------------------------ */
 /* C — per-delivery pay rates (site_settings, flat keys like           */
@@ -568,4 +569,20 @@ export const getAdminMoneyPnl = async (
     "tipsToRiders",
   ];
   return Object.fromEntries(keys.map((k) => [k, num(raw[k])])) as unknown as MoneyPnl;
+};
+
+/**
+ * Daily reconciliation (202610010007, audit item U) — read through the staff
+ * JWT client (ps_is_admin()). Null on a database without the migration.
+ */
+export const getAdminMoneyDaily = async (
+  staffDb: SupabaseClient,
+  day: string,
+): Promise<MoneyDaily | null> => {
+  const { data, error } = await staffDb.rpc("ps_admin_money_daily", { p_day: day });
+  if (error) {
+    if (isMissingDbObject(error)) return null;
+    throw new Error(error.message);
+  }
+  return normalizeDaily(data);
 };

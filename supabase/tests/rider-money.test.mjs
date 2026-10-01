@@ -51,7 +51,8 @@ create table orders (
  delivery_code text, delivery_code_attempts int default 0, delivery_code_locked_until timestamptz,
  delivery_proof_url text, delivery_proof_uploaded_at timestamptz,
  rider_id uuid, payment_status text default 'verified',
- delivery_attempts int not null default 0, delivery_failed_reason text
+ delivery_attempts int not null default 0, delivery_failed_reason text,
+ created_at timestamptz default now()
 );
 create table delivery_assignments (
  id uuid primary key default gen_random_uuid(), order_id uuid references orders(id),
@@ -60,8 +61,8 @@ create table delivery_assignments (
 );
 create table order_status_history(order_id uuid, status text, note text, changed_by uuid, created_at timestamptz default now());
 create table site_settings (key text primary key, value jsonb);
-create table shop_ledger (order_id uuid, commission bigint default 0, payable bigint default 0);
-create table shop_payouts (id uuid primary key default gen_random_uuid(), shop_id uuid, amount bigint default 0, method text default 'bank', reference text default '', paid_by uuid);
+create table shop_ledger (shop_id uuid, order_id uuid, commission bigint default 0, payable bigint default 0);
+create table shop_payouts (id uuid primary key default gen_random_uuid(), shop_id uuid, amount bigint default 0, method text default 'bank', reference text default '', paid_by uuid, paid_at timestamptz default now());
 -- 202609090005 + 202609250004 (settlement tables; ps_admin_settle_rider writes both).
 create table rider_settlements (
  id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
@@ -70,7 +71,7 @@ create table rider_settlements (
 );
 create table rider_settle_claims (
  id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
- amount bigint not null, status text not null default 'pending', decided_at timestamptz, decided_by uuid
+ amount bigint not null, status text not null default 'pending', decided_at timestamptz, decided_by uuid, created_at timestamptz not null default now()
 );
 
 -- The REAL gates (supabase/schema.sql + 202609090005_riders.sql).
@@ -100,6 +101,7 @@ for (const f of [
   '202610010004_cod_netting.sql',
   '202610010005_vendor_rider_view.sql',
   '202610010006_money_audit.sql',
+  '202610010007_money_daily.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -666,6 +668,87 @@ try {
   await assert.rejects(db.query(`update money_audit_log set amount = 1`), /append-only/);
   await assert.rejects(db.query(`delete from money_audit_log`), /append-only/);
   console.log('PASS: money audit trail — triggers log approvals, never wallet numbers, append-only');
+
+  // U: the daily reconciliation — one Dhaka day's flows + checks that must be clean.
+  await as(null);
+  const uDay = '2026-01-15';
+  const uAt = '2026-01-15T10:00:00+06:00';
+  const uPrev = '2026-01-14T22:00:00+06:00';
+  const uShop = await scalar(`insert into shops(name) values ('U') returning id`);
+  const uRider = await scalar(`insert into riders(user_id, name) values ($1, 'U') returning id`, [await uuid()]);
+  const uOrder = async (o) => {
+    const id = await scalar(
+      `insert into orders(status, total, delivery_charge, payment, is_return, shop_id, updated_at)
+       values ('delivered', $1, $2, $3, $4, $5, $6::timestamptz) returning id`,
+      [o.total, o.delivery ?? 0, o.payment ?? 'cod', o.ret ?? false, uShop, o.at ?? uAt]);
+    await db.query(`insert into order_status_history(order_id, status) values ($1, 'delivered')`, [id]);
+    await db.query(`update order_status_history set created_at = $2::timestamptz where order_id = $1`, [id, o.at ?? uAt]);
+    if (o.byRider) {
+      await db.query(`insert into delivery_assignments(order_id, rider_id, state, delivered_at) values ($1, $2, 'delivered', $3::timestamptz)`, [id, uRider, o.at ?? uAt]);
+    }
+    if (!o.noLedger) await db.query('insert into shop_ledger(shop_id, order_id, commission, payable) values ($4, $1, $2, $3)', [id, o.commission ?? 0, o.payable ?? 0, uShop]);
+    return id;
+  };
+  await uOrder({ total: 50000, delivery: 5000, commission: 4000, payable: 40000, byRider: true });
+  await uOrder({ total: 30000, delivery: 3000, payment: 'bkash', commission: 2000, payable: 25000 });
+  await uOrder({ total: 0, ret: true });
+  await uOrder({ total: 99999, delivery: 9999, commission: 9999, payable: 1, at: uPrev, byRider: true }); // the day before
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount, created_at) values
+    ($1, null, 'incentive', 4000, $2::timestamptz), ($1, null, 'adjustment', -200, $2::timestamptz)`, [uRider, uAt]);
+  await db.query(`insert into rider_payout_requests(rider_id, amount, status, requested_at, decided_at) values
+    ($1, 2000, 'paid', $2::timestamptz, $2::timestamptz)`, [uRider, uAt]);
+  await db.query(`insert into rider_settlements(rider_id, amount, netted_amount, settled_at) values ($1, 30000, 5000, $2::timestamptz)`, [uRider, uAt]);
+  await db.query(`insert into shop_payouts(shop_id, amount, paid_at) values ($1, 10000, $2::timestamptz)`, [uShop, uAt]);
+
+  const daily = async (day) => (await rows('select ps_admin_money_daily($1::date) as r', [day]))[0].r;
+  await as(staffId);
+  const rep = await daily(uDay);
+  assert.equal(rep.day, uDay);
+  assert.deepEqual(
+    { n: rep.flows.deliveredOrders, ret: rep.flows.returnLegs, v: rep.flows.orderValue, cod: rep.flows.codCollectedByRiders,
+      w: rep.flows.walletPaidOrders, c: rep.flows.commission, d: rep.flows.deliveryIncome, acc: rep.flows.shopPayableAccrued,
+      sp: rep.flows.shopPayoutsPaid, e: rep.flows.riderEarned, a: rep.flows.riderAdjustments, rq: rep.flows.riderPayoutsRequested,
+      rp: rep.flows.riderPayoutsPaid, sc: rep.flows.settlementsCount, st: rep.flows.settlementsTotal,
+      sn: rep.flows.settlementsNetted, ch: rep.flows.cashHandedIn },
+    { n: 2, ret: 1, v: 80000, cod: 50000, w: 30000, c: 6000, d: 8000, acc: 65000, sp: 10000, e: 4000, a: -200, rq: 2000,
+      rp: 2000, sc: 1, st: 30000, sn: 5000, ch: 25000 },
+    'the day shows exactly its own flows (the day before is excluded)',
+  );
+  const check = (r, key) => r.checks.find((c) => c.key === key);
+  assert.equal(rep.checks.length, 8);
+
+  // data left by earlier sections trips the checks — that is the point of them
+  assert.ok(check(rep, 'wallet_journal').count > 0 && !check(rep, 'wallet_journal').ok, 'a wallet that is not its journal is caught');
+  assert.ok(!check(rep, 'shop_overpaid').ok, 'a shop paid more than it earned is caught');
+  // …and once the data is repaired every check is clean
+  await as(null);
+  await db.query(`update riders set earnings_balance = coalesce((select sum(amount) from rider_earnings e where e.rider_id = riders.id), 0)`);
+  await db.exec(`delete from shop_payouts where shop_id <> '${uShop}'; delete from rider_settle_claims; delete from rider_payout_requests where status = 'pending'; update orders set delivery_failed_at = null`);
+  await as(staffId);
+  const clean = await daily(uDay);
+  assert.deepEqual(clean.checks.filter((c) => !c.ok).map((c) => c.key), [], 'all checks clean after repair');
+
+  // each check flips on its own fault
+  await as(null);
+  await db.query(`update riders set cash_in_hand = -5 where id = $1`, [uRider]);
+  const noLedger = await uOrder({ total: 100, noLedger: true, at: new Date().toISOString() });
+  await db.query(`insert into rider_payout_requests(rider_id, amount, status, requested_at) values ($1, 100, 'pending', now() - interval '3 days')`, [uRider]);
+  await db.query(`insert into rider_settle_claims(rider_id, amount, status) values ($1, 100, 'pending')`, [uRider]);
+  await db.query(`update rider_settle_claims set created_at = now() - interval '3 days'`);
+  await db.query(`insert into orders(status, delivery_failed_at) values ('out-for-delivery', now())`);
+  await db.query(`insert into orders(status, payment, payment_status, created_at) values ('pending', 'bkash', 'pending_verification', now() - interval '2 days')`);
+  await as(staffId);
+  const bad = await daily(null);
+  const failing = bad.checks.filter((c) => !c.ok).map((c) => c.key).sort();
+  assert.deepEqual(failing, ['delivered_no_ledger', 'negative_cash', 'open_failed_deliveries', 'stale_claims', 'stale_payment_verification', 'stale_payouts']);
+  assert.deepEqual(check(bad, 'delivered_no_ledger').sample, [noLedger]);
+
+  // only staff may read it
+  await as(null);
+  await assert.rejects(db.query('select ps_admin_money_daily(null)'), /forbidden/);
+  await as(riderUser);
+  await assert.rejects(db.query('select ps_admin_money_daily(null)'), /forbidden/);
+  console.log('PASS: daily reconciliation — day flows, 8 checks catch real faults, staff-only');
 } finally {
   await db.close();
 }

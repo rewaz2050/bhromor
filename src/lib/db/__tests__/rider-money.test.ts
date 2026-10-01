@@ -12,6 +12,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   decideRiderPayout,
+  getAdminMoneyDaily,
   getAdminMoneyPnl,
   getAdminMoneySummary,
   getRiderMoneySummary,
@@ -414,6 +415,31 @@ describe("getAdminMoneyPnl (audit N7)", () => {
         from: null,
         to: null,
       }),
+    ).rejects.toThrow("boom");
+  });
+});
+
+describe("getAdminMoneyDaily (audit U)", () => {
+  it("asks for the day and returns a normalised report", async () => {
+    const seen: unknown[] = [];
+    const report = await getAdminMoneyDaily(
+      client({
+        rpc: (fn, params) => {
+          seen.push([fn, params]);
+          return { data: { day: "2026-10-01", flows: { orderValue: "1000" }, position: {}, checks: [] }, error: null };
+        },
+      }) as never,
+      "2026-10-01",
+    );
+    expect(seen).toEqual([["ps_admin_money_daily", { p_day: "2026-10-01" }]]);
+    expect(report?.flows.orderValue).toBe(1000);
+    expect(report?.checks).toHaveLength(8);
+  });
+
+  it("is null before the migration and throws on a real failure", async () => {
+    expect(await getAdminMoneyDaily(client({}) as never, "2026-10-01")).toBeNull();
+    await expect(
+      getAdminMoneyDaily(client({ rpc: () => ({ data: null, error: { message: "boom" } }) }) as never, "2026-10-01"),
     ).rejects.toThrow("boom");
   });
 });

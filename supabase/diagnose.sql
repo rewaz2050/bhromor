@@ -125,7 +125,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Shop sees the rider on its order (2026-10-01).
   ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider'),
   -- Append-only money audit trail (2026-10-01).
-  ('72',  'Money audit trail (who approved which payout/settle)', '202610010006_money_audit.sql', 'table', 'money_audit_log')
+  ('72',  'Money audit trail (who approved which payout/settle)', '202610010006_money_audit.sql', 'table', 'money_audit_log'),
+  -- Daily money reconciliation (2026-10-01).
+  ('73',  'Daily money reconciliation report', '202610010007_money_daily.sql', 'function', 'ps_admin_money_daily')
 )
 select step as ord,
        label,

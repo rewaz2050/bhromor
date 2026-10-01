@@ -368,6 +368,10 @@ export default function AdminMoneyPage() {
           ·{" "}
           <Link href="/admin/money/audit" className="font-semibold underline underline-offset-2">
             Audit trail
+          </Link>{" "}
+          ·{" "}
+          <Link href="/admin/money/daily" className="font-semibold underline underline-offset-2">
+            Daily reconciliation
           </Link>
         </p>
       </section>

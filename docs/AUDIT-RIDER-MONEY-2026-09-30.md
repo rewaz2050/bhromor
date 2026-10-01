@@ -385,3 +385,25 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
 - Admin → Money → **Audit trail** (`/admin/money/audit`): newest-first তালিকা, event filter। পড়া শুধু `ps_is_admin()` (RLS)।
 - Migration না চললে পেজ ফাইলের নাম বলে। `diagnose.sql` row 72, bootstrap sync।
 - সীমা: migration চালানোর আগের ঘটনা লগে নেই। Order-delivery/status বদল এখানে নয় (সেগুলো `order_status_history`-তে)।
+
+## 15. Item U — daily reconciliation (১ অক্টোবর ২০২৬)
+
+**`202610010007_money_daily.sql`** → `ps_admin_money_daily(day)` (read-only, staff-only) আর Admin → Money → **Daily reconciliation**
+(`/admin/money/daily`)। এক Dhaka-দিনের জন্য:
+
+- **কী ঘটল:** delivered order ও মূল্য, rider-এর COD collected, rider কত নগদ জমা দিল (netted আলাদা), commission, delivery income,
+  shop-কে নতুন পাওনা, shop/rider payout, rider earned/adjustment, payout request।
+- **এখন কোথায় আছে:** rider-দের হাতে নগদ, rider-দের পাওনা, shop-দের পাওনা (নির্বাচিত দিনের শেষের নয়, *এখনকার*)।
+- **৮টি check — সব সবুজ হলে দিন বন্ধ:**
+  1. প্রতি rider-এর wallet = তার journal-এর যোগফল
+  2. কোনো rider-এর নগদ ঋণাত্মক নয়
+  3. কোনো shop যা আয় করেছে তার বেশি পায়নি
+  4. আজ delivered প্রতিটি order-এর shop ledger লাইন আছে
+  5. ৪৮ ঘণ্টার বেশি পড়ে থাকা rider payout নেই
+  6. ৪৮ ঘণ্টার বেশি পড়ে থাকা settle claim নেই
+  7. failed delivery অমীমাংসিত পড়ে নেই
+  8. ২৪ ঘণ্টার বেশি অনিষ্পন্ন bKash/Nagad payment নেই
+  প্রতিটি fail-এ কী করতে হবে আর নমুনা id দেখায়। DB যে check ফেরত দেয়নি সেটাকে কখনো "ঠিক আছে" ধরা হয় না।
+- দিন বদলানোর তীর, তারিখ-বাছাই, **Copy summary** (WhatsApp-এ পেস্ট করার সাদা লেখা), **Print**।
+- Postgres টেস্ট আসল ভুল ঢুকিয়ে প্রতিটি check ফ্লিপ হওয়া প্রমাণ করে (ভাঙা wallet, ঋণাত্মক নগদ, ledger-ছাড়া order…)।
+- সীমা: cash custody-র "দিনের শেষ" অবস্থা ঐতিহাসিকভাবে সংরক্ষিত নয় — তাই position এখনকার। Staff-এর manual-delivered/release করা order rider-এর COD-তে ধরা হয় না (E-র সিদ্ধান্ত)।
