@@ -534,6 +534,12 @@ export default function RiderPage() {
               payout history and the withdrawal request. Always reachable,
               also when the wallet is still empty. */}
           <Link
+            href="/rider/history"
+            className="inline-flex items-center gap-2 rounded-xl bg-paper px-4 py-3 text-sm font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100"
+          >
+            🧾 Trip history →
+          </Link>
+          <Link
             href="/rider/earnings"
             data-testid="rider-earnings-link"
             className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-forest-800 underline underline-offset-2"

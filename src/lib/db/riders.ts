@@ -518,6 +518,49 @@ export async function listRiderJobs(
   return jobs;
 }
 
+
+/** Historical rider trips: paginated at the API boundary, never mixed into the
+ * 15-second live jobs feed. Search is by public order number. */
+export async function listRiderHistory(
+  service: SupabaseClient,
+  riderId: string,
+  opts: { search?: string; from?: string; to?: string; limit?: number } = {},
+): Promise<RiderJob[]> {
+  const limit = Math.max(1, Math.min(100, opts.limit ?? 50));
+  let query = service.from("delivery_assignments")
+    .select("id,order_id,rider_id,state,offered_at,expires_at")
+    .eq("rider_id", riderId)
+    .in("state", ["delivered", "cancelled", "expired"])
+    .order("offered_at", { ascending: false })
+    .limit(300);
+  if (opts.from) query = query.gte("offered_at", opts.from);
+  if (opts.to) query = query.lt("offered_at", opts.to);
+  const { data: assignments, error } = await query;
+  if (error) throw new Error("rider history read failed");
+  const rows = (assignments ?? []) as DbDeliveryAssignment[];
+  if (rows.length === 0) return [];
+  const orderIds = [...new Set(rows.map((a) => a.order_id))];
+  const { data: orderRows, error: orderError } = await service.from("orders").select("*").in("id", orderIds);
+  if (orderError) throw new Error("rider history order read failed");
+  const orderMap = await mapOrdersById(service, (orderRows ?? []) as DbOrder[], true);
+  const needle = (opts.search ?? "").trim().toUpperCase().slice(0, 40);
+  const result: RiderJob[] = [];
+  for (const assignment of rows) {
+    const order = orderMap.get(assignment.order_id);
+    if (!order || (needle && !order.id.toUpperCase().includes(needle))) continue;
+    result.push({
+      id: assignment.id,
+      orderId: order.id,
+      state: assignment.state,
+      offeredAt: epoch(assignment.offered_at),
+      expiresAt: epoch(assignment.expires_at),
+      order: riderOrderView(order, assignment.state),
+    });
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
 /**
  * Staff dispatch board. Reads only — the caller runs
  * `expireStaleAssignments` on the service client first (the RPC is
