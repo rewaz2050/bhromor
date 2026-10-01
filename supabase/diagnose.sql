@@ -121,7 +121,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Net platform P&L (2026-10-01).
   ('69',  'Admin net P&L RPC (income - rider pay - discounts)', '202610010003_money_pnl.sql', 'function', 'ps_admin_money_pnl'),
   -- COD netting against the rider wallet (2026-10-01).
-  ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount')
+  ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount'),
+  -- Shop sees the rider on its order (2026-10-01).
+  ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider')
 )
 select step as ord,
        label,

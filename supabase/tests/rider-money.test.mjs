@@ -28,7 +28,7 @@ create function auth.uid() returns uuid language sql stable as $$
 
 create table admin_users (id uuid primary key, role text not null);
 create table riders (
- id uuid primary key default gen_random_uuid(), user_id uuid, name text default 'R',
+ id uuid primary key default gen_random_uuid(), user_id uuid, name text default 'R', phone text default '01700000000', vehicle text default 'bike',
  status text default 'active', is_online boolean default true,
  cash_in_hand bigint default 0, current_load int default 0, total_deliveries int default 0
 );
@@ -55,7 +55,7 @@ create table orders (
 );
 create table delivery_assignments (
  id uuid primary key default gen_random_uuid(), order_id uuid references orders(id),
- rider_id uuid references riders(id), state text default 'offered', cancelled_by text
+ rider_id uuid references riders(id), state text default 'offered', cancelled_by text, offered_at timestamptz default now()
    check (state in ('offered','accepted','picked_up','delivered','cancelled','expired'))
 );
 create table order_status_history(order_id uuid, status text, note text, changed_by uuid, created_at timestamptz default now());
@@ -98,6 +98,7 @@ for (const f of [
   '202610010002_payment_verifier.sql',
   '202610010003_money_pnl.sql',
   '202610010004_cod_netting.sql',
+  '202610010005_vendor_rider_view.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -573,6 +574,36 @@ try {
   await as(null);
   await assert.rejects(db.query(`insert into rider_earnings(rider_id, kind, amount) values ($1, 'cod_netting', -5)`, [kRider]), /netting_check|violates/);
   console.log('PASS: COD netting — opt-in, capped at the wallet, journal-balanced, staff-only');
+
+  // H: the owning shop sees the rider on its order — and nobody else does.
+  await as(null);
+  const hShopA = await scalar(`insert into shops(name) values ('A') returning id`);
+  const hShopB = await scalar(`insert into shops(name) values ('B') returning id`);
+  const hVendorA = await uuid();
+  const hVendorB = await uuid();
+  await db.query(`insert into vendor_users(user_id, shop_id) values ($1, $2), ($3, $4)`, [hVendorA, hShopA, hVendorB, hShopB]);
+  const hRider = await scalar(`insert into riders(user_id, name, phone, vehicle) values ($1, 'Rahim', '01711111111', 'scooter') returning id`, [await uuid()]);
+  const hOrder = await scalar(`insert into orders(status, shop_id) values ('ready-for-pickup', $1) returning id`, [hShopA]);
+  const hAsg = await scalar(`insert into delivery_assignments(order_id, rider_id, state) values ($1, $2, 'offered') returning id`, [hOrder, hRider]);
+  const seen = async (sub) => { await as(sub); return (await rows('select ps_vendor_order_rider($1) as r', [hOrder]))[0].r; };
+
+  assert.equal(await seen(hVendorA), null, 'an unaccepted offer is not shown');
+  await as(null);
+  await db.query(`update delivery_assignments set state = 'accepted' where id = $1`, [hAsg]);
+  assert.deepEqual(await seen(hVendorA), { name: 'Rahim', phone: '01711111111', vehicle: 'scooter', state: 'accepted' });
+  assert.equal(await seen(hVendorB), null, 'another shop sees nothing about this order');
+  await as(null);
+  await db.query(`update delivery_assignments set state = 'picked_up' where id = $1`, [hAsg]);
+  assert.equal((await seen(hVendorA)).state, 'picked_up');
+  await as(null);
+  await db.query(`update delivery_assignments set state = 'delivered' where id = $1`, [hAsg]);
+  assert.equal(await seen(hVendorA), null, 'a finished job no longer exposes the rider phone');
+  // service role / rider / customer (no vendor row) are refused
+  await as(null);
+  await assert.rejects(db.query('select ps_vendor_order_rider($1)', [hOrder]), /forbidden/);
+  await as(riderUser);
+  await assert.rejects(db.query('select ps_vendor_order_rider($1)', [hOrder]), /forbidden/);
+  console.log('PASS: vendor rider view — own shop only, active jobs only');
 } finally {
   await db.close();
 }

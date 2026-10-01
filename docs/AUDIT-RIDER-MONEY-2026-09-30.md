@@ -349,3 +349,17 @@ platform-এর আয় নয়) আর "rider pay" (tip + fee মেশা�
 - Opt-in: সাধারণ "Settle Cash" আগের মতোই; migration না চললে সাধারণ settle কাজ করে, net চাইলে ফাইলের নাম বলা 503।
 - Rider দেখে: settlement ইতিহাসে "এর মধ্যে ৳X wallet থেকে সমন্বয়", earnings খাতায় "🤝 ক্যাশ জমার সাথে সমন্বয়"।
 - Rider-এর নিজের "টাকা জমা দিয়েছি" দাবির Approve শুধু নগদ (rider নিজে বলছে নগদ দিয়েছে) — netting শুধু staff-এর সরাসরি settle-এ।
+
+## 13. Item H (B5) — shop sees its rider (১ অক্টোবর ২০২৬)
+
+Shop "Ready — request riders" চাপার পর আর কিছুই দেখত না: কে accept করল, কাকে ফোন করবে। Shop-এর `riders` /
+`delivery_assignments` পড়ার অধিকার নেই (RLS), তাই **`202610010005_vendor_rider_view.sql`**-এ একটি সংকীর্ণ definer RPC
+`ps_vendor_order_rider(order_id)`:
+
+- শুধু **নিজের shop-এর order** (`orders.shop_id = ps_vendor_shop()`); অন্য shop বা service-role/rider → `forbidden`/null।
+- শুধু যখন rider সত্যিই কাজে (`accepted` / `picked_up`)। Offer, শেষ হওয়া বা failed job-এ rider-এর ফোন প্রকাশ হয় না।
+- শুধু নাম, ফোন, vehicle, state। আর্থিক কিছু নয়।
+- Vendor order detail পেজে "🛵 Rider on this order" কার্ড: নাম, vehicle, অবস্থা ("Pickup-এর জন্য আসছে — parcel রেডি রাখুন" /
+  "Parcel নিয়ে গেছে"), `tel:` Call বাটন। পেজ আগে থেকেই poll করে, তাই rider accept করলেই কার্ড আসে।
+- Migration না চললে কার্ড নেই, পেজ ঠিক চলে।
+- সিদ্ধান্ত: counter-pickup order-এ কার্ড নেই। Rider-এর ফোন shop-কে দেখানো platform-এর নীতিগত সিদ্ধান্ত — চাইলে শুধু নাম দেখিয়ে ফোন লুকানো যায়।

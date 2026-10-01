@@ -33,6 +33,7 @@ import type {
   DbVariant,
 } from "./types";
 import { shopPaymentVerifier } from "@/lib/db/payment-verifier";
+import { isMissingDbObject } from "./riders";
 
 /* ------------------------------------------------------------------ */
 /* Pure guards (unit-tested)                                           */
@@ -227,7 +228,41 @@ export async function getVendorOrderDetail(
   if (order.payment !== "cod" && order.paymentStatus === "pending_verification") {
     order.paymentVerifier = await shopPaymentVerifier(db, shopId);
   }
+  const rider = await readShopRider(db, (data as DbOrder).id);
+  if (rider) order.shopRider = rider;
   return order;
+}
+
+/**
+ * Audit H: who is coming for the parcel. A narrow definer RPC (shops cannot
+ * read riders / assignments). Never fatal: before 202610010005, or on any
+ * failure, the order page simply shows no rider card.
+ */
+export const parseShopRider = (raw: unknown): Order["shopRider"] | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const state = r.state === "picked_up" ? "picked_up" : r.state === "accepted" ? "accepted" : null;
+  if (!state || typeof r.name !== "string" || typeof r.phone !== "string") return null;
+  return {
+    name: r.name,
+    phone: r.phone,
+    vehicle: typeof r.vehicle === "string" ? r.vehicle : "bike",
+    state,
+  };
+};
+
+export async function readShopRider(
+  db: SupabaseClient,
+  orderId: string,
+): Promise<Order["shopRider"] | null> {
+  const { data, error } = await db.rpc("ps_vendor_order_rider", { p_order_id: orderId });
+  if (error) {
+    if (!isMissingDbObject(error)) {
+      console.error("[vendor] rider lookup failed:", error.message);
+    }
+    return null;
+  }
+  return parseShopRider(data);
 }
 
 export async function advanceVendorOrder(

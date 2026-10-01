@@ -237,6 +237,16 @@ export interface Order {
    * Filled on the single-order admin/vendor reads only; absent = both.
    */
   paymentVerifier?: "platform" | "shop" | "both";
+  /**
+   * Audit H — the rider currently on this job (accepted / picked up), for the
+   * OWNING shop's order detail only. Absent when nobody is on it.
+   */
+  shopRider?: {
+    name: string;
+    phone: string;
+    vehicle: string;
+    state: "accepted" | "picked_up";
+  };
   /** P2 #17 — free-delivery waiver applied by an ACTIVE PROSANTI+ term. */
   isPlus?: boolean;
   /**
