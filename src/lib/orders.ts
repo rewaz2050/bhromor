@@ -274,6 +274,8 @@ export interface Order {
   deliveryProofUploadedAt?: number;
   deliveryAttempts?: number;
   deliveryFailedReason?: string;
+  /** Epoch ms of the final failed attempt; set until staff redispatch or cancel. */
+  deliveryFailedAt?: number;
   /** P1 #13 — reverse logistics: this order IS an exchange/return pickup. */
   isReturn?: boolean;
   returnReason?: string;

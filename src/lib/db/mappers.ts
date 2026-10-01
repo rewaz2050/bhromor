@@ -463,6 +463,9 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       : undefined,
     deliveryAttempts: o.delivery_attempts ?? undefined,
     deliveryFailedReason: o.delivery_failed_reason ?? undefined,
+    deliveryFailedAt: o.delivery_failed_at
+      ? new Date(o.delivery_failed_at).getTime()
+      : undefined,
     isReturn: o.is_return ?? undefined,
     returnReason: o.return_reason ?? undefined,
     returnParentId: o.return_parent_id ?? undefined,

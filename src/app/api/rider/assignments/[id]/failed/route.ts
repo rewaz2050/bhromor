@@ -4,7 +4,12 @@ import { riderRoute, routeId } from "../../../_lib";
 
 export const dynamic = "force-dynamic";
 
-/** POST /api/rider/assignments/:id/failed — customer unreachable, reschedule etc */
+/**
+ * POST /api/rider/assignments/:id/failed — customer unreachable, wrong address…
+ * Only with the parcel in hand (picked_up). The last allowed attempt
+ * (delivery_max_attempts, default 2) closes the job: the response says
+ * `final: true`, the rider is freed and staff get a redispatch/cancel task.
+ */
 export const POST = riderRoute(
   "failed",
   async (ctx, request, routeContext) => {
@@ -15,7 +20,9 @@ export const POST = riderRoute(
     if (reason.length < 5) {
       throw new RiderInputError("Please provide a reason (at least 5 chars).", 422);
     }
-    await failedRiderAttempt(ctx.db, assignmentId, reason);
-    return apiJson({ failed: true, reason });
+    // ctx.db = the rider's own client (the RPC resolves them via auth.uid());
+    // ctx.service only reads the counter + cap for the confirmation.
+    const result = await failedRiderAttempt(ctx.db, assignmentId, reason, ctx.service);
+    return apiJson({ failed: true, reason, ...result });
   },
 );

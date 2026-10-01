@@ -99,7 +99,10 @@ export default function RiderPage() {
           (job) =>
             job.state !== "delivered" &&
             job.state !== "cancelled" &&
-            job.state !== "expired",
+            job.state !== "expired" &&
+            // A job that ended as a final failed attempt is closed: the rider
+            // only has to return the parcel to the shop.
+            job.state !== "failed",
         )
         .map((job: RiderJob) => ({
           id: job.id,
@@ -829,6 +832,8 @@ export default function RiderPage() {
                         </button>
                       )}
                       </div>
+                      {isOut && (
+                        <>
                       <button
                         type="button"
                         onClick={() => {
@@ -873,7 +878,16 @@ export default function RiderPage() {
                                   },
                                 );
                                 if (res.ok) {
-                                  showFlash("Failed attempt recorded");
+                                  const d = (await res.json().catch(() => null)) as {
+                                    final?: boolean;
+                                    attempts?: number;
+                                    maxAttempts?: number;
+                                  } | null;
+                                  showFlash(
+                                    d?.final
+                                      ? "শেষ চেষ্টা ব্যর্থ — পার্সেল দোকানে ফেরত দিন। অ্যাডমিন বাকিটা দেখবেন।"
+                                      : `ব্যর্থ চেষ্টা নথিভুক্ত (${d?.attempts ?? "?"}/${d?.maxAttempts ?? "?"}) — আবার চেষ্টা করতে পারেন`,
+                                  );
                                   setShowFailed(null);
                                   setFailedReason("");
                                   setFailedError(null);
@@ -901,6 +915,8 @@ export default function RiderPage() {
                             </button>
                           </div>
                         </div>
+                      )}
+                        </>
                       )}
                     </div>
                   </div>

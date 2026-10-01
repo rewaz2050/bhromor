@@ -9,6 +9,24 @@
 --      (cash actually collected). The base fee still applies: the rider did
 --      drive the leg.
 --
+--   C (N5). A FAILED DELIVERY ATTEMPT LEFT EVERYTHING HANGING.
+--      ps_rider_failed_attempt only bumped a counter and wrote a history line.
+--      The assignment stayed live (the rider kept the load slot forever), the
+--      order stayed out-for-delivery with the rider's live GPS still visible to
+--      the customer, there was no limit on attempts, and staff had no way out:
+--      "Awaiting dispatch" listed the order, but ps_offer_order needs
+--      ready-for-pickup, so "Send area requests" always answered
+--      "no eligible rider". Now:
+--        * a rider can only report a failure for a parcel in hand (picked_up);
+--        * delivery_max_attempts (site_settings, default 2, clamp 1..5) caps it;
+--        * on the final attempt the assignment ends as 'failed' (rider freed,
+--          load released), orders.rider_id is cleared (tracking stops) and
+--          orders.delivery_failed_at flags the order for staff;
+--        * ps_admin_resolve_failed_delivery lets staff REDISPATCH (back to
+--          ready-for-pickup → area broadcast) or CANCEL (stock released by the
+--          existing cancel trigger; a prepaid order is flagged for refund).
+--      No cash is ever collected on a failed attempt, so COD custody is untouched.
+--
 -- Idempotent — safe to re-run. Same signature as 202609300002 → grants stand.
 -- ============================================================================
 
@@ -145,6 +163,154 @@ begin
 
   return v_assignment;
 end $$;
+-- ----------------------------------------------------------------------------
+-- C. Failed delivery flow.
+-- ----------------------------------------------------------------------------
+alter table orders add column if not exists delivery_failed_at timestamptz;
+alter table delivery_assignments add column if not exists failed_reason text;
+
+-- Widen the assignment state check to include 'failed'. The old inline check is
+-- dropped by DEFINITION (it is auto-named), then re-added.
+do $$
+declare
+  c record;
+begin
+  for c in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.delivery_assignments'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) like '%offered%'
+  loop
+    execute format('alter table public.delivery_assignments drop constraint %I', c.conname);
+  end loop;
+end $$;
+alter table delivery_assignments
+  add constraint delivery_assignments_state_check
+  check (state in ('offered', 'accepted', 'picked_up', 'delivered', 'cancelled', 'expired', 'failed'));
+
+create or replace function ps_rider_failed_attempt(p_assignment_id uuid, p_reason text)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_reason text := trim(coalesce(p_reason, ''));
+  v_max int := least(greatest(ps_setting_int('delivery_max_attempts', 2), 1), 5);
+  v_attempts int;
+begin
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  -- A customer-side failure only exists once the parcel is in the rider's hands.
+  if v_assignment.state <> 'picked_up' then
+    raise exception 'failed attempt not allowed from %', v_assignment.state;
+  end if;
+  if length(v_reason) < 5 then
+    raise exception 'a reason is required';
+  end if;
+
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  v_attempts := coalesce(v_order.delivery_attempts, 0) + 1;
+  update orders
+  set delivery_attempts = v_attempts,
+      delivery_failed_reason = v_reason,
+      updated_at = now()
+  where id = v_order.id;
+
+  insert into order_status_history (order_id, status, note, changed_by)
+  values (
+    v_order.id,
+    v_order.status,
+    'Delivery attempt ' || v_attempts || '/' || v_max || ' failed: ' || v_reason,
+    auth.uid()
+  );
+
+  if v_attempts >= v_max then
+    -- Final attempt: the rider is released (the load trigger frees the slot),
+    -- the customer stops seeing the rider's GPS, and staff get an action item.
+    update delivery_assignments
+    set state = 'failed', failed_reason = v_reason
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, delivery_failed_at = now(), updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (
+      v_order.id,
+      v_order.status,
+      'Final failed attempt — rider must return the parcel to the shop. Staff: redispatch or cancel.',
+      auth.uid()
+    );
+  end if;
+
+  return v_assignment;
+end $$;
+
+create or replace function ps_admin_resolve_failed_delivery(
+  p_order_id uuid,
+  p_action text,
+  p_note text default null
+)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_action text := lower(coalesce(trim(p_action), ''));
+  v_note text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if v_action not in ('redispatch', 'cancel') then
+    raise exception 'action must be redispatch or cancel';
+  end if;
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+  if v_order.delivery_failed_at is null or v_order.status in ('delivered', 'cancelled') then
+    raise exception 'no failed delivery to resolve';
+  end if;
+
+  if v_action = 'redispatch' then
+    -- Back to the area queue: the status change fires the broadcast trigger.
+    update orders
+    set status = 'ready-for-pickup', rider_id = null, delivery_attempts = 0,
+        delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup',
+            'Failed delivery — redispatched to the area' || coalesce(': ' || v_note, ''), auth.uid());
+  else
+    update orders
+    set status = 'cancelled', rider_id = null, delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'cancelled',
+            'Failed delivery — order cancelled' || coalesce(': ' || v_note, '')
+              || case when v_order.payment in ('bkash', 'nagad')
+                       and coalesce(to_jsonb(v_order)->>'payment_status', '') = 'verified'
+                      then ' · PREPAID: refund the customer offline' else '' end,
+            auth.uid());
+  end if;
+  return v_order;
+end $$;
+
+revoke all on function ps_rider_failed_attempt(uuid, text) from public, anon;
+grant execute on function ps_rider_failed_attempt(uuid, text) to authenticated, service_role;
+revoke all on function ps_admin_resolve_failed_delivery(uuid, text, text) from public, anon;
+grant execute on function ps_admin_resolve_failed_delivery(uuid, text, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
 

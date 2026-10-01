@@ -207,7 +207,7 @@ describe("Rider Mobile Portal (/rider)", () => {
 
   it("surfaces a failed-attempt refusal inline instead of dropping it (audit B7)", async () => {
     state.isOnline = true;
-    state.jobs = [job("accepted", order({}))];
+    state.jobs = [job("picked_up", order({}))];
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -225,7 +225,7 @@ describe("Rider Mobile Portal (/rider)", () => {
 
   it("will not submit a failed attempt shorter than five characters", () => {
     state.isOnline = true;
-    state.jobs = [job("accepted", order({}))];
+    state.jobs = [job("picked_up", order({}))];
     render(<RiderPage />);
     fireEvent.click(screen.getByText(/Report failed attempt/i));
     fireEvent.change(screen.getByLabelText("Failed attempt reason"), {
@@ -234,4 +234,43 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.getByText("Submit failed")).toBeDisabled();
   });
 
+  // 202610010001 (audit N5) — a customer-side failure exists only once the
+  // parcel is in the rider's hands, and a closed job leaves the rider's list.
+  it("offers 'report failed attempt' only after pickup", () => {
+    state.isOnline = true;
+    state.jobs = [job("accepted", order({}))];
+    render(<RiderPage />);
+    expect(screen.queryByText(/Report failed attempt/i)).not.toBeInTheDocument();
+    cleanup();
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    expect(screen.getByText(/Report failed attempt/i)).toBeInTheDocument();
+  });
+
+  it("drops a job that ended as a final failed attempt from the active list", () => {
+    state.isOnline = true;
+    state.jobs = [job("failed", order({ id: "PS-FAILED-1" }))];
+    render(<RiderPage />);
+    expect(screen.queryByText(/PS-FAILED-1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Report failed attempt/i)).not.toBeInTheDocument();
+  });
+
+  it("tells the rider whether the attempt was the last one", async () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ failed: true, final: true, attempts: 2, maxAttempts: 2 }),
+      })),
+    );
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/Report failed attempt/i));
+    fireEvent.change(screen.getByLabelText("Failed attempt reason"), {
+      target: { value: "address does not exist" },
+    });
+    fireEvent.click(screen.getByText("Submit failed"));
+    expect(await screen.findByText(/পার্সেল দোকানে ফেরত দিন/)).toBeInTheDocument();
+  });
 });

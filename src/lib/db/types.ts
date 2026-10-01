@@ -57,7 +57,15 @@ export interface DbDeliveryAssignment {
   id: string;
   order_id: string;
   rider_id: string;
-  state: "offered" | "accepted" | "picked_up" | "delivered" | "cancelled" | "expired";
+  state:
+    | "offered"
+    | "accepted"
+    | "picked_up"
+    | "delivered"
+    | "cancelled"
+    | "expired"
+    /** 202610010001: the final failed delivery attempt — the job is closed. */
+    | "failed";
   offered_at: string;
   expires_at: string;
   /** 202609250003: why a cancelled row ended — decline (permanent),
@@ -338,6 +346,8 @@ export interface DbOrder {
   delivery_proof_uploaded_at?: string | null;
   delivery_failed_reason?: string | null;
   delivery_attempts?: number;
+  /** 202610010001: set on the final failed attempt; staff must resolve it. */
+  delivery_failed_at?: string | null;
   subtotal: number;
   delivery_charge: number;
   discount: number;

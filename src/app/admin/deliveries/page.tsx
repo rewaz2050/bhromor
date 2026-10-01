@@ -21,12 +21,15 @@ const STATE_META: Record<string, { label: string; cls: string }> = {
   delivered: { label: "Delivered", cls: "bg-emerald-100 text-emerald-800" },
   cancelled: { label: "Cancelled", cls: "bg-rose-100 text-rose-800" },
   expired: { label: "Expired", cls: "bg-ivory-200 text-ink-soft" },
+  failed: { label: "Failed", cls: "bg-rose-200 text-rose-900" },
 };
 
 export default function AdminDeliveriesPage() {
   const {
     deliveries,
     awaitingOrders,
+    failedDeliveries,
+    resolveFailed,
     loading,
     error,
     clearError,
@@ -47,6 +50,7 @@ export default function AdminDeliveriesPage() {
       delivered: 0,
       cancelled: 0,
       expired: 0,
+      failed: 0,
     };
     for (const d of deliveries) out[d.state] = (out[d.state] ?? 0) + 1;
     return out;
@@ -123,6 +127,110 @@ export default function AdminDeliveriesPage() {
       </section>
 
       <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
+
+      {failedDeliveries.length > 0 && (
+        <section aria-label="Failed deliveries">
+          <div className="mb-3 flex items-center gap-2">
+            <IconTruck className="h-4 w-4 text-rose-700" />
+            <h3 className="font-display text-base font-semibold text-rose-900">
+              Failed deliveries — needs action ({failedDeliveries.length})
+            </h3>
+          </div>
+          <p className="mb-3 text-xs leading-5 text-ink-soft">
+            The rider used every delivery attempt and is bringing the parcel back to the
+            shop. <strong>Redispatch</strong> once the shop has it (or the customer is
+            reachable again) to offer it to the area; <strong>Cancel</strong> if the order
+            is dead. A prepaid order must be refunded offline.
+          </p>
+          <div className="space-y-3">
+            {failedDeliveries.map((f) => (
+              <div
+                key={f.order.id}
+                className="space-y-3 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/admin/orders/${f.order.id}`}
+                      className="font-mono text-xs font-bold text-forest-900 hover:underline"
+                    >
+                      #{f.order.id}
+                    </Link>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      {f.order.customer.name} · {f.order.customer.phone} ·{" "}
+                      {f.order.zoneName} · {friendlyWhen(f.failedAt)}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-rose-900">
+                      {f.attempts} failed attempt{f.attempts === 1 ? "" : "s"}
+                      {f.reason ? ` — “${f.reason}”` : ""}
+                      {f.riderName ? ` · rider ${f.riderName}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-right text-sm font-bold text-forest-900">
+                    {formatBdt(f.order.total)}
+                    <span className="block text-[0.65rem] font-semibold text-ink-soft">
+                      <PaymentChip order={f.order} className="normal-case tracking-normal" />
+                    </span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2 border-t border-rose-200 pt-3">
+                  {f.order.customer.phone && (
+                    <a
+                      href={`tel:${f.order.customer.phone}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                    >
+                      <IconPhone className="h-3.5 w-3.5" />
+                      Call customer
+                    </a>
+                  )}
+                  {f.riderPhone && (
+                    <a
+                      href={`tel:${f.riderPhone}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                    >
+                      <IconPhone className="h-3.5 w-3.5" />
+                      Call rider
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busyId === f.order.id}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Send #${f.order.id} back to the area queue? Do this once the shop has the parcel again.`,
+                        )
+                      ) {
+                        void resolveFailed(f.order.id, "redispatch");
+                      }
+                    }}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
+                  >
+                    <IconTruck className="h-3.5 w-3.5" />
+                    {busyId === f.order.id ? "Working…" : "Redispatch"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === f.order.id}
+                    onClick={() => {
+                      const note = window.prompt(
+                        `Why is #${f.order.id} being cancelled? (shown in the order history)`,
+                        f.reason,
+                      );
+                      if (note && note.trim().length >= 3) {
+                        void resolveFailed(f.order.id, "cancel", note.trim());
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 px-4 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    Cancel order
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-3 flex items-center gap-2">

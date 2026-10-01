@@ -38,11 +38,14 @@ create table orders (
  delivery_charge bigint default 0, tip_amount bigint default 0,
  is_return boolean default false, shop_id uuid, updated_at timestamptz,
  delivery_code text, delivery_code_attempts int default 0, delivery_code_locked_until timestamptz,
- delivery_proof_url text, delivery_proof_uploaded_at timestamptz
+ delivery_proof_url text, delivery_proof_uploaded_at timestamptz,
+ rider_id uuid, payment_status text default 'verified',
+ delivery_attempts int not null default 0, delivery_failed_reason text
 );
 create table delivery_assignments (
  id uuid primary key default gen_random_uuid(), order_id uuid references orders(id),
  rider_id uuid references riders(id), state text default 'offered'
+   check (state in ('offered','accepted','picked_up','delivered','cancelled','expired'))
 );
 create table order_status_history(order_id uuid, status text, note text, changed_by uuid);
 create table site_settings (key text primary key, value jsonb);
@@ -68,6 +71,17 @@ for (const f of [
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
   await db.exec(sql); // repeat-safe
+}
+
+// The REAL load-tracking trigger function (dispatch migration), so "the rider is
+// released" is proven against the production definition, not a copy.
+{
+  const dispatch = readFileSync(new URL('202609250001_area_broadcast_dispatch.sql', root), 'utf8');
+  const fn = dispatch.match(/create or replace function ps_track_rider_load\(\)[\s\S]*?end \$\$;/)[0];
+  await db.exec(fn);
+  await db.exec(`create trigger trg_assignments_track_load
+    after insert or update or delete on delivery_assignments
+    for each row execute function ps_track_rider_load();`);
 }
 
 const rows = async (sql, args = []) => (await db.query(sql, args)).rows;
@@ -186,6 +200,98 @@ try {
   const cash = await scalar('select cash_in_hand from riders where id = $1', [rider]);
   assert.equal(Number(cash), 150000, 'custody: the earlier ৳1000 + only the one real ৳500 COD leg');
   console.log('PASS: COD handling fee only when cash was collected; return legs get the base fee');
+
+  // ------------------------------------------------------------------- C --
+  // N5: failed delivery flow.
+  const fresh = async (state = 'picked_up') => {
+    await as(null);
+    const ord = await scalar(
+      `insert into orders(status, payment, total, delivery_code, rider_id)
+       values ('out-for-delivery', 'cod', 80000, '1234', $1) returning id`, [rider]);
+    const a = await scalar(
+      `insert into delivery_assignments(order_id, rider_id, state) values ($1, $2, $3) returning id`,
+      [ord, rider, state]);
+    return { ord, a };
+  };
+  const load = async () => Number(await scalar('select current_load from riders where id = $1', [rider]));
+  const fail = (a, reason = 'customer not answering') =>
+    db.query('select * from ps_rider_failed_attempt($1, $2)', [a, reason]);
+  const baseLoad = await load();
+
+  // Only the assigned rider, only with a parcel in hand, only with a reason.
+  const f1 = await fresh('accepted');
+  await as(riderUser);
+  await assert.rejects(fail(f1.a), /not allowed from accepted/, 'parcel not picked up yet');
+  await db.query(`update delivery_assignments set state = 'picked_up' where id = $1`, [f1.a]);
+  await as(strangerUser);
+  await assert.rejects(fail(f1.a), /forbidden/, 'someone else\'s job');
+  await as(riderUser);
+  await assert.rejects(fail(f1.a, 'no'), /reason is required/);
+
+  // Attempt 1 of 2: recorded, but the rider keeps the parcel and the job.
+  const first = (await fail(f1.a, 'customer not answering')).rows[0];
+  assert.equal(first.state, 'picked_up');
+  assert.equal(await scalar('select delivery_attempts from orders where id = $1', [f1.ord]), 1);
+  assert.equal(await scalar('select delivery_failed_at from orders where id = $1', [f1.ord]), null);
+  assert.equal(await load(), baseLoad + 1, 'still carrying it');
+
+  // Attempt 2 of 2 (default max): job ends as failed, rider freed, staff flagged.
+  const last = (await fail(f1.a, 'address does not exist')).rows[0];
+  assert.equal(last.state, 'failed');
+  assert.equal(last.failed_reason, 'address does not exist');
+  assert.equal(await load(), baseLoad, 'load slot released');
+  assert.equal(await scalar('select rider_id from orders where id = $1', [f1.ord]), null, 'rider GPS no longer attached');
+  assert.notEqual(await scalar('select delivery_failed_at from orders where id = $1', [f1.ord]), null);
+  assert.equal(await scalar('select status from orders where id = $1', [f1.ord]), 'out-for-delivery', 'order awaits staff');
+  assert.equal(Number(await scalar('select cash_in_hand from riders where id = $1', [rider])), 150000, 'no cash moved');
+  await assert.rejects(fail(f1.a), /not allowed from failed/, 'a closed job cannot fail again');
+  console.log('PASS: failed attempt 1 keeps the job; the final one releases the rider and flags staff');
+
+  // The cap is a setting: 1 attempt means the first failure is final.
+  await as(null);
+  await db.query(`insert into site_settings(key, value) values ('delivery_max_attempts', '1')
+    on conflict (key) do update set value = excluded.value`);
+  const f2 = await fresh();
+  await as(riderUser);
+  assert.equal((await fail(f2.a)).rows[0].state, 'failed');
+  await as(null);
+  await db.query(`insert into site_settings(key, value) values ('delivery_max_attempts', '99')
+    on conflict (key) do update set value = excluded.value`);
+  const f3 = await fresh();
+  await as(riderUser);
+  for (let i = 0; i < 4; i += 1) assert.equal((await fail(f3.a)).rows[0].state, 'picked_up');
+  assert.equal((await fail(f3.a)).rows[0].state, 'failed', 'clamped to 5');
+  console.log('PASS: delivery_max_attempts is a setting, clamped to 1..5');
+
+  // Staff resolution: staff only, only for a flagged order.
+  await as(riderUser);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch')`, [f2.ord]), /forbidden/);
+  await as(null);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch')`, [f2.ord]), /forbidden/);
+  await as(staffId);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'explode')`, [f2.ord]), /redispatch or cancel/);
+  const ok = await scalar(`insert into orders(status) values ('out-for-delivery') returning id`);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel')`, [ok]), /no failed delivery/);
+
+  const [re] = (await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch', 'shop has the parcel')`, [f2.ord])).rows;
+  assert.equal(re.status, 'ready-for-pickup');
+  assert.equal(re.delivery_attempts, 0);
+  assert.equal(re.delivery_failed_at, null);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel')`, [f2.ord]), /no failed delivery/, 'resolved once');
+
+  const [ca] = (await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel', 'customer gone')`, [f3.ord])).rows;
+  assert.equal(ca.status, 'cancelled');
+  assert.equal(ca.delivery_failed_at, null);
+  assert.match(await scalar(`select note from order_status_history where order_id = $1 and status = 'cancelled'`, [f3.ord]), /customer gone/);
+
+  // A prepaid (verified wallet) order is flagged for refund when cancelled.
+  await as(null);
+  const wallet = await scalar(
+    `insert into orders(status, payment, payment_status, delivery_failed_at) values ('out-for-delivery', 'bkash', 'verified', now()) returning id`);
+  await as(staffId);
+  await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel')`, [wallet]);
+  assert.match(await scalar(`select note from order_status_history where order_id = $1 and status = 'cancelled'`, [wallet]), /refund the customer offline/);
+  console.log('PASS: staff redispatch / cancel (prepaid cancel flags a refund)');
 } finally {
   await db.close();
 }

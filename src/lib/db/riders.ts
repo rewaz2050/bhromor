@@ -723,7 +723,11 @@ export async function listAwaitingDispatchOrders(
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error("awaiting orders read failed");
-  const rows = ((orderRows ?? []) as DbOrder[]).filter((row) => !row.is_pickup);
+  // A flagged failed delivery is not "waiting for a rider" — its parcel is on
+  // the way back to the shop; it has its own action list (listFailedDeliveries).
+  const rows = ((orderRows ?? []) as DbOrder[]).filter(
+    (row) => !row.is_pickup && !row.delivery_failed_at,
+  );
   if (rows.length === 0) return [];
 
   const { data: assignmentRows } = await service
@@ -916,16 +920,64 @@ export const deliverRiderAssignment = async (
   }
 };
 
+export interface FailedAttemptResult {
+  /** True when this was the last allowed attempt: the job is now closed. */
+  final: boolean;
+  attempts?: number;
+  maxAttempts?: number;
+}
+
+/** Mirrors the SQL clamp: delivery_max_attempts, default 2, 1..5. */
+export const clampMaxAttempts = (raw: unknown): number => {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? Math.min(5, Math.max(1, Math.trunc(n))) : 2;
+};
+
+/**
+ * Report a failed delivery attempt. `db` is the rider's own client (the RPC
+ * resolves the rider through auth.uid()); `service` only reads the attempt
+ * counter + cap for the confirmation message and is best-effort.
+ */
 export const failedRiderAttempt = async (
   db: SupabaseClient,
   assignmentId: string,
   reason: string,
-): Promise<void> => {
-  const { error } = await db.rpc("ps_rider_failed_attempt", {
+  service?: SupabaseClient,
+): Promise<FailedAttemptResult> => {
+  const { data, error } = await db.rpc("ps_rider_failed_attempt", {
     p_assignment_id: assignmentId,
     p_reason: reason,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    const msg = error.message ?? "";
+    if (msg.includes("failed attempt not allowed")) {
+      throw new RiderInputError(
+        "পার্সেল পিকআপ কনফার্ম করার পরেই ব্যর্থ ডেলিভারি জানানো যায়।",
+        409,
+      );
+    }
+    if (msg.includes("reason is required")) {
+      throw new RiderInputError("কারণ লিখুন (কমপক্ষে ৫ অক্ষর)।", 422);
+    }
+    if (msg.includes("forbidden")) {
+      throw new RiderInputError("এই ডেলিভারিটি আপনার নয়।", 403);
+    }
+    throw new Error(msg);
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { state?: string; order_id?: string }
+    | null;
+  const result: FailedAttemptResult = { final: row?.state === "failed" };
+  if (service && row?.order_id) {
+    const [orderRes, settingRes] = await Promise.all([
+      service.from("orders").select("delivery_attempts").eq("id", row.order_id).maybeSingle(),
+      service.from("site_settings").select("value").eq("key", "delivery_max_attempts").maybeSingle(),
+    ]);
+    const attempts = (orderRes.data as { delivery_attempts?: number } | null)?.delivery_attempts;
+    if (typeof attempts === "number") result.attempts = attempts;
+    result.maxAttempts = clampMaxAttempts((settingRes.data as { value?: unknown } | null)?.value);
+  }
+  return result;
 };
 
 /**
@@ -1086,3 +1138,115 @@ export const settleRiderCash = async (
     at: epoch(row.created_at),
   };
 };
+
+/* ------------------------------------------------------------------ */
+/* Failed deliveries (202610010001): the staff action list             */
+/* ------------------------------------------------------------------ */
+
+/** An order whose final delivery attempt failed and is waiting for staff. */
+export interface FailedDelivery {
+  order: Order;
+  attempts: number;
+  reason: string;
+  failedAt: number;
+  riderName?: string;
+  riderPhone?: string;
+}
+
+/**
+ * Orders flagged by `ps_rider_failed_attempt` (final attempt) that staff have
+ * not yet redispatched or cancelled. Degrades to [] on a database where the
+ * column does not exist yet (202610010001 pending) — never an error.
+ */
+export async function listFailedDeliveries(
+  service: SupabaseClient,
+): Promise<FailedDelivery[]> {
+  const { data: orderRows, error } = await service
+    .from("orders")
+    .select("*")
+    .not("delivery_failed_at", "is", null)
+    .not("status", "in", "(delivered,cancelled)")
+    .order("delivery_failed_at", { ascending: false })
+    .limit(100);
+  if (error) {
+    if (isMissingDbObject(error)) return [];
+    throw new Error("failed deliveries read failed");
+  }
+  const rows = (orderRows ?? []) as DbOrder[];
+  if (rows.length === 0) return [];
+
+  const { data: failedRows } = await service
+    .from("delivery_assignments")
+    .select("order_id,rider_id,offered_at")
+    .eq("state", "failed")
+    .in("order_id", rows.map((r) => r.id))
+    .order("offered_at", { ascending: false });
+  const lastRider = new Map<string, string>();
+  for (const a of (failedRows ?? []) as { order_id: string; rider_id: string }[]) {
+    if (!lastRider.has(a.order_id)) lastRider.set(a.order_id, a.rider_id);
+  }
+  const riderIds = [...new Set(lastRider.values())];
+  const riders = new Map<string, { name: string; phone: string }>();
+  if (riderIds.length > 0) {
+    const { data: riderRows } = await service
+      .from("riders")
+      .select("id,name,phone")
+      .in("id", riderIds);
+    for (const r of (riderRows ?? []) as { id: string; name: string; phone: string }[]) {
+      riders.set(r.id, r);
+    }
+  }
+
+  const mapped = await toDomainMany(service, rows);
+  const out: FailedDelivery[] = [];
+  rows.forEach((row, i) => {
+    const order = mapped[i];
+    if (!order) return;
+    const rider = riders.get(lastRider.get(row.id) ?? "");
+    out.push({
+      order,
+      attempts: row.delivery_attempts ?? 0,
+      reason: row.delivery_failed_reason ?? "",
+      failedAt: epoch(row.delivery_failed_at ?? ""),
+      riderName: rider?.name,
+      riderPhone: rider?.phone,
+    });
+  });
+  return out;
+}
+
+/**
+ * Staff decision on a failed delivery: send it back to the area queue
+ * (`redispatch`) or end it (`cancel`). Runs on the STAFF's own client —
+ * `ps_is_admin()` needs a real auth.uid().
+ */
+export async function resolveFailedDelivery(
+  db: SupabaseClient,
+  orderRef: string,
+  action: "redispatch" | "cancel",
+  note?: string,
+): Promise<void> {
+  const [orderId] = await resolveOrderRowIds(db, [orderRef]);
+  const { error } = await db.rpc("ps_admin_resolve_failed_delivery", {
+    p_order_id: orderId,
+    p_action: action,
+    p_note: note?.trim() ? note.trim().slice(0, 300) : null,
+  });
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("no failed delivery")) {
+      throw new AdminInputError(
+        "This order has no failed delivery waiting — someone may have resolved it already.",
+        409,
+      );
+    }
+    if (msg.includes("forbidden")) throw new AdminInputError("Not allowed.", 403);
+    if (isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Failed-delivery backend not installed yet — run supabase/migrations/202610010001_rider_fixes_phase_a.sql.",
+        503,
+      );
+    }
+    throw dispatchRpcError(error.message);
+  }
+}

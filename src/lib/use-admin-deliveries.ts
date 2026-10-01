@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRiders } from "./use-riders";
 import { usePoll } from "./use-poll";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
-import type { RiderDispatchJob } from "./db/riders";
+import type { FailedDelivery, RiderDispatchJob } from "./db/riders";
 import type { Order } from "./orders";
 
 /** Board refresh while visible — an offer lives 90 s, so 15 s shows each
@@ -20,6 +20,7 @@ export function useAdminDeliveries() {
   const { live, loading, error: ridersError } = useRiders();
   const [liveJobs, setLiveJobs] = useState<RiderDispatchJob[] | null>(null);
   const [liveAwaiting, setLiveAwaiting] = useState<Order[]>([]);
+  const [liveFailed, setLiveFailed] = useState<FailedDelivery[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -28,9 +29,11 @@ export function useAdminDeliveries() {
       const data = await apiGet<{
         deliveries: RiderDispatchJob[];
         awaitingOrders: Order[];
+        failedDeliveries?: FailedDelivery[];
       }>("/api/admin/deliveries");
       setLiveJobs(data.deliveries);
       setLiveAwaiting(data.awaitingOrders);
+      setLiveFailed(data.failedDeliveries ?? []);
       setError(null);
       return true;
     } catch (err) {
@@ -93,6 +96,30 @@ export function useAdminDeliveries() {
     [live, liveJobs, refresh],
   );
 
+  /** Redispatch or cancel an order whose final delivery attempt failed. */
+  const resolveFailed = useCallback(
+    async (orderId: string, action: "redispatch" | "cancel", note = ""): Promise<boolean> => {
+      if (!live) return false;
+      setBusyId(orderId);
+      try {
+        await apiSend<{ ok: boolean }>(
+          `/api/admin/orders/${encodeURIComponent(orderId)}/failed-delivery`,
+          "POST",
+          { action, note },
+        );
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [live, refresh],
+  );
+
   const deliveries: RiderDispatchJob[] = liveJobs ?? [];
   const awaitingOrders: Order[] = liveAwaiting;
   const loadingDeliveries = live && (loading || liveJobs === null);
@@ -100,6 +127,8 @@ export function useAdminDeliveries() {
   return {
     deliveries,
     awaitingOrders,
+    failedDeliveries: liveFailed,
+    resolveFailed,
     live,
     loading: loadingDeliveries,
     error: error ?? ridersError,
