@@ -149,7 +149,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Rider incentives: daily target + refer-a-rider (2026-10-02).
   ('83',  'Rider incentives (daily target, referral)', '202610020010_rider_incentives.sql', 'function', 'ps_award_incentives'),
   -- Dispatch follow-ups: load limit setting, rider hand-back (2026-10-02).
-  ('84',  'Dispatch follow-ups (load limit, rider hand-back)', '202610020011_dispatch_followups.sql', 'function', 'ps_rider_release_accepted')
+  ('84',  'Dispatch follow-ups (load limit, rider hand-back)', '202610020011_dispatch_followups.sql', 'function', 'ps_rider_release_accepted'),
+  -- Failed-delivery fee + weekly tiered bonus (2026-10-02).
+  ('85',  'Failed-delivery fee + weekly bonus', '202610020012_failed_fee_weekly_bonus.sql', 'function', 'ps_failed_delivery_fee')
 )
 select step as ord,
        label,

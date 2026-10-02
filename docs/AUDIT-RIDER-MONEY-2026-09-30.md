@@ -694,3 +694,35 @@ A–Z শেষ হওয়ার পর "জানা সীমা"-র তা
 **টেস্ট:** PGlite SQL — ডিফল্ট/ক্ল্যাম্প/অডিট, বাড়ানো সীমায় broadcast + accept, release-এর মালিকানা/কারণ/অবস্থা/লোড-মুক্তি/পুনঃ-broadcast (ওই রাইডার বাদে, পরের sweep-এও), ফেল-রাইডার বাদ। Vitest — সেটিং parse/sanitize, route, db wrapper-এর ত্রুটি-ম্যাপিং, form, task-card, ট্র্যাকার stage, ম্যাপ-মার্কার নিয়ম ও escape, dialog।
 
 **এখনো বাকি (সিদ্ধান্ত বা নেটিভ কাজ লাগে):** ব্যর্থ ডেলিভারিতে রাইডারের ফি; দোকানের নিজস্ব ওয়ালেট মডেল; ব্যাকগ্রাউন্ড GPS (নেটিভ র‍্যাপার); স্তরভিত্তিক/সাপ্তাহিক বোনাস; ভুয়া-GPS শনাক্তকরণ; NID OCR।
+
+## ৩৬. পরের ধাপ (১ → ৪): PR মার্জ-যোগ্য, ব্যর্থ ডেলিভারির ফি, সাপ্তাহিক বোনাস, আর shop-own-wallet-এর সিদ্ধান্ত
+
+ব্যবসায়িক অঙ্ক এখনো ঠিক হয়নি, তাই ২ ও ৩ নম্বর **admin-configurable এবং ডিফল্টে বন্ধ**। দুটোর SQL একটাই migration-এ: **`202610020012_failed_fee_weekly_bonus.sql`** (Supabase SQL Editor-এ `…0011`-এর পর চালান; `bootstrap-fresh.sql` / `bootstrap-parts/20` / `diagnose.sql` row 85 sync করা)।
+
+**২. ব্যর্থ ডেলিভারিতে রাইডারের ফি।** রাইডার কাস্টমারের কাছে গিয়েও ডেলিভারি করতে না পারলে আগে কিছুই পেত না।
+- সেটিং `rider_failed_delivery_fee_paisa` (Riders → Settings → "Failed-delivery fee"; ০ = বন্ধ, সর্বোচ্চ ৳৫০০)।
+- **কখন দেওয়া হয়:** শুধু staff যখন Deliveries-এর "failed" তালিকা থেকে redispatch/cancel করে এবং **"Pay rider"** টিক দেয়। রাইডার নিজে ফেল জানিয়ে ফি নিতে পারে না। ফি যায় শেষ `failed` assignment-এর রাইডারকে।
+- অর্ডারপ্রতি একবারই (`(order_id, kind)` unique); wallet-এ `incentive` সারি হিসেবে (নতুন kind বানাইনি, তাই P&L/daily/overview/লেবেল অপরিবর্তিত); money audit-এ লেখা থাকে; history-তে "Rider paid X Tk…" নোট।
+- `ps_admin_resolve_failed_delivery`-এ `p_pay_fee boolean default false` — পুরনো caller কিছুই দেয় না।
+
+**৩. সাপ্তাহিক/টিয়ার বোনাস।** ডেইলি টার্গেটের পাশে সাপ্তাহিক (ঢাকার সোম–রবি) দুই ধাপের বোনাস।
+- সেটিং: `incentive_weekly_target` / `…_bonus_paisa` (টিয়ার ১) এবং `incentive_weekly_target2` / `…_bonus2_paisa` (টিয়ার ২, বেশি টার্গেট; **অতিরিক্ত** বোনাস)। Riders → Incentives পেজে। টিয়ার ২ শুধু টিয়ার ১-এর ওপরে হলে গণ্য; আধা-কনফিগারেশন (টার্গেট আছে, টাকা নেই) সেভই হয় না।
+- cron প্রতি ১৫ মিনিটে চলে; **এই সপ্তাহ ও গত সপ্তাহ** দেখে (রবিবার মধ্যরাতে পড়ে গেলেও পাওনা মারা যায় না)। `rider_incentive_awards` (`weekly_target`, ref_key `<সোমবার>:<টিয়ার>`) দুবার দেওয়া আটকায়। শুধু active রাইডার, রিটার্ন লেগ গোনা হয় না।
+- রাইডারের আয় পেজের বোনাস কার্ডে সাপ্তাহিক প্রগ্রেস বার ও "পরের টিয়ারে আর N টি" দেখায়; পুশ: "🏆 সাপ্তাহিক টার্গেট পূর্ণ!"।
+- পুরনো client (weekly ফিল্ড না পাঠানো) সেভ করলে weekly বন্ধই থাকে।
+
+**টেস্ট:** Real-Postgres (PGlite): ফি ডিফল্টে ০, staff-এর পছন্দে একবার, সীমা, audit, wallet = journal; সাপ্তাহিক টিয়ার ১/২ আলাদা, দুবার নয়, গত সপ্তাহ, টিয়ার ২ ≤ টিয়ার ১ উপেক্ষা, suspend করা রাইডার বাদ। Unit: সেটিং parse/clamp, route (`payFee === true` ছাড়া false), Deliveries UI-র চেকবক্স, incentives ফর্ম, রাইডার কার্ড, সোমবার-শুরু (UTC তারিখ-রেখা পার হয়েও)।
+
+### ৪. Shop-own-wallet — কেন কোড লিখিনি, কী সিদ্ধান্ত দরকার
+
+এটা বাকি তিনটির মতো "একটা সেটিং" নয়। আজকের মডেলে customer **PROSANTI-র** wallet-এ টাকা দেয়, `shop_ledger.payable` = subtotal − commission, shop-এর পাওনা = Σ payable − Σ payouts। এই সূত্র **আটটি জায়গায়** ছড়ানো (`ps_guard_payout_balance`, admin shop balances, vendor money, `admin-shop`, rider-money overview `…0002`, money-daily `…0007`, payout route, export)। যদি shop নিজের wallet-এ টাকা নেয়:
+- হিসাবটা দাঁড়ায় **নেট = payable − customer-এর দেওয়া মোট** (shop-funded promo, platform coupon, free-delivery সব ক্ষেত্রেই এতে ঠিক আসে — shop-কে দিতে হয় commission + delivery + tip + surcharge), ঋণাত্মক হলে **shop platform-কে দেনা**।
+- তাই দরকার: (ক) shop-এর নিজের bKash/Nagad নম্বর, (খ) checkout-এ সেই নম্বর, (গ) "shop collected" ও "shop remitted" দুটো আলাদা সারি যা উপরের আটটি জায়গায় বাদ-যোগ হবে, (ঘ) ঋণাত্মক ব্যালান্সে payout-guard ও vendor-এ "আপনি দেনা" দেখানো।
+
+**ঝুঁকি/সিদ্ধান্ত যা মালিক না বললে ভুল হবে:**
+1. **একাধিক shop-এর কার্ট:** এখন একবার পেমেন্টে একাধিক shop-এর parcel হয়। shop-own-wallet হলে কাকে টাকা দেবে? প্রস্তাব: মিশ্র কার্টে শুধু COD।
+2. **delivery charge ও tip কে রাখবে?** shop টাকা নিলে rider-এর ফি/tip platform-কে ফেরত দিতে হবে — shop কি সেটা সময়মতো দেবে, না আগাম বাধ্যতামূলক?
+3. **COD অপরিবর্তিত থাকবে?** (রাইডার ক্যাশ platform-কে দেয়, platform shop-কে দেয়) — প্রস্তাব: হ্যাঁ।
+4. **ডেলিভারির আগে cancel/refund** হলে shop-এর কাছ থেকে customer-কে ফেরত কে দেবে?
+
+এগুলোর উত্তর ছাড়া শুরু করলে shop-এর ব্যালান্স ভুল দেখানোর ঝুঁকি (আর্থিক হিসাব)। উত্তর পেলে আলাদা PR-এ করা যাবে; ডিজাইন ওপরে, বদলাবার জায়গার তালিকাসহ।
