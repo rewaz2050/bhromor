@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
 import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
@@ -13,6 +13,7 @@ import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons"
 import AdminLiveMap from "@/components/admin/admin-live-map";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import { AdminBatchAssign } from "@/components/admin/admin-batch-assign";
+import { ReasonDialog } from "@/components/admin/reason-dialog";
 import { coverageSummary, diagnoseCoverage, type Coverage } from "@/lib/dispatch-coverage";
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
@@ -42,6 +43,13 @@ export default function AdminDeliveriesPage() {
   } = useAdminDeliveries();
   const { riders, dispatch, loading: ridersLoading } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
+  // Cancel / release need a written reason (shown in the order history). Asked in an
+  // inline dialog, not window.prompt — which silently did nothing on a too-short answer.
+  const [ask, setAsk] = useState<
+    | { kind: "cancel"; id: string; title: string; initial: string }
+    | { kind: "release"; id: string; title: string; initial: string }
+    | null
+  >(null);
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {
@@ -244,15 +252,14 @@ export default function AdminDeliveriesPage() {
                   <button
                     type="button"
                     disabled={busyId === f.order.id}
-                    onClick={() => {
-                      const note = window.prompt(
-                        `Why is #${f.order.id} being cancelled? (shown in the order history)`,
-                        f.reason,
-                      );
-                      if (note && note.trim().length >= 3) {
-                        void resolveFailed(f.order.id, "cancel", note.trim());
-                      }
-                    }}
+                    onClick={() =>
+                      setAsk({
+                        kind: "cancel",
+                        id: f.order.id,
+                        title: `Why is #${f.order.id} being cancelled? (shown in the order history)`,
+                        initial: f.reason,
+                      })
+                    }
                     className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 px-4 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
                   >
                     Cancel order
@@ -424,17 +431,17 @@ export default function AdminDeliveriesPage() {
                         <button
                           type="button"
                           disabled={busyId === job.id}
-                          onClick={() => {
-                            const reason = window.prompt(
-                              job.state === "accepted"
-                                ? `Release ${job.riderName}? The order goes back to the area queue. Reason:`
-                                : `Release ${job.riderName} while carrying the parcel? It moves to Failed deliveries for you to redispatch or cancel. Reason:`,
-                              "rider unreachable",
-                            );
-                            if (reason && reason.trim().length >= 5) {
-                              void release(job.id, reason.trim());
-                            }
-                          }}
+                          onClick={() =>
+                            setAsk({
+                              kind: "release",
+                              id: job.id,
+                              title:
+                                job.state === "accepted"
+                                  ? `Release ${job.riderName}? The order goes back to the area queue. Reason:`
+                                  : `Release ${job.riderName} while carrying the parcel? It moves to Failed deliveries for you to redispatch or cancel. Reason:`,
+                              initial: "rider unreachable",
+                            })
+                          }
                           className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         >
                           {busyId === job.id ? "Working…" : "Release rider"}
@@ -454,6 +461,22 @@ export default function AdminDeliveriesPage() {
           </div>
         )}
       </section>
+      {ask && (
+        <ReasonDialog
+          title={ask.title}
+          initial={ask.initial}
+          minLength={ask.kind === "cancel" ? 3 : 5}
+          confirmLabel={ask.kind === "cancel" ? "Cancel order" : "Release rider"}
+          busy={busyId === ask.id}
+          onCancel={() => setAsk(null)}
+          onConfirm={(reason) => {
+            const current = ask;
+            setAsk(null);
+            if (current.kind === "cancel") void resolveFailed(current.id, "cancel", reason);
+            else void release(current.id, reason);
+          }}
+        />
+      )}
     </div>
   );
 }
