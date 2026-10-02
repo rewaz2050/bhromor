@@ -106,6 +106,7 @@ for (const f of [
   '202610010007_money_daily.sql',
   '202610020001_rider_inbox.sql',
   '202610020002_admin_rider_overview.sql',
+  '202610020003_dispatch_settings.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -650,6 +651,14 @@ try {
   const rc = (await audit('rate_change')).filter((r) => r.subject_id === 'rider_base_fee_paisa');
   const lastRate = rc[rc.length - 1];
   assert.deepEqual([lastRate.detail.from, lastRate.detail.to], [4000, 5000]);
+
+  // J: the dispatch-rule keys are audited like the pay rates
+  for (const [k, a, b] of [['rider_cash_cap_paisa', 500000, 300000], ['offer_ttl_seconds', 90, 60], ['delivery_max_attempts', 2, 3]]) {
+    await db.query(`insert into site_settings(key, value) values ($1, $2::jsonb) on conflict (key) do update set value = excluded.value`, [k, String(a)]);
+    await db.query(`update site_settings set value = $2::jsonb where key = $1`, [k, String(b)]);
+    const jr = (await audit('rate_change')).filter((r) => r.subject_id === k);
+    assert.deepEqual([jr[jr.length - 1].detail.from, jr[jr.length - 1].detail.to], [a, b], k + ' change is logged');
+  }
 
   await db.query(`insert into site_settings(key, value) values ('ops', '{"wallets":{"bkash":"01711111111"}}'::jsonb)
                   on conflict (key) do update set value = excluded.value`);

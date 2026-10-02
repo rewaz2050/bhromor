@@ -50,4 +50,14 @@ describe("GET /api/rider/stats", () => {
     expect(body.stats.totalDeliveries).toBe(10);
     expect(body.stats.todayDeliveries).toBeUndefined();
   });
+
+  it("carries the admin-set cash cap (J), and the old ৳5,000 when nothing is set", async () => {
+    const withRows = (rows: unknown[] | null) => ({
+      from: () => ({ select: () => ({ in: async () => (rows ? { data: rows, error: null } : { data: null, error: { message: "no table" } }) }) }),
+    });
+    state.ctx = { ...state.ctx, service: withRows([{ key: "rider_cash_cap_paisa", value: 300000 }]) };
+    expect((await (await GET(new Request("http://localhost/api/rider/stats"))).json()).stats.cashLimit).toBe(300000);
+    state.ctx = { ...state.ctx, service: withRows(null) };
+    expect((await (await GET(new Request("http://localhost/api/rider/stats"))).json()).stats.cashLimit).toBe(500000);
+  });
 });

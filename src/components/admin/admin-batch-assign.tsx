@@ -5,16 +5,19 @@ import type { Rider } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { paymentSummary } from "@/lib/payment-labels";
+import { DISPATCH_DEFAULTS } from "@/lib/dispatch-settings";
 
-/** Mirrors the dispatch SQL gates (202609250001): cash cap + 2-trip load. */
-const CASH_LIMIT_PAISA = 500000;
+/** Mirrors the dispatch SQL gates: cash cap (J: an admin setting) + 2-trip load. */
 const LOAD_LIMIT = 2;
 
 export function AdminBatchAssign({
   riders,
   orders,
   onAssigned,
+  cashLimit = DISPATCH_DEFAULTS.cashCap,
 }: {
+  /** The dispatch cash cap in paisa (Admin → Riders → Dispatch rules). */
+  cashLimit?: number;
   riders: Rider[];
   orders: Order[];
   onAssigned?: () => void;
@@ -50,7 +53,7 @@ export function AdminBatchAssign({
   const onlineRiders = riders.filter((r) => {
     if (!r.isOnline || r.status !== "active") return false;
     if (selectedZones.size > 0 && !r.zoneIds.some((z) => selectedZones.has(z))) return false;
-    if ((r.cashInHand ?? 0) >= CASH_LIMIT_PAISA) return false;
+    if ((r.cashInHand ?? 0) >= cashLimit) return false;
     if ((r.currentLoad ?? 0) >= LOAD_LIMIT) return false;
     return true;
   });
@@ -136,7 +139,7 @@ export function AdminBatchAssign({
                 {r.lat && r.lng && <span className="text-[10px] text-emerald-700">📍 live</span>}
               </label>
             ))}
-            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No eligible riders — need online + in the orders&apos; zone + under ৳5,000 cash + under 2 active trips.</p>}
+            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No eligible riders — need online + in the orders&apos; zone + under {formatBdt(cashLimit)} cash + under 2 active trips.</p>}
           </div>
         </div>
       </div>

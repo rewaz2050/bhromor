@@ -27,7 +27,7 @@ export const AUDIT_EVENT_LABEL: Record<AuditEvent, string> = {
   payment_verified: "Wallet payment verified",
   payment_rejected: "Wallet payment rejected",
   rider_adjustment: "Rider wallet adjustment",
-  rate_change: "Pay rate changed",
+  rate_change: "Rate or dispatch rule changed",
   wallet_numbers_changed: "Customer wallet numbers changed",
 };
 
@@ -75,7 +75,9 @@ export const describeAudit = (e: Pick<MoneyAuditEntry, "event" | "detail" | "sub
     case "rider_adjustment":
       return [str(d.kind), str(d.note)].filter(Boolean).join(" · ");
     case "rate_change":
-      return `${str(e.subjectId)}: ${str(d.from) || "—"} → ${str(d.to)} (paisa)`;
+      return `${str(e.subjectId)}: ${str(d.from) || "—"} → ${str(d.to)} (${
+        e.subjectId === "offer_ttl_seconds" ? "seconds" : e.subjectId === "delivery_max_attempts" ? "attempts" : "paisa"
+      })`;
     case "wallet_numbers_changed":
       return Array.isArray(d.methods) ? `methods: ${(d.methods as unknown[]).map(str).join(", ")}` : "";
     default:

@@ -38,12 +38,27 @@ create table rider_settlements (
 create function ps_rider_id() returns uuid language sql as $$
  select nullif(current_setting('test.rider', true), '')::uuid $$;
 create function ps_is_admin() returns boolean language sql as $$ select true $$;
+create table site_settings (key text primary key, value jsonb);
+create table audit_probe (event text, subject text);
+-- stand-in for the real audit writer (its own test is test:money); records the call only
+create function ps_money_audit_write(p_event text, p_type text, p_subject text, p_amount bigint, p_detail jsonb, p_actor uuid default null)
+ returns void language sql as $$ insert into audit_probe values (p_event, p_subject) $$;
+create function ps_setting_int(p_key text, p_default bigint) returns bigint language sql stable as $$
+ select coalesce((select (value #>> '{}')::bigint from site_settings where key = p_key), p_default) $$;
 create function ps_rider_on_shift(r riders) returns boolean language sql as $$ select r.on_shift $$;
 `);
 const root = new URL('../migrations/', import.meta.url);
 await db.exec('create publication supabase_realtime;');
 for (const f of ['202609250001_area_broadcast_dispatch.sql','202609250002_dispatch_cancel_guard.sql','202609250003_dispatch_withdraw_resume.sql','202609250004_settle_claims.sql','202609250005_delivery_pin_lockout.sql','202609250006_dispatch_health.sql','202609250007_realtime_offers.sql']) {
  const sql = readFileSync(new URL(f, root), 'utf8');
+ await db.exec(sql);
+ await db.exec(sql); // repeat-safe
+}
+// J: the cash cap / offer window are settings — the dispatch functions below are the
+// latest ones with the literals swapped for helpers, so every test here also proves
+// "no setting row = exactly the old behaviour".
+{
+ const sql = readFileSync(new URL('202610020003_dispatch_settings.sql', root), 'utf8');
  await db.exec(sql);
  await db.exec(sql); // repeat-safe
 }
@@ -212,4 +227,41 @@ try {
  assert.equal(probe.realtime_offers_ok,true);
  assert.equal(await scalar("select count(*)::int from pg_publication_tables where pubname='supabase_realtime' and tablename='delivery_assignments'"),1,'published exactly once');
  console.log('PASS: sweep throttle and dispatch health probe');
+
+ // ---- J: dispatch rules are settings
+ const secs = async (id) => Number(await scalar(`select extract(epoch from (expires_at - offered_at))::int from delivery_assignments where order_id=$1 and state='offered' limit 1`, [id]));
+ assert.equal(await scalar('select ps_rider_cash_cap()'), 500000, 'default cap');
+ assert.equal(await scalar('select ps_offer_ttl_seconds()'), 90, 'default window');
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders'); await db.query("update riders set status='suspended'");
+ const jA = await rider("(cash_in_hand) values (150000)");
+ const jB = await rider("(cash_in_hand) values (250000)");
+ await rider("(cash_in_hand) values (600000)");
+ const jo1 = await order(); await ready(jo1);
+ assert.deepEqual((await offers(jo1)).map(x => x.rider_id).sort(), [jA, jB].sort(), 'default cap ৳5,000: 600000 is out, 250000 in');
+ assert.equal(await secs(jo1), 90);
+
+ await db.query(`insert into site_settings values ('rider_cash_cap_paisa','200000'), ('offer_ttl_seconds','45')`);
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders');
+ const jo2 = await order(); await ready(jo2);
+ assert.deepEqual((await offers(jo2)).map(x => x.rider_id), [jA], 'raised-strictness cap ৳2,000 leaves only the 150000 rider');
+ assert.equal(await secs(jo2), 45, 'offer window follows the setting');
+ // accept-time check uses the same cap
+ await db.query(`update riders set cash_in_hand = 200000 where id = $1`, [jA]);
+ await login(jA);
+ await assert.rejects(accept((await offers(jo2))[0].id), /not available|no longer|eligible|cash/i);
+ await db.query(`update riders set cash_in_hand = 100000 where id = $1`, [jA]);
+ await accept((await offers(jo2))[0].id);
+ assert.equal(await scalar('select rider_id from orders where id=$1', [jo2]), jA);
+
+ // clamps: a typo cannot lock everyone out or make offers unusable
+ await db.query(`update site_settings set value = '10' where key = 'rider_cash_cap_paisa'`);
+ assert.equal(await scalar('select ps_rider_cash_cap()'), 50000);
+ await db.query(`update site_settings set value = '99999999' where key = 'rider_cash_cap_paisa'`);
+ assert.equal(await scalar('select ps_rider_cash_cap()'), 5000000);
+ await db.query(`update site_settings set value = '5' where key = 'offer_ttl_seconds'`);
+ assert.equal(await scalar('select ps_offer_ttl_seconds()'), 30);
+ await db.query(`update site_settings set value = '99999' where key = 'offer_ttl_seconds'`);
+ assert.equal(await scalar('select ps_offer_ttl_seconds()'), 600);
+ assert.ok((await rows("select subject from audit_probe where event='rate_change'")).some(r => r.subject === 'offer_ttl_seconds'), 'a rule change reaches the audit writer');
+ console.log('PASS: dispatch cash cap and offer window are clamped settings, honoured by broadcast and accept');
 } finally { await db.close(); }

@@ -131,7 +131,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Rider inbox: office announcements (2026-10-02).
   ('74',  'Rider inbox (office announcements to riders)', '202610020001_rider_inbox.sql', 'table', 'rider_announcements'),
   -- Admin rider profile with COD risk facts (2026-10-02).
-  ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview')
+  ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview'),
+  -- Dispatch rules as admin-editable settings (2026-10-02).
+  ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap')
 )
 select step as ord,
        label,

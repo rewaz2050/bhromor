@@ -81,7 +81,8 @@ export default function RiderPage() {
     flashTimer.current = window.setTimeout(() => setFlash(null), 3500);
   };
 
-  const CASH_LIMIT_PAISA = 500000;
+  // J: the cap is an admin setting (stats.cashLimit); until it loads, the old default.
+  const CASH_LIMIT_PAISA = riderStats.stats?.cashLimit ?? 500000;
   const cashInHand = activeRider?.cashInHand ?? 0;
   const isCashLimitReached = cashInHand >= CASH_LIMIT_PAISA;
 
@@ -479,7 +480,7 @@ export default function RiderPage() {
               </span>
             </div>
             <span className="text-xs font-medium text-ink-soft">
-              সীমা: ৳৫,০০০
+              সীমা: {formatBdt(CASH_LIMIT_PAISA)}
             </span>
           </div>
 
@@ -531,7 +532,7 @@ export default function RiderPage() {
             📊 আমার আয়ের হিসাব ও উত্তোলন →
           </Link>
 
-          {/* Progress bar toward ৳5,000 cap */}
+          {/* Progress bar toward the cash cap (admin setting) */}
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-ivory-200 ring-1 ring-line/40">
             <div
               className={`h-full rounded-full transition-all duration-500 ${

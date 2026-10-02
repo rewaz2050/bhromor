@@ -376,6 +376,8 @@ export interface RiderStatsView {
   /** Today (Dhaka) — deliveries completed and what they credited; absent when unavailable. */
   todayDeliveries?: number;
   todayEarned?: number;
+  /** J — the dispatch cash cap (paisa), admin-editable; absent on an old server. */
+  cashLimit?: number;
 }
 
 /**

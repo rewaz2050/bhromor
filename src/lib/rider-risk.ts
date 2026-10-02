@@ -4,6 +4,8 @@
  * unit-tested and easy to tune.
  */
 
+import { DISPATCH_DEFAULTS } from "./dispatch-settings";
+
 export type RiskLevel = "ok" | "watch" | "high";
 
 export interface RiderOverview {
@@ -103,7 +105,7 @@ export const normalizeOverview = (raw: unknown): RiderOverview | null => {
     },
     risk: {
       cashInHand: num(risk.cashInHand),
-      cashLimit: num(risk.cashLimit) || 500000,
+      cashLimit: num(risk.cashLimit) || DISPATCH_DEFAULTS.cashCap,
       codCountSinceSettle: num(risk.codCountSinceSettle),
       codValueSinceSettle: num(risk.codValueSinceSettle),
       oldestCodAt: ts(risk.oldestCodAt),

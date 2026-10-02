@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({
   isOnline: false,
   /** 202609300001 — the tip wallet shown by /api/rider/stats. */
   earnings: 0,
-  today: undefined as { todayDeliveries: number; todayEarned?: number } | undefined,
+  today: undefined as { todayDeliveries?: number; todayEarned?: number; cashLimit?: number } | undefined,
   deliver: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
 }));
 
@@ -104,6 +104,15 @@ afterEach(() => {
 });
 
 describe("Rider Mobile Portal (/rider)", () => {
+  it("the cash meter shows the admin-set limit (J), the old ৳5,000 until it loads", () => {
+    const { unmount } = render(<RiderPage />);
+    expect(screen.getByText(/সীমা: ৳5,000/)).toBeInTheDocument();
+    unmount();
+    state.today = { cashLimit: 300000 };
+    render(<RiderPage />);
+    expect(screen.getByText(/সীমা: ৳3,000/)).toBeInTheDocument();
+  });
+
   it("renders rider header, online toggle, cash meter, and task sections", () => {
     render(<RiderPage />);
 

@@ -16,6 +16,7 @@ import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions"
 import { RiderKycSummary } from "@/components/admin/rider-kyc-summary";
 import { describeLoginEmail } from "@/lib/phone-login";
 import { kycProgress } from "@/lib/rider-kyc";
+import { DISPATCH_DEFAULTS } from "@/lib/dispatch-settings";
 
 type Filter = Rider["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -49,8 +50,11 @@ function RiderCard({
   onResetPassword,
   onSettle,
   onSettleNet,
+  cashLimit,
 }: {
   rider: Rider;
+  /** J — the dispatch cash cap (paisa); the card turns red at/over it. */
+  cashLimit: number;
   zones: { id: string; name: string }[];
   live: boolean;
   onSave: (r: Rider) => Promise<boolean>;
@@ -138,7 +142,7 @@ function RiderCard({
             {describeLoginEmail(rider.contactEmail)} · {rider.phone} ·{" "}
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
-              <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
+              <> · <strong className={rider.cashInHand >= cashLimit ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
             )}
             {/* 202609300001 — wallet owed to the rider (tips/fees), separate
                 from the COD cash they physically hold. */}
@@ -325,6 +329,7 @@ export default function AdminRidersPage() {
     settleCash,
     rejectClaim,
     settleClaims,
+    dispatch,
     linkRider,
     resetRiderPassword,
     reset,
@@ -419,6 +424,12 @@ export default function AdminRidersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/riders/settings"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Dispatch rules
+          </Link>
           <Link
             href="/admin/riders/announcements"
             className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
@@ -618,6 +629,7 @@ export default function AdminRidersPage() {
             <RiderCard
               key={r.id}
               rider={r}
+              cashLimit={dispatch?.cashCap ?? DISPATCH_DEFAULTS.cashCap}
               zones={zones}
               live={live}
               onSave={saveRider}

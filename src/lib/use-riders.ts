@@ -11,6 +11,7 @@ import type { SettleClaim } from "./db/riders";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 import { usePoll } from "./use-poll";
+import { DISPATCH_DEFAULTS, sanitizeDispatchSettings, type DispatchSettings } from "./dispatch-settings";
 
 /**
  * Rider roster refresh while a staff page that shows online/load state is
@@ -22,15 +23,17 @@ export function useRiders(pollMs = 0) {
   const { live, checked } = useStaffLive();
   const [liveRiders, setLiveRiders] = useState<Rider[] | null>(null);
   const [settleClaims, setSettleClaims] = useState<SettleClaim[]>([]);
+  const [dispatch, setDispatch] = useState<DispatchSettings>(DISPATCH_DEFAULTS);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
-      const data = await apiGet<{ riders: Rider[]; settleClaims?: SettleClaim[] }>(
+      const data = await apiGet<{ riders: Rider[]; settleClaims?: SettleClaim[]; dispatch?: unknown }>(
         "/api/admin/riders",
       );
       setLiveRiders(data.riders);
       setSettleClaims(data.settleClaims ?? []);
+      setDispatch(sanitizeDispatchSettings(data.dispatch));
       setError(null);
       return true;
     } catch (err) {
@@ -195,6 +198,8 @@ export function useRiders(pollMs = 0) {
     riders,
     pending: riders.filter((r) => r.status === "pending"),
     settleClaims,
+    /** J — admin-editable dispatch rules (cash cap, offer window, attempts). */
+    dispatch,
     saveRider,
     setStatus,
     settleCash,

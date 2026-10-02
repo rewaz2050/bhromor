@@ -44,4 +44,20 @@ describe("GET /api/admin/riders/:id/overview", () => {
     expect(bad.status).toBe(422);
     expect(state.ids).toEqual([ID]);
   });
+
+  it("uses the admin-set cash cap (J), not the legacy figure the SQL reports", async () => {
+    // the route reads the cap through the same staff client
+    const fake = { from: () => ({ select: () => ({ in: async () => ({ data: [{ key: "rider_cash_cap_paisa", value: 300000 }], error: null }) }) }) };
+    vi.doMock("@/lib/staff-auth", () => ({
+      StaffAuthError: class extends Error {},
+      requireStaff: async () => ({ user: { id: "staff-1" }, role: "admin", db: fake }),
+      requireStaffRole: async () => ({ user: { id: "staff-1" }, role: "admin", db: fake }),
+    }));
+    vi.resetModules();
+    const { GET: freshGet } = await import("../admin/riders/[id]/overview/route");
+    const body = await (await freshGet(new Request("http://localhost/x"), { params: Promise.resolve({ id: ID }) })).json();
+    expect(body.overview.risk.cashLimit).toBe(300000);
+    expect(body.assessment.cashPct).toBe(150);
+    vi.doUnmock("@/lib/staff-auth");
+  });
 });

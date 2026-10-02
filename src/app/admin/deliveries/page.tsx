@@ -39,7 +39,7 @@ export default function AdminDeliveriesPage() {
     cancel,
     refresh,
   } = useAdminDeliveries();
-  const { riders } = useRiders(RIDERS_POLL_MS);
+  const { riders, dispatch } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
 
   const counts = useMemo(() => {
@@ -123,11 +123,11 @@ export default function AdminDeliveriesPage() {
           deliveries={deliveries.filter(d => ["accepted", "picked_up", "delivered"].includes(d.state)).map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
-          Ready orders send 90-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most 2 active orders; riders at the ৳5,000 cash limit cannot accept more. Customer pickups never enter dispatch.
+          Ready orders send {dispatch.offerTtl}-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most 2 active orders; riders at the {formatBdt(dispatch.cashCap)} cash limit cannot accept more (change in Riders → Dispatch rules). Customer pickups never enter dispatch.
         </p>
       </section>
 
-      <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
+      <AdminBatchAssign cashLimit={dispatch.cashCap} riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
 
       {failedDeliveries.length > 0 && (
         <section aria-label="Failed deliveries">
