@@ -187,6 +187,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
   const [jobs, setJobs] = useState<RiderJob[]>([]);
   const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
   const [pendingClaim, setPendingClaim] = useState<SettleClaim | null>(null);
+  const [recentClaims, setRecentClaims] = useState<SettleClaim[]>([]);
   const [claimsReady, setClaimsReady] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +213,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
             settlements: RiderSettlement[];
             pendingClaim: SettleClaim | null;
             claimsReady?: boolean;
+            recentClaims?: SettleClaim[];
           }>("/api/rider/settlements"),
         ]);
         if (jobsResult.status === "fulfilled") {
@@ -222,6 +224,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
         if (settleResult.status === "fulfilled") {
           setSettlements(settleResult.value.settlements);
           setPendingClaim(settleResult.value.pendingClaim ?? null);
+          setRecentClaims(settleResult.value.recentClaims ?? []);
           setClaimsReady(settleResult.value.claimsReady ?? true);
         } else {
           // Keep the last settlements on screen; never block the job feed.
@@ -360,7 +363,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
 
-  return { jobs, settlements, pendingClaim, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+  return { jobs, settlements, pendingClaim, recentClaims, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
 };
 
 export interface RiderStatsView {

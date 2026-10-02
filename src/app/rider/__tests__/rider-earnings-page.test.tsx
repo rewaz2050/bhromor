@@ -148,4 +148,13 @@ describe("rider earnings page", () => {
     expect(screen.queryByRole("button", { name: /উত্তোলনের অনুরোধ করুন/ })).not.toBeInTheDocument();
     expect(screen.getByText("অপেক্ষায়")).toBeInTheDocument();
   });
+
+  it("a rejected withdrawal says the held money came back to the wallet", () => {
+    state.payouts = [
+      { id: "p2", amount: 5000, method: "bkash", account: "01700000000", status: "rejected", requestedAt: Date.now(), reference: "", note: "নম্বর ভুল" },
+    ];
+    render(<RiderEarningsPage />);
+    expect(screen.getByTestId("payout-refund-note")).toHaveTextContent("ফেরত এসেছে");
+    expect(screen.getByText(/নম্বর ভুল/)).toBeInTheDocument();
+  });
 });

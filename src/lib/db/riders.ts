@@ -74,6 +74,8 @@ export interface SettleClaim {
   reference: string;
   status: DbSettleClaim["status"];
   at: number;
+  /** When staff decided (approved / rejected); absent while pending. */
+  decidedAt?: number;
   note?: string;
 }
 
@@ -421,6 +423,36 @@ export async function listRiderSettleClaim(
     at: epoch(row.created_at),
     note: row.note ?? undefined,
   };
+}
+
+/**
+ * The rider's recent claims in every state, so a REJECTED claim (and the
+ * reason staff gave) does not just vanish from the app. Best-effort: a
+ * database without the claims table (202609250004) simply has none.
+ */
+export async function listRiderRecentClaims(
+  service: SupabaseClient,
+  riderId: string,
+  limit = 10,
+): Promise<SettleClaim[]> {
+  const { data, error } = await service
+    .from("rider_settle_claims")
+    .select("*")
+    .eq("rider_id", riderId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return ((data ?? []) as DbSettleClaim[]).map((row) => ({
+    id: row.id,
+    riderId: row.rider_id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    status: row.status,
+    at: epoch(row.created_at),
+    decidedAt: row.decided_at ? epoch(row.decided_at) : undefined,
+    note: row.note ?? undefined,
+  }));
 }
 
 /** Every pending claim with its rider — the staff approval queue. */

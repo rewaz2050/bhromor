@@ -433,3 +433,16 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
 - **আজকের হিসাব**: `getRiderToday` (`src/lib/db/rider-history.ts`) ঢাকার মধ্যরাত থেকে delivered সংখ্যা ও আয় (tip + fee + COD handling + incentive)। `/api/rider/stats` এখন `todayDeliveries` / `todayEarned` যোগ করে। কোনো কলাম/টেবিল না থাকলে বা error হলে ওই সংখ্যা বাদ যায় (নকল ৳0 দেখায় না, স্কোরবোর্ড কখনো fail করে না)। হোমে কার্ডে ট্যাপ করলে `/rider/earnings`।
 - টেস্ট: `trip-stepper`, `use-offer-alert`, `rider-stats-route`, `rider-history` (db) ও `rider-page`।
 - সীমা: অ্যালার্ট শুধু অ্যাপ খোলা থাকলে কাজ করে — অ্যাপ বন্ধ থাকলে web-push (item I) লাগবে। iOS Safari-তে `navigator.vibrate` নেই (শুধু ব্যানার + টাইটেল)।
+
+## 18. Phase C3 — রাইডারের টাকা জমা / উত্তোলনের টাইমলাইন
+
+কোনো migration লাগে না।
+
+**সমস্যা:** রাইডার টাকা জমার দাবি (claim) করলে অফিস reject করলে অ্যাপ থেকে দাবিটা শুধু উধাও হয়ে যেত — কারণ বা নোট রাইডার জানত না, ক্যাশ ব্যালেন্সও কেন কমল না বুঝত না।
+
+- `listRiderRecentClaims` (`src/lib/db/riders.ts`): রাইডারের সর্বশেষ ১০টি claim সব অবস্থায় (pending / approved / rejected), `decidedAt` ও `note` সহ। claims টেবিল না থাকলে খালি তালিকা।
+- `GET /api/rider/settlements` এখন `recentClaims` ফেরত দেয়; `useRiderJobs` এ `recentClaims`।
+- `src/lib/rider-cash-timeline.ts`: settlement + claim মিলিয়ে একটি টাইমলাইন — ⏳ অপেক্ষায় / ✖ অনুমোদন হয়নি (অফিসের কারণসহ ও "ক্যাশ ব্যালেন্স কমেনি") / ✓ জমা হয়েছে। approved claim আলাদা সারি হয় না (তার settlement-ই সারি) — যাতে দুবার না দেখায়।
+- `/rider/profile`-এ "টাকা জমার টাইমলাইন" (আগের সাধারণ settlement তালিকার জায়গায়); wallet netting-এর বিবরণ আগের মতোই থাকে।
+- `/rider/earnings`-এর উত্তোলন তালিকায়: pending হলে "টাকা ওয়ালেটে হোল্ডে আছে", rejected হলে "হোল্ড করা টাকা ওয়ালেটে ফেরত এসেছে"।
+- টেস্ট: `rider-cash-timeline`, `rider-recent-claims` (db), `rider-profile-page`, `rider-earnings-page`।

@@ -340,6 +340,12 @@ export default function RiderEarningsPage() {
                     {p.reference ? ` · TRX ${p.reference}` : ""}
                   </p>
                   {p.note && <p className="text-[11px] text-ink-soft">নোট: {p.note}</p>}
+                  {p.status === "pending" && (
+                    <p className="text-[11px] text-amber-800">টাকা ওয়ালেটে হোল্ডে আছে; অনুমোদনের পর আপনার {p.method} নম্বরে যাবে।</p>
+                  )}
+                  {p.status === "rejected" && (
+                    <p className="text-[11px] text-rose-800" data-testid="payout-refund-note">অনুরোধ বাতিল — হোল্ড করা টাকা আপনার ওয়ালেটে ফেরত এসেছে।</p>
+                  )}
                 </div>
                 <span
                   className={

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 const state = vi.hoisted(() => ({
   settlements: [] as unknown[],
+  recentClaims: [] as unknown[],
   signOut: vi.fn(async () => {}),
 }));
 
@@ -15,7 +16,7 @@ vi.mock("@/lib/use-rider", () => ({
     setAvailability: vi.fn(async () => null),
     signOut: state.signOut,
   }),
-  useRiderJobs: () => ({ settlements: state.settlements }),
+  useRiderJobs: () => ({ settlements: state.settlements, recentClaims: state.recentClaims }),
 }));
 vi.mock("@/components/rider/rider-profile", () => ({ RiderProfile: () => <div data-testid="profile-form" /> }));
 vi.mock("@/components/rider/rider-shift-card", () => ({ RiderShiftCard: () => <div data-testid="shift-card" /> }));
@@ -39,6 +40,21 @@ describe("<RiderProfilePage>", () => {
     expect(text).toContain("৳3,000");
     expect(text).toContain("৳1,200");
     expect(text).toContain("৳1,800");
+  });
+
+  it("shows a rejected claim with the office's reason, and a pending one as waiting", () => {
+    state.settlements = [];
+    state.recentClaims = [
+      { id: "c1", amount: 50000, method: "bkash", reference: "TX9", status: "rejected", at: 1, decidedAt: Date.parse("2026-10-01T10:00:00Z"), note: "TRX মেলেনি" },
+      { id: "c2", amount: 20000, method: "cash", reference: "", status: "pending", at: Date.parse("2026-10-01T12:00:00Z") },
+    ];
+    render(<RiderProfilePage />);
+    const section = screen.getByLabelText("Recent settlements");
+    const rejected = section.querySelector('[data-kind="rejected"]');
+    expect(rejected?.textContent).toContain("TRX মেলেনি");
+    expect(rejected?.textContent).toContain("অনুমোদন হয়নি");
+    expect(section.querySelector('[data-kind="pending"]')?.textContent).toContain("অপেক্ষায়");
+    state.recentClaims = [];
   });
 
   it("signs out from here", () => {

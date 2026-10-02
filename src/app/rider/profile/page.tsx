@@ -6,17 +6,23 @@
  * so the first thing a rider sees is the next job, not a settings form.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { RiderProfile } from "@/components/rider/rider-profile";
 import { RiderShiftCard } from "@/components/rider/rider-shift-card";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
+import { buildCashTimeline, CASH_TIMELINE_LABEL, cashTimelineHint } from "@/lib/rider-cash-timeline";
 
 export default function RiderProfilePage() {
   const session = useRiderSession();
   const rider = session.rider;
   const jobsApi = useRiderJobs(session.status === "authed", rider?.id);
   const [flash, setFlash] = useState<string | null>(null);
+
+  const timeline = useMemo(
+    () => buildCashTimeline(jobsApi.settlements, jobsApi.recentClaims ?? []),
+    [jobsApi.settlements, jobsApi.recentClaims],
+  );
 
   if (!rider) return null;
 
@@ -38,43 +44,51 @@ export default function RiderProfilePage() {
 
         <RiderShiftCard rider={rider} onSave={session.setAvailability} flash={setFlash} />
 
-        {/* Cash handed in */}
-        {jobsApi.settlements.length > 0 && (
+        {/* Cash pay-in timeline: pending → settled, or rejected with the reason */}
+        {timeline.length > 0 && (
           <section aria-label="Recent settlements">
             <h2 className="font-display mb-3 text-base font-semibold text-forest-900">
-              সাম্প্রতিক টাকা জমা (Settlement ইতিহাস)
+              টাকা জমার টাইমলাইন
             </h2>
             <ul className="space-y-2">
-              {jobsApi.settlements.slice(0, 6).map((s) => (
+              {timeline.map((item) => (
                 <li
-                  key={s.id}
-                  className="flex items-center justify-between rounded-xl bg-paper p-3 text-xs ring-1 ring-line"
+                  key={item.id}
+                  data-kind={item.kind}
+                  className={`rounded-xl p-3 text-xs ring-1 ${
+                    item.kind === "rejected"
+                      ? "bg-rose-50 ring-rose-200"
+                      : item.kind === "pending"
+                        ? "bg-amber-50 ring-amber-200"
+                        : "bg-paper ring-line"
+                  }`}
                 >
-                  <div>
+                  <div className="flex items-center justify-between gap-2">
                     <p className="font-semibold text-forest-900">
-                      {formatBdt(s.amount)} · {s.method.toUpperCase()}
+                      {formatBdt(item.amount)} · {item.method.toUpperCase()}
                     </p>
-                    {s.nettedAmount > 0 && (
-                      <p className="mt-0.5 text-forest-800">
-                        এর মধ্যে {formatBdt(s.nettedAmount)} আপনার wallet-এর পাওনা থেকে সমন্বয়; নগদ দিয়েছেন {formatBdt(s.amount - s.nettedAmount)}
-                      </p>
-                    )}
-                    <p className="mt-0.5 text-ink-soft">
-                      {new Date(s.at).toLocaleString("bn-BD", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {s.reference ? ` · ${s.reference}` : ""}
-                    </p>
+                    <span className="text-[11px] font-semibold text-ink-soft">{CASH_TIMELINE_LABEL[item.kind]}</span>
                   </div>
+                  {item.nettedAmount > 0 && (
+                    <p className="mt-0.5 text-forest-800">
+                      এর মধ্যে {formatBdt(item.nettedAmount)} আপনার wallet-এর পাওনা থেকে সমন্বয়; নগদ দিয়েছেন {formatBdt(item.amount - item.nettedAmount)}
+                    </p>
+                  )}
+                  {cashTimelineHint(item) && <p className="mt-0.5 text-ink">{cashTimelineHint(item)}</p>}
+                  <p className="mt-0.5 text-ink-soft">
+                    {new Date(item.at).toLocaleString("bn-BD", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    {item.reference ? ` · ${item.reference}` : ""}
+                  </p>
                 </li>
               ))}
             </ul>
           </section>
         )}
-
 
         <button
           type="button"
