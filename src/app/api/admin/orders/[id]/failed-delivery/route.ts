@@ -4,6 +4,8 @@
  *   { action: "redispatch" } → back to ready-for-pickup, area broadcast again;
  *   { action: "cancel" }     → order cancelled (a prepaid one is flagged for
  *                              an offline refund in the order history).
+ * Either may carry `payFee: true` to pay the rider of the failed attempt the fee
+ * staff configured (Riders → Dispatch rules; 202610020012).
  * `:id` is the public order number (PS-…) or the row uuid.
  */
 import { resolveFailedDelivery } from "@/lib/db/riders";
@@ -22,6 +24,7 @@ export const POST = staffRoute(
     const body = (await request.json().catch(() => null)) as {
       action?: unknown;
       note?: unknown;
+      payFee?: unknown;
     } | null;
     const action =
       body?.action === "redispatch" || body?.action === "cancel" ? body.action : null;
@@ -30,7 +33,7 @@ export const POST = staffRoute(
     if (action === "cancel" && note.trim().length < 3) {
       return apiError("Give a short reason for cancelling the order.", 422);
     }
-    await resolveFailedDelivery(db, id, action, note);
+    await resolveFailedDelivery(db, id, action, note, body?.payFee === true);
     // I: a redispatch puts the order back in front of the riders.
     if (action === "redispatch") {
       const service = getSupabaseService();

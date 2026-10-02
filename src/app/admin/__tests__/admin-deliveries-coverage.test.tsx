@@ -11,7 +11,7 @@ vi.mock("@/lib/use-admin-deliveries", () => ({
 }));
 vi.mock("@/lib/use-riders", () => ({
   RIDERS_POLL_MS: 0,
-  useRiders: () => ({ riders: state.riders, loading: state.ridersLoading, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2 } }),
+  useRiders: () => ({ riders: state.riders, loading: state.ridersLoading, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: 0 } }),
 }));
 vi.mock("@/lib/use-orders", () => ({ useOrders: () => ({ orders: [] }) }));
 vi.mock("@/components/admin/admin-live-map", () => ({ default: () => null }));

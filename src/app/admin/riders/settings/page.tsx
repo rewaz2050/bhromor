@@ -19,7 +19,7 @@ const inputCls = "mt-1 w-full rounded-xl bg-ivory-100 px-3 py-2 text-sm normal-c
 export default function DispatchRulesPage() {
   const { live, checked, settings, loaded, error, save, clearError } = useDispatchSettings();
   // Edits are kept as text; `null` = untouched, show the saved value.
-  const [draft, setDraft] = useState<{ cashTaka: string; offerTtl: string; maxAttempts: string; loadLimit: string } | null>(null);
+  const [draft, setDraft] = useState<{ cashTaka: string; offerTtl: string; maxAttempts: string; loadLimit: string; failedTaka: string } | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -28,6 +28,7 @@ export default function DispatchRulesPage() {
     offerTtl: String(settings.offerTtl),
     maxAttempts: String(settings.maxAttempts),
     loadLimit: String(settings.loadLimit),
+    failedTaka: String(settings.failedFee / 100),
   };
   const edit = (patch: Partial<typeof shown>) => {
     setDraft({ ...shown, ...patch });
@@ -46,6 +47,7 @@ export default function DispatchRulesPage() {
       offerTtl: Number(shown.offerTtl),
       maxAttempts: Number(shown.maxAttempts),
       loadLimit: Number(shown.loadLimit),
+      failedFee: Math.round(Number(shown.failedTaka) * 100),
     };
     const ok = await save(next);
     setBusy(false);
@@ -159,6 +161,24 @@ export default function DispatchRulesPage() {
             </span>
           </label>
 
+          <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Failed-delivery fee (৳)
+            <input
+              type="number"
+              inputMode="decimal"
+              min={b.failedFee.min / 100}
+              max={b.failedFee.max / 100}
+              step={1}
+              value={shown.failedTaka}
+              onChange={(e) => edit({ failedTaka: e.target.value })}
+              disabled={!loaded}
+              className={inputCls}
+            />
+            <span className="mt-1 block text-[11px] font-normal normal-case text-ink-soft">
+              রাইডার কাস্টমার পর্যন্ত গিয়েও ডেলিভারি করতে না পারলে staff ব্যর্থ-ডেলিভারি নিষ্পত্তির সময় এই ফি দিতে পারেন (প্রতি অর্ডারে একবার, রাইডার নিজে নিতে পারেন না)। ০ = বন্ধ। সর্বোচ্চ ৳{b.failedFee.max / 100}। migration <code>202610020012</code> লাগে।
+            </span>
+          </label>
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
@@ -175,6 +195,7 @@ export default function DispatchRulesPage() {
                   offerTtl: String(DISPATCH_DEFAULTS.offerTtl),
                   maxAttempts: String(DISPATCH_DEFAULTS.maxAttempts),
                   loadLimit: String(DISPATCH_DEFAULTS.loadLimit),
+                  failedTaka: String(DISPATCH_DEFAULTS.failedFee / 100),
                 })
               }
               className="text-sm font-semibold text-forest-800 underline underline-offset-2"

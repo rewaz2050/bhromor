@@ -50,6 +50,8 @@ export default function AdminDeliveriesPage() {
     | { kind: "release"; id: string; title: string; initial: string }
     | null
   >(null);
+  // Which failed deliveries the staff member ticked "pay the rider" on (needs a fee in Dispatch rules).
+  const [payFee, setPayFee] = useState<Record<string, boolean>>({});
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {
@@ -213,6 +215,18 @@ export default function AdminDeliveriesPage() {
                     </span>
                   </span>
                 </div>
+                {dispatch.failedFee > 0 && f.riderName && (
+                  <label className="flex items-center gap-2 border-t border-rose-200 pt-3 text-xs text-forest-900">
+                    <input
+                      type="checkbox"
+                      checked={payFee[f.order.id] === true}
+                      onChange={(e) => setPayFee((prev) => ({ ...prev, [f.order.id]: e.target.checked }))}
+                    />
+                    <span>
+                      Pay {f.riderName} {formatBdt(dispatch.failedFee)} for the failed attempt (once per order, goes to their wallet)
+                    </span>
+                  </label>
+                )}
                 <div className="flex flex-wrap gap-2 border-t border-rose-200 pt-3">
                   {f.order.customer.phone && (
                     <a
@@ -241,7 +255,7 @@ export default function AdminDeliveriesPage() {
                           `Send #${f.order.id} back to the area queue? Do this once the shop has the parcel again.`,
                         )
                       ) {
-                        void resolveFailed(f.order.id, "redispatch");
+                        void resolveFailed(f.order.id, "redispatch", "", payFee[f.order.id] === true);
                       }
                     }}
                     className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
@@ -472,7 +486,7 @@ export default function AdminDeliveriesPage() {
           onConfirm={(reason) => {
             const current = ask;
             setAsk(null);
-            if (current.kind === "cancel") void resolveFailed(current.id, "cancel", reason);
+            if (current.kind === "cancel") void resolveFailed(current.id, "cancel", reason, payFee[current.id] === true);
             else void release(current.id, reason);
           }}
         />

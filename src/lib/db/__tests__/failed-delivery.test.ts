@@ -103,6 +103,26 @@ describe("resolveFailedDelivery", () => {
     });
   });
 
+  it("sends p_pay_fee only when asked, and names the migration when the database lacks it", async () => {
+    const db = staff();
+    await resolveFailedDelivery(db as never, ORDER_UUID, "cancel", "dead", true);
+    expect(db.rpc).toHaveBeenCalledWith("ps_admin_resolve_failed_delivery", {
+      p_order_id: ORDER_UUID,
+      p_action: "cancel",
+      p_note: "dead",
+      p_pay_fee: true,
+    });
+    await expect(
+      resolveFailedDelivery(
+        staff({ code: "PGRST202", message: "Could not find the function public.ps_admin_resolve_failed_delivery(p_action, p_note, p_order_id, p_pay_fee) in the schema cache" }) as never,
+        ORDER_UUID,
+        "cancel",
+        "dead",
+        true,
+      ),
+    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("202610020012") });
+  });
+
   it("answers 409 when nothing is waiting, 503 before the migration", async () => {
     await expect(
       resolveFailedDelivery(staff({ message: "no failed delivery to resolve" }) as never, ORDER_UUID, "cancel", "dead"),

@@ -49,7 +49,7 @@ beforeEach(() => {
 describe("/api/admin/dispatch-settings", () => {
   it("GET answers the old defaults when nothing is stored, or the table is missing", async () => {
     const get = GET as unknown as (r: Request) => Promise<Response>;
-    expect((await (await get(new Request("http://localhost/x"))).json()).settings).toEqual({ cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2 });
+    expect((await (await get(new Request("http://localhost/x"))).json()).settings).toEqual({ cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: 0 });
     state.rows = null;
     expect((await (await get(new Request("http://localhost/x"))).json()).settings.cashCap).toBe(500000);
   });
@@ -61,10 +61,10 @@ describe("/api/admin/dispatch-settings", () => {
       { key: "delivery_max_attempts", value: 99 },
     ];
     const body = await (await (GET as unknown as (r: Request) => Promise<Response>)(new Request("http://localhost/x"))).json();
-    expect(body.settings).toEqual({ cashCap: 250000, offerTtl: 60, maxAttempts: 5, loadLimit: 2 });
+    expect(body.settings).toEqual({ cashCap: 250000, offerTtl: 60, maxAttempts: 5, loadLimit: 2, failedFee: 0 });
   });
 
-  it("PATCH upserts the four flat keys with the staff client", async () => {
+  it("PATCH upserts the five flat keys with the staff client", async () => {
     const res = await patch({ settings: { cashCap: 300000, offerTtl: 60, maxAttempts: 3 } });
     expect(res.status).toBe(200);
     expect(state.upserts).toHaveLength(1);
@@ -74,14 +74,25 @@ describe("/api/admin/dispatch-settings", () => {
       { key: "offer_ttl_seconds", value: 60 },
       { key: "delivery_max_attempts", value: 3 },
       { key: "rider_load_limit", value: 2 },
+      { key: "rider_failed_delivery_fee_paisa", value: 0 },
     ]);
-    expect((await res.json()).settings).toEqual({ cashCap: 300000, offerTtl: 60, maxAttempts: 3, loadLimit: 2 });
+    expect((await res.json()).settings).toEqual({ cashCap: 300000, offerTtl: 60, maxAttempts: 3, loadLimit: 2, failedFee: 0 });
   });
 
   it("PATCH saves a chosen load limit", async () => {
     const res = await patch({ settings: { cashCap: 300000, offerTtl: 60, maxAttempts: 3, loadLimit: 4 } });
     expect(res.status).toBe(200);
     expect(state.upserts[0].rows).toContainEqual({ key: "rider_load_limit", value: 4 });
+  });
+
+  it("PATCH saves a failed-delivery fee, and refuses one above ৳500", async () => {
+    const ok = await patch({ settings: { cashCap: 300000, offerTtl: 60, maxAttempts: 3, loadLimit: 2, failedFee: 20000 } });
+    expect(ok.status).toBe(200);
+    expect(state.upserts[0].rows).toContainEqual({ key: "rider_failed_delivery_fee_paisa", value: 20000 });
+    state.upserts = [];
+    const bad = await patch({ settings: { cashCap: 300000, offerTtl: 60, maxAttempts: 3, loadLimit: 2, failedFee: 60000 } });
+    expect(bad.status).toBe(422);
+    expect(state.upserts).toHaveLength(0);
   });
 
   it("PATCH refuses out-of-range / partial input with 422 and writes nothing", async () => {

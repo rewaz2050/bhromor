@@ -1330,12 +1330,16 @@ export async function resolveFailedDelivery(
   orderRef: string,
   action: "redispatch" | "cancel",
   note?: string,
+  /** Pay the rider of the failed attempt the configured fee (202610020012). */
+  payFee = false,
 ): Promise<void> {
   const [orderId] = await resolveOrderRowIds(db, [orderRef]);
   const { error } = await db.rpc("ps_admin_resolve_failed_delivery", {
     p_order_id: orderId,
     p_action: action,
     p_note: note?.trim() ? note.trim().slice(0, 300) : null,
+    // Only sent when asked: a database without 202610020012 has no such parameter.
+    ...(payFee ? { p_pay_fee: true } : {}),
   });
   if (error) {
     const msg = (error.message ?? "").toLowerCase();
@@ -1346,6 +1350,12 @@ export async function resolveFailedDelivery(
       );
     }
     if (msg.includes("forbidden")) throw new AdminInputError("Not allowed.", 403);
+    if (payFee && isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Paying the rider needs supabase/migrations/202610020012_failed_fee_weekly_bonus.sql — run it, or resolve without paying.",
+        503,
+      );
+    }
     if (isMissingDbObject(error)) {
       throw new AdminInputError(
         "Failed-delivery backend not installed yet — run supabase/migrations/202610010001_rider_fixes_phase_a.sql.",

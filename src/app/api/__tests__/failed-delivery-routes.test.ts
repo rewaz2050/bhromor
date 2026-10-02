@@ -15,7 +15,7 @@ const STAFF_DB = vi.hoisted(() => ({ kind: "staff-jwt" }));
 const state = vi.hoisted(() => ({
   attempts: [] as { db: unknown; id: string; reason: string; service: unknown }[],
   attemptResult: { final: false, attempts: 1, maxAttempts: 2 } as unknown,
-  resolutions: [] as { db: unknown; ref: string; action: string; note?: string }[],
+  resolutions: [] as { db: unknown; ref: string; action: string; note?: string; payFee?: boolean }[],
   releases: [] as { db: unknown; id: string; reason: string }[],
 }));
 
@@ -45,8 +45,8 @@ vi.mock("@/lib/db/riders", async (importOriginal) => {
     releaseDispatchAssignment: async (db: unknown, id: string, reason: string) => {
       state.releases.push({ db, id, reason });
     },
-    resolveFailedDelivery: async (db: unknown, ref: string, action: string, note?: string) => {
-      state.resolutions.push({ db, ref, action, note });
+    resolveFailedDelivery: async (db: unknown, ref: string, action: string, note?: string, payFee?: boolean) => {
+      state.resolutions.push({ db, ref, action, note, payFee });
     },
   };
 });
@@ -96,8 +96,14 @@ describe("POST /api/admin/orders/:id/failed-delivery", () => {
     );
     expect(res.status).toBe(200);
     expect(state.resolutions).toEqual([
-      { db: STAFF_DB, ref: "PS-20261001-0001", action: "redispatch", note: "" },
+      { db: STAFF_DB, ref: "PS-20261001-0001", action: "redispatch", note: "", payFee: false },
     ]);
+  });
+
+  it("passes payFee only when it is exactly true", async () => {
+    await adminResolve(new Request("http://localhost/x", json({ action: "redispatch", payFee: true })), ctx("PS-1"));
+    await adminResolve(new Request("http://localhost/x", json({ action: "redispatch", payFee: "yes" })), ctx("PS-2"));
+    expect(state.resolutions.map((r) => r.payFee)).toEqual([true, false]);
   });
 
   it("needs a reason to cancel", async () => {

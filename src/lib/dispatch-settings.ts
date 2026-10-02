@@ -1,13 +1,14 @@
 /**
  * J (2026-10-02) — dispatch rules as admin-editable settings. Pure, client-safe.
  *
- * Four numbers shape every delivery. They live in `site_settings` as flat keys
+ * Five numbers shape every delivery. They live in `site_settings` as flat keys
  * (SQL reads them with `ps_setting_int`, see 202610020003_dispatch_settings.sql):
  *
  *   rider_cash_cap_paisa   cash a rider may hold before dispatch stops
  *   offer_ttl_seconds      how long a job offer stays open
  *   delivery_max_attempts  delivery attempts before a job is closed as failed
  *   rider_load_limit       active jobs one rider may carry at once (202610020011)
+ *   rider_failed_delivery_fee_paisa  what staff may pay a rider for a failed attempt (202610020012; 0 = off)
  *
  * The bounds below mirror the clamps inside the SQL helpers: a typo can neither
  * lock every rider out nor make offers unusable. The defaults equal the values
@@ -19,6 +20,7 @@ export const DISPATCH_KEYS = {
   offerTtl: "offer_ttl_seconds",
   maxAttempts: "delivery_max_attempts",
   loadLimit: "rider_load_limit",
+  failedFee: "rider_failed_delivery_fee_paisa",
 } as const;
 
 export interface DispatchSettings {
@@ -30,6 +32,8 @@ export interface DispatchSettings {
   maxAttempts: number;
   /** Active jobs one rider may carry at once. */
   loadLimit: number;
+  /** Paisa staff may pay the rider of a failed delivery when they resolve it. 0 = never offered. */
+  failedFee: number;
 }
 
 export const DISPATCH_DEFAULTS: DispatchSettings = {
@@ -37,6 +41,7 @@ export const DISPATCH_DEFAULTS: DispatchSettings = {
   offerTtl: 90,
   maxAttempts: 2,
   loadLimit: 2,
+  failedFee: 0,
 };
 
 export const DISPATCH_BOUNDS = {
@@ -44,6 +49,7 @@ export const DISPATCH_BOUNDS = {
   offerTtl: { min: 30, max: 600 },
   maxAttempts: { min: 1, max: 5 },
   loadLimit: { min: 1, max: 5 },
+  failedFee: { min: 0, max: 50_000 },
 } as const;
 
 const FIELD_LABEL: Record<keyof DispatchSettings, string> = {
@@ -51,6 +57,7 @@ const FIELD_LABEL: Record<keyof DispatchSettings, string> = {
   offerTtl: "Offer window (seconds)",
   maxAttempts: "Max delivery attempts",
   loadLimit: "Active jobs per rider",
+  failedFee: "Failed-delivery fee (৳)",
 };
 
 const toNumber = (raw: unknown): number => {
@@ -76,12 +83,13 @@ export const parseDispatchSettings = (
 ): { settings: DispatchSettings; error?: string } => {
   const p = (raw ?? {}) as Record<string, unknown>;
   const out: Partial<DispatchSettings> = {};
-  for (const field of ["cashCap", "offerTtl", "maxAttempts", "loadLimit"] as const) {
-    // An older client that does not know loadLimit yet sends three fields: keep the default.
-    const value = field === "loadLimit" && p[field] === undefined ? DISPATCH_DEFAULTS.loadLimit : readInRange(p[field], field);
+  for (const field of ["cashCap", "offerTtl", "maxAttempts", "loadLimit", "failedFee"] as const) {
+    // An older client that does not know the newer fields sends fewer: keep their defaults.
+    const optional = field === "loadLimit" || field === "failedFee";
+    const value = optional && p[field] === undefined ? DISPATCH_DEFAULTS[field] : readInRange(p[field], field);
     if (value === null) {
       const { min, max } = DISPATCH_BOUNDS[field];
-      const shown = field === "cashCap" ? `৳${min / 100} – ৳${max / 100}` : `${min} – ${max}`;
+      const shown = field === "cashCap" || field === "failedFee" ? `৳${min / 100} – ৳${max / 100}` : `${min} – ${max}`;
       return {
         settings: DISPATCH_DEFAULTS,
         error: `${FIELD_LABEL[field]} must be a whole number between ${shown}.`,
@@ -106,6 +114,7 @@ export const sanitizeDispatchSettings = (raw: unknown): DispatchSettings => {
     offerTtl: pick("offerTtl"),
     maxAttempts: pick("maxAttempts"),
     loadLimit: pick("loadLimit"),
+    failedFee: pick("failedFee"),
   };
 };
 

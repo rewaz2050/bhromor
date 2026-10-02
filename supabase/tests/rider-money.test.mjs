@@ -116,6 +116,7 @@ for (const f of [
   '202610020009_delivery_feedback.sql',
   '202610020010_rider_incentives.sql',
   '202610020011_dispatch_followups.sql',
+  '202610020012_failed_fee_weekly_bonus.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1111,6 +1112,110 @@ try {
   assert.equal((await scalar(`select ps_award_incentives()`)).referral, 1, 'paid once they are active again');
   await db.query(`delete from site_settings where key like 'incentive_%'`);
   console.log('PASS: rider incentives — off by default, daily target + referral paid once, returns excluded, journal-balanced, service-only');
+
+  // ---- failed-delivery fee: staff-chosen, once per order, off by default, journal-balanced
+  await as(null);
+  await db.query(`delete from site_settings where key = 'rider_failed_delivery_fee_paisa'`);
+  const ffRider = await scalar(`insert into riders(name, phone, status, vehicle) values ('FeeRider','01710000901','active','bike') returning id`);
+  const ffFailed = async () => {
+    const o = await scalar(`insert into orders(status, delivery_failed_at) values ('out-for-delivery', now()) returning id`);
+    await db.query(`insert into delivery_assignments(order_id, rider_id, state) values ($1,$2,'failed')`, [o, ffRider]);
+    return o;
+  };
+  const ffRows = (o) => rows(`select * from rider_earnings where order_id = $1 and kind = 'incentive'`, [o]);
+  const ffBal = async () => Number(await scalar(`select earnings_balance from riders where id = $1`, [ffRider]));
+  assert.equal(await scalar(`select ps_failed_delivery_fee()`), 0, 'off by default');
+
+  const ff0 = await ffFailed();
+  await as(staffId);
+  await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch', null, true)`, [ff0]);
+  assert.equal((await ffRows(ff0)).length, 0, 'fee setting 0 = nothing paid even when asked');
+
+  await as(null);
+  await db.query(`insert into site_settings(key, value) values ('rider_failed_delivery_fee_paisa', '20000')`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'rider_failed_delivery_fee_paisa'`), 1, 'fee change is audited');
+  await db.query(`update site_settings set value = '999999' where key = 'rider_failed_delivery_fee_paisa'`);
+  assert.equal(await scalar(`select ps_failed_delivery_fee()`), 50000, 'capped at ৳500');
+  await db.query(`update site_settings set value = '20000' where key = 'rider_failed_delivery_fee_paisa'`);
+
+  const ff1 = await ffFailed();
+  const ffBefore = await ffBal();
+  await as(riderUser);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch', null, true)`, [ff1]), /forbidden/, 'a rider cannot pay themselves');
+  await as(staffId);
+  await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch')`, [ff1]);
+  assert.equal((await ffRows(ff1)).length, 0, 'not paid unless staff choose to');
+  assert.equal(await ffBal(), ffBefore);
+
+  await as(null);
+  const ff2 = await ffFailed();
+  await as(staffId);
+  await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel', 'customer gone', true)`, [ff2]);
+  const ffPaid = await ffRows(ff2);
+  assert.equal(ffPaid.length, 1);
+  assert.equal(Number(ffPaid[0].amount), 20000);
+  assert.equal(ffPaid[0].rider_id, ffRider);
+  assert.match(ffPaid[0].note, /Failed delivery fee/);
+  assert.equal(await ffBal(), ffBefore + 20000, 'wallet credited');
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [ffRider])), await ffBal(), 'wallet = journal');
+  assert.match(await scalar(`select string_agg(note, '|') from order_status_history where order_id = $1`, [ff2]), /Rider paid 200\.00 Tk/);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rider_adjustment' and subject_id = $1`, [ffRider]) >= 1, true, 'the credit reaches the money audit');
+  await assert.rejects(db.query(`select * from ps_admin_resolve_failed_delivery($1, 'cancel', 'again', true)`, [ff2]), /no failed delivery/, 'cannot be paid twice');
+
+  // flagged order whose assignment never failed (no rider to pay): resolves, pays nobody, no error
+  await as(null);
+  const ffNone = await scalar(`insert into orders(status, delivery_failed_at) values ('out-for-delivery', now()) returning id`);
+  await as(staffId);
+  await db.query(`select * from ps_admin_resolve_failed_delivery($1, 'redispatch', null, true)`, [ffNone]);
+  assert.equal((await ffRows(ffNone)).length, 0);
+  await as(null);
+  await db.query(`delete from site_settings where key = 'rider_failed_delivery_fee_paisa'`);
+  console.log('PASS: failed-delivery fee — off by default, staff-chosen, once per order, capped, audited, wallet = journal');
+
+  // ---- weekly + tiered bonus
+  await db.query(`delete from site_settings where key like 'incentive_%'`);
+  await db.query(`update riders set status = 'suspended'`); // earlier tests' riders have deliveries today; only the riders below are in play
+  const wk = async (name, phone) => scalar(`insert into riders(name, phone, status, vehicle) values ($1,$2,'active','bike') returning id`, [name, phone]);
+  const wkLegs = async (rider, n, ago = '0 days', ret = 0) => {
+    for (let i = 0; i < n + ret; i++) {
+      const o = await scalar(`insert into orders(status, is_return) values ('delivered', $1) returning id`, [i >= n]);
+      await db.query(`insert into delivery_assignments(order_id, rider_id, state, delivered_at) values ($1,$2,'delivered', now() - $3::interval)`, [o, rider, ago]);
+    }
+  };
+  const wkA = await wk('WeekA', '01710000911');
+  const wkB = await wk('WeekB', '01710000912');
+  await wkLegs(wkA, 3);
+  await wkLegs(wkB, 2, '0 days', 4);
+  assert.equal((await scalar(`select ps_award_incentives()`)).weekly, 0, 'weekly bonus is off by default');
+  await db.query(`insert into site_settings(key, value) values ('incentive_weekly_target','3'),('incentive_weekly_bonus_paisa','5000'),('incentive_weekly_target2','5'),('incentive_weekly_bonus2_paisa','7000')`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'incentive_weekly_bonus2_paisa'`), 1, 'weekly amounts are audited');
+  const wk_wBefore = Number(await scalar(`select earnings_balance from riders where id = $1`, [wkA]));
+  const wk_w1 = await scalar(`select ps_award_incentives()`);
+  assert.equal(wk_w1.weekly, 1, 'rider A reached tier 1 (B has 2 real deliveries + 4 returns)');
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [wkA])), wk_wBefore + 5000);
+  assert.equal(wk_w1.awards.find((a) => a.riderId === wkA).tier, 1);
+  assert.equal((await scalar(`select ps_award_incentives()`)).weekly, 0, 'once per tier per week');
+  await wkLegs(wkA, 2);
+  const wk_w2 = await scalar(`select ps_award_incentives()`);
+  assert.equal(wk_w2.weekly, 1, 'tier 2 is an extra on top of tier 1');
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [wkA])), wk_wBefore + 5000 + 7000);
+  assert.equal((await scalar(`select ps_award_incentives()`)).weekly, 0);
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [wkA])), await scalar(`select earnings_balance from riders where id = $1`, [wkA]) * 1, 'wallet = journal');
+  // last week is still honoured (a run that straddled Sunday midnight)
+  const wkC = await wk('WeekC', '01710000913');
+  await wkLegs(wkC, 3, '7 days');
+  assert.equal((await scalar(`select ps_award_incentives()`)).weekly, 1, 'last week paid');
+  // tier 2 at or below tier 1 is ignored (a mistyped config cannot double-pay)
+  await db.query(`update site_settings set value = '3' where key = 'incentive_weekly_target2'`);
+  const wkD = await wk('WeekD', '01710000914');
+  await wkLegs(wkD, 3);
+  const wk_wd = await scalar(`select ps_award_incentives()`);
+  assert.equal(wk_wd.weekly, 1, 'only tier 1 paid; tier 2 (≤ tier 1) ignored');
+  assert.equal(wk_wd.awards[0].tier, 1);
+  // the awards table accepts only the known kinds
+  await assert.rejects(db.query(`insert into rider_incentive_awards(rider_id, kind, ref_key, amount) values ($1,'mystery','x',1)`, [wkA]));
+  await db.query(`delete from site_settings where key like 'incentive_%'`);
+  console.log('PASS: weekly tiered bonus — off by default, tier 1 + extra tier 2, once each, last week honoured, bad tier ignored, audited');
 } finally {
   await db.close();
 }

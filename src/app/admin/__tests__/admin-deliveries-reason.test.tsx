@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   failed: [] as unknown[],
   resolveFailed: vi.fn(),
   release: vi.fn(),
+  fee: 0,
 }));
 
 vi.mock("@/lib/use-admin-deliveries", () => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/use-admin-deliveries", () => ({
 }));
 vi.mock("@/lib/use-riders", () => ({
   RIDERS_POLL_MS: 0,
-  useRiders: () => ({ riders: [], loading: false, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2 } }),
+  useRiders: () => ({ riders: [], loading: false, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: state.fee } }),
 }));
 vi.mock("@/lib/use-orders", () => ({ useOrders: () => ({ orders: [] }) }));
 vi.mock("@/components/admin/admin-live-map", () => ({ default: () => null }));
@@ -41,6 +42,7 @@ afterEach(() => {
   state.release.mockReset();
   state.deliveries = [];
   state.failed = [];
+  state.fee = 0;
 });
 
 describe("reason dialogs on /admin/deliveries", () => {
@@ -60,8 +62,29 @@ describe("reason dialogs on /admin/deliveries", () => {
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "  customer unreachable  " } });
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
-    expect(state.resolveFailed).toHaveBeenCalledWith("PS-9", "cancel", "customer unreachable");
+    expect(state.resolveFailed).toHaveBeenCalledWith("PS-9", "cancel", "customer unreachable", false);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("offers 'pay the rider' only when a fee is set, and sends the choice with redispatch and cancel", () => {
+    state.failed = [{ order: order("PS-9"), attempts: 2, reason: "phone off", riderName: "Rafiq", riderPhone: "0", failedAt: 1 }];
+    const { unmount } = render(<AdminDeliveriesPage />);
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    unmount();
+    state.fee = 20000;
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AdminDeliveriesPage />);
+    const box = screen.getByRole("checkbox");
+    expect(box.closest("label")).toHaveTextContent("Pay Rafiq ৳200");
+    fireEvent.click(screen.getByRole("button", { name: /Redispatch/ }));
+    expect(state.resolveFailed).toHaveBeenLastCalledWith("PS-9", "redispatch", "", false);
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: /Redispatch/ }));
+    expect(state.resolveFailed).toHaveBeenLastCalledWith("PS-9", "redispatch", "", true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel order" }));
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "customer unreachable" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel order" }).at(-1)!);
+    expect(state.resolveFailed).toHaveBeenLastCalledWith("PS-9", "cancel", "customer unreachable", true);
   });
 
   it("Back closes the dialog and does nothing", () => {

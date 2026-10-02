@@ -122,14 +122,14 @@ export function useAdminDeliveries() {
 
   /** Redispatch or cancel an order whose final delivery attempt failed. */
   const resolveFailed = useCallback(
-    async (orderId: string, action: "redispatch" | "cancel", note = ""): Promise<boolean> => {
+    async (orderId: string, action: "redispatch" | "cancel", note = "", payFee = false): Promise<boolean> => {
       if (!live) return false;
       setBusyId(orderId);
       try {
         await apiSend<{ ok: boolean }>(
           `/api/admin/orders/${encodeURIComponent(orderId)}/failed-delivery`,
           "POST",
-          { action, note },
+          { action, note, ...(payFee ? { payFee: true } : {}) },
         );
         setError(null);
         await refresh();
