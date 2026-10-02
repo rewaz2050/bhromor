@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Admin → Riders → Incentives (item V, 202610020010): the daily-target bonus
- * and the refer-a-rider bonus. Both are OFF until amounts are set; the cron
+ * Admin → Riders → Incentives (item V, 202610020010): the daily-target bonus,
+ * the weekly two-tier bonus and the refer-a-rider bonus. Both are OFF until amounts are set; the cron
  * pays them into the rider's wallet as `incentive` rows.
  */
 
@@ -24,6 +24,10 @@ export default function RiderIncentivesPage() {
     dailyBonusTaka: String(settings.dailyBonus / 100),
     referralBonusTaka: String(settings.referralBonus / 100),
     referralAfter: String(settings.referralAfter),
+    weeklyTarget: String(settings.weeklyTarget),
+    weeklyBonusTaka: String(settings.weeklyBonus / 100),
+    weeklyTarget2: String(settings.weeklyTarget2),
+    weeklyBonus2Taka: String(settings.weeklyBonus2 / 100),
   };
   const edit = (patch: Partial<IncentiveForm>) => {
     setDraft({ ...shown, ...patch });
@@ -51,7 +55,7 @@ export default function RiderIncentivesPage() {
         <div>
           <h1 className="font-display text-2xl text-forest-900">Rider incentives</h1>
           <p className="mt-1 text-sm text-ink-soft">
-            রাইডারদের বোনাস — দুটোই ডিফল্টে বন্ধ। অ্যামাউন্ট দিলে প্রতি ১৫ মিনিটে স্বয়ংক্রিয়ভাবে ওয়ালেটে যোগ হয় (একই বোনাস দুবার নয়) এবং Money → Audit-এ লেখা থাকে।
+            রাইডারদের বোনাস — সবগুলোই ডিফল্টে বন্ধ। অ্যামাউন্ট দিলে প্রতি ১৫ মিনিটে স্বয়ংক্রিয়ভাবে ওয়ালেটে যোগ হয় (একই বোনাস দুবার নয়) এবং Money → Audit-এ লেখা থাকে।
           </p>
         </div>
         <Link href="/admin/riders" className="text-sm font-semibold text-forest-800 underline underline-offset-2">
@@ -94,6 +98,47 @@ export default function RiderIncentivesPage() {
                 disabled={!loaded} className={inputCls}
               />
             </label>
+          </fieldset>
+
+          <fieldset className="space-y-4">
+            <legend className="font-display text-base font-semibold text-forest-900">🏆 Weekly target (two tiers)</legend>
+            <p className="text-[11px] text-ink-soft">
+              ঢাকার সোমবার–রবিবার সপ্তাহে ডেলিভারি (রিটার্ন ছাড়া)। টিয়ার ১ ছুঁলে বোনাস ১; টিয়ার ২ (ঐচ্ছিক, বেশি টার্গেট) ছুঁলে বোনাস ২ <strong>অতিরিক্ত</strong> পায়। প্রতি সপ্তাহে প্রতি টিয়ার একবার।
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Tier 1 — deliveries in the week (0 = off)
+                <input
+                  type="number" inputMode="numeric" min={0} max={INCENTIVE_BOUNDS.weeklyTarget.max} step={1}
+                  value={shown.weeklyTarget} onChange={(e) => edit({ weeklyTarget: e.target.value })}
+                  disabled={!loaded} className={inputCls}
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Tier 1 bonus (৳)
+                <input
+                  type="number" inputMode="decimal" min={0} max={maxTaka} step={1}
+                  value={shown.weeklyBonusTaka} onChange={(e) => edit({ weeklyBonusTaka: e.target.value })}
+                  disabled={!loaded} className={inputCls}
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Tier 2 — higher target (0 = no 2nd tier)
+                <input
+                  type="number" inputMode="numeric" min={0} max={INCENTIVE_BOUNDS.weeklyTarget.max} step={1}
+                  value={shown.weeklyTarget2} onChange={(e) => edit({ weeklyTarget2: e.target.value })}
+                  disabled={!loaded} className={inputCls}
+                />
+              </label>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+                Tier 2 extra bonus (৳)
+                <input
+                  type="number" inputMode="decimal" min={0} max={maxTaka} step={1}
+                  value={shown.weeklyBonus2Taka} onChange={(e) => edit({ weeklyBonus2Taka: e.target.value })}
+                  disabled={!loaded} className={inputCls}
+                />
+              </label>
+            </div>
           </fieldset>
 
           <fieldset className="space-y-4">

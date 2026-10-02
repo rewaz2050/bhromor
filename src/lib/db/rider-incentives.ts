@@ -15,6 +15,7 @@ import {
   anyIncentiveOn,
   awardMessage,
   dailyProgress,
+  dhakaWeekStart,
   normalizeReferralCode,
   parseIncentiveInput,
   sanitizeIncentiveSettings,
@@ -22,12 +23,18 @@ import {
   type IncentiveSettings,
   type ReferralOutcome,
   type RiderIncentiveView,
+  weeklyBonusOn,
+  weeklyProgress,
+  weeklyTier2On,
 } from "../rider-incentives";
 
 const DHAKA_MS = 6 * 3_600_000;
 
 /** Dhaka midnight (the start of "today") as a UTC instant. */
 const dhakaMidnight = (now: number): number => Math.floor((now + DHAKA_MS) / 86_400_000) * 86_400_000 - DHAKA_MS;
+
+/** Monday 00:00 Dhaka of the current week, as a UTC instant. */
+const dhakaWeekMidnight = (now: number): number => Date.parse(`${dhakaWeekStart(now)}T00:00:00Z`) - DHAKA_MS;
 
 /** Never throws: a missing table/key means "switched off". */
 export const readIncentiveSettings = async (db: SupabaseClient): Promise<IncentiveSettings> => {
@@ -79,7 +86,7 @@ export const runIncentiveSweep = async (
     if (isMissingDbObject(error)) return { status: "skipped", did: 0, detail: "incentives not migrated (202610020010)" };
     return { status: "failed", did: 0, detail: "incentive sweep failed" };
   }
-  const result = (data ?? {}) as { daily?: number; referral?: number; total?: number; awards?: IncentiveAward[] };
+  const result = (data ?? {}) as { daily?: number; weekly?: number; referral?: number; total?: number; awards?: IncentiveAward[] };
   const awards = Array.isArray(result.awards) ? result.awards : [];
   for (const award of awards) {
     try {
@@ -89,11 +96,11 @@ export const runIncentiveSweep = async (
       // The money is already in the wallet; only the nudge is lost.
     }
   }
-  const did = (result.daily ?? 0) + (result.referral ?? 0);
+  const did = (result.daily ?? 0) + (result.weekly ?? 0) + (result.referral ?? 0);
   return {
     status: "ran",
     did,
-    detail: did === 0 ? "nothing due" : `${result.daily ?? 0} daily + ${result.referral ?? 0} referral bonus(es), ৳${Math.round((result.total ?? 0) / 100)} paid`,
+    detail: did === 0 ? "nothing due" : `${result.daily ?? 0} daily + ${result.weekly ?? 0} weekly + ${result.referral ?? 0} referral bonus(es), ৳${Math.round((result.total ?? 0) / 100)} paid`,
   };
 };
 
@@ -138,7 +145,8 @@ export const getRiderIncentives = async (
 
   // Today's delivered legs (returns do not count), by Dhaka day.
   const midnight = dhakaMidnight(now);
-  const [todayRes, awardsRes, referralsRes] = await Promise.all([
+  const weeklyOn = weeklyBonusOn(settings) || weeklyTier2On(settings);
+  const [todayRes, awardsRes, referralsRes, weekRes] = await Promise.all([
     service
       .from("delivery_assignments")
       .select("id, orders(is_return)")
@@ -147,20 +155,38 @@ export const getRiderIncentives = async (
       .gte("delivered_at", new Date(midnight).toISOString()),
     service.from("rider_incentive_awards").select("kind, ref_key, amount").eq("rider_id", riderId),
     service.from("rider_referrals").select("referee_id, rewarded_at, riders!referee_id(name)").eq("referrer_id", riderId).order("created_at", { ascending: false }).limit(20),
+    weeklyOn
+      ? service
+          .from("delivery_assignments")
+          .select("id, orders(is_return)")
+          .eq("rider_id", riderId)
+          .eq("state", "delivered")
+          .gte("delivered_at", new Date(dhakaWeekMidnight(now)).toISOString())
+      : Promise.resolve({ data: null, error: null }),
   ]);
   if (awardsRes.error || referralsRes.error) {
     if (isMissingDbObject(awardsRes.error) || isMissingDbObject(referralsRes.error)) return null;
     throw new Error("incentive read failed");
   }
 
-  const deliveredToday = ((todayRes.data ?? []) as unknown as { orders?: { is_return?: boolean } | { is_return?: boolean }[] | null }[]).filter((a) => {
+  type Leg = { orders?: { is_return?: boolean } | { is_return?: boolean }[] | null };
+  const notReturn = (a: Leg): boolean => {
     const o = Array.isArray(a.orders) ? a.orders[0] : a.orders;
     return !o?.is_return;
-  }).length;
+  };
+  const deliveredToday = ((todayRes.data ?? []) as unknown as Leg[]).filter(notReturn).length;
+  const deliveredWeek = ((weekRes.data ?? []) as unknown as Leg[]).filter(notReturn).length;
 
   const awards = (awardsRes.data ?? []) as { kind: string; ref_key: string; amount: number | string }[];
   const todayKey = new Date(now + DHAKA_MS).toISOString().slice(0, 10);
   const todayPaid = awards.some((a) => a.kind === "daily_target" && a.ref_key === todayKey);
+  const weekKey = dhakaWeekStart(now);
+  const paidTiers = new Set<number>();
+  for (const a of awards) {
+    if (a.kind !== "weekly_target") continue;
+    const [wk, tier] = a.ref_key.split(":");
+    if (wk === weekKey) paidTiers.add(Number(tier));
+  }
   const sum = (kind?: string): number => awards.filter((a) => !kind || a.kind === kind).reduce((n, a) => n + Number(a.amount), 0);
 
   const referees = (referralsRes.data ?? []) as unknown as {
@@ -185,6 +211,7 @@ export const getRiderIncentives = async (
     settings,
     today: settings.dailyTarget > 0 && settings.dailyBonus > 0 ? dailyProgress(deliveredToday, settings.dailyTarget) : null,
     todayPaid,
+    week: weeklyOn && !weekRes.error ? weeklyProgress(deliveredWeek, settings, paidTiers) : null,
     referral: {
       code,
       after: settings.referralAfter,

@@ -13,7 +13,7 @@ import { anyIncentiveOn, referralBonusOn, referralShareText, type RiderIncentive
 export default function IncentivesCard({ view }: { view: RiderIncentiveView | null }) {
   const [copied, setCopied] = useState(false);
   if (!view || !anyIncentiveOn(view.settings)) return null;
-  const { today, todayPaid, referral, settings } = view;
+  const { today, todayPaid, week, referral, settings } = view;
   const showReferral = referralBonusOn(settings) && referral.code !== "";
 
   const share = async () => {
@@ -48,6 +48,31 @@ export default function IncentivesCard({ view }: { view: RiderIncentiveView | nu
                 ? `🎉 টার্গেট পূর্ণ — ${formatBdt(settings.dailyBonus)} ওয়ালেটে যোগ হয়েছে`
                 : "🎉 টার্গেট পূর্ণ — বোনাস কিছুক্ষণের মধ্যেই ওয়ালেটে যোগ হবে"
               : `${today.done}/${today.target} শেষ — আর ${today.left}টি বাকি`}
+          </p>
+        </div>
+      )}
+
+      {week && (
+        <div data-testid="weekly-progress">
+          <p className="text-sm text-forest-900">
+            এই সপ্তাহে{" "}
+            {week.tiers.map((t, i) => (
+              <span key={t.target}>
+                {i > 0 && " · "}
+                {t.target}টি ডেলিভারিতে <strong>{formatBdt(t.bonus)}</strong>
+              </span>
+            ))}{" "}
+            বোনাস
+          </p>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-line/60" role="progressbar" aria-label="Weekly progress" aria-valuemin={0} aria-valuemax={week.tiers[week.tiers.length - 1].target} aria-valuenow={week.done}>
+            <div className={`h-full rounded-full ${week.toNext === 0 ? "bg-emerald-500" : "bg-gold-400"}`} style={{ width: `${week.percent}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-ink-soft" data-testid="weekly-status">
+            {week.toNext === 0
+              ? week.tiers.every((t) => t.paid)
+                ? "🏆 সব টিয়ার পূর্ণ — বোনাস ওয়ালেটে যোগ হয়েছে"
+                : "🏆 সব টিয়ার পূর্ণ — বোনাস কিছুক্ষণের মধ্যেই ওয়ালেটে যোগ হবে"
+              : `${week.done}টি শেষ — পরের টিয়ারে আর ${week.toNext}টি বাকি`}
           </p>
         </div>
       )}

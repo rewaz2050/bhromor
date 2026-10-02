@@ -44,9 +44,9 @@ const settingsRows = [
 ];
 
 describe("settings", () => {
-  it("reads the four keys", async () => {
+  it("reads the eight keys", async () => {
     const { db } = makeDb({ tables: { site_settings: [{ data: settingsRows }] } });
-    expect(await readIncentiveSettings(db)).toEqual({ dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10 });
+    expect(await readIncentiveSettings(db)).toEqual({ dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 });
   });
   it("answers 'off' when the read fails", async () => {
     const { db } = makeDb({ tables: { site_settings: [{ error: { message: "x" } }] } });
@@ -54,12 +54,16 @@ describe("settings", () => {
   });
   it("writes paisa through the caller's client and rejects bad input with 422", async () => {
     const { db, upserts } = makeDb();
-    await writeIncentiveSettings(db, { dailyTarget: 8, dailyBonusTaka: 50, referralBonusTaka: 200, referralAfter: 10 });
+    await writeIncentiveSettings(db, { dailyTarget: 8, dailyBonusTaka: 50, referralBonusTaka: 200, referralAfter: 10, weeklyTarget: 40, weeklyBonusTaka: 300 });
     expect(upserts[0]).toEqual([
       { key: "incentive_daily_target", value: 8 },
       { key: "incentive_daily_bonus_paisa", value: 5000 },
       { key: "incentive_referral_bonus_paisa", value: 20000 },
       { key: "incentive_referral_after", value: 10 },
+      { key: "incentive_weekly_target", value: 40 },
+      { key: "incentive_weekly_bonus_paisa", value: 30000 },
+      { key: "incentive_weekly_target2", value: 0 },
+      { key: "incentive_weekly_bonus2_paisa", value: 0 },
     ]);
     await expect(writeIncentiveSettings(db, { dailyTarget: 3, dailyBonusTaka: 0, referralBonusTaka: 0, referralAfter: 10 })).rejects.toMatchObject({ status: 422 });
     await expect(writeIncentiveSettings(makeDb({ upsertError: true }).db, { dailyTarget: 0, dailyBonusTaka: 0, referralBonusTaka: 0, referralAfter: 10 })).rejects.toThrow(/Could not save/);
@@ -89,6 +93,20 @@ describe("runIncentiveSweep", () => {
     expect(r.detail).toContain("৳250");
     expect(push).toHaveBeenCalledTimes(2);
     expect(push.mock.calls[0]).toEqual(["r1", expect.stringContaining("টার্গেট"), expect.stringContaining("৳50")]);
+  });
+  it("counts weekly awards in the total and the message, and thanks the rider for the weekly one", async () => {
+    const { db } = makeDb({
+      tables: { site_settings: [{ data: [{ key: "incentive_weekly_target", value: 40 }, { key: "incentive_weekly_bonus_paisa", value: 30000 }] }] },
+      rpc: { ps_award_incentives: { data: { daily: 0, weekly: 2, referral: 0, total: 60000, awards: [
+        { riderId: "r1", kind: "weekly_target", tier: 1, amount: 30000 },
+        { riderId: "r2", kind: "weekly_target", tier: 1, amount: 30000 },
+      ] } } },
+    });
+    const push = vi.fn(async () => 1);
+    const r = await runIncentiveSweep(db, { pushRider: push });
+    expect(r).toMatchObject({ status: "ran", did: 2 });
+    expect(r.detail).toContain("2 weekly");
+    expect(push.mock.calls[0]).toEqual(["r1", expect.stringContaining("সাপ্তাহিক"), expect.stringContaining("৳300")]);
   });
   it("a push failure never undoes or hides the payment", async () => {
     const { db } = makeDb({ tables: on, rpc: { ps_award_incentives: { data: { daily: 1, referral: 0, total: 5000, awards: [{ riderId: "r1", kind: "daily_target", amount: 5000 }] } } } });
@@ -170,6 +188,36 @@ describe("getRiderIncentives", () => {
     ]);
     expect(v?.referral.totalEarned).toBe(20000);
     expect(v?.totalEarned).toBe(25000);
+  });
+  it("builds this week's progress (Mon–Sun, Dhaka), which tiers were paid, and ignores last week's award", async () => {
+    const { db } = makeDb({
+      rpc: { ps_rider_referral_code: { data: "K7MQ2X" } },
+      tables: {
+        site_settings: [{ data: [
+          { key: "incentive_weekly_target", value: 4 }, { key: "incentive_weekly_bonus_paisa", value: 30000 },
+          { key: "incentive_weekly_target2", value: 6 }, { key: "incentive_weekly_bonus2_paisa", value: 20000 },
+        ] }],
+        delivery_assignments: [
+          { data: [{ id: "a1", orders: { is_return: false } }] },
+          { data: [1, 2, 3, 4, 5].map((n) => ({ id: `w${n}`, orders: { is_return: n === 5 } })) },
+        ],
+        rider_incentive_awards: [{ data: [
+          { kind: "weekly_target", ref_key: "2026-09-28:1", amount: 30000 },
+          { kind: "weekly_target", ref_key: "2026-09-21:2", amount: 20000 },
+        ] }],
+      },
+    });
+    const v = await getRiderIncentives(db, "r1", NOW);
+    expect(v?.today).toBeNull();
+    expect(v?.week).toMatchObject({ done: 4, toNext: 2 });
+    expect(v?.week?.tiers).toEqual([
+      { target: 4, bonus: 30000, reached: true, paid: true },
+      { target: 6, bonus: 20000, reached: false, paid: false },
+    ]);
+  });
+  it("has no weekly block while the weekly bonus is off", async () => {
+    const { db } = makeDb({ rpc: { ps_rider_referral_code: { data: "K7MQ2X" } }, tables: { site_settings: [{ data: settingsRows }] } });
+    expect((await getRiderIncentives(db, "r1", NOW))?.week).toBeNull();
   });
   it("hides the daily block when the daily bonus is off", async () => {
     const { db } = makeDb({ rpc: { ps_rider_referral_code: { data: "K7MQ2X" } }, tables: { site_settings: [{ data: [] }] } });

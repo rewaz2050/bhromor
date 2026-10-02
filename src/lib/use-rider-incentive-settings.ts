@@ -11,6 +11,10 @@ export interface IncentiveForm {
   dailyBonusTaka: string;
   referralBonusTaka: string;
   referralAfter: string;
+  weeklyTarget: string;
+  weeklyBonusTaka: string;
+  weeklyTarget2: string;
+  weeklyBonus2Taka: string;
 }
 
 export const useRiderIncentiveSettings = () => {

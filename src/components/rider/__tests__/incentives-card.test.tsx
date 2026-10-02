@@ -9,7 +9,8 @@ afterEach(() => {
 });
 
 const view = (over: Partial<RiderIncentiveView> = {}): RiderIncentiveView => ({
-  settings: { dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10 },
+  settings: { dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 },
+  week: null,
   today: { done: 3, target: 8, left: 5, reached: false, percent: 38 },
   todayPaid: false,
   referral: { code: "K7MQ2X", after: 10, bonus: 20000, items: [], totalEarned: 0 },
@@ -21,7 +22,7 @@ describe("<IncentivesCard>", () => {
   it("renders nothing without data, or while both bonuses are off", () => {
     const { container, rerender } = render(<IncentivesCard view={null} />);
     expect(container).toBeEmptyDOMElement();
-    rerender(<IncentivesCard view={view({ settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 0, referralAfter: 10 } })} />);
+    rerender(<IncentivesCard view={view({ settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 0, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 } })} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -39,8 +40,29 @@ describe("<IncentivesCard>", () => {
     expect(screen.getByTestId("daily-status")).toHaveTextContent("ওয়ালেটে যোগ হয়েছে");
   });
 
+  it("shows the weekly tiers and how far the next one is", () => {
+    const week = {
+      done: 30,
+      toNext: 10,
+      percent: 60,
+      tiers: [
+        { target: 40, bonus: 30000, reached: false, paid: false },
+        { target: 50, bonus: 20000, reached: false, paid: false },
+      ],
+    };
+    const settings = { dailyTarget: 0, dailyBonus: 0, referralBonus: 0, referralAfter: 10, weeklyTarget: 40, weeklyBonus: 30000, weeklyTarget2: 50, weeklyBonus2: 20000 };
+    const { rerender } = render(<IncentivesCard view={view({ settings, today: null, week })} />);
+    expect(screen.getByTestId("weekly-progress")).toHaveTextContent("40টি ডেলিভারিতে");
+    expect(screen.getByTestId("weekly-progress")).toHaveTextContent("50টি ডেলিভারিতে");
+    expect(screen.getByTestId("weekly-status")).toHaveTextContent("৩০টি".replace("৩০","30") + " শেষ — পরের টিয়ারে আর 10টি বাকি");
+    rerender(<IncentivesCard view={view({ settings, today: null, week: { ...week, done: 50, toNext: 0, percent: 100, tiers: week.tiers.map((t) => ({ ...t, reached: true })) } })} />);
+    expect(screen.getByTestId("weekly-status")).toHaveTextContent("কিছুক্ষণের মধ্যেই");
+    rerender(<IncentivesCard view={view({ settings, today: null, week: { ...week, done: 50, toNext: 0, percent: 100, tiers: week.tiers.map((t) => ({ ...t, reached: true, paid: true })) } })} />);
+    expect(screen.getByTestId("weekly-status")).toHaveTextContent("ওয়ালেটে যোগ হয়েছে");
+  });
+
   it("hides the daily block when the daily bonus is off but keeps the referral one", () => {
-    render(<IncentivesCard view={view({ today: null, settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 20000, referralAfter: 10 } })} />);
+    render(<IncentivesCard view={view({ today: null, settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 20000, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 } })} />);
     expect(screen.queryByTestId("daily-progress")).toBeNull();
     expect(screen.getByTestId("referral-code")).toHaveTextContent("K7MQ2X");
   });

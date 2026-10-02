@@ -8,7 +8,7 @@ import IncentivesPage from "../riders/incentives/page";
 
 const base = (over: Record<string, unknown> = {}) => ({
   live: true, checked: true, loaded: true, error: null,
-  settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 0, referralAfter: 10 },
+  settings: { dailyTarget: 0, dailyBonus: 0, referralBonus: 0, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 },
   save: vi.fn(async () => true), clearError: vi.fn(), ...over,
 });
 
@@ -24,7 +24,7 @@ describe("/admin/riders/incentives", () => {
 
   it("shows stored amounts in taka and saves edits as taka", async () => {
     const save = vi.fn(async () => true);
-    state.hook = base({ save, settings: { dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10 } });
+    state.hook = base({ save, settings: { dailyTarget: 8, dailyBonus: 5000, referralBonus: 20000, referralAfter: 10, weeklyTarget: 0, weeklyBonus: 0, weeklyTarget2: 0, weeklyBonus2: 0 } });
     render(<IncentivesPage />);
     expect((screen.getByLabelText(/^Bonus/) as HTMLInputElement).value).toBe("50");
     expect((screen.getByLabelText(/Referral bonus/) as HTMLInputElement).value).toBe("200");
@@ -32,9 +32,23 @@ describe("/admin/riders/incentives", () => {
     fireEvent.change(screen.getByLabelText(/^Bonus/), { target: { value: "75" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(save).toHaveBeenCalledWith({ dailyTarget: "10", dailyBonusTaka: "75", referralBonusTaka: "200", referralAfter: "10" }),
+      expect(save).toHaveBeenCalledWith({ dailyTarget: "10", dailyBonusTaka: "75", referralBonusTaka: "200", referralAfter: "10", weeklyTarget: "0", weeklyBonusTaka: "0", weeklyTarget2: "0", weeklyBonus2Taka: "0" }),
     );
     expect(await screen.findByTestId("incentives-saved")).toBeInTheDocument();
+  });
+
+  it("saves the two weekly tiers", async () => {
+    const save = vi.fn(async () => true);
+    state.hook = base({ save });
+    render(<IncentivesPage />);
+    fireEvent.change(screen.getByLabelText(/Tier 1 — deliveries/), { target: { value: "40" } });
+    fireEvent.change(screen.getByLabelText(/Tier 1 bonus/), { target: { value: "300" } });
+    fireEvent.change(screen.getByLabelText(/Tier 2 — higher/), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Tier 2 extra/), { target: { value: "200" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ weeklyTarget: "40", weeklyBonusTaka: "300", weeklyTarget2: "50", weeklyBonus2Taka: "200" })),
+    );
   });
 
   it("a refused save shows the server message and no success banner", async () => {
