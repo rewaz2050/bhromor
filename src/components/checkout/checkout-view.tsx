@@ -490,7 +490,12 @@ export default function CheckoutView() {
   const [couponFreeByShop, setCouponFreeByShop] = useState<Record<string, boolean>>({});
   /* P1 #8 — the shop's OWN wallet numbers (no merchant account). A method
      with no configured number is simply not offered — COD always works. */
-  const [wallets, setWallets] = useState<{ bkash?: string; nagad?: string } | null>(null);
+  const [wallets, setWallets] = useState<{
+    bkash?: string;
+    nagad?: string;
+    payTo?: "platform" | "shop";
+    payeeName?: string;
+  } | null>(null);
   // P2 #17 — is the phone typed here an ACTIVE PROSANTI+ member? The server
   // answers (the client cannot claim it) and the same question is re-asked by
   // the place-order RPC at confirmation; this only makes the quote honest.
@@ -516,20 +521,34 @@ export default function CheckoutView() {
       value: subtotal,
     });
   }, [ready, detail, subtotal]);
+  // Which wallet numbers apply depends on the shops in the bag: a shop that sells into its
+  // own wallet is paid on its own number (single-shop bag), a mix of such a shop and another
+  // gets COD only. The server answers; this only forwards the shop ids.
+  const cartShopKey = useMemo(
+    () => [...new Set(detail.map((l) => l.product.shopId).filter((s): s is string => !!s))].sort().join(","),
+    [detail],
+  );
   useEffect(() => {
     let live = true;
-    fetch("/api/payments")
+    fetch(cartShopKey ? `/api/payments?shops=${encodeURIComponent(cartShopKey)}` : "/api/payments")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (live && data && typeof data === "object") {
-          setWallets(data as { bkash?: string; nagad?: string });
+          setWallets(data as { bkash?: string; nagad?: string; payTo?: "platform" | "shop"; payeeName?: string });
         }
       })
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, []);
+  }, [cartShopKey]);
+  // The bag changed under a chosen wallet (e.g. a second shop joined): its number is gone,
+  // so go back to cash on delivery instead of leaving a method nobody can pay with.
+  useEffect(() => {
+    if (!wallets) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the chosen wallet vanished with the cart: fall back to COD
+    setForm((f) => (f.payMethod !== "cod" && !wallets[f.payMethod] ? { ...f, payMethod: "cod", trxid: "" } : f));
+  }, [wallets]);
 
   const submittingRef = useRef(false);
   const [orderError, setOrderError] = useState<FriendlyError | null>(null);
@@ -2660,6 +2679,16 @@ export default function CheckoutView() {
                     clearFieldError("trxid");
                   }}
                 />
+              )}
+              {wallets?.payTo === "shop" && (wallets.bkash || wallets.nagad) && (
+                <p className="text-xs leading-5 text-ink-soft" data-testid="pay-to-shop-note">
+                  এই টাকা সরাসরি {wallets.payeeName ? `${wallets.payeeName}-এর` : "দোকানের"} নিজস্ব নম্বরে যাবে।
+                </p>
+              )}
+              {wallets?.payTo === "shop" && !wallets.bkash && !wallets.nagad && cartShopKey.includes(",") && (
+                <p className="text-xs leading-5 text-ink-soft" data-testid="mixed-bag-cod-note">
+                  একাধিক দোকানের ব্যাগে শুধু ক্যাশ অন ডেলিভারি চলবে।
+                </p>
               )}
               {fieldErrors.payMethod && (
                 <p className="text-xs text-rose-700">{fieldErrors.payMethod}</p>

@@ -188,6 +188,10 @@ export interface DbShop {
   verification_note?: string | null;
   /** N6 (202610010002) — who verifies wallet payments; absent before it. */
   payment_verifier?: string | null;
+  /** 202610020013 — how the shop is paid, and its own wallet numbers. */
+  settlement_model?: string | null;
+  wallet_bkash?: string | null;
+  wallet_nagad?: string | null;
   /** B6 (202609280006) — holiday dates; absent on a database without it. */
   vacation_start?: string | null;
   vacation_end?: string | null;

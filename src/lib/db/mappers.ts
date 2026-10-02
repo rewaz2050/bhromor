@@ -43,6 +43,7 @@ import type {
   DbZone,
 } from "./types";
 import { parsePaymentVerifier } from "@/lib/payment-verifier";
+import { normalizeWalletNumber, parseSettlementModel } from "@/lib/shop-settlement";
 
 const epoch = (iso: string): number => {
   const ms = Date.parse(iso);
@@ -264,6 +265,15 @@ export const mapShop = (row: DbShop): Shop => ({
     : {}),
   ...(row.payment_verifier !== undefined
     ? { paymentVerifier: parsePaymentVerifier(row.payment_verifier) }
+    : {}),
+  ...(row.settlement_model !== undefined
+    ? {
+        settlementModel: parseSettlementModel(row.settlement_model),
+        shopWallets: {
+          ...(normalizeWalletNumber(row.wallet_bkash) ? { bkash: normalizeWalletNumber(row.wallet_bkash) } : {}),
+          ...(normalizeWalletNumber(row.wallet_nagad) ? { nagad: normalizeWalletNumber(row.wallet_nagad) } : {}),
+        },
+      }
     : {}),
   review: mapApplicationReview(row),
   // B5 — the badge is public; the staff note and the officer are not part of

@@ -20,6 +20,12 @@ import {
   PAYMENT_VERIFIER_LABEL,
   type PaymentVerifier,
 } from "@/lib/payment-verifier";
+import {
+  SETTLEMENT_HELP,
+  SETTLEMENT_LABEL,
+  SETTLEMENT_MODELS,
+  type SettlementModel,
+} from "@/lib/shop-settlement";
 
 type Filter = Shop["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -84,6 +90,10 @@ function ShopCard({
   );
   // N6: who decides this shop's bKash/Nagad payments (absent = column not migrated).
   const [verifier, setVerifier] = useState<PaymentVerifier>(shop.paymentVerifier ?? "both");
+  // 202610020013: how the shop is paid, plus its own wallet numbers (absent = column not migrated).
+  const [settlement, setSettlement] = useState<SettlementModel>(shop.settlementModel ?? "platform");
+  const [walletBkash, setWalletBkash] = useState(shop.shopWallets?.bkash ?? "");
+  const [walletNagad, setWalletNagad] = useState(shop.shopWallets?.nagad ?? "");
   const [zoneIds, setZoneIds] = useState<string[]>([...shop.zoneIds]);
   const [isOpen, setIsOpen] = useState(shop.isOpen);
   const [formError, setFormError] = useState<string | null>(null);
@@ -134,8 +144,17 @@ function ShopCard({
       ...freeDeliveryPatch,
       // Sent only when the column exists or the admin actually changed it, so
       // a database without 202610010002 keeps saving every other field.
-      ...(shop.paymentVerifier !== undefined || verifier !== "both"
-        ? { paymentVerifier: verifier }
+      ...(shop.paymentVerifier !== undefined || verifier !== "both" || settlement === "shop_wallet"
+        ? { paymentVerifier: settlement === "shop_wallet" ? "shop" : verifier }
+        : {}),
+      ...(shop.settlementModel !== undefined || settlement !== "platform"
+        ? {
+            settlementModel: settlement,
+            shopWallets: {
+              ...(walletBkash.trim() ? { bkash: walletBkash.trim() } : {}),
+              ...(walletNagad.trim() ? { nagad: walletNagad.trim() } : {}),
+            },
+          }
         : {}),
     });
     setSaving(false);
@@ -288,10 +307,55 @@ function ShopCard({
             </span>
           </label>
           <label className="block sm:col-span-2">
+            <span className={label}>How this shop is paid</span>
+            <select
+              className={field}
+              value={settlement}
+              onChange={(e) => setSettlement(e.target.value as SettlementModel)}
+              data-testid="shop-settlement-model"
+            >
+              {SETTLEMENT_MODELS.map((m) => (
+                <option key={m} value={m}>
+                  {SETTLEMENT_LABEL[m]}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-ink-soft" data-testid="shop-settlement-help">
+              {SETTLEMENT_HELP[settlement]}
+            </span>
+          </label>
+          {settlement === "shop_wallet" && (
+            <>
+              <label className="block">
+                <span className={label}>Shop&apos;s own bKash number</span>
+                <input
+                  className={field}
+                  inputMode="tel"
+                  value={walletBkash}
+                  onChange={(e) => setWalletBkash(e.target.value)}
+                  placeholder="01XXXXXXXXX"
+                  data-testid="shop-wallet-bkash"
+                />
+              </label>
+              <label className="block">
+                <span className={label}>Shop&apos;s own Nagad number</span>
+                <input
+                  className={field}
+                  inputMode="tel"
+                  value={walletNagad}
+                  onChange={(e) => setWalletNagad(e.target.value)}
+                  placeholder="01XXXXXXXXX"
+                  data-testid="shop-wallet-nagad"
+                />
+              </label>
+            </>
+          )}
+          <label className="block sm:col-span-2">
             <span className={label}>Who verifies this shop&apos;s bKash / Nagad payments</span>
             <select
               className={field}
-              value={verifier}
+              disabled={settlement === "shop_wallet"}
+              value={settlement === "shop_wallet" ? "shop" : verifier}
               onChange={(e) => setVerifier(e.target.value as PaymentVerifier)}
               data-testid="shop-payment-verifier"
             >

@@ -119,6 +119,14 @@ export interface Shop {
    * a database without migration 202610010002 (then: both, as before).
    */
   paymentVerifier?: "platform" | "shop" | "both";
+  /**
+   * 202610020013 — how this shop is paid: "platform" (PROSANTI collects, the
+   * default) or "shop_wallet" (the customer pays the shop's own bKash/Nagad).
+   * Absent on a database without the migration (then: platform).
+   */
+  settlementModel?: "platform" | "shop_wallet";
+  /** The shop's own wallet numbers (used only when settlementModel is shop_wallet). */
+  shopWallets?: { bkash?: string; nagad?: string };
   /** Round 4 — last staff decision (approve / reject / suspend / re-open). */
   review?: ApplicationReview;
   /**

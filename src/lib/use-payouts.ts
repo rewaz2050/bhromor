@@ -84,6 +84,8 @@ export function usePayouts(shopId: string | null) {
     async (input: {
       shopId: string;
       amountTaka: number;
+      /** "remit" = the shop paying PROSANTI (negative balance); omitted = a normal payout. */
+      direction?: "remit";
       method: string;
       reference: string;
     }): Promise<boolean> => {

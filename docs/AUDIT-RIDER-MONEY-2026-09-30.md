@@ -726,3 +726,28 @@ A–Z শেষ হওয়ার পর "জানা সীমা"-র তা
 4. **ডেলিভারির আগে cancel/refund** হলে shop-এর কাছ থেকে customer-কে ফেরত কে দেবে?
 
 এগুলোর উত্তর ছাড়া শুরু করলে shop-এর ব্যালান্স ভুল দেখানোর ঝুঁকি (আর্থিক হিসাব)। উত্তর পেলে আলাদা PR-এ করা যাবে; ডিজাইন ওপরে, বদলাবার জায়গার তালিকাসহ।
+
+## ৩৭. Shop-own-wallet — shop নিজের bKash/Nagad-এ টাকা নেবে (migration `202610020013`)
+
+§36-এর চার প্রশ্নের উত্তরে ডিফল্ট ধরে বানানো হয়েছে। **প্রতিটি shop-এর জন্য ডিফল্ট `platform` — কিছুই বদলায় না;** admin একটি একটি করে shop চালু করে।
+
+**সিদ্ধান্ত (বদলাতে চাইলে বলুন):**
+1. একাধিক shop-এর কার্টে shop-own-wallet থাকলে **শুধু COD**। একটিমাত্র shop হলে customer সেই shop-এর নম্বরে পাঠায়।
+2. ব্যালান্স ঋণাত্মক = **shop PROSANTI-কে দেনা** (customer-এর দেওয়া মোট − shop-এর payable = commission + delivery + tip + surcharge)। shop টাকা পাঠালে staff তা **remittance** হিসেবে লেখে (`shop_payouts`-এ ঋণাত্মক অঙ্ক)।
+3. COD অপরিবর্তিত (রাইডার ক্যাশ platform-কে, platform shop-কে)।
+4. ডেলিভারির আগে cancel/refund shop নিজে customer-কে ফেরত দেয়।
+
+**কীভাবে কাজ করে**
+- `shops.settlement_model` (`platform` | `shop_wallet`), `wallet_bkash`, `wallet_nagad` (`01XXXXXXXXX` চেক)। Admin → Shops → "How this shop is paid"। shop_wallet হলে অন্তত একটি নম্বর লাগে, আর payment-verifier জোর করে `shop` (টাকা shop-এর wallet-এ, তাই shop-ই যাচাই করবে)।
+- `shop_ledger.collected_by_shop`: delivered + verified + non-COD অর্ডারের মোট অঙ্ক। trigger `trg_shop_ledger_net_collected` `payable` থেকে তা বাদ দেয়; `payment_status` বদলালে `trg_orders_renet_collected` আবার হিসাব করে (idempotent; reject হলে ফেরত দেয়)। **শুধু ভবিষ্যৎ লাইন প্রভাবিত** — আগের ledger অপরিবর্তিত।
+- `ps_guard_payout_balance`: ধনাত্মক payout ব্যালান্সের বেশি হলে নয়; ঋণাত্মক (remittance) শুধু shop দেনা থাকলে এবং দেনার বেশি নয়।
+- `ps_place_order` একটি anchor-এ in-place patch (`ps_shop_takes_wallet`) — shop-এর নিজের wallet থাকলে platform-এর নম্বর না থাকলেও wallet পেমেন্ট নেয়। পুরো ফাংশন নতুন করে লেখা হয়নি (installed ফাংশন `202609260003` runtime-patched, তাই ঝুঁকি)।
+- Daily report-এর "shop overpaid" শুধু platform shop-এর জন্য।
+- Checkout: `/api/payments?shops=a,b` — একটিমাত্র shop_wallet shop হলে তার নম্বর + "এই shop-কে সরাসরি পাঠান" নোট; মিশ্র কার্টে কোনো wallet নয়, COD নোট; wallet হারালে পছন্দ COD-তে ফেরে। Validator একই `walletsForCart` ব্যবহার করে (shop-এর নম্বর না থাকলে platform-এর নম্বরে fallback **হয় না**)।
+- Admin → Payouts: ঋণাত্মক ব্যালান্সে "Owes PROSANTI ৳X", বোতাম "Record remittance (shop paid PROSANTI)" (দেনার বেশি নেওয়া যায় না), ইতিহাসে "Remitted ৳X"। Vendor → Earnings: "You owe PROSANTI" কার্ড ও ব্যাখ্যা।
+
+**টেস্ট:** Real-Postgres (PGlite): netting, re-net/reject, remittance guard, daily check, ফাংশন patch। Unit: `walletsForCart`/number/model parse, `/api/payments`, `mapShop`, `shapeShopSettlement`, remit shape/`recordPayout`, validator, Payouts পেজ।
+
+**Owner-এর কাজ:** Supabase SQL Editor-এ `…0012`-এর পর `202610020013_shop_own_wallet.sql` চালান (বা নতুন DB-তে `bootstrap-parts/21`)। migration না চালালে Admin → Shops-এ model সেভ করতে গেলে স্পষ্ট ৫০৩ বার্তা আসে; checkout platform নম্বরেই থাকে।
+
+**সীমা:** Daily report-এর `walletPaidOrders` এখনও সব non-COD অর্ডার গোনে; Vendor earnings ledger শেষ ১০০/payout ২০ লাইন দেখায় (আগে থেকেই)।

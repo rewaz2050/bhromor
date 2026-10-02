@@ -1,4 +1,4 @@
--- PART 15/20 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 15/21 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: vendor staff (202609280007) ====
 -- =====================================================================
 -- C1 (2026-09-28) — a shop's owner hires their own staff.

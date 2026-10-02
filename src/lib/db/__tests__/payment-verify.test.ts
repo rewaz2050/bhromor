@@ -108,6 +108,22 @@ describe("who verifies a wallet payment (audit N6, 202610010002)", () => {
     expect(mapShop({ ...(row as object), payment_verifier: "shop" } as never).paymentVerifier).toBe("shop");
   });
 
+  it("mapShop exposes how the shop is paid only when the column exists (202610020013)", () => {
+    const row = { id: "s", slug: "s", name: "S", phone: "", zone_ids: [], prep_minutes: 1, commission_pct: 10, status: "active", is_open: true, rating_avg: 0, rating_count: 0, created_at: "2026-10-01" } as never;
+    expect("settlementModel" in mapShop(row)).toBe(false);
+    const own = mapShop({ ...(row as object), settlement_model: "shop_wallet", wallet_bkash: "01811111111", wallet_nagad: "junk" } as never);
+    expect(own.settlementModel).toBe("shop_wallet");
+    expect(own.shopWallets).toEqual({ bkash: "01811111111" });
+    expect(mapShop({ ...(row as object), settlement_model: "weird" } as never).settlementModel).toBe("platform");
+  });
+
+  it("upsertShop refuses a shop_wallet shop with no number before touching the database", async () => {
+    const db = { from: () => { throw new Error("must not be reached"); } } as never;
+    await expect(
+      upsertShop(db, { name: "Test Shop", settlementModel: "shop_wallet" }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/bKash or Nagad number first/) });
+  });
+
   it("upsertShop refuses an unknown verifier before touching the database", async () => {
     const db = { from: () => { throw new Error("must not be reached"); } } as never;
     await expect(
