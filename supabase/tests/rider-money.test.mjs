@@ -117,6 +117,7 @@ for (const f of [
   '202610020010_rider_incentives.sql',
   '202610020011_dispatch_followups.sql',
   '202610020012_failed_fee_weekly_bonus.sql',
+  '202610020013_shop_own_wallet.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1216,6 +1217,93 @@ try {
   await assert.rejects(db.query(`insert into rider_incentive_awards(rider_id, kind, ref_key, amount) values ($1,'mystery','x',1)`, [wkA]));
   await db.query(`delete from site_settings where key like 'incentive_%'`);
   console.log('PASS: weekly tiered bonus — off by default, tier 1 + extra tier 2, once each, last week honoured, bad tier ignored, audited');
+
+  // ── shop-own-wallet settlement model (202610020013) ──
+  await as(null);
+  await db.exec(`create trigger trg_payouts_check_balance before insert on shop_payouts for each row execute function ps_guard_payout_balance()`);
+  const swShop = await uuid();
+  const swPlat = await uuid();
+  await db.query(`insert into shops(id, name) values ($1,'OwnWallet'), ($2,'PlatformShop')`, [swShop, swPlat]);
+  assert.equal(await scalar(`select settlement_model from shops where id = $1`, [swShop]), 'platform', 'platform model by default');
+  await assert.rejects(db.query(`update shops set settlement_model = 'mystery' where id = $1`, [swShop]));
+  await assert.rejects(db.query(`update shops set wallet_bkash = '123' where id = $1`, [swShop]), /check/);
+  const swOrder = async (shop, { payment = 'bkash', total = 100000, status = 'out-for-delivery', ps = 'verified', ret = false } = {}) =>
+    scalar(`insert into orders(status, payment, total, payment_status, shop_id, is_return) values ($1::ps_order_status,$2,$3,$4,$5,$6) returning id`, [status, payment, total, ps, shop, ret]);
+  // the real ledger function is not part of this harness: the ledger line is written like it would be, base payable 80000 (subtotal 100000 − commission 15000 − 5000 shop promo)
+  const swLedger = (shop, order, base = 80000, commission = 15000) =>
+    db.query(`insert into shop_ledger(shop_id, order_id, commission, payable) values ($1,$2,$3,$4)`, [shop, order, commission, base]);
+  const swBal = (shop) => scalar(`select coalesce((select sum(payable) from shop_ledger where shop_id = $1),0) - coalesce((select sum(amount) from shop_payouts where shop_id = $1),0)`, [shop]).then(Number);
+
+  // platform shop: nothing changes
+  const swP1 = await swOrder(swPlat);
+  await swLedger(swPlat, swP1);
+  assert.equal(await swBal(swPlat), 80000, 'platform shop: payable untouched');
+
+  // switching to the model forces the shop-only verifier-compatible state and changes nothing retroactively
+  await db.query(`update shops set settlement_model = 'shop_wallet', wallet_bkash = '01711111111' where id = $1`, [swShop]);
+  const swO1 = await swOrder(swShop);
+  await swLedger(swShop, swO1);
+  assert.equal(await swBal(swShop), 80000 - 100000, 'verified bKash order paid to the shop: the shop owes commission+delivery… (negative)');
+  assert.equal(Number(await scalar(`select collected_by_shop from shop_ledger where order_id = $1`, [swO1])), 100000);
+  // COD is untouched
+  const swO2 = await swOrder(swShop, { payment: 'cod', total: 50000 });
+  await swLedger(swShop, swO2, 42500, 7500);
+  assert.equal(await swBal(swShop), -20000 + 42500, 'COD still owes the shop its payable');
+  // a return leg is never netted
+  const swO3 = await swOrder(swShop, { ret: true, total: 0 });
+  await swLedger(swShop, swO3, -1000, 0);
+  assert.equal(Number(await scalar(`select collected_by_shop from shop_ledger where order_id = $1`, [swO3])), 0);
+  // payment verified AFTER delivery: the line is re-netted exactly once
+  const swO4 = await swOrder(swShop, { ps: 'pending_verification', total: 60000 });
+  await swLedger(swShop, swO4, 51000, 9000);
+  const before = await swBal(swShop);
+  await db.query(`update orders set payment_status = 'verified' where id = $1`, [swO4]);
+  assert.equal(await swBal(swShop), before - 60000, 'late verification nets the collected amount');
+  assert.equal(Number(await scalar(`select collected_by_shop from shop_ledger where order_id = $1`, [swO4])), 60000);
+  await db.query(`update orders set payment_status = 'verified', total = total where id = $1`, [swO4]);
+  assert.equal(await swBal(swShop), before - 60000, 'idempotent');
+  await db.query(`update orders set payment_status = 'rejected' where id = $1`, [swO4]);
+  assert.equal(await swBal(swShop), before, 'a payment rejected afterwards gives it back');
+  await db.query(`update orders set payment_status = 'verified' where id = $1`, [swO4]);
+
+  // the ledger line rewritten with its base payable (on conflict update) nets again, not twice
+  const swBase = await swBal(swShop);
+  await db.query(`update shop_ledger set payable = 80000 where order_id = $1`, [swO1]);
+  assert.equal(await swBal(swShop), swBase, 'rewriting the base payable keeps the netting');
+
+  // one more verified wallet order tips the shop into debt (COD payable alone no longer covers it)
+  const swO5 = await swOrder(swShop, { total: 100000 });
+  await swLedger(swShop, swO5);
+  assert.equal(await swBal(swShop), 12500 - 20000);
+
+  // the guard: a positive payout cannot be sent to a shop that owes; a remittance cannot overshoot zero
+  const owed = await swBal(swShop);
+  assert.ok(owed < 0, 'the shop owes PROSANTI ' + owed);
+  await assert.rejects(db.query(`insert into shop_payouts(shop_id, amount) values ($1, 100)`, [swShop]), /exceeds balance/);
+  await assert.rejects(db.query(`insert into shop_payouts(shop_id, amount) values ($1, $2)`, [swShop, owed - 1]), /remittance exceeds/);
+  await db.query(`insert into shop_payouts(shop_id, amount, method, reference) values ($1, $2, 'bkash', 'REM-1')`, [swShop, owed / 2]);
+  assert.equal(await swBal(swShop), owed - owed / 2, 'a remittance brings the balance toward zero');
+  await db.query(`insert into shop_payouts(shop_id, amount) values ($1, $2)`, [swShop, owed - owed / 2]);
+  assert.equal(await swBal(swShop), 0);
+  await assert.rejects(db.query(`insert into shop_payouts(shop_id, amount) values ($1, -1)`, [swShop]), /remittance exceeds/);
+  await assert.rejects(db.query(`insert into shop_payouts(shop_id, amount) values ($1, 0)`, [swShop]), /must be positive/);
+  // platform shops: a negative amount is never allowed (balance is not negative)
+  await assert.rejects(db.query(`insert into shop_payouts(shop_id, amount) values ($1, -5)`, [swPlat]), /remittance exceeds/);
+  await db.query(`insert into shop_payouts(shop_id, amount) values ($1, 80000)`, [swPlat]);
+
+  // daily reconciliation: a shop_wallet shop in debt is not "overpaid"; a platform shop paid too much still is
+  await as(staffId);
+  await as(null);
+  const swO6 = await swOrder(swShop, { total: 100000 });
+  await swLedger(swShop, swO6); // new debt after the remittances: earned < paid, which would trip the check for a platform shop
+  assert.ok((await swBal(swShop)) < 0);
+  await as(staffId);
+  const swDaily = (await rows(`select ps_admin_money_daily(null) as r`))[0].r;
+  const swOver = swDaily.checks.find((c) => c.key === 'shop_overpaid');
+  assert.ok(!(swOver.sample ?? []).includes(swShop), 'shop_wallet shop is skipped by the overpaid check');
+  await as(null);
+  await db.exec(`drop trigger trg_payouts_check_balance on shop_payouts`);
+  console.log('PASS: shop-own-wallet — off by default, nets verified wallet orders (late verification, rewrite, returns, COD untouched), debt + remittance guard, overpaid check');
 } finally {
   await db.close();
 }
