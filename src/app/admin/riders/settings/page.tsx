@@ -19,7 +19,7 @@ const inputCls = "mt-1 w-full rounded-xl bg-ivory-100 px-3 py-2 text-sm normal-c
 export default function DispatchRulesPage() {
   const { live, checked, settings, loaded, error, save, clearError } = useDispatchSettings();
   // Edits are kept as text; `null` = untouched, show the saved value.
-  const [draft, setDraft] = useState<{ cashTaka: string; offerTtl: string; maxAttempts: string } | null>(null);
+  const [draft, setDraft] = useState<{ cashTaka: string; offerTtl: string; maxAttempts: string; loadLimit: string } | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -27,6 +27,7 @@ export default function DispatchRulesPage() {
     cashTaka: String(settings.cashCap / 100),
     offerTtl: String(settings.offerTtl),
     maxAttempts: String(settings.maxAttempts),
+    loadLimit: String(settings.loadLimit),
   };
   const edit = (patch: Partial<typeof shown>) => {
     setDraft({ ...shown, ...patch });
@@ -44,6 +45,7 @@ export default function DispatchRulesPage() {
       cashCap: Math.round(Number(shown.cashTaka) * 100),
       offerTtl: Number(shown.offerTtl),
       maxAttempts: Number(shown.maxAttempts),
+      loadLimit: Number(shown.loadLimit),
     };
     const ok = await save(next);
     setBusy(false);
@@ -139,6 +141,24 @@ export default function DispatchRulesPage() {
             </span>
           </label>
 
+          <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            Active jobs per rider
+            <input
+              type="number"
+              inputMode="numeric"
+              min={b.loadLimit.min}
+              max={b.loadLimit.max}
+              step={1}
+              value={shown.loadLimit}
+              onChange={(e) => edit({ loadLimit: e.target.value })}
+              disabled={!loaded}
+              className={inputCls}
+            />
+            <span className="mt-1 block text-[11px] font-normal normal-case text-ink-soft">
+              একজন রাইডার একসাথে সর্বোচ্চ কয়টি চলমান অর্ডার নিতে পারবেন; এর বেশি হলে নতুন অফার পান না। {b.loadLimit.min}–{b.loadLimit.max}; আগের মান {DISPATCH_DEFAULTS.loadLimit}। migration <code>202610020011</code> লাগে।
+            </span>
+          </label>
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
@@ -154,6 +174,7 @@ export default function DispatchRulesPage() {
                   cashTaka: String(DISPATCH_DEFAULTS.cashCap / 100),
                   offerTtl: String(DISPATCH_DEFAULTS.offerTtl),
                   maxAttempts: String(DISPATCH_DEFAULTS.maxAttempts),
+                  loadLimit: String(DISPATCH_DEFAULTS.loadLimit),
                 })
               }
               className="text-sm font-semibold text-forest-800 underline underline-offset-2"
@@ -165,7 +186,7 @@ export default function DispatchRulesPage() {
       )}
 
       <p className="text-xs text-ink-soft">
-        নতুন মান কাজ করতে একবার <code>supabase/migrations/202610020003_dispatch_settings.sql</code> Supabase SQL Editor-এ চালাতে হবে; তার আগে অ্যাপ আগের মান (৳5,000 / 90s / 2) ব্যবহার করে।
+        নতুন মান কাজ করতে একবার <code>supabase/migrations/202610020003_dispatch_settings.sql</code> Supabase SQL Editor-এ চালাতে হবে; তার আগে অ্যাপ আগের মান (৳5,000 / 90s / ২ চেষ্টা / ২ সক্রিয় কাজ) ব্যবহার করে।
       </p>
     </div>
   );

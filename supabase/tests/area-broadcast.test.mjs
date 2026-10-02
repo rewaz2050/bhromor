@@ -62,6 +62,12 @@ for (const f of ['202609250001_area_broadcast_dispatch.sql','202609250002_dispat
  await db.exec(sql);
  await db.exec(sql); // repeat-safe
 }
+// Follow-ups: load limit as a setting, no re-offer to a rider who failed/handed back, rider release.
+{
+ const sql = readFileSync(new URL('202610020011_dispatch_followups.sql', root), 'utf8');
+ await db.exec(sql);
+ await db.exec(sql); // repeat-safe
+}
 await db.exec(`
 create trigger trg_orders_auto_dispatch after update on orders
  for each row execute function ps_auto_dispatch_ready_order();
@@ -264,4 +270,63 @@ try {
  assert.equal(await scalar('select ps_offer_ttl_seconds()'), 600);
  assert.ok((await rows("select subject from audit_probe where event='rate_change'")).some(r => r.subject === 'offer_ttl_seconds'), 'a rule change reaches the audit writer');
  console.log('PASS: dispatch cash cap and offer window are clamped settings, honoured by broadcast and accept');
+
+ // ---- follow-ups: load limit setting ----
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders'); await db.query("update riders set status='suspended'");
+ await db.query(`delete from site_settings where key in ('rider_cash_cap_paisa','offer_ttl_seconds')`);
+ assert.equal(await scalar('select ps_rider_load_limit()'), 2, 'default load limit');
+ const lA = await rider("(current_load) values (2)");
+ const lB = await rider("(current_load) values (1)");
+ const lo1 = await order(); await ready(lo1);
+ assert.deepEqual((await offers(lo1)).map(x => x.rider_id), [lB], 'default: a rider carrying 2 is not offered');
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders');
+ await db.query(`insert into site_settings values ('rider_load_limit','3')`);
+ assert.equal(await scalar('select ps_rider_load_limit()'), 3);
+ const lo2 = await order(); await ready(lo2);
+ assert.deepEqual((await offers(lo2)).map(x => x.rider_id).sort(), [lA, lB].sort(), 'raised limit 3 admits the rider carrying 2');
+ await login(lA); await accept((await offers(lo2)).find(x => x.rider_id === lA).id);
+ assert.equal(await scalar('select current_load from riders where id=$1', [lA]), 3);
+ await db.query(`update site_settings set value = '0' where key = 'rider_load_limit'`);
+ assert.equal(await scalar('select ps_rider_load_limit()'), 1, 'clamped up to 1');
+ await db.query(`update site_settings set value = '50' where key = 'rider_load_limit'`);
+ assert.equal(await scalar('select ps_rider_load_limit()'), 5, 'clamped down to 5');
+ assert.ok((await rows("select subject from audit_probe where event='rate_change'")).some(r => r.subject === 'rider_load_limit'), 'load limit change is audited');
+ await db.query(`insert into site_settings values ('rider_auto_suspend','true')`);
+ assert.ok((await rows("select subject from audit_probe where event='rate_change'")).some(r => r.subject === 'rider_auto_suspend'), 'auto-suspend toggle is audited');
+ console.log('PASS: load limit is a clamped, audited setting honoured by broadcast and accept');
+
+ // ---- follow-ups: rider hands back an accepted job; no re-offer to the same rider ----
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders'); await db.query('delete from site_settings'); await db.query('update riders set current_load = 0');
+ await db.query("update riders set status='suspended'");
+ const rA = await rider(); const rB = await rider();
+ const ro = await order(); await ready(ro);
+ await login(rA);
+ await accept((await offers(ro)).find(x => x.rider_id === rA).id);
+ const aid = await scalar("select id from delivery_assignments where order_id=$1 and rider_id=$2 and state='accepted'", [ro, rA]);
+ await login(rB);
+ await assert.rejects(db.query('select * from ps_rider_release_accepted($1,$2)', [aid, 'not my job at all']), /forbidden/, 'only the owner can hand it back');
+ await login(rA);
+ await assert.rejects(db.query('select * from ps_rider_release_accepted($1,$2)', [aid, 'x']), /reason/, 'a reason is required');
+ await db.query('select * from ps_rider_release_accepted($1,$2)', [aid, 'bike broke down']);
+ assert.equal(await scalar('select state from delivery_assignments where id=$1', [aid]), 'cancelled');
+ assert.equal(await scalar('select cancelled_by from delivery_assignments where id=$1', [aid]), 'rider_release');
+ assert.equal(await scalar('select status::text from orders where id=$1', [ro]), 'ready-for-pickup');
+ assert.equal(await scalar('select rider_id from orders where id=$1', [ro]), null);
+ assert.equal(await scalar('select current_load from riders where id=$1', [rA]), 0, 'load freed');
+ assert.deepEqual((await offers(ro)).map(x => x.rider_id), [rB], 'rebroadcast reaches others, not the rider who handed it back');
+ await sweep();
+ assert.deepEqual((await offers(ro)).map(x => x.rider_id), [rB], 'and a later sweep does not re-offer it to them either');
+ await assert.rejects(db.query('select * from ps_rider_release_accepted($1,$2)', [aid, 'second try here']), /accepted/, 'cannot release twice');
+ console.log('PASS: rider can hand back an accepted job; it is rebroadcast without them');
+
+ // a rider whose delivery FAILED is not auto re-offered that order either
+ await db.query('delete from delivery_assignments'); await db.query('delete from orders'); await db.query('update riders set current_load = 0');
+ const fo = await order(); await ready(fo);
+ await login(rA); await accept((await offers(fo)).find(x => x.rider_id === rA).id);
+ await db.query("update delivery_assignments set state='picked_up' where order_id=$1 and rider_id=$2", [fo, rA]);
+ await db.query("update delivery_assignments set state='failed' where order_id=$1 and rider_id=$2", [fo, rA]);
+ await db.query("update orders set status='ready-for-pickup', rider_id=null where id=$1", [fo]);
+ await db.query('select ps_broadcast_order($1)', [fo]);
+ assert.deepEqual((await offers(fo)).map(x => x.rider_id), [rB], 'failed-delivery rider is skipped on redispatch');
+ console.log('PASS: failed-delivery rider is not auto re-offered the same order');
 } finally { await db.close(); }

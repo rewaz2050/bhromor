@@ -30,7 +30,7 @@ export const notifyIfNoCoverage = async (
     ]);
     if (error || !data) return false;
     const riders = (data as DbRider[]).map(mapRider);
-    const coverage = diagnoseCoverage(order, riders, { cashCap: settings.cashCap });
+    const coverage = diagnoseCoverage(order, riders, { cashCap: settings.cashCap, loadLimit: settings.loadLimit });
     if (coverage.severity !== "alert") return false;
     await notifyStaff(service, {
       kind: "order",

@@ -12,7 +12,7 @@ vi.mock("@/lib/staff-auth", () => ({
   requireStaff: async () => ({ user: { id: "staff-1" }, role: "admin", db: { who: "staff-db" } }),
   requireStaffRole: async () => ({ user: { id: "staff-1" }, role: "admin", db: { who: "staff-db" } }),
 }));
-vi.mock("@/lib/db/dispatch-settings", () => ({ readDispatchSettings: async () => ({ cashCap: 500000, offerTtl: 90, maxAttempts: 2 }) }));
+vi.mock("@/lib/db/dispatch-settings", () => ({ readDispatchSettings: async () => ({ cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2 }) }));
 vi.mock("@/lib/db/rider-quality", () => ({
   getScorecards: async (db: { who: string }) => {
     state.who.push(db.who);

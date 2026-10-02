@@ -68,6 +68,7 @@ export default function AdminDeliveriesPage() {
         order.id,
         diagnoseCoverage(order, riders, {
           cashCap: dispatch.cashCap,
+          loadLimit: dispatch.loadLimit,
           awaitingVerification: paymentSummary(order).awaitingVerification,
           // the awaiting list only holds orders with no live assignment
           hasLiveAssignment: false,
@@ -75,7 +76,7 @@ export default function AdminDeliveriesPage() {
       );
     }
     return map;
-  }, [awaitingOrders, riders, dispatch.cashCap, ridersLoading]);
+  }, [awaitingOrders, riders, dispatch.cashCap, dispatch.loadLimit, ridersLoading]);
   const coverageCounts = useMemo(() => coverageSummary([...coverage.values()]), [coverage]);
 
   if (loading) {
@@ -153,11 +154,11 @@ export default function AdminDeliveriesPage() {
           deliveries={deliveries.filter(d => ["accepted", "picked_up", "delivered"].includes(d.state)).map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
-          Ready orders send {dispatch.offerTtl}-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most 2 active orders; riders at the {formatBdt(dispatch.cashCap)} cash limit cannot accept more (change in Riders → Dispatch rules). Customer pickups never enter dispatch.
+          Ready orders send {dispatch.offerTtl}-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most {dispatch.loadLimit} active orders; riders at the {formatBdt(dispatch.cashCap)} cash limit cannot accept more (change in Riders → Dispatch rules). Customer pickups never enter dispatch.
         </p>
       </section>
 
-      <AdminBatchAssign cashLimit={dispatch.cashCap} riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
+      <AdminBatchAssign cashLimit={dispatch.cashCap} loadLimit={dispatch.loadLimit} riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
 
       {failedDeliveries.length > 0 && (
         <section aria-label="Failed deliveries">

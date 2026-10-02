@@ -147,7 +147,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Delivery feedback: reasons + words on ratings (2026-10-02).
   ('82',  'Delivery feedback (tags, comment, hide)', '202610020009_delivery_feedback.sql', 'column', 'delivery_ratings.feedback_at'),
   -- Rider incentives: daily target + refer-a-rider (2026-10-02).
-  ('83',  'Rider incentives (daily target, referral)', '202610020010_rider_incentives.sql', 'function', 'ps_award_incentives')
+  ('83',  'Rider incentives (daily target, referral)', '202610020010_rider_incentives.sql', 'function', 'ps_award_incentives'),
+  -- Dispatch follow-ups: load limit setting, rider hand-back (2026-10-02).
+  ('84',  'Dispatch follow-ups (load limit, rider hand-back)', '202610020011_dispatch_followups.sql', 'function', 'ps_rider_release_accepted')
 )
 select step as ord,
        label,

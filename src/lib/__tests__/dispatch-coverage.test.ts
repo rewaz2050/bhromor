@@ -36,6 +36,13 @@ describe("diagnoseCoverage (S)", () => {
     expect(d(order(), r, { cashCap: 250000 }).reason).toBe("cash-capped");
   });
 
+  it("the load gate follows the admin-set active-job limit, not a constant 2", () => {
+    const r = [rider({ currentLoad: 2 })];
+    expect(d(order(), r).reason).toBe("at-capacity");
+    expect(d(order(), r, { loadLimit: 3 }).reason).toBe("pending-offers");
+    expect(d(order(), [rider({ currentLoad: 1 })], { loadLimit: 1 }).reason).toBe("at-capacity");
+  });
+
   it("one eligible rider among blocked ones is enough", () => {
     const out = d(order(), [rider({ isOnline: false }), rider({ cashInHand: 999999 }), rider({ id: "ok" })]);
     expect(out).toMatchObject({ reason: "pending-offers", severity: "info", covering: 3, online: 2, eligible: 1 });

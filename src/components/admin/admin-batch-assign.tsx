@@ -7,17 +7,17 @@ import { formatBdt } from "@/lib/format";
 import { paymentSummary } from "@/lib/payment-labels";
 import { DISPATCH_DEFAULTS } from "@/lib/dispatch-settings";
 
-/** Mirrors the dispatch SQL gates: cash cap (J: an admin setting) + 2-trip load. */
-const LOAD_LIMIT = 2;
-
 export function AdminBatchAssign({
   riders,
   orders,
   onAssigned,
   cashLimit = DISPATCH_DEFAULTS.cashCap,
+  loadLimit = DISPATCH_DEFAULTS.loadLimit,
 }: {
   /** The dispatch cash cap in paisa (Admin → Riders → Dispatch rules). */
   cashLimit?: number;
+  /** Active jobs one rider may carry (Admin → Riders → Dispatch rules). */
+  loadLimit?: number;
   riders: Rider[];
   orders: Order[];
   onAssigned?: () => void;
@@ -48,13 +48,13 @@ export function AdminBatchAssign({
   }, [selectedOrders, byId]);
   // Once orders are picked, only show riders who can actually take them:
   // online + active + serving one of the orders' zones + under the cash
-  // cap + under the 2-trip load cap. (The RPC re-checks; this just stops
+  // cap + under the active-job limit. (The RPC re-checks; this just stops
   // staff picking a rider who is guaranteed to fail.)
   const onlineRiders = riders.filter((r) => {
     if (!r.isOnline || r.status !== "active") return false;
     if (selectedZones.size > 0 && !r.zoneIds.some((z) => selectedZones.has(z))) return false;
     if ((r.cashInHand ?? 0) >= cashLimit) return false;
-    if ((r.currentLoad ?? 0) >= LOAD_LIMIT) return false;
+    if ((r.currentLoad ?? 0) >= loadLimit) return false;
     return true;
   });
 
@@ -97,7 +97,7 @@ export function AdminBatchAssign({
     <div className="rounded-2xl bg-paper p-5 ring-1 ring-line space-y-4">
       <h3 className="text-sm font-bold uppercase tracking-wider">📦 Batch Assign — Multi-order route (Sunamganj Sadar)</h3>
       <p className="text-xs text-ink-soft">
-        Choose ready orders and an online rider for an exclusive request. Other pending invitations are withdrawn. Already accepted trips are left alone; a rider can accept at most two active orders.
+        Choose ready orders and an online rider for an exclusive request. Other pending invitations are withdrawn. Already accepted trips are left alone; a rider can only hold {loadLimit} active orders at once.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -139,7 +139,7 @@ export function AdminBatchAssign({
                 {r.lat && r.lng && <span className="text-[10px] text-emerald-700">📍 live</span>}
               </label>
             ))}
-            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No eligible riders — need online + in the orders&apos; zone + under {formatBdt(cashLimit)} cash + under 2 active trips.</p>}
+            {onlineRiders.length === 0 && <p className="text-xs text-ink-soft">No eligible riders — need online + in the orders&apos; zone + under {formatBdt(cashLimit)} cash + under {loadLimit} active trips.</p>}
           </div>
         </div>
       </div>

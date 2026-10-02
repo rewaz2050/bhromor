@@ -115,6 +115,7 @@ for (const f of [
   '202609250008_delivery_ratings.sql',
   '202610020009_delivery_feedback.sql',
   '202610020010_rider_incentives.sql',
+  '202610020011_dispatch_followups.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
