@@ -15,6 +15,8 @@ import { useNow } from "@/lib/use-now";
 import { useOfferAlert } from "@/lib/use-offer-alert";
 import { useOfferBeep } from "@/lib/use-offer-beep";
 import { useRiderLocationTracking } from "@/lib/use-rider-location";
+import { useKeepAwakePref, useWakeLock } from "@/lib/use-wake-lock";
+import { trackingState } from "@/lib/location-health";
 import { cashMeter, countActiveTrips, offeredIds, toRiderTasks, type RiderTask } from "@/lib/rider-tasks";
 import { IconBox, IconCheck } from "@/components/ui/icons";
 import { RiderPushCard } from "@/components/rider/rider-push-card";
@@ -25,6 +27,7 @@ import { StatsStrip } from "@/components/rider/dashboard/stats-strip";
 import { TaskCard } from "@/components/rider/dashboard/task-card";
 import { PinModal } from "@/components/rider/dashboard/pin-modal";
 import { SettleModal } from "@/components/rider/dashboard/settle-modal";
+import { LocationHealth } from "@/components/rider/dashboard/location-health";
 
 export default function RiderPage() {
   const session = useRiderSession();
@@ -73,10 +76,22 @@ export default function RiderPage() {
     useCallback((n: number) => setFlash(n > 1 ? `${n}টি নতুন অফার এসেছে!` : "নতুন অফার এসেছে!"), []),
   );
   useOfferBeep(offerIds);
-  useRiderLocationTracking({
+  const gps = useRiderLocationTracking({
     enabled: isLive && isOnline,
     hasActiveTrip,
     send: (lat, lng) => riderJobsApi.updateLocation(lat, lng),
+  });
+  // Q: a sleeping screen suspends GPS — hold it awake while a trip is running.
+  const [keepAwake, setKeepAwake] = useKeepAwakePref();
+  const wake = useWakeLock(isLive && isOnline && hasActiveTrip && keepAwake);
+  const tracking = trackingState({
+    enabled: isLive && isOnline,
+    hasActiveTrip,
+    permission: gps.permission,
+    lastError: gps.lastError,
+    lastFixAt: gps.lastFixAt,
+    sendFailed: gps.sendFailed,
+    now,
   });
 
   const deliveredCount = useMemo(
@@ -220,6 +235,15 @@ export default function RiderPage() {
           </div>
         )}
 
+
+        <LocationHealth
+          state={tracking}
+          hasActiveTrip={hasActiveTrip}
+          wakeSupported={wake.supported}
+          keepAwake={keepAwake}
+          awakeHeld={wake.held}
+          onKeepAwakeChange={setKeepAwake}
+        />
 
         {/* Today (Dhaka): what the day has earned so far. Hidden until the
             figures arrive — never a fake ৳0. */}

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { riderDistance } from "@/lib/rider-distance";
 import { bnDigits } from "@/lib/arrival";
+import { freshnessLabel, locationFreshness } from "@/lib/location-health";
+import { useNow } from "@/lib/use-now";
 import { usePoll } from "@/lib/use-poll";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
@@ -18,6 +20,8 @@ interface RiderLivePos {
   lat: number;
   lng: number;
   updatedAt: string;
+  /** When this tab read it — the freshness clock can never be behind this. */
+  seenAt: number;
 }
 
 interface LiveDeliveryMapProps {
@@ -39,6 +43,8 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   // in the ETA card, and nothing here animates invented movement.
   const baseProgress = isDelivered ? 1 : isOut ? 0.65 : isAssigned ? 0.25 : 0.05;
   const [riderLive, setRiderLive] = useState<RiderLivePos | null>(null);
+  // Q: how old the rider's last fix is — a stale pin must not pose as live.
+  const clock = useNow(30_000);
 
   // Real rider position while the parcel is on the road (existing
   // rider/location API). One read on mount, then every 15 s while the tab is
@@ -58,7 +64,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
         updatedAt?: string | null;
       } | null;
       if (data?.lat && data?.lng) {
-        setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString() });
+        setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString(), seenAt: Date.now() });
       }
     } catch {}
   }, [isOut, orderId, phone]);
@@ -96,7 +102,8 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
 
   // UX plan §7 — how far, how long: only from a real rider fix and a real
   // delivery pin; never while delivered.
-  const away = riderLive && !isDelivered ? riderDistance(riderLive, order, "bn") : null;
+  const fresh = riderLive ? locationFreshness(riderLive.updatedAt, Math.max(clock, riderLive.seenAt)) : null;
+  const away = riderLive && !isDelivered && fresh?.level !== "stale" ? riderDistance(riderLive, order, "bn") : null;
 
   // A real rider comes from the dispatch data — nothing is invented here:
   // no fake name, no invented phone, no made-up rating.
@@ -216,7 +223,12 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                 : order.etaLabel}
           </p>
           {riderLive && (
-            <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}</p>
+            <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}{fresh && fresh.level !== "unknown" ? ` (${freshnessLabel(fresh)})` : ""}</p>
+          )}
+          {riderLive && !isDelivered && fresh?.level === "stale" && (
+            <p data-testid="rider-stale" className="mt-1 text-[11px] font-semibold text-amber-200">
+              রাইডারের লোকেশন {bnDigits(String(fresh.minutes ?? 0))} মিনিট ধরে আসছে না — শেষ জানা অবস্থান দেখানো হচ্ছে। দূরত্ব/সময়ের অনুমান আপাতত বন্ধ।
+            </p>
           )}
           {/* UX plan §7 — the number a family actually wants: how far, how
               long. Only from a real rider fix and a real delivery pin. */}

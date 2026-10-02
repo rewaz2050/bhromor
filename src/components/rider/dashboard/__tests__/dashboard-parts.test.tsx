@@ -20,6 +20,7 @@ import { TaskCard } from "../task-card";
 import { PinModal } from "../pin-modal";
 import { SettleModal } from "../settle-modal";
 import { FailedAttemptForm } from "../failed-attempt-form";
+import { LocationHealth } from "../location-health";
 
 afterEach(() => {
   cleanup();
@@ -303,5 +304,43 @@ describe("FailedAttemptForm", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(screen.queryByLabelText("Failed attempt reason")).toBeNull();
     expect(uploads.failed).not.toHaveBeenCalled();
+  });
+});
+
+describe("LocationHealth (item Q)", () => {
+  const props = { state: "ok" as const, hasActiveTrip: false, wakeSupported: true, keepAwake: true, awakeHeld: true, onKeepAwakeChange: vi.fn() };
+  it("renders nothing when healthy and no trip is running", () => {
+    const { container } = render(<LocationHealth {...props} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+  it("shows a red alert when location is blocked, with what to do", () => {
+    render(<LocationHealth {...props} state="denied" hasActiveTrip />);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveAttribute("data-state", "denied");
+    expect(alert).toHaveTextContent("লোকেশন বন্ধ আছে");
+    expect(alert).toHaveTextContent("কাস্টমার আপনাকে ম্যাপে দেখতে পাচ্ছেন না");
+  });
+  it("a lost signal is an amber warning that tells the rider to keep the app open", () => {
+    render(<LocationHealth {...props} state="stale" hasActiveTrip />);
+    expect(screen.getByRole("alert")).toHaveTextContent("স্ক্রিন জাগিয়ে রাখুন");
+  });
+  it("the keep-screen-on switch exists only on a trip, on a supporting browser, and reports changes", () => {
+    const onKeepAwakeChange = vi.fn();
+    const { rerender } = render(<LocationHealth {...props} hasActiveTrip onKeepAwakeChange={onKeepAwakeChange} />);
+    const sw = screen.getByRole("switch", { name: "Keep screen on during trips" });
+    expect(sw).toBeChecked();
+    expect(screen.getByText(/লোকেশন নিরবচ্ছিন্ন যাবে/)).toBeInTheDocument();
+    fireEvent.click(sw);
+    expect(onKeepAwakeChange).toHaveBeenCalledWith(false);
+    rerender(<LocationHealth {...props} hasActiveTrip wakeSupported={false} />);
+    expect(screen.queryByRole("switch")).toBeNull();
+    rerender(<LocationHealth {...props} hasActiveTrip={false} />);
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+  it("explains the cost of switching it off, and the moment before the lock is granted", () => {
+    const { rerender } = render(<LocationHealth {...props} hasActiveTrip keepAwake={false} awakeHeld={false} />);
+    expect(screen.getByText(/স্ক্রিন ঘুমালে লোকেশন থেমে যেতে পারে/)).toBeInTheDocument();
+    rerender(<LocationHealth {...props} hasActiveTrip keepAwake awakeHeld={false} />);
+    expect(screen.getByText("চালু হচ্ছে…")).toBeInTheDocument();
   });
 });

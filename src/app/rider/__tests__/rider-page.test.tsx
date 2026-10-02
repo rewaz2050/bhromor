@@ -534,4 +534,69 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.getByText("ফিডে সম্পন্ন").parentElement).toHaveTextContent("1");
     expect(screen.getByText(/অ্যাসাইন্ড অর্ডার সমূহ \(2\)/)).toBeInTheDocument();
   });
+
+  /* ---------------- item Q ---------------- */
+
+  const geolocationStub = (over: Record<string, unknown> = {}) => ({
+    watchPosition: vi.fn(() => 1),
+    clearWatch: vi.fn(),
+    getCurrentPosition: vi.fn(),
+    ...over,
+  });
+
+  it("warns the rider when the browser has blocked location (and says what the customer is missing)", async () => {
+    const status = { state: "denied", addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    vi.stubGlobal("navigator", { geolocation: geolocationStub(), permissions: { query: vi.fn(async () => status) } });
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    expect(await screen.findByText(/লোকেশন বন্ধ আছে/)).toBeInTheDocument();
+    expect(screen.getByText(/কাস্টমার আপনাকে ম্যাপে দেখতে পাচ্ছেন না/)).toBeInTheDocument();
+  });
+
+  it("shows no location warning while offline, even if permission is blocked", () => {
+    const status = { state: "denied", addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    vi.stubGlobal("navigator", { geolocation: geolocationStub(), permissions: { query: vi.fn(async () => status) } });
+    state.isOnline = false;
+    render(<RiderPage />);
+    expect(screen.queryByTestId("location-health")).not.toBeInTheDocument();
+  });
+
+  it("offers the keep-screen-on switch during a trip and remembers turning it off", () => {
+    window.localStorage.clear();
+    vi.stubGlobal("navigator", {
+      geolocation: geolocationStub(),
+      wakeLock: { request: vi.fn(async () => ({ release: vi.fn(async () => {}), addEventListener: vi.fn() })) },
+    });
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    const sw = screen.getByRole("switch", { name: "Keep screen on during trips" });
+    expect(sw).toBeChecked();
+    fireEvent.click(sw);
+    expect(sw).not.toBeChecked();
+    expect(window.localStorage.getItem("prosanti-rider-keep-awake")).toBe("off");
+  });
+
+  it("holds the screen awake only while online WITH a trip and the switch on", async () => {
+    window.localStorage.clear();
+    const request = vi.fn(async () => ({ release: vi.fn(async () => {}), addEventListener: vi.fn() }));
+    vi.stubGlobal("navigator", { geolocation: geolocationStub(), wakeLock: { request } });
+    state.isOnline = true;
+    state.jobs = []; // idle-online
+    const idle = render(<RiderPage />);
+    await vi.waitFor(() => expect(request).not.toHaveBeenCalled());
+    idle.unmount();
+    state.jobs = [job("accepted", order({}))];
+    render(<RiderPage />);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("screen"));
+  });
+
+  it("no switch is offered when there is no trip", () => {
+    vi.stubGlobal("navigator", { geolocation: geolocationStub(), wakeLock: { request: vi.fn() } });
+    state.isOnline = true;
+    state.jobs = [];
+    render(<RiderPage />);
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
 });
