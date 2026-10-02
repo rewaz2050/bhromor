@@ -12,6 +12,7 @@ import { useParams } from "next/navigation";
 import { formatBdt } from "@/lib/format";
 import type { RiskLevel } from "@/lib/rider-risk";
 import { useRiderOverview } from "@/lib/use-rider-overview";
+import { RiderLicenceCard } from "@/components/admin/rider-licence-card";
 
 const fmtWhen = (ts: number | null): string =>
   ts ? new Date(ts).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -89,6 +90,9 @@ export default function AdminRiderProfilePage() {
           Rider profile এখনো চালু হয়নি। Supabase SQL Editor-এ <code>supabase/migrations/202610020002_admin_rider_overview.sql</code> চালান।
         </p>
       )}
+
+      {/* N: driving-licence expiry (staff record it from the KYC photo). */}
+      {live && riderId && <RiderLicenceCard riderId={riderId} />}
 
       {overview && assessment && (
         <>

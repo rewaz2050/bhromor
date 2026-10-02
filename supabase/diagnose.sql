@@ -135,7 +135,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Dispatch rules as admin-editable settings (2026-10-02).
   ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap'),
   -- Rider web push: closed-app offer alerts (2026-10-02).
-  ('77',  'Rider web push (device table, offer claim)', '202610020004_rider_push.sql', 'table', 'rider_push_subscriptions')
+  ('77',  'Rider web push (device table, offer claim)', '202610020004_rider_push.sql', 'table', 'rider_push_subscriptions'),
+  -- Driving-licence expiry (2026-10-02).
+  ('78',  'Rider licence expiry (date + online guard)', '202610020005_licence_expiry.sql', 'column', 'riders.licence_expires_on')
 )
 select step as ord,
        label,

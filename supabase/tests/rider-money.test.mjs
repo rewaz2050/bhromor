@@ -108,6 +108,7 @@ for (const f of [
   '202610020002_admin_rider_overview.sql',
   '202610020003_dispatch_settings.sql',
   '202610020004_rider_push.sql',
+  '202610020005_licence_expiry.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -882,6 +883,28 @@ try {
   await db.query(`delete from riders where id = $1`, [jPush]);
   assert.equal(await scalar(`select count(*)::int from rider_push_subscriptions where endpoint='https://push.example/b'`), 0, 'cascade on rider delete');
   console.log('PASS: rider push — private device table, one claim per offer, cascade on rider delete');
+  // ---- N: licence expiry — a lapsed licence cannot go (back) online; unrecorded/valid/bicycle can
+  const nBike = await scalar(`insert into riders(name, phone, status, vehicle, is_online, licence_expires_on) values ('Lapsed','01710000771','active','bike', false, (now() at time zone 'Asia/Dhaka')::date - 1) returning id`);
+  await assert.rejects(db.query(`update riders set is_online = true where id = $1`, [nBike]), /licence_expired/, 'lapsed licence → cannot go online');
+  assert.equal(await scalar(`select is_online from riders where id = $1`, [nBike]), false);
+  // expiring today is still valid (Dhaka calendar day)
+  await db.query(`update riders set licence_expires_on = (now() at time zone 'Asia/Dhaka')::date where id = $1`, [nBike]);
+  await db.query(`update riders set is_online = true where id = $1`, [nBike]);
+  assert.equal(await scalar(`select is_online from riders where id = $1`, [nBike]), true, 'today is the last valid day');
+  // already-online rider is NOT blocked by an unrelated edit, and may always go offline
+  await db.query(`update riders set licence_expires_on = (now() at time zone 'Asia/Dhaka')::date - 5 where id = $1`, [nBike]);
+  await db.query(`update riders set is_online = false where id = $1`, [nBike]);
+  // unrecorded date and bicycles never blocked
+  const nNull = await scalar(`insert into riders(name, phone, status, vehicle, is_online) values ('Unrecorded','01710000772','active','bike', false) returning id`);
+  await db.query(`update riders set is_online = true where id = $1`, [nNull]);
+  const nCycle = await scalar(`insert into riders(name, phone, status, vehicle, is_online, licence_expires_on) values ('Cycle','01710000773','active','bicycle', false, '2020-01-01') returning id`);
+  await db.query(`update riders set is_online = true where id = $1`, [nCycle]);
+  // renewing the date re-opens the door
+  await db.query(`update riders set licence_expires_on = (now() at time zone 'Asia/Dhaka')::date + 365 where id = $1`, [nBike]);
+  await db.query(`update riders set is_online = true where id = $1`, [nBike]);
+  assert.equal(await scalar(`select is_online from riders where id = $1`, [nBike]), true);
+  await db.query(`delete from riders where id = any($1::uuid[])`, [[nBike, nNull, nCycle]]);
+  console.log('PASS: licence expiry — lapsed motor rider blocked from going online; unrecorded/bicycle/valid unaffected');
 } finally {
   await db.close();
 }

@@ -14,6 +14,7 @@ import { useRiderRating } from "@/lib/use-rider-rating";
 import RatingCard from "@/components/rider/rating-card";
 import { formatBdt } from "@/lib/format";
 import { buildCashTimeline, CASH_TIMELINE_LABEL, cashTimelineHint } from "@/lib/rider-cash-timeline";
+import { LicenceBanner } from "@/components/rider/licence-banner";
 
 export default function RiderProfilePage() {
   const session = useRiderSession();
@@ -42,6 +43,8 @@ export default function RiderProfilePage() {
             {flash}
           </div>
         )}
+
+        <LicenceBanner vehicle={rider.vehicle} expiresOn={rider.licenceExpiresOn} />
 
         <RatingCard summary={rating.summary} />
 

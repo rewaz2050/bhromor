@@ -218,6 +218,8 @@ export interface Rider {
   kyc?: import("./rider-kyc").RiderKyc;
   /** Epoch ms when every required KYC document was in. */
   kycSubmittedAt?: number;
+  /** Item N — driving-licence expiry (Dhaka YYYY-MM-DD), staff-recorded. */
+  licenceExpiresOn?: string;
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   IconTruck,
 } from "@/components/ui/icons";
 import { RiderPushCard } from "@/components/rider/rider-push-card";
+import { LicenceBanner } from "@/components/rider/licence-banner";
 
 interface RiderTask {
   /** Identifier of the action target — the live assignment id. */
@@ -434,6 +435,8 @@ export default function RiderPage() {
         )}
         {/* I: background offer alerts (Web Push) — one tap, quiet once on. */}
         <RiderPushCard enabled={isLive} />
+        {/* N: licence about to lapse / lapsed. */}
+        {activeRider && <LicenceBanner vehicle={activeRider.vehicle} expiresOn={activeRider.licenceExpiresOn} />}
         {(actionError || riderJobsApi.error) && (
           <div
             role="alert"

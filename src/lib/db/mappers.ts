@@ -356,6 +356,7 @@ export const mapRider = (row: DbRider): Rider => ({
   review: mapApplicationReview(row),
   kyc: normalizeKyc(row.kyc),
   kycSubmittedAt: row.kyc_submitted_at ? Date.parse(row.kyc_submitted_at) : undefined,
+  licenceExpiresOn: row.licence_expires_on ? String(row.licence_expires_on).slice(0, 10) : undefined,
   // 202609300001 — pre-migration rows read as an empty wallet, never undefined.
   earningsBalance: Number(row.earnings_balance ?? 0),
 });

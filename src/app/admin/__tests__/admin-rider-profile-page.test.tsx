@@ -4,6 +4,7 @@ import { assessRisk, normalizeOverview } from "@/lib/rider-risk";
 
 const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: "r1" }) }));
+vi.mock("@/components/admin/rider-licence-card", () => ({ RiderLicenceCard: () => null }));
 vi.mock("@/lib/use-rider-overview", () => ({ useRiderOverview: () => state.hook }));
 
 import AdminRiderProfilePage from "../riders/[id]/page";

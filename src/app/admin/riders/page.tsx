@@ -17,6 +17,8 @@ import { RiderKycSummary } from "@/components/admin/rider-kyc-summary";
 import { describeLoginEmail } from "@/lib/phone-login";
 import { kycProgress } from "@/lib/rider-kyc";
 import { DISPATCH_DEFAULTS } from "@/lib/dispatch-settings";
+import { dhakaDateString } from "@/lib/delivery-slots";
+import { licenceStatus } from "@/lib/kyc-expiry";
 
 type Filter = Rider["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -67,6 +69,7 @@ function RiderCard({
   // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
   const now = useNow();
   const [open, setOpen] = useState(false);
+  const [licenceToday] = useState(() => dhakaDateString(Date.now()));
   const [name, setName] = useState(rider.name);
   const [phone, setPhone] = useState(rider.phone);
   const [email, setEmail] = useState(rider.contactEmail ?? "");
@@ -131,6 +134,19 @@ function RiderCard({
                 {rider.isOnline ? "Online" : "Offline"}
               </span>
             )}
+            {/* N: a lapsing / lapsed licence is visible on the board, not only on the profile. */}
+            {rider.status === "active" && (() => {
+              const lic = licenceStatus(rider.vehicle, rider.licenceExpiresOn, licenceToday);
+              if (lic.kind !== "expired" && lic.kind !== "soon") return null;
+              return (
+                <span
+                  data-testid="licence-badge"
+                  className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${lic.kind === "expired" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-900"}`}
+                >
+                  {lic.kind === "expired" ? "Licence expired" : `Licence ${lic.daysLeft}d`}
+                </span>
+              );
+            })()}
             {/* Round 4 — KYC state at a glance; the documents themselves sit in the pending card below. */}
             {(rider.status === "pending" || rider.status === "rejected") && (
               <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${kycProgress(rider.kyc, rider.vehicle).complete ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>

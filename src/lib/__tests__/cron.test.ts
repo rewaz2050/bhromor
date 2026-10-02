@@ -394,6 +394,16 @@ describe("the daily digest", () => {
   });
 });
 
+describe("licence-expiry job (item N)", () => {
+  it("is part of every tick and a failing licence read never stops the clock", async () => {
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    const job = jobOf(result, "licence-expiry");
+    expect(job).toBeDefined();
+    expect(["ran", "skipped", "failed"]).toContain(job.status);
+    expect(jobOf(result, "expire-offers").status).toBe("ran");
+  });
+});
+
 describe("when the marks table is missing (migration 202609240002 not run)", () => {
   it("skips the one-shot jobs with the migration name, and still sweeps offers", async () => {
     state.markInsertError = {

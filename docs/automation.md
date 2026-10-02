@@ -20,7 +20,7 @@ pokes a token-gated endpoint, and the app decides what is due.
 ## 1. What runs, and when
 
 `.github/workflows/cron.yml` → `GET /api/cron/tick` every **15 minutes**
-(`*/15 * * * *`, plus a manual *Run workflow* button). One tick runs three jobs
+(`*/15 * * * *`, plus a manual *Run workflow* button). One tick runs these jobs (plus `licence-expiry` — takes riders whose driving licence has lapsed offline and tells staff and the rider once; needs migration `202610020005`, skipped otherwise)
 and answers with an honest report:
 
 ```json

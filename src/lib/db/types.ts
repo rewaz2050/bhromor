@@ -51,6 +51,8 @@ export interface DbRider {
   reviewed_at?: string | null;
   kyc?: Record<string, unknown> | null;
   kyc_submitted_at?: string | null;
+  /** 202610020005 — licence expiry (date). */
+  licence_expires_on?: string | null;
 }
 
 export interface DbDeliveryAssignment {

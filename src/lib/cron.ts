@@ -47,9 +47,16 @@ import { customerPushMessage } from "@/lib/notify-messages";
 import { dhakaDateString, dhakaParts, deliverySlotSummary } from "@/lib/delivery-slots";
 import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/digest";
 import { runAbandonedBags } from "@/lib/abandoned-bag";
+import { runLicenceSweep } from "@/lib/db/licence-expiry";
+import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
-export type CronJobName = "expire-offers" | "delivery-reminders" | "daily-digest" | "abandoned-bags";
+export type CronJobName =
+  | "expire-offers"
+  | "delivery-reminders"
+  | "daily-digest"
+  | "abandoned-bags"
+  | "licence-expiry";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -460,6 +467,25 @@ export const runCronTick = async (input: {
       status: "failed",
       did: 0,
       detail: err instanceof Error ? err.message : "abandoned-bags failed",
+    });
+  }
+
+  // N: lapsed licences go offline; staff + rider hear once per rider per date.
+  try {
+    const sweep = await runLicenceSweep(input.service, nowMs, {
+      claim: (key) => claimMark(input.service, key),
+      notifyStaff: (title, body) =>
+        notifyStaff(input.service, { kind: "system", title, body, href: "/admin/riders" }),
+      pushRider: (riderId, title, body, important) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important }),
+    });
+    jobs.push({ job: "licence-expiry", ...sweep });
+  } catch (err) {
+    jobs.push({
+      job: "licence-expiry",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "licence-expiry failed",
     });
   }
 

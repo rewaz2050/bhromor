@@ -835,11 +835,21 @@ export async function setRiderOnline(
   riderId: string,
   isOnline: boolean,
 ): Promise<boolean> {
+  // N: a lapsed licence cannot go online (the DB trigger is the backstop).
+  if (isOnline) {
+    const { assertLicenceAllowsOnline } = await import("./licence-expiry");
+    await assertLicenceAllowsOnline(service, riderId);
+  }
   const { error } = await service
     .from("riders")
     .update({ is_online: Boolean(isOnline) })
     .eq("id", riderId);
-  if (error) throw new Error("rider online update failed");
+  if (error) {
+    if (/licence_expired/.test(error.message ?? "")) {
+      throw new RiderInputError("আপনার ড্রাইভিং লাইসেন্সের মেয়াদ শেষ — নবায়ন করে অফিসে নতুন তারিখ জানান।", 403);
+    }
+    throw new Error("rider online update failed");
+  }
   return true;
 }
 
