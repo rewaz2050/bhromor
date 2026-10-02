@@ -4,7 +4,7 @@ import AdminPayoutsPage from "../payouts/page";
 
 const state = vi.hoisted(() => ({
   balance: -45000,
-  record: vi.fn(async () => true),
+  record: vi.fn(async (input: Record<string, unknown>) => Boolean(input)),
 }));
 
 vi.mock("@/lib/use-payouts", () => ({
