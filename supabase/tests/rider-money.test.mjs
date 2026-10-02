@@ -30,7 +30,8 @@ create table admin_users (id uuid primary key, role text not null);
 create table riders (
  id uuid primary key default gen_random_uuid(), user_id uuid, name text default 'R', phone text default '01700000000', vehicle text default 'bike',
  status text default 'active', is_online boolean default true,
- cash_in_hand bigint default 0, current_load int default 0, total_deliveries int default 0
+ cash_in_hand bigint default 0, current_load int default 0, total_deliveries int default 0,
+ zone_ids text[] default '{}', rating_avg numeric default 0, rating_count int default 0, avg_delivery_minutes int, created_at timestamptz default now()
 );
 create type ps_order_status as enum (
  'pending', 'confirmed', 'preparing', 'ready-for-pickup',
@@ -51,7 +52,7 @@ create table orders (
  delivery_code text, delivery_code_attempts int default 0, delivery_code_locked_until timestamptz,
  delivery_proof_url text, delivery_proof_uploaded_at timestamptz,
  rider_id uuid, payment_status text default 'verified',
- delivery_attempts int not null default 0, delivery_failed_reason text,
+ delivery_attempts int not null default 0, delivery_failed_reason text, order_no text, area text,
  created_at timestamptz default now()
 );
 create table delivery_assignments (
@@ -71,7 +72,8 @@ create table rider_settlements (
 );
 create table rider_settle_claims (
  id uuid primary key default gen_random_uuid(), rider_id uuid not null references riders(id),
- amount bigint not null, status text not null default 'pending', decided_at timestamptz, decided_by uuid, created_at timestamptz not null default now()
+ amount bigint not null, method text not null default 'cash', reference text not null default '', note text,
+ status text not null default 'pending', decided_at timestamptz, decided_by uuid, created_at timestamptz not null default now()
 );
 
 -- The REAL gates (supabase/schema.sql + 202609090005_riders.sql).
@@ -103,6 +105,7 @@ for (const f of [
   '202610010006_money_audit.sql',
   '202610010007_money_daily.sql',
   '202610020001_rider_inbox.sql',
+  '202610020002_admin_rider_overview.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -781,6 +784,68 @@ try {
   await db.query(`delete from riders where id = $1`, [wGone]);
   assert.equal(Number(await scalar(`select count(*) from rider_announcements where title = 'personal'`)), 0);
   console.log('PASS: rider inbox — staff-only post/delete, author from auth.uid(), cascade on rider delete');
+
+  // ---- L: admin rider overview — facts for COD risk, staff-only
+  await as(null);
+  const xRider = await scalar(`insert into riders(user_id, name, cash_in_hand) values ($1, 'X', 0) returning id`, [await uuid()]);
+  const xShop = await scalar(`insert into shops(name) values ('X Shop') returning id`);
+  const xOrder = async (payment, total, isReturn = false) =>
+    scalar(`insert into orders(status, payment, total, is_return, shop_id, order_no, area) values ('delivered', $1, $2, $3, $4, 'PS-X' || floor(random()*100000)::int, 'Kandirpar') returning id`, [payment, total, isReturn, xShop]);
+  const xDeliver = async (order, at) =>
+    db.query(`insert into delivery_assignments(order_id, rider_id, state, delivered_at, offered_at) values ($1, $2, 'delivered', $3::timestamptz, $3::timestamptz)`, [order, xRider, at]);
+  const xOld = await xOrder('cod', 40000);
+  await xDeliver(xOld, new Date(Date.now() - 5 * 86400000).toISOString());        // before the settlement
+  await db.query(`insert into rider_settlements(rider_id, amount, netted_amount, settled_at) values ($1, 40000, 10000, now() - interval '3 days')`, [xRider]);
+  const xA = await xOrder('cod', 70000);
+  await xDeliver(xA, new Date(Date.now() - 2 * 86400000).toISOString());          // unsettled COD, the oldest
+  const xB = await xOrder('cod', 30000);
+  await xDeliver(xB, new Date(Date.now() - 3600000).toISOString());               // unsettled COD
+  await xDeliver(await xOrder('bkash', 90000), new Date(Date.now() - 3600000).toISOString()); // prepaid: not cash
+  await xDeliver(await xOrder('cod', 12000, true), new Date(Date.now() - 3600000).toISOString()); // return leg: not cash
+  const xF = await xOrder('cod', 5000);
+  await db.query(`insert into delivery_assignments(order_id, rider_id, state, failed_reason, offered_at) values ($1, $2, 'failed', 'no answer', now() - interval '1 day')`, [xF, xRider]);
+  await db.query(`insert into delivery_assignments(order_id, rider_id, state, cancelled_by, offered_at) values ($1, $2, 'cancelled', 'rider_decline', now())`, [xF, xRider]);
+  await db.query(`insert into delivery_assignments(order_id, rider_id, state, offered_at) values ($1, $2, 'expired', now())`, [xF, xRider]);
+  await db.query(`insert into rider_settle_claims(rider_id, amount, status, note) values ($1, 100, 'rejected', 'TRX mismatch')`, [xRider]);
+  await db.query(`insert into rider_settle_claims(rider_id, amount, method, reference) values ($1, 500, 'bkash', 'TX1')`, [xRider]);
+  await db.query(`update riders set cash_in_hand = 100000 where id = $1`, [xRider]);
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount, note) values ($1, $2, 'delivery_fee', 4000, '')`, [xRider, xA]);
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount, note) values ($1, $2, 'tip', 1000, '')`, [xRider, xA]);
+  await db.query(`insert into rider_earnings(rider_id, order_id, kind, amount, note, settlement_id) values ($1, null, 'cod_netting', -2500, 'netted', (select id from rider_settlements where rider_id = $1 limit 1))`, [xRider]);
+
+  await as(riderUser);
+  await assert.rejects(db.query(`select ps_admin_rider_overview($1)`, [xRider]), /forbidden/);
+  await as(null);
+  await assert.rejects(db.query(`select ps_admin_rider_overview($1)`, [xRider]), /forbidden/);
+  await as(staffId);
+  await assert.rejects(db.query(`select ps_admin_rider_overview(gen_random_uuid())`), /rider_not_found/);
+  const xo = JSON.parse(JSON.stringify(await scalar(`select ps_admin_rider_overview($1)`, [xRider])));
+  assert.equal(xo.rider.name, 'X');
+  assert.equal(xo.risk.cashInHand, 100000);
+  assert.equal(xo.risk.cashLimit, 500000);
+  assert.equal(xo.risk.codCountSinceSettle, 2, 'only COD deliveries after the last settlement; no prepaid, no return leg, none before');
+  assert.equal(xo.risk.codValueSinceSettle, 100000);
+  const xHours = (Date.now() - Date.parse(xo.risk.oldestCodAt)) / 3600000;
+  assert.ok(xHours > 46 && xHours < 50, `oldest unsettled COD is about 2 days old, got ${xHours}h`);
+  assert.equal(xo.risk.pendingClaim.amount, 500);
+  assert.equal(xo.risk.rejectedClaims30, 1);
+  assert.deepEqual([xo.money.lifetimeEarned, xo.money.nettedAgainstCash, xo.money.handedIn], [5000, 2500, 40000]);
+  assert.equal(xo.performance.delivered30, 5);
+  assert.equal(xo.performance.failed30, 1);
+  assert.equal(xo.performance.declined30, 1);
+  assert.equal(xo.performance.expired30, 1);
+  assert.equal(xo.journal.length, 3);
+  assert.equal(xo.settlements[0].nettedAmount, 10000);
+  assert.ok(xo.claims.length === 2 && xo.trips.length === 6);
+  assert.ok(xo.trips.find((t) => t.state === 'failed').failedReason === 'no answer');
+  // a rider with no cash in hand has no cash-risk facts
+  await as(null);
+  await db.query(`update riders set cash_in_hand = 0 where id = $1`, [xRider]);
+  await as(staffId);
+  const xz = JSON.parse(JSON.stringify(await scalar(`select ps_admin_rider_overview($1)`, [xRider])));
+  assert.equal(xz.risk.codCountSinceSettle, 0);
+  assert.equal(xz.risk.oldestCodAt, null);
+  console.log('PASS: admin rider overview — COD-since-settlement facts, performance, ledgers, staff-only');
 } finally {
   await db.close();
 }

@@ -129,7 +129,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Daily money reconciliation (2026-10-01).
   ('73',  'Daily money reconciliation report', '202610010007_money_daily.sql', 'function', 'ps_admin_money_daily'),
   -- Rider inbox: office announcements (2026-10-02).
-  ('74',  'Rider inbox (office announcements to riders)', '202610020001_rider_inbox.sql', 'table', 'rider_announcements')
+  ('74',  'Rider inbox (office announcements to riders)', '202610020001_rider_inbox.sql', 'table', 'rider_announcements'),
+  -- Admin rider profile with COD risk facts (2026-10-02).
+  ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview')
 )
 select step as ord,
        label,

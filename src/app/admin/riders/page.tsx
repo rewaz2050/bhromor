@@ -110,6 +110,15 @@ function RiderCard({
             <p className="font-display text-base font-medium text-forest-900">
               {rider.name}
             </p>
+            {(rider.status === "active" || rider.status === "suspended") && (
+              <Link
+                href={`/admin/riders/${rider.id}`}
+                className="text-xs font-semibold text-forest-800 underline underline-offset-2"
+                data-testid="rider-profile-link"
+              >
+                Profile · COD ঝুঁকি ›
+              </Link>
+            )}
             <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${BADGE[rider.status]}`}>
               {rider.status}
             </span>
