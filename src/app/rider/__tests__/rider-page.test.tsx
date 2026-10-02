@@ -146,7 +146,7 @@ describe("Rider Mobile Portal (/rider)", () => {
     state.isOnline = true;
     state.jobs = [job("picked_up", order({ lat: 25.0658, lng: 91.3951 }))];
     render(<RiderPage />);
-    expect(screen.getByTestId("rider-maps")).toHaveAttribute("href", "https://www.google.com/maps?q=25.0658,91.3951");
+    expect(screen.getByTestId("rider-maps")).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&travelmode=two-wheeler&destination=25.0658,91.3951");
     expect(screen.getByText("ডেলিভারি কোড দিন")).toBeInTheDocument();
   });
 
@@ -191,6 +191,8 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.getByText(/যিনি আগে গ্রহণ করবেন/)).toBeInTheDocument();
     expect(screen.getByText(/পিকআপের দোকান: Town Shop/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "দোকানে কল" })).toHaveAttribute("href", "tel:01812345678");
+    // the shop leg gets a one-tap directions link too
+    expect(screen.getByTestId("rider-shop-nav").getAttribute("href")).toContain("/maps/dir/?api=1");
     expect(screen.queryByTestId("rider-maps")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "কল দিন" })).not.toBeInTheDocument();
   });

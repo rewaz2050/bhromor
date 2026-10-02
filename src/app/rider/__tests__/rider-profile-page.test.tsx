@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 const state = vi.hoisted(() => ({
   settlements: [] as unknown[],
   recentClaims: [] as unknown[],
+  rating: null as unknown,
   signOut: vi.fn(async () => {}),
 }));
 
@@ -20,6 +21,8 @@ vi.mock("@/lib/use-rider", () => ({
 }));
 vi.mock("@/components/rider/rider-profile", () => ({ RiderProfile: () => <div data-testid="profile-form" /> }));
 vi.mock("@/components/rider/rider-shift-card", () => ({ RiderShiftCard: () => <div data-testid="shift-card" /> }));
+
+vi.mock("@/lib/use-rider-rating", () => ({ useRiderRating: () => ({ summary: state.rating, loading: false }) }));
 
 import RiderProfilePage from "../profile/page";
 
@@ -55,6 +58,13 @@ describe("<RiderProfilePage>", () => {
     expect(rejected?.textContent).toContain("অনুমোদন হয়নি");
     expect(section.querySelector('[data-kind="pending"]')?.textContent).toContain("অপেক্ষায়");
     state.recentClaims = [];
+  });
+
+  it("shows the rating breakdown when the rider has been rated", () => {
+    state.rating = { count: 2, avg: 4.5, distribution: [0, 0, 0, 1, 1], last30: { count: 2, avg: 4.5 }, low: [] };
+    render(<RiderProfilePage />);
+    expect(screen.getByTestId("rating-avg")).toHaveTextContent("4.5");
+    state.rating = null;
   });
 
   it("signs out from here", () => {

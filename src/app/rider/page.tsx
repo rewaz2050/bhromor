@@ -8,6 +8,7 @@ import { formatBdt } from "@/lib/format";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
 import { useNow } from "@/lib/use-now";
+import { customerNavHref, shopNavHref } from "@/lib/rider-maps";
 import { useOfferAlert } from "@/lib/use-offer-alert";
 import TripStepper from "@/components/rider/trip-stepper";
 import { shouldSendFix, type SentFix } from "@/lib/location-throttle";
@@ -31,13 +32,6 @@ interface RiderTask {
   expiresAt: number;
   pickupShop?: RiderJob["pickupShop"];
 }
-
-/** Google Maps deep link — opens the app on a phone, the site on a desktop. */
-const mapsHref = (order: Order): string | null => {
-  if (order.lat && order.lng) return `https://www.google.com/maps?q=${order.lat},${order.lng}`;
-  const q = [order.customer.address, order.customer.area, "Sunamganj"].filter(Boolean).join(", ");
-  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
-};
 
 /** Seconds left on an offer, never negative. */
 const secondsLeft = (expiresAt: number, now: number): number =>
@@ -646,7 +640,7 @@ export default function RiderPage() {
                 const order = task.order;
                 const cash = cashToCollect(order);
                 const pay = paymentSummary(order);
-                const maps = task.state === "offered" ? null : mapsHref(order);
+                const maps = task.state === "offered" ? null : customerNavHref(order);
                 const left = task.state === "offered" ? secondsLeft(task.expiresAt, now) : null;
 
                 return (
@@ -705,7 +699,7 @@ export default function RiderPage() {
                         <p className="text-ink-soft">{task.pickupShop.address || "দোকানে কল করে পিকআপ ঠিকানা নিশ্চিত করুন"}</p>
                         <div className="flex flex-wrap gap-3">
                           {task.pickupShop.phone && <a className="underline min-h-11 inline-flex items-center" href={`tel:${task.pickupShop.phone}`}>দোকানে কল</a>}
-                          {task.pickupShop.address && <a className="underline min-h-11 inline-flex items-center" target="_blank" rel="noopener noreferrer" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(task.pickupShop.address)}`}>দোকানের ম্যাপ</a>}
+                          {shopNavHref(task.pickupShop) && <a className="underline min-h-11 inline-flex items-center" target="_blank" rel="noopener noreferrer" data-testid="rider-shop-nav" href={shopNavHref(task.pickupShop) ?? undefined}>দোকানে নেভিগেট</a>}
                         </div>
                       </div>
                     )}
@@ -784,7 +778,7 @@ export default function RiderPage() {
                             className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-forest-900 hover:bg-ivory-100"
                             data-testid="rider-maps"
                           >
-                            <IconMapPin className="h-4 w-4 text-emerald-700" /> ম্যাপ
+                            <IconMapPin className="h-4 w-4 text-emerald-700" /> নেভিগেট
                           </a>
                         )}
 

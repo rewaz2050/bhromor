@@ -10,6 +10,8 @@ import { useMemo, useState } from "react";
 import { RiderProfile } from "@/components/rider/rider-profile";
 import { RiderShiftCard } from "@/components/rider/rider-shift-card";
 import { useRiderJobs, useRiderSession } from "@/lib/use-rider";
+import { useRiderRating } from "@/lib/use-rider-rating";
+import RatingCard from "@/components/rider/rating-card";
 import { formatBdt } from "@/lib/format";
 import { buildCashTimeline, CASH_TIMELINE_LABEL, cashTimelineHint } from "@/lib/rider-cash-timeline";
 
@@ -17,6 +19,7 @@ export default function RiderProfilePage() {
   const session = useRiderSession();
   const rider = session.rider;
   const jobsApi = useRiderJobs(session.status === "authed", rider?.id);
+  const rating = useRiderRating(session.status === "authed");
   const [flash, setFlash] = useState<string | null>(null);
 
   const timeline = useMemo(
@@ -39,6 +42,8 @@ export default function RiderProfilePage() {
             {flash}
           </div>
         )}
+
+        <RatingCard summary={rating.summary} />
 
         <RiderProfile key={rider.id} rider={rider} onSaved={session.refresh} />
 
