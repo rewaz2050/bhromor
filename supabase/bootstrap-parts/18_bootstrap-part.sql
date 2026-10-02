@@ -1,4 +1,4 @@
--- PART 18/19 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 18/20 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: money audit trail (202610010006) ====
 -- Money audit trail (2026-10-01, audit item T).
 --

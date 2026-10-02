@@ -114,6 +114,7 @@ for (const f of [
   '202610020008_rate_limit.sql',
   '202609250008_delivery_ratings.sql',
   '202610020009_delivery_feedback.sql',
+  '202610020010_rider_incentives.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1033,6 +1034,82 @@ try {
     await db.query(`delete from riders where id = $1`, [fbRider]);
     console.log('PASS: delivery feedback — empty defaults, known tags only, 500-char comment cap, migration repeat-safe');
   }
+  // ---- V: rider incentives — daily target + referral, idempotent, journal-balanced, service-only
+  for (const fn of ['ps_rider_referral_code(uuid)', 'ps_register_rider_referral(uuid,text)', 'ps_award_incentives(timestamptz)']) {
+    assert.equal(await scalar(`select has_function_privilege('authenticated','${fn}','execute')`), false, `${fn} not for authenticated`);
+    assert.equal(await scalar(`select has_function_privilege('anon','${fn}','execute')`), false, `${fn} not for anon`);
+    assert.equal(await scalar(`select has_function_privilege('service_role','${fn}','execute')`), true, `${fn} for service`);
+  }
+  assert.equal(await scalar(`select has_function_privilege('service_role','ps__credit_incentive(uuid,bigint,text)','execute')`), false, 'raw credit is internal');
+  const vRef = await scalar(`insert into riders(name, phone, status, vehicle) values ('Referrer','01710000891','active','bike') returning id`);
+  const vNew = await scalar(`insert into riders(name, phone, status, vehicle) values ('Newbie','01710000892','pending','bike') returning id`);
+  const vDay = await scalar(`insert into riders(name, phone, status, vehicle) values ('Runner','01710000893','active','bike') returning id`);
+  const vCode = await scalar(`select ps_rider_referral_code($1)`, [vRef]);
+  assert.match(vCode, /^[A-HJ-NP-Z2-9]{6}$/, 'six unambiguous characters');
+  assert.equal(await scalar(`select ps_rider_referral_code($1)`, [vRef]), vCode, 'stable per rider');
+  assert.equal(await scalar(`select ps_register_rider_referral($1, 'zzzzzz')`, [vNew]), 'unknown');
+  assert.equal(await scalar(`select ps_register_rider_referral($1, $2)`, [vRef, vCode]), 'self');
+  assert.equal(await scalar(`select ps_register_rider_referral($1, $2)`, [vDay, vCode]), 'not_new', 'an active rider cannot be "referred"');
+  assert.equal(await scalar(`select ps_register_rider_referral($1, lower($2))`, [vNew, vCode]), 'registered', 'case-insensitive');
+  assert.equal(await scalar(`select ps_register_rider_referral($1, $2)`, [vNew, vCode]), 'already');
+  // everything is OFF until staff set amounts
+  await db.query(`delete from site_settings where key like 'incentive_%'`);
+  assert.equal((await scalar(`select ps_award_incentives()`)).total, 0, 'switched off by default');
+  // helper: n delivered legs for a rider today (Dhaka), plus one return leg that must not count
+  const vDeliver = async (rider, n, ret = 0) => {
+    for (let i = 0; i < n + ret; i++) {
+      const o = await scalar(`insert into orders(status, is_return) values ('delivered', $1) returning id`, [i >= n]);
+      await db.query(`insert into delivery_assignments(order_id, rider_id, state, delivered_at) values ($1,$2,'delivered', now())`, [o, rider]);
+    }
+  };
+  await db.query(`insert into site_settings(key, value) values ('incentive_daily_target','3'),('incentive_daily_bonus_paisa','5000'),('incentive_referral_bonus_paisa','10000'),('incentive_referral_after','2')`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'incentive_daily_bonus_paisa'`), 1, 'incentive amount change is audited');
+  await db.query(`update site_settings set value = '6000' where key = 'incentive_daily_bonus_paisa'`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'incentive_daily_bonus_paisa'`), 2, 'an edit is audited too');
+  await db.query(`update site_settings set value = '5000' where key = 'incentive_daily_bonus_paisa'`);
+  await vDeliver(vDay, 2, 3);
+  assert.equal((await scalar(`select ps_award_incentives()`)).daily, 0, '2 deliveries + 3 returns is below a target of 3');
+  await vDeliver(vDay, 1);
+  const vBefore = Number(await scalar(`select earnings_balance from riders where id = $1`, [vDay]));
+  const vFirst = await scalar(`select ps_award_incentives()`);
+  assert.equal(vFirst.daily, 1);
+  assert.equal(vFirst.awards[0].amount, 5000);
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [vDay])), vBefore + 5000, 'wallet credited once');
+  const vAgain = await scalar(`select ps_award_incentives()`);
+  assert.equal(vAgain.daily + vAgain.referral, 0, 'a second tick pays nothing (idempotent)');
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [vDay])), vBefore + 5000);
+  // referral: referee has 0 deliveries → nothing; after 2 → referrer paid once
+  assert.equal((await scalar(`select ps_award_incentives()`)).referral, 0);
+  await db.query(`update riders set status = 'active' where id = $1`, [vNew]);
+  await vDeliver(vNew, 1);
+  assert.equal((await scalar(`select ps_award_incentives()`)).referral, 0, '1 of 2 deliveries is not enough');
+  await vDeliver(vNew, 1);
+  const vRefBefore = Number(await scalar(`select earnings_balance from riders where id = $1`, [vRef]));
+  const vRefPay = await scalar(`select ps_award_incentives()`);
+  assert.equal(vRefPay.referral, 1);
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [vRef])), vRefBefore + 10000);
+  assert.notEqual(await scalar(`select rewarded_at from rider_referrals where referee_id = $1`, [vNew]), null);
+  await vDeliver(vNew, 3);
+  assert.equal((await scalar(`select ps_award_incentives()`)).referral, 0, 'the referrer is paid once per referee');
+  // wallet == journal for every rider touched, journal rows are `incentive`
+  for (const id of [vRef, vNew, vDay]) {
+    assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [id])), Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [id])), 'wallet equals journal');
+  }
+  assert.equal(await scalar(`select count(*)::int from rider_earnings where rider_id = $1 and kind = 'incentive'`, [vDay]), 1);
+  // a suspended referrer is not paid (the referral stays open for when they are back)
+  const vRef2 = await scalar(`insert into riders(name, phone, status, vehicle) values ('R2','01710000894','active','bike') returning id`);
+  const vNew2 = await scalar(`insert into riders(name, phone, status, vehicle) values ('N2','01710000895','pending','bike') returning id`);
+  const vCode2 = await scalar(`select ps_rider_referral_code($1)`, [vRef2]);
+  await db.query(`select ps_register_rider_referral($1, $2)`, [vNew2, vCode2]);
+  await db.query(`update riders set status = 'active' where id = $1`, [vNew2]);
+  await vDeliver(vNew2, 2);
+  await db.query(`update riders set status = 'suspended' where id = $1`, [vRef2]);
+  assert.equal((await scalar(`select ps_award_incentives()`)).referral, 0, 'suspended referrer is not paid');
+  assert.equal(await scalar(`select rewarded_at from rider_referrals where referee_id = $1`, [vNew2]), null, 'still open');
+  await db.query(`update riders set status = 'active' where id = $1`, [vRef2]);
+  assert.equal((await scalar(`select ps_award_incentives()`)).referral, 1, 'paid once they are active again');
+  await db.query(`delete from site_settings where key like 'incentive_%'`);
+  console.log('PASS: rider incentives — off by default, daily target + referral paid once, returns excluded, journal-balanced, service-only');
 } finally {
   await db.close();
 }

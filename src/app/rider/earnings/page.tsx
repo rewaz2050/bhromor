@@ -17,6 +17,8 @@ import Link from "next/link";
 import { useRiderSession } from "@/lib/use-rider";
 import { useRiderEarnings, type RiderMoneyKind } from "@/lib/use-rider-money";
 import { formatBdt } from "@/lib/format";
+import { useRiderIncentives } from "@/lib/use-rider-incentives";
+import IncentivesCard from "@/components/rider/incentives-card";
 
 const KIND_LABEL: Record<RiderMoneyKind, string> = {
   tip: "💝 টিপ",
@@ -61,6 +63,7 @@ export default function RiderEarningsPage() {
   const [account, setAccount] = useState(
     () => (typeof window === "undefined" ? "" : window.localStorage.getItem("prosanti-rider-payout-account")) || "",
   );
+  const incentives = useRiderIncentives(isLive);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -151,6 +154,8 @@ export default function RiderEarningsPage() {
           {money.error}
         </p>
       )}
+
+      <IncentivesCard view={incentives.view} />
 
       {/* The three numbers, never merged: wallet / cash custody / paid out. */}
       <div className="grid gap-3 sm:grid-cols-3">

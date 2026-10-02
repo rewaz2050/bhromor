@@ -404,6 +404,16 @@ describe("licence-expiry job (item N)", () => {
   });
 });
 
+describe("rider-incentives job (item V)", () => {
+  it("is part of every tick, and when it is off or broken the clock keeps going", async () => {
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    const job = jobOf(result, "rider-incentives");
+    expect(job).toBeDefined();
+    expect(["ran", "skipped", "failed"]).toContain(job.status);
+    expect(jobOf(result, "expire-offers").status).toBe("ran");
+  });
+});
+
 describe("when the marks table is missing (migration 202609240002 not run)", () => {
   it("skips the one-shot jobs with the migration name, and still sweeps offers", async () => {
     state.markInsertError = {

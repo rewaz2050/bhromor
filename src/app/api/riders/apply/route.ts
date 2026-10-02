@@ -12,6 +12,8 @@
 import { RiderInputError, applyRider } from "@/lib/db/riders";
 import { ApplicantAccountError } from "@/lib/db/applicant-account";
 import { notifyStaff } from "@/lib/db/engagement";
+import { registerReferral } from "@/lib/db/rider-incentives";
+import { referralOutcomeMessage } from "@/lib/rider-incentives";
 import { isServiceRoleConfigured } from "@/lib/env";
 import { clientIpFromHeaders } from "@/lib/rate-limit";
 import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
@@ -58,6 +60,8 @@ export async function POST(request: Request) {
       password: typeof fields.password === "string" ? fields.password : undefined,
     });
     const staffDb = getSupabaseService();
+    // Optional "who told you about us" code — a typo never fails the application.
+    const referral = staffDb ? await registerReferral(staffDb, id, fields.referralCode) : ("none" as const);
     if (staffDb) {
       const riderName =
         typeof fields.name === "string"
@@ -82,6 +86,8 @@ export async function POST(request: Request) {
         // number for a phone login (the synthetic address stays server-side).
         login: loginHandleFor(loginEmail),
         resubmitted,
+        referral,
+        referralMessage: referralOutcomeMessage(referral),
         message: resubmitted
           ? "Application re-submitted — it is back in PROSANTI's review queue; sign in with the same details once it is approved."
           : "Application received — sign in with these details as soon as PROSANTI approves it.",

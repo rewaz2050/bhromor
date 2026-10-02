@@ -1,4 +1,4 @@
--- PART 19/19 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 19/20 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: dispatch rules as settings (202610020003) ====
 -- ============================================================================
 -- J (2026-10-02) — DISPATCH RULES AS SETTINGS: cash cap, offer window, attempts.

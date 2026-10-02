@@ -49,6 +49,7 @@ import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/dig
 import { runAbandonedBags } from "@/lib/abandoned-bag";
 import { runLicenceSweep } from "@/lib/db/licence-expiry";
 import { runQualitySweep } from "@/lib/db/rider-quality";
+import { runIncentiveSweep } from "@/lib/db/rider-incentives";
 import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
@@ -58,7 +59,8 @@ export type CronJobName =
   | "daily-digest"
   | "abandoned-bags"
   | "licence-expiry"
-  | "rider-quality";
+  | "rider-quality"
+  | "rider-incentives";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -506,6 +508,22 @@ export const runCronTick = async (input: {
       status: "failed",
       did: 0,
       detail: err instanceof Error ? err.message : "rider-quality failed",
+    });
+  }
+
+  // V: daily-target and referral bonuses (off until staff set amounts).
+  try {
+    const incentives = await runIncentiveSweep(input.service, {
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: false }),
+    });
+    jobs.push({ job: "rider-incentives", ...incentives });
+  } catch (err) {
+    jobs.push({
+      job: "rider-incentives",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-incentives failed",
     });
   }
 

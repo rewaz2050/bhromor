@@ -1,4 +1,4 @@
--- PART 16/19 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 16/20 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: rider money (202609300002) ====
 -- ============================================================================
 -- Rider money Phase 2 (2026-09-30) — docs/AUDIT-RIDER-MONEY-2026-09-30.md
