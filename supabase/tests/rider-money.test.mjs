@@ -109,6 +109,7 @@ for (const f of [
   '202610020003_dispatch_settings.sql',
   '202610020004_rider_push.sql',
   '202610020005_licence_expiry.sql',
+  '202610020006_rider_scorecards.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -858,6 +859,35 @@ try {
   assert.equal(xz.risk.codCountSinceSettle, 0);
   assert.equal(xz.risk.oldestCodAt, null);
   console.log('PASS: admin rider overview — COD-since-settlement facts, performance, ledgers, staff-only');
+
+  // ---- M: rider scorecards — facts for the board and the auto-suspend sweep
+  await as(null);
+  await db.query(`update riders set cash_in_hand = 100000 where id = $1`, [xRider]);
+  assert.equal(await scalar(`select has_function_privilege('authenticated','ps_rider_scorecards_raw(int)','execute')`), false, 'raw reader is service-role only');
+  assert.equal(await scalar(`select has_function_privilege('anon','ps_rider_scorecards_raw(int)','execute')`), false);
+  assert.equal(await scalar(`select has_function_privilege('service_role','ps_rider_scorecards_raw(int)','execute')`), true);
+  await as(riderUser);
+  await assert.rejects(db.query(`select ps_admin_rider_scorecards(30)`), /forbidden/);
+  await as(null);
+  await assert.rejects(db.query(`select ps_admin_rider_scorecards(30)`), /forbidden/, 'no staff JWT → refused (the sweep uses the raw reader)');
+  const mRaw = JSON.parse(JSON.stringify(await scalar(`select ps_rider_scorecards_raw(30)`)));
+  const mCard = mRaw.find((c) => c.id === xRider);
+  assert.ok(mCard, 'the active rider is listed');
+  assert.deepEqual([mCard.delivered, mCard.failed, mCard.declined, mCard.expired], [5, 1, 1, 1]);
+  assert.equal(mCard.pendingClaim, true, 'a waiting settle claim is visible (protects from auto-suspend)');
+  assert.equal(mCard.cashInHand, 100000);
+  const mHours = (Date.now() - Date.parse(mCard.oldestCodAt)) / 3600000;
+  assert.ok(mHours > 46 && mHours < 50, `oldest unsettled COD about 2 days, got ${mHours}h`);
+  // a suspended rider drops off the board; a rider with no cash has no cash facts
+  await db.query(`update riders set status = 'suspended' where id = $1`, [xRider]);
+  assert.equal(JSON.parse(JSON.stringify(await scalar(`select ps_rider_scorecards_raw(30)`))).some((c) => c.id === xRider), false);
+  await db.query(`update riders set status = 'active', cash_in_hand = 0 where id = $1`, [xRider]);
+  const mClean = JSON.parse(JSON.stringify(await scalar(`select ps_rider_scorecards_raw(30)`))).find((c) => c.id === xRider);
+  assert.equal(mClean.oldestCodAt, null);
+  await as(staffId);
+  const mStaff = JSON.parse(JSON.stringify(await scalar(`select ps_admin_rider_scorecards(30)`)));
+  assert.ok(Array.isArray(mStaff) && mStaff.some((c) => c.id === xRider), 'staff wrapper returns the same list');
+  console.log('PASS: rider scorecards — service-only raw reader, staff wrapper, claim + COD facts, active riders only');
 
   // ---- I: rider push — devices are private, die with the rider, offers are claimable once
   const jPush = await scalar(`insert into riders(name, phone, status) values ('Push Rider','01710000999','active') returning id`);

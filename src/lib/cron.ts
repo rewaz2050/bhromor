@@ -48,6 +48,7 @@ import { dhakaDateString, dhakaParts, deliverySlotSummary } from "@/lib/delivery
 import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/digest";
 import { runAbandonedBags } from "@/lib/abandoned-bag";
 import { runLicenceSweep } from "@/lib/db/licence-expiry";
+import { runQualitySweep } from "@/lib/db/rider-quality";
 import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
@@ -56,7 +57,8 @@ export type CronJobName =
   | "delivery-reminders"
   | "daily-digest"
   | "abandoned-bags"
-  | "licence-expiry";
+  | "licence-expiry"
+  | "rider-quality";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -486,6 +488,24 @@ export const runCronTick = async (input: {
       status: "failed",
       did: 0,
       detail: err instanceof Error ? err.message : "licence-expiry failed",
+    });
+  }
+
+  // M: opt-in auto-suspend for riders that meet a hard quality / cash rule.
+  try {
+    const quality = await runQualitySweep(input.service, nowMs, {
+      notifyStaff: (title, body) =>
+        notifyStaff(input.service, { kind: "system", title, body, href: "/admin/riders/scorecard" }),
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: true }),
+    });
+    jobs.push({ job: "rider-quality", ...quality });
+  } catch (err) {
+    jobs.push({
+      job: "rider-quality",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-quality failed",
     });
   }
 
