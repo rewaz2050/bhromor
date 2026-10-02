@@ -24,6 +24,8 @@
 --    ps_guard_payout_balance allows it only while the balance is negative and never
 --    past zero. Positive payouts are still capped at the balance, as before.
 --  * The daily reconciliation's "shop overpaid" check skips shop_wallet shops.
+--  * ps_place_order accepts a wallet method when the shop has its own number (patched in
+--    place, one line; if the anchor is not found you get a NOTICE and such shops take COD).
 --
 -- ps_write_shop_ledger is NOT redefined: a BEFORE trigger on shop_ledger nets the
 -- collected amount, and an orders trigger re-nets when the payment is verified
@@ -153,6 +155,50 @@ end $$;
 
 -- (trg_payouts_check_balance has existed since 202609090004 and calls this function by name,
 -- so replacing the function is enough.)
+
+-- Placing an order: ps_place_order insists that the PLATFORM has a number for the chosen
+-- wallet ("bKash is not available right now"). A shop_wallet shop takes the payment on its
+-- OWN number, so that line must also accept "this shop has one". ps_place_order is patched
+-- in place (the installed text is not exactly a repository file — see 202609260003): one
+-- anchor line, skipped with a NOTICE when the anchor is not found, never a failure.
+create or replace function ps_shop_takes_wallet(p_shop uuid, p_method text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select s.settlement_model = 'shop_wallet'
+           and coalesce(case lower(p_method) when 'bkash' then s.wallet_bkash when 'nagad' then s.wallet_nagad end, '') <> ''
+      from shops s where s.id = p_shop
+  ), false)
+$$;
+revoke all on function ps_shop_takes_wallet(uuid, text) from public, anon, authenticated;
+grant execute on function ps_shop_takes_wallet(uuid, text) to service_role;
+
+do $$
+declare
+  v_oid oid;
+  v_def text;
+  v_anchor text := $q$if coalesce(v_ops->'wallets'->>v_payment, '') = '' then$q$;
+  v_new text := $q$if coalesce(v_ops->'wallets'->>v_payment, '') = '' and not ps_shop_takes_wallet(v_shop.id, v_payment) then$q$;
+begin
+  select p.oid into v_oid
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'ps_place_order'
+     and pg_get_function_identity_arguments(p.oid) = 'p_order jsonb, p_items jsonb';
+  if v_oid is null then
+    raise notice 'ps_place_order is not installed here — nothing to patch (shop wallets still need it patched later: re-run this file)';
+    return;
+  end if;
+  v_def := pg_get_functiondef(v_oid);
+  if position('ps_shop_takes_wallet' in v_def) > 0 then
+    raise notice 'ps_place_order already accepts a shop''s own wallet';
+    return;
+  end if;
+  if position(v_anchor in v_def) = 0 then
+    raise notice 'ps_place_order: wallet check anchor not found — a shop_wallet shop will only be able to take COD until it is patched';
+    return;
+  end if;
+  execute replace(v_def, v_anchor, v_new);
+  raise notice 'ps_place_order patched: a shop''s own wallet number is accepted';
+end $$;
 
 -- Daily reconciliation: the "shop overpaid" check skips shop_wallet shops
 -- (latest definition: 202610010007, one clause added).

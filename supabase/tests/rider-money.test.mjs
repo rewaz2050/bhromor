@@ -1303,6 +1303,29 @@ try {
   assert.ok(!(swOver.sample ?? []).includes(swShop), 'shop_wallet shop is skipped by the overpaid check');
   await as(null);
   await db.exec(`drop trigger trg_payouts_check_balance on shop_payouts`);
+  // ps_place_order: the wallet check learns a shop's own number (patched in place, idempotent)
+  assert.equal(await scalar(`select ps_shop_takes_wallet($1, 'bkash')`, [swShop]), true);
+  assert.equal(await scalar(`select ps_shop_takes_wallet($1, 'nagad')`, [swShop]), false, 'no Nagad number on the shop');
+  assert.equal(await scalar(`select ps_shop_takes_wallet($1, 'bkash')`, [swPlat]), false, 'platform shops never');
+  await db.exec(`create function ps_place_order(p_order jsonb, p_items jsonb) returns uuid language plpgsql as $$
+declare v_ops jsonb := '{}'::jsonb; v_payment text := 'bkash'; v_shop shops%rowtype;
+begin
+  select * into v_shop from shops where id = (p_order->>'shop')::uuid;
+  if v_payment in ('bkash', 'nagad') then
+    if coalesce(v_ops->'wallets'->>v_payment, '') = '' then
+      raise exception 'not available right now';
+    end if;
+  end if;
+  return gen_random_uuid();
+end $$`);
+  await assert.rejects(db.query(`select ps_place_order($1::jsonb, '[]')`, [JSON.stringify({ shop: swShop })]), /not available/);
+  const migSql = (await import('node:fs')).readFileSync(new URL('../migrations/202610020013_shop_own_wallet.sql', import.meta.url), 'utf8');
+  await db.exec(migSql); // safe to re-run — and this time it finds the function to patch
+  assert.ok(await scalar(`select position('ps_shop_takes_wallet' in pg_get_functiondef('ps_place_order(jsonb,jsonb)'::regprocedure)) > 0`), 'patched');
+  await db.query(`select ps_place_order($1::jsonb, '[]')`, [JSON.stringify({ shop: swShop })]);
+  await assert.rejects(db.query(`select ps_place_order($1::jsonb, '[]')`, [JSON.stringify({ shop: swPlat })]), /not available/);
+  await db.exec(migSql); // second run: already patched, nothing to do
+  await db.exec(`drop function ps_place_order(jsonb, jsonb)`);
   console.log('PASS: shop-own-wallet — off by default, nets verified wallet orders (late verification, rewrite, returns, COD untouched), debt + remittance guard, overpaid check');
 } finally {
   await db.close();
