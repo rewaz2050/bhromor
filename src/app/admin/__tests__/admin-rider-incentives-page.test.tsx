@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
 vi.mock("@/lib/use-rider-incentive-settings", () => ({ useRiderIncentiveSettings: () => state.hook }));
+vi.mock("@/components/admin/order-bonus-card", () => ({ default: () => null }));
 
 import IncentivesPage from "../riders/incentives/page";
 

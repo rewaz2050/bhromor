@@ -119,6 +119,7 @@ for (const f of [
   '202610020012_failed_fee_weekly_bonus.sql',
   '202610020013_shop_own_wallet.sql',
   '202610020014_shop_balance_totals.sql',
+  '202610020015_peak_rain_bonus.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1353,6 +1354,71 @@ end $$`);
   assert.equal(Number(btOne[0].earned) - Number(btOne[0].paid), 0);
   assert.ok(await scalar(`select not has_function_privilege('anon', 'ps_shop_balance_totals(uuid)', 'execute')`), 'not callable by anon');
   console.log('PASS: shop balance totals — aggregated past 1,000 rows, per-shop filter, anon cannot call');
+
+  // ---- peak-hour + rainy-day order bonus (202610020015) ----
+  await db.exec(`alter table orders add column if not exists surcharge_rain bigint not null default 0`);
+  const bn = async (name, phone, status = 'active') => scalar(`insert into riders(name, phone, status, vehicle) values ($1,$2,$3,'bike') returning id`, [name, phone, status]);
+  const bnLeg = async (rider, at, { rain = 0, ret = false } = {}) => {
+    const o = await scalar(`insert into orders(status, is_return, surcharge_rain, order_no) values ('delivered', $1, $2, 'PS-PK') returning id`, [ret, rain]);
+    await db.query(`insert into delivery_assignments(order_id, rider_id, state, delivered_at) values ($1,$2,'delivered',$3::timestamptz)`, [o, rider, at]);
+    return o;
+  };
+  const bnNow = '2026-10-03T20:00:00Z';                      // 02:00 Dhaka, 4 Oct
+  const bnX = await bn('PeakX', '01710000931');
+  const bnSus = await bn('PeakSus', '01710000932', 'suspended');
+  const bnCnt = (res, kind, who = null) => res.awards.filter((a) => a.kind === kind && a.riderId === (who ?? bnX)).length; // other suites leave legs of their own in the window
+  const bnBal = async (id) => Number(await scalar(`select earnings_balance from riders where id = $1`, [id]));
+  await bnLeg(bnX, '2026-10-03T13:00:00Z');                  // 19:00 Dhaka — inside
+  await bnLeg(bnX, '2026-10-03T12:00:00Z');                  // 18:00 — start is inclusive
+  await bnLeg(bnX, '2026-10-03T16:00:00Z');                  // 22:00 — end is exclusive
+  await bnLeg(bnX, '2026-10-03T10:00:00Z');                  // 16:00 — outside
+  await bnLeg(bnX, '2026-10-03T13:30:00Z', { ret: true });   // return leg — never
+  await bnLeg(bnSus, '2026-10-03T13:00:00Z');                // suspended rider — never
+  await bnLeg(bnX, '2026-09-30T13:00:00Z');                  // older than 48 h — never
+  const off = await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]);
+  assert.equal(off.peak + off.rain, 0, 'off by default');
+  await db.query(`insert into site_settings(key, value) values ('rider_peak_bonus_paisa','3000')`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'rider_peak_bonus_paisa'`), 1, 'peak amount audited');
+  const bn0 = await bnBal(bnX);
+  const bn1 = await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]);
+  assert.equal(bnCnt(bn1, 'peak_bonus'), 2, '18:00 (inclusive) and 19:00 only');
+  assert.equal(await bnBal(bnX), bn0 + 6000);
+  assert.equal(await bnBal(bnSus), 0);
+  assert.equal(bnCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]), 'peak_bonus'), 0, 'once per order');
+  // a window that wraps midnight: 22 → 2 (Dhaka)
+  await db.query(`insert into site_settings(key, value) values ('rider_peak_start_hour','22'),('rider_peak_end_hour','2')`);
+  await bnLeg(bnX, '2026-10-03T16:00:00Z');                  // 22:00 — now inside
+  await bnLeg(bnX, '2026-10-03T19:00:00Z');                  // 01:00 — inside
+  await bnLeg(bnX, '2026-10-03T17:30:00Z');                  // 23:30 — inside
+  await bnLeg(bnX, '2026-10-03T20:00:00Z');                  // 02:00 — end exclusive
+  assert.equal(bnCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]), 'peak_bonus'), 4, 'wrapped window: the 22:00 leg from before plus the three new ones');
+  // start = end is "no window", not "all day"
+  await db.query(`update site_settings set value = '5' where key in ('rider_peak_start_hour','rider_peak_end_hour')`);
+  await bnLeg(bnX, '2026-10-03T13:00:00Z');
+  assert.equal(bnCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]), 'peak_bonus'), 0);
+  // rain: orders the customer paid the rain surcharge on; stacks with peak
+  await db.query(`update site_settings set value = '18' where key = 'rider_peak_start_hour'`);
+  await db.query(`update site_settings set value = '22' where key = 'rider_peak_end_hour'`);
+  await db.query(`insert into site_settings(key, value) values ('rider_rain_bonus_paisa','2000')`);
+  const bnRainPeak = await bnLeg(bnX, '2026-10-03T14:00:00Z', { rain: 1500 });  // 20:00, rainy → both
+  const bnRainOnly = await bnLeg(bnX, '2026-10-03T10:00:00Z', { rain: 1500 });  // 16:00, rainy → rain only
+  await bnLeg(bnX, '2026-10-03T10:30:00Z', { rain: 1500, ret: true });
+  const bnBefore = await bnBal(bnX);
+  const bn2 = await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]);
+  assert.equal(bnCnt(bn2, 'rain_bonus'), 2, 'both rainy delivery legs');
+  assert.equal(bnCnt(bn2, 'peak_bonus'), 1 + 1, 'the new rainy 20:00 leg + the 19:00 leg left unpaid while the window was 22-2 and 5-5');
+  assert.equal(await bnBal(bnX), bnBefore + 2 * 3000 + 2 * 2000);
+  assert.equal(await scalar(`select count(*)::int from rider_incentive_awards where ref_key = $1`, [bnRainPeak]), 2, 'rain + peak on the same order');
+  assert.equal(await scalar(`select count(*)::int from rider_incentive_awards where ref_key = $1`, [bnRainOnly]), 1);
+  // amounts are clamped to ৳200, and the wallet always equals the journal
+  await db.query(`update site_settings set value = '9999999' where key = 'rider_rain_bonus_paisa'`);
+  await bnLeg(bnX, '2026-10-03T10:00:00Z', { rain: 1500 });
+  await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [bnNow]);
+  assert.equal(Number(await scalar(`select max(amount) from rider_incentive_awards where kind = 'rain_bonus'`)), 20000, 'clamped');
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [bnX])), await bnBal(bnX), 'wallet = journal');
+  assert.ok(await scalar(`select not has_function_privilege('authenticated', 'ps_award_order_bonuses(timestamptz)', 'execute')`), 'service only');
+  await db.query(`delete from site_settings where key like 'rider_peak_%' or key = 'rider_rain_bonus_paisa'`);
+  console.log('PASS: peak + rain order bonus — off by default, Dhaka window (inclusive start, exclusive end, wraps midnight), once per order, stacks, returns/suspended/old excluded, clamped, audited');
 } finally {
   await db.close();
 }

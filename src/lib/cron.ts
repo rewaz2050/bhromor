@@ -50,6 +50,7 @@ import { runAbandonedBags } from "@/lib/abandoned-bag";
 import { runLicenceSweep } from "@/lib/db/licence-expiry";
 import { runQualitySweep } from "@/lib/db/rider-quality";
 import { runIncentiveSweep } from "@/lib/db/rider-incentives";
+import { runOrderBonusSweep } from "@/lib/db/rider-order-bonus";
 import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
@@ -60,7 +61,8 @@ export type CronJobName =
   | "abandoned-bags"
   | "licence-expiry"
   | "rider-quality"
-  | "rider-incentives";
+  | "rider-incentives"
+  | "rider-order-bonus";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -524,6 +526,22 @@ export const runCronTick = async (input: {
       status: "failed",
       did: 0,
       detail: err instanceof Error ? err.message : "rider-incentives failed",
+    });
+  }
+
+  // Peak-hour and rainy-day per-order bonuses (off until staff set an amount).
+  try {
+    const orderBonus = await runOrderBonusSweep(input.service, {
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: false }),
+    });
+    jobs.push({ job: "rider-order-bonus", ...orderBonus });
+  } catch (err) {
+    jobs.push({
+      job: "rider-order-bonus",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-order-bonus failed",
     });
   }
 

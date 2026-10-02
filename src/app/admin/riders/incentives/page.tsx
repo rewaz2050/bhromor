@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { INCENTIVE_BOUNDS, anyIncentiveOn } from "@/lib/rider-incentives";
+import OrderBonusCard from "@/components/admin/order-bonus-card";
 import { useRiderIncentiveSettings, type IncentiveForm } from "@/lib/use-rider-incentive-settings";
 
 const inputCls = "mt-1 w-full rounded-xl bg-ivory-100 px-3 py-2 text-sm normal-case text-ink ring-1 ring-line";
@@ -175,6 +176,8 @@ export default function RiderIncentivesPage() {
           </button>
         </form>
       )}
+
+      <OrderBonusCard />
     </div>
   );
 }
