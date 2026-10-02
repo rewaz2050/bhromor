@@ -32,6 +32,20 @@ describe("<MoneyDailyPage>", () => {
     expect(screen.getByTestId("pos-custody").textContent).toContain("৳3,000");
   });
 
+  it("shows shop-wallet money and remittances only on the days they happened", () => {
+    state.hook = base();
+    const { unmount } = render(<MoneyDailyPage />);
+    expect(screen.getByTestId("flow-wallet").textContent).not.toMatch(/own wallets/);
+    expect(screen.queryByTestId("flow-remitted")).toBeNull();
+    unmount();
+    state.hook = base({
+      report: normalizeDaily({ day: "2026-10-01", flows: { walletPaidOrders: 900000, shopWalletOrders: 300000, shopRemittances: 50000 }, position: {}, checks: [] }),
+    });
+    render(<MoneyDailyPage />);
+    expect(screen.getByTestId("flow-wallet").textContent).toContain("৳3,000 went to shops' own wallets");
+    expect(screen.getByTestId("flow-remitted").textContent).toContain("৳500");
+  });
+
   it("flags a failing check with what to do and a sample id", () => {
     state.hook = base({ report: report(["wallet_journal"]) });
     render(<MoneyDailyPage />);

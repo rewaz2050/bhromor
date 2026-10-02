@@ -771,3 +771,14 @@ A–Z শেষ হওয়ার পর "জানা সীমা"-র তা
 - cron নতুন job `rider-order-bonus`; রাইডার প্রতি ধরনে **একটিই** পুশ ("৩টি ডেলিভারির জন্য ৳৯০…"), ব্যস্ত ঘণ্টায় ফোন বাজতে থাকে না।
 - **টেস্ট:** PGlite — ডিফল্টে বন্ধ, ১৮:০০ অন্তর্ভুক্ত/২২:০০ বাদ, মধ্যরাত-পেরোনো জানালা, শুরু=শেষ, দুবার নয়, বৃষ্টি+পিক একসাথে, রিটার্ন/suspended/৪৮ ঘণ্টার পুরনো বাদ, ৳২০০ ক্ল্যাম্প, wallet = journal, service-only, audit। Unit — pure helpers, sweep (একটি পুশ/ধরন, migration নেই → skipped), route (staff client + admin role), admin কার্ড, cron।
 - **Owner:** `…0014`-এর পর `202610020015_peak_rain_bonus.sql` চালান। মনে রাখবেন বৃষ্টির বোনাস তখনই কাজে লাগে যখন Settings-এ rain surcharge চালু।
+
+## ৪০. ফলো-আপ ব্যাচ ২ (৩): দৈনিক রিপোর্টে shop-wallet-এর টাকা আলাদা (migration `202610020016`)
+
+**সমস্যা:** `…0013`-এর পরেও দৈনিক রিপোর্টে (ক) "Paid by bKash / Nagad" ছিল **সব** non-COD অর্ডার — shop-এর নিজের wallet-এ যাওয়া টাকাও, যা PROSANTI-তে আসেইনি; (খ) "Shop payouts paid" ঋণাত্মক সারিও যোগ করত, ফলে shop-এর remittance চুপচাপ "paid out" কমিয়ে দিত।
+
+**ফিক্স** (`ps_admin_money_daily`-এ in-place patch; anchor না মিললে শুধু NOTICE, রিপোর্ট পুরনো আকারেই চলে):
+- নতুন `shopWalletOrders` — সেদিনের non-COD অর্ডার যার shop নিজের wallet নেয় (`walletPaidOrders` আগের মতোই সব non-COD)।
+- নতুন `shopRemittances` — সেদিন shop-রা PROSANTI-কে যা পাঠিয়েছে (ধনাত্মক দেখানো)।
+- `shopPayoutsPaid` এখন শুধু ধনাত্মক payout।
+- Daily পেজ ও WhatsApp টেক্সটে দুটো লাইন — **শুধু যেদিন ঘটেছে সেদিন** (অন্য দিন কিছুই বাড়তি নয়)।
+- টেস্ট: PGlite (শুধু shop-wallet shop-এর non-COD অর্ডার গোনা, COD/platform shop বাদ, remittance ও payout আলাদা), unit (normalize, টেক্সট, পেজ)। **Owner:** `…0015`-এর পর `202610020016_daily_shop_wallet_split.sql`।

@@ -154,7 +154,12 @@ export default function MoneyDailyPage() {
               <Row label="Delivered orders" value={String(f.deliveredOrders)} hint={f.returnLegs ? `+ ${f.returnLegs} return legs` : undefined} testId="flow-orders" />
               <Row label="Order value" value={formatBdt(f.orderValue)} />
               <Row label="COD collected by riders" value={formatBdt(f.codCollectedByRiders)} hint="Cash now in riders' hands" testId="flow-cod" />
-              <Row label="Paid by bKash / Nagad" value={formatBdt(f.walletPaidOrders)} />
+              <Row
+                label="Paid by bKash / Nagad"
+                value={formatBdt(f.walletPaidOrders)}
+                hint={f.shopWalletOrders > 0 ? `${formatBdt(f.shopWalletOrders)} went to shops' own wallets` : undefined}
+                testId="flow-wallet"
+              />
               <Row
                 label="Riders handed in"
                 value={formatBdt(f.cashHandedIn)}
@@ -165,6 +170,7 @@ export default function MoneyDailyPage() {
               <Row label="Delivery income" value={formatBdt(f.deliveryIncome)} />
               <Row label="Owed to shops (new)" value={formatBdt(f.shopPayableAccrued)} />
               <Row label="Shop payouts paid" value={formatBdt(f.shopPayoutsPaid)} />
+              {f.shopRemittances > 0 && <Row label="Shops remitted to PROSANTI" value={formatBdt(f.shopRemittances)} testId="flow-remitted" />}
               <Row label="Rider earned" value={formatBdt(f.riderEarned)} hint={f.riderAdjustments ? `adjustments ${f.riderAdjustments < 0 ? "−" : ""}${formatBdt(Math.abs(f.riderAdjustments))}` : undefined} />
               <Row label="Rider payouts requested" value={formatBdt(f.riderPayoutsRequested)} />
               <Row label="Rider payouts paid" value={formatBdt(f.riderPayoutsPaid)} />

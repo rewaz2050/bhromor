@@ -10,10 +10,14 @@ export interface DailyFlows {
   orderValue: number;
   codCollectedByRiders: number;
   walletPaidOrders: number;
+  /** Of those, orders whose shop sells into its OWN wallet (money never reached PROSANTI). */
+  shopWalletOrders: number;
   commission: number;
   deliveryIncome: number;
   shopPayableAccrued: number;
   shopPayoutsPaid: number;
+  /** Money shops sent to PROSANTI that day (shown positive). */
+  shopRemittances: number;
   riderEarned: number;
   riderAdjustments: number;
   riderPayoutsRequested: number;
@@ -123,8 +127,8 @@ const num = (v: unknown): number => {
 };
 
 const FLOW_KEYS: (keyof DailyFlows)[] = [
-  "deliveredOrders", "returnLegs", "orderValue", "codCollectedByRiders", "walletPaidOrders", "commission",
-  "deliveryIncome", "shopPayableAccrued", "shopPayoutsPaid", "riderEarned", "riderAdjustments",
+  "deliveredOrders", "returnLegs", "orderValue", "codCollectedByRiders", "walletPaidOrders", "shopWalletOrders", "commission",
+  "deliveryIncome", "shopPayableAccrued", "shopPayoutsPaid", "shopRemittances", "riderEarned", "riderAdjustments",
   "riderPayoutsRequested", "riderPayoutsPaid", "settlementsCount", "settlementsTotal", "settlementsNetted",
   "cashHandedIn",
 ];
@@ -161,12 +165,12 @@ export const dailyToText = (d: MoneyDaily): string => {
   return [
     `PROSANTI money — ${d.day}`,
     `Delivered ${f.deliveredOrders} orders (${taka(f.orderValue)})${f.returnLegs ? ` + ${f.returnLegs} return legs` : ""}`,
-    `COD collected by riders ${taka(f.codCollectedByRiders)} · wallet-paid ${taka(f.walletPaidOrders)}`,
+    `COD collected by riders ${taka(f.codCollectedByRiders)} · wallet-paid ${taka(f.walletPaidOrders)}${f.shopWalletOrders > 0 ? ` (of which ${taka(f.shopWalletOrders)} went to shops' own wallets)` : ""}`,
     `Riders handed in ${taka(f.cashHandedIn)} cash` +
       (f.settlementsNetted > 0 ? ` (+${taka(f.settlementsNetted)} netted from wallets)` : "") +
       ` in ${f.settlementsCount} settlement(s)`,
     `Commission ${taka(f.commission)} · delivery income ${taka(f.deliveryIncome)}`,
-    `Rider earned ${taka(f.riderEarned)} · rider payouts paid ${taka(f.riderPayoutsPaid)} · shop payouts paid ${taka(f.shopPayoutsPaid)}`,
+    `Rider earned ${taka(f.riderEarned)} · rider payouts paid ${taka(f.riderPayoutsPaid)} · shop payouts paid ${taka(f.shopPayoutsPaid)}${f.shopRemittances > 0 ? ` · shops remitted ${taka(f.shopRemittances)}` : ""}`,
     `Position now: riders hold ${taka(d.position.codCustody)} · owe riders ${taka(d.position.riderPayable)} · owe shops ${taka(d.position.shopPayable)}`,
     failed.length === 0
       ? "Checks: all clear ✅"

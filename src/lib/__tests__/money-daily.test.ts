@@ -54,6 +54,15 @@ describe("dailyToText", () => {
     expect(t).toContain("Checks: all clear");
   });
 
+  it("says nothing about shop wallets when none moved, and names both flows when they did", () => {
+    expect(dailyToText(clean)).not.toMatch(/own wallets|remitted/);
+    const both = normalizeDaily({ day: "2026-10-01", flows: { walletPaidOrders: 900000, shopWalletOrders: 300000, shopPayoutsPaid: 200000, shopRemittances: 50000 }, position: {}, checks: [] });
+    const t = dailyToText(both);
+    expect(t).toContain("wallet-paid ৳9,000 (of which ৳3,000 went to shops' own wallets)");
+    expect(t).toContain("shops remitted ৳500");
+    expect(normalizeDaily({ flows: {} }).flows).toMatchObject({ shopWalletOrders: 0, shopRemittances: 0 });
+  });
+
   it("lists what needs attention", () => {
     const bad = { ...clean, checks: clean.checks.map((c) => (c.key === "stale_payouts" ? { ...c, ok: false, count: 3 } : c)) };
     const t = dailyToText(bad);

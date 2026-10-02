@@ -120,6 +120,7 @@ for (const f of [
   '202610020013_shop_own_wallet.sql',
   '202610020014_shop_balance_totals.sql',
   '202610020015_peak_rain_bonus.sql',
+  '202610020016_daily_shop_wallet_split.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1303,6 +1304,17 @@ try {
   const swDaily = (await rows(`select ps_admin_money_daily(null) as r`))[0].r;
   const swOver = swDaily.checks.find((c) => c.key === 'shop_overpaid');
   assert.ok(!(swOver.sample ?? []).includes(swShop), 'shop_wallet shop is skipped by the overpaid check');
+  // the daily flows separate the shop-wallet money (202610020016)
+  assert.ok('shopWalletOrders' in swDaily.flows && 'shopRemittances' in swDaily.flows, 'new flow keys present');
+  const swFlowRow = async () => (await rows(`select ps_admin_money_daily(null) as r`))[0].r.flows;
+  const swF0 = await swFlowRow();
+  assert.ok(Number(swF0.walletPaidOrders) >= Number(swF0.shopWalletOrders), 'shop-wallet orders are a subset of wallet-paid orders');
+  await db.query(`insert into orders(status, payment, total, shop_id, updated_at) values ('delivered'::ps_order_status, 'bkash', 12345, $1, now()), ('delivered'::ps_order_status, 'bkash', 777, $2, now()), ('delivered'::ps_order_status, 'cod', 5555, $1, now())`, [swShop, swPlat]);
+  const swF1 = await swFlowRow();
+  assert.equal(Number(swF1.shopWalletOrders) - Number(swF0.shopWalletOrders), 12345, 'only the shop-wallet shop\'s non-COD order');
+  assert.equal(Number(swF1.walletPaidOrders) - Number(swF0.walletPaidOrders), 12345 + 777, 'walletPaidOrders still counts every non-COD order');
+  assert.equal(Number(swF0.shopRemittances), Number(await scalar(`select coalesce(-sum(amount),0) from shop_payouts where amount < 0 and paid_at >= (now() at time zone 'Asia/Dhaka')::date::timestamp at time zone 'Asia/Dhaka'`)), 'remittances shown positive');
+  assert.equal(Number(swF0.shopPayoutsPaid), Number(await scalar(`select coalesce(sum(amount),0) from shop_payouts where amount > 0 and paid_at >= (now() at time zone 'Asia/Dhaka')::date::timestamp at time zone 'Asia/Dhaka'`)), 'payouts exclude remittances');
   await as(null);
   await db.exec(`drop trigger trg_payouts_check_balance on shop_payouts`);
   // ps_place_order: the wallet check learns a shop's own number (patched in place, idempotent)
