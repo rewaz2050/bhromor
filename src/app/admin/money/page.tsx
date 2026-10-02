@@ -372,6 +372,10 @@ export default function AdminMoneyPage() {
           ·{" "}
           <Link href="/admin/money/daily" className="font-semibold underline underline-offset-2">
             Daily reconciliation
+          </Link>{" "}
+          ·{" "}
+          <Link href="/admin/money/export" className="font-semibold underline underline-offset-2">
+            Export CSV
           </Link>
         </p>
       </section>
