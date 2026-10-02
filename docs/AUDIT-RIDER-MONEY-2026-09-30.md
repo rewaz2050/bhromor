@@ -588,3 +588,15 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
 - **নিরাপত্তা:** খাতাগুলো RLS-বন্ধ, তাই service client — কিন্তু আগে staff-role যাচাই; টেস্টে সেটা ও ম্যানেজার-নিষেধ প্রমাণিত। কোনো migration না-চালানো খাতায় ৪০৯ ও পরিষ্কার বার্তা।
 - **টেস্ট:** তারিখ-সীমা পার্সার, প্রতিটি খাতার CSV সারি/escape/ঋণাত্মক সংখ্যা/formula, পেজিং ও ক্যাপ, route (role, header, ৪২২, ৫০৩), পেজ।
 - **সীমা:** এক ফাইলে একটি খাতা; অর্ডার/গ্রাহকের পূর্ণ এক্সপোর্ট আগের মতো Reports পেজে; এক্সপোর্টের নিজের কোনো audit log নেই।
+
+## 30. Item P — টেকসই (durable) rate limit
+
+**Migration লাগবে (ঐচ্ছিক আপগ্রেড):** `supabase/migrations/202610020008_rate_limit.sql` (`bootstrap-fresh.sql` / `bootstrap-parts` / `diagnose.sql` সারি 81 সিঙ্ক করা)।
+
+**সমস্যা:** `checkRateLimit` প্রতি serverless instance-এ আলাদা মেমরি-বাকেট — আক্রমণকারী অনেক instance-এ ছড়ালে (বা cold start-এর অপেক্ষায়) অনুমোদিত সংখ্যার বহুগুণ চেষ্টা করতে পারত (পাসওয়ার্ড অনুমান, ফেক অর্ডার, স্প্যাম)।
+
+- **SQL:** `rate_limit_hits` (RLS চালু, কোনো policy নেই) ও `ps_rate_limit_hit(key, limit, window_ms)` — **শুধু service_role**; একটি atomic upsert, fixed window; `(allowed, retry_after_sec)` ফেরত। ভুল key/limit/window হলে ত্রুটি। ~২% কলে এক ঘণ্টা আগে শেষ হওয়া সারি মুছে ফেলে (আলাদা cron লাগে না)।
+- **TS `src/lib/rate-limit-durable.ts`:** আগে মেমরি-বাকেট (এক instance-এর burst-এ DB-কল নেই), তারপর শেয়ার্ড কাউন্টার; কাউন্টারের রায়ই চূড়ান্ত। **কখনো রিকোয়েস্ট ফেল করায় না (fail-open):** service role না থাকলে, migration না চালালে, DB ত্রুটি/থ্রো, বা ১.৫ সেকেন্ডের বেশি লাগলে মেমরি-রায় মানা হয়। ফাংশন না থাকলে ৫ মিনিট, অন্য ত্রুটিতে ১৫ সেকেন্ড আর চেষ্টা করে না (circuit breaker) — DB অসুস্থ হলে প্রতিটি রিকোয়েস্ট ধীর হয় না।
+- **কোথায় বসেছে (১০টি পাবলিক রুট):** account login/signup, password reset (request/complete), orders, contact, riders/apply, shops/apply, returns, reviews। লগইন-করা রাইডার/স্টাফ রুট আগের মতো মেমরি-বাকেটে (ঝুঁকি কম, প্রতি অনুরোধে DB-কল এড়ানো)।
+- **টেস্ট:** PGlite-এ আসল SQL (গ্রান্ট, উইন্ডো, রিসেট, আলাদা key, ভুল ইনপুট), TS (শেয়ার্ড রায়, লোকাল আগে, fail-open ৫ ধরনে, hang-timeout, circuit breaker), এবং wiring টেস্ট যে ১০টি রুটই durable ব্যবহার করে।
+- **সীমা:** fixed window (সীমানায় দ্বিগুণ burst সম্ভব); প্রতি hit-এ একটি DB-রাউন্ডট্রিপ (~২০–৫০ms) যোগ হয়; এটি DDoS-প্রতিরক্ষা নয় — সেটা edge/WAF-এর কাজ; IP `x-forwarded-for` থেকে।

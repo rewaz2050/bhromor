@@ -111,6 +111,7 @@ for (const f of [
   '202610020005_licence_expiry.sql',
   '202610020006_rider_scorecards.sql',
   '202610020007_rider_disputes.sql',
+  '202610020008_rate_limit.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -999,6 +1000,23 @@ try {
   assert.equal(await scalar(`select is_online from riders where id = $1`, [nBike]), true);
   await db.query(`delete from riders where id = any($1::uuid[])`, [[nBike, nNull, nCycle]]);
   console.log('PASS: licence expiry — lapsed motor rider blocked from going online; unrecorded/bicycle/valid unaffected');
+  // ---- P: durable rate limit — shared counter, atomic window, service-role only
+  assert.equal(await scalar(`select has_function_privilege('authenticated','ps_rate_limit_hit(text,int,int)','execute')`), false);
+  assert.equal(await scalar(`select has_function_privilege('anon','ps_rate_limit_hit(text,int,int)','execute')`), false);
+  assert.equal(await scalar(`select has_function_privilege('service_role','ps_rate_limit_hit(text,int,int)','execute')`), true);
+  const pHit = async (k, limit = 3, ms = 60000) => (await rows(`select * from ps_rate_limit_hit($1, $2, $3)`, [k, limit, ms]))[0];
+  assert.deepEqual([(await pHit('p:a')).allowed, (await pHit('p:a')).allowed, (await pHit('p:a')).allowed], [true, true, true], 'first three pass');
+  const pBlocked = await pHit('p:a');
+  assert.equal(pBlocked.allowed, false, 'fourth is refused');
+  assert.ok(pBlocked.retry_after_sec >= 1 && pBlocked.retry_after_sec <= 60, 'retry-after inside the window');
+  assert.equal((await pHit('p:b')).allowed, true, 'a different key has its own bucket');
+  await db.query(`update rate_limit_hits set reset_at = now() - interval '1 second' where key = 'p:a'`);
+  assert.equal((await pHit('p:a')).allowed, true, 'a new window starts after reset');
+  assert.equal(await scalar(`select hits::int from rate_limit_hits where key = 'p:a'`), 1, 'counter restarted');
+  await assert.rejects(db.query(`select * from ps_rate_limit_hit('', 3, 60000)`), /bad key/);
+  await assert.rejects(db.query(`select * from ps_rate_limit_hit('k', 0, 60000)`), /bad limit/);
+  await assert.rejects(db.query(`select * from ps_rate_limit_hit('k', 3, 10)`), /bad window/);
+  console.log('PASS: durable rate limit — shared atomic counter, per-key windows, service-role only, bad input refused');
 } finally {
   await db.close();
 }

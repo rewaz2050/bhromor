@@ -18,7 +18,8 @@ import {
 } from "@/lib/db/engagement";
 import { validateContact } from "@/lib/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -62,7 +63,7 @@ const BD_MOBILE = /^01\d{9}$/;
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`contact:${ip}`, 5, 60_000);
+  const bucket = await checkDurableRateLimit(`contact:${ip}`, 5, 60_000);
   if (!bucket.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));

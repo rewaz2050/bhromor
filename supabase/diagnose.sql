@@ -141,7 +141,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Rider scorecards + opt-in auto-suspend (2026-10-02).
   ('79',  'Rider scorecards (board + auto-suspend facts)', '202610020006_rider_scorecards.sql', 'function', 'ps_admin_rider_scorecards'),
   -- Rider disputes + manual wallet adjustments (2026-10-02).
-  ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes')
+  ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes'),
+  -- Durable rate limit (2026-10-02).
+  ('81',  'Durable rate limit (shared counter)', '202610020008_rate_limit.sql', 'function', 'ps_rate_limit_hit')
 )
 select step as ord,
        label,

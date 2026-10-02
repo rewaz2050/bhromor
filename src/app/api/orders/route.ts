@@ -23,7 +23,8 @@ import { notifyStaff, readOpsSettings } from "@/lib/db/engagement";
 import { notifyCustomerOrderPlaced } from "@/lib/customer-push";
 import { sanitizeSettings } from "@/lib/settings-store";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { loadSmartCardTarget, resolveCustomer } from "@/lib/customer-auth";
 import { apiError, apiJson } from "@/lib/api-response";
@@ -35,7 +36,7 @@ const LIMIT = 20;
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const limit = checkRateLimit(`orders:${ip}`, LIMIT, WINDOW_MS);
+  const limit = await checkDurableRateLimit(`orders:${ip}`, LIMIT, WINDOW_MS);
   if (!limit.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(limit.retryAfterSec));
