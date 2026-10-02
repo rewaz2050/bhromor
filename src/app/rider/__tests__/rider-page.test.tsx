@@ -510,7 +510,7 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(watch).toHaveBeenCalledTimes(1);
   });
 
-  it("a new offer beeps once (the in-app beep pattern), not again on the next render", () => {
+  it("a new offer vibrates exactly once (one hook owns it), and not again on the next render", () => {
     const vibrate = vi.fn();
     vi.stubGlobal("navigator", { vibrate });
     state.isOnline = true;
@@ -519,10 +519,11 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(vibrate).not.toHaveBeenCalled();
     state.jobs = [job("offered", order({}))];
     rerender(<RiderPage />);
-    const beeps = () => vibrate.mock.calls.filter((c) => JSON.stringify(c[0]) === "[200,100,200]").length;
-    expect(beeps()).toBe(1);
+    // Two hooks used to vibrate here ([220…] and [200,100,200]) and overwrote each other.
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    expect(vibrate).toHaveBeenCalledWith([220, 110, 220, 110, 400]);
     rerender(<RiderPage />);
-    expect(beeps()).toBe(1);
+    expect(vibrate).toHaveBeenCalledTimes(1);
   });
 
   it("the board counts only trips the rider holds (an offer is not a trip)", () => {
