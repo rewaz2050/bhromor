@@ -102,6 +102,7 @@ for (const f of [
   '202610010005_vendor_rider_view.sql',
   '202610010006_money_audit.sql',
   '202610010007_money_daily.sql',
+  '202610020001_rider_inbox.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -749,6 +750,37 @@ try {
   await as(riderUser);
   await assert.rejects(db.query('select ps_admin_money_daily(null)'), /forbidden/);
   console.log('PASS: daily reconciliation — day flows, 8 checks catch real faults, staff-only');
+
+  // ---- C4 / O: rider inbox — staff-only writes through the RPCs, never raw table access
+  await as(null);
+  await assert.rejects(db.query(`select ps_admin_post_announcement('x')`), /forbidden/);
+  await as(riderUser);
+  await assert.rejects(db.query(`select ps_admin_post_announcement('x')`), /forbidden/);
+  await assert.rejects(db.query(`select ps_admin_delete_announcement(gen_random_uuid())`), /forbidden/);
+  await as(staffId);
+  const wAll = await scalar(`select ps_admin_post_announcement('  Road closed  ', 'Zindabazar', 'important', null, 24)`);
+  const wOne = await scalar(`select ps_admin_post_announcement('Blurry KYC', '', 'bogus', $1, null)`, [rider]);
+  const wRows = await rows(`select id, title, severity, rider_id, created_by, expires_at from rider_announcements order by created_at, title`);
+  const wA = wRows.find((r) => r.id === wAll);
+  assert.equal(wA.title, 'Road closed', 'title trimmed');
+  assert.equal(wA.severity, 'important');
+  assert.equal(wA.rider_id, null);
+  assert.equal(wA.created_by, staffId, 'author recorded from the real auth.uid()');
+  assert.ok(wA.expires_at, '24h expiry set');
+  const wB = wRows.find((r) => r.id === wOne);
+  assert.equal(wB.severity, 'info', 'an unknown severity falls back to info');
+  assert.equal(wB.expires_at, null);
+  await assert.rejects(db.query(`select ps_admin_post_announcement('', 'b')`), /invalid_title/);
+  await assert.rejects(db.query(`select ps_admin_post_announcement('t', 'b', 'info', gen_random_uuid(), null)`), /rider_not_found/);
+  await db.query(`select ps_admin_delete_announcement($1)`, [wOne]);
+  assert.equal(Number(await scalar(`select count(*) from rider_announcements where id = $1`, [wOne])), 0);
+  // a deleted rider takes their personal messages with them
+  const wGone = await scalar(`insert into riders(user_id, name) values ($1, 'W') returning id`, [await uuid()]);
+  await db.query(`select ps_admin_post_announcement('personal', '', 'info', $1, null)`, [wGone]);
+  await as(null);
+  await db.query(`delete from riders where id = $1`, [wGone]);
+  assert.equal(Number(await scalar(`select count(*) from rider_announcements where title = 'personal'`)), 0);
+  console.log('PASS: rider inbox — staff-only post/delete, author from auth.uid(), cascade on rider delete');
 } finally {
   await db.close();
 }

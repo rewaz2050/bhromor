@@ -446,3 +446,15 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
 - `/rider/profile`-এ "টাকা জমার টাইমলাইন" (আগের সাধারণ settlement তালিকার জায়গায়); wallet netting-এর বিবরণ আগের মতোই থাকে।
 - `/rider/earnings`-এর উত্তোলন তালিকায়: pending হলে "টাকা ওয়ালেটে হোল্ডে আছে", rejected হলে "হোল্ড করা টাকা ওয়ালেটে ফেরত এসেছে"।
 - টেস্ট: `rider-cash-timeline`, `rider-recent-claims` (db), `rider-profile-page`, `rider-earnings-page`।
+
+## 19. Phase C4 (+ item O) — রাইডার ইনবক্স: অফিস থেকে রাইডারকে বার্তা
+
+**Migration লাগবে:** `supabase/migrations/202610020001_rider_inbox.sql` (Supabase SQL Editor-এ চালান; আগের সব migration-এর পরে)। `bootstrap-fresh.sql` / `bootstrap-parts/18` / `diagnose.sql` (সারি 74) সিঙ্ক করা হয়েছে। migration না চললে রাইডারের ইনবক্সে "এখনো চালু হয়নি" আর admin পেজে migration-এর নাম দেখায় — কিছু ভাঙে না।
+
+- **টেবিল:** `rider_announcements` (title ≤120, body ≤1000, `info`/`important`, `rider_id` null = সব রাইডার, ঐচ্ছিক `expires_at`) ও `rider_inbox_state` (প্রতি রাইডারের last_read_at)। RLS চালু; রাইডারের সরাসরি টেবিল-অ্যাক্সেস নেই।
+- **লেখা:** শুধু স্টাফ, দুটি SECURITY DEFINER RPC (`ps_admin_post_announcement`, `ps_admin_delete_announcement`) — `ps_is_admin()` ছাড়া `forbidden`। লেখকের আইডি আসল `auth.uid()` থেকে। রাইডার ডিলিট হলে তার ব্যক্তিগত বার্তাও যায়।
+- **রাইডার অ্যাপ:** নিচের বারে ৫ম ট্যাব "বার্তা" (অপঠিত সংখ্যার লাল ব্যাজ, প্রতি মিনিটে রিফ্রেশ)। `/rider/inbox`-এ বার্তা, 🔴 নতুন চিহ্ন, ❗ জরুরি, "আপনার জন্য" ট্যাগ; পেজ খুললে পড়া হিসেবে চিহ্নিত হয় (ব্যাজ সাথে সাথে শূন্য)। মেয়াদ-উত্তীর্ণ বার্তা দেখায় না। মার্কার না থাকলে শুধু গত ১৪ দিনের বার্তা "নতুন" গণ্য হয় (নতুন রাইডার পুরনো নোটিশে ডুবে যাবে না)।
+- **অ্যাডমিন:** `/admin/riders/announcements` (Riders পেজ থেকে "Announcements" বাটন) — সব রাইডার বা একজন, সাধারণ/জরুরি, মেয়াদ (২৪ঘ/৩দিন/৭দিন/নেই), পাঠানো তালিকা ও মুছে ফেলা।
+- **API:** রাইডার `GET/POST /api/rider/inbox` (সবসময় সেশনের রাইডার, URL-এর আইডি অগ্রাহ্য); স্টাফ `GET/POST /api/admin/rider-announcements`, `DELETE …/[id]`।
+- **টেস্ট:** `rider-inbox` (lib, db, routes, pages, nav badge) ও pglite SQL টেস্ট (`npm run test:money`, নতুন PASS লাইন)।
+- **সীমা:** বার্তা পড়তে অ্যাপ খুলতে হয় — অ্যাপ বন্ধ থাকলে web-push (item I) লাগবে। কে কে পড়েছে (read receipt) রাখা হয় না, শুধু প্রতি রাইডারের "শেষ পড়ার সময়"। জোন-ভিত্তিক টার্গেটিং এখনো নেই (সব বা একজন)।

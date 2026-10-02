@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { availabilityLabel, isOnShift } from "@/lib/rider-hours";
 import { useNow } from "@/lib/use-now";
@@ -409,6 +410,12 @@ export default function AdminRidersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/riders/announcements"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Announcements
+          </Link>
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
