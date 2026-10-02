@@ -1,7 +1,7 @@
 vi.mock("@/components/rider/rider-push-card", () => ({ RiderPushCard: () => null }));
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import RiderPage from "../page";
 import type { RiderJob } from "@/lib/db/riders";
 import type { Order } from "@/lib/orders";
@@ -13,6 +13,15 @@ const state = vi.hoisted(() => ({
   earnings: 0,
   today: undefined as { todayDeliveries?: number; todayEarned?: number; cashLimit?: number } | undefined,
   deliver: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  accept: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  pickup: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  reject: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  settle: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  updateLocation: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  jobsError: null as string | null,
+  cashInHand: 0,
+  claimsReady: true,
+  pendingClaim: null as unknown,
 }));
 
 vi.mock("@/lib/use-rider", () => ({
@@ -25,7 +34,7 @@ vi.mock("@/lib/use-rider", () => ({
       zoneIds: ["z1"],
       status: "active",
       isOnline: state.isOnline,
-      cashInHand: 0,
+      cashInHand: state.cashInHand,
       ratingAvg: 0,
       ratingCount: 0,
     },
@@ -53,15 +62,18 @@ vi.mock("@/lib/use-rider", () => ({
     jobs: state.jobs,
     settlements: [],
     loading: false,
-    error: null,
+    live: false,
+    error: state.jobsError,
+    claimsReady: state.claimsReady,
+    pendingClaim: state.pendingClaim,
     refresh: vi.fn(async () => true),
-    accept: vi.fn(),
-    pickup: vi.fn(),
-    reject: vi.fn(),
+    accept: (...args: unknown[]) => state.accept(...args),
+    pickup: (...args: unknown[]) => state.pickup(...args),
+    reject: (...args: unknown[]) => state.reject(...args),
     deliver: (...args: unknown[]) => state.deliver(...args),
     setOnline: vi.fn(async () => true),
-    updateLocation: vi.fn(async () => true),
-    settle: vi.fn(async () => true),
+    updateLocation: (...args: unknown[]) => state.updateLocation(...args),
+    settle: (...args: unknown[]) => state.settle(...args),
   }),
 }));
 
@@ -98,7 +110,13 @@ beforeEach(() => {
   state.isOnline = false;
   state.earnings = 0;
   state.today = undefined;
-  state.deliver.mockClear();
+  for (const f of [state.deliver, state.accept, state.pickup, state.reject, state.settle, state.updateLocation]) {
+    f.mockReset().mockResolvedValue(true);
+  }
+  state.jobsError = null;
+  state.cashInHand = 0;
+  state.claimsReady = true;
+  state.pendingClaim = null;
 });
 afterEach(() => {
   cleanup();
@@ -342,5 +360,178 @@ describe("Rider Mobile Portal (/rider)", () => {
     fireEvent.click(screen.getByText("ডেলিভারি সম্পন্ন করুন"));
     await vi.waitFor(() => expect(state.deliver).toHaveBeenCalled());
     expect(state.deliver).toHaveBeenCalledWith("asg-PS-20260918-0007", "4821", null, null);
+  });
+
+  /* ---------------- item Z: regression net for the split ---------------- */
+
+  it("accepting an offer calls the API with the assignment id and flashes the next step", async () => {
+    state.isOnline = true;
+    state.jobs = [job("offered", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText("অর্ডার একসেপ্ট করুন"));
+    await vi.waitFor(() => expect(state.accept).toHaveBeenCalledWith("asg-PS-20260918-0007"));
+    expect(await screen.findByText(/অর্ডার একসেপ্ট হয়েছে/)).toBeInTheDocument();
+  });
+
+  it("Accept is disabled while offline and when the cash cap is reached", () => {
+    state.isOnline = false;
+    state.jobs = [job("offered", order({}))];
+    const { unmount } = render(<RiderPage />);
+    expect(screen.getByText("অর্ডার একসেপ্ট করুন")).toBeDisabled();
+    unmount();
+    state.isOnline = true;
+    state.cashInHand = 500000;
+    render(<RiderPage />);
+    expect(screen.getByText("অর্ডার একসেপ্ট করুন")).toBeDisabled();
+    expect(screen.getByText(/ক্যাশ লিমিট পূর্ণ হয়েছে/)).toBeInTheDocument();
+  });
+
+  it("a refused accept shows the server's reason in the alert and no success flash", async () => {
+    state.isOnline = true;
+    state.jobs = [job("offered", order({}))];
+    state.accept.mockResolvedValue(false);
+    state.jobsError = "Another rider took this order.";
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText("অর্ডার একসেপ্ট করুন"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Another rider took this order.");
+    expect(screen.queryByText(/অর্ডার একসেপ্ট হয়েছে/)).not.toBeInTheDocument();
+  });
+
+  it("declining an offer calls reject", async () => {
+    state.isOnline = true;
+    state.jobs = [job("offered", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByRole("button", { name: "বাতিল" }));
+    await vi.waitFor(() => expect(state.reject).toHaveBeenCalledWith("asg-PS-20260918-0007"));
+  });
+
+  it("an accepted job offers pickup confirmation, which calls pickup", async () => {
+    state.isOnline = true;
+    state.jobs = [job("accepted", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText("পিকআপ কনফার্ম করুন"));
+    await vi.waitFor(() => expect(state.pickup).toHaveBeenCalledWith("asg-PS-20260918-0007"));
+    expect(await screen.findByText(/পিকআপ সম্পন্ন/)).toBeInTheDocument();
+  });
+
+  it("a wrong delivery code keeps the dialog open with the server's message", async () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    state.deliver.mockResolvedValue(false);
+    state.jobsError = "Wrong delivery code.";
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value: "0000" } });
+    fireEvent.click(screen.getByText("ডেলিভারি সম্পন্ন করুন"));
+    expect(await screen.findAllByText("Wrong delivery code.")).not.toHaveLength(0);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("a successful delivery closes the dialog and congratulates", async () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value: "4821" } });
+    fireEvent.click(screen.getByText("ডেলিভারি সম্পন্ন করুন"));
+    expect(await screen.findByText(/অভিনন্দন/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("re-opening the delivery dialog starts clean (no stale code or reason)", () => {
+    state.isOnline = true;
+    state.jobs = [job("picked_up", order({}))];
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value: "1234" } });
+    fireEvent.click(screen.getByText("ছবি তুলতে পারছি না"));
+    fireEvent.click(screen.getByRole("button", { name: "বাতিল" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(/ডেলিভারি কোড দিন/));
+    expect((screen.getByPlaceholderText("• • • •") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByLabelText(/ছবি ছাড়া ডেলিভারির কারণ/)).not.toBeInTheDocument();
+  });
+
+  it("cash settle: the button needs cash and a working claim table; cash claims send no reference", async () => {
+    state.isOnline = true;
+    state.cashInHand = 220000;
+    const { unmount } = render(<RiderPage />);
+    fireEvent.click(screen.getByText(/টাকা জমা দিন \(Settle\)/));
+    fireEvent.click(screen.getByText("দাবি পাঠান"));
+    await vi.waitFor(() => expect(state.settle).toHaveBeenCalledWith("cash", ""));
+    expect(await screen.findByText(/দাবি Admin-এর কাছে পাঠানো হয়েছে/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    unmount();
+
+    state.claimsReady = false;
+    render(<RiderPage />);
+    expect(screen.queryByText(/টাকা জমা দিন \(Settle\)/)).not.toBeInTheDocument();
+    expect(screen.getByText(/সাময়িকভাবে বন্ধ আছে/)).toBeInTheDocument();
+  });
+
+  it("cash settle: a pending claim hides the button and is shown with its method", () => {
+    state.cashInHand = 220000;
+    state.pendingClaim = { id: "c1", amount: 220000, method: "bkash", reference: "9HXK2LM4PQ" };
+    render(<RiderPage />);
+    expect(screen.queryByText(/টাকা জমা দিন \(Settle\)/)).not.toBeInTheDocument();
+    expect(screen.getByText(/BKASH · 9HXK2LM4PQ/)).toBeInTheDocument();
+  });
+
+  it("cash settle: bKash without a reference is refused INSIDE the dialog, nothing is sent", () => {
+    state.cashInHand = 220000;
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/টাকা জমা দিন \(Settle\)/));
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "bkash" } });
+    fireEvent.click(screen.getByText("দাবি পাঠান"));
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("reference/TRXID");
+    expect(state.settle).not.toHaveBeenCalled();
+  });
+
+  it("cash settle: a server refusal is shown inside the dialog and the dialog stays", async () => {
+    state.cashInHand = 220000;
+    state.settle.mockResolvedValue(false);
+    state.jobsError = "A claim is already pending.";
+    render(<RiderPage />);
+    fireEvent.click(screen.getByText(/টাকা জমা দিন \(Settle\)/));
+    fireEvent.click(screen.getByText("দাবি পাঠান"));
+    await vi.waitFor(() => expect(state.settle).toHaveBeenCalled());
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent("A claim is already pending.");
+  });
+
+  it("GPS is only reported while online", () => {
+    const watch = vi.fn(() => 7);
+    vi.stubGlobal("navigator", { geolocation: { watchPosition: watch, clearWatch: vi.fn(), getCurrentPosition: vi.fn() } });
+    state.isOnline = false;
+    const { unmount } = render(<RiderPage />);
+    expect(watch).not.toHaveBeenCalled();
+    unmount();
+    state.isOnline = true;
+    render(<RiderPage />);
+    expect(watch).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new offer beeps once (the in-app beep pattern), not again on the next render", () => {
+    const vibrate = vi.fn();
+    vi.stubGlobal("navigator", { vibrate });
+    state.isOnline = true;
+    state.jobs = [];
+    const { rerender } = render(<RiderPage />);
+    expect(vibrate).not.toHaveBeenCalled();
+    state.jobs = [job("offered", order({}))];
+    rerender(<RiderPage />);
+    const beeps = () => vibrate.mock.calls.filter((c) => JSON.stringify(c[0]) === "[200,100,200]").length;
+    expect(beeps()).toBe(1);
+    rerender(<RiderPage />);
+    expect(beeps()).toBe(1);
+  });
+
+  it("the board counts only trips the rider holds (an offer is not a trip)", () => {
+    state.isOnline = true;
+    state.jobs = [job("offered", order({ id: "PS-1" })), job("accepted", order({ id: "PS-2" })), job("delivered", order({ id: "PS-3" }))];
+    render(<RiderPage />);
+    const strip = screen.getByText("চলমান ডেলিভারি").parentElement as HTMLElement;
+    expect(strip).toHaveTextContent("1");
+    expect(screen.getByText("ফিডে সম্পন্ন").parentElement).toHaveTextContent("1");
+    expect(screen.getByText(/অ্যাসাইন্ড অর্ডার সমূহ \(2\)/)).toBeInTheDocument();
   });
 });

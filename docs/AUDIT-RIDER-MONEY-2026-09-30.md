@@ -636,3 +636,23 @@ route/ভবিষ্যৎ feature লগ করতে ভুলতে পা�
 - migration না চালালে সব নীরবে বন্ধ থাকে (cron `skipped`, কার্ড লুকানো)।
 
 **টেস্ট:** PGlite (`npm run test:money`): বন্ধ থাকলে কিছু হয় না, দৈনিক বোনাস একবারই, রিটার্ন গোনা হয় না, রেফারেল একবারই এবং শুধু সক্রিয় রেফারারকে, জার্নাল-ব্যালেন্স মেলে, ফাংশন service-only, সেটিংস বদলের audit। Vitest: pure নিয়ম, DB লেয়ার, route, কার্ড, অ্যাডমিন পেজ, আবেদন ফর্ম/route, cron।
+
+## ৩৩. Z — `rider/page.tsx` ভাঙা (১,১২৭ → ৩২৮ লাইন) + regression test
+
+**সমস্যা:** রাইডারের মূল পেজ ছিল একটিই ১,১০০+ লাইনের component — ১৭টি `useState`, GPS, বিপ, ছবি আপলোড, ব্যর্থ-চেষ্টা, নগদ জমা, সবকিছু একসাথে। প্রতিটি নতুন ফিচার (I, N, V…) এখানেই ঢুকছিল এবং ঝুঁকি বাড়ছিল। **কোনো migration নেই; আচরণ একই** (নিচের দুটি ইচ্ছাকৃত ব্যতিক্রম বাদে)।
+
+**নতুন কাঠামো:**
+- `src/lib/rider-tasks.ts` — pure: `toRiderTasks`, `countActiveTrips`, `offeredIds`, `secondsLeft`, `cashMeter`।
+- `src/lib/use-rider-location.ts` — অনলাইন থাকাকালীন GPS (৫০ মি / ২-মিনিট হার্টবিট; ট্রিপে ৩০ সে, নিষ্ক্রিয় ২ মি)। এটি Q (background location)-এর ভিত্তি।
+- `src/lib/use-offer-beep.ts` — নতুন অফারে বিপ + কম্পন।
+- `src/lib/rider-delivery-actions.ts` — `uploadDeliveryProof`, `reportFailedAttempt` (কখনো throw করে না)।
+- `src/components/rider/dashboard/` — `top-bar`, `cash-card`, `stats-strip`, `task-card`, `failed-attempt-form`, `pin-modal`, `settle-modal`।
+- পেজ এখন শুধু session + jobs + action handler জোড়া দেয়। PIN/ছবি/ব্যর্থ-কারণ/settle-এর state modal-এর ভেতরে, modal খোলার সময় mount হয় — তাই প্রতিবার পরিষ্কার অবস্থায় খোলে (আগে হাতে ছয়টি state reset করতে হতো)।
+
+**দুটি ইচ্ছাকৃত পরিবর্তন:**
+1. নগদ-জমা dialog-এর ত্রুটি (bKash-এ reference না দেওয়া, সার্ভারের প্রত্যাখ্যান) আগে পেজের banner-এ যেত — যা ওভারলের পেছনে ঢাকা পড়ত। এখন dialog-এর ভেতরেই দেখায়।
+2. "Submit failed" একবার চাপার পর অনুরোধ চলাকালীন disabled — দুবার জমা পড়ে না।
+
+**Regression net:** আগের ১৯টি পেজ-টেস্টের সাথে ১৫টি নতুন (accept/decline/pickup, ভুল কোডে dialog খোলা থাকা, সফল delivery, dialog পরিষ্কার খোলা, নগদ-জমার ছয়টি পথ, অনলাইন ছাড়া GPS নয়, বিপ একবারই, "অফার ট্রিপ নয়" গণনা) — এবং এই নতুন টেস্টগুলো **পুরনো ১,১২৭-লাইনের পেজের বিরুদ্ধেও চালানো হয়েছে**: শুধু উপরের (১)-এর দুটি টেস্ট ফেল করেছে, বাকি সব দুই সংস্করণেই পাস। সাথে lib (`rider-tasks`, `rider-delivery-actions`, `use-rider-location`, `use-offer-beep`) ও প্রতিটি নতুন component-এর আলাদা টেস্ট।
+
+**জানা সীমা (আগে থেকেই ছিল, ভাঙার সময় ঠিক করা হয়নি):** নতুন অফারে দুটি hook আলাদাভাবে কম্পন চালায় (`use-offer-alert` ও `use-offer-beep`); পরেরটি আগেরটিকে ওভাররাইড করে। দুটিকে এক করা যেতে পারে।
