@@ -9,6 +9,7 @@ vi.mock("server-only", () => ({}));
 
 const state = vi.hoisted(() => ({
   sweeps: [] as { force?: boolean }[],
+  coverage: 0,
   announcements: [] as Record<string, unknown>[],
   service: true,
 }));
@@ -32,6 +33,12 @@ vi.mock("@/lib/rider-push", () => ({
   pushRiderAnnouncement: async (_s: unknown, input: Record<string, unknown>) => {
     state.announcements.push(input);
     return 1;
+  },
+}));
+vi.mock("@/lib/db/coverage-alert", () => ({
+  notifyIfNoCoverage: async () => {
+    state.coverage += 1;
+    return false;
   },
 }));
 vi.mock("@/lib/customer-push", () => ({
@@ -77,6 +84,7 @@ const run = (fn: unknown, body: unknown) => (fn as (r: Request, c: unknown) => P
 
 beforeEach(() => {
   state.sweeps = [];
+  state.coverage = 0;
   state.announcements = [];
   state.service = true;
 });
@@ -86,10 +94,14 @@ describe("rider push is nudged exactly where offers can appear", () => {
     expect((await run(adminAdvance, { to: "ready-for-pickup" })).status).toBe(200);
     expect((await run(vendorAdvance, { to: "ready-for-pickup" })).status).toBe(200);
     expect(state.sweeps).toEqual([{ force: true }, { force: true }]);
+    // S: and the owner is told when nobody can take it
+    expect(state.coverage).toBe(2);
     state.sweeps = [];
+    state.coverage = 0;
     await run(adminAdvance, { to: "preparing" });
     await run(vendorAdvance, { to: "confirmed" });
     expect(state.sweeps).toEqual([]);
+    expect(state.coverage).toBe(0);
   });
 
   it("a verified wallet payment (staff or shop) makes the order dispatchable → sweep; a rejection does not", async () => {

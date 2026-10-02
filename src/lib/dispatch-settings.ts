@@ -95,3 +95,6 @@ export const sanitizeDispatchSettings = (raw: unknown): DispatchSettings => {
   };
   return { cashCap: pick("cashCap"), offerTtl: pick("offerTtl"), maxAttempts: pick("maxAttempts") };
 };
+
+/** Active jobs a rider may carry at once (fixed in the dispatch SQL; shown here so the UI can explain it). */
+export const DISPATCH_LOAD_LIMIT = 2;

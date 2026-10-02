@@ -13,6 +13,7 @@ import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons"
 import AdminLiveMap from "@/components/admin/admin-live-map";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import { AdminBatchAssign } from "@/components/admin/admin-batch-assign";
+import { coverageSummary, diagnoseCoverage, type Coverage } from "@/lib/dispatch-coverage";
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   offered: { label: "Offered", cls: "bg-amber-100 text-amber-900" },
@@ -39,7 +40,7 @@ export default function AdminDeliveriesPage() {
     cancel,
     refresh,
   } = useAdminDeliveries();
-  const { riders, dispatch } = useRiders(RIDERS_POLL_MS);
+  const { riders, dispatch, loading: ridersLoading } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
 
   const counts = useMemo(() => {
@@ -56,6 +57,26 @@ export default function AdminDeliveriesPage() {
     for (const d of deliveries) out[d.state] = (out[d.state] ?? 0) + 1;
     return out;
   }, [deliveries]);
+
+  // S: why each waiting order has (or has not) offers — the silent no-coverage case.
+  const coverage = useMemo(() => {
+    const map = new Map<string, Coverage>();
+    // An empty roster while it is still loading would shout "no rider covers…" for nothing.
+    if (ridersLoading) return map;
+    for (const order of awaitingOrders) {
+      map.set(
+        order.id,
+        diagnoseCoverage(order, riders, {
+          cashCap: dispatch.cashCap,
+          awaitingVerification: paymentSummary(order).awaitingVerification,
+          // the awaiting list only holds orders with no live assignment
+          hasLiveAssignment: false,
+        }),
+      );
+    }
+    return map;
+  }, [awaitingOrders, riders, dispatch.cashCap, ridersLoading]);
+  const coverageCounts = useMemo(() => coverageSummary([...coverage.values()]), [coverage]);
 
   if (loading) {
     return (
@@ -94,6 +115,15 @@ export default function AdminDeliveriesPage() {
         </p>
       )}
 
+      {coverageCounts.alert > 0 && (
+        <p
+          role="alert"
+          data-testid="coverage-alert"
+          className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900 ring-1 ring-rose-300"
+        >
+          ⚠ {coverageCounts.alert} waiting order{coverageCounts.alert === 1 ? " has" : "s have"} no rider who can take {coverageCounts.alert === 1 ? "it" : "them"} — see “Awaiting dispatch” below for the reason and the fix.
+        </p>
+      )}
       <p className="rounded-xl bg-sky-50 p-4 text-sm text-sky-900">
         {new Set(deliveries.filter(d => d.state === "offered").map(d => d.orderId)).size} orders requesting riders · {counts.offered} invitations.
         One order can have several invitations, but only one assigned rider.
@@ -265,6 +295,24 @@ export default function AdminDeliveriesPage() {
                       ? `rider collects ${formatBdt(cashToCollect(order))}`
                       : "no cash to collect"}
                   </p>
+                  {coverage.get(order.id) && (
+                    <p
+                      data-testid="coverage-line"
+                      data-reason={coverage.get(order.id)!.reason}
+                      className={`mt-1 text-xs font-semibold ${
+                        coverage.get(order.id)!.severity === "alert"
+                          ? "text-rose-800"
+                          : coverage.get(order.id)!.severity === "warn"
+                            ? "text-amber-800"
+                            : "text-ink-soft"
+                      }`}
+                    >
+                      {coverage.get(order.id)!.severity === "alert" ? "⚠ " : ""}
+                      {coverage.get(order.id)!.label}
+                      {coverage.get(order.id)!.waitingMin > 0 ? ` · waiting ${coverage.get(order.id)!.waitingMin} min` : ""}
+                      <span className="block font-normal text-ink-soft">→ {coverage.get(order.id)!.action}</span>
+                    </p>
+                  )}
                 </div>
                 <Link
                   href={`/admin/orders/${order.id}`}
