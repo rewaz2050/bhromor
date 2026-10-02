@@ -918,6 +918,8 @@ export const translations = {
       nowPickup: "Ready for pickup at {hub} — show the order number at the counter.",
       nowDelivered: "Delivered. Anything wrong with it? Returns are open for 7 days.",
       nowCancelled: "This order was cancelled — nothing to pay.",
+      nowFailed:
+        "We could not complete this delivery. Our team is on it and will contact you to arrange the next step — you do not need to do anything.",
       pinTitle: "Your delivery PIN",
       pinHint: "Tell the rider these 4 digits when the parcel arrives.",
       forgotTitle: "Forgot your password?",
@@ -1841,6 +1843,8 @@ export const translations = {
       nowPickup: "{hub}-এ পিকআপের জন্য রেডি — কাউন্টারে অর্ডার নম্বর দেখান।",
       nowDelivered: "ডেলিভারি হয়েছে। কোনো সমস্যা? ৭ দিন পর্যন্ত রিটার্ন খোলা।",
       nowCancelled: "এই অর্ডার বাতিল হয়েছে — কিছু দিতে হবে না।",
+      nowFailed:
+        "ডেলিভারিটি সম্পন্ন করা যায়নি। আমাদের টিম বিষয়টি দেখছে এবং পরবর্তী ধাপের জন্য আপনার সাথে যোগাযোগ করবে — আপনাকে কিছু করতে হবে না।",
       pinTitle: "আপনার ডেলিভারি PIN",
       pinHint: "পার্সেল এলে রাইডারকে এই ৪টি সংখ্যা বলুন।",
       forgotTitle: "পাসওয়ার্ড ভুলে গেছেন?",

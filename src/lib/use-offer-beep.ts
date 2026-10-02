@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * A new 90-second offer is easy to miss while riding: beep + vibrate the
- * moment one that was not on the board before appears (in-app alert, not
- * background push — that is `rider-push`). Item Z lifted this out of the page.
+ * A new 90-second offer is easy to miss while riding: beep the moment one that
+ * was not on the board before appears (in-app alert, not background push — that
+ * is `rider-push`). Item Z lifted this out of the page.
+ *
+ * SOUND ONLY. Vibration belongs to `use-offer-alert`: both hooks used to
+ * vibrate on the same event, and the two patterns overwrote each other.
  */
 import { useEffect, useRef } from "react";
 
@@ -24,7 +27,6 @@ export const playOfferBeep = (): void => {
       osc.stop(ctx.currentTime + 0.5);
       window.setTimeout(() => void ctx.close().catch(() => {}), 700);
     }
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
   } catch {
     /* silent devices stay silent */
   }
