@@ -34,7 +34,11 @@ export default function AdminPayoutsPage() {
   const totals = useMemo(() => {
     const earned = balances.reduce((s, b) => s + b.earned, 0);
     const paid = balances.reduce((s, b) => s + b.paid, 0);
-    return { earned, paid, balance: earned - paid };
+    // Shops PROSANTI owes and shops that owe PROSANTI are shown apart — netting
+    // them would hide a real debt behind a real payable.
+    const payable = balances.reduce((s, b) => s + Math.max(b.balance, 0), 0);
+    const owed = balances.reduce((s, b) => s + Math.max(-b.balance, 0), 0);
+    return { earned, paid, balance: payable, owed };
   }, [balances]);
 
   const submitPayout = async () => {
@@ -109,6 +113,11 @@ export default function AdminPayoutsPage() {
           <p className="mt-1 font-display text-2xl text-white">
             {formatBdt(totals.balance)}
           </p>
+          {totals.owed > 0 && (
+            <p className="mt-1 text-xs font-semibold text-amber-200" data-testid="shops-owe-total">
+              Shops owe PROSANTI {formatBdt(totals.owed)}
+            </p>
+          )}
         </div>
       </div>
 

@@ -118,6 +118,7 @@ for (const f of [
   '202610020011_dispatch_followups.sql',
   '202610020012_failed_fee_weekly_bonus.sql',
   '202610020013_shop_own_wallet.sql',
+  '202610020014_shop_balance_totals.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1327,6 +1328,31 @@ end $$`);
   await db.exec(migSql); // second run: already patched, nothing to do
   await db.exec(`drop function ps_place_order(jsonb, jsonb)`);
   console.log('PASS: shop-own-wallet — off by default, nets verified wallet orders (late verification, rewrite, returns, COD untouched), debt + remittance guard, overpaid check');
+
+  // ---- shop balance totals are aggregated in the database (202610020014) ----
+  const btA = await scalar(`insert into shops(name) values ('BT-A') returning id`);
+  const btB = await scalar(`insert into shops(name) values ('BT-B') returning id`);
+  const btC = await scalar(`insert into shops(name) values ('BT-C') returning id`);
+  // 1,200 ledger rows for A — more than PostgREST's default 1,000-row response cap
+  await db.exec(`insert into orders(status, payment, total, shop_id) select 'delivered'::ps_order_status, 'cod', 1000, '${btA}' from generate_series(1,1200)`);
+  await db.exec(`insert into shop_ledger(shop_id, order_id, commission, payable) select shop_id, id, 0, 700 from orders where shop_id = '${btA}'`);
+  const btO = await scalar(`insert into orders(status, payment, total, shop_id) values ('delivered'::ps_order_status, 'cod', 1000, $1) returning id`, [btB]);
+  await db.query(`insert into shop_ledger(shop_id, order_id, commission, payable) values ($1, $2, 0, 500)`, [btB, btO]);
+  await db.query(`insert into shop_payouts(shop_id, amount, paid_at) values ($1, 200, '2026-09-01T00:00:00Z'), ($1, 300, '2026-09-05T00:00:00Z')`, [btB]);
+  const btAll = await rows(`select * from ps_shop_balance_totals()`);
+  const btRow = (id) => btAll.find((r) => r.shop_id === id);
+  assert.equal(Number(btRow(btA).earned), 1200 * 700, 'every ledger row counted, not the first 1,000');
+  assert.equal(Number(btRow(btA).paid), 0);
+  assert.equal(btRow(btA).last_payout_at, null);
+  assert.equal(Number(btRow(btB).earned), 500);
+  assert.equal(Number(btRow(btB).paid), 500);
+  assert.ok(btRow(btB).last_payout_at, 'last payout time present');
+  assert.equal(btRow(btC), undefined, 'a shop with no rows has no row — callers default to 0');
+  const btOne = await rows(`select * from ps_shop_balance_totals($1)`, [btB]);
+  assert.equal(btOne.length, 1);
+  assert.equal(Number(btOne[0].earned) - Number(btOne[0].paid), 0);
+  assert.ok(await scalar(`select not has_function_privilege('anon', 'ps_shop_balance_totals(uuid)', 'execute')`), 'not callable by anon');
+  console.log('PASS: shop balance totals — aggregated past 1,000 rows, per-shop filter, anon cannot call');
 } finally {
   await db.close();
 }

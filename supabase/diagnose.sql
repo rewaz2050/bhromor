@@ -153,7 +153,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Failed-delivery fee + weekly tiered bonus (2026-10-02).
   ('85',  'Failed-delivery fee + weekly bonus', '202610020012_failed_fee_weekly_bonus.sql', 'function', 'ps_failed_delivery_fee'),
   -- Shop-own-wallet settlement (2026-10-02).
-  ('86',  'Shop-own-wallet settlement', '202610020013_shop_own_wallet.sql', 'function', 'ps_shop_wallet_collected')
+  ('86',  'Shop-own-wallet settlement', '202610020013_shop_own_wallet.sql', 'function', 'ps_shop_wallet_collected'),
+  -- Shop balance totals aggregated in SQL (2026-10-03).
+  ('87',  'Shop balance totals (SQL aggregate)', '202610020014_shop_balance_totals.sql', 'function', 'ps_shop_balance_totals')
 )
 select step as ord,
        label,

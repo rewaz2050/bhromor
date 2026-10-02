@@ -751,3 +751,12 @@ A–Z শেষ হওয়ার পর "জানা সীমা"-র তা
 **Owner-এর কাজ:** Supabase SQL Editor-এ `…0012`-এর পর `202610020013_shop_own_wallet.sql` চালান (বা নতুন DB-তে `bootstrap-parts/21`)। migration না চালালে Admin → Shops-এ model সেভ করতে গেলে স্পষ্ট ৫০৩ বার্তা আসে; checkout platform নম্বরেই থাকে।
 
 **সীমা:** Daily report-এর `walletPaidOrders` এখনও সব non-COD অর্ডার গোনে; Vendor earnings ledger শেষ ১০০/payout ২০ লাইন দেখায় (আগে থেকেই)।
+
+## ৩৮. ফলো-আপ ব্যাচ ২ (১): shop-এর হিসাব এখন database-এ যোগ হয় (migration `202610020014`)
+
+**বাগ:** admin Payouts, "payout record" প্রি-চেক, vendor Earnings আর shop dossier — সব জায়গায় ledger/payout *সারি* তুলে Node-এ যোগ করা হতো, সীমা ৫০০০ / ১০০ / শেষ ২০ / একটা window। তার ওপর PostgREST একবারে ডিফল্টে ১,০০০ সারির বেশি দেয় না। ফলে ১,০০০+ সারি হলে "Paid out" আর "Balance due" চুপচাপ ভুল দেখাত (vendor-এ শুধু শেষ ২০ payout যোগ হতো)। DB trigger (`ps_guard_payout_balance`) সবসময় ঠিক ছিল — ভুল ছিল শুধু দেখানো আর অ্যাপের প্রি-চেক।
+
+**ফিক্স:** `ps_shop_balance_totals(p_shop_id)` — SECURITY INVOKER aggregate (RLS-ই ঠিক করে কে কী দেখবে; anon পারে না)। `src/lib/db/shop-balances.ts` এটা ডাকে; migration না চালালে সব সারি পাতা ধরে (১,০০০ করে) পড়ে, তাই সংখ্যা তখনো ঠিক। তালিকাগুলো আগের মতোই window-সীমিত।
+- Admin Payouts: "Unsettled balance" কার্ডে এখন শুধু **shop-দের পাওনা**; যে shop PROSANTI-কে দেনা, তা আলাদা লাইনে ("Shops owe PROSANTI ৳X") — আগে নেট করে দেনা লুকিয়ে যেত।
+
+**টেস্ট:** PGlite-এ ১,২০০ সারির shop (১,০০০ ছাড়ানো), per-shop filter, anon নিষেধ; unit-এ RPC পথ, ১,০০০ ছাড়ানো fallback, শূন্য ডিফল্ট, ব্যর্থ পাঠ ≠ নীরব শূন্য। **Owner:** `…0013`-এর পর `202610020014_shop_balance_totals.sql` চালান।

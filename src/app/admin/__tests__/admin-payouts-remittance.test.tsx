@@ -38,6 +38,8 @@ describe("Admin payouts — a shop that owes PROSANTI (202610020013)", () => {
   it("shows the debt instead of a minus figure, and a remittance in the history", () => {
     render(<AdminPayoutsPage />);
     expect(screen.getByTestId("owes-platform").textContent).toMatch(/Owes PROSANTI.*450/);
+    // the summary keeps the debt apart from what PROSANTI owes shops
+    expect(screen.getByTestId("shops-owe-total").textContent).toMatch(/450/);
     fireEvent.click(screen.getByRole("button", { name: "Settle" }));
     expect(screen.getByText(/Remitted .*100/)).toBeTruthy();
   });

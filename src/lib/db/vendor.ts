@@ -20,6 +20,7 @@ import type { Category, Product, Shop } from "../catalog";
 import { validateVacation } from "../shop-vacation";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapProduct, mapShop } from "./mappers";
+import { oneShopTotals } from "./shop-balances";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { toDomain, toDomainMany } from "./orders";
 import type {
@@ -695,8 +696,11 @@ export async function listVendorEarnings(
     reference: r.reference,
     at: Date.parse(r.paid_at),
   }));
-  const lifetimePayable = ledger.reduce((s, r) => s + r.payable, 0);
-  const lifetimePaid = payouts.reduce((s, r) => s + r.amount, 0);
+  // The lists above are windows (100 / 20); the lifetime figures are summed in
+  // the database so they stay right past a thousand orders.
+  const totals = await oneShopTotals(db, shopId).catch(() => null);
+  const lifetimePayable = totals ? totals.earned : ledger.reduce((s, r) => s + r.payable, 0);
+  const lifetimePaid = totals ? totals.paid : payouts.reduce((s, r) => s + r.amount, 0);
   return {
     lifetimePayable,
     lifetimePaid,

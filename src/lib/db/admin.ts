@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { oneShopTotals, shopBalanceTotals } from "./shop-balances";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -2440,43 +2441,26 @@ export interface PayoutLine {
 export async function listShopBalances(
   db: SupabaseClient,
 ): Promise<ShopBalance[]> {
-  const [shopsRes, ledgerRes, payoutRes] = await Promise.all([
+  const [shopsRes, totals] = await Promise.all([
     db.from("shops").select("*").order("name"),
-    db.from("shop_ledger").select("shop_id,payable").limit(5000),
-    db
-      .from("shop_payouts")
-      .select("shop_id,amount,paid_at")
-      .order("paid_at", { ascending: false })
-      .limit(5000),
+    // Summed in the database — never capped by a row limit.
+    shopBalanceTotals(db).catch(() => null),
   ]);
-  if (shopsRes.error || ledgerRes.error || payoutRes.error) {
+  if (shopsRes.error || !totals) {
     throw new Error("payout overview failed");
-  }
-  const earned = new Map<string, number>();
-  for (const r of ((ledgerRes.data ?? []) as { shop_id: string; payable: number }[])) {
-    earned.set(r.shop_id, (earned.get(r.shop_id) ?? 0) + r.payable);
-  }
-  const paid = new Map<string, number>();
-  const lastAt = new Map<string, number>();
-  for (const r of ((payoutRes.data ?? []) as {
-    shop_id: string;
-    amount: number;
-    paid_at: string;
-  }[])) {
-    paid.set(r.shop_id, (paid.get(r.shop_id) ?? 0) + r.amount);
-    if (!lastAt.has(r.shop_id)) lastAt.set(r.shop_id, Date.parse(r.paid_at));
   }
   return ((shopsRes.data ?? []) as DbShop[])
     .map(mapShop)
     .map((shop) => {
-      const e = earned.get(shop.id) ?? 0;
-      const p = paid.get(shop.id) ?? 0;
+      const t = totals.get(shop.id);
+      const e = t?.earned ?? 0;
+      const p = t?.paid ?? 0;
       return {
         shop,
         earned: e,
         paid: p,
         balance: e - p,
-        lastPayoutAt: lastAt.get(shop.id) ?? null,
+        lastPayoutAt: t?.lastPayoutAt ?? null,
       };
     })
     .sort((a, b) => b.balance - a.balance);
@@ -2580,21 +2564,9 @@ export async function recordPayout(
     .eq("id", input.shopId)
     .single();
   if (shopError || !shop) throw new AdminInputError("Shop not found.", 404);
-  const [ledgerRes, payoutRes] = await Promise.all([
-    db.from("shop_ledger").select("payable").eq("shop_id", input.shopId).limit(5000),
-    db.from("shop_payouts").select("amount").eq("shop_id", input.shopId).limit(5000),
-  ]);
-  if (ledgerRes.error || payoutRes.error) {
+  const { earned, paid } = await oneShopTotals(db, input.shopId).catch(() => {
     throw new Error("payout balance check failed");
-  }
-  const earned = ((ledgerRes.data ?? []) as { payable: number }[]).reduce(
-    (s, r) => s + r.payable,
-    0,
-  );
-  const paid = ((payoutRes.data ?? []) as { amount: number }[]).reduce(
-    (s, r) => s + r.amount,
-    0,
-  );
+  });
   if (input.remit) {
     // Only while the shop owes PROSANTI, and never more than it owes.
     if (earned - paid >= 0 || input.amount < earned - paid) {

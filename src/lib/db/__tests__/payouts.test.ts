@@ -74,6 +74,7 @@ describe("shapePayoutInput (slice 5)", () => {
 const payoutDb = (o: { earned: number; paid: number; insertError?: { message: string } }) => {
   const inserts: unknown[] = [];
   const db = {
+    rpc: async () => ({ data: [{ shop_id: "s1", earned: o.earned, paid: o.paid, last_payout_at: null }], error: null }),
     from: (table: string) => {
       if (table === "shops") {
         return { select: () => ({ eq: () => ({ single: async () => ({ data: { id: "s1" }, error: null }) }) }) };
