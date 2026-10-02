@@ -447,6 +447,12 @@ export default function AdminRidersPage() {
             Dispatch rules
           </Link>
           <Link
+            href="/admin/riders/disputes"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Disputes
+          </Link>
+          <Link
             href="/admin/riders/scorecard"
             className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
           >

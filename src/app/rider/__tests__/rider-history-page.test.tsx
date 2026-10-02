@@ -4,6 +4,8 @@ import type { RiderHistoryItem } from "@/lib/rider-history";
 
 const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
 vi.mock("@/lib/use-rider", () => ({ useRiderSession: () => ({ status: "authed", rider: { id: "r1" } }) }));
+const dispute = vi.hoisted(() => ({ hook: { items: [], ready: true, raise: async () => null, refresh: async () => {} } as Record<string, unknown> }));
+vi.mock("@/lib/use-rider-disputes", () => ({ useRiderDisputes: () => dispute.hook }));
 vi.mock("@/lib/use-rider-history", () => ({ useRiderHistory: () => state.hook }));
 
 import RiderHistoryPage from "../history/page";
@@ -63,5 +65,33 @@ describe("<RiderHistoryPage>", () => {
     state.hook = base({ error: "Could not load your history." });
     render(<RiderHistoryPage />);
     expect(screen.getByRole("alert").textContent).toContain("Could not load");
+  });
+  it("lets the rider report a problem on a trip, then shows their complaint and the office's answer", async () => {
+    const raise = vi.fn().mockResolvedValue(null);
+    dispute.hook = {
+      items: [
+        { id: "d1", category: "missing_fee", message: "ফি আসেনি", orderNo: "PS-1001", claimedAmount: null, status: "approved", adjustmentAmount: 4000, note: "ফি যোগ করা হয়েছে", at: 1, decidedAt: 2 },
+      ],
+      ready: true, raise, refresh: async () => {},
+    };
+    state.hook = base({ items: [item()] });
+    render(<RiderHistoryPage />);
+    const mine = screen.getByTestId("dispute-item");
+    expect(mine.getAttribute("data-status")).toBe("approved");
+    expect(mine.textContent).toContain("অফিস: ফি যোগ করা হয়েছে");
+    expect(mine.textContent).toContain("ওয়ালেট +৳40");
+
+    fireEvent.click(screen.getByTestId("dispute-open"));
+    fireEvent.change(screen.getByLabelText(/কী হয়েছে/), { target: { value: "কাস্টমার কম টাকা দিয়েছেন" } });
+    fireEvent.click(screen.getByRole("button", { name: "অভিযোগ পাঠান" }));
+    await screen.findByText(/অভিযোগ জমা হয়েছে/);
+    expect(raise).toHaveBeenCalledWith({ category: "missing_fee", message: "কাস্টমার কম টাকা দিয়েছেন", claimedTaka: undefined, assignmentId: "a1" });
+  });
+
+  it("hides the report button when disputes are not set up", () => {
+    dispute.hook = { items: [], ready: false, raise: async () => null, refresh: async () => {} };
+    state.hook = base({ items: [item()] });
+    render(<RiderHistoryPage />);
+    expect(screen.queryByTestId("dispute-open")).toBeNull();
   });
 });

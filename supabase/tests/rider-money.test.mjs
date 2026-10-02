@@ -110,6 +110,7 @@ for (const f of [
   '202610020004_rider_push.sql',
   '202610020005_licence_expiry.sql',
   '202610020006_rider_scorecards.sql',
+  '202610020007_rider_disputes.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -888,6 +889,69 @@ try {
   const mStaff = JSON.parse(JSON.stringify(await scalar(`select ps_admin_rider_scorecards(30)`)));
   assert.ok(Array.isArray(mStaff) && mStaff.some((c) => c.id === xRider), 'staff wrapper returns the same list');
   console.log('PASS: rider scorecards — service-only raw reader, staff wrapper, claim + COD facts, active riders only');
+
+  // ---- W: rider disputes + manual wallet adjustments
+  const wUser = await uuid();
+  const wRider = await scalar(`insert into riders(user_id, name, phone, status) values ($1,'Dispute Rider','01710000881','active') returning id`, [wUser]);
+  const wOther = await scalar(`insert into riders(name, phone, status) values ('Other Rider','01710000882','active') returning id`);
+  const wOrder = await scalar(`insert into orders(status) values ('delivered') returning id`);
+  const wAsg = await scalar(`insert into delivery_assignments(order_id, rider_id, state) values ($1,$2,'delivered') returning id`, [wOrder, wRider]);
+  const wOtherAsg = await scalar(`insert into delivery_assignments(order_id, rider_id, state) values ($1,$2,'delivered') returning id`, [await scalar(`insert into orders(status) values ('delivered') returning id`), wOther]);
+  const raise = (asg, cat, msg, claimed = null) => db.query(`select * from ps_rider_raise_dispute($1, $2, $3, $4)`, [asg, cat, msg, claimed]);
+
+  await as(staffId);
+  await assert.rejects(raise(wAsg, 'missing_fee', 'fee not paid'), /forbidden/, 'staff are not riders');
+  await as(wUser);
+  await assert.rejects(raise(wOtherAsg, 'missing_fee', 'fee not paid'), /not your trip/, "cannot dispute another rider's trip");
+  await assert.rejects(raise(null, 'missing_fee', 'fee not paid'), /trip required/);
+  await assert.rejects(raise(wAsg, 'bogus', 'fee not paid'), /unknown category/);
+  await assert.rejects(raise(wAsg, 'missing_fee', 'no'), /too short/);
+  await assert.rejects(raise(wAsg, 'missing_fee', 'x'.repeat(501)), /too long/);
+  await assert.rejects(raise(wAsg, 'missing_fee', 'fee not paid', -5), /invalid amount/);
+  const wD = (await raise(wAsg, 'missing_fee', ' Delivery fee not credited ', 4000)).rows[0];
+  assert.deepEqual([wD.status, wD.message, String(wD.claimed_amount), wD.order_id], ['pending', 'Delivery fee not credited', '4000', wOrder]);
+  await assert.rejects(raise(wAsg, 'wrong_cod', 'customer paid less'), /already open/, 'one open dispute per trip');
+  for (let i = 0; i < 4; i++) await raise(null, 'other', `general question ${i}`);
+  await assert.rejects(raise(null, 'other', 'one more question'), /too many open/, 'at most 5 open');
+  // staff decisions
+  await as(wUser);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_dispute($1,'approve',4000,'ok')`, [wD.id]), /forbidden/);
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider($1, 1000, 'because reasons')`, [wRider]), /forbidden/);
+  await as(staffId);
+  await assert.rejects(db.query(`select * from ps_admin_resolve_dispute($1,'reject',0,'')`, [wD.id]), /reason required/, 'a rejection needs a reason');
+  await assert.rejects(db.query(`select * from ps_admin_resolve_dispute($1,'maybe',0,'x')`, [wD.id]), /approve or reject/);
+  const wR = (await db.query(`select * from ps_admin_resolve_dispute($1,'approve',4000,'Fee missed by the system')`, [wD.id])).rows[0];
+  assert.deepEqual([wR.status, String(wR.adjustment_amount)], ['approved', '4000']);
+  assert.ok(wR.earning_id && wR.decided_at && wR.decided_by === staffId);
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [wRider])), 4000);
+  assert.equal(await scalar(`select kind from rider_earnings where id = $1`, [wR.earning_id]), 'adjustment');
+  await assert.rejects(db.query(`select * from ps_admin_resolve_dispute($1,'reject',0,'late')`, [wD.id]), /already approved/);
+  // the audit trail names the staff member and the amount, not the rider's wallet
+  const wAudit = (await db.query(`select * from money_audit_log where event = 'rider_adjustment' and subject_id = $1`, [wRider])).rows;
+  assert.equal(wAudit.length, 1);
+  assert.equal(String(wAudit[0].amount), '4000');
+  assert.equal(wAudit[0].actor_id, staffId);
+  // a rejected dispute moves no money
+  const wD2 = (await (async () => { await as(wUser); return raise(null, 'other', 'something else entirely'); })()).rows;
+  await as(staffId);
+  assert.ok(wD2.length === 1);
+  const wOpen = (await db.query(`select id from rider_disputes where rider_id = $1 and status = 'pending' limit 1`, [wRider])).rows[0].id;
+  const wRej = (await db.query(`select * from ps_admin_resolve_dispute($1,'reject',9999,'Not our error')`, [wOpen])).rows[0];
+  assert.deepEqual([wRej.status, String(wRej.adjustment_amount), wRej.earning_id], ['rejected', '0', null], 'reject ignores any amount');
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [wRider])), 4000);
+  // manual adjustment: guards, debit, wallet == journal
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider($1, 0, 'nothing happens')`, [wRider]), /must not be zero/);
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider($1, 100, 'no')`, [wRider]), /reason required/);
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider($1, 99999999, 'way too much')`, [wRider]), /too large/);
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider($1, -4001, 'more than the wallet')`, [wRider]), /negative/, 'a debit cannot overdraw the wallet');
+  await db.query(`select * from ps_admin_adjust_rider($1, -1500, 'Damaged parcel penalty')`, [wRider]);
+  assert.equal(Number(await scalar(`select earnings_balance from riders where id = $1`, [wRider])), 2500);
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [wRider])), 2500, 'wallet == journal');
+  await assert.rejects(db.query(`select * from ps_admin_adjust_rider(gen_random_uuid(), 100, 'ghost rider here')`), /rider not found/);
+  // RLS: staff can read disputes, a rider cannot read the table directly; internal helper is not callable
+  assert.equal(await scalar(`select has_function_privilege('authenticated','ps__apply_rider_adjustment(uuid,bigint,text)','execute')`), false, 'the raw wallet mover is not exposed');
+  assert.equal(await scalar(`select has_function_privilege('anon','ps_admin_adjust_rider(uuid,bigint,text)','execute')`), false);
+  console.log('PASS: rider disputes — own trips only, one open per trip, staff-only decisions, adjustments journal-balanced, no overdraw, audited');
 
   // ---- I: rider push — devices are private, die with the rider, offers are claimable once
   const jPush = await scalar(`insert into riders(name, phone, status) values ('Push Rider','01710000999','active') returning id`);

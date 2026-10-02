@@ -139,7 +139,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Driving-licence expiry (2026-10-02).
   ('78',  'Rider licence expiry (date + online guard)', '202610020005_licence_expiry.sql', 'column', 'riders.licence_expires_on'),
   -- Rider scorecards + opt-in auto-suspend (2026-10-02).
-  ('79',  'Rider scorecards (board + auto-suspend facts)', '202610020006_rider_scorecards.sql', 'function', 'ps_admin_rider_scorecards')
+  ('79',  'Rider scorecards (board + auto-suspend facts)', '202610020006_rider_scorecards.sql', 'function', 'ps_admin_rider_scorecards'),
+  -- Rider disputes + manual wallet adjustments (2026-10-02).
+  ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes')
 )
 select step as ord,
        label,
