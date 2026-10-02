@@ -1,3 +1,4 @@
+import { tagLabel } from "@/lib/delivery-feedback";
 import type { RatingSummary } from "@/lib/rider-rating";
 
 const fmtDay = (ts: number): string => new Date(ts).toLocaleDateString("bn-BD", { day: "numeric", month: "short" });
@@ -50,6 +51,23 @@ export default function RatingCard({ summary }: { summary: RatingSummary | null 
             ))}
           </ul>
           <p className="mt-1 text-[11px] text-rose-800">সময়মতো পৌঁছানো ও কাস্টমারকে আগে কল করলে রেটিং ভালো থাকে।</p>
+        </div>
+      )}
+
+      {summary.feedback && summary.feedback.length > 0 && (
+        <div className="mt-3" data-testid="rating-feedback">
+          <p className="text-xs font-semibold text-forest-900">কাস্টমার যা বলেছেন</p>
+          <ul className="mt-1 space-y-1.5">
+            {summary.feedback.map((f, i) => (
+              <li key={`${f.at}-${i}`} className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-ink" data-testid="rating-feedback-item">
+                <p className="text-[11px] text-ink-soft">
+                  {f.stars}★ · {f.orderNo ? `অর্ডার ${f.orderNo}` : "অর্ডার"} · {fmtDay(f.at)}
+                </p>
+                {f.tags.length > 0 && <p className="font-medium">{f.tags.map((t) => tagLabel(t, "bn")).join(" · ")}</p>}
+                {f.comment && <p>“{f.comment}”</p>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { Order } from "@/lib/orders";
+import {
+  MAX_COMMENT,
+  NEGATIVE_TAGS,
+  POSITIVE_TAGS,
+  tagLabel,
+  type FeedbackTag,
+} from "@/lib/delivery-feedback";
 
 /**
  * Post-delivery rider rating on the track page (202609250008): once the
@@ -11,6 +18,99 @@ import type { Order } from "@/lib/orders";
  * (a re-tap answers "already", never a skewed average). The rating rolls
  * into the rider's own dashboard scoreboard.
  */
+
+/** Optional second step: WHY — quick reasons + words. Skippable; can be sent once. */
+function FeedbackStep({ order, phone, stars }: { order: Order; phone: string; stars: number }) {
+  const { lang } = useLanguage();
+  const bn = lang === "bn";
+  const [tags, setTags] = useState<FeedbackTag[]>([]);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [skipped, setSkipped] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const choices = stars <= 3 ? NEGATIVE_TAGS : POSITIVE_TAGS;
+
+  if (skipped) return null;
+  if (sent) {
+    return (
+      <p role="status" data-testid="feedback-thanks" className="mt-2 text-xs font-medium text-forest-900">
+        {bn ? "আপনার মতামতের জন্য ধন্যবাদ — আমরা দেখব।" : "Thanks for telling us — we will look into it."}
+      </p>
+    );
+  }
+
+  const toggle = (t: FeedbackTag) =>
+    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+
+  const send = async () => {
+    if (busy || (tags.length === 0 && comment.trim() === "")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/track/rate/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: order.id, phone, tags, comment }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(data?.error ?? "পাঠানো যায়নি।");
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "পাঠানো যায়নি।");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="feedback-step" className="mt-3 border-t border-line pt-3">
+      <p className="text-sm font-medium text-forest-900">
+        {stars <= 2
+          ? bn ? "দুঃখিত! কী সমস্যা হয়েছিল?" : "Sorry about that — what went wrong?"
+          : bn ? "কিছু বলতে চান? (ঐচ্ছিক)" : "Anything to add? (optional)"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {choices.map((t) => (
+          <button
+            key={t}
+            type="button"
+            aria-pressed={tags.includes(t)}
+            onClick={() => toggle(t)}
+            className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ${
+              tags.includes(t) ? "bg-forest-800 text-white ring-forest-800" : "bg-white text-forest-900 ring-line"
+            }`}
+          >
+            {tagLabel(t, bn ? "bn" : "en")}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={comment}
+        maxLength={MAX_COMMENT}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+        aria-label={bn ? "আপনার কথা" : "Your words"}
+        placeholder={bn ? "সংক্ষেপে লিখুন…" : "A few words…"}
+        className="mt-2 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm"
+      />
+      {error && <p role="alert" className="mt-1.5 text-xs font-medium text-rose-700">{error}</p>}
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={busy || (tags.length === 0 && comment.trim() === "")}
+          className="rounded-xl bg-forest-800 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? (bn ? "পাঠানো হচ্ছে…" : "Sending…") : bn ? "মতামত পাঠান" : "Send feedback"}
+        </button>
+        <button type="button" onClick={() => setSkipped(true)} className="text-xs text-ink-soft underline">
+          {bn ? "এড়িয়ে যান" : "Skip"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function RiderRatingAsk({
   order,
@@ -62,7 +162,8 @@ export default function RiderRatingAsk({
             ? `ধন্যবাদ! ${order.rider.name}-এর জন্য আপনার রেটিং রেকর্ড হয়েছে ⭐`
             : `Thank you! Your rating for ${order.rider.name} is recorded ⭐`}
         </p>
-      ) : (
+      ) : null}
+      {done ? <FeedbackStep order={order} phone={phone} stars={stars} /> : (
         <>
           <p className="text-sm font-medium text-forest-900">
             {lang === "bn"

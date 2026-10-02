@@ -143,7 +143,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Rider disputes + manual wallet adjustments (2026-10-02).
   ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes'),
   -- Durable rate limit (2026-10-02).
-  ('81',  'Durable rate limit (shared counter)', '202610020008_rate_limit.sql', 'function', 'ps_rate_limit_hit')
+  ('81',  'Durable rate limit (shared counter)', '202610020008_rate_limit.sql', 'function', 'ps_rate_limit_hit'),
+  -- Delivery feedback: reasons + words on ratings (2026-10-02).
+  ('82',  'Delivery feedback (tags, comment, hide)', '202610020009_delivery_feedback.sql', 'column', 'delivery_ratings.feedback_at')
 )
 select step as ord,
        label,

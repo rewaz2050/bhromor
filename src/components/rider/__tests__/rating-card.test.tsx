@@ -31,4 +31,21 @@ describe("<RatingCard>", () => {
     expect(screen.queryByTestId("rating-low")).toBeNull();
     expect(screen.queryByTestId("rating-30d")).toBeNull();
   });
+
+  it("shows what customers said — reasons in Bangla and their words — and nothing when there is none (item X)", () => {
+    const at = Date.parse("2026-10-01T00:00:00Z");
+    const { rerender } = render(
+      <RatingCard summary={summary({ feedback: [{ stars: 2, at, orderNo: "PS-9", tags: ["late", "rude"], comment: "slow" }, { stars: 5, at, tags: ["polite"], comment: "" }] })} />,
+    );
+    const items = screen.getAllByTestId("rating-feedback-item");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("দেরিতে এসেছে · খারাপ ব্যবহার");
+    expect(items[0]).toHaveTextContent("“slow”");
+    expect(items[0]).toHaveTextContent("PS-9");
+    expect(items[1]).toHaveTextContent("ভদ্র ব্যবহার");
+    rerender(<RatingCard summary={summary({ feedback: [] })} />);
+    expect(screen.queryByTestId("rating-feedback")).toBeNull();
+    rerender(<RatingCard summary={summary()} />);
+    expect(screen.queryByTestId("rating-feedback")).toBeNull();
+  });
 });

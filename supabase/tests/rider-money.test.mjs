@@ -112,6 +112,8 @@ for (const f of [
   '202610020006_rider_scorecards.sql',
   '202610020007_rider_disputes.sql',
   '202610020008_rate_limit.sql',
+  '202609250008_delivery_ratings.sql',
+  '202610020009_delivery_feedback.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1017,6 +1019,20 @@ try {
   await assert.rejects(db.query(`select * from ps_rate_limit_hit('k', 0, 60000)`), /bad limit/);
   await assert.rejects(db.query(`select * from ps_rate_limit_hit('k', 3, 10)`), /bad window/);
   console.log('PASS: durable rate limit — shared atomic counter, per-key windows, service-role only, bad input refused');
+  // ---- X: delivery feedback columns — known tags only, bounded comment, defaults
+  const fbOrder = await scalar(`insert into orders(order_no, status) values ('PS-X-1', 'delivered') returning id`);
+  {
+    const fbRider = await scalar(`insert into riders(name, phone, status, vehicle) values ('Fb','01710000881','active','bicycle') returning id`);
+    await db.query(`insert into delivery_ratings(order_id, rider_id, stars) values ($1,$2,2)`, [fbOrder, fbRider]);
+    const fbRow = (await rows(`select tags, comment, feedback_at, hidden_from_rider from delivery_ratings where order_id = $1`, [fbOrder]))[0];
+    assert.deepEqual([fbRow.tags, fbRow.comment, fbRow.feedback_at, fbRow.hidden_from_rider], [[], null, null, false], 'old rows get empty feedback');
+    await db.query(`update delivery_ratings set tags = array['late','rude'], comment = 'came late', feedback_at = now() where order_id = $1`, [fbOrder]);
+    await assert.rejects(db.query(`update delivery_ratings set tags = array['hacker'] where order_id = $1`, [fbOrder]), /tags_known/, 'unknown tag refused');
+    await assert.rejects(db.query(`update delivery_ratings set comment = repeat('x', 501) where order_id = $1`, [fbOrder]), /comment_len/, 'long comment refused');
+    await db.query(`delete from orders where id = $1`, [fbOrder]);
+    await db.query(`delete from riders where id = $1`, [fbRider]);
+    console.log('PASS: delivery feedback — empty defaults, known tags only, 500-char comment cap, migration repeat-safe');
+  }
 } finally {
   await db.close();
 }

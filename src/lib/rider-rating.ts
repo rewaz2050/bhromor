@@ -4,6 +4,8 @@
  * customer stays anonymous) so a rider can see WHICH delivery went wrong.
  */
 
+import type { RiderFeedbackRow } from "./delivery-feedback";
+
 export interface RatingRow {
   stars: number;
   at: number;
@@ -18,6 +20,8 @@ export interface RatingSummary<T extends RatingRow = RatingRow> {
   last30: { count: number; avg: number };
   /** Newest-first deliveries rated 1–2 stars (max 5). */
   low: T[];
+  /** Customer words on recent deliveries (item X) — only what staff have not hidden. */
+  feedback?: RiderFeedbackRow[];
 }
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
