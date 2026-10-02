@@ -22,6 +22,7 @@ import {
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
+import { RiderPushCard } from "@/components/rider/rider-push-card";
 
 interface RiderTask {
   /** Identifier of the action target — the live assignment id. */
@@ -431,6 +432,8 @@ export default function RiderPage() {
             <span>{flash}</span>
           </div>
         )}
+        {/* I: background offer alerts (Web Push) — one tap, quiet once on. */}
+        <RiderPushCard enabled={isLive} />
         {(actionError || riderJobsApi.error) && (
           <div
             role="alert"

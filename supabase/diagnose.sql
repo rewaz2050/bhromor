@@ -133,7 +133,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Admin rider profile with COD risk facts (2026-10-02).
   ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview'),
   -- Dispatch rules as admin-editable settings (2026-10-02).
-  ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap')
+  ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap'),
+  -- Rider web push: closed-app offer alerts (2026-10-02).
+  ('77',  'Rider web push (device table, offer claim)', '202610020004_rider_push.sql', 'table', 'rider_push_subscriptions')
 )
 select step as ord,
        label,

@@ -14,6 +14,7 @@ import { notifyStaff } from "@/lib/db/engagement";
 import { notifyCustomerOfPayment } from "@/lib/customer-push";
 import { apiJson } from "@/lib/api-response";
 import { routeId, staffRoute } from "../../../_lib";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,8 @@ export const POST = staffRoute(
           orderNo: order.id,
           total: order.total,
         });
+        // I: a verified wallet order becomes dispatchable → offers exist now.
+        await pushPendingRiderOffers(staffDb, { force: true });
       }
       await notifyStaff(staffDb, {
         kind: "order",

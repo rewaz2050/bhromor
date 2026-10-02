@@ -40,6 +40,7 @@ import {
   sanitizeAvailability,
   type RiderAvailability,
 } from "../rider-hours";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
 
 export interface RiderJob {
   id: string;
@@ -708,6 +709,9 @@ export async function expireStaleAssignments(
     return;
   }
   if (error) throw new Error(error.message);
+  // I: the sweep may have just created offers (expiry → re-offer, late rider,
+  // resumed broadcast). Buzz the phones of riders whose app is closed.
+  await pushPendingRiderOffers(service);
 }
 
 /** Admin records a rider pay-in and zeroes their cash-in-hand. */

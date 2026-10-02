@@ -2,7 +2,9 @@
 import { apiError, apiJson } from "@/lib/api-response";
 import { listAddressableRiders, listAnnouncementsForStaff, postAnnouncement } from "@/lib/db/rider-inbox";
 import { parseAnnouncementInput } from "@/lib/rider-inbox";
+import { getSupabaseService } from "@/lib/supabase-server";
 import { staffRoute } from "../_lib";
+import { pushRiderAnnouncement } from "@/lib/rider-push";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,16 @@ export const POST = staffRoute(
     if ("error" in input) return apiError(input.error, 422);
     try {
       const id = await postAnnouncement(db, input);
+      // I: also buzz the phone(s) — best-effort; the inbox row is the source of truth.
+      const service = getSupabaseService();
+      if (service) {
+        await pushRiderAnnouncement(service, {
+          riderId: input.riderId,
+          title: input.title,
+          body: input.body,
+          important: input.severity === "important",
+        });
+      }
       return apiJson({ ok: true, id }, 201);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";

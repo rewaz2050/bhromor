@@ -14,6 +14,7 @@ import { notifyStaff } from "@/lib/db/engagement";
 import { notifyCustomerOfPayment } from "@/lib/customer-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,8 @@ export const POST = vendorRoute(
           orderNo: order.id,
           total: order.total,
         });
+        // I: a verified wallet order becomes dispatchable → offers exist now.
+        await pushPendingRiderOffers(service, { force: true });
       }
       await notifyStaff(service, {
         kind: "order",

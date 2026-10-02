@@ -107,6 +107,7 @@ for (const f of [
   '202610020001_rider_inbox.sql',
   '202610020002_admin_rider_overview.sql',
   '202610020003_dispatch_settings.sql',
+  '202610020004_rider_push.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -657,7 +658,8 @@ try {
     await db.query(`insert into site_settings(key, value) values ($1, $2::jsonb) on conflict (key) do update set value = excluded.value`, [k, String(a)]);
     await db.query(`update site_settings set value = $2::jsonb where key = $1`, [k, String(b)]);
     const jr = (await audit('rate_change')).filter((r) => r.subject_id === k);
-    assert.deepEqual([jr[jr.length - 1].detail.from, jr[jr.length - 1].detail.to], [a, b], k + ' change is logged');
+    // (rows written in the same millisecond tie on `at`, so match the pair, not "the last row")
+    assert.ok(jr.some((r) => r.detail.from === a && r.detail.to === b), k + ' change is logged');
   }
 
   await db.query(`insert into site_settings(key, value) values ('ops', '{"wallets":{"bkash":"01711111111"}}'::jsonb)
@@ -855,6 +857,31 @@ try {
   assert.equal(xz.risk.codCountSinceSettle, 0);
   assert.equal(xz.risk.oldestCodAt, null);
   console.log('PASS: admin rider overview — COD-since-settlement facts, performance, ledgers, staff-only');
+
+  // ---- I: rider push — devices are private, die with the rider, offers are claimable once
+  const jPush = await scalar(`insert into riders(name, phone, status) values ('Push Rider','01710000999','active') returning id`);
+  await db.query(`insert into rider_push_subscriptions(rider_id, endpoint, p256dh, auth) values ($1,'https://push.example/a','k','a')`, [jPush]);
+  await assert.rejects(
+    db.query(`insert into rider_push_subscriptions(rider_id, endpoint, p256dh, auth) values ($1,'https://push.example/a','k2','a2')`, [jPush]),
+    /unique|duplicate/i, 'an endpoint is stored once');
+  assert.equal(await scalar(`select relrowsecurity from pg_class where relname='rider_push_subscriptions'`), true, 'RLS on, no policies');
+  assert.equal(await scalar(`select count(*)::int from pg_policies where tablename='rider_push_subscriptions'`), 0);
+  assert.equal(await scalar(`select has_table_privilege('authenticated','rider_push_subscriptions','select')`), false, 'a rider cannot read device endpoints');
+  assert.equal(await scalar(`select has_table_privilege('anon','rider_push_subscriptions','select')`), false);
+  assert.equal(await scalar(`select has_table_privilege('service_role','rider_push_subscriptions','select')`), true);
+  // the sender's claim: update … where push_notified_at is null → exactly one winner
+  const jOrder = await scalar(`insert into orders(status) values ('ready-for-pickup') returning id`);
+  const jAsg = await scalar(`insert into delivery_assignments(order_id, rider_id, state) values ($1,$2,'offered') returning id`, [jOrder, jPush]);
+  const jClaim1 = (await db.query(`update delivery_assignments set push_notified_at = now() where id = $1 and push_notified_at is null returning id`, [jAsg])).rows.length;
+  const jClaim2 = (await db.query(`update delivery_assignments set push_notified_at = now() where id = $1 and push_notified_at is null returning id`, [jAsg])).rows.length;
+  assert.deepEqual([jClaim1, jClaim2], [1, 0], 'a second sweep gets nothing back');
+  // devices go with the rider (assignments reference the rider, so clear them first)
+  await db.query(`delete from delivery_assignments where rider_id = $1`, [jPush]);
+  await db.query(`delete from rider_push_subscriptions where rider_id = $1`, [jPush]);
+  await db.query(`insert into rider_push_subscriptions(rider_id, endpoint, p256dh, auth) values ($1,'https://push.example/b','k','a')`, [jPush]);
+  await db.query(`delete from riders where id = $1`, [jPush]);
+  assert.equal(await scalar(`select count(*)::int from rider_push_subscriptions where endpoint='https://push.example/b'`), 0, 'cascade on rider delete');
+  console.log('PASS: rider push — private device table, one claim per offer, cascade on rider delete');
 } finally {
   await db.close();
 }

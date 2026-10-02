@@ -8,7 +8,9 @@
  */
 import { resolveFailedDelivery } from "@/lib/db/riders";
 import { apiError, apiJson } from "@/lib/api-response";
+import { getSupabaseService } from "@/lib/supabase-server";
 import { staffRoute, routeId } from "../../../_lib";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,11 @@ export const POST = staffRoute(
       return apiError("Give a short reason for cancelling the order.", 422);
     }
     await resolveFailedDelivery(db, id, action, note);
+    // I: a redispatch puts the order back in front of the riders.
+    if (action === "redispatch") {
+      const service = getSupabaseService();
+      if (service) await pushPendingRiderOffers(service, { force: true });
+    }
     return apiJson({ ok: true });
   },
   { limit: 30 },

@@ -59,7 +59,7 @@ const readError = async (
 
 export const riderFetch = async <T,>(
   path: string,
-  method: "GET" | "POST" | "PATCH" = "GET",
+  method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
   body?: unknown,
 ): Promise<T> => {
   let res: Response;
