@@ -6,11 +6,11 @@
  * browser (a plain link would not carry the bearer header).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiDownload, apiErrorMessage } from "@/lib/admin-api";
 import { downloadText } from "@/lib/csv";
-import { EXPORT_KINDS, EXPORT_LABEL, EXPORT_MAX_DAYS, EXPORT_ROW_CAP, type ExportKind } from "@/lib/money-export";
+import { EXPORT_KINDS, EXPORT_LABEL, EXPORT_MAX_DAYS, EXPORT_ROW_CAP, parseExportKind, type ExportKind } from "@/lib/money-export";
 import { shiftDay, todayDhaka } from "@/lib/money-daily";
 
 export default function MoneyExportPage() {
@@ -21,6 +21,14 @@ export default function MoneyExportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  // Deep link (/admin/money/export?kind=audit) from the audit trail page. Read in an
+  // effect, not via useSearchParams — that would force a Suspense boundary on the page.
+  useEffect(() => {
+    const wanted = parseExportKind(new URLSearchParams(window.location.search).get("kind"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- adopt the URL once on mount
+    if (wanted) setKind(wanted);
+  }, []);
 
   const run = async () => {
     setBusy(true);

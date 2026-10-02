@@ -32,6 +32,12 @@ describe("<MoneyAuditPage>", () => {
     expect(row.textContent).toContain("৳900");
   });
 
+  it("links to the CSV export pre-set to the audit ledger", () => {
+    state.hook = base({ entries: [entry()] });
+    render(<MoneyAuditPage />);
+    expect(screen.getByTestId("audit-export")).toHaveAttribute("href", "/admin/money/export?kind=audit");
+  });
+
   it("names the migration when the trail is not installed", () => {
     state.hook = base({ ready: false });
     render(<MoneyAuditPage />);

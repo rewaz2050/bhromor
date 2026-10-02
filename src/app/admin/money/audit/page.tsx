@@ -57,6 +57,13 @@ export default function MoneyAuditPage() {
               </option>
             ))}
           </select>
+          <Link
+            href="/admin/money/export?kind=audit"
+            data-testid="audit-export"
+            className="rounded-full bg-paper px-3 py-1.5 text-xs font-semibold ring-1 ring-line hover:bg-ivory-100"
+          >
+            CSV হিসেবে নামান
+          </Link>
           <button
             type="button"
             onClick={() => void refresh()}

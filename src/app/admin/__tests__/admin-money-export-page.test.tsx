@@ -27,6 +27,16 @@ describe("/admin/money/export", () => {
     expect(screen.getByRole("status")).toHaveTextContent("3 rows saved");
   });
 
+  it("opens on the ledger named in the link (the audit trail page's CSV button)", async () => {
+    window.history.replaceState(null, "", "/admin/money/export?kind=audit");
+    render(<MoneyExportPage />);
+    await waitFor(() => expect((screen.getByLabelText("Ledger") as HTMLSelectElement).value).toBe("audit"));
+    window.history.replaceState(null, "", "/admin/money/export?kind=nonsense");
+    render(<MoneyExportPage />);
+    expect((screen.getAllByLabelText("Ledger")[1] as HTMLSelectElement).value).toBe("rider_wallet");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("warns when the file was cut at the row cap", async () => {
     m.download.mockResolvedValue({ text: "csv", filename: "f.csv", rows: 20000, truncated: true });
     render(<MoneyExportPage />);
