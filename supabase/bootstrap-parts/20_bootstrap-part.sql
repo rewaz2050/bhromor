@@ -1,4 +1,4 @@
--- PART 20/21 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 20/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: rider incentives (202610020010) ====
 -- ============================================================================
 -- V (2026-10-02) — RIDER INCENTIVES: a daily-target bonus and a refer-a-rider

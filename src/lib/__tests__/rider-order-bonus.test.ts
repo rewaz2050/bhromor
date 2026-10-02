@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ORDER_BONUS_DEFAULTS,
   anyOrderBonusOn,
+  streakBonusOn,
   inPeakWindow,
   orderBonusMessage,
   parseOrderBonusInput,
@@ -21,6 +22,12 @@ describe("order bonus switches", () => {
     expect(peakBonusOn({ ...ORDER_BONUS_DEFAULTS, peakStartHour: 18 })).toBe(false);
     expect(rainBonusOn({ ...ORDER_BONUS_DEFAULTS, rainBonus: 1 })).toBe(true);
     expect(anyOrderBonusOn({ ...ORDER_BONUS_DEFAULTS, rainBonus: 1 })).toBe(true);
+  });
+  it("a streak needs 2+ weeks AND an amount", () => {
+    expect(streakBonusOn({ ...ORDER_BONUS_DEFAULTS, streakWeeks: 2, streakBonus: 5000 })).toBe(true);
+    expect(streakBonusOn({ ...ORDER_BONUS_DEFAULTS, streakWeeks: 1, streakBonus: 5000 })).toBe(false);
+    expect(streakBonusOn({ ...ORDER_BONUS_DEFAULTS, streakWeeks: 3 })).toBe(false);
+    expect(anyOrderBonusOn({ ...ORDER_BONUS_DEFAULTS, streakWeeks: 4, streakBonus: 1 })).toBe(true);
   });
 });
 
@@ -46,8 +53,9 @@ describe("sanitizeOrderBonusSettings", () => {
   it("falls back per field and clamps", () => {
     expect(sanitizeOrderBonusSettings(null)).toEqual(ORDER_BONUS_DEFAULTS);
     expect(sanitizeOrderBonusSettings({ peakBonus: 999999, peakStartHour: 40, peakEndHour: "x", rainBonus: -5 })).toEqual({
-      peakBonus: 20000, peakStartHour: 23, peakEndHour: 22, rainBonus: 0,
+      peakBonus: 20000, peakStartHour: 23, peakEndHour: 22, rainBonus: 0, streakWeeks: 0, streakBonus: 0,
     });
+    expect(sanitizeOrderBonusSettings({ streakWeeks: 99, streakBonus: 9_999_999 })).toMatchObject({ streakWeeks: 8, streakBonus: 500000 });
   });
 });
 
@@ -55,7 +63,24 @@ describe("parseOrderBonusInput", () => {
   const ok = { peakBonusTaka: "30", peakStartHour: "18", peakEndHour: "22", rainBonusTaka: "20" };
   it("converts taka to paisa", () => {
     const r = parseOrderBonusInput(ok);
-    expect(r.ok && r.settings).toEqual({ peakBonus: 3000, peakStartHour: 18, peakEndHour: 22, rainBonus: 2000 });
+    expect(r.ok && r.settings).toEqual({ peakBonus: 3000, peakStartHour: 18, peakEndHour: 22, rainBonus: 2000, streakWeeks: 0, streakBonus: 0 });
+  });
+  it("reads the streak fields, and refuses half a configuration", () => {
+    const r = parseOrderBonusInput({ ...ok, streakWeeks: "3", streakBonusTaka: "500" });
+    expect(r.ok && r.settings).toMatchObject({ streakWeeks: 3, streakBonus: 50000 });
+    const bad: [Record<string, unknown>, RegExp][] = [
+      [{ ...ok, streakWeeks: "1", streakBonusTaka: "500" }, /Streak length/],
+      [{ ...ok, streakWeeks: "9", streakBonusTaka: "500" }, /Streak length/],
+      [{ ...ok, streakWeeks: "2.5", streakBonusTaka: "500" }, /Streak length/],
+      [{ ...ok, streakWeeks: "3", streakBonusTaka: "5001" }, /Streak bonus/],
+      [{ ...ok, streakWeeks: "3", streakBonusTaka: "0" }, /both the streak length and its bonus/],
+      [{ ...ok, streakWeeks: "0", streakBonusTaka: "500" }, /both the streak length and its bonus/],
+    ];
+    for (const [input, re] of bad) {
+      const x = parseOrderBonusInput(input);
+      expect(x.ok).toBe(false);
+      if (!x.ok) expect(x.error).toMatch(re);
+    }
   });
   it("empty means off", () => {
     const r = parseOrderBonusInput({});
@@ -85,5 +110,6 @@ describe("orderBonusMessage", () => {
   it("names the kind, the count and the total", () => {
     expect(orderBonusMessage("peak_bonus", 3, 9000)).toEqual({ title: "⚡ পিক আওয়ার বোনাস!", body: "3টি ডেলিভারির জন্য ৳90 আপনার ওয়ালেটে যোগ হয়েছে।" });
     expect(orderBonusMessage("rain_bonus", 1, 2000).title).toMatch(/বৃষ্টি/);
+    expect(orderBonusMessage("streak_bonus", 1, 50000)).toEqual({ title: "🔥 স্ট্রিক বোনাস!", body: "পরপর সপ্তাহে টার্গেট পূর্ণ করার জন্য ৳500 আপনার ওয়ালেটে যোগ হয়েছে।" });
   });
 });

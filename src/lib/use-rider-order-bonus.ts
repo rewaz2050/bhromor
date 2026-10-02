@@ -11,6 +11,8 @@ export interface OrderBonusForm {
   peakStartHour: string;
   peakEndHour: string;
   rainBonusTaka: string;
+  streakWeeks: string;
+  streakBonusTaka: string;
 }
 
 export const useRiderOrderBonus = () => {

@@ -1,4 +1,4 @@
--- PART 17/21 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 17/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: rider fixes Phase A (202610010001) ====
 -- ============================================================================
 -- Rider fixes, phase A (2026-10-01) — docs/AUDIT-RIDER-MONEY-2026-10-01.md

@@ -69,7 +69,7 @@ export const runOrderBonusSweep = async (
     if (isMissingDbObject(error)) return { status: "skipped", did: 0, detail: "order bonuses not migrated (202610020015)" };
     return { status: "failed", did: 0, detail: "order-bonus sweep failed" };
   }
-  const result = (data ?? {}) as { peak?: number; rain?: number; total?: number; awards?: OrderBonusAward[] };
+  const result = (data ?? {}) as { peak?: number; rain?: number; streak?: number; total?: number; awards?: OrderBonusAward[] };
   const awards = Array.isArray(result.awards) ? result.awards : [];
   const grouped = new Map<string, { riderId: string; kind: OrderBonusAward["kind"]; count: number; total: number }>();
   for (const a of awards) {
@@ -87,10 +87,10 @@ export const runOrderBonusSweep = async (
       // The money is already in the wallet; only the nudge is lost.
     }
   }
-  const did = (result.peak ?? 0) + (result.rain ?? 0);
+  const did = (result.peak ?? 0) + (result.rain ?? 0) + (result.streak ?? 0);
   return {
     status: "ran",
     did,
-    detail: did === 0 ? "nothing due" : `${result.peak ?? 0} peak + ${result.rain ?? 0} rain bonus(es), ৳${Math.round((result.total ?? 0) / 100)} paid`,
+    detail: did === 0 ? "nothing due" : `${result.peak ?? 0} peak + ${result.rain ?? 0} rain + ${result.streak ?? 0} streak bonus(es), ৳${Math.round((result.total ?? 0) / 100)} paid`,
   };
 };

@@ -24,6 +24,8 @@ export default function OrderBonusCard() {
     peakStartHour: String(settings.peakStartHour),
     peakEndHour: String(settings.peakEndHour),
     rainBonusTaka: String(settings.rainBonus / 100),
+    streakWeeks: String(settings.streakWeeks),
+    streakBonusTaka: String(settings.streakBonus / 100),
   };
   const edit = (patch: Partial<OrderBonusForm>) => {
     setDraft({ ...shown, ...patch });
@@ -47,7 +49,7 @@ export default function OrderBonusCard() {
   return (
     <form onSubmit={submit} className="space-y-5 rounded-2xl bg-paper p-5 ring-1 ring-line" data-testid="order-bonus-form">
       <div>
-        <h2 className="font-display text-base font-semibold text-forest-900">⚡ Peak-hour &amp; 🌧️ rainy-day bonus (per order)</h2>
+        <h2 className="font-display text-base font-semibold text-forest-900">⚡ Peak-hour, 🌧️ rainy-day (per order) &amp; 🔥 streak bonus</h2>
         <p className="mt-1 text-[11px] text-ink-soft">
           প্রতিটি ডেলিভারির (রিটার্ন ছাড়া) জন্য নির্দিষ্ট বোনাস — পিক সময়ে ডেলিভারি হলে, অথবা কাস্টমার বৃষ্টির সারচার্জ দিয়ে থাকলে। দুটোই একসাথে পেতে পারে; প্রতিটি অর্ডারে প্রতি ধরনে একবার। ০ = বন্ধ।
         </p>
@@ -82,6 +84,21 @@ export default function OrderBonusCard() {
           শুধু সেই অর্ডার যেখানে কাস্টমার বৃষ্টির সারচার্জ দিয়েছে (Settings-এ rain surcharge চালু থাকতে হবে)।
         </span>
       </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className={labelCls}>
+          🔥 Streak — weeks in a row (0 = off, 2–8)
+          <input type="number" inputMode="numeric" min={0} max={ORDER_BONUS_BOUNDS.streakWeeks.max} step={1} value={shown.streakWeeks}
+            onChange={(e) => edit({ streakWeeks: e.target.value })} disabled={!loaded} className={inputCls} />
+        </label>
+        <label className={labelCls}>
+          Streak bonus (৳)
+          <input type="number" inputMode="decimal" min={0} max={ORDER_BONUS_BOUNDS.streakBonusPaisa.max / 100} step={1} value={shown.streakBonusTaka}
+            onChange={(e) => edit({ streakBonusTaka: e.target.value })} disabled={!loaded} className={inputCls} />
+        </label>
+      </div>
+      <p className="text-[11px] text-ink-soft">
+        রাইডার পরপর এতগুলো সম্পূর্ণ সপ্তাহ (সোম–রবি, ঢাকা) <strong>Weekly tier 1 target</strong> ছুঁলে একবার এই বোনাস পায়; তারপর স্ট্রিক নতুন করে শুরু। উপরের Incentives ফর্মে Weekly tier 1 target সেট না থাকলে কিছুই দেওয়া হয় না।
+      </p>
       <p className="text-xs text-ink-soft" data-testid="order-bonus-state">
         এখন: {anyOrderBonusOn(settings) ? "চালু আছে" : "সব বন্ধ"}
       </p>

@@ -1,4 +1,4 @@
--- PART 13/21 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 13/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: password reset requests (202609260001) ====
 -- Password reset requests without SMS or e-mail (2026-09-26).
 --

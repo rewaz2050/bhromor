@@ -26,6 +26,8 @@ export default function AdminPayoutsPage() {
   const [reference, setReference] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Owes PROSANTI" filter: the shops that collected into their own wallet and still owe the platform.
+  const [onlyOwing, setOnlyOwing] = useState(false);
 
   const selected = useMemo(
     () => balances.find((b) => b.shop.id === shopId) ?? null,
@@ -40,6 +42,12 @@ export default function AdminPayoutsPage() {
     const owed = balances.reduce((s, b) => s + Math.max(-b.balance, 0), 0);
     return { earned, paid, balance: payable, owed };
   }, [balances]);
+
+  const owingCount = useMemo(() => balances.filter((b) => b.balance < 0).length, [balances]);
+  const visible = useMemo(
+    () => (onlyOwing ? balances.filter((b) => b.balance < 0) : balances),
+    [balances, onlyOwing],
+  );
 
   const submitPayout = async () => {
     if (!selected) return;
@@ -137,6 +145,18 @@ export default function AdminPayoutsPage() {
         </p>
       )}
 
+      {owingCount > 0 && (
+        <button
+          type="button"
+          aria-pressed={onlyOwing}
+          onClick={() => setOnlyOwing((v) => !v)}
+          data-testid="owing-filter"
+          className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ${onlyOwing ? "bg-amber-100 text-amber-900 ring-amber-300" : "text-amber-900 ring-amber-300 hover:bg-amber-50"}`}
+        >
+          {onlyOwing ? "Showing" : "Show only"} shops that owe PROSANTI ({owingCount})
+        </button>
+      )}
+
       <div className="overflow-x-auto rounded-2xl bg-paper ring-1 ring-line">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
@@ -152,7 +172,7 @@ export default function AdminPayoutsPage() {
             </tr>
           </thead>
           <tbody>
-            {balances.map((b) => (
+            {visible.map((b) => (
               <tr
                 key={b.shop.id}
                 className={`border-b border-line/60 last:border-0 ${shopId === b.shop.id ? "bg-forest-50/60" : ""}`}

@@ -121,6 +121,7 @@ for (const f of [
   '202610020014_shop_balance_totals.sql',
   '202610020015_peak_rain_bonus.sql',
   '202610020016_daily_shop_wallet_split.sql',
+  '202610020017_streak_bonus.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1431,6 +1432,46 @@ end $$`);
   assert.ok(await scalar(`select not has_function_privilege('authenticated', 'ps_award_order_bonuses(timestamptz)', 'execute')`), 'service only');
   await db.query(`delete from site_settings where key like 'rider_peak_%' or key = 'rider_rain_bonus_paisa'`);
   console.log('PASS: peak + rain order bonus — off by default, Dhaka window (inclusive start, exclusive end, wraps midnight), once per order, stacks, returns/suspended/old excluded, clamped, audited');
+
+  // ---- weekly streak bonus (202610020017) ----
+  const skNow = (monday) => `${monday}T06:00:00Z`;           // Monday 12:00 Dhaka
+  const skLegs = async (rider, week, n, ret = 0) => {         // `week` = the Monday of that Mon–Sun week
+    for (let i = 0; i < n + ret; i++) await bnLeg(rider, `${week}T06:00:00Z`, { ret: i >= n });
+  };
+  const skRider = async (n) => bn(`Streak${n}`, `0171000095${n}`);
+  const skA = await skRider(1), skB = await skRider(2), skF = await skRider(3);
+  const skD = await bn('StreakSus', '01710000954', 'suspended');
+  for (const w of ['2026-10-05', '2026-09-28']) {
+    await skLegs(skA, w, 3);
+    await skLegs(skD, w, 3);
+    await skLegs(skF, w, 2, 1);                               // 2 real + 1 return: below target
+  }
+  await skLegs(skB, '2026-10-05', 3);
+  await skLegs(skB, '2026-09-28', 2);                         // one week short
+  const skCnt = (res, who) => bnCnt(res, 'streak_bonus', who);
+  const skBal = (id) => bnBal(id);
+  // off by default (and with no weekly tier-1 target there is no "good week")
+  assert.equal(skCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-12')]), skA), 0, 'off by default');
+  await db.query(`insert into site_settings(key, value) values ('rider_streak_weeks','2'),('rider_streak_bonus_paisa','10000')`);
+  assert.equal(await scalar(`select count(*)::int from money_audit_log where event = 'rate_change' and subject_id = 'rider_streak_bonus_paisa'`), 1, 'streak amount audited');
+  assert.equal(skCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-12')]), skA), 0, 'no weekly target set → nothing');
+  await db.query(`insert into site_settings(key, value) values ('incentive_weekly_target','3')`);
+  const skA0 = await skBal(skA);
+  const sk1 = await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-12')]);
+  assert.equal(skCnt(sk1, skA), 1, 'two good weeks in a row');
+  assert.equal(await skBal(skA), skA0 + 10000);
+  for (const who of [skB, skF, skD]) assert.equal(skCnt(sk1, who), 0);
+  assert.equal(await skBal(skD), 0, 'a suspended rider is never paid');
+  assert.equal(skCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-12')]), skA), 0, 'once');
+  // the streak restarts: week 3 is NOT a second bonus, week 4 (a fresh pair) is
+  await skLegs(skA, '2026-10-12', 3);
+  assert.equal(skCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-19')]), skA), 0, 'overlapping window: no second payment');
+  await skLegs(skA, '2026-10-19', 3);
+  assert.equal(skCnt(await scalar(`select ps_award_order_bonuses($1::timestamptz)`, [skNow('2026-10-26')]), skA), 1, 'a fresh two-week streak pays again');
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_incentive_awards where rider_id = $1 and kind = 'streak_bonus'`, [skA])), 20000);
+  assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [skA])), await skBal(skA), 'wallet = journal');
+  await db.query(`delete from site_settings where key in ('rider_streak_weeks','rider_streak_bonus_paisa','incentive_weekly_target')`);
+  console.log('PASS: streak bonus — off by default, needs the weekly target, consecutive complete weeks, returns/suspended excluded, once per streak then restarts, audited');
 } finally {
   await db.close();
 }
