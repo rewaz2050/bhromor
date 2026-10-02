@@ -885,6 +885,33 @@ export const rejectRiderAssignment = async (
 };
 
 /**
+ * A rider hands back a job they accepted but have NOT picked up yet
+ * (202610020011). The order returns to the area queue at once and the same
+ * rider is not auto re-offered it. After pickup it is the failed-delivery flow.
+ */
+export const releaseAcceptedAssignment = async (
+  db: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> => {
+  const { error } = await db.rpc("ps_rider_release_accepted", {
+    p_assignment_id: assignmentId,
+    p_reason: reason,
+  });
+  if (!error) return;
+  const msg = error.message ?? "";
+  if (msg.includes("forbidden")) throw new RiderInputError("এই ডেলিভারিটি আপনার নয়।", 403);
+  if (msg.includes("reason is required")) throw new RiderInputError("কারণ লিখুন (কমপক্ষে ৫ অক্ষর)।", 422);
+  if (msg.includes("only an accepted job")) {
+    throw new RiderInputError("এই কাজটি আর ফেরত দেওয়া যাবে না — ফিড রিফ্রেশ করুন।", 409);
+  }
+  if (isMissingDbObject(error)) {
+    throw new RiderInputError("কাজ ফেরত দেওয়ার সুবিধা এখনো চালু হয়নি — অ্যাডমিনের সাথে কথা বলুন।", 503);
+  }
+  throw new Error(msg);
+};
+
+/**
  * Who is on the other end of this assignment? (2026-09-24)
  *
  * The rider routes must tell the SHOPPER that their parcel moved, and a push

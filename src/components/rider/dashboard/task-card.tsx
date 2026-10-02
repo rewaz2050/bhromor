@@ -6,6 +6,7 @@ import { secondsLeft, type RiderTask } from "@/lib/rider-tasks";
 import TripStepper from "@/components/rider/trip-stepper";
 import { IconCheck, IconMapPin, IconPhone } from "@/components/ui/icons";
 import { FailedAttemptForm } from "./failed-attempt-form";
+import { ReleaseJobForm } from "./release-job-form";
 
 /**
  * One offer or trip on the board. Offered → accept/decline with a live
@@ -24,6 +25,7 @@ export function TaskCard({
   onPickup,
   onEnterCode,
   onFailedRecorded,
+  onReleased,
 }: {
   task: RiderTask;
   /** Epoch ms from `useNow`. */
@@ -37,6 +39,8 @@ export function TaskCard({
   onPickup: (task: RiderTask) => void;
   onEnterCode: (task: RiderTask) => void;
   onFailedRecorded: (message: string) => void;
+  /** Hand back an accepted, not-yet-picked-up job (202610020011). Omit to hide the option. */
+  onReleased?: (message: string) => void;
 }) {
   const isOut = task.state === "picked_up";
   const isReady =
@@ -221,6 +225,7 @@ export function TaskCard({
           </button>
         )}
         </div>
+        {task.state === "accepted" && onReleased && <ReleaseJobForm assignmentId={task.id} onReleased={onReleased} />}
         {isOut && (
           <FailedAttemptForm assignmentId={task.id} onRecorded={onFailedRecorded} />
         )}

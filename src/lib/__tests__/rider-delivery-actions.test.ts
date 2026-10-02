@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { failedAttemptMessage, reportFailedAttempt, uploadDeliveryProof } from "../rider-delivery-actions";
+import { failedAttemptMessage, releaseAcceptedJob, reportFailedAttempt, uploadDeliveryProof } from "../rider-delivery-actions";
 
 const res = (body: unknown, ok = true, status = ok ? 200 : 400) => ({ ok, status, json: async () => body });
 const file = new File(["x"], "p.jpg", { type: "image/jpeg" });
@@ -69,5 +69,23 @@ describe("failed attempts", () => {
     expect(await reportFailedAttempt("a", "xx")).toEqual({ ok: false, message: "Failed — try again." });
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     expect(await reportFailedAttempt("a", "xx")).toEqual({ ok: false, message: "Failed — try again." });
+  });
+});
+
+describe("releaseAcceptedJob", () => {
+  it("posts the reason to the assignment's release endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res({ released: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await releaseAcceptedJob("asg-1", "bike broke")).toMatchObject({ ok: true });
+    const [url, init] = fetchMock.mock.calls[0] as [string, { method: string; body: string }];
+    expect(url).toBe("/api/rider/assignments/asg-1/release");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ reason: "bike broke" });
+  });
+  it("returns the server's refusal or a generic one, and never throws", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res({ error: "Too late" }, false, 409)));
+    expect(await releaseAcceptedJob("a", "xxxxx")).toEqual({ ok: false, message: "Too late" });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect(await releaseAcceptedJob("a", "xxxxx")).toMatchObject({ ok: false });
   });
 });

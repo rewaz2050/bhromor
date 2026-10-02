@@ -80,3 +80,24 @@ export const reportFailedAttempt = async (assignmentId: string, reason: string):
     return { ok: false, message: "Failed — try again." };
   }
 };
+
+export type ReleaseJob = { ok: true; message: string } | { ok: false; message: string };
+
+/**
+ * The rider hands back a job they accepted but have not picked up. The server
+ * needs a reason (≥ 5 characters) and puts the order back in the area queue.
+ */
+export const releaseAcceptedJob = async (assignmentId: string, reason: string): Promise<ReleaseJob> => {
+  try {
+    const res = await fetch(`/api/rider/assignments/${assignmentId}/release`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    const d = (await res.json().catch(() => null)) as { error?: string } | null;
+    if (res.ok) return { ok: true, message: "কাজটি ফেরত দেওয়া হয়েছে — অর্ডারটি অন্য রাইডারদের কাছে যাবে।" };
+    return { ok: false, message: d?.error || "ফেরত দেওয়া যায়নি — আবার চেষ্টা করুন।" };
+  } catch {
+    return { ok: false, message: "ফেরত দেওয়া যায়নি — আবার চেষ্টা করুন।" };
+  }
+};

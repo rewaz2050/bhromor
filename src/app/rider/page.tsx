@@ -321,6 +321,10 @@ export default function RiderPage() {
                     showFlash(message);
                     void riderJobsApi.refresh();
                   }}
+                  onReleased={(message) => {
+                    showFlash(message);
+                    void riderJobsApi.refresh();
+                  }}
                 />
               ))}
             </div>

@@ -12,6 +12,7 @@ import {
   failedRiderAttempt,
   listAwaitingDispatchOrders,
   listFailedDeliveries,
+  releaseAcceptedAssignment,
   releaseDispatchAssignment,
   resolveFailedDelivery,
 } from "../riders";
@@ -170,6 +171,30 @@ describe("releaseDispatchAssignment", () => {
         "a1",
         "rider unreachable",
       ),
+    ).rejects.toMatchObject({ status: 503 });
+  });
+});
+
+describe("releaseAcceptedAssignment (rider hands a job back)", () => {
+  const client = (message?: string) => {
+    const rpc = vi.fn(async () => ({ data: null, error: message ? { message } : null }));
+    return { rpc } as unknown as { rpc: ReturnType<typeof vi.fn> };
+  };
+  it("calls the RPC on the rider's own client", async () => {
+    const db = client();
+    await releaseAcceptedAssignment(db as never, "a1", "bike broke");
+    expect(db.rpc).toHaveBeenCalledWith("ps_rider_release_accepted", { p_assignment_id: "a1", p_reason: "bike broke" });
+  });
+  it.each([
+    ["forbidden", 403],
+    ["a reason is required", 422],
+    ["only an accepted job that is not picked up yet can be handed back", 409],
+  ])("maps %j to an honest %i", async (message, status) => {
+    await expect(releaseAcceptedAssignment(client(message) as never, "a1", "bike broke")).rejects.toMatchObject({ status });
+  });
+  it("a database without the migration says so instead of a SQL error", async () => {
+    await expect(
+      releaseAcceptedAssignment(client("Could not find the function public.ps_rider_release_accepted(p_assignment_id, p_reason) in the schema cache") as never, "a1", "bike broke"),
     ).rejects.toMatchObject({ status: 503 });
   });
 });

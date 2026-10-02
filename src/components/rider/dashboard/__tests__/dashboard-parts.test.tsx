@@ -3,10 +3,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { Order } from "@/lib/orders";
 import type { RiderTask } from "@/lib/rider-tasks";
 
-const uploads = vi.hoisted(() => ({ upload: vi.fn(), failed: vi.fn() }));
+const uploads = vi.hoisted(() => ({ upload: vi.fn(), failed: vi.fn(), release: vi.fn() }));
 vi.mock("@/lib/rider-delivery-actions", () => ({
   uploadDeliveryProof: uploads.upload,
   reportFailedAttempt: uploads.failed,
+  releaseAcceptedJob: uploads.release,
 }));
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element
@@ -20,12 +21,14 @@ import { TaskCard } from "../task-card";
 import { PinModal } from "../pin-modal";
 import { SettleModal } from "../settle-modal";
 import { FailedAttemptForm } from "../failed-attempt-form";
+import { ReleaseJobForm } from "../release-job-form";
 import { LocationHealth } from "../location-health";
 
 afterEach(() => {
   cleanup();
   uploads.upload.mockReset();
   uploads.failed.mockReset();
+  uploads.release.mockReset();
 });
 
 const order = (over: Partial<Order> = {}): Order =>
@@ -153,6 +156,16 @@ describe("TaskCard", () => {
     expect(p.onEnterCode).toHaveBeenCalledWith(expect.objectContaining({ id: "asg-1" }));
     expect(screen.getByText(/Report failed attempt/)).toBeInTheDocument();
   });
+  it("hand-back is offered only between accept and pickup, and only when the page wires it", () => {
+    const { rerender } = render(<TaskCard task={task("accepted")} {...props()} />);
+    expect(screen.queryByText(/ফেরত দিন/)).toBeNull();
+    rerender(<TaskCard task={task("accepted")} {...props()} onReleased={vi.fn()} />);
+    expect(screen.getByText(/এই কাজটি করতে পারছেন না/)).toBeInTheDocument();
+    rerender(<TaskCard task={task("offered")} {...props()} onReleased={vi.fn()} />);
+    expect(screen.queryByText(/এই কাজটি করতে পারছেন না/)).toBeNull();
+    rerender(<TaskCard task={task("picked_up")} {...props()} onReleased={vi.fn()} />);
+    expect(screen.queryByText(/এই কাজটি করতে পারছেন না/)).toBeNull();
+  });
   it("says how much COD to collect, or that nothing is due", () => {
     const { rerender } = render(<TaskCard task={task("accepted")} {...props()} />);
     expect(screen.getByTestId("rider-cash")).toHaveTextContent("৳1,250");
@@ -247,6 +260,45 @@ describe("SettleModal", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Already pending");
     fireEvent.click(screen.getByRole("button", { name: "বাতিল" }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("ReleaseJobForm", () => {
+  const open = () => fireEvent.click(screen.getByText(/এই কাজটি করতে পারছেন না/));
+  const type = (v: string) => fireEvent.change(screen.getByLabelText("Hand back reason"), { target: { value: v } });
+  it("is closed until asked; the reason needs five characters", () => {
+    render(<ReleaseJobForm assignmentId="a1" onReleased={vi.fn()} />);
+    expect(screen.queryByLabelText("Hand back reason")).toBeNull();
+    open();
+    expect(screen.getByText("কাজ ফেরত দিন")).toBeDisabled();
+    type("  abc ");
+    expect(screen.getByText("কাজ ফেরত দিন")).toBeDisabled();
+    type("bike broke");
+    expect(screen.getByText("কাজ ফেরত দিন")).toBeEnabled();
+  });
+  it("hands the job back, reports the message upward and closes", async () => {
+    uploads.release.mockResolvedValue({ ok: true, message: "handed back" });
+    const onReleased = vi.fn();
+    render(<ReleaseJobForm assignmentId="a1" onReleased={onReleased} />);
+    open(); type("bike broke");
+    fireEvent.click(screen.getByText("কাজ ফেরত দিন"));
+    await waitFor(() => expect(onReleased).toHaveBeenCalledWith("handed back"));
+    expect(uploads.release).toHaveBeenCalledWith("a1", "bike broke");
+    expect(screen.queryByLabelText("Hand back reason")).toBeNull();
+  });
+  it("a refusal is shown inline and keeps the typed reason; no double submit", async () => {
+    let resolve!: (v: unknown) => void;
+    uploads.release.mockReturnValue(new Promise((r) => (resolve = r)));
+    const onReleased = vi.fn();
+    render(<ReleaseJobForm assignmentId="a1" onReleased={onReleased} />);
+    open(); type("bike broke");
+    fireEvent.click(screen.getByText("কাজ ফেরত দিন"));
+    fireEvent.click(screen.getByText("ফেরত হচ্ছে…"));
+    expect(uploads.release).toHaveBeenCalledTimes(1);
+    resolve({ ok: false, message: "Too late" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too late");
+    expect(onReleased).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Hand back reason") as HTMLInputElement).value).toBe("bike broke");
   });
 });
 
