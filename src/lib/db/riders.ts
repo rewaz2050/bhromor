@@ -172,6 +172,20 @@ export interface RiderApplyResult {
  * as `user_id` right away; staff approval (status → active) is what opens
  * the rider app. One account owns one rider.
  */
+/** Admin editor and public form share this ceiling. */
+export const MAX_RIDER_ZONES = 24;
+
+/** What to tell a login that already owns a rider row, by that row's status. */
+export const refusalFor = (status: string, fallback: string): string => {
+  if (status === "suspended") {
+    return "This rider account is suspended — you can't apply again. Contact PROSANTI support if you think this is a mistake.";
+  }
+  if (status === "pending") {
+    return "You already have an application waiting for review — PROSANTI will approve it soon, then sign in at /rider/login.";
+  }
+  return fallback;
+};
+
 export async function applyRider(
   raw: unknown,
   opts: RiderApplyOptions = {},
@@ -192,7 +206,7 @@ export async function applyRider(
             .map((z) => z.trim())
             .filter(Boolean),
         ),
-      ].slice(0, 12)
+      ]
     : [];
 
   if (name.length < 2) throw new RiderInputError("Rider name is too short.");
@@ -214,6 +228,11 @@ export async function applyRider(
   }
   if (zoneIds.length === 0) {
     throw new RiderInputError("Choose at least one delivery zone.");
+  }
+  // Same ceiling as the admin editor. Silently dropping zones past the cap
+  // (it used to keep 12) would shrink a rider's coverage without telling them.
+  if (zoneIds.length > MAX_RIDER_ZONES) {
+    throw new RiderInputError(`Choose at most ${MAX_RIDER_ZONES} delivery zones.`);
   }
   // Checked before anything is written so a typo never leaves a half-made
   // application behind.
@@ -261,7 +280,7 @@ export async function applyRider(
     const owned = await ownedRider(userId);
     if (!owned) return null;
     if (owned.status === "rejected") return owned.id;
-    throw new RiderInputError(message, 409);
+    throw new RiderInputError(refusalFor(owned.status, message), 409);
   };
   let resubmitId: string | null = null;
   if (sessionUserId) {
