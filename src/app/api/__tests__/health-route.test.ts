@@ -138,6 +138,8 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     "reviewStampsReady",
     "riderEarningsReady",
     "riderPayoutsReady",
+    "riderFixesReady",
+    "paymentVerifierReady",
   ] as const;
 
   it("reports every round file as applied when their tables and columns answer", async () => {
@@ -168,6 +170,26 @@ describe("GET /api/health — the 2026-09-26/27 migration round", () => {
     expect(body.checks.riderEarningsReady).toBe(true);
     expect(
       body.nextSteps.some((s) => s.includes("202609300002_rider_money.sql")),
+    ).toBe(true);
+  });
+
+  it("names the Phase A file when the failed-delivery column is missing (202610010001)", async () => {
+    state.missing = new Set(["orders.delivery_failed_at"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.riderFixesReady).toBe(false);
+    expect(body.checks.riderPayoutsReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202610010001_rider_fixes_phase_a.sql")),
+    ).toBe(true);
+  });
+
+  it("names the payment-verifier file when shops.payment_verifier is missing (202610010002)", async () => {
+    state.missing = new Set(["shops.payment_verifier"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.paymentVerifierReady).toBe(false);
+    expect(body.checks.riderFixesReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202610010002_payment_verifier.sql")),
     ).toBe(true);
   });
 

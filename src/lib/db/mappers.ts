@@ -42,6 +42,8 @@ import type {
   DbVendorUser,
   DbZone,
 } from "./types";
+import { parsePaymentVerifier } from "@/lib/payment-verifier";
+import { normalizeWalletNumber, parseSettlementModel } from "@/lib/shop-settlement";
 
 const epoch = (iso: string): number => {
   const ms = Date.parse(iso);
@@ -261,6 +263,18 @@ export const mapShop = (row: DbShop): Shop => ({
   ...(row.free_delivery_min !== undefined
     ? { freeDeliveryMinPaisa: mapFreeDeliveryMin(row.free_delivery_min) }
     : {}),
+  ...(row.payment_verifier !== undefined
+    ? { paymentVerifier: parsePaymentVerifier(row.payment_verifier) }
+    : {}),
+  ...(row.settlement_model !== undefined
+    ? {
+        settlementModel: parseSettlementModel(row.settlement_model),
+        shopWallets: {
+          ...(normalizeWalletNumber(row.wallet_bkash) ? { bkash: normalizeWalletNumber(row.wallet_bkash) } : {}),
+          ...(normalizeWalletNumber(row.wallet_nagad) ? { nagad: normalizeWalletNumber(row.wallet_nagad) } : {}),
+        },
+      }
+    : {}),
   review: mapApplicationReview(row),
   // B5 — the badge is public; the staff note and the officer are not part of
   // this mapper at all (they are read by the admin list only), so no storefront
@@ -352,6 +366,7 @@ export const mapRider = (row: DbRider): Rider => ({
   review: mapApplicationReview(row),
   kyc: normalizeKyc(row.kyc),
   kycSubmittedAt: row.kyc_submitted_at ? Date.parse(row.kyc_submitted_at) : undefined,
+  licenceExpiresOn: row.licence_expires_on ? String(row.licence_expires_on).slice(0, 10) : undefined,
   // 202609300001 — pre-migration rows read as an empty wallet, never undefined.
   earningsBalance: Number(row.earnings_balance ?? 0),
 });
@@ -463,6 +478,9 @@ export const mapOrder = (bundle: OrderRowBundle): Order => {
       : undefined,
     deliveryAttempts: o.delivery_attempts ?? undefined,
     deliveryFailedReason: o.delivery_failed_reason ?? undefined,
+    deliveryFailedAt: o.delivery_failed_at
+      ? new Date(o.delivery_failed_at).getTime()
+      : undefined,
     isReturn: o.is_return ?? undefined,
     returnReason: o.return_reason ?? undefined,
     returnParentId: o.return_parent_id ?? undefined,

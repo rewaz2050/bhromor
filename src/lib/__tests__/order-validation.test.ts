@@ -774,6 +774,47 @@ describe("validateOrderPayload — growth levers", () => {
   });
 });
 
+describe("validateOrderPayload — a shop that sells into its own wallet (202610020013)", () => {
+  const shop = (over: Partial<Shop> = {}): Shop => ({
+    id: "shop-1",
+    slug: "shop-one",
+    name: "Shop One",
+    phone: "01700000000",
+    zoneIds: ["z1"],
+    prepMinutes: 15,
+    commissionPct: 15,
+    status: "active",
+    isOpen: true,
+    ratingAvg: 0,
+    ratingCount: 0,
+    ...over,
+  });
+  const snap = (payments: OrderSnapshot["payments"], shopOver: Partial<Shop> = {}): OrderSnapshot => ({
+    ...snapshot(),
+    products: PRODUCTS.map((p) => ({ ...p, shopId: "shop-1" })),
+    shops: [shop(shopOver)],
+    payments,
+  });
+  const pay = payload({ payment_method: "bkash", payment_ref: "9K2L7M4QXZ" });
+
+  it("accepts bKash on the SHOP's own number even when PROSANTI has none configured", () => {
+    const r = validateOrderPayload(pay, snap({}, { settlementModel: "shop_wallet", shopWallets: { bkash: "01811111111" } }));
+    expect(r.ok).toBe(true);
+  });
+
+  it("refuses a method the shop has no number for — PROSANTI's number is not a fallback", () => {
+    const r = validateOrderPayload(pay, snap({ bkash: "01711111111" }, { settlementModel: "shop_wallet", shopWallets: { nagad: "01822222222" } }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.map((e) => e.field)).toContain("payment");
+  });
+
+  it("an ordinary shop is unchanged: PROSANTI's number decides", () => {
+    expect(validateOrderPayload(pay, snap({ bkash: "01711111111" })).ok).toBe(true);
+    expect(validateOrderPayload(pay, snap({})).ok).toBe(false);
+    expect(validateOrderPayload(pay, snap({}, { settlementModel: "platform", shopWallets: { bkash: "01811111111" } })).ok).toBe(false);
+  });
+});
+
 describe("validateOrderPayload free-delivery threshold (2026-09-26)", () => {
   const shop = (over: Partial<Shop> = {}): Shop => ({
     id: "shop-1",

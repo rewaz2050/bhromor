@@ -82,4 +82,47 @@ describe("Rider Apply Page", () => {
     expect(note).toHaveTextContent(/আগে থেকেই PROSANTI অ্যাকাউন্ট ছিল/);
     expect(screen.getByRole("link", { name: /রাইডার লগইন পেইজ/ })).toHaveAttribute("href", "/rider/login");
   });
+
+  it("sends an optional referral code in capitals and shows the outcome", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ applied: true, id: "rider-1", account: "created", referralMessage: "রেফারেল কোড গৃহীত হয়েছে।" }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RiderApplyPage />);
+
+    fill(screen.getByPlaceholderText(/যেমন: তানভীর আহমেদ/i), "Tanvir Ahmed");
+    fill(screen.getByPlaceholderText("017XXXXXXXX"), "01811111111");
+    fill(screen.getByPlaceholderText("rider@example.com"), "rider@example.com");
+    fill(screen.getByPlaceholderText("যেমন K7MQ2X"), "k7mq2x");
+    fill(screen.getByLabelText(/লগইন পাসওয়ার্ড/), "secret1");
+    fill(screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/), "secret1");
+    fireEvent.click(screen.getByRole("button", { name: /Kandirpar/ }));
+    fireEvent.click(screen.getByRole("button", { name: /আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).referralCode).toBe("K7MQ2X");
+    expect(await screen.findByTestId("referral-note")).toHaveTextContent("রেফারেল কোড গৃহীত");
+  });
+
+  it("omits the referral field when it is left blank", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ applied: true, id: "r", account: "created" }), { status: 201, headers: { "Content-Type": "application/json" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RiderApplyPage />);
+    fill(screen.getByPlaceholderText(/যেমন: তানভীর আহমেদ/i), "Tanvir Ahmed");
+    fill(screen.getByPlaceholderText("017XXXXXXXX"), "01811111111");
+    fill(screen.getByPlaceholderText("rider@example.com"), "rider@example.com");
+    fill(screen.getByLabelText(/লগইন পাসওয়ার্ড/), "secret1");
+    fill(screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/), "secret1");
+    fireEvent.click(screen.getByRole("button", { name: /Kandirpar/ }));
+    fireEvent.click(screen.getByRole("button", { name: /আবেদন জমা দিন ও অ্যাকাউন্ট তৈরি করুন/ }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("referralCode");
+  });
 });

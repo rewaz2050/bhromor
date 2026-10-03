@@ -24,7 +24,8 @@ import {
   resetRequestStatus,
   resetRequestsReady,
 } from "@/lib/db/password-reset";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -32,8 +33,8 @@ export const dynamic = "force-dynamic";
 
 const NOT_READY = "পাসওয়ার্ড রিসেট সার্ভিস এখনো চালু হয়নি — সাপোর্টে জানান।";
 
-const limited = (key: string, limit: number, windowMs: number) => {
-  const bucket = checkRateLimit(key, limit, windowMs);
+const limited = async (key: string, limit: number, windowMs: number) => {
+  const bucket = await checkDurableRateLimit(key, limit, windowMs);
   if (bucket.allowed) return null;
   const res = apiError("অনেকবার চেষ্টা হয়েছে — একটু পরে আবার করুন।", 429);
   res.headers.set("Retry-After", String(bucket.retryAfterSec));
@@ -42,7 +43,7 @@ const limited = (key: string, limit: number, windowMs: number) => {
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const ipLimit = limited(`reset-request:${ip}`, 5, 15 * 60_000);
+  const ipLimit = await limited(`reset-request:${ip}`, 5, 15 * 60_000);
   if (ipLimit) return ipLimit;
   let body: unknown;
   try {
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
     const kind = parseResetKind(fields.kind);
     const email = normalizeResetEmail(fields.email);
     const phone = normalizeResetPhone(fields.phone);
-    const emailLimit = limited(`reset-request:${kind}:${email}`, 3, 60 * 60_000);
+    const emailLimit = await limited(`reset-request:${kind}:${email}`, 3, 60 * 60_000);
     if (emailLimit) return emailLimit;
     if (!(await resetRequestsReady(service))) return apiError(NOT_READY, 503);
 
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const ipLimit = limited(`reset-status:${ip}`, 30, 60_000);
+  const ipLimit = await limited(`reset-status:${ip}`, 30, 60_000);
   if (ipLimit) return ipLimit;
   const service = getSupabaseService();
   if (!service) return apiError(NOT_READY, 503);

@@ -17,7 +17,8 @@ import {
   parseResetKind,
   resetRequestsReady,
 } from "@/lib/db/password-reset";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -25,7 +26,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`reset-complete:${ip}`, 5, 15 * 60_000);
+  const bucket = await checkDurableRateLimit(`reset-complete:${ip}`, 5, 15 * 60_000);
   if (!bucket.allowed) {
     const res = apiError("অনেকবার চেষ্টা হয়েছে — একটু পরে আবার করুন।", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));

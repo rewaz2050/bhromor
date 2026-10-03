@@ -33,6 +33,7 @@ import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
 import OrderWhatsAppStatus from "@/components/admin/order-whatsapp-status";
 import WaDraftPanel from "@/components/admin/wa-draft-panel";
 import PaymentCard from "@/components/admin/payment-card";
+import FailedProofPanel from "@/components/admin/failed-proof-panel";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
   requested: "Requested — awaiting decision",
@@ -499,6 +500,7 @@ export default function AdminOrderDetailPage() {
                 <div className="mt-3 rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200">
                   <p className="text-xs font-bold text-rose-800">Failed attempt: {order.deliveryFailedReason}</p>
                   <p className="text-xs">Attempts: {order.deliveryAttempts}</p>
+                  <FailedProofPanel orderId={order.id} />
                 </div>
               )}
               {order.isReturn && (
@@ -616,6 +618,7 @@ export default function AdminOrderDetailPage() {
                 total={order.total}
                 customerPhone={order.customer.phone}
                 orderStatus={order.status}
+                verifier={order.paymentVerifier}
                 onDecided={refresh}
               />
             </dl>

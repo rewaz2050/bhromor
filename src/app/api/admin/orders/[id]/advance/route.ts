@@ -11,6 +11,8 @@ import { apiJson } from "@/lib/api-response";
 import { formatBdt } from "@/lib/format";
 import { routeId, staffRoute } from "../../../_lib";
 import type { OrderStatus } from "@/lib/orders";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
+import { notifyIfNoCoverage } from "@/lib/db/coverage-alert";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,13 @@ export const POST = staffRoute(
         status: body.to as OrderStatus,
         total: order.total,
       });
+      // I: "Ready" creates rider offers in SQL — buzz the phones of riders
+      // whose app is closed right away (best-effort, never throws).
+      if (body.to === "ready-for-pickup") {
+        await pushPendingRiderOffers(staffDb, { force: true });
+        // S: nobody can take it → the owner's bell rings now, not when someone opens the board.
+        await notifyIfNoCoverage(staffDb, order);
+      }
       const label = (body.to as string).replace(/-/g, " ");
       await notifyStaff(staffDb, {
         kind: "order",

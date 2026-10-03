@@ -12,7 +12,8 @@
 
 import { getSupabaseService } from "@/lib/supabase-server";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { apiError, apiJson } from "@/lib/api-response";
 import {
   createReturnRequest,
@@ -31,7 +32,7 @@ const REASONS = new Set([
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`returns:${ip}`, 10, 60_000);
+  const bucket = await checkDurableRateLimit(`returns:${ip}`, 10, 60_000);
   if (!bucket.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));

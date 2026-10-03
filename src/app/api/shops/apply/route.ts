@@ -13,7 +13,8 @@ import { ShopInputError, applyShop } from "@/lib/db/marketplace";
 import { ApplicantAccountError } from "@/lib/db/applicant-account";
 import { notifyStaff } from "@/lib/db/engagement";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 import { loginHandleFor } from "@/lib/phone-login";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`shops-apply:${ip}`, 5, 60_000);
+  const bucket = await checkDurableRateLimit(`shops-apply:${ip}`, 5, 60_000);
   if (!bucket.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));

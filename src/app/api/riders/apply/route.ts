@@ -12,8 +12,11 @@
 import { RiderInputError, applyRider } from "@/lib/db/riders";
 import { ApplicantAccountError } from "@/lib/db/applicant-account";
 import { notifyStaff } from "@/lib/db/engagement";
+import { registerReferral } from "@/lib/db/rider-incentives";
+import { referralOutcomeMessage } from "@/lib/rider-incentives";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseServer, getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 import { loginHandleFor } from "@/lib/phone-login";
@@ -22,7 +25,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`riders-apply:${ip}`, 5, 60_000);
+  const bucket = await checkDurableRateLimit(`riders-apply:${ip}`, 5, 60_000);
   if (!bucket.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));
@@ -57,6 +60,8 @@ export async function POST(request: Request) {
       password: typeof fields.password === "string" ? fields.password : undefined,
     });
     const staffDb = getSupabaseService();
+    // Optional "who told you about us" code — a typo never fails the application.
+    const referral = staffDb ? await registerReferral(staffDb, id, fields.referralCode) : ("none" as const);
     if (staffDb) {
       const riderName =
         typeof fields.name === "string"
@@ -81,6 +86,8 @@ export async function POST(request: Request) {
         // number for a phone login (the synthetic address stays server-side).
         login: loginHandleFor(loginEmail),
         resubmitted,
+        referral,
+        referralMessage: referralOutcomeMessage(referral),
         message: resubmitted
           ? "Application re-submitted — it is back in PROSANTI's review queue; sign in with the same details once it is approved."
           : "Application received — sign in with these details as soon as PROSANTI approves it.",

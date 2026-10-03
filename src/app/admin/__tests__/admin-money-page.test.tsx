@@ -12,6 +12,9 @@ const state = vi.hoisted(() => ({
   loading: false,
   ready: true,
   summary: null as unknown,
+  pnl: null as unknown,
+  range: "30d",
+  setRange: vi.fn(),
   pending: [] as unknown[],
   decided: [] as unknown[],
   settings: { baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 },
@@ -25,6 +28,9 @@ vi.mock("@/lib/use-admin-money", () => ({
     loading: state.loading,
     ready: state.ready,
     summary: state.summary,
+    pnl: state.pnl,
+    range: state.range,
+    setRange: state.setRange,
     pending: state.pending,
     decided: state.decided,
     settings: state.settings,
@@ -62,6 +68,9 @@ beforeEach(() => {
   state.loading = false;
   state.ready = true;
   state.summary = summary;
+  state.pnl = null;
+  state.range = "30d";
+  state.setRange = vi.fn();
   state.pending = [];
   state.decided = [];
   state.settings = { baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 };
@@ -148,5 +157,55 @@ describe("admin money page", () => {
         minPayout: 1000,
       }),
     );
+  });
+
+  describe("net result (audit N7)", () => {
+    const pnl = {
+      deliveredOrders: 4,
+      returnLegs: 1,
+      commission: 20000,
+      deliveryIncome: 24000,
+      shopFundedFreeDelivery: 0,
+      riderFees: 16000,
+      riderAdjustments: 0,
+      discountsGiven: 9000,
+      shopFundedDiscounts: 4000,
+      tipsCollected: 5000,
+      tipsToRiders: 5000,
+    };
+
+    it("names the migration when the net P&L backend has not run", () => {
+      render(<AdminMoneyPage />);
+      expect(screen.getByTestId("pnl-missing")).toHaveTextContent("202610010003_money_pnl.sql");
+      expect(screen.queryByTestId("net-pnl")).not.toBeInTheDocument();
+    });
+
+    it("shows income minus rider pay minus absorbed discounts as ONE net figure", () => {
+      state.pnl = pnl;
+      render(<AdminMoneyPage />);
+      // 20000 + 24000 − 16000 − (9000 − 4000) = 23000 paisa
+      expect(screen.getByTestId("pnl-net")).toHaveTextContent("৳230");
+      expect(screen.getByTestId("pnl-commission")).toHaveTextContent("৳200");
+      expect(screen.getByTestId("pnl-rider")).toHaveTextContent("৳160");
+      expect(screen.getByTestId("pnl-discounts")).toHaveTextContent("৳50");
+      // ৳230 / 4 orders = ৳57.50, shown rounded; (24000 − 16000) / 4 = ৳20 per trip
+      expect(screen.getByTestId("pnl-unit")).toHaveTextContent(/৳58 per delivered order/); // 57.50, whole taka
+      expect(screen.getByTestId("pnl-unit")).toHaveTextContent(/৳20 per trip/);
+    });
+
+    it("shows a loss as a negative number, and keeps tips out of the result", () => {
+      state.pnl = { ...pnl, commission: 0, deliveryIncome: 0, riderFees: 30000, discountsGiven: 0, shopFundedDiscounts: 0 };
+      render(<AdminMoneyPage />);
+      expect(screen.getByTestId("pnl-net")).toHaveTextContent("−৳300");
+      expect(screen.getByTestId("pnl-unit")).toHaveTextContent(/not part of the result/);
+    });
+
+    it("switches the period", () => {
+      state.pnl = pnl;
+      render(<AdminMoneyPage />);
+      expect(screen.getByRole("tab", { name: "30 days" })).toHaveAttribute("aria-selected", "true");
+      fireEvent.click(screen.getByRole("tab", { name: "Today" }));
+      expect(state.setRange).toHaveBeenCalledWith("today");
+    });
   });
 });

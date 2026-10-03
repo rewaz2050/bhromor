@@ -17,9 +17,10 @@ const state = vi.hoisted(() => ({
   validateResults: [] as { ok: boolean; errors?: { field: string; message: string }[] }[],
   validateCalls: 0,
   payloads: [] as Record<string, unknown>[],
-  placedOrders: null as { id: string; total: number; deliveryCharge: number }[] | null,
+  placedOrders: null as { id: string; total: number; deliveryCharge: number; shopId?: string }[] | null,
   placementError: null as Error | null,
   draftsSeen: 0,
+  vendorPushed: [] as unknown[],
 }));
 
 vi.mock("@/lib/env", () => ({ isServiceRoleConfigured: () => state.serviceConfigured }));
@@ -56,6 +57,12 @@ vi.mock("@/lib/db/orders", () => ({
 vi.mock("@/lib/db/engagement", () => ({
   notifyStaff: async () => undefined,
   readOpsSettings: async () => ({}),
+}));
+
+vi.mock("@/lib/vendor-push", () => ({
+  notifyVendorsNewOrders: async (_db: unknown, ids: unknown[]) => {
+    state.vendorPushed.push(ids);
+  },
 }));
 
 vi.mock("@/lib/db/membership", () => ({ isPlusMember: async () => false }));
@@ -146,9 +153,10 @@ beforeEach(() => {
   state.payloads = [];
   state.placementError = null;
   state.draftsSeen = 0;
+  state.vendorPushed = [];
   state.placedOrders = [
-    { id: "PS-2001", total: 106000, deliveryCharge: 6000 },
-    { id: "PS-2002", total: 53000, deliveryCharge: 6000 },
+    { id: "PS-2001", total: 106000, deliveryCharge: 6000, shopId: "shop-a" },
+    { id: "PS-2002", total: 53000, deliveryCharge: 6000, shopId: "shop-b" },
   ];
   state.snapshot = snapshotWith([
     product("p-a1", "shop-a"),
@@ -174,6 +182,16 @@ describe("POST /api/orders — a bag from two shops", () => {
     const second = state.payloads[1].items as { productId: string }[];
     expect(first.map((i) => i.productId)).toEqual(["p-a1", "p-a2"]);
     expect(second.map((i) => i.productId)).toEqual(["p-b1"]);
+  });
+
+  it("tells each shop about its own parcel (push), once the order is placed", async () => {
+    await post(
+      basePayload([
+        { productId: "p-a1", qty: 1 },
+        { productId: "p-b1", qty: 1 },
+      ]),
+    );
+    expect(state.vendorPushed).toEqual([["shop-a", "shop-b"]]);
   });
 
   it("places them as ONE batch, so a refused parcel leaves nothing behind", async () => {

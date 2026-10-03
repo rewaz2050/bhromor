@@ -6,6 +6,7 @@
  */
 import { listRidersFull, upsertRider } from "@/lib/db/admin";
 import { listPendingSettleClaims } from "@/lib/db/riders";
+import { readDispatchSettings } from "@/lib/db/dispatch-settings";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiJson } from "@/lib/api-response";
 import { staffRoute } from "../_lib";
@@ -17,7 +18,9 @@ export const GET = staffRoute("riders-list", async ({ db }) => {
   // Claims live in a service-only table; staffRoute already verified staff.
   const service = getSupabaseService();
   const settleClaims = service ? await listPendingSettleClaims(service) : [];
-  return apiJson({ riders, settleClaims });
+  // J: the cash cap the board colours against (defaults when unset).
+  const dispatch = await readDispatchSettings(db);
+  return apiJson({ riders, settleClaims, dispatch });
 });
 
 export const POST = staffRoute(

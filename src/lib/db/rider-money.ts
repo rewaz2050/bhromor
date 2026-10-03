@@ -20,6 +20,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingDbObject, RiderInputError } from "./riders";
 import { AdminInputError } from "./admin";
 import type { DbRiderEarning, DbRiderPayoutRequest } from "./types";
+import type { MoneyPnl } from "@/lib/money-pnl";
+import { normalizeDaily, type MoneyDaily } from "@/lib/money-daily";
 
 /* ------------------------------------------------------------------ */
 /* C — per-delivery pay rates (site_settings, flat keys like           */
@@ -190,14 +192,17 @@ const epoch = (iso: string | null | undefined): number => {
 };
 
 /**
- * The rider's statement header (one RPC). `null` on a database where
+ * The rider's statement header (one RPC). MUST run on the rider's own
+ * RLS-bound (JWT) client: the RPC resolves the rider through `auth.uid()`
+ * (`ps_rider_id()`), which is NULL on the service-role client → "forbidden".
+ * `null` on a database where
  * 202609300002 has not run — the page then shows the pending-migration card
  * instead of a wall of zeros that look like real numbers.
  */
 export const getRiderMoneySummary = async (
-  service: SupabaseClient,
+  riderDb: SupabaseClient,
 ): Promise<RiderMoneySummary | null> => {
-  const { data, error } = await service.rpc("ps_rider_money_summary");
+  const { data, error } = await riderDb.rpc("ps_rider_money_summary");
   if (error) {
     if (isMissingDbObject(error)) return null;
     throw new Error(error.message);
@@ -363,10 +368,15 @@ export interface AdminMoneySummary {
   minPayout: number;
 }
 
+/**
+ * Platform money position. MUST run on the STAFF's own JWT client:
+ * `ps_is_admin()` reads `auth.uid()`, which is NULL on the service-role
+ * client, so the RPC would answer "forbidden" for every caller.
+ */
 export const getAdminMoneySummary = async (
-  service: SupabaseClient,
+  staffDb: SupabaseClient,
 ): Promise<AdminMoneySummary | null> => {
-  const { data, error } = await service.rpc("ps_admin_money_summary");
+  const { data, error } = await staffDb.rpc("ps_admin_money_summary");
   if (error) {
     if (isMissingDbObject(error)) return null;
     throw new Error(error.message);
@@ -479,8 +489,13 @@ export const listRiderPayoutQueue = async (
 /**
  * Staff decision on a payout request: `paid` (money left the office) or
  * `rejected` (the held amount goes back to the rider's wallet).
+ *
+ * `staffDb` (the staff member's JWT client) runs the RPC — its
+ * `ps_is_admin()` gate needs a real `auth.uid()`. `service` is only used for
+ * the display-only decided_by_email stamp on a table with no RLS policies.
  */
 export const decideRiderPayout = async (
+  staffDb: SupabaseClient,
   service: SupabaseClient,
   user: { id: string; email?: string | null },
   input: {
@@ -490,7 +505,7 @@ export const decideRiderPayout = async (
     reference?: string;
   },
 ): Promise<RiderPayout> => {
-  const { data, error } = await service.rpc("ps_admin_decide_rider_payout", {
+  const { data, error } = await staffDb.rpc("ps_admin_decide_rider_payout", {
     p_payout_id: input.payoutId,
     p_decision: input.decision,
     p_note: input.note?.trim() ? input.note.trim().slice(0, 300) : null,
@@ -521,4 +536,53 @@ export const decideRiderPayout = async (
       .eq("id", row.id);
   }
   return mapPayout(row);
+};
+
+/**
+ * Net P&L for a window (202610010003). Staff JWT client, same reason as the
+ * summary. null = the migration has not run (the page then says so).
+ */
+export const getAdminMoneyPnl = async (
+  staffDb: SupabaseClient,
+  window: { from: string | null; to: string | null },
+): Promise<MoneyPnl | null> => {
+  const { data, error } = await staffDb.rpc("ps_admin_money_pnl", {
+    p_from: window.from,
+    p_to: window.to,
+  });
+  if (error) {
+    if (isMissingDbObject(error)) return null;
+    throw new Error(error.message);
+  }
+  const raw = (data ?? {}) as Record<string, unknown>;
+  const keys: (keyof MoneyPnl)[] = [
+    "deliveredOrders",
+    "returnLegs",
+    "commission",
+    "deliveryIncome",
+    "shopFundedFreeDelivery",
+    "riderFees",
+    "riderAdjustments",
+    "discountsGiven",
+    "shopFundedDiscounts",
+    "tipsCollected",
+    "tipsToRiders",
+  ];
+  return Object.fromEntries(keys.map((k) => [k, num(raw[k])])) as unknown as MoneyPnl;
+};
+
+/**
+ * Daily reconciliation (202610010007, audit item U) — read through the staff
+ * JWT client (ps_is_admin()). Null on a database without the migration.
+ */
+export const getAdminMoneyDaily = async (
+  staffDb: SupabaseClient,
+  day: string,
+): Promise<MoneyDaily | null> => {
+  const { data, error } = await staffDb.rpc("ps_admin_money_daily", { p_day: day });
+  if (error) {
+    if (isMissingDbObject(error)) return null;
+    throw new Error(error.message);
+  }
+  return normalizeDaily(data);
 };

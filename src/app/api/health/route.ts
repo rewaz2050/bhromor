@@ -135,6 +135,10 @@ export async function GET(request?: Request) {
   // 202609300002 — per-delivery fees + the rider payout flow + the admin
   // money dashboard; riders keep earning ৳0 per delivery until it runs.
   riderPayoutsReady: false,
+  // 202610010001 — failed-delivery flow, COD-fee fix, release-rider override.
+  riderFixesReady: false,
+  // 202610010002 — admin chooses who verifies each shop's wallet payments.
+  paymentVerifierReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

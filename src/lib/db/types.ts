@@ -51,13 +51,23 @@ export interface DbRider {
   reviewed_at?: string | null;
   kyc?: Record<string, unknown> | null;
   kyc_submitted_at?: string | null;
+  /** 202610020005 — licence expiry (date). */
+  licence_expires_on?: string | null;
 }
 
 export interface DbDeliveryAssignment {
   id: string;
   order_id: string;
   rider_id: string;
-  state: "offered" | "accepted" | "picked_up" | "delivered" | "cancelled" | "expired";
+  state:
+    | "offered"
+    | "accepted"
+    | "picked_up"
+    | "delivered"
+    | "cancelled"
+    | "expired"
+    /** 202610010001: the final failed delivery attempt — the job is closed. */
+    | "failed";
   offered_at: string;
   expires_at: string;
   /** 202609250003: why a cancelled row ended — decline (permanent),
@@ -86,6 +96,8 @@ export interface DbRiderSettlement {
   amount: number;
   method: string;
   reference: string;
+  /** 202610010004 — part of `amount` paid from the rider wallet (absent pre-migration). */
+  netted_amount?: number | null;
   settled_at: string;
   settled_by: string | null;
 }
@@ -102,7 +114,8 @@ export interface DbRiderEarning {
     | "incentive"
     | "payout"
     | "payout_refund"
-    | "adjustment";
+    | "adjustment"
+    | "cod_netting";
   amount: number;
   payout_id: string | null;
   note: string | null;
@@ -173,6 +186,12 @@ export interface DbShop {
   verified_by?: string | null;
   verified_by_email?: string | null;
   verification_note?: string | null;
+  /** N6 (202610010002) — who verifies wallet payments; absent before it. */
+  payment_verifier?: string | null;
+  /** 202610020013 — how the shop is paid, and its own wallet numbers. */
+  settlement_model?: string | null;
+  wallet_bkash?: string | null;
+  wallet_nagad?: string | null;
   /** B6 (202609280006) — holiday dates; absent on a database without it. */
   vacation_start?: string | null;
   vacation_end?: string | null;
@@ -338,6 +357,8 @@ export interface DbOrder {
   delivery_proof_uploaded_at?: string | null;
   delivery_failed_reason?: string | null;
   delivery_attempts?: number;
+  /** 202610010001: set on the final failed attempt; staff must resolve it. */
+  delivery_failed_at?: string | null;
   subtotal: number;
   delivery_charge: number;
   discount: number;

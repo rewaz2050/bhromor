@@ -41,7 +41,7 @@ export const publicVapidKey = (): string | null =>
 
 let configuredOnce: boolean | null = null;
 /** Set the VAPID keys exactly once per process (idempotent, best-effort). */
-const ensureVapid = (): boolean => {
+export const ensureVapid = (): boolean => {
   if (configuredOnce !== null) return configuredOnce;
   if (!isPushConfigured()) {
     configuredOnce = false;

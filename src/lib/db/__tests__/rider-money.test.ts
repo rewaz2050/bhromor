@@ -12,6 +12,8 @@ vi.mock("server-only", () => ({}));
 
 import {
   decideRiderPayout,
+  getAdminMoneyDaily,
+  getAdminMoneyPnl,
   getAdminMoneySummary,
   getRiderMoneySummary,
   listRiderMoneyEntries,
@@ -370,6 +372,7 @@ describe("admin money", () => {
     });
     const payout = await decideRiderPayout(
       svc as never,
+      svc as never,
       { id: "staff-1", email: "owner@prosanti.test" },
       { payoutId: "p1", decision: "paid", reference: "TRX1" },
     );
@@ -382,7 +385,61 @@ describe("admin money", () => {
       rpc: () => ({ data: null, error: { message: "payout already paid" } }),
     });
     await expect(
-      decideRiderPayout(svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
+      decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("getAdminMoneyPnl (audit N7)", () => {
+  it("passes the window to the RPC and normalises numbers", async () => {
+    const seen: unknown[] = [];
+    const pnl = await getAdminMoneyPnl(
+      client({
+        rpc: (fn, params) => {
+          seen.push([fn, params]);
+          return { data: { commission: "5000", deliveryIncome: 12000, riderFees: "4000" }, error: null };
+        },
+      }) as never,
+      { from: "2026-09-30T18:00:00.000Z", to: null },
+    );
+    expect(seen).toEqual([["ps_admin_money_pnl", { p_from: "2026-09-30T18:00:00.000Z", p_to: null }]]);
+    expect(pnl?.commission).toBe(5000);
+    expect(pnl?.riderFees).toBe(4000);
+    expect(pnl?.discountsGiven).toBe(0);
+  });
+
+  it("is null when the migration has not run, and throws on a real failure", async () => {
+    expect(await getAdminMoneyPnl(client({}) as never, { from: null, to: null })).toBeNull();
+    await expect(
+      getAdminMoneyPnl(client({ rpc: () => ({ data: null, error: { message: "boom" } }) }) as never, {
+        from: null,
+        to: null,
+      }),
+    ).rejects.toThrow("boom");
+  });
+});
+
+describe("getAdminMoneyDaily (audit U)", () => {
+  it("asks for the day and returns a normalised report", async () => {
+    const seen: unknown[] = [];
+    const report = await getAdminMoneyDaily(
+      client({
+        rpc: (fn, params) => {
+          seen.push([fn, params]);
+          return { data: { day: "2026-10-01", flows: { orderValue: "1000" }, position: {}, checks: [] }, error: null };
+        },
+      }) as never,
+      "2026-10-01",
+    );
+    expect(seen).toEqual([["ps_admin_money_daily", { p_day: "2026-10-01" }]]);
+    expect(report?.flows.orderValue).toBe(1000);
+    expect(report?.checks).toHaveLength(8);
+  });
+
+  it("is null before the migration and throws on a real failure", async () => {
+    expect(await getAdminMoneyDaily(client({}) as never, "2026-10-01")).toBeNull();
+    await expect(
+      getAdminMoneyDaily(client({ rpc: () => ({ data: null, error: { message: "boom" } }) }) as never, "2026-10-01"),
+    ).rejects.toThrow("boom");
   });
 });

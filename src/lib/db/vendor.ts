@@ -20,6 +20,7 @@ import type { Category, Product, Shop } from "../catalog";
 import { validateVacation } from "../shop-vacation";
 import type { Order, OrderStatus } from "../orders";
 import { mapCategory, mapProduct, mapShop } from "./mappers";
+import { oneShopTotals } from "./shop-balances";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { toDomain, toDomainMany } from "./orders";
 import type {
@@ -32,6 +33,8 @@ import type {
   DbShop,
   DbVariant,
 } from "./types";
+import { shopPaymentVerifier } from "@/lib/db/payment-verifier";
+import { isMissingDbObject } from "./riders";
 
 /* ------------------------------------------------------------------ */
 /* Pure guards (unit-tested)                                           */
@@ -223,7 +226,44 @@ export async function getVendorOrderDetail(
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const order = await toDomain(db, data as DbOrder);
   if (!order) throw new Error("vendor order detail failed");
+  if (order.payment !== "cod" && order.paymentStatus === "pending_verification") {
+    order.paymentVerifier = await shopPaymentVerifier(db, shopId);
+  }
+  const rider = await readShopRider(db, (data as DbOrder).id);
+  if (rider) order.shopRider = rider;
   return order;
+}
+
+/**
+ * Audit H: who is coming for the parcel. A narrow definer RPC (shops cannot
+ * read riders / assignments). Never fatal: before 202610010005, or on any
+ * failure, the order page simply shows no rider card.
+ */
+export const parseShopRider = (raw: unknown): Order["shopRider"] | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const state = r.state === "picked_up" ? "picked_up" : r.state === "accepted" ? "accepted" : null;
+  if (!state || typeof r.name !== "string" || typeof r.phone !== "string") return null;
+  return {
+    name: r.name,
+    phone: r.phone,
+    vehicle: typeof r.vehicle === "string" ? r.vehicle : "bike",
+    state,
+  };
+};
+
+export async function readShopRider(
+  db: SupabaseClient,
+  orderId: string,
+): Promise<Order["shopRider"] | null> {
+  const { data, error } = await db.rpc("ps_vendor_order_rider", { p_order_id: orderId });
+  if (error) {
+    if (!isMissingDbObject(error)) {
+      console.error("[vendor] rider lookup failed:", error.message);
+    }
+    return null;
+  }
+  return parseShopRider(data);
 }
 
 export async function advanceVendorOrder(
@@ -315,6 +355,12 @@ export async function verifyPaymentAsVendor(
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Only the shop that owns this order can decide its payment.", 403);
+    }
+    if (msg.includes("reserved for the platform")) {
+      throw new AdminInputError(
+        "PROSANTI staff verify the wallet payments for your shop — you will see the result here.",
+        403,
+      );
     }
     if (msg.includes("not a wallet payment")) {
       throw new AdminInputError(
@@ -650,8 +696,11 @@ export async function listVendorEarnings(
     reference: r.reference,
     at: Date.parse(r.paid_at),
   }));
-  const lifetimePayable = ledger.reduce((s, r) => s + r.payable, 0);
-  const lifetimePaid = payouts.reduce((s, r) => s + r.amount, 0);
+  // The lists above are windows (100 / 20); the lifetime figures are summed in
+  // the database so they stay right past a thousand orders.
+  const totals = await oneShopTotals(db, shopId).catch(() => null);
+  const lifetimePayable = totals ? totals.earned : ledger.reduce((s, r) => s + r.payable, 0);
+  const lifetimePaid = totals ? totals.paid : payouts.reduce((s, r) => s + r.amount, 0);
   return {
     lifetimePayable,
     lifetimePaid,

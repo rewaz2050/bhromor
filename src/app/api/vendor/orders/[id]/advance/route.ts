@@ -8,6 +8,8 @@ import { apiJson } from "@/lib/api-response";
 import { notifyCustomerOfStatus } from "@/lib/customer-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import type { OrderStatus } from "@/lib/orders";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
+import { notifyIfNoCoverage } from "@/lib/db/coverage-alert";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,11 @@ export const POST = vendorRoute(
         status: to as OrderStatus,
         total: order.total,
       });
+      // I: the shop's "Ready — request riders" creates offers in SQL.
+      if (to === "ready-for-pickup") {
+        await pushPendingRiderOffers(service, { force: true });
+        await notifyIfNoCoverage(service, order);
+      }
     }
     return apiJson({ order });
   },

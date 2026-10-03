@@ -11,6 +11,7 @@
  * The route persists only what this module approves.
  */
 
+import { walletsForCart } from "./shop-settlement";
 import { MAX_LINE_QTY, type CartLine } from "./cart";
 import type { DeliveryZone, Product, Shop } from "./catalog";
 import {
@@ -710,7 +711,17 @@ export const validateOrderPayload = (
   let paymentRef: string | undefined;
   if (rawMethod === "bkash" || rawMethod === "nagad") {
     const label = rawMethod === "bkash" ? "bKash" : "Nagad";
-    const wallet = snapshot.payments?.[rawMethod];
+    // A shop that sells into its OWN wallet is paid on its own number; every other shop
+    // on PROSANTI's (the cart is one shop here, so this is the whole decision).
+    const soleShop =
+      snapshot.shops && shopIds.size === 1 ? snapshot.shops.find((s) => s.id === [...shopIds][0]) : undefined;
+    const offered = walletsForCart(
+      snapshot.payments ?? {},
+      soleShop
+        ? [{ id: soleShop.id, name: soleShop.name, settlementModel: soleShop.settlementModel ?? "platform", wallets: soleShop.shopWallets ?? {} }]
+        : [],
+    );
+    const wallet = offered[rawMethod];
     if (!wallet) {
       errors.push({
         field: "payment",

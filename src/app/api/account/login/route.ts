@@ -4,14 +4,15 @@
 
 import { loginCustomer, createSession, sessionCookie, CustomerAuthError } from "@/lib/customer-auth";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { apiError, apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const limit = checkRateLimit(`login:${ip}`, 10, 60_000);
+  const limit = await checkDurableRateLimit(`login:${ip}`, 10, 60_000);
   if (!limit.allowed) {
     const res = apiError("অনেকবার চেষ্টা হয়েছে — এক মিনিট পরে চেষ্টা করুন।", 429);
     res.headers.set("Retry-After", String(limit.retryAfterSec));

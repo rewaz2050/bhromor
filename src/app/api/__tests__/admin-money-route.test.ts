@@ -8,9 +8,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+// Two distinguishable clients. ps_is_admin() / ps_rider_id() read auth.uid(),
+// which is NULL on the service-role client — so the RPCs MUST get the staff's
+// own JWT client (the 2026-10-01 audit's N1/N2: service-role calls were all
+// answered "forbidden" in production).
+const STAFF_DB = vi.hoisted(() => ({ kind: "staff-jwt" }));
+const SERVICE_CLIENT = vi.hoisted(() => ({ kind: "service-role" }));
+
 const state = vi.hoisted(() => ({
   ctx: {} as Record<string, unknown>,
   decisions: [] as unknown[],
+  /** Which client object each RPC-bearing helper received. */
+  summaryClient: null as unknown,
+  pnlCall: null as null | { client: unknown; window: { from: string | null } },
+  pnlFails: false,
+  decideClients: null as null | { staffDb: unknown; service: unknown },
   settingsWrites: [] as unknown[],
   summary: { riderPayable: 14000 } as unknown,
   queue: { pending: [], decided: [] } as unknown,
@@ -26,7 +38,7 @@ vi.mock("@/lib/staff-auth", () => ({
 
 vi.mock("@/lib/supabase-server", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/supabase-server")>();
-  return { ...orig, getSupabaseService: () => ({}) };
+  return { ...orig, getSupabaseService: () => SERVICE_CLIENT };
 });
 
 vi.mock("@/lib/db/rider-money", async (importOriginal) => {
@@ -34,7 +46,15 @@ vi.mock("@/lib/db/rider-money", async (importOriginal) => {
   const { AdminInputError } = await import("@/lib/db/admin");
   return {
     ...orig,
-    getAdminMoneySummary: async () => state.summary,
+    getAdminMoneyPnl: async (client: unknown, window: unknown) => {
+      state.pnlCall = { client, window: window as { from: string | null } };
+      if (state.pnlFails) throw new Error("pnl boom");
+      return { commission: 100 };
+    },
+    getAdminMoneySummary: async (client: unknown) => {
+      state.summaryClient = client;
+      return state.summary;
+    },
     listRiderPayoutQueue: async () => state.queue,
     readRiderPaySettings: async () => ({ baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 }),
     writeRiderPaySettings: async (_db: unknown, raw: unknown) => {
@@ -44,7 +64,8 @@ vi.mock("@/lib/db/rider-money", async (importOriginal) => {
       state.settingsWrites.push(body);
       return settings;
     },
-    decideRiderPayout: async (_svc: unknown, _user: unknown, input: unknown) => {
+    decideRiderPayout: async (staffDb: unknown, service: unknown, _user: unknown, input: unknown) => {
+      state.decideClients = { staffDb, service };
       state.decisions.push(input);
       return { id: (input as { payoutId: string }).payoutId, status: "paid" };
     },
@@ -66,8 +87,12 @@ const request = (body?: unknown, method = "GET") =>
   });
 
 beforeEach(() => {
-  state.ctx = { user: { id: "staff-1", email: "owner@prosanti.test" }, db: {}, role: "admin" };
+  state.ctx = { user: { id: "staff-1", email: "owner@prosanti.test" }, db: STAFF_DB, role: "admin" };
   state.decisions = [];
+  state.summaryClient = null;
+  state.pnlCall = null;
+  state.pnlFails = false;
+  state.decideClients = null;
   state.settingsWrites = [];
   state.summary = { riderPayable: 14000 };
   state.queue = { pending: [], decided: [] };
@@ -82,10 +107,43 @@ describe("GET /api/admin/money", () => {
     expect(body.settings.baseFee).toBe(4000);
   });
 
+  it("reads the summary with the STAFF JWT client, never the service key", async () => {
+    await call("GET")(request());
+    expect(state.summaryClient).toBe(STAFF_DB);
+    expect(state.summaryClient).not.toBe(SERVICE_CLIENT);
+  });
+
   it("says not-ready when the migration has not run", async () => {
     state.summary = null;
     const body = (await (await call("GET")(request())).json()) as { ready: boolean };
     expect(body.ready).toBe(false);
+  });
+});
+
+describe("GET /api/admin/money — net result (N7)", () => {
+  const get = async (qs = "") => {
+    const res = await call("GET")(new Request(`http://localhost/api/admin/money${qs}`));
+    return (await res.json()) as { range: string; pnl: { commission: number } | null; ready: boolean };
+  };
+
+  it("defaults to 30 days and reads with the staff client", async () => {
+    const body = await get();
+    expect(body.range).toBe("30d");
+    expect(body.pnl?.commission).toBe(100);
+    expect(state.pnlCall?.client).toBe(STAFF_DB);
+  });
+
+  it("honours ?range=all (open window) and ignores junk", async () => {
+    expect((await get("?range=all")).range).toBe("all");
+    expect(state.pnlCall?.window.from).toBeNull();
+    expect((await get("?range=banana")).range).toBe("30d");
+  });
+
+  it("a failing P&L never blocks the page", async () => {
+    state.pnlFails = true;
+    const body = await get();
+    expect(body.ready).toBe(true);
+    expect(body.pnl).toBeNull();
   });
 });
 
@@ -96,6 +154,15 @@ describe("POST /api/admin/money", () => {
     );
     expect(res.status).toBe(200);
     expect(state.decisions).toHaveLength(1);
+  });
+
+  it("decides with the STAFF JWT client (ps_is_admin needs auth.uid())", async () => {
+    await call("POST")(
+      request({ payoutId: "11111111-1111-1111-1111-111111111111", decision: "paid", reference: "TRX1" }, "POST"),
+    );
+    expect(state.decideClients?.staffDb).toBe(STAFF_DB);
+    // The service client is only for the display-only e-mail stamp.
+    expect(state.decideClients?.service).toBe(SERVICE_CLIENT);
   });
 
   it("wants a reference or a note for a payment", async () => {

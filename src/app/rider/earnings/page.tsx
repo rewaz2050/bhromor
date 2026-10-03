@@ -17,6 +17,8 @@ import Link from "next/link";
 import { useRiderSession } from "@/lib/use-rider";
 import { useRiderEarnings, type RiderMoneyKind } from "@/lib/use-rider-money";
 import { formatBdt } from "@/lib/format";
+import { useRiderIncentives } from "@/lib/use-rider-incentives";
+import IncentivesCard from "@/components/rider/incentives-card";
 
 const KIND_LABEL: Record<RiderMoneyKind, string> = {
   tip: "💝 টিপ",
@@ -26,6 +28,7 @@ const KIND_LABEL: Record<RiderMoneyKind, string> = {
   payout: "🏦 উত্তোলন (হোল্ড)",
   payout_refund: "↩️ উত্তোলন বাতিল (ফেরত)",
   adjustment: "⚖️ সমন্বয়",
+  cod_netting: "🤝 ক্যাশ জমার সাথে সমন্বয়",
 };
 
 const STATUS_LABEL: Record<"pending" | "paid" | "rejected", string> = {
@@ -60,6 +63,7 @@ export default function RiderEarningsPage() {
   const [account, setAccount] = useState(
     () => (typeof window === "undefined" ? "" : window.localStorage.getItem("prosanti-rider-payout-account")) || "",
   );
+  const incentives = useRiderIncentives(isLive);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -150,6 +154,8 @@ export default function RiderEarningsPage() {
           {money.error}
         </p>
       )}
+
+      <IncentivesCard view={incentives.view} />
 
       {/* The three numbers, never merged: wallet / cash custody / paid out. */}
       <div className="grid gap-3 sm:grid-cols-3">
@@ -339,6 +345,12 @@ export default function RiderEarningsPage() {
                     {p.reference ? ` · TRX ${p.reference}` : ""}
                   </p>
                   {p.note && <p className="text-[11px] text-ink-soft">নোট: {p.note}</p>}
+                  {p.status === "pending" && (
+                    <p className="text-[11px] text-amber-800">টাকা ওয়ালেটে হোল্ডে আছে; অনুমোদনের পর আপনার {p.method} নম্বরে যাবে।</p>
+                  )}
+                  {p.status === "rejected" && (
+                    <p className="text-[11px] text-rose-800" data-testid="payout-refund-note">অনুরোধ বাতিল — হোল্ড করা টাকা আপনার ওয়ালেটে ফেরত এসেছে।</p>
+                  )}
                 </div>
                 <span
                   className={

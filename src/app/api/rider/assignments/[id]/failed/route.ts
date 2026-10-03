@@ -1,21 +1,47 @@
 import { apiJson } from "@/lib/api-response";
 import { failedRiderAttempt, RiderInputError } from "@/lib/db/riders";
+import { readFailedProofMode, recordFailedProof } from "@/lib/db/failed-proof";
+import { decideFailedProof } from "@/lib/failed-proof";
+import { cloudinaryCloudName, isCloudinaryConfigured } from "@/lib/env";
 import { riderRoute, routeId } from "../../../_lib";
 
 export const dynamic = "force-dynamic";
 
-/** POST /api/rider/assignments/:id/failed — customer unreachable, reschedule etc */
+/**
+ * POST /api/rider/assignments/:id/failed — customer unreachable, wrong address…
+ * Only with the parcel in hand (picked_up). The last allowed attempt
+ * (delivery_max_attempts, default 2) closes the job: the response says
+ * `final: true`, the rider is freed and staff get a redispatch/cancel task.
+ */
 export const POST = riderRoute(
   "failed",
   async (ctx, request, routeContext) => {
     const assignmentId = await routeId(routeContext);
     if (!assignmentId) throw new Error("assignment id required");
-    const body = (await request.json().catch(() => null)) as { reason?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as { reason?: unknown; proofUrl?: unknown; noPhotoReason?: unknown } | null;
     const reason = typeof body?.reason === "string" ? body.reason.trim().slice(0, 300) : "";
     if (reason.length < 5) {
       throw new RiderInputError("Please provide a reason (at least 5 chars).", 422);
     }
-    await failedRiderAttempt(ctx.db, assignmentId, reason);
-    return apiJson({ failed: true, reason });
+    // Optional/required failed-attempt photo (staff setting, off by default). Checked BEFORE the
+    // attempt is recorded, so a missing photo never burns one of the rider's attempts.
+    const proof = decideFailedProof({
+      mode: await readFailedProofMode(ctx.service),
+      proofUrl: body?.proofUrl,
+      noPhotoReason: body?.noPhotoReason,
+      cloudName: cloudinaryCloudName(),
+      uploadsConfigured: isCloudinaryConfigured(),
+    });
+    if (!proof.ok) throw new RiderInputError(proof.message, 422);
+    // ctx.db = the rider's own client (the RPC resolves them via auth.uid());
+    // ctx.service only reads the counter + cap for the confirmation.
+    const result = await failedRiderAttempt(ctx.db, assignmentId, reason, ctx.service);
+    await recordFailedProof(ctx.service, {
+      assignmentId,
+      riderId: ctx.rider.id,
+      proofUrl: proof.proofUrl,
+      noPhotoNote: proof.noPhotoNote,
+    });
+    return apiJson({ failed: true, reason, ...result });
   },
 );

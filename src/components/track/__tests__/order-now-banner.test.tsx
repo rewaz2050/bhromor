@@ -44,6 +44,19 @@ describe("orderStage", () => {
     expect(orderStage(withStatus("cancelled"))).toBe("cancelled");
   });
 
+  it("a final failed delivery is its own stage: no rider map, no PIN, an honest line", () => {
+    const failed = withStatus("out-for-delivery", { deliveryFailedAt: 1_758_190_000_000, deliveryAttempts: 2 });
+    expect(orderStage(failed)).toBe("failed");
+    expect(showsRiderMap(failed)).toBe(false); // the rider is gone
+    // a redispatch clears deliveryFailedAt, which returns the order to its normal stage
+    expect(orderStage(withStatus("ready-for-pickup", { deliveryFailedAt: undefined }))).toBe("ready");
+    // resolved orders keep their terminal stage
+    expect(orderStage(withStatus("cancelled", { deliveryFailedAt: 1 }))).toBe("cancelled");
+    expect(orderStage(withStatus("delivered", { deliveryFailedAt: 1 }))).toBe("delivered");
+    // a counter pickup never rode
+    expect(orderStage(withStatus("out-for-delivery", { deliveryFailedAt: 1, isPickup: true }))).toBe("out");
+  });
+
   it("a wallet payment still under verification wins over the status", () => {
     expect(
       orderStage(withStatus("pending", { payment: "bkash", paymentStatus: "pending_verification" })),
@@ -71,6 +84,14 @@ describe("showsRiderMap", () => {
 });
 
 describe("OrderNowBanner", () => {
+  it("final failed delivery: says so, no PIN, no 'on the way'", () => {
+    render(<OrderNowBanner order={withStatus("out-for-delivery", { deliveryFailedAt: 1_758_190_000_000 })} />);
+    const banner = screen.getByTestId("order-now");
+    expect(banner).toHaveAttribute("data-stage", "failed");
+    expect(banner).toHaveTextContent(/could not complete this delivery/i);
+    expect(banner).not.toHaveTextContent(/On the way/);
+    expect(screen.queryByTestId("order-now-pin")).toBeNull();
+  });
   it("pending COD: 'checking stock', no PIN yet", () => {
     render(<OrderNowBanner order={withStatus("pending")} />);
     const now = screen.getByTestId("order-now");

@@ -5,6 +5,8 @@ import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
 import { SUNAMGANJ_HUB_COORDS } from "@/lib/sunamganj";
 import type { Rider } from "@/lib/catalog";
 import type { Order } from "@/lib/orders";
+import { escapeHtml, riderMarkerHtml, riderMarkerStyle, riderPopupHtml } from "@/lib/rider-map-marker";
+import { useNow } from "@/lib/use-now";
 
 /** Marker identity: hub markers are never cleared on refresh. */
 const HUB_MARKER_TAG = "ps-hub-marker";
@@ -20,6 +22,8 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
   const leafletMapRef = useRef<LeafletMap | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [leafletReady, setLeafletReady] = useState(false);
+  // Redraw once a minute so a pin whose phone went quiet turns "stale" without a refresh.
+  const now = useNow(60_000);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -101,15 +105,15 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
       // Riders
       riders.forEach((r) => {
         if (!r.lat || !r.lng) return;
-        const color = r.isOnline ? (r.currentLoad && r.currentLoad > 0 ? "#f59e0b" : "#22c55e") : "#6b7280";
+        const style = riderMarkerStyle(r, now);
         const icon = L.divIcon({
-          html: `<div style="background:${color};color:white;border:2px solid white;border-radius:9999px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${r.name[0]}</div>`,
+          html: riderMarkerHtml(r.name, style),
           className: "",
           iconSize: [28, 28],
           iconAnchor: [14, 14],
         });
         const m = L.marker([r.lat, r.lng], { icon }).addTo(map);
-        m.bindPopup(`<b>${r.name}</b><br/>${r.phone}<br/>${r.isOnline ? "Online" : "Offline"} · Load ${r.currentLoad ?? 0}<br/>${r.zoneIds.join(",")}`);
+        m.bindPopup(riderPopupHtml(r, style));
       });
 
       // Orders with pin
@@ -130,7 +134,7 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
           iconAnchor: [30, 10],
         });
         const m = L.marker([o.lat, o.lng], { icon }).addTo(map);
-        m.bindPopup(`<b>#${o.id}</b><br/>${o.customer.name}<br/>${o.customer.area}<br/>${o.zoneName}<br/>${o.status}<br/>${delivery ? `Rider: ${delivery.riderId.slice(0,6)} · ${delivery.state}` : "No rider"}`);
+        m.bindPopup(`<b>#${escapeHtml(o.id)}</b><br/>${escapeHtml(o.customer.name)}<br/>${escapeHtml(o.customer.area)}<br/>${escapeHtml(o.zoneName)}<br/>${escapeHtml(o.status)}<br/>${delivery ? `Rider: ${escapeHtml(delivery.riderId.slice(0, 6))} · ${escapeHtml(delivery.state)}` : "No rider"}`);
 
         // Line from hub to order if no rider, or rider to order if assigned
         const riderForOrder = delivery ? riders.find((r) => r.id === delivery.riderId && r.lat && r.lng) : null;
@@ -153,10 +157,11 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
         }
       });
     });
-  }, [riders, orders, deliveries, leafletReady]);
+  }, [riders, orders, deliveries, leafletReady, now]);
 
   const onlineRiders = riders.filter((r) => r.isOnline).length;
   const ridersWithPin = riders.filter((r) => r.lat && r.lng).length;
+  const staleRiders = riders.filter((r) => r.lat && r.lng && riderMarkerStyle(r, now).stale).length;
   const ordersWithPin = orders.filter((o) => o.lat && o.lng).length;
 
   return (
@@ -164,6 +169,11 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 ring-1 ring-emerald-200">🟢 Online riders: {onlineRiders}/{riders.length}</span>
         <span className="rounded-full bg-sky-50 px-2.5 py-1 ring-1 ring-sky-200">📍 Riders with pin: {ridersWithPin}</span>
+        {staleRiders > 0 && (
+          <span data-testid="stale-riders" className="rounded-full bg-rose-50 px-2.5 py-1 ring-1 ring-rose-200">
+            ⚠ Old location: {staleRiders} (dashed pins)
+          </span>
+        )}
         <span className="rounded-full bg-amber-50 px-2.5 py-1 ring-1 ring-amber-200">📦 Orders with pin: {ordersWithPin}/{orders.length}</span>
         <span className="rounded-full bg-forest-50 px-2.5 py-1 ring-1 ring-forest-200">H = Traffic Point Hub</span>
       </div>

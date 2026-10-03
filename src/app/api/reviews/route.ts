@@ -18,7 +18,8 @@ import { notifyStaff } from "@/lib/db/engagement";
 import { mapReview } from "@/lib/db/mappers";
 import type { DbReview } from "@/lib/db/types";
 import { isServiceRoleConfigured, isSupabaseConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { apiError, apiJson } from "@/lib/api-response";
 import { publicJson } from "@/lib/public-cache";
 import { isUuid } from "@/lib/db/order-lookup";
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);
-  const bucket = checkRateLimit(`reviews:${ip}`, 10, 60_000);
+  const bucket = await checkDurableRateLimit(`reviews:${ip}`, 10, 60_000);
   if (!bucket.allowed) {
     const res = apiError("Too many attempts — please wait a moment.", 429);
     res.headers.set("Retry-After", String(bucket.retryAfterSec));

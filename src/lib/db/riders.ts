@@ -40,6 +40,7 @@ import {
   sanitizeAvailability,
   type RiderAvailability,
 } from "../rider-hours";
+import { pushPendingRiderOffers } from "@/lib/rider-push";
 
 export interface RiderJob {
   id: string;
@@ -58,6 +59,8 @@ export interface RiderSettlement {
   amount: number;
   method: string;
   reference: string;
+  /** Part of `amount` that was netted against the rider's wallet (202610010004). */
+  nettedAmount: number;
   at: number;
 }
 
@@ -72,6 +75,8 @@ export interface SettleClaim {
   reference: string;
   status: DbSettleClaim["status"];
   at: number;
+  /** When staff decided (approved / rejected); absent while pending. */
+  decidedAt?: number;
   note?: string;
 }
 
@@ -167,6 +172,20 @@ export interface RiderApplyResult {
  * as `user_id` right away; staff approval (status → active) is what opens
  * the rider app. One account owns one rider.
  */
+/** Admin editor and public form share this ceiling. */
+export const MAX_RIDER_ZONES = 24;
+
+/** What to tell a login that already owns a rider row, by that row's status. */
+export const refusalFor = (status: string, fallback: string): string => {
+  if (status === "suspended") {
+    return "This rider account is suspended — you can't apply again. Contact PROSANTI support if you think this is a mistake.";
+  }
+  if (status === "pending") {
+    return "You already have an application waiting for review — PROSANTI will approve it soon, then sign in at /rider/login.";
+  }
+  return fallback;
+};
+
 export async function applyRider(
   raw: unknown,
   opts: RiderApplyOptions = {},
@@ -187,7 +206,7 @@ export async function applyRider(
             .map((z) => z.trim())
             .filter(Boolean),
         ),
-      ].slice(0, 12)
+      ]
     : [];
 
   if (name.length < 2) throw new RiderInputError("Rider name is too short.");
@@ -209,6 +228,11 @@ export async function applyRider(
   }
   if (zoneIds.length === 0) {
     throw new RiderInputError("Choose at least one delivery zone.");
+  }
+  // Same ceiling as the admin editor. Silently dropping zones past the cap
+  // (it used to keep 12) would shrink a rider's coverage without telling them.
+  if (zoneIds.length > MAX_RIDER_ZONES) {
+    throw new RiderInputError(`Choose at most ${MAX_RIDER_ZONES} delivery zones.`);
   }
   // Checked before anything is written so a typo never leaves a half-made
   // application behind.
@@ -256,7 +280,7 @@ export async function applyRider(
     const owned = await ownedRider(userId);
     if (!owned) return null;
     if (owned.status === "rejected") return owned.id;
-    throw new RiderInputError(message, 409);
+    throw new RiderInputError(refusalFor(owned.status, message), 409);
   };
   let resubmitId: string | null = null;
   if (sessionUserId) {
@@ -370,6 +394,7 @@ export async function listRiderSettlements(
     amount: row.amount,
     method: row.method,
     reference: row.reference,
+    nettedAmount: Number(row.netted_amount ?? 0),
     at: epoch(row.settled_at),
   }));
 }
@@ -418,6 +443,36 @@ export async function listRiderSettleClaim(
     at: epoch(row.created_at),
     note: row.note ?? undefined,
   };
+}
+
+/**
+ * The rider's recent claims in every state, so a REJECTED claim (and the
+ * reason staff gave) does not just vanish from the app. Best-effort: a
+ * database without the claims table (202609250004) simply has none.
+ */
+export async function listRiderRecentClaims(
+  service: SupabaseClient,
+  riderId: string,
+  limit = 10,
+): Promise<SettleClaim[]> {
+  const { data, error } = await service
+    .from("rider_settle_claims")
+    .select("*")
+    .eq("rider_id", riderId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return ((data ?? []) as DbSettleClaim[]).map((row) => ({
+    id: row.id,
+    riderId: row.rider_id,
+    amount: row.amount,
+    method: row.method,
+    reference: row.reference,
+    status: row.status,
+    at: epoch(row.created_at),
+    decidedAt: row.decided_at ? epoch(row.decided_at) : undefined,
+    note: row.note ?? undefined,
+  }));
 }
 
 /** Every pending claim with its rider — the staff approval queue. */
@@ -673,6 +728,9 @@ export async function expireStaleAssignments(
     return;
   }
   if (error) throw new Error(error.message);
+  // I: the sweep may have just created offers (expiry → re-offer, late rider,
+  // resumed broadcast). Buzz the phones of riders whose app is closed.
+  await pushPendingRiderOffers(service);
 }
 
 /** Admin records a rider pay-in and zeroes their cash-in-hand. */
@@ -681,12 +739,22 @@ export async function settleRiderCashByAdmin(
   riderId: string,
   method: string,
   reference: string,
+  netWallet = false,
 ): Promise<void> {
+  // p_net_wallet is only sent when asked for, so a plain settle keeps working
+  // on a database where 202610010004 has not run yet.
   const { error } = await service.rpc("ps_admin_settle_rider", {
     p_rider_id: riderId,
     p_method: method,
     p_reference: reference,
+    ...(netWallet ? { p_net_wallet: true } : {}),
   });
+  if (error && netWallet && isMissingDbObject(error)) {
+    throw new AdminInputError(
+      "Netting against the rider wallet needs supabase/migrations/202610010004_cod_netting.sql — run it in the Supabase SQL Editor, or settle without netting.",
+      503,
+    );
+  }
   if (error) throw dispatchRpcError(error.message);
 }
 
@@ -723,7 +791,11 @@ export async function listAwaitingDispatchOrders(
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error("awaiting orders read failed");
-  const rows = ((orderRows ?? []) as DbOrder[]).filter((row) => !row.is_pickup);
+  // A flagged failed delivery is not "waiting for a rider" — its parcel is on
+  // the way back to the shop; it has its own action list (listFailedDeliveries).
+  const rows = ((orderRows ?? []) as DbOrder[]).filter(
+    (row) => !row.is_pickup && !row.delivery_failed_at,
+  );
   if (rows.length === 0) return [];
 
   const { data: assignmentRows } = await service
@@ -763,11 +835,21 @@ export async function setRiderOnline(
   riderId: string,
   isOnline: boolean,
 ): Promise<boolean> {
+  // N: a lapsed licence cannot go online (the DB trigger is the backstop).
+  if (isOnline) {
+    const { assertLicenceAllowsOnline } = await import("./licence-expiry");
+    await assertLicenceAllowsOnline(service, riderId);
+  }
   const { error } = await service
     .from("riders")
     .update({ is_online: Boolean(isOnline) })
     .eq("id", riderId);
-  if (error) throw new Error("rider online update failed");
+  if (error) {
+    if (/licence_expired/.test(error.message ?? "")) {
+      throw new RiderInputError("আপনার ড্রাইভিং লাইসেন্সের মেয়াদ শেষ — নবায়ন করে অফিসে নতুন তারিখ জানান।", 403);
+    }
+    throw new Error("rider online update failed");
+  }
   return true;
 }
 
@@ -800,6 +882,33 @@ export const rejectRiderAssignment = async (
     p_assignment_id: assignmentId,
   });
   if (error) throw new Error(error.message);
+};
+
+/**
+ * A rider hands back a job they accepted but have NOT picked up yet
+ * (202610020011). The order returns to the area queue at once and the same
+ * rider is not auto re-offered it. After pickup it is the failed-delivery flow.
+ */
+export const releaseAcceptedAssignment = async (
+  db: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> => {
+  const { error } = await db.rpc("ps_rider_release_accepted", {
+    p_assignment_id: assignmentId,
+    p_reason: reason,
+  });
+  if (!error) return;
+  const msg = error.message ?? "";
+  if (msg.includes("forbidden")) throw new RiderInputError("এই ডেলিভারিটি আপনার নয়।", 403);
+  if (msg.includes("reason is required")) throw new RiderInputError("কারণ লিখুন (কমপক্ষে ৫ অক্ষর)।", 422);
+  if (msg.includes("only an accepted job")) {
+    throw new RiderInputError("এই কাজটি আর ফেরত দেওয়া যাবে না — ফিড রিফ্রেশ করুন।", 409);
+  }
+  if (isMissingDbObject(error)) {
+    throw new RiderInputError("কাজ ফেরত দেওয়ার সুবিধা এখনো চালু হয়নি — অ্যাডমিনের সাথে কথা বলুন।", 503);
+  }
+  throw new Error(msg);
 };
 
 /**
@@ -916,16 +1025,64 @@ export const deliverRiderAssignment = async (
   }
 };
 
+export interface FailedAttemptResult {
+  /** True when this was the last allowed attempt: the job is now closed. */
+  final: boolean;
+  attempts?: number;
+  maxAttempts?: number;
+}
+
+/** Mirrors the SQL clamp: delivery_max_attempts, default 2, 1..5. */
+export const clampMaxAttempts = (raw: unknown): number => {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? Math.min(5, Math.max(1, Math.trunc(n))) : 2;
+};
+
+/**
+ * Report a failed delivery attempt. `db` is the rider's own client (the RPC
+ * resolves the rider through auth.uid()); `service` only reads the attempt
+ * counter + cap for the confirmation message and is best-effort.
+ */
 export const failedRiderAttempt = async (
   db: SupabaseClient,
   assignmentId: string,
   reason: string,
-): Promise<void> => {
-  const { error } = await db.rpc("ps_rider_failed_attempt", {
+  service?: SupabaseClient,
+): Promise<FailedAttemptResult> => {
+  const { data, error } = await db.rpc("ps_rider_failed_attempt", {
     p_assignment_id: assignmentId,
     p_reason: reason,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    const msg = error.message ?? "";
+    if (msg.includes("failed attempt not allowed")) {
+      throw new RiderInputError(
+        "পার্সেল পিকআপ কনফার্ম করার পরেই ব্যর্থ ডেলিভারি জানানো যায়।",
+        409,
+      );
+    }
+    if (msg.includes("reason is required")) {
+      throw new RiderInputError("কারণ লিখুন (কমপক্ষে ৫ অক্ষর)।", 422);
+    }
+    if (msg.includes("forbidden")) {
+      throw new RiderInputError("এই ডেলিভারিটি আপনার নয়।", 403);
+    }
+    throw new Error(msg);
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { state?: string; order_id?: string }
+    | null;
+  const result: FailedAttemptResult = { final: row?.state === "failed" };
+  if (service && row?.order_id) {
+    const [orderRes, settingRes] = await Promise.all([
+      service.from("orders").select("delivery_attempts").eq("id", row.order_id).maybeSingle(),
+      service.from("site_settings").select("value").eq("key", "delivery_max_attempts").maybeSingle(),
+    ]);
+    const attempts = (orderRes.data as { delivery_attempts?: number } | null)?.delivery_attempts;
+    if (typeof attempts === "number") result.attempts = attempts;
+    result.maxAttempts = clampMaxAttempts((settingRes.data as { value?: unknown } | null)?.value);
+  }
+  return result;
 };
 
 /**
@@ -1086,3 +1243,188 @@ export const settleRiderCash = async (
     at: epoch(row.created_at),
   };
 };
+
+/* ------------------------------------------------------------------ */
+/* Failed deliveries (202610010001): the staff action list             */
+/* ------------------------------------------------------------------ */
+
+/** An order whose final delivery attempt failed and is waiting for staff. */
+export interface FailedDelivery {
+  order: Order;
+  attempts: number;
+  reason: string;
+  failedAt: number;
+  riderName?: string;
+  riderPhone?: string;
+}
+
+/**
+ * Orders flagged by `ps_rider_failed_attempt` (final attempt) that staff have
+ * not yet redispatched or cancelled. Degrades to [] on a database where the
+ * column does not exist yet (202610010001 pending) — never an error.
+ */
+export async function listFailedDeliveries(
+  service: SupabaseClient,
+): Promise<FailedDelivery[]> {
+  const { data: orderRows, error } = await service
+    .from("orders")
+    .select("*")
+    .not("delivery_failed_at", "is", null)
+    .not("status", "in", "(delivered,cancelled)")
+    .order("delivery_failed_at", { ascending: false })
+    .limit(100);
+  if (error) {
+    if (isMissingDbObject(error)) return [];
+    throw new Error("failed deliveries read failed");
+  }
+  const rows = (orderRows ?? []) as DbOrder[];
+  if (rows.length === 0) return [];
+
+  const { data: failedRows } = await service
+    .from("delivery_assignments")
+    .select("order_id,rider_id,offered_at")
+    .eq("state", "failed")
+    .in("order_id", rows.map((r) => r.id))
+    .order("offered_at", { ascending: false });
+  const lastRider = new Map<string, string>();
+  for (const a of (failedRows ?? []) as { order_id: string; rider_id: string }[]) {
+    if (!lastRider.has(a.order_id)) lastRider.set(a.order_id, a.rider_id);
+  }
+  const riderIds = [...new Set(lastRider.values())];
+  const riders = new Map<string, { name: string; phone: string }>();
+  if (riderIds.length > 0) {
+    const { data: riderRows } = await service
+      .from("riders")
+      .select("id,name,phone")
+      .in("id", riderIds);
+    for (const r of (riderRows ?? []) as { id: string; name: string; phone: string }[]) {
+      riders.set(r.id, r);
+    }
+  }
+
+  const mapped = await toDomainMany(service, rows);
+  const out: FailedDelivery[] = [];
+  rows.forEach((row, i) => {
+    const order = mapped[i];
+    if (!order) return;
+    const rider = riders.get(lastRider.get(row.id) ?? "");
+    out.push({
+      order,
+      attempts: row.delivery_attempts ?? 0,
+      reason: row.delivery_failed_reason ?? "",
+      failedAt: epoch(row.delivery_failed_at ?? ""),
+      riderName: rider?.name,
+      riderPhone: rider?.phone,
+    });
+  });
+  return out;
+}
+
+/**
+ * Staff decision on a failed delivery: send it back to the area queue
+ * (`redispatch`) or end it (`cancel`). Runs on the STAFF's own client —
+ * `ps_is_admin()` needs a real auth.uid().
+ */
+export async function resolveFailedDelivery(
+  db: SupabaseClient,
+  orderRef: string,
+  action: "redispatch" | "cancel",
+  note?: string,
+  /** Pay the rider of the failed attempt the configured fee (202610020012). */
+  payFee = false,
+): Promise<void> {
+  const [orderId] = await resolveOrderRowIds(db, [orderRef]);
+  const { error } = await db.rpc("ps_admin_resolve_failed_delivery", {
+    p_order_id: orderId,
+    p_action: action,
+    p_note: note?.trim() ? note.trim().slice(0, 300) : null,
+    // Only sent when asked: a database without 202610020012 has no such parameter.
+    ...(payFee ? { p_pay_fee: true } : {}),
+  });
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("no failed delivery")) {
+      throw new AdminInputError(
+        "This order has no failed delivery waiting — someone may have resolved it already.",
+        409,
+      );
+    }
+    if (msg.includes("forbidden")) throw new AdminInputError("Not allowed.", 403);
+    if (payFee && isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Paying the rider needs supabase/migrations/202610020012_failed_fee_weekly_bonus.sql — run it, or resolve without paying.",
+        503,
+      );
+    }
+    if (isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Failed-delivery backend not installed yet — run supabase/migrations/202610010001_rider_fixes_phase_a.sql.",
+        503,
+      );
+    }
+    throw dispatchRpcError(error.message);
+  }
+}
+
+/**
+ * Staff takes a job away from an unresponsive rider (accepted or picked up).
+ * Never-collected → back to the area queue; parcel in hand → the failed
+ * delivery list. Runs on the STAFF's own client (ps_is_admin needs auth.uid()).
+ */
+export async function releaseDispatchAssignment(
+  db: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await db.rpc("ps_admin_release_assignment", {
+    p_assignment_id: assignmentId,
+    p_reason: reason,
+  });
+  if (error) {
+    const msg = (error.message ?? "").toLowerCase();
+    if (msg.includes("reason is required")) {
+      throw new AdminInputError("Give a short reason (at least 5 characters).", 422);
+    }
+    if (msg.includes("assignment not active")) {
+      throw new AdminInputError(
+        "That job is no longer active — the rider may have just finished it.",
+        409,
+      );
+    }
+    if (isMissingDbObject(error)) {
+      throw new AdminInputError(
+        "Release backend not installed yet — run supabase/migrations/202610010001_rider_fixes_phase_a.sql.",
+        503,
+      );
+    }
+    throw dispatchRpcError(error.message);
+  }
+}
+
+/**
+ * A delivery closed without a proof photo (the rider said why): leave the
+ * reason on the order's timeline so staff and disputes can see it. Best effort
+ * — the delivery itself already succeeded.
+ */
+export async function recordNoPhotoDelivery(
+  service: SupabaseClient,
+  assignmentId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    const { data } = await service
+      .from("delivery_assignments")
+      .select("order_id")
+      .eq("id", assignmentId)
+      .maybeSingle();
+    const orderId = (data as { order_id?: string } | null)?.order_id;
+    if (!orderId) return;
+    await service.from("order_status_history").insert({
+      order_id: orderId,
+      status: "delivered",
+      note: `Delivered without a proof photo — rider says: ${reason}`,
+    });
+  } catch (err) {
+    console.error("[rider] could not record the no-photo reason", err);
+  }
+}
