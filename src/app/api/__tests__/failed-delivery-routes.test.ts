@@ -17,6 +17,9 @@ const state = vi.hoisted(() => ({
   attemptResult: { final: false, attempts: 1, maxAttempts: 2 } as unknown,
   resolutions: [] as { db: unknown; ref: string; action: string; note?: string; payFee?: boolean }[],
   releases: [] as { db: unknown; id: string; reason: string }[],
+  proofMode: 0 as 0 | 1 | 2,
+  uploads: true,
+  recorded: [] as Record<string, unknown>[],
 }));
 
 vi.mock("@/lib/rider-auth", () => ({
@@ -34,6 +37,16 @@ vi.mock("@/lib/staff-auth", () => ({
   requireStaff: async () => ({ user: { id: "staff-failed-route" }, db: STAFF_DB, role: "admin" }),
   requireStaffRole: async () => ({ user: { id: "staff-failed-route" }, db: STAFF_DB, role: "admin" }),
 }));
+vi.mock("@/lib/db/failed-proof", () => ({
+  readFailedProofMode: async () => state.proofMode,
+  recordFailedProof: async (_s: unknown, input: Record<string, unknown>) => {
+    state.recorded.push(input);
+  },
+}));
+vi.mock("@/lib/env", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/env")>();
+  return { ...orig, cloudinaryCloudName: () => "demo", isCloudinaryConfigured: () => state.uploads };
+});
 vi.mock("@/lib/db/riders", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/db/riders")>();
   return {
@@ -67,9 +80,46 @@ beforeEach(() => {
   state.resolutions = [];
   state.releases = [];
   state.attemptResult = { final: false, attempts: 1, maxAttempts: 2 };
+  state.proofMode = 0;
+  state.uploads = true;
+  state.recorded = [];
 });
 
 describe("POST /api/rider/assignments/:id/failed", () => {
+  const post = (body: unknown) => riderFailed(new Request("http://localhost/x", json(body)), ctx("asg-1"));
+  it("photo setting OFF: records the attempt exactly as before and stores no proof", async () => {
+    const res = await post({ reason: "phone is off", proofUrl: "https://evil.example/x.jpg" });
+    expect(res.status).toBe(200);
+    expect(state.attempts).toHaveLength(1);
+    expect(state.recorded).toEqual([{ assignmentId: "asg-1", riderId: "r1", proofUrl: null, noPhotoNote: null }]);
+  });
+  it("optional: a Cloudinary photo of OUR cloud is stored with the attempt", async () => {
+    state.proofMode = 1;
+    const res = await post({ reason: "phone is off", proofUrl: "https://res.cloudinary.com/demo/image/upload/door.jpg" });
+    expect(res.status).toBe(200);
+    expect(state.recorded[0]).toMatchObject({ assignmentId: "asg-1", riderId: "r1", proofUrl: "https://res.cloudinary.com/demo/image/upload/door.jpg" });
+  });
+  it("a photo from anywhere else is refused BEFORE the attempt is recorded", async () => {
+    state.proofMode = 1;
+    const res = await post({ reason: "phone is off", proofUrl: "https://evil.example/x.jpg" });
+    expect(res.status).toBe(422);
+    expect(state.attempts).toHaveLength(0);
+    expect(state.recorded).toHaveLength(0);
+  });
+  it("required: no photo and no reason is refused (no attempt burned); a written reason passes and is stored", async () => {
+    state.proofMode = 2;
+    expect((await post({ reason: "phone is off" })).status).toBe(422);
+    expect(state.attempts).toHaveLength(0);
+    const ok = await post({ reason: "phone is off", noPhotoReason: "camera is broken" });
+    expect(ok.status).toBe(200);
+    expect(state.recorded[0]).toMatchObject({ proofUrl: null, noPhotoNote: "camera is broken" });
+  });
+  it("required, but uploads are not configured on the server: not demanded", async () => {
+    state.proofMode = 2;
+    state.uploads = false;
+    expect((await post({ reason: "phone is off" })).status).toBe(200);
+  });
+
   it("calls the RPC with the rider's JWT client and echoes final/attempts", async () => {
     state.attemptResult = { final: true, attempts: 2, maxAttempts: 2 };
     const res = await riderFailed(

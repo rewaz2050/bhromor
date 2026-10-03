@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
 vi.mock("@/lib/use-dispatch-settings", () => ({ useDispatchSettings: () => state.hook }));
+vi.mock("@/components/admin/failed-proof-card", () => ({ default: () => null }));
 
 import DispatchRulesPage from "../riders/settings/page";
 

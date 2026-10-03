@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { failedAttemptMessage, releaseAcceptedJob, reportFailedAttempt, uploadDeliveryProof } from "../rider-delivery-actions";
+import { failedAttemptMessage, fetchFailedProofConfig, releaseAcceptedJob, reportFailedAttempt, uploadDeliveryProof } from "../rider-delivery-actions";
 
 const res = (body: unknown, ok = true, status = ok ? 200 : 400) => ({ ok, status, json: async () => body });
 const file = new File(["x"], "p.jpg", { type: "image/jpeg" });
@@ -61,6 +61,25 @@ describe("failed attempts", () => {
     expect(url).toBe("/api/rider/assignments/asg-1/failed");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ reason: "phone off" });
+  });
+  it("sends the photo URL / no-photo reason only when there is one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(res({ final: false, attempts: 1, maxAttempts: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await reportFailedAttempt("a", "phone off", { proofUrl: "https://res.cloudinary.com/c/x.jpg", noPhotoReason: null });
+    await reportFailedAttempt("a", "phone off", { proofUrl: null, noPhotoReason: "camera broken" });
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse((c[1] as { body: string }).body));
+    expect(bodies).toEqual([
+      { reason: "phone off", proofUrl: "https://res.cloudinary.com/c/x.jpg" },
+      { reason: "phone off", noPhotoReason: "camera broken" },
+    ]);
+  });
+  it("reads the failed-photo setting; any failure means 'not asked'", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res({ mode: 2, uploads: true })));
+    expect(await fetchFailedProofConfig()).toEqual({ mode: 2, uploads: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res({ mode: 7, uploads: "yes" })));
+    expect(await fetchFailedProofConfig()).toEqual({ mode: 0, uploads: false });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect(await fetchFailedProofConfig()).toEqual({ mode: 0, uploads: false });
   });
   it("returns the server's refusal, a generic one, and never throws", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res({ error: "Reason too short" }, false)));

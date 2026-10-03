@@ -66,12 +66,32 @@ export const failedAttemptMessage = (d: FailedResponse | null): string =>
     ? "শেষ চেষ্টা ব্যর্থ — পার্সেল দোকানে ফেরত দিন। অ্যাডমিন বাকিটা দেখবেন।"
     : `ব্যর্থ চেষ্টা নথিভুক্ত (${d?.attempts ?? "?"}/${d?.maxAttempts ?? "?"}) — আবার চেষ্টা করতে পারেন`;
 
-export const reportFailedAttempt = async (assignmentId: string, reason: string): Promise<FailedAttempt> => {
+/** Does the failed-attempt form ask for a photo? (staff setting, 202610020020). Never throws: 0 = no. */
+export const fetchFailedProofConfig = async (): Promise<{ mode: 0 | 1 | 2; uploads: boolean }> => {
+  try {
+    const res = await fetch("/api/rider/failed-proof", { cache: "no-store" });
+    const d = (await res.json().catch(() => null)) as { mode?: unknown; uploads?: unknown } | null;
+    if (!res.ok || !d) return { mode: 0, uploads: false };
+    return { mode: d.mode === 1 || d.mode === 2 ? d.mode : 0, uploads: d.uploads === true };
+  } catch {
+    return { mode: 0, uploads: false };
+  }
+};
+
+export const reportFailedAttempt = async (
+  assignmentId: string,
+  reason: string,
+  proof?: { proofUrl?: string | null; noPhotoReason?: string | null },
+): Promise<FailedAttempt> => {
   try {
     const res = await fetch(`/api/rider/assignments/${assignmentId}/failed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({
+        reason,
+        ...(proof?.proofUrl ? { proofUrl: proof.proofUrl } : {}),
+        ...(proof?.noPhotoReason ? { noPhotoReason: proof.noPhotoReason } : {}),
+      }),
     });
     const d = (await res.json().catch(() => null)) as FailedResponse | null;
     if (res.ok) return { ok: true, message: failedAttemptMessage(d) };

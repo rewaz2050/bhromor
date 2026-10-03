@@ -165,7 +165,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Vendor (shop) web push (2026-10-03).
   ('91',  'Vendor web push', '202610020018_vendor_push.sql', 'table', 'vendor_push_subscriptions'),
   -- GPS jump flags (2026-10-03).
-  ('92',  'GPS jump flags', '202610020019_gps_jump_flags.sql', 'table', 'rider_gps_flags')
+  ('92',  'GPS jump flags', '202610020019_gps_jump_flags.sql', 'table', 'rider_gps_flags'),
+  -- Failed-delivery proof (2026-10-03).
+  ('93',  'Failed-delivery proof', '202610020020_failed_delivery_proof.sql', 'table', 'delivery_failed_proofs')
 )
 select step as ord,
        label,

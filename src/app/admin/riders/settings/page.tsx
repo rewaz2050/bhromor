@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useDispatchSettings } from "@/lib/use-dispatch-settings";
+import FailedProofCard from "@/components/admin/failed-proof-card";
 import {
   DISPATCH_BOUNDS,
   DISPATCH_DEFAULTS,
@@ -205,6 +206,8 @@ export default function DispatchRulesPage() {
           </div>
         </form>
       )}
+
+      {live && <FailedProofCard />}
 
       <p className="text-xs text-ink-soft">
         নতুন মান কাজ করতে একবার <code>supabase/migrations/202610020003_dispatch_settings.sql</code> Supabase SQL Editor-এ চালাতে হবে; তার আগে অ্যাপ আগের মান (৳5,000 / 90s / ২ চেষ্টা / ২ সক্রিয় কাজ) ব্যবহার করে।

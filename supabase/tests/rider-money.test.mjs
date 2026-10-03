@@ -124,6 +124,7 @@ for (const f of [
   '202610020017_streak_bonus.sql',
   '202610020018_vendor_push.sql',
   '202610020019_gps_jump_flags.sql',
+  '202610020020_failed_delivery_proof.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1532,6 +1533,31 @@ end $$`);
   await as(null);
   await assert.rejects(db.query(`select * from ps_rider_update_location(1,1)`), /forbidden/, 'a non-rider cannot post a location');
   console.log('PASS: GPS jump flags — impossible speed flagged with numbers, normal/fast-but-possible/overnight/sub-2km not, one per 5 min, off switch, position always saved');
+
+  // ---- failed-delivery proof (202610020020): staff-readable, never writable by users, goes with its order ----
+  const fpAdmin = await uuid();
+  await db.query(`insert into admin_users(id, role) values ($1,'admin') on conflict do nothing`, [fpAdmin]);
+  const fpRider = await scalar(`insert into riders(name, phone, status, user_id) values ('FP Rider','01710000666','active',$1) returning id`, [await uuid()]);
+  const fpOrder = await scalar(`insert into orders(status) values ('out-for-delivery') returning id`);
+  await db.query(`insert into delivery_failed_proofs(order_id, rider_id, photo_url) values ($1,$2,'https://res.cloudinary.com/c/door.jpg')`, [fpOrder, fpRider]);
+  await db.query(`insert into delivery_failed_proofs(order_id, rider_id, no_photo_note) values ($1,$2,'camera broken')`, [fpOrder, fpRider]);
+  await assert.rejects(
+    db.query(`insert into delivery_failed_proofs(order_id, rider_id) values ($1,$2)`, [fpOrder, fpRider]),
+    /check|violates/i, 'a row needs a photo or a note');
+  assert.equal(await scalar(`select relrowsecurity from pg_class where relname='delivery_failed_proofs'`), true);
+  assert.equal(await scalar(`select has_table_privilege('anon','delivery_failed_proofs','select')`), false);
+  assert.equal(await scalar(`select has_table_privilege('authenticated','delivery_failed_proofs','insert')`), false, 'users cannot write proofs');
+  assert.equal(await scalar(`select has_table_privilege('service_role','delivery_failed_proofs','insert')`), true);
+  await db.exec(`set role authenticated`);
+  await as(fpAdmin);
+  assert.equal(Number(await scalar(`select count(*) from delivery_failed_proofs where order_id = $1`, [fpOrder])), 2, 'staff can read');
+  await as(await uuid());
+  assert.equal(Number(await scalar(`select count(*) from delivery_failed_proofs where order_id = $1`, [fpOrder])), 0, 'a non-staff user sees nothing (RLS)');
+  await db.exec(`reset role`);
+  await as(null);
+  await db.query(`delete from orders where id = $1`, [fpOrder]);
+  assert.equal(Number(await scalar(`select count(*) from delivery_failed_proofs where order_id = $1`, [fpOrder])), 0, 'proofs go with their order');
+  console.log('PASS: failed-delivery proof — photo or note required, staff-only read (RLS), no user writes, removed with the order');
 } finally {
   await db.close();
 }

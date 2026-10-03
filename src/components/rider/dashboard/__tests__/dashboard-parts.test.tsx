@@ -3,11 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { Order } from "@/lib/orders";
 import type { RiderTask } from "@/lib/rider-tasks";
 
-const uploads = vi.hoisted(() => ({ upload: vi.fn(), failed: vi.fn(), release: vi.fn() }));
+const uploads = vi.hoisted(() => ({ upload: vi.fn(), failed: vi.fn(), release: vi.fn(), config: vi.fn() }));
 vi.mock("@/lib/rider-delivery-actions", () => ({
   uploadDeliveryProof: uploads.upload,
   reportFailedAttempt: uploads.failed,
   releaseAcceptedJob: uploads.release,
+  fetchFailedProofConfig: uploads.config,
 }));
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element
@@ -28,6 +29,8 @@ afterEach(() => {
   cleanup();
   uploads.upload.mockReset();
   uploads.failed.mockReset();
+  uploads.config.mockReset();
+  uploads.config.mockResolvedValue({ mode: 0, uploads: true });
   uploads.release.mockReset();
 });
 
@@ -321,7 +324,7 @@ describe("FailedAttemptForm", () => {
     fireEvent.change(screen.getByLabelText("Failed attempt reason"), { target: { value: "phone off" } });
     fireEvent.click(screen.getByText("Submit failed"));
     await waitFor(() => expect(onRecorded).toHaveBeenCalledWith("recorded 1/2"));
-    expect(uploads.failed).toHaveBeenCalledWith("a1", "phone off");
+    expect(uploads.failed).toHaveBeenCalledWith("a1", "phone off", { proofUrl: null, noPhotoReason: null });
     expect(screen.queryByLabelText("Failed attempt reason")).toBeNull();
   });
   it("a refusal is shown inline, keeps the form and the typed reason, and clears when typing resumes", async () => {
@@ -349,6 +352,48 @@ describe("FailedAttemptForm", () => {
     expect(uploads.failed).toHaveBeenCalledTimes(1);
     resolve({ ok: true, message: "ok" });
     await waitFor(() => expect(screen.queryByLabelText("Failed attempt reason")).toBeNull());
+  });
+  it("photo setting OFF (the default): no photo field at all", async () => {
+    render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Report failed attempt/));
+    await waitFor(() => expect(uploads.config).toHaveBeenCalled());
+    expect(screen.queryByTestId("failed-proof")).toBeNull();
+  });
+  it("photo setting ON: uploads the photo and sends its URL with the report", async () => {
+    uploads.config.mockResolvedValue({ mode: 1, uploads: true });
+    uploads.upload.mockResolvedValue({ ok: true, url: "https://res.cloudinary.com/c/door.jpg" });
+    uploads.failed.mockResolvedValue({ ok: true, message: "recorded" });
+    render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Report failed attempt/));
+    expect(await screen.findByTestId("failed-proof")).toHaveTextContent("ঐচ্ছিক");
+    const file = new File(["x"], "door.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Failed attempt photo"), { target: { files: [file] } });
+    await screen.findByTestId("failed-proof-ok");
+    fireEvent.change(screen.getByLabelText("Failed attempt reason"), { target: { value: "phone off" } });
+    fireEvent.click(screen.getByText("Submit failed"));
+    await waitFor(() => expect(uploads.failed).toHaveBeenCalledWith("a1", "phone off", { proofUrl: "https://res.cloudinary.com/c/door.jpg", noPhotoReason: null }));
+  });
+  it("photo REQUIRED: a failed upload offers the written 'cannot take a photo' reason, which is sent", async () => {
+    uploads.config.mockResolvedValue({ mode: 2, uploads: true });
+    uploads.upload.mockResolvedValue({ ok: false, message: "Upload failed" });
+    uploads.failed.mockResolvedValue({ ok: true, message: "recorded" });
+    render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Report failed attempt/));
+    expect(await screen.findByTestId("failed-proof")).toHaveTextContent("বাধ্যতামূলক");
+    const file = new File(["x"], "door.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Failed attempt photo"), { target: { files: [file] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Upload failed");
+    fireEvent.change(screen.getByLabelText("Reason no photo"), { target: { value: "camera broken" } });
+    fireEvent.change(screen.getByLabelText("Failed attempt reason"), { target: { value: "phone off" } });
+    fireEvent.click(screen.getByText("Submit failed"));
+    await waitFor(() => expect(uploads.failed).toHaveBeenCalledWith("a1", "phone off", { proofUrl: null, noPhotoReason: "camera broken" }));
+  });
+  it("photo setting ON but uploads not configured on the server: no photo field", async () => {
+    uploads.config.mockResolvedValue({ mode: 2, uploads: false });
+    render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
+    fireEvent.click(screen.getByText(/Report failed attempt/));
+    await waitFor(() => expect(uploads.config).toHaveBeenCalled());
+    expect(screen.queryByTestId("failed-proof")).toBeNull();
   });
   it("Cancel closes without calling anything", () => {
     render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
