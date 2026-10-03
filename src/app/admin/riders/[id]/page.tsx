@@ -13,6 +13,7 @@ import { formatBdt } from "@/lib/format";
 import type { RiskLevel } from "@/lib/rider-risk";
 import { useRiderOverview } from "@/lib/use-rider-overview";
 import { RiderLicenceCard } from "@/components/admin/rider-licence-card";
+import { RiderGpsCard } from "@/components/admin/rider-gps-card";
 import { RiderAdjustCard } from "@/components/admin/rider-adjust-card";
 
 const fmtWhen = (ts: number | null): string =>
@@ -94,6 +95,8 @@ export default function AdminRiderProfilePage() {
 
       {/* N: driving-licence expiry (staff record it from the KYC photo). */}
       {live && riderId && <RiderLicenceCard riderId={riderId} />}
+      {/* GPS-jump alerts (impossible speed between two pings). */}
+      {live && riderId && <RiderGpsCard riderId={riderId} />}
       {/* W: manual wallet credit/debit with a mandatory reason. */}
       {live && riderId && <RiderAdjustCard riderId={riderId} onDone={() => void refresh()} />}
 

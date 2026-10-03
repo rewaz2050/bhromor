@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: "r1" }) }));
 vi.mock("@/components/admin/rider-adjust-card", () => ({ RiderAdjustCard: () => null }));
 vi.mock("@/components/admin/rider-licence-card", () => ({ RiderLicenceCard: () => null }));
+vi.mock("@/components/admin/rider-gps-card", () => ({ RiderGpsCard: () => null }));
 vi.mock("@/lib/use-rider-overview", () => ({ useRiderOverview: () => state.hook }));
 
 import AdminRiderProfilePage from "../riders/[id]/page";

@@ -123,6 +123,7 @@ for (const f of [
   '202610020016_daily_shop_wallet_split.sql',
   '202610020017_streak_bonus.sql',
   '202610020018_vendor_push.sql',
+  '202610020019_gps_jump_flags.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1488,6 +1489,49 @@ end $$`);
   await db.query(`delete from shops where id = $1`, [vpShop]);
   assert.equal(await scalar(`select count(*)::int from vendor_push_subscriptions where shop_id = $1`, [vpShop]), 0, 'devices go with the shop');
   console.log('PASS: vendor push — one row per endpoint, service-role only, removed with the shop');
+
+  // ---- GPS jump flags (202610020019): impossible speed is recorded, never blocks the fix ----
+  const gjUser = await uuid();
+  const gjRider = await scalar(`insert into riders(name, phone, status, user_id) values ('GJ Rider','01710000777','active',$1) returning id`, [gjUser]);
+  await as(gjUser);
+  const gjPing = (lat, lng, agoSec) =>
+    db.exec(`update riders set last_location_at = now() - interval '${agoSec} seconds' where id = '${gjRider}'`)
+      .then(() => db.query(`select lat, lng from ps_rider_update_location($1, $2)`, [lat, lng]));
+  const gjFlags = async () => Number(await scalar(`select count(*) from rider_gps_flags where rider_id = $1`, [gjRider]));
+  await db.query(`select * from ps_rider_update_location(24.8949, 91.8687)`); // first fix: nothing to compare with
+  assert.equal(await gjFlags(), 0, 'first fix is never flagged');
+  await gjPing(24.8960, 91.8700, 30);   // ~170 m in 30 s
+  assert.equal(await gjFlags(), 0, 'normal riding is not flagged');
+  await gjPing(24.9500, 91.9200, 600);  // ~7.6 km in 10 min = ~46 km/h
+  assert.equal(await gjFlags(), 0, 'a fast but possible trip is not flagged');
+  const gjRes = await gjPing(25.3000, 92.3000, 60); // ~60 km in 1 min
+  assert.equal(Number(gjRes.rows[0].lat), 25.3, 'the new position is saved regardless');
+  assert.equal(await gjFlags(), 1, 'a teleport is flagged');
+  const gjRow = (await db.query(`select distance_m, seconds, speed_kmh from rider_gps_flags where rider_id = $1`, [gjRider])).rows[0];
+  assert.ok(gjRow.distance_m > 50000 && gjRow.speed_kmh > 1000, `flag carries the numbers: ${JSON.stringify(gjRow)}`);
+  await gjPing(24.8949, 91.8687, 60);   // jumps back straight away
+  assert.equal(await gjFlags(), 1, 'at most one flag per rider per 5 minutes');
+  await db.exec(`update rider_gps_flags set created_at = now() - interval '10 minutes' where rider_id = '${gjRider}'`);
+  await gjPing(25.3000, 92.3000, 60);
+  assert.equal(await gjFlags(), 2, 'after the quiet window it flags again');
+  // an overnight gap is not a jump (distance / long time = low speed)
+  await db.exec(`delete from rider_gps_flags where rider_id = '${gjRider}'`);
+  await gjPing(24.8949, 91.8687, 8 * 3600);
+  assert.equal(await gjFlags(), 0, 'hours later in another place is not a jump');
+  // off switch + short hops
+  await db.query(`insert into site_settings(key, value) values ('gps_jump_max_kmh', '0'::jsonb) on conflict (key) do update set value = excluded.value`);
+  await gjPing(25.3000, 92.3000, 60);
+  assert.equal(await gjFlags(), 0, '0 turns it off');
+  await db.query(`delete from site_settings where key = 'gps_jump_max_kmh'`);
+  await gjPing(24.8949, 91.8687, 1);
+  await db.exec(`delete from rider_gps_flags where rider_id = '${gjRider}'`);
+  await gjPing(24.9040, 91.8687, 1);    // ~1 km in 1 s — fast, but under the 2 km floor (GPS noise)
+  assert.equal(await gjFlags(), 0, 'sub-2 km hops are treated as GPS noise');
+  // staff may read the flags, a rider may not
+  assert.equal(await scalar(`select has_table_privilege('anon','rider_gps_flags','select')`), false);
+  await as(null);
+  await assert.rejects(db.query(`select * from ps_rider_update_location(1,1)`), /forbidden/, 'a non-rider cannot post a location');
+  console.log('PASS: GPS jump flags — impossible speed flagged with numbers, normal/fast-but-possible/overnight/sub-2km not, one per 5 min, off switch, position always saved');
 } finally {
   await db.close();
 }
