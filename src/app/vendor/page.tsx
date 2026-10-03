@@ -36,6 +36,7 @@ import {
   todayStats,
 } from "@/lib/vendor-dashboard";
 import { useVendorOrderAlert } from "@/lib/use-vendor-order-alert";
+import { VendorPushCard } from "@/components/vendor/vendor-push-card";
 import {
   WEEKDAY_LABELS,
   hourLabel,
@@ -216,6 +217,8 @@ export default function VendorDashboardPage() {
           </div>
         </div>
       )}
+
+      <VendorPushCard enabled={me?.shop.status === "active"} />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">

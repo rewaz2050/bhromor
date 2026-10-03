@@ -63,7 +63,7 @@ export const vendorGet = async <T,>(path: string): Promise<T> => {
 
 export const vendorSend = async <T,>(
   path: string,
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "DELETE",
   body?: unknown,
 ): Promise<T> => {
   let res: Response;

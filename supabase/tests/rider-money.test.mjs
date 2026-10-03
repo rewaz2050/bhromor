@@ -122,6 +122,7 @@ for (const f of [
   '202610020015_peak_rain_bonus.sql',
   '202610020016_daily_shop_wallet_split.sql',
   '202610020017_streak_bonus.sql',
+  '202610020018_vendor_push.sql',
 ]) {
   const sql = readFileSync(new URL(f, root), 'utf8');
   await db.exec(sql);
@@ -1472,6 +1473,21 @@ end $$`);
   assert.equal(Number(await scalar(`select coalesce(sum(amount),0) from rider_earnings where rider_id = $1`, [skA])), await skBal(skA), 'wallet = journal');
   await db.query(`delete from site_settings where key in ('rider_streak_weeks','rider_streak_bonus_paisa','incentive_weekly_target')`);
   console.log('PASS: streak bonus — off by default, needs the weekly target, consecutive complete weeks, returns/suspended excluded, once per streak then restarts, audited');
+
+  // ---- vendor (shop) web push (202610020018): devices are private, die with the shop ----
+  const vpShop = await scalar(`insert into shops(name) values ('VP Shop') returning id`);
+  await db.query(`insert into vendor_push_subscriptions(shop_id, endpoint, p256dh, auth) values ($1,'https://push.example/v1','k','a')`, [vpShop]);
+  await assert.rejects(
+    db.query(`insert into vendor_push_subscriptions(shop_id, endpoint, p256dh, auth) values ($1,'https://push.example/v1','k2','a2')`, [vpShop]),
+    /unique|duplicate/i, 'an endpoint is stored once');
+  assert.equal(await scalar(`select relrowsecurity from pg_class where relname='vendor_push_subscriptions'`), true, 'RLS on, no policies');
+  assert.equal(await scalar(`select count(*)::int from pg_policies where tablename='vendor_push_subscriptions'`), 0);
+  assert.equal(await scalar(`select has_table_privilege('authenticated','vendor_push_subscriptions','select')`), false, 'a shop cannot read device endpoints');
+  assert.equal(await scalar(`select has_table_privilege('anon','vendor_push_subscriptions','select')`), false);
+  assert.equal(await scalar(`select has_table_privilege('service_role','vendor_push_subscriptions','select')`), true);
+  await db.query(`delete from shops where id = $1`, [vpShop]);
+  assert.equal(await scalar(`select count(*)::int from vendor_push_subscriptions where shop_id = $1`, [vpShop]), 0, 'devices go with the shop');
+  console.log('PASS: vendor push — one row per endpoint, service-role only, removed with the shop');
 } finally {
   await db.close();
 }

@@ -161,7 +161,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- Daily report: shop-wallet flows split out (2026-10-03).
   ('89',  'Daily report: shop-wallet split', '202610020016_daily_shop_wallet_split.sql', 'function', 'ps_admin_money_daily'),
   -- Weekly streak bonus (2026-10-03).
-  ('90',  'Weekly streak bonus', '202610020017_streak_bonus.sql', 'function', 'ps_award_order_bonuses')
+  ('90',  'Weekly streak bonus', '202610020017_streak_bonus.sql', 'function', 'ps_award_order_bonuses'),
+  -- Vendor (shop) web push (2026-10-03).
+  ('91',  'Vendor web push', '202610020018_vendor_push.sql', 'table', 'vendor_push_subscriptions')
 )
 select step as ord,
        label,

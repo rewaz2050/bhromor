@@ -424,6 +424,16 @@ describe("rider-order-bonus job (peak / rainy-day bonus)", () => {
   });
 });
 
+describe("shop-owes-reminder job", () => {
+  it("is part of every tick, and when nobody owes (or it breaks) the clock keeps going", async () => {
+    const result = await runCronTick({ service: fakeService(), now: MORNING });
+    const job = jobOf(result, "shop-owes-reminder");
+    expect(job).toBeDefined();
+    expect(["ran", "skipped", "failed"]).toContain(job.status);
+    expect(jobOf(result, "expire-offers").status).toBe("ran");
+  });
+});
+
 describe("when the marks table is missing (migration 202609240002 not run)", () => {
   it("skips the one-shot jobs with the migration name, and still sweeps offers", async () => {
     state.markInsertError = {

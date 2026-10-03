@@ -51,6 +51,7 @@ import { runLicenceSweep } from "@/lib/db/licence-expiry";
 import { runQualitySweep } from "@/lib/db/rider-quality";
 import { runIncentiveSweep } from "@/lib/db/rider-incentives";
 import { runOrderBonusSweep } from "@/lib/db/rider-order-bonus";
+import { runShopOwesReminder } from "@/lib/db/shop-owes-reminder";
 import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
@@ -62,7 +63,8 @@ export type CronJobName =
   | "licence-expiry"
   | "rider-quality"
   | "rider-incentives"
-  | "rider-order-bonus";
+  | "rider-order-bonus"
+  | "shop-owes-reminder";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -543,6 +545,25 @@ export const runCronTick = async (input: {
       did: 0,
       detail: err instanceof Error ? err.message : "rider-order-bonus failed",
     });
+  }
+
+  // Shops that owe PROSANTI (shop-own-wallet) get one reminder push a day.
+  try {
+    const owes = await runShopOwesReminder(input.service, nowMs, {
+      claim: (key) => claimMark(input.service, key),
+    });
+    jobs.push({ job: "shop-owes-reminder", ...owes });
+  } catch (err) {
+    if (err instanceof CronMarksMissingError) {
+      jobs.push({ job: "shop-owes-reminder", status: "skipped", did: 0, detail: err.message });
+    } else {
+      jobs.push({
+        job: "shop-owes-reminder",
+        status: "failed",
+        did: 0,
+        detail: err instanceof Error ? err.message : "shop-owes-reminder failed",
+      });
+    }
   }
 
   // Remembered for /api/health: "the scheduler is alive" is a row, not a hope.

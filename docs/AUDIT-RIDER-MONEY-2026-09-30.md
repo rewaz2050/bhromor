@@ -793,3 +793,18 @@ A–Z শেষ হওয়ার পর "জানা সীমা"-র তা
 - **টেস্ট:** PGlite — ডিফল্টে বন্ধ, weekly target ছাড়া কিছু নয়, পরপর দুই সপ্তাহ, এক সপ্তাহ কম/রিটার্ন-ভরা সপ্তাহ/suspended বাদ, একবার, জানালা-ওভারল্যাপে দ্বিতীয় বার নয় কিন্তু নতুন জোড়ায় আবার, wallet = journal, audit। Unit — parse/clamp/অর্ধেক কনফিগ, sweep, কার্ড।
 - **Payouts ফিল্টার:** কোনো shop PROSANTI-কে দেনা থাকলে টেবিলের ওপরে "Show only shops that owe PROSANTI (n)" বোতাম।
 - **Owner:** `…0016`-এর পর `202610020017_streak_bonus.sql`।
+
+## ৪২. ফলো-আপ ব্যাচ ৩ (১): Shop-এর জন্য Web Push — নতুন অর্ডার + "আপনি PROSANTI-কে দেনা" রিমাইন্ডার (migration `202610020018`)
+
+**সমস্যা:** shop শুধু তখনই নতুন অর্ডার টের পেত যখন vendor প্যানেল **খোলা** (প্রতি ২০ সেকেন্ডে poll + beep)। ফোন পকেটে বা ট্যাব বন্ধ থাকলে কাস্টমারের ফোনেই জানত। আর shop-own-wallet shop-এর দেনা staff-কে ফোন করে তাগাদা দিতে হতো।
+
+**ফিক্স:**
+- নতুন টেবিল `vendor_push_subscriptions` (shop_id, endpoint unique, keys) — RLS চালু, policy নেই, শুধু service-role; shop মুছলে ডিভাইসও যায়। একই VAPID কী ও `web-push`, staff/শপার/রাইডারের মতো।
+- `/api/vendor/push` (GET status / POST / DELETE) — সবসময় **session shop**-এর জন্য; body/URL-এর shop id উপেক্ষা; অন্য shop-এর ফোন যোগ বা মোছা যায় না।
+- `src/lib/vendor-push.ts`: `pushVendorShops`, `notifyVendorsNewOrders` — কখনো throw করে না, ~২.৫ সেকেন্ডে cap, মৃত endpoint (404/410) মুছে ফেলে, ভুল env/টেবিল-না-থাকলে চুপচাপ skip। পুশে কাস্টমারের কোনো তথ্য নেই।
+- **নতুন অর্ডার:** `POST /api/orders` অর্ডার বসার পর প্রতিটি shop-কে (একাধিক parcel হলেও **একটি** পুশ) "🛍️ New order!" পাঠায়। অর্ডার কখনো এতে আটকায় না।
+- **দেনার রিমাইন্ডার:** cron নতুন job `shop-owes-reminder` — যে shop-এর ব্যালেন্স ≥ ৳১০০ ঋণাত্মক (`ps_shop_balance_totals`), সে দিনে **একবার** (cron_marks `shop-owes:<shop>:<ঢাকার তারিখ>`), সকাল ১০টা–রাত ৮টার মধ্যে, পরিমাণসহ। কোনো shop দেনায় না থাকলে কিছুই যায় না — তাই আলাদা সেটিং/ডিফল্ট-বন্ধ দরকার পড়েনি (অর্থাৎ shop-wallet চালু না করলে এটা কখনো কিছু পাঠায় না)। এক tick-এ সর্বোচ্চ ৫০ shop।
+- Vendor ড্যাশবোর্ডে `VendorPushCard`: বন্ধ থাকলে স্পষ্ট কার্ড + এক-ট্যাপে চালু, চালু থাকলে এক লাইন; iPhone/in-app browser/denied-এর জন্য ধাপে ধাপে নির্দেশ।
+- `vendorSend` এখন DELETE-ও পারে।
+- **টেস্ট:** unit (save/remove শুধু নিজের shop, prune, never-throws, shop প্রতি একটি পুশ), route (session shop, 401/503/422, migration নাম), card, cron + reminder (১০০ টাকার নিচে নয়, দিনে একবার, রাতে চুপ, marks না থাকলে skip), orders route wiring, PGlite (unique endpoint, RLS, service-role, shop-সহ মোছা)।
+- **Owner:** `…0017`-এর পর `202610020018_vendor_push.sql`। VAPID কী আগে থেকেই আছে (staff push-এর জন্য)। প্রতিটি shop-owner নিজের ফোনে ড্যাশবোর্ডে "Turn on notifications" চাপবে।
