@@ -232,6 +232,21 @@ export interface Order {
   paymentStatus?: "pending_verification" | "verified" | "rejected";
   /** P1 #8 — when the shop verified/rejected the wallet payment. */
   paymentVerifiedAt?: number;
+  /**
+   * N6 — who may decide this order's wallet payment (the shop's setting).
+   * Filled on the single-order admin/vendor reads only; absent = both.
+   */
+  paymentVerifier?: "platform" | "shop" | "both";
+  /**
+   * Audit H — the rider currently on this job (accepted / picked up), for the
+   * OWNING shop's order detail only. Absent when nobody is on it.
+   */
+  shopRider?: {
+    name: string;
+    phone: string;
+    vehicle: string;
+    state: "accepted" | "picked_up";
+  };
   /** P2 #17 — free-delivery waiver applied by an ACTIVE PROSANTI+ term. */
   isPlus?: boolean;
   /**
@@ -274,6 +289,8 @@ export interface Order {
   deliveryProofUploadedAt?: number;
   deliveryAttempts?: number;
   deliveryFailedReason?: string;
+  /** Epoch ms of the final failed attempt; set until staff redispatch or cancel. */
+  deliveryFailedAt?: number;
   /** P1 #13 — reverse logistics: this order IS an exchange/return pickup. */
   isReturn?: boolean;
   returnReason?: string;

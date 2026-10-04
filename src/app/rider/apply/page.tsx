@@ -42,6 +42,8 @@ export default function RiderApplyPage() {
   const [vehicle, setVehicle] = useState<"bike" | "bicycle" | "scooter">("bike");
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
+  const [referralCode, setReferralCode] = useState("");
+  const [referralNote, setReferralNote] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +104,7 @@ export default function RiderApplyPage() {
           password,
           vehicle,
           zoneIds: selectedZones,
+          ...(referralCode.trim() ? { referralCode: referralCode.trim() } : {}),
         }),
       });
 
@@ -110,6 +113,7 @@ export default function RiderApplyPage() {
         account?: "created" | "existing";
         login?: string;
         resubmitted?: boolean;
+        referralMessage?: string | null;
       } | null;
       if (!res.ok) {
         throw new Error(data?.error ?? "আবেদন জমা দেওয়া যায়নি। পুনরায় চেষ্টা করুন।");
@@ -118,6 +122,7 @@ export default function RiderApplyPage() {
       setAccount(data?.account === "existing" ? "existing" : "created");
       setLoginHandle(data?.login || cleanEmail || cleanPhone);
       setResubmitted(data?.resubmitted === true);
+      setReferralNote(data?.referralMessage ?? null);
       setPassword("");
       setConfirmPassword("");
       setSubmitted(true);
@@ -144,6 +149,12 @@ export default function RiderApplyPage() {
             : "আপনার আবেদনটি আমাদের পেন্ডিং কিউতে জমা হয়েছে।"}{" "}
           তথ্য যাচাই করে অ্যাডমিন অনুমোদন করলেই আপনি <strong>/rider</strong> পোর্টাল থেকে ট্রিপ একসেপ্ট ও আয় শুরু করতে পারবেন।
         </p>
+
+        {referralNote && (
+          <p data-testid="referral-note" className="mt-4 text-xs font-medium text-forest-900">
+            {referralNote}
+          </p>
+        )}
 
         <div
           role="status"
@@ -265,6 +276,21 @@ export default function RiderApplyPage() {
               placeholder="rider@example.com"
             />
             <span className={hint}>ইমেইল না থাকলে ফাঁকা রাখুন — উপরের মোবাইল নম্বর দিয়েই লগইন করবেন। কোনো এসএমএস বা ইমেইল পাঠানো হয় না।</span>
+          </label>
+
+          <label className="block sm:col-span-2">
+            <span className={label}>রেফারেল কোড (ঐচ্ছিক)</span>
+            <input
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              maxLength={12}
+              className={field}
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+              placeholder="যেমন K7MQ2X"
+            />
+            <span className={hint}>কোনো রাইডার আপনাকে এনে থাকলে তার কোড দিন — না থাকলে ফাঁকা রাখুন।</span>
           </label>
 
           <label className="block">

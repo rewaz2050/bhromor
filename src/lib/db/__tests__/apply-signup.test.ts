@@ -503,4 +503,31 @@ describe("applyRider — apply = sign up", () => {
     const dupe = state.calls.find((c) => c.table === "riders" && c.op === "or");
     expect(dupe?.args[0]).toBe("phone.eq.01811111111,contact_email.eq.01811111111@phone.prosanti.app");
   });
+  it("says WHY a login that already owns a rider row cannot apply (audit B12)", async () => {
+    state.createAccount.mockResolvedValue({ userId: "u-old", created: false });
+    const withStatus = (status: string) => (table: string, ops: string[], payload: unknown) => {
+      if (table === "riders" && ops.includes("eq") && ops.includes("select") && !ops.includes("or")) {
+        return { data: [{ id: "rider-9", status }], error: null };
+      }
+      return riderHappy(table, ops, payload as never);
+    };
+    state.respond = withStatus("suspended");
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toThrow(/suspended/i);
+    state.respond = withStatus("pending");
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toThrow(/waiting for review/i);
+    state.respond = withStatus("active");
+    await expect(applyRider(RIDER, { password: "secret1" })).rejects.toThrow(/already a rider/i);
+    expect(inserted("riders")).toBeUndefined();
+  });
+
+  it("accepts up to 24 zones like the admin editor and refuses more instead of silently dropping (B12)", async () => {
+    const zones = Array.from({ length: 25 }, (_, n) => `z${n + 1}`);
+    state.respond = (table, ops, payload) => {
+      if (table === "delivery_zones") return { data: zones.map((id) => ({ id, active: true })), error: null };
+      return riderHappy(table, ops, payload);
+    };
+    await applyRider({ ...RIDER, zoneIds: zones.slice(0, 24) }, { password: "secret1" });
+    expect((inserted("riders")?.zone_ids as string[]).length).toBe(24);
+    await expect(applyRider({ ...RIDER, zoneIds: zones }, { password: "secret1" })).rejects.toThrow(/at most 24/i);
+  });
 });

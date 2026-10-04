@@ -24,6 +24,7 @@ import { paymentSummary } from "@/lib/payment-labels";
 import { canQuickCancel, primaryAction } from "@/lib/order-actions";
 import { useVendorOrder, vendorErrorMessage } from "@/lib/use-vendor";
 import PaymentCard from "@/components/admin/payment-card";
+import ShopRiderCard from "@/components/vendor/shop-rider-card";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 
 /** Optional extra step — packing takes a while and the customer should see it. */
@@ -305,6 +306,7 @@ export default function VendorOrderDetailPage({
             total={order.total}
             customerPhone={order.customer.phone}
             orderStatus={order.status}
+            verifier={order.paymentVerifier}
             onDecided={reload}
           />
         </section>
@@ -350,6 +352,8 @@ export default function VendorOrderDetailPage({
               </p>
             )}
           </section>
+
+          {!order.isPickup && <ShopRiderCard rider={order.shopRider} />}
 
           <section className="rounded-2xl bg-paper p-5 ring-1 ring-line">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import { useRiderSession } from "@/lib/use-rider";
+import RiderBottomNav from "@/components/rider/rider-bottom-nav";
 
 export default function RiderShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -95,18 +96,10 @@ export default function RiderShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-ivory-50 text-ink antialiased">
-      <div className="mx-auto max-w-md min-h-screen bg-paper shadow-lg ring-1 ring-line flex flex-col">
+      <div className="mx-auto max-w-md min-h-screen bg-paper pb-16 shadow-lg ring-1 ring-line flex flex-col">
         {children}
       </div>
-      <div className="fixed bottom-4 right-4 z-40">
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="rounded-full bg-forest-950 px-4 py-2 text-xs font-semibold text-ivory-50 shadow-lg hover:bg-forest-800"
-        >
-          সাইন আউট
-        </button>
-      </div>
+      <RiderBottomNav />
     </div>
   );
 }

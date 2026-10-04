@@ -86,10 +86,10 @@ describe("LiveDeliveryMap Component", () => {
       vi.unstubAllGlobals();
     });
 
-    const stubFetch = () => {
+    const stubFetch = (ageMs = 20_000) => {
       const fetchMock = vi.fn<(input: RequestInfo | URL) => Promise<{ ok: boolean; json: () => Promise<unknown> }>>(async () => ({
         ok: true,
-        json: async () => ({ lat: 25.0658, lng: 91.395, updatedAt: "2026-09-18T10:00:00Z" }),
+        json: async () => ({ lat: 25.0658, lng: 91.395, updatedAt: new Date(Date.now() - ageMs).toISOString() }),
       }));
       vi.stubGlobal("fetch", fetchMock);
       return fetchMock;
@@ -128,6 +128,23 @@ describe("LiveDeliveryMap Component", () => {
       const away = await screen.findByTestId("rider-away");
       expect(away.textContent).toMatch(/রাইডার প্রায় [০-৯.]+ কিমি দূরে · ~[০-৯]+ মিনিট/);
       expect(away.textContent).not.toMatch(/\d/);
+    });
+
+    it("labels how old the rider's fix is", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      stubFetch(3 * 60_000);
+      render(<LiveDeliveryMap order={withRider} />);
+      expect(await screen.findByText(/Rider live .*\(৩ মিনিট আগে\)/)).toBeInTheDocument();
+      expect(screen.queryByTestId("rider-stale")).not.toBeInTheDocument();
+    });
+
+    it("a fix older than five minutes is not shown as live: no distance claim, and the customer is told", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      stubFetch(8 * 60_000);
+      render(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
+      const note = await screen.findByTestId("rider-stale");
+      expect(note.textContent).toContain("৮ মিনিট ধরে আসছে না");
+      expect(screen.queryByTestId("rider-away")).not.toBeInTheDocument();
     });
 
     it("stops polling while the tab is hidden", async () => {

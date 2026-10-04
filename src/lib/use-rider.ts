@@ -59,7 +59,7 @@ const readError = async (
 
 export const riderFetch = async <T,>(
   path: string,
-  method: "GET" | "POST" | "PATCH" = "GET",
+  method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
   body?: unknown,
 ): Promise<T> => {
   let res: Response;
@@ -187,6 +187,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
   const [jobs, setJobs] = useState<RiderJob[]>([]);
   const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
   const [pendingClaim, setPendingClaim] = useState<SettleClaim | null>(null);
+  const [recentClaims, setRecentClaims] = useState<SettleClaim[]>([]);
   const [claimsReady, setClaimsReady] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -212,6 +213,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
             settlements: RiderSettlement[];
             pendingClaim: SettleClaim | null;
             claimsReady?: boolean;
+            recentClaims?: SettleClaim[];
           }>("/api/rider/settlements"),
         ]);
         if (jobsResult.status === "fulfilled") {
@@ -222,6 +224,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
         if (settleResult.status === "fulfilled") {
           setSettlements(settleResult.value.settlements);
           setPendingClaim(settleResult.value.pendingClaim ?? null);
+          setRecentClaims(settleResult.value.recentClaims ?? []);
           setClaimsReady(settleResult.value.claimsReady ?? true);
         } else {
           // Keep the last settlements on screen; never block the job feed.
@@ -309,8 +312,12 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
   const deliver = useCallback(
-    (id: string, code: string, proofUrl?: string | null) =>
-      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, { code, proofUrl }),
+    (id: string, code: string, proofUrl?: string | null, noPhotoReason?: string | null) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, {
+        code,
+        proofUrl,
+        ...(noPhotoReason ? { noPhotoReason } : {}),
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enabled],
   );
@@ -356,7 +363,7 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
     [enabled],
   );
 
-  return { jobs, settlements, pendingClaim, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+  return { jobs, settlements, pendingClaim, recentClaims, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
 };
 
 export interface RiderStatsView {
@@ -366,6 +373,11 @@ export interface RiderStatsView {
   ratingCount: number;
   /** 202609300001 — platform wallet (tips, later fees); absent pre-migration. */
   earningsBalance?: number;
+  /** Today (Dhaka) — deliveries completed and what they credited; absent when unavailable. */
+  todayDeliveries?: number;
+  todayEarned?: number;
+  /** J — the dispatch cash cap (paisa), admin-editable; absent on an old server. */
+  cashLimit?: number;
 }
 
 /**

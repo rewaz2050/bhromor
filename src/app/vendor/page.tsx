@@ -36,6 +36,7 @@ import {
   todayStats,
 } from "@/lib/vendor-dashboard";
 import { useVendorOrderAlert } from "@/lib/use-vendor-order-alert";
+import { VendorPushCard } from "@/components/vendor/vendor-push-card";
 import {
   WEEKDAY_LABELS,
   hourLabel,
@@ -216,6 +217,8 @@ export default function VendorDashboardPage() {
           </div>
         </div>
       )}
+
+      <VendorPushCard enabled={me?.shop.status === "active"} />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
@@ -517,9 +520,25 @@ export default function VendorDashboardPage() {
             <ErrorBox message={earnings.error} onRetry={earnings.refresh} />
           ) : (
             <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
-              <p className="font-display text-3xl text-forest-900">
-                {formatBdt(earnings.earnings?.balance ?? 0)}
-              </p>
+              {(earnings.earnings?.balance ?? 0) < 0 ? (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                    You owe PROSANTI
+                  </p>
+                  <p className="font-display text-3xl text-amber-800" data-testid="vendor-owes">
+                    {formatBdt(-(earnings.earnings?.balance ?? 0))}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-900">
+                    Customers paid your own bKash/Nagad, so you keep that money. Send
+                    PROSANTI this amount (commission, delivery charge and tip) and staff
+                    will record it.
+                  </p>
+                </>
+              ) : (
+                <p className="font-display text-3xl text-forest-900">
+                  {formatBdt(earnings.earnings?.balance ?? 0)}
+                </p>
+              )}
               <p className="mt-1 text-xs text-ink-soft">
                 Earned {formatBdt(earnings.earnings?.lifetimePayable ?? 0)} ·{" "}
                 paid out {formatBdt(earnings.earnings?.lifetimePaid ?? 0)}

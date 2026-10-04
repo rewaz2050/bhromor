@@ -13,10 +13,11 @@ import { isCloudinaryConfigured } from "@/lib/env";
 import { apiError, apiJson } from "@/lib/api-response";
 import { riderRoute } from "@/app/api/rider/_lib";
 import { signCloudinaryUpload } from "@/lib/cloudinary-sign";
+import { PROOF_FOLDER } from "@/lib/delivery-proof";
 
 export const dynamic = "force-dynamic";
 
-export const PROOF_FOLDER = "prosanti/delivery-proofs";
+export { PROOF_FOLDER };
 
 export const POST = riderRoute(
   "media-sign",

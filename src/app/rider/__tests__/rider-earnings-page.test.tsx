@@ -29,6 +29,11 @@ vi.mock("@/lib/use-rider", () => ({
   }),
 }));
 
+const incentives = vi.hoisted(() => ({ view: null as unknown }));
+vi.mock("@/lib/use-rider-incentives", () => ({
+  useRiderIncentives: () => ({ view: incentives.view, loading: false }),
+}));
+
 vi.mock("@/lib/use-rider-money", () => ({
   useRiderEarnings: () => ({
     ready: state.ready,
@@ -147,5 +152,33 @@ describe("rider earnings page", () => {
     expect(screen.getByText(/একসাথে একটির বেশি অনুরোধ/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /উত্তোলনের অনুরোধ করুন/ })).not.toBeInTheDocument();
     expect(screen.getByText("অপেক্ষায়")).toBeInTheDocument();
+  });
+
+  it("a rejected withdrawal says the held money came back to the wallet", () => {
+    state.payouts = [
+      { id: "p2", amount: 5000, method: "bkash", account: "01700000000", status: "rejected", requestedAt: Date.now(), reference: "", note: "নম্বর ভুল" },
+    ];
+    render(<RiderEarningsPage />);
+    expect(screen.getByTestId("payout-refund-note")).toHaveTextContent("ফেরত এসেছে");
+    expect(screen.getByText(/নম্বর ভুল/)).toBeInTheDocument();
+  });
+
+  it("shows the bonus card only when the rider's view says bonuses are on", () => {
+    state.ready = true;
+    state.summary = summary;
+    incentives.view = null;
+    const { unmount } = render(<RiderEarningsPage />);
+    expect(screen.queryByTestId("incentives-card")).toBeNull();
+    unmount();
+    incentives.view = {
+      settings: { dailyTarget: 8, dailyBonus: 5000, referralBonus: 0, referralAfter: 10 },
+      today: { done: 2, target: 8, left: 6, reached: false, percent: 25 },
+      todayPaid: false,
+      referral: { code: "K7MQ2X", after: 10, bonus: 0, items: [], totalEarned: 0 },
+      totalEarned: 0,
+    };
+    render(<RiderEarningsPage />);
+    expect(screen.getByTestId("incentives-card")).toHaveTextContent("2/8");
+    incentives.view = null;
   });
 });

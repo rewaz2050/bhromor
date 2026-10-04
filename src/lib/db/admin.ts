@@ -8,6 +8,7 @@
  */
 
 import "server-only";
+import { oneShopTotals, shopBalanceTotals } from "./shop-balances";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -54,6 +55,9 @@ import type {
   DbVariant,
   DbZone,
 } from "./types";
+import { requirePaymentVerifier } from "@/lib/payment-verifier";
+import { normalizeWalletNumber, requireSettlementModel } from "@/lib/shop-settlement";
+import { shopPaymentVerifier } from "@/lib/db/payment-verifier";
 
 export class AdminInputError extends Error {
   status: number;
@@ -289,6 +293,10 @@ export async function getOrderDetail(
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const order = await toDomain(db, data as DbOrder);
   if (!order) throw new Error("order detail failed");
+  // N6: the payment card needs to know whether staff may decide this one.
+  if (order.payment !== "cod" && order.paymentStatus === "pending_verification") {
+    order.paymentVerifier = await shopPaymentVerifier(db, (data as DbOrder).shop_id);
+  }
   return order;
 }
 
@@ -336,6 +344,12 @@ export async function advanceOrderAsStaff(
       throw new AdminInputError(
         "Wallet payment not verified yet — verify or reject it in the payment card first.",
         422,
+      );
+    }
+    if (msg.includes("rider delivery in progress")) {
+      throw new AdminInputError(
+        "A rider is delivering this order — only the rider can complete it (customer code, proof and COD cash are recorded then). If the rider is unreachable, release them on Admin → Deliveries first.",
+        409,
       );
     }
     if (msg.includes("illegal transition") || msg.includes("cannot cancel")) {
@@ -557,6 +571,12 @@ export async function verifyPaymentAsStaff(
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Staff role required.", 403);
+    }
+    if (msg.includes("delegated to the shop")) {
+      throw new AdminInputError(
+        "This shop verifies its own wallet payments — switch its payment verifier to staff or both (Admin → Shops) to decide this one.",
+        409,
+      );
     }
     if (msg.includes("not a wallet payment")) {
       throw new AdminInputError(
@@ -2156,6 +2176,41 @@ const isMissingColumn = (error: PostgrestError | null): boolean =>
  * no id; approval/suspend/commission edits send the row id). Vendors never
  * reach this — their PATCH is field-whitelisted in slice 3.
  */
+const SETTLEMENT_MIGRATION_HINT =
+  "Shop settlement is not set up on this database yet — run supabase/migrations/202610020013_shop_own_wallet.sql.";
+
+const isMissingSettlementColumn = (error: unknown): boolean => {
+  const e = (error ?? {}) as { code?: string; message?: string };
+  return e.code === "PGRST204" || /settlement_model|wallet_bkash|wallet_nagad/.test(e.message ?? "");
+};
+
+/**
+ * How a shop is paid (202610020013). Written only when the form sent the model —
+ * an older form keeps saving everything else. A shop that sells into its own wallet
+ * needs at least one valid number, or checkout would have nothing to show.
+ */
+export const shapeShopSettlement = (raw: {
+  model: unknown;
+  bkash: unknown;
+  nagad: unknown;
+}): { settlement_model: string; wallet_bkash: string | null; wallet_nagad: string | null } | undefined => {
+  if (raw.model === undefined) return undefined;
+  const model = requireSettlementModel(raw.model);
+  if (!model) throw new AdminInputError("Pick how the shop is paid: PROSANTI collects, or the shop's own wallet.");
+  const wallet = (v: unknown, label: string): string | null => {
+    if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) return null;
+    const n = normalizeWalletNumber(v);
+    if (!n) throw new AdminInputError(`${label} number must be a Bangladeshi mobile (01XXXXXXXXX).`);
+    return n;
+  };
+  const bkash = wallet(raw.bkash, "bKash");
+  const nagad = wallet(raw.nagad, "Nagad");
+  if (model === "shop_wallet" && !bkash && !nagad) {
+    throw new AdminInputError("Add the shop's bKash or Nagad number first — customers need somewhere to pay.");
+  }
+  return { settlement_model: model, wallet_bkash: bkash, wallet_nagad: nagad };
+};
+
 export async function upsertShop(
   db: SupabaseClient,
   raw: unknown,
@@ -2183,8 +2238,33 @@ export async function upsertShop(
     /** Free delivery (2026-09-26): the shop's own minimum, paisa; null clears it. */
     free_delivery_min?: number | string | null;
     freeDeliveryMinPaisa?: number | string | null;
+    /** N6 — who verifies bKash/Nagad payments: platform | shop | both. */
+    payment_verifier?: string;
+    paymentVerifier?: string;
+    /** 202610020013 — how the shop is paid, plus its own wallet numbers. */
+    settlement_model?: string;
+    settlementModel?: string;
+    wallet_bkash?: string;
+    walletBkash?: string;
+    wallet_nagad?: string;
+    walletNagad?: string;
+    /** The admin form round-trips the Shop: { bkash?, nagad? }. */
+    shopWallets?: { bkash?: string; nagad?: string };
   };
   const name = clean(body.name, 80);
+  const settlement = shapeShopSettlement({
+    model: body.settlement_model ?? body.settlementModel,
+    bkash: body.wallet_bkash ?? body.walletBkash ?? body.shopWallets?.bkash,
+    nagad: body.wallet_nagad ?? body.walletNagad ?? body.shopWallets?.nagad,
+  });
+  // N6: only written when sent; junk is refused, never silently defaulted.
+  const verifierSent = body.payment_verifier !== undefined || body.paymentVerifier !== undefined;
+  const paymentVerifier = verifierSent
+    ? requirePaymentVerifier(body.payment_verifier ?? body.paymentVerifier)
+    : undefined;
+  if (verifierSent && paymentVerifier === null) {
+    throw new AdminInputError("Pick who verifies payments: platform, shop or both.");
+  }
   if (name.length < 2) throw new AdminInputError("Shop name is too short.");
   // Only written when the form sent the key — a database without migration
   // 202609260003 keeps saving every other field.
@@ -2233,6 +2313,8 @@ export async function upsertShop(
       status,
       is_open: status === "active" ? isOpen : false,
       ...(freeDeliveryMin !== undefined ? { free_delivery_min: freeDeliveryMin } : {}),
+      ...(paymentVerifier ? { payment_verifier: paymentVerifier } : {}),
+      ...(settlement ?? {}),
     };
     const { data, error } = await db
       .from("shops")
@@ -2241,6 +2323,19 @@ export async function upsertShop(
       .select("*")
       .single();
     if (error || !data) {
+      if (
+        paymentVerifier &&
+        ((error as { code?: string } | null)?.code === "PGRST204" ||
+          /payment_verifier/.test((error as { message?: string } | null)?.message ?? ""))
+      ) {
+        throw new AdminInputError(
+          "Payment verifier is not set up on this database yet — run supabase/migrations/202610010002_payment_verifier.sql.",
+          503,
+        );
+      }
+      if (settlement && isMissingSettlementColumn(error)) {
+        throw new AdminInputError(SETTLEMENT_MIGRATION_HINT, 503);
+      }
       if (
         freeDeliveryMin !== undefined &&
         ((error as { code?: string } | null)?.code === "PGRST204" ||
@@ -2276,10 +2371,21 @@ export async function upsertShop(
       status: "pending",
       is_open: false,
       ...(freeDeliveryMin ? { free_delivery_min: freeDeliveryMin } : {}),
+      ...(paymentVerifier ? { payment_verifier: paymentVerifier } : {}),
+      ...(settlement ?? {}),
     })
     .select("*")
     .single();
   if (error) {
+    if (settlement && isMissingSettlementColumn(error)) {
+      throw new AdminInputError(SETTLEMENT_MIGRATION_HINT, 503);
+    }
+    if (paymentVerifier && (error.code === "PGRST204" || /payment_verifier/.test(error.message ?? ""))) {
+      throw new AdminInputError(
+        "Payment verifier is not set up on this database yet — run supabase/migrations/202610010002_payment_verifier.sql.",
+        503,
+      );
+    }
     if (error.code === "23505") {
       throw new AdminInputError("That shop slug is taken.", 409);
     }
@@ -2335,43 +2441,26 @@ export interface PayoutLine {
 export async function listShopBalances(
   db: SupabaseClient,
 ): Promise<ShopBalance[]> {
-  const [shopsRes, ledgerRes, payoutRes] = await Promise.all([
+  const [shopsRes, totals] = await Promise.all([
     db.from("shops").select("*").order("name"),
-    db.from("shop_ledger").select("shop_id,payable").limit(5000),
-    db
-      .from("shop_payouts")
-      .select("shop_id,amount,paid_at")
-      .order("paid_at", { ascending: false })
-      .limit(5000),
+    // Summed in the database — never capped by a row limit.
+    shopBalanceTotals(db).catch(() => null),
   ]);
-  if (shopsRes.error || ledgerRes.error || payoutRes.error) {
+  if (shopsRes.error || !totals) {
     throw new Error("payout overview failed");
-  }
-  const earned = new Map<string, number>();
-  for (const r of ((ledgerRes.data ?? []) as { shop_id: string; payable: number }[])) {
-    earned.set(r.shop_id, (earned.get(r.shop_id) ?? 0) + r.payable);
-  }
-  const paid = new Map<string, number>();
-  const lastAt = new Map<string, number>();
-  for (const r of ((payoutRes.data ?? []) as {
-    shop_id: string;
-    amount: number;
-    paid_at: string;
-  }[])) {
-    paid.set(r.shop_id, (paid.get(r.shop_id) ?? 0) + r.amount);
-    if (!lastAt.has(r.shop_id)) lastAt.set(r.shop_id, Date.parse(r.paid_at));
   }
   return ((shopsRes.data ?? []) as DbShop[])
     .map(mapShop)
     .map((shop) => {
-      const e = earned.get(shop.id) ?? 0;
-      const p = paid.get(shop.id) ?? 0;
+      const t = totals.get(shop.id);
+      const e = t?.earned ?? 0;
+      const p = t?.paid ?? 0;
       return {
         shop,
         earned: e,
         paid: p,
         balance: e - p,
-        lastPayoutAt: lastAt.get(shop.id) ?? null,
+        lastPayoutAt: t?.lastPayoutAt ?? null,
       };
     })
     .sort((a, b) => b.balance - a.balance);
@@ -2430,7 +2519,7 @@ const PAYOUT_METHODS = ["bank", "bkash", "nagad", "cash"] as const;
 /** Pure input shaping for recordPayout — unit-tested without a database. */
 export const shapePayoutInput = (
   raw: unknown,
-): { shopId: string; amount: number; method: string; reference: string } => {
+): { shopId: string; amount: number; method: string; reference: string; remit: boolean } => {
   const body = (raw ?? {}) as Record<string, unknown>;
   const shopId = clean(body.shopId, 64);
   if (!shopId) throw new AdminInputError("Pick a shop to pay.");
@@ -2449,9 +2538,12 @@ export const shapePayoutInput = (
   }
   return {
     shopId,
-    amount,
+    // A remittance is the shop paying PROSANTI (202610020013): money in, so it is stored
+    // negative — Σ payable − Σ payouts then moves a negative balance toward zero.
+    amount: body.direction === "remit" ? -amount : amount,
     method,
     reference: clean(body.reference, 120),
+    remit: body.direction === "remit",
   };
 };
 
@@ -2472,22 +2564,20 @@ export async function recordPayout(
     .eq("id", input.shopId)
     .single();
   if (shopError || !shop) throw new AdminInputError("Shop not found.", 404);
-  const [ledgerRes, payoutRes] = await Promise.all([
-    db.from("shop_ledger").select("payable").eq("shop_id", input.shopId).limit(5000),
-    db.from("shop_payouts").select("amount").eq("shop_id", input.shopId).limit(5000),
-  ]);
-  if (ledgerRes.error || payoutRes.error) {
+  const { earned, paid } = await oneShopTotals(db, input.shopId).catch(() => {
     throw new Error("payout balance check failed");
-  }
-  const earned = ((ledgerRes.data ?? []) as { payable: number }[]).reduce(
-    (s, r) => s + r.payable,
-    0,
-  );
-  const paid = ((payoutRes.data ?? []) as { amount: number }[]).reduce(
-    (s, r) => s + r.amount,
-    0,
-  );
-  if (input.amount > earned - paid) {
+  });
+  if (input.remit) {
+    // Only while the shop owes PROSANTI, and never more than it owes.
+    if (earned - paid >= 0 || input.amount < earned - paid) {
+      throw new AdminInputError(
+        earned - paid >= 0
+          ? "This shop owes PROSANTI nothing — there is nothing to remit."
+          : "That is more than the shop owes PROSANTI.",
+        422,
+      );
+    }
+  } else if (input.amount > earned - paid) {
     throw new AdminInputError(
       "That exceeds the shop's unsettled balance.",
       422,
@@ -2511,6 +2601,9 @@ export async function recordPayout(
         "That exceeds the shop's unsettled balance.",
         422,
       );
+    }
+    if (msg.includes("remittance exceeds")) {
+      throw new AdminInputError("That is more than the shop owes PROSANTI.", 422);
     }
     if (msg.includes("must be positive")) {
       throw new AdminInputError("Enter a payout amount above ৳0.");

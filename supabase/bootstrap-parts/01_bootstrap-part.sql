@@ -1,8 +1,8 @@
--- PART 1/16 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 1/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
 -- Generated from schema.sql + the in-order migrations through
--- 202609300002 (every file in supabase/migrations/, chronologically;
+-- 202610010003 (every file in supabase/migrations/, chronologically;
 -- append-only sections after the base chain carry their own banner).
 --
 -- WHEN TO USE THIS FILE:

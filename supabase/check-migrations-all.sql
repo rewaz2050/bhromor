@@ -1,0 +1,266 @@
+-- ============================================================================
+-- PROSANTI — kun migration chalano BAKI? (shob migration, shuru theke shesh porjonto)
+--
+-- Supabase -> SQL Editor -> New query -> eta paste kore Run. Shudhu poRe, kichu bodlay na.
+--
+-- Shudhu je file-gulo chalate hobe (XX / ADHEK) shegulo-i dekhabe.
+--   Kono row na ashle (0 rows) = shob migration chalano ache.
+--   status "XX  CHALAO (missing)"          -> file-ta chalate hobe
+--   status "ADHEK (kichu missing)"         -> file-ta abar chalan (nirapod)
+--   ki_nai column -> kon object nai
+-- Row-gulo file-er nam-er order-e (UPOR theke NICHE) chalan. "supabase/schema.sql"
+-- shobar age (base schema).
+-- ============================================================================
+with checklist(step, label, source_file, kind, obj) as (values
+  ('00',  'base: ps_order_flow / core tables',   'supabase/schema.sql',                          'table', 'ps_order_flow'),
+  ('00b', 'base: products',                       'supabase/schema.sql',                          'table', 'products'),
+  ('00c', 'base: orders',                         'supabase/schema.sql',                          'table', 'orders'),
+  ('00d', 'base: site_settings',                  'supabase/schema.sql',                          'table', 'site_settings'),
+  ('01',  'saved items',                          '202609080001_storefront_saved_items.sql',      'table', 'storefront_saved_items'),
+  ('02',  'order guards',                         '202609080002_order_guards.sql',                'function', 'ps_check_order_totals'),
+  ('03',  'place order v1 + ps_setting_int',      '202609080003_place_order_rpc.sql',             'function', 'ps_setting_int'),
+  ('04',  'marketplace: shops',                   '202609090004_marketplace_shops.sql',           'table', 'shops'),
+  ('04b', 'marketplace: orders.shop_id column',   '202609090004_marketplace_shops.sql',           'column', 'orders.shop_id'),
+  ('05',  'riders',                               '202609090005_riders.sql',                      'table', 'riders'),
+  ('06',  'engagement (contact/newsletter/media)','202609090006_engagement.sql',                  'table', 'contact_messages'),
+  ('07',  'rider dispatch',                       '202609090007_rider_dispatch.sql',              'function', 'ps_rider_accept'),
+  ('07b', 'delivery assignments',                 '202609090007_rider_dispatch.sql',              'table', 'delivery_assignments'),
+  ('08',  'dispatch auto-offer',                  '202609090008_dispatch_auto.sql',               'function', 'ps_auto_dispatch_ready_order'),
+  ('11',  'coupon zone/category scope',           '202609090011_coupon_enhancements.sql',         'column', 'coupons.zone_id'),
+  ('12',  'geo + proof on orders',                '202609090012_geo_and_proof.sql',               'column', 'orders.lat'),
+  ('13',  'delivery proof (cloudinary)',          '202609090013_delivery_proof_cloudinary.sql',   'function', 'ps_rider_failed_attempt'),
+  ('14',  'rider geo (nearest rider)',            '202609090014_rider_geo_nearest.sql',           'column', 'riders.lat'),
+  ('15',  'scheduled delivery',                   '202609090015_scheduled_delivery.sql',          'column', 'orders.scheduled_at'),
+  ('16',  'store pickup + tips + weight',         '202609090016_tips_pickup_weight.sql',          'column', 'orders.is_pickup'),
+  ('17',  'returns / delivery remaining',         '202609090017_delivery_remaining.sql',          'column', 'orders.is_return'),
+  ('18',  'customer accounts (smart card)',       '202609110004_customer_accounts.sql',           'table', 'customers'),
+  ('19',  'media video',                          '202609110006_media_video.sql',                 'column', 'media_library.media_type'),
+  ('20',  'flat delivery ps_place_order',         '202609120007_flat_delivery.sql',               'function', 'ps_place_order'),
+  ('21',  'P0 growth: price watches',             '202609130008_growth_promos_gift_referral.sql', 'table', 'price_watches'),
+  ('21b', 'P0 growth: referral credit RPC',       '202609130008_growth_promos_gift_referral.sql', 'function', 'ps_credit_referrer'),
+  ('21c', 'P0 growth: orders.promo_kind column',  '202609130008_growth_promos_gift_referral.sql', 'column', 'orders.promo_kind'),
+  ('22',  'P1 UGC: review photos',                '202609140001_review_photos.sql',               'table', 'review_photos'),
+  ('23',  'P1 returns: eligibility + request',    '202609140002_return_pickups.sql',              'function', 'ps_create_return_request'),
+  ('23b', 'P1 returns: shop action RPC',          '202609140002_return_pickups.sql',              'function', 'ps_return_action'),
+  ('24',  'P1 warranty: claims table',            '202609140003_warranty_claims.sql',             'table', 'warranty_claims'),
+  ('24b', 'P1 warranty: products.warranty_days',  '202609140003_warranty_claims.sql',             'column', 'products.warranty_days'),
+  ('24c', 'P1 warranty: eligibility RPC',         '202609140003_warranty_claims.sql',             'function', 'ps_warranty_eligible'),
+  ('25',  'P1 payments: wallet columns',          '202609140004_wallet_payments.sql',             'column', 'orders.payment_status'),
+  ('25b', 'P1 payments: verify RPC',              '202609140004_wallet_payments.sql',             'function', 'ps_verify_payment'),
+  ('26',  'P1 live shopping: sessions table',     '202609140005_live_shopping.sql',               'table', 'live_sessions'),
+  ('26b', 'P1 live shopping: session pieces',     '202609140005_live_shopping.sql',               'table', 'live_session_products'),
+  ('27',  'P1 wallet cash: wallet-aware deliver', '202609140006_wallet_delivery_cash.sql',        'function_src', 'ps_rider_deliver|paid via bKash at checkout'),
+  ('28',  'P1 wallet cash: cancel settles payment', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_advance_order|v_payment_rejected'),
+  ('28b', 'P1 wallet cash: verify refuses cancelled', '202609140007_wallet_cancel_payment_settle.sql', 'function_src', 'ps_verify_payment|order already cancelled'),
+  ('29',  'P1 returns: zero-charge return orders restored', '202609140008_return_order_restore.sql', 'function_src', 'ps_place_order|return_parent_id required'),
+  ('30',  'P2 best sellers: real sales view', '202609140009_product_sales_view.sql', 'view', 'v_product_sales'),
+  ('31',  'P2 restock alerts: stock watches', '202609140010_stock_watches.sql', 'table', 'stock_watches'),
+  ('32',  'P2 shop ratings: rating recompute', '202609140011_shop_rating_trigger.sql', 'function', 'ps_shop_rating_recompute'),
+  ('33',  'CHECKOUT REPAIR: orders.gift_wrap accepts NULL',      '202609160002_order_insert_repair.sql', 'column_nullable', 'orders.gift_wrap'),
+  ('33b', 'CHECKOUT REPAIR: totals guard counts tip + gift fee', '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_totals|gift_fee'),
+  ('33c', 'CHECKOUT REPAIR: insert guard allows bkash/nagad',    '202609160002_order_insert_repair.sql', 'function_src', 'ps_check_order_insert|bkash'),
+  ('33d', 'CHECKOUT REPAIR: /api/health probe',                  '202609160002_order_insert_repair.sql', 'function', 'ps_checkout_health'),
+  ('34',  'ORDER FLOW REPAIR: ledger trigger compares the enum safely (Confirm/Cancel work)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_write_shop_ledger|old.status is distinct from new.status'),
+  ('34b', 'ORDER FLOW REPAIR: ps_verify_payment returns the row (bKash verify works)',       '202609160003_order_status_update_repair.sql', 'function_src', 'ps_verify_payment|select * into v_order from orders where id = p_order_id;'),
+  ('34c', 'ORDER FLOW REPAIR: riders guard lets RPCs/triggers write (rider Delivered works)', '202609160003_order_status_update_repair.sql', 'function_src', 'ps_guard_rider_self_update|current_user not in'),
+  ('34d', 'ORDER FLOW REPAIR: /api/health probe knows all three',                            '202609160003_order_status_update_repair.sql', 'function_src', 'ps_checkout_health|rider_guard_ok'),
+  ('35',  'SECURITY: anon key cannot call ps_place_order (service-only RPCs revoked)', '202609160004_rpc_grants_rls_repair.sql', 'function_locked', 'ps_place_order(jsonb,jsonb)'),
+  ('35b', 'SECURITY: memberships has row level security',                              '202609160004_rpc_grants_rls_repair.sql', 'table_rls', 'memberships'),
+  ('35c', 'SECURITY: /api/health probe knows the lock',                                '202609160004_rpc_grants_rls_repair.sql', 'function_src', 'ps_checkout_health|rpc_grants_locked'),
+  ('36',  'DISPATCH REPAIR: offers can be re-issued (no UNIQUE order_id on delivery_assignments)', '202609160005_dispatch_reoffer_repair.sql', 'constraint_absent', 'delivery_assignments.delivery_assignments_order_id_key'),
+  ('36b', 'DISPATCH REPAIR: one live offer per order (partial unique index)',                    '202609160005_dispatch_reoffer_repair.sql', 'index', 'delivery_assignments.delivery_assignments_one_live_offer'),
+  ('36c', 'DISPATCH REPAIR: batch assign has no phantom dependencies',                            '202609160005_dispatch_reoffer_repair.sql', 'function_src_absent', 'ps_assign_batch_to_rider|rider_assignments'),
+  ('36d', 'DISPATCH REPAIR: /api/health probe knows it',                                          '202609160005_dispatch_reoffer_repair.sql', 'function_src', 'ps_checkout_health|dispatch_reoffer_ok'),
+  ('37',  'P0: withdraw cools down, manual expiry resumes the area at once', '202609250003_dispatch_withdraw_resume.sql', 'function_src', 'ps_cancel_assignment|withdrawn — cooling down'),
+  ('37b', 'P0: expiry sweep is throttled (force flag, one run per 10s)',      '202609250003_dispatch_withdraw_resume.sql', 'function_src', 'ps_expire_stale_offers|dispatch_sweep_state'),
+  ('37c', 'P0: settle claims table (rider self-settle needs approval)',       '202609250004_settle_claims.sql', 'table', 'rider_settle_claims'),
+  ('37d', 'P0: ps_rider_settle files a claim instead of zeroing cash',        '202609250004_settle_claims.sql', 'function_src', 'ps_rider_settle|settle already pending'),
+  ('37e', 'P0: PIN attempt counter RPC (wrong codes persist)',                '202609250005_delivery_pin_lockout.sql', 'function', 'ps_rider_deliver_check'),
+  ('37f', 'P0: PIN lockout columns on orders',                                '202609250005_delivery_pin_lockout.sql', 'column', 'orders.delivery_code_locked_until'),
+  ('37g', 'P0: /api/health probe knows all four dispatch migrations',         '202609250006_dispatch_health.sql', 'function_src', 'ps_checkout_health|pin_lockout_ok'),
+  ('37h', 'SPEED: delivery_assignments published for instant offers',         '202609250007_realtime_offers.sql', 'publication', 'supabase_realtime.delivery_assignments'),
+  ('37i', 'SPEED: /api/health probe knows the realtime flag',                '202609250007_realtime_offers.sql', 'function_src', 'ps_checkout_health|realtime_offers_ok'),
+  ('37j', 'Delivery ratings (customer rates the rider on /track)',          '202609250008_delivery_ratings.sql', 'table', 'delivery_ratings'),
+  -- The 2026-09-26 → 09-30 rounds (docs/go-live.md step 1, in order).
+  ('38',  'Forgot-password request table',            '202609260001_password_reset_requests.sql', 'table', 'password_reset_requests'),
+  ('39',  'Application review + rider KYC columns',   '202609260002_application_review.sql',      'column', 'riders.review_note'),
+  ('40',  'Free delivery minimum + checkout waiver',  '202609260003_free_delivery.sql',           'column', 'orders.free_delivery_by'),
+  ('41',  'Storefront funnel events',                 '202609260004_storefront_events.sql',       'table', 'storefront_events'),
+  ('42',  'Push broadcasts (drops & offers)',         '202609270001_push_broadcasts.sql',         'table', 'push_broadcasts'),
+  ('43',  'Shop cover image',                         '202609270002_shop_cover.sql',              'column', 'shops.cover_url'),
+  ('44',  'Abandoned-bag snapshots',                  '202609270003_bag_snapshots.sql',           'table', 'bag_snapshots'),
+  ('45',  'Review stamps (smart card)',               '202609270004_review_stamps.sql',           'table', 'stamp_ledger'),
+  ('46',  'Shop follows',                             '202609280001_shop_follows.sql',            'table', 'shop_follows'),
+  ('47',  'Vendor review replies',                    '202609280002_review_replies.sql',           'column', 'reviews.vendor_reply'),
+  ('48',  'Vendor promos (shop coupons)',             '202609280003_vendor_promos.sql',           'column', 'coupons.shop_id'),
+  ('49',  'Shop funnel report',                       '202609280004_shop_funnel.sql',             'function', 'ps_shop_funnel_report'),
+  ('50',  'Shop verification badge',                  '202609280005_shop_verification.sql',        'column', 'shops.verified_at'),
+  ('51',  'Shop vacation',                            '202609280006_shop_vacation.sql',            'column', 'shops.vacation_start'),
+  ('52',  'Vendor staff logins',                      '202609280007_vendor_staff.sql',             'column', 'vendor_users.display_name'),
+  ('53',  'Multi-shop checkout',                      '202609280008_multi_shop_checkout.sql',      'function', 'ps_place_multi_order'),
+  ('54',  'Commission audit trail',                   '202609290001_commission_audit.sql',         'table', 'shop_commission_history'),
+  ('55',  'Shop-scoped product slugs',                '202609290002_shop_scoped_slugs.sql',        'column', 'storefront_saved_items.product_id'),
+  ('56',  'Vendor product categories',                '202609290003_vendor_product_categories.sql', 'table', 'shop_product_categories'),
+  ('57',  'Rider tip wallet + delivered_at stamp',    '202609300001_rider_delivery_accounting.sql', 'column', 'riders.earnings_balance'),
+  -- Phase 2 rider money (2026-09-30): fees + payouts + dashboards.
+  ('58',  'Rider payout requests (one pending, wallet hold)', '202609300002_rider_money.sql', 'table', 'rider_payout_requests'),
+  ('59',  'Rider journal is signed + linked to payouts',      '202609300002_rider_money.sql', 'column', 'rider_earnings.payout_id'),
+  ('60',  'Payout request RPC (rider files, money held)',     '202609300002_rider_money.sql', 'function', 'ps_rider_request_payout'),
+  ('61',  'Payout decision RPC (staff paid/rejected)',        '202609300002_rider_money.sql', 'function', 'ps_admin_decide_rider_payout'),
+  ('62',  'Admin money summary RPC',                          '202609300002_rider_money.sql', 'function', 'ps_admin_money_summary'),
+  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary'),
+  -- Rider fixes Phase A (2026-10-01): failed deliveries, release rider, COD fee.
+  ('64',  'Failed-delivery flag on orders',                   '202610010001_rider_fixes_phase_a.sql', 'column', 'orders.delivery_failed_at'),
+  ('65',  'Failed-attempt RPC (attempt cap, frees the rider)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_rider_failed_attempt'),
+  ('66',  'Staff resolves a failed delivery (redispatch/cancel)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_resolve_failed_delivery'),
+  ('67',  'Staff releases an unresponsive rider',             '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_release_assignment'),
+  -- Who verifies wallet payments (2026-10-01): per-shop platform/shop/both.
+  ('68',  'Per-shop payment verifier (platform/shop/both)',   '202610010002_payment_verifier.sql', 'column', 'shops.payment_verifier'),
+  -- Net platform P&L (2026-10-01).
+  ('69',  'Admin net P&L RPC (income - rider pay - discounts)', '202610010003_money_pnl.sql', 'function', 'ps_admin_money_pnl'),
+  -- COD netting against the rider wallet (2026-10-01).
+  ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount'),
+  -- Shop sees the rider on its order (2026-10-01).
+  ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider'),
+  -- Append-only money audit trail (2026-10-01).
+  ('72',  'Money audit trail (who approved which payout/settle)', '202610010006_money_audit.sql', 'table', 'money_audit_log'),
+  -- Daily money reconciliation (2026-10-01).
+  ('73',  'Daily money reconciliation report', '202610010007_money_daily.sql', 'function', 'ps_admin_money_daily'),
+  -- Rider inbox: office announcements (2026-10-02).
+  ('74',  'Rider inbox (office announcements to riders)', '202610020001_rider_inbox.sql', 'table', 'rider_announcements'),
+  -- Admin rider profile with COD risk facts (2026-10-02).
+  ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview'),
+  -- Dispatch rules as admin-editable settings (2026-10-02).
+  ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap'),
+  -- Rider web push: closed-app offer alerts (2026-10-02).
+  ('77',  'Rider web push (device table, offer claim)', '202610020004_rider_push.sql', 'table', 'rider_push_subscriptions'),
+  -- Driving-licence expiry (2026-10-02).
+  ('78',  'Rider licence expiry (date + online guard)', '202610020005_licence_expiry.sql', 'column', 'riders.licence_expires_on'),
+  -- Rider scorecards + opt-in auto-suspend (2026-10-02).
+  ('79',  'Rider scorecards (board + auto-suspend facts)', '202610020006_rider_scorecards.sql', 'function', 'ps_admin_rider_scorecards'),
+  -- Rider disputes + manual wallet adjustments (2026-10-02).
+  ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes'),
+  -- Durable rate limit (2026-10-02).
+  ('81',  'Durable rate limit (shared counter)', '202610020008_rate_limit.sql', 'function', 'ps_rate_limit_hit'),
+  -- Delivery feedback: reasons + words on ratings (2026-10-02).
+  ('82',  'Delivery feedback (tags, comment, hide)', '202610020009_delivery_feedback.sql', 'column', 'delivery_ratings.feedback_at'),
+  -- Rider incentives: daily target + refer-a-rider (2026-10-02).
+  ('83',  'Rider incentives (daily target, referral)', '202610020010_rider_incentives.sql', 'function', 'ps_award_incentives'),
+  -- Dispatch follow-ups: load limit setting, rider hand-back (2026-10-02).
+  ('84',  'Dispatch follow-ups (load limit, rider hand-back)', '202610020011_dispatch_followups.sql', 'function', 'ps_rider_release_accepted'),
+  -- Failed-delivery fee + weekly tiered bonus (2026-10-02).
+  ('85',  'Failed-delivery fee + weekly bonus', '202610020012_failed_fee_weekly_bonus.sql', 'function', 'ps_failed_delivery_fee'),
+  -- Shop-own-wallet settlement (2026-10-02).
+  ('86',  'Shop-own-wallet settlement', '202610020013_shop_own_wallet.sql', 'function', 'ps_shop_wallet_collected'),
+  -- Shop balance totals aggregated in SQL (2026-10-03).
+  ('87',  'Shop balance totals (SQL aggregate)', '202610020014_shop_balance_totals.sql', 'function', 'ps_shop_balance_totals'),
+  -- Peak-hour + rainy-day order bonus (2026-10-03).
+  ('88',  'Peak + rain order bonus', '202610020015_peak_rain_bonus.sql', 'function', 'ps_award_order_bonuses'),
+  -- Daily report: shop-wallet flows split out (2026-10-03).
+  ('89',  'Daily report: shop-wallet split', '202610020016_daily_shop_wallet_split.sql', 'function', 'ps_admin_money_daily'),
+  -- Weekly streak bonus (2026-10-03).
+  ('90',  'Weekly streak bonus', '202610020017_streak_bonus.sql', 'function', 'ps_award_order_bonuses'),
+  -- Vendor (shop) web push (2026-10-03).
+  ('91',  'Vendor web push', '202610020018_vendor_push.sql', 'table', 'vendor_push_subscriptions'),
+  -- GPS jump flags (2026-10-03).
+  ('92',  'GPS jump flags', '202610020019_gps_jump_flags.sql', 'table', 'rider_gps_flags'),
+  -- Failed-delivery proof (2026-10-03).
+  ('93',  'Failed-delivery proof', '202610020020_failed_delivery_proof.sql', 'table', 'delivery_failed_proofs')
+),
+res as (
+  select source_file as file, label,
+    case kind
+         when 'table' then exists (
+           select 1 from information_schema.tables t
+           where t.table_schema = 'public' and t.table_name = obj
+         )
+         when 'view' then exists (
+           select 1 from information_schema.views v
+           where v.table_schema = 'public' and v.table_name = obj
+         )
+         when 'function' then exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = obj
+         )
+         -- function_src: obj = 'name|marker-in-body' — detects RE-created
+         -- versions of a function (plain existence can't).
+         when 'function_src' then exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public'
+             and p.proname = split_part(obj, '|', 1)
+             and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
+         )
+         -- function_locked: true when the function is absent (nothing to
+         -- lock) OR present and NOT executable by anon. false = the public
+         -- browser key can still call a service-only RPC (2026-09-16 audit).
+         when 'function_locked' then coalesce(
+           not has_function_privilege('anon', to_regprocedure('public.' || obj), 'execute'),
+           true)
+         -- function_src_absent: obj = 'name|marker' — true when the function
+         -- is absent OR its body no longer contains the marker (a rewrite
+         -- removed a bad dependency, 2026-09-16 dispatch repair).
+         when 'function_src_absent' then not exists (
+           select 1 from pg_proc p
+           join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public'
+             and p.proname = split_part(obj, '|', 1)
+             and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
+         )
+         -- constraint_absent: obj = 'table.constraint' — true when the table
+         -- is absent OR the named constraint is gone.
+         when 'constraint_absent' then not exists (
+           select 1 from pg_constraint k
+           where k.conrelid = to_regclass('public.' || split_part(obj, '.', 1))
+             and k.conname = split_part(obj, '.', 2)
+         )
+         -- index: obj = 'table.index'
+         when 'index' then exists (
+           select 1 from pg_indexes i
+           where i.schemaname = 'public'
+             and i.tablename = split_part(obj, '.', 1)
+             and i.indexname = split_part(obj, '.', 2)
+         )
+         -- table_rls: true when the table is absent OR has RLS enabled.
+         when 'table_rls' then coalesce((
+           select c.relrowsecurity from pg_class c
+           where c.relnamespace = 'public'::regnamespace and c.relname = obj
+         ), true)
+         -- publication: obj = 'pubname.tablename' — true when the table is
+         -- a member (Realtime only streams published tables).
+         when 'publication' then exists (
+           select 1 from pg_publication_tables
+           where pubname = split_part(obj, '.', 1)
+             and schemaname = 'public'
+             and tablename = split_part(obj, '.', 2)
+         )
+         when 'column' then exists (
+           select 1 from information_schema.columns c
+           where c.table_schema = 'public'
+             and c.table_name = split_part(obj, '.', 1)
+             and c.column_name = split_part(obj, '.', 2)
+         )
+         -- column_nullable: true when the column is absent (older schema, the
+         -- RPC never writes it) OR present and nullable. false = the 2026-09-16
+         -- outage: NOT NULL gift_wrap refuses every non-gift order INSERT.
+         when 'column_nullable' then coalesce((
+           select c.is_nullable = 'YES'
+           from information_schema.columns c
+           where c.table_schema = 'public'
+             and c.table_name = split_part(obj, '.', 1)
+             and c.column_name = split_part(obj, '.', 2)
+         ), true)
+       end as present
+  from checklist
+)
+select file as migration,
+       case when bool_or(present) then 'ADHEK (kichu missing) - abar chalao'
+            else 'XX  CHALAO (missing)' end as status,
+       count(*) filter (where present)     as ache,
+       count(*) filter (where not present) as nai,
+       coalesce(string_agg(label, ' | ') filter (where not present), '') as ki_nai
+from res
+group by file
+having not bool_and(present)
+order by (file like 'supabase/%') desc, file;

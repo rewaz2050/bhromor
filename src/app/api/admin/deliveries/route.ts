@@ -2,6 +2,7 @@
 import {
   expireStaleAssignments,
   listAwaitingDispatchOrders,
+  listFailedDeliveries,
   listDispatchJobs,
 } from "@/lib/db/riders";
 import { apiJson } from "@/lib/api-response";
@@ -26,9 +27,18 @@ export const GET = staffRoute("deliveries-list", async ({ db }) => {
       );
     });
   }
-  const [deliveries, awaitingOrders] = await Promise.all([
+  const [deliveries, awaitingOrders, failedDeliveries] = await Promise.all([
     listDispatchJobs(db),
     listAwaitingDispatchOrders(db),
+    // Final failed attempts waiting for a redispatch / cancel decision.
+    // A failure here must not blank the live board, so it degrades to none.
+    listFailedDeliveries(db).catch((err: unknown) => {
+      console.error(
+        "[admin/deliveries] failed-delivery list failed:",
+        err instanceof Error ? err.message : err,
+      );
+      return [];
+    }),
   ]);
-  return apiJson({ deliveries, awaitingOrders });
+  return apiJson({ deliveries, awaitingOrders, failedDeliveries });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { availabilityLabel, isOnShift } from "@/lib/rider-hours";
 import { useNow } from "@/lib/use-now";
@@ -15,6 +16,9 @@ import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions"
 import { RiderKycSummary } from "@/components/admin/rider-kyc-summary";
 import { describeLoginEmail } from "@/lib/phone-login";
 import { kycProgress } from "@/lib/rider-kyc";
+import { DISPATCH_DEFAULTS } from "@/lib/dispatch-settings";
+import { dhakaDateString } from "@/lib/delivery-slots";
+import { licenceStatus } from "@/lib/kyc-expiry";
 
 type Filter = Rider["status"] | "all";
 const FILTERS: Filter[] = ["all", "pending", "active", "rejected", "suspended"];
@@ -47,8 +51,12 @@ function RiderCard({
   onLinkRider,
   onResetPassword,
   onSettle,
+  onSettleNet,
+  cashLimit,
 }: {
   rider: Rider;
+  /** J — the dispatch cash cap (paisa); the card turns red at/over it. */
+  cashLimit: number;
   zones: { id: string; name: string }[];
   live: boolean;
   onSave: (r: Rider) => Promise<boolean>;
@@ -56,10 +64,12 @@ function RiderCard({
   onLinkRider: (id: string, email: string) => Promise<boolean>;
   onResetPassword: (id: string) => Promise<string | null>;
   onSettle: (r: Rider) => Promise<boolean>;
+  onSettleNet: (r: Rider) => Promise<boolean>;
 }) {
   // Shift badge clock — subscribed, not Date.now() in render (hydration-safe).
   const now = useNow();
   const [open, setOpen] = useState(false);
+  const [licenceToday] = useState(() => dhakaDateString(Date.now()));
   const [name, setName] = useState(rider.name);
   const [phone, setPhone] = useState(rider.phone);
   const [email, setEmail] = useState(rider.contactEmail ?? "");
@@ -107,6 +117,15 @@ function RiderCard({
             <p className="font-display text-base font-medium text-forest-900">
               {rider.name}
             </p>
+            {(rider.status === "active" || rider.status === "suspended") && (
+              <Link
+                href={`/admin/riders/${rider.id}`}
+                className="text-xs font-semibold text-forest-800 underline underline-offset-2"
+                data-testid="rider-profile-link"
+              >
+                Profile · COD ঝুঁকি ›
+              </Link>
+            )}
             <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${BADGE[rider.status]}`}>
               {rider.status}
             </span>
@@ -115,6 +134,19 @@ function RiderCard({
                 {rider.isOnline ? "Online" : "Offline"}
               </span>
             )}
+            {/* N: a lapsing / lapsed licence is visible on the board, not only on the profile. */}
+            {rider.status === "active" && (() => {
+              const lic = licenceStatus(rider.vehicle, rider.licenceExpiresOn, licenceToday);
+              if (lic.kind !== "expired" && lic.kind !== "soon") return null;
+              return (
+                <span
+                  data-testid="licence-badge"
+                  className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${lic.kind === "expired" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-900"}`}
+                >
+                  {lic.kind === "expired" ? "Licence expired" : `Licence ${lic.daysLeft}d`}
+                </span>
+              );
+            })()}
             {/* Round 4 — KYC state at a glance; the documents themselves sit in the pending card below. */}
             {(rider.status === "pending" || rider.status === "rejected") && (
               <span className={`rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-wide ${kycProgress(rider.kyc, rider.vehicle).complete ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
@@ -126,7 +158,7 @@ function RiderCard({
             {describeLoginEmail(rider.contactEmail)} · {rider.phone} ·{" "}
             {vehicleLabel(rider.vehicle)} · {rider.zoneIds.length} zones
             {rider.cashInHand > 0 && (
-              <> · <strong className={rider.cashInHand >= 500000 ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
+              <> · <strong className={rider.cashInHand >= cashLimit ? "text-rose-700" : "text-amber-800"}>cash held {formatBdt(rider.cashInHand)}</strong></>
             )}
             {/* 202609300001 — wallet owed to the rider (tips/fees), separate
                 from the COD cash they physically hold. */}
@@ -161,6 +193,28 @@ function RiderCard({
             className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 transition-colors hover:bg-amber-200"
           >
             Settle Cash ({formatBdt(rider.cashInHand)})
+          </button>
+        )}
+        {rider.cashInHand > 0 && (rider.earningsBalance ?? 0) > 0 && (
+          // Audit K: the rider owes cash AND is owed wallet money — net them so
+          // they hand over only the difference and no payout is wired back.
+          <button
+            type="button"
+            data-testid="settle-net"
+            onClick={() => {
+              const net = Math.min(rider.cashInHand, rider.earningsBalance ?? 0);
+              if (
+                window.confirm(
+                  `${rider.name}: cash ${formatBdt(rider.cashInHand)} জমা দেওয়ার কথা, wallet-এ পাওনা ${formatBdt(rider.earningsBalance ?? 0)}।\n` +
+                    `Net করলে wallet থেকে ${formatBdt(net)} কাটা হবে; rider-এর হাত থেকে নগদ নেবেন ${formatBdt(rider.cashInHand - net)}।\nনিশ্চিত?`,
+                )
+              ) {
+                void onSettleNet(rider);
+              }
+            }}
+            className="rounded-full bg-forest-100 px-3 py-1.5 text-xs font-semibold text-forest-900 ring-1 ring-forest-300 transition-colors hover:bg-forest-200"
+          >
+            Net with wallet (−{formatBdt(Math.min(rider.cashInHand, rider.earningsBalance ?? 0))})
           </button>
         )}
         <ReviewActions
@@ -291,6 +345,7 @@ export default function AdminRidersPage() {
     settleCash,
     rejectClaim,
     settleClaims,
+    dispatch,
     linkRider,
     resetRiderPassword,
     reset,
@@ -385,6 +440,42 @@ export default function AdminRidersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/riders/settings"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Dispatch rules
+          </Link>
+          <Link
+            href="/admin/riders/disputes"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Disputes
+          </Link>
+          <Link
+            href="/admin/riders/feedback"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Feedback
+          </Link>
+          <Link
+            href="/admin/riders/incentives"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Incentives
+          </Link>
+          <Link
+            href="/admin/riders/scorecard"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Scorecards
+          </Link>
+          <Link
+            href="/admin/riders/announcements"
+            className="inline-flex items-center rounded-full bg-paper px-5 py-2.5 text-sm font-semibold text-forest-900 ring-1 ring-line transition-colors hover:bg-ivory-100"
+          >
+            Announcements
+          </Link>
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
@@ -578,6 +669,7 @@ export default function AdminRidersPage() {
             <RiderCard
               key={r.id}
               rider={r}
+              cashLimit={dispatch?.cashCap ?? DISPATCH_DEFAULTS.cashCap}
               zones={zones}
               live={live}
               onSave={saveRider}
@@ -585,6 +677,7 @@ export default function AdminRidersPage() {
               onLinkRider={linkRider}
               onResetPassword={resetRiderPassword}
               onSettle={(r) => settleCash(r.id, "cash", "")}
+              onSettleNet={(r) => settleCash(r.id, "cash", "", true)}
             />
           ))}
         </ul>

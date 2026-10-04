@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
 import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
@@ -13,6 +13,8 @@ import { IconBox, IconTruck, IconPhone, IconCheck } from "@/components/ui/icons"
 import AdminLiveMap from "@/components/admin/admin-live-map";
 import { AdminSlaAlerts } from "@/components/admin/admin-sla-alerts";
 import { AdminBatchAssign } from "@/components/admin/admin-batch-assign";
+import { ReasonDialog } from "@/components/admin/reason-dialog";
+import { coverageSummary, diagnoseCoverage, type Coverage } from "@/lib/dispatch-coverage";
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   offered: { label: "Offered", cls: "bg-amber-100 text-amber-900" },
@@ -21,12 +23,16 @@ const STATE_META: Record<string, { label: string; cls: string }> = {
   delivered: { label: "Delivered", cls: "bg-emerald-100 text-emerald-800" },
   cancelled: { label: "Cancelled", cls: "bg-rose-100 text-rose-800" },
   expired: { label: "Expired", cls: "bg-ivory-200 text-ink-soft" },
+  failed: { label: "Failed", cls: "bg-rose-200 text-rose-900" },
 };
 
 export default function AdminDeliveriesPage() {
   const {
     deliveries,
     awaitingOrders,
+    failedDeliveries,
+    resolveFailed,
+    release,
     loading,
     error,
     clearError,
@@ -35,8 +41,17 @@ export default function AdminDeliveriesPage() {
     cancel,
     refresh,
   } = useAdminDeliveries();
-  const { riders } = useRiders(RIDERS_POLL_MS);
+  const { riders, dispatch, loading: ridersLoading } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
+  // Cancel / release need a written reason (shown in the order history). Asked in an
+  // inline dialog, not window.prompt — which silently did nothing on a too-short answer.
+  const [ask, setAsk] = useState<
+    | { kind: "cancel"; id: string; title: string; initial: string }
+    | { kind: "release"; id: string; title: string; initial: string }
+    | null
+  >(null);
+  // Which failed deliveries the staff member ticked "pay the rider" on (needs a fee in Dispatch rules).
+  const [payFee, setPayFee] = useState<Record<string, boolean>>({});
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {
@@ -47,10 +62,32 @@ export default function AdminDeliveriesPage() {
       delivered: 0,
       cancelled: 0,
       expired: 0,
+      failed: 0,
     };
     for (const d of deliveries) out[d.state] = (out[d.state] ?? 0) + 1;
     return out;
   }, [deliveries]);
+
+  // S: why each waiting order has (or has not) offers — the silent no-coverage case.
+  const coverage = useMemo(() => {
+    const map = new Map<string, Coverage>();
+    // An empty roster while it is still loading would shout "no rider covers…" for nothing.
+    if (ridersLoading) return map;
+    for (const order of awaitingOrders) {
+      map.set(
+        order.id,
+        diagnoseCoverage(order, riders, {
+          cashCap: dispatch.cashCap,
+          loadLimit: dispatch.loadLimit,
+          awaitingVerification: paymentSummary(order).awaitingVerification,
+          // the awaiting list only holds orders with no live assignment
+          hasLiveAssignment: false,
+        }),
+      );
+    }
+    return map;
+  }, [awaitingOrders, riders, dispatch.cashCap, dispatch.loadLimit, ridersLoading]);
+  const coverageCounts = useMemo(() => coverageSummary([...coverage.values()]), [coverage]);
 
   if (loading) {
     return (
@@ -89,6 +126,15 @@ export default function AdminDeliveriesPage() {
         </p>
       )}
 
+      {coverageCounts.alert > 0 && (
+        <p
+          role="alert"
+          data-testid="coverage-alert"
+          className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900 ring-1 ring-rose-300"
+        >
+          ⚠ {coverageCounts.alert} waiting order{coverageCounts.alert === 1 ? " has" : "s have"} no rider who can take {coverageCounts.alert === 1 ? "it" : "them"} — see “Awaiting dispatch” below for the reason and the fix.
+        </p>
+      )}
       <p className="rounded-xl bg-sky-50 p-4 text-sm text-sky-900">
         {new Set(deliveries.filter(d => d.state === "offered").map(d => d.orderId)).size} orders requesting riders · {counts.offered} invitations.
         One order can have several invitations, but only one assigned rider.
@@ -118,11 +164,126 @@ export default function AdminDeliveriesPage() {
           deliveries={deliveries.filter(d => ["accepted", "picked_up", "delivered"].includes(d.state)).map((d) => ({ orderId: d.orderId, riderId: d.riderId, state: d.state }))}
         />
         <p className="text-xs text-ink-soft">
-          Ready orders send 90-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most 2 active orders; riders at the ৳5,000 cash limit cannot accept more. Customer pickups never enter dispatch.
+          Ready orders send {dispatch.offerTtl}-second requests to eligible riders in the delivery zone. The first rider to accept gets the job. Invitations are not assignments. Riders carry at most {dispatch.loadLimit} active orders; riders at the {formatBdt(dispatch.cashCap)} cash limit cannot accept more (change in Riders → Dispatch rules). Customer pickups never enter dispatch.
         </p>
       </section>
 
-      <AdminBatchAssign riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
+      <AdminBatchAssign cashLimit={dispatch.cashCap} loadLimit={dispatch.loadLimit} riders={riders} orders={orders} onAssigned={() => { void refresh(); }} />
+
+      {failedDeliveries.length > 0 && (
+        <section aria-label="Failed deliveries">
+          <div className="mb-3 flex items-center gap-2">
+            <IconTruck className="h-4 w-4 text-rose-700" />
+            <h3 className="font-display text-base font-semibold text-rose-900">
+              Failed deliveries — needs action ({failedDeliveries.length})
+            </h3>
+          </div>
+          <p className="mb-3 text-xs leading-5 text-ink-soft">
+            The rider used every delivery attempt and is bringing the parcel back to the
+            shop. <strong>Redispatch</strong> once the shop has it (or the customer is
+            reachable again) to offer it to the area; <strong>Cancel</strong> if the order
+            is dead. A prepaid order must be refunded offline.
+          </p>
+          <div className="space-y-3">
+            {failedDeliveries.map((f) => (
+              <div
+                key={f.order.id}
+                className="space-y-3 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200"
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/admin/orders/${f.order.id}`}
+                      className="font-mono text-xs font-bold text-forest-900 hover:underline"
+                    >
+                      #{f.order.id}
+                    </Link>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      {f.order.customer.name} · {f.order.customer.phone} ·{" "}
+                      {f.order.zoneName} · {friendlyWhen(f.failedAt)}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-rose-900">
+                      {f.attempts} failed attempt{f.attempts === 1 ? "" : "s"}
+                      {f.reason ? ` — “${f.reason}”` : ""}
+                      {f.riderName ? ` · rider ${f.riderName}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-right text-sm font-bold text-forest-900">
+                    {formatBdt(f.order.total)}
+                    <span className="block text-[0.65rem] font-semibold text-ink-soft">
+                      <PaymentChip order={f.order} className="normal-case tracking-normal" />
+                    </span>
+                  </span>
+                </div>
+                {dispatch.failedFee > 0 && f.riderName && (
+                  <label className="flex items-center gap-2 border-t border-rose-200 pt-3 text-xs text-forest-900">
+                    <input
+                      type="checkbox"
+                      checked={payFee[f.order.id] === true}
+                      onChange={(e) => setPayFee((prev) => ({ ...prev, [f.order.id]: e.target.checked }))}
+                    />
+                    <span>
+                      Pay {f.riderName} {formatBdt(dispatch.failedFee)} for the failed attempt (once per order, goes to their wallet)
+                    </span>
+                  </label>
+                )}
+                <div className="flex flex-wrap gap-2 border-t border-rose-200 pt-3">
+                  {f.order.customer.phone && (
+                    <a
+                      href={`tel:${f.order.customer.phone}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                    >
+                      <IconPhone className="h-3.5 w-3.5" />
+                      Call customer
+                    </a>
+                  )}
+                  {f.riderPhone && (
+                    <a
+                      href={`tel:${f.riderPhone}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 py-1.5 text-xs font-semibold text-forest-900 hover:bg-ivory-100"
+                    >
+                      <IconPhone className="h-3.5 w-3.5" />
+                      Call rider
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busyId === f.order.id}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Send #${f.order.id} back to the area queue? Do this once the shop has the parcel again.`,
+                        )
+                      ) {
+                        void resolveFailed(f.order.id, "redispatch", "", payFee[f.order.id] === true);
+                      }
+                    }}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
+                  >
+                    <IconTruck className="h-3.5 w-3.5" />
+                    {busyId === f.order.id ? "Working…" : "Redispatch"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === f.order.id}
+                    onClick={() =>
+                      setAsk({
+                        kind: "cancel",
+                        id: f.order.id,
+                        title: `Why is #${f.order.id} being cancelled? (shown in the order history)`,
+                        initial: f.reason,
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 px-4 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    Cancel order
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-3 flex items-center gap-2">
@@ -156,6 +317,24 @@ export default function AdminDeliveriesPage() {
                       ? `rider collects ${formatBdt(cashToCollect(order))}`
                       : "no cash to collect"}
                   </p>
+                  {coverage.get(order.id) && (
+                    <p
+                      data-testid="coverage-line"
+                      data-reason={coverage.get(order.id)!.reason}
+                      className={`mt-1 text-xs font-semibold ${
+                        coverage.get(order.id)!.severity === "alert"
+                          ? "text-rose-800"
+                          : coverage.get(order.id)!.severity === "warn"
+                            ? "text-amber-800"
+                            : "text-ink-soft"
+                      }`}
+                    >
+                      {coverage.get(order.id)!.severity === "alert" ? "⚠ " : ""}
+                      {coverage.get(order.id)!.label}
+                      {coverage.get(order.id)!.waitingMin > 0 ? ` · waiting ${coverage.get(order.id)!.waitingMin} min` : ""}
+                      <span className="block font-normal text-ink-soft">→ {coverage.get(order.id)!.action}</span>
+                    </p>
+                  )}
                 </div>
                 <Link
                   href={`/admin/orders/${order.id}`}
@@ -262,6 +441,26 @@ export default function AdminDeliveriesPage() {
                       >
                         {busyId === job.id ? "Working…" : "Cancel"}
                       </button>}
+                      {(job.state === "accepted" || job.state === "picked_up") && (
+                        <button
+                          type="button"
+                          disabled={busyId === job.id}
+                          onClick={() =>
+                            setAsk({
+                              kind: "release",
+                              id: job.id,
+                              title:
+                                job.state === "accepted"
+                                  ? `Release ${job.riderName}? The order goes back to the area queue. Reason:`
+                                  : `Release ${job.riderName} while carrying the parcel? It moves to Failed deliveries for you to redispatch or cancel. Reason:`,
+                              initial: "rider unreachable",
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          {busyId === job.id ? "Working…" : "Release rider"}
+                        </button>
+                      )}
                       {job.state === "accepted" && (
                         <span className="ml-auto inline-flex items-center gap-1.5 text-[0.7rem] font-semibold text-emerald-700">
                           <IconCheck className="h-3.5 w-3.5" />
@@ -276,6 +475,22 @@ export default function AdminDeliveriesPage() {
           </div>
         )}
       </section>
+      {ask && (
+        <ReasonDialog
+          title={ask.title}
+          initial={ask.initial}
+          minLength={ask.kind === "cancel" ? 3 : 5}
+          confirmLabel={ask.kind === "cancel" ? "Cancel order" : "Release rider"}
+          busy={busyId === ask.id}
+          onCancel={() => setAsk(null)}
+          onConfirm={(reason) => {
+            const current = ask;
+            setAsk(null);
+            if (current.kind === "cancel") void resolveFailed(current.id, "cancel", reason, payFee[current.id] === true);
+            else void release(current.id, reason);
+          }}
+        />
+      )}
     </div>
   );
 }

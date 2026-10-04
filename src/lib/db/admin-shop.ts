@@ -15,6 +15,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mapShop } from "./mappers";
+import { oneShopTotals } from "./shop-balances";
 import type {
   DbOrder,
   DbProduct,
@@ -323,8 +324,11 @@ export async function loadAdminShopDetail(
     DbShopPayout,
     "id" | "amount" | "method" | "reference" | "paid_at"
   >[];
-  const earned = ledgerRows.reduce((sum, l) => sum + Number(l.payable ?? 0), 0);
-  const paid = payoutRows.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  // Lifetime figures come from the database aggregate (the windows above only
+  // bound the LISTS); if that read fails, fall back to the windowed sums.
+  const totals = await oneShopTotals(db, shopId).catch(() => null);
+  const earned = totals ? totals.earned : ledgerRows.reduce((sum, l) => sum + Number(l.payable ?? 0), 0);
+  const paid = totals ? totals.paid : payoutRows.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
   const ledger: AdminShopLedger = {
     earned,
     paid,

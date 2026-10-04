@@ -1,7 +1,7 @@
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
 -- Generated from schema.sql + the in-order migrations through
--- 202609300002 (every file in supabase/migrations/, chronologically;
+-- 202610010003 (every file in supabase/migrations/, chronologically;
 -- append-only sections after the base chain carry their own banner).
 --
 -- WHEN TO USE THIS FILE:
@@ -12428,6 +12428,4256 @@ revoke all on function ps_rider_money_summary() from public, anon;
 grant execute on function ps_rider_money_summary() to authenticated, service_role;
 revoke all on function ps_admin_money_summary() from public, anon;
 grant execute on function ps_admin_money_summary() to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider fixes Phase A (202610010001) ====
+-- ============================================================================
+-- Rider fixes, phase A (2026-10-01) — docs/AUDIT-RIDER-MONEY-2026-10-01.md
+--
+--   B (N4). RETURN LEGS PAID A COD HANDLING FEE FOR COLLECTING NO CASH.
+--      A return pickup is a zero-total order whose `payment` column simply
+--      defaults to 'cod'. ps_rider_deliver credited `cod_handling` for every
+--      order with payment = 'cod', so each return leg paid the rider a fee for
+--      handling cash that never existed. The fee now requires v_cash > 0
+--      (cash actually collected). The base fee still applies: the rider did
+--      drive the leg.
+--
+--   C (N5). A FAILED DELIVERY ATTEMPT LEFT EVERYTHING HANGING.
+--      ps_rider_failed_attempt only bumped a counter and wrote a history line.
+--      The assignment stayed live (the rider kept the load slot forever), the
+--      order stayed out-for-delivery with the rider's live GPS still visible to
+--      the customer, there was no limit on attempts, and staff had no way out:
+--      "Awaiting dispatch" listed the order, but ps_offer_order needs
+--      ready-for-pickup, so "Send area requests" always answered
+--      "no eligible rider". Now:
+--        * a rider can only report a failure for a parcel in hand (picked_up);
+--        * delivery_max_attempts (site_settings, default 2, clamp 1..5) caps it;
+--        * on the final attempt the assignment ends as 'failed' (rider freed,
+--          load released), orders.rider_id is cleared (tracking stops) and
+--          orders.delivery_failed_at flags the order for staff;
+--        * ps_admin_resolve_failed_delivery lets staff REDISPATCH (back to
+--          ready-for-pickup → area broadcast) or CANCEL (stock released by the
+--          existing cancel trigger; a prepaid order is flagged for refund).
+--      No cash is ever collected on a failed attempt, so COD custody is untouched.
+--
+--   E (N8). ADMIN COULD HAND-DELIVER AN ORDER A RIDER WAS CARRYING.
+--      Marking an order delivered from the admin panel skipped the customer PIN,
+--      the proof, the rider's COD custody and the rider's earnings, left the
+--      assignment open forever, yet still wrote the shop ledger. ps_advance_order
+--      now refuses 'delivered' while a rider assignment is accepted/picked_up
+--      (counter pickups are unaffected). ps_admin_release_assignment is the
+--      sanctioned override: it takes the job from an unresponsive rider — back
+--      to the area queue if the parcel was never collected, or into the
+--      failed-delivery list if the rider has it.
+--
+-- Idempotent — safe to re-run. Same signature as 202609300002 → grants stand.
+-- ============================================================================
+
+begin;
+
+-- ----------------------------------------------------------------------------
+-- B. ps_rider_deliver — the 202609300002 body, COD handling gated on cash.
+-- ----------------------------------------------------------------------------
+create or replace function ps_rider_deliver(p_assignment_id uuid, p_code text, p_proof_url text default null)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_cash bigint;
+  v_base_fee bigint;
+  v_cod_fee bigint;
+begin
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  if v_assignment.state <> 'picked_up' then
+    raise exception 'delivery not allowed from %', v_assignment.state;
+  end if;
+
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+  -- Read-only re-verification: attempts are counted by
+  -- ps_rider_deliver_check (a raise here would roll any count back).
+  if v_order.delivery_code_locked_until is not null
+     and v_order.delivery_code_locked_until > now() then
+    raise exception 'delivery code locked — too many wrong attempts, try again in 15 minutes';
+  end if;
+  if coalesce(v_order.delivery_code, '') is distinct from upper(trim(coalesce(p_code, ''))) then
+    raise exception 'delivery code mismatch';
+  end if;
+
+  -- Store proof URL if provided (Cloudinary)
+  if p_proof_url is not null and trim(p_proof_url) <> '' then
+    update orders
+    set delivery_proof_url = trim(p_proof_url),
+        delivery_proof_uploaded_at = now(),
+        updated_at = now()
+    where id = v_order.id;
+  end if;
+
+  -- P1 #8: the rider only ever carries cash for COD orders — a wallet order
+  -- was paid into the shop's own bKash/Nagad wallet at checkout.
+  v_cash := case when v_order.payment = 'cod' then v_order.total else 0 end;
+
+  if v_order.status is distinct from 'delivered' then
+    update orders
+    set status = 'delivered', updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (
+      v_order.id,
+      'delivered',
+      'Delivery confirmed with code + proof ' || coalesce(trim(p_proof_url), 'no-photo') || ' · '
+        || case
+             when v_order.payment = 'bkash' then 'paid via bKash at checkout'
+             when v_order.payment = 'nagad' then 'paid via Nagad at checkout'
+             else 'COD collected'
+           end,
+      auth.uid()
+    );
+  end if;
+
+  update orders
+  set delivery_code_attempts = 0, delivery_code_locked_until = null, updated_at = now()
+  where id = v_order.id;
+
+  update delivery_assignments
+  set state = 'delivered',
+      -- coalesce: keep the first stamp if this is ever re-run under a repair.
+      delivered_at = coalesce(delivered_at, now())
+  where id = v_assignment.id
+  returning * into v_assignment;
+
+  update riders
+  set cash_in_hand = cash_in_hand + v_cash
+  where id = v_assignment.rider_id;
+
+  -- 202609300001 (A): the tip is the RIDER's — 100%, exactly as both UIs
+  -- promise. The unique index makes the journal insert the once-only gate;
+  -- FOUND is false when the row was already there, so the wallet never
+  -- double-moves even under a repaired re-run.
+  if coalesce(v_order.tip_amount, 0) > 0 then
+    insert into rider_earnings (rider_id, order_id, kind, amount)
+    values (v_assignment.rider_id, v_order.id, 'tip', v_order.tip_amount)
+    on conflict (order_id, kind) do nothing;
+    if found then
+      update riders
+      set earnings_balance = earnings_balance + v_order.tip_amount
+      where id = v_assignment.rider_id;
+    end if;
+  end if;
+
+  -- Phase 2 (C): the configured per-delivery pay. Defaults are 0 → a delivery
+  -- credits nothing until the owner sets rates in Admin → Money; the journal
+  -- then keeps the two halves separate so the rider's statement can show
+  -- "delivery fee" and "COD handling" as their own lines.
+  v_base_fee := greatest(ps_setting_int('rider_base_fee_paisa', 0), 0);
+  if v_base_fee > 0 then
+    insert into rider_earnings (rider_id, order_id, kind, amount)
+    values (v_assignment.rider_id, v_order.id, 'delivery_fee', v_base_fee)
+    on conflict (order_id, kind) do nothing;
+    if found then
+      update riders
+      set earnings_balance = earnings_balance + v_base_fee
+      where id = v_assignment.rider_id;
+    end if;
+  end if;
+
+  v_cod_fee := greatest(ps_setting_int('rider_cod_handling_fee_paisa', 0), 0);
+  -- Only when cash was actually collected: a return leg (a zero-total order
+  -- whose payment column merely defaults to 'cod') or a fully discounted COD
+  -- order moves no money, so there is nothing to "handle".
+  if v_cod_fee > 0 and v_order.payment = 'cod' and v_cash > 0 then
+    insert into rider_earnings (rider_id, order_id, kind, amount)
+    values (v_assignment.rider_id, v_order.id, 'cod_handling', v_cod_fee)
+    on conflict (order_id, kind) do nothing;
+    if found then
+      update riders
+      set earnings_balance = earnings_balance + v_cod_fee
+      where id = v_assignment.rider_id;
+    end if;
+  end if;
+
+  return v_assignment;
+end $$;
+-- ----------------------------------------------------------------------------
+-- C. Failed delivery flow.
+-- ----------------------------------------------------------------------------
+alter table orders add column if not exists delivery_failed_at timestamptz;
+alter table delivery_assignments add column if not exists failed_reason text;
+
+-- Widen the assignment state check to include 'failed'. The old inline check is
+-- dropped by DEFINITION (it is auto-named), then re-added.
+do $$
+declare
+  c record;
+begin
+  for c in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.delivery_assignments'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) like '%offered%'
+  loop
+    execute format('alter table public.delivery_assignments drop constraint %I', c.conname);
+  end loop;
+end $$;
+alter table delivery_assignments
+  add constraint delivery_assignments_state_check
+  check (state in ('offered', 'accepted', 'picked_up', 'delivered', 'cancelled', 'expired', 'failed'));
+
+create or replace function ps_rider_failed_attempt(p_assignment_id uuid, p_reason text)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_reason text := trim(coalesce(p_reason, ''));
+  v_max int := least(greatest(ps_setting_int('delivery_max_attempts', 2), 1), 5);
+  v_attempts int;
+begin
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  -- A customer-side failure only exists once the parcel is in the rider's hands.
+  if v_assignment.state <> 'picked_up' then
+    raise exception 'failed attempt not allowed from %', v_assignment.state;
+  end if;
+  if length(v_reason) < 5 then
+    raise exception 'a reason is required';
+  end if;
+
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  v_attempts := coalesce(v_order.delivery_attempts, 0) + 1;
+  update orders
+  set delivery_attempts = v_attempts,
+      delivery_failed_reason = v_reason,
+      updated_at = now()
+  where id = v_order.id;
+
+  insert into order_status_history (order_id, status, note, changed_by)
+  values (
+    v_order.id,
+    v_order.status,
+    'Delivery attempt ' || v_attempts || '/' || v_max || ' failed: ' || v_reason,
+    auth.uid()
+  );
+
+  if v_attempts >= v_max then
+    -- Final attempt: the rider is released (the load trigger frees the slot),
+    -- the customer stops seeing the rider's GPS, and staff get an action item.
+    update delivery_assignments
+    set state = 'failed', failed_reason = v_reason
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, delivery_failed_at = now(), updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (
+      v_order.id,
+      v_order.status,
+      'Final failed attempt — rider must return the parcel to the shop. Staff: redispatch or cancel.',
+      auth.uid()
+    );
+  end if;
+
+  return v_assignment;
+end $$;
+
+create or replace function ps_admin_resolve_failed_delivery(
+  p_order_id uuid,
+  p_action text,
+  p_note text default null
+)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_action text := lower(coalesce(trim(p_action), ''));
+  v_note text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if v_action not in ('redispatch', 'cancel') then
+    raise exception 'action must be redispatch or cancel';
+  end if;
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+  if v_order.delivery_failed_at is null or v_order.status in ('delivered', 'cancelled') then
+    raise exception 'no failed delivery to resolve';
+  end if;
+
+  if v_action = 'redispatch' then
+    -- Back to the area queue: the status change fires the broadcast trigger.
+    update orders
+    set status = 'ready-for-pickup', rider_id = null, delivery_attempts = 0,
+        delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup',
+            'Failed delivery — redispatched to the area' || coalesce(': ' || v_note, ''), auth.uid());
+  else
+    update orders
+    set status = 'cancelled', rider_id = null, delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'cancelled',
+            'Failed delivery — order cancelled' || coalesce(': ' || v_note, '')
+              || case when v_order.payment in ('bkash', 'nagad')
+                       and coalesce(to_jsonb(v_order)->>'payment_status', '') = 'verified'
+                      then ' · PREPAID: refund the customer offline' else '' end,
+            auth.uid());
+  end if;
+  return v_order;
+end $$;
+
+revoke all on function ps_rider_failed_attempt(uuid, text) from public, anon;
+grant execute on function ps_rider_failed_attempt(uuid, text) to authenticated, service_role;
+revoke all on function ps_admin_resolve_failed_delivery(uuid, text, text) from public, anon;
+grant execute on function ps_admin_resolve_failed_delivery(uuid, text, text) to authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- E. Admin cannot hand-deliver an order a rider is carrying.
+--    ps_advance_order = the 202609170001 body + the guard below (same
+--    signature → grants stand). ps_admin_release_assignment is the sanctioned
+--    way to take a job away from an unresponsive rider.
+-- ----------------------------------------------------------------------------
+create or replace function ps_advance_order(
+  p_order_id uuid,
+  p_to ps_order_status,
+  p_note text default null
+) returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_from_pos int;
+  v_to_pos   int;
+  v_is_admin boolean;
+  v_shop uuid;
+  v_payment_rejected boolean;
+begin
+  v_is_admin := (select ps_is_admin());
+  v_shop := (select ps_vendor_shop());
+
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if not v_is_admin then
+    if v_shop is null or v_order.shop_id is distinct from v_shop then
+      raise exception 'forbidden';
+    end if;
+    if p_to not in ('confirmed', 'preparing', 'ready-for-pickup', 'cancelled') then
+      raise exception 'forbidden';
+    end if;
+  end if;
+
+  -- P1 #8: a bKash/Nagad order may not START FULFILMENT before the shop has
+  -- verified the payment in its own wallet (ps_verify_payment flips
+  -- payment_status to 'verified'). 'confirmed' and 'cancelled' stay legal —
+  -- canceling releases the reservation via trg_orders_release_on_cancel.
+  if v_order.payment in ('bkash', 'nagad')
+     and v_order.payment_status = 'pending_verification'
+     and p_to in ('preparing', 'ready-for-pickup', 'courier-assigned', 'out-for-delivery', 'delivered') then
+    raise exception 'payment not verified';
+  end if;
+
+  -- legal moves
+  if v_order.status = p_to then
+    return v_order;                          -- idempotent
+  end if;
+
+  -- 202610010001 (N8): a home-delivery order with a rider on it is closed ONLY
+  -- by that rider (ps_rider_deliver: customer PIN + proof + COD custody + the
+  -- rider's earnings). A manual "delivered" here skipped all four, left the
+  -- assignment open forever and wrote the shop ledger while no cash was on any
+  -- rider's books. Staff who need to override first release the rider
+  -- (ps_admin_release_assignment). Counter pickups never have a rider.
+  if p_to = 'delivered'
+     and not coalesce(v_order.is_pickup, false)
+     and exists (
+       select 1 from delivery_assignments
+       where order_id = p_order_id and state in ('accepted', 'picked_up')
+     ) then
+    raise exception 'rider delivery in progress';
+  end if;
+  if p_to = 'cancelled' then
+    if v_order.status not in ('pending', 'confirmed', 'preparing') then
+      raise exception 'cannot cancel from %', v_order.status;
+    end if;
+  else
+    select position into v_from_pos from ps_order_flow where status = v_order.status;
+    select position into v_to_pos   from ps_order_flow where status = p_to;
+    if v_to_pos is null or v_from_pos is null then
+      raise exception 'illegal transition % -> %', v_order.status, p_to;
+    end if;
+    -- 202609170001: the one allowed skip — Confirmed straight to Ready for
+    -- pickup ("two-tap flow"). 'preparing' is optional bookkeeping now.
+    if v_to_pos <> v_from_pos + 1
+       and not (v_order.status = 'confirmed' and p_to = 'ready-for-pickup') then
+      raise exception 'illegal transition % -> %', v_order.status, p_to;
+    end if;
+  end if;
+
+  -- P1 #8 (2): a cancelled wallet order's payment is settled as REJECTED —
+  -- the customer's track page says "not accepted", never "under
+  -- verification" on a cancelled order.
+  v_payment_rejected := p_to = 'cancelled'
+    and v_order.payment in ('bkash', 'nagad')
+    and v_order.payment_status = 'pending_verification';
+
+  update orders
+  set status = p_to,
+      payment_status = case when v_payment_rejected then 'rejected' else payment_status end,
+      payment_verified_at = case when v_payment_rejected then now() else payment_verified_at end,
+      updated_at = now()
+  where id = p_order_id;
+  insert into order_status_history (order_id, status, note, changed_by)
+  values (p_order_id, p_to, p_note, auth.uid());
+  if v_payment_rejected then
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (p_order_id, p_to,
+      'Payment rejected — order cancelled (refund from the shop wallet, offline)',
+      auth.uid());
+  end if;
+  return v_order;
+end $$;
+
+create or replace function ps_admin_release_assignment(p_assignment_id uuid, p_reason text)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_reason text := trim(coalesce(p_reason, ''));
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if length(v_reason) < 5 then
+    raise exception 'a reason is required';
+  end if;
+  select * into v_assignment from delivery_assignments
+  where id = p_assignment_id
+  for update;
+  if not found then
+    raise exception 'assignment not found';
+  end if;
+  if v_assignment.state not in ('accepted', 'picked_up') then
+    raise exception 'assignment not active';
+  end if;
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  if v_assignment.state = 'accepted' then
+    -- The parcel never left the shop: free the rider (5-minute cooldown, like
+    -- any withdrawal) and put the order back in the area queue.
+    update delivery_assignments
+    set state = 'cancelled', cancelled_by = 'withdrawn'
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, status = 'ready-for-pickup', updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup', 'Rider released by staff: ' || v_reason, auth.uid());
+  else
+    -- The parcel is with the rider: it is a failed delivery for staff to
+    -- resolve (redispatch once the shop has it back, or cancel).
+    update delivery_assignments
+    set state = 'failed', failed_reason = 'Released by staff: ' || v_reason
+    where id = v_assignment.id
+    returning * into v_assignment;
+    update orders
+    set rider_id = null, delivery_failed_at = now(), updated_at = now()
+    where id = v_order.id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, v_order.status,
+            'Rider released by staff with the parcel in hand: ' || v_reason
+              || ' — redispatch or cancel from Deliveries.', auth.uid());
+  end if;
+  return v_assignment;
+end $$;
+
+revoke all on function ps_admin_release_assignment(uuid, text) from public, anon;
+grant execute on function ps_admin_release_assignment(uuid, text) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: payment verifier (202610010002) ====
+-- ============================================================================
+-- D (N6, 2026-10-01) — WHO VERIFIES A bKash/Nagad PAYMENT IS PROSANTI'S CHOICE.
+--
+-- Until now ps_verify_payment let BOTH staff and the owning shop decide, while
+-- the wallet numbers customers pay are PROSANTI's own (site_settings ops
+-- .wallets). So a shop could "verify" money it cannot see, or staff and shop
+-- could race each other. Now each shop carries a verifier setting that admin
+-- controls (Admin → Shops → edit):
+--
+--   platform → only PROSANTI staff decide this shop's wallet payments
+--   shop     → only the owning shop decides them (staff must switch the
+--              setting back to step in)
+--   both     → either may decide (DEFAULT = the old behaviour; nothing changes
+--              for any shop until admin picks something else)
+--
+-- Money accounting is unchanged: customers still pay PROSANTI's wallet and
+-- shop_ledger still credits the shop's payable at delivery. The history note
+-- now says WHO decided. Idempotent; same signature → grants stand.
+-- ============================================================================
+
+begin;
+
+alter table shops add column if not exists payment_verifier text not null default 'both';
+alter table shops drop constraint if exists shops_payment_verifier_check;
+alter table shops add constraint shops_payment_verifier_check
+  check (payment_verifier in ('platform', 'shop', 'both'));
+
+create or replace function ps_verify_payment(p_order_id uuid, p_action text, p_note text default null)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_is_admin boolean;
+  v_shop uuid;
+  v_pv text := 'both';
+  v_by text;
+begin
+  v_is_admin := (select ps_is_admin());
+  v_shop := (select ps_vendor_shop());
+
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+
+  -- Who may decide is PROSANTI's choice per shop (shops.payment_verifier):
+  --   'platform' → staff only, 'shop' → the owning shop only, 'both' → either
+  -- (the behaviour before 202610010002, so it stays the default). An order
+  -- with no shop is staff-only business.
+  if v_order.shop_id is not null then
+    select coalesce(payment_verifier, 'both') into v_pv
+    from shops where id = v_order.shop_id;
+    v_pv := coalesce(v_pv, 'both');
+  end if;
+  if v_is_admin then
+    if v_pv = 'shop' then
+      raise exception 'payment verification delegated to the shop';
+    end if;
+    v_by := 'PROSANTI staff';
+  else
+    if v_shop is null or v_order.shop_id is distinct from v_shop then
+      raise exception 'forbidden';
+    end if;
+    if v_pv = 'platform' then
+      raise exception 'payment verification reserved for the platform';
+    end if;
+    v_by := 'the shop';
+  end if;
+
+  if v_order.payment = 'cod' then
+    raise exception 'not a wallet payment';
+  end if;
+  if v_order.payment_status <> 'pending_verification' then
+    raise exception 'payment already decided';
+  end if;
+
+  -- P1 #8 (2): a cancelled order can never be VERIFIED — the order is over,
+  -- the money is not in. Rows cancelled BEFORE the auto-reject rule still
+  -- need a decision, so REJECT stays legal and settles them (re-setting
+  -- status='cancelled' is a no-op: the release trigger only fires on the
+  -- transition into cancelled, so stock cannot be released twice).
+  if v_order.status = 'cancelled' and p_action = 'verified' then
+    raise exception 'order already cancelled';
+  end if;
+
+  if p_action = 'verified' then
+    -- The shop checked its own bKash/Nagad wallet: the money is in, this is
+    -- the moment the order may start fulfilment.
+    update orders
+    set payment_status = 'verified', payment_verified_at = now(), updated_at = now()
+    where id = p_order_id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (p_order_id, v_order.status,
+      upper(left(v_order.payment, 1)) || right(v_order.payment, length(v_order.payment) - 1) || ' payment verified by ' || v_by,
+      auth.uid());
+  elsif p_action = 'rejected' then
+    -- No matching money in the wallet: the order is cancelled and the
+    -- reservation goes back to the shelf (trg_orders_release_on_cancel).
+    -- The refund to the customer's wallet is the shop's offline handling.
+    update orders
+    set payment_status = 'rejected', payment_verified_at = now(),
+        status = 'cancelled', updated_at = now()
+    where id = p_order_id;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (p_order_id, 'cancelled',
+      'Payment rejected by ' || v_by || coalesce(' — ' || trim(coalesce(p_note, '')), '') ||
+      ' (refund from the shop wallet, offline)',
+      auth.uid());
+  else
+    raise exception 'unknown payment action';
+  end if;
+
+  select * into v_order from orders where id = p_order_id;
+  return v_order;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: net P&L (202610010003) ====
+-- ============================================================================
+-- G (N7, 2026-10-01) — A NET PROFIT & LOSS FOR THE PLATFORM.
+--
+-- Admin → Money showed "Platform income" as four gross cards: commission,
+-- delivery charge, TIPS (which belong to the riders, not the platform) and
+-- "rider pay" (tips + fees mixed). Nothing told the owner whether the platform
+-- actually makes money per delivery once riders are paid and discounts are
+-- absorbed.
+--
+-- ps_admin_money_pnl(p_from, p_to) answers that from the ledgers, for any
+-- window (null = open end). Recognition date of an order = its delivery moment.
+--
+--   + commission                     shop_ledger.commission (delivered orders)
+--   + delivery & surcharge income    orders.delivery_charge
+--   + shop-funded free delivery      the waived charge the shop pays back out of
+--                                    its payable (202609260003)
+--   − rider pay                      rider_earnings delivery_fee + cod_handling
+--                                    + incentive (+ signed adjustments)
+--   − platform-funded discounts      orders.discount − the part the SHOP funds
+--                                    (shop_ledger.promo_discount): the shop's
+--                                    payable ignores platform coupons, so the
+--                                    platform eats them
+--   = net operating result
+--
+-- Tips are pass-through and reported OUTSIDE the result (collected vs credited
+-- to riders). Staff-only on the caller's own JWT (ps_is_admin()). Read-only,
+-- idempotent.
+-- ============================================================================
+
+begin;
+
+create or replace function ps_admin_money_pnl(
+  p_from timestamptz default null,
+  p_to timestamptz default null
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v jsonb;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+
+  with base as (
+    select o.id,
+           -- orders has no delivered_at: the rider's stamp, else the moment the
+           -- 'delivered' history line was written, else the last touch.
+           coalesce(
+             (select max(a.delivered_at) from delivery_assignments a
+               where a.order_id = o.id and a.state = 'delivered'),
+             (select min(h.created_at) from order_status_history h
+               where h.order_id = o.id and h.status = 'delivered'),
+             o.updated_at
+           ) as at,
+           coalesce(o.delivery_charge, 0) as delivery_charge,
+           coalesce(o.discount, 0) as discount,
+           coalesce(o.tip_amount, 0) as tip_amount,
+           coalesce(o.is_return, false) as is_return,
+           case when coalesce(to_jsonb(o)->>'free_delivery_by', '') = 'shop'
+                then coalesce((to_jsonb(o)->>'free_delivery_waived')::bigint, 0)
+                else 0 end as shop_free_delivery
+    from orders o
+    where o.status = 'delivered'
+  ),
+  win as (
+    select * from base
+    where (p_from is null or at >= p_from)
+      and (p_to is null or at < p_to)
+  ),
+  led as (
+    select l.order_id,
+           coalesce(l.commission, 0) as commission,
+           -- promo_discount exists only after 202609280003 → read via jsonb.
+           coalesce((to_jsonb(l)->>'promo_discount')::bigint, 0) as promo_discount
+    from shop_ledger l
+    join win on win.id = l.order_id
+  ),
+  earn as (
+    select kind, amount
+    from rider_earnings
+    where (p_from is null or created_at >= p_from)
+      and (p_to is null or created_at < p_to)
+  )
+  select jsonb_build_object(
+    'deliveredOrders', (select count(*) from win where not is_return),
+    'returnLegs', (select count(*) from win where is_return),
+    'commission', coalesce((select sum(commission) from led), 0),
+    'deliveryIncome', coalesce((select sum(delivery_charge) from win), 0),
+    'shopFundedFreeDelivery', coalesce((select sum(shop_free_delivery) from win), 0),
+    'riderFees', coalesce((select sum(amount) from earn
+                           where kind in ('delivery_fee', 'cod_handling', 'incentive')), 0),
+    'riderAdjustments', coalesce((select sum(amount) from earn where kind = 'adjustment'), 0),
+    'discountsGiven', coalesce((select sum(discount) from win), 0),
+    'shopFundedDiscounts', coalesce((select sum(promo_discount) from led), 0),
+    'tipsCollected', coalesce((select sum(tip_amount) from win), 0),
+    'tipsToRiders', coalesce((select sum(amount) from earn where kind = 'tip'), 0)
+  ) into v;
+  return v;
+end $$;
+
+revoke all on function ps_admin_money_pnl(timestamptz, timestamptz) from public, anon;
+grant execute on function ps_admin_money_pnl(timestamptz, timestamptz) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: COD netting (202610010004) ====
+-- COD netting (2026-10-01, audit item K).
+--
+-- A rider can simultaneously OWE the platform cash (riders.cash_in_hand, the
+-- COD they collected) and BE OWED by it (riders.earnings_balance, the wallet).
+-- Settling the two separately means the rider hands over ৳5,000 and the
+-- platform then wires the same rider ৳1,200 back. This lets staff NET them:
+--
+--   netted = least(cash_in_hand, earnings_balance)
+--   cash the rider physically hands over = cash_in_hand − netted
+--
+-- • The cash debt is fully cleared (rider_settlements.amount = the whole debt;
+--   rider_settlements.netted_amount = the part paid from the wallet).
+-- • The wallet is debited by a NEGATIVE journal row kind 'cod_netting' that
+--   points at the settlement, so riders.earnings_balance stays = Σ journal.
+-- • 'cod_netting' is not income: the rider's today/week/lifetime and the admin
+--   P&L both count only named earning kinds, so neither is distorted.
+-- • Staff-only, opt-in per settlement (default false = exactly the old flow).
+-- Safe to re-run.
+begin;
+
+alter table rider_settlements
+  add column if not exists netted_amount int not null default 0
+  check (netted_amount >= 0);
+
+alter table rider_earnings
+  add column if not exists settlement_id uuid references rider_settlements (id);
+
+alter table rider_earnings drop constraint if exists rider_earnings_kind_check;
+alter table rider_earnings
+  add constraint rider_earnings_kind_check
+  check (kind in (
+    'tip', 'delivery_fee', 'cod_handling', 'incentive',
+    'payout', 'payout_refund', 'adjustment', 'cod_netting'
+  ));
+
+alter table rider_earnings drop constraint if exists rider_earnings_order_kind_check;
+alter table rider_earnings
+  add constraint rider_earnings_order_kind_check
+  check (order_id is not null
+         or kind in ('payout', 'payout_refund', 'adjustment', 'incentive', 'cod_netting'));
+
+-- A netting row is a debit and always names its settlement.
+alter table rider_earnings drop constraint if exists rider_earnings_netting_check;
+alter table rider_earnings
+  add constraint rider_earnings_netting_check
+  check ((kind = 'cod_netting') = (settlement_id is not null)
+         and (kind <> 'cod_netting' or amount < 0));
+
+-- The signature gains a parameter, so the old one must go (two overloads would
+-- make PostgREST named-argument calls ambiguous). Old 3-arg callers still work
+-- through the default.
+drop function if exists ps_admin_settle_rider(uuid, text, text);
+
+create or replace function ps_admin_settle_rider(
+  p_rider_id uuid,
+  p_method text default 'cash',
+  p_reference text default '',
+  p_net_wallet boolean default false
+)
+returns rider_settlements
+language plpgsql security definer set search_path = public as $$
+declare
+  v_rider riders%rowtype;
+  v_settlement rider_settlements%rowtype;
+  v_netted bigint := 0;
+  v_ref text := coalesce(trim(p_reference), '');  -- the netted part is in netted_amount
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  select * into v_rider from riders where id = p_rider_id for update;
+  if not found then
+    raise exception 'rider not found';
+  end if;
+  if v_rider.cash_in_hand <= 0 then
+    raise exception 'nothing to settle';
+  end if;
+
+  -- earnings_balance is already net of any pending payout request (the hold is
+  -- debited when the rider asks), so only free wallet money can be netted.
+  if coalesce(p_net_wallet, false) and v_rider.earnings_balance > 0 then
+    v_netted := least(v_rider.cash_in_hand::bigint, v_rider.earnings_balance::bigint);
+  end if;
+
+  insert into rider_settlements (rider_id, amount, netted_amount, method, reference, settled_by)
+  values (
+    v_rider.id,
+    v_rider.cash_in_hand,
+    v_netted,
+    coalesce(nullif(trim(p_method), ''), 'cash'),
+    v_ref,
+    auth.uid()
+  )
+  returning * into v_settlement;
+
+  if v_netted > 0 then
+    insert into rider_earnings (rider_id, order_id, kind, amount, settlement_id, note)
+    values (v_rider.id, null, 'cod_netting', -v_netted, v_settlement.id,
+            'COD cash netted against wallet');
+    update riders
+    set earnings_balance = earnings_balance - v_netted
+    where id = v_rider.id;
+  end if;
+
+  update riders set cash_in_hand = 0 where id = v_rider.id;
+  update rider_settle_claims
+  set status = 'approved', decided_at = now(), decided_by = auth.uid()
+  where rider_id = v_rider.id and status = 'pending';
+  return v_settlement;
+end $$;
+
+revoke all on function ps_admin_settle_rider(uuid, text, text, boolean) from public, anon;
+grant execute on function ps_admin_settle_rider(uuid, text, text, boolean) to authenticated, service_role;
+
+commit;
+
+-- ==== Feature: vendor sees the rider (202610010005) ====
+-- Vendor sees who is coming for the parcel (2026-10-01, audit item H / B5).
+--
+-- A shop used to press "Ready — request riders" and then see NOTHING: not who
+-- accepted, not a number to call when the parcel is waiting. Shops cannot read
+-- riders / delivery_assignments (RLS is admin / own-rider only), so this is a
+-- narrow SECURITY DEFINER read:
+--   • only the OWNING shop (orders.shop_id = ps_vendor_shop()) gets an answer;
+--   • only while a rider is actually on the job (accepted / picked_up) — the
+--     rider's phone is not exposed for offers, finished or failed jobs;
+--   • only name, phone, vehicle and the job state; nothing financial.
+-- Returns NULL when there is nobody to show. Safe to re-run.
+begin;
+
+create or replace function ps_vendor_order_rider(p_order_id uuid)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_shop uuid := ps_vendor_shop();
+  v jsonb;
+begin
+  if v_shop is null then
+    raise exception 'forbidden';
+  end if;
+  select jsonb_build_object(
+           'name', r.name,
+           'phone', r.phone,
+           'vehicle', r.vehicle,
+           'state', a.state
+         )
+    into v
+  from delivery_assignments a
+  join riders r on r.id = a.rider_id
+  join orders o on o.id = a.order_id
+  where a.order_id = p_order_id
+    and o.shop_id = v_shop
+    and a.state in ('accepted', 'picked_up')
+  order by a.offered_at desc
+  limit 1;
+  return v; -- null when the order is not this shop's or nobody is on it
+end $$;
+
+revoke all on function ps_vendor_order_rider(uuid) from public, anon;
+grant execute on function ps_vendor_order_rider(uuid) to authenticated, service_role;
+
+commit;
+
+-- ==== Feature: money audit trail (202610010006) ====
+-- Money audit trail (2026-10-01, audit item T).
+--
+-- Every approval that moves or authorises money leaves a permanent, tamper-
+-- resistant line: who, when, what, how much. It is written by DATABASE TRIGGERS
+-- on the money tables — not by app code — so no route, no SQL-editor shortcut
+-- through the app and no future feature can forget to log, and the log is
+-- append-only (UPDATE / DELETE are refused by a trigger).
+--
+-- Events:
+--   shop_payout            shop_payouts INSERT
+--   rider_payout_paid /    rider_payout_requests pending → paid / rejected
+--   rider_payout_rejected
+--   rider_settle           rider_settlements INSERT (incl. the netted part)
+--   settle_claim_rejected  rider_settle_claims pending → rejected
+--   payment_verified /     orders.payment_status pending_verification → verified / rejected
+--   payment_rejected
+--   rider_adjustment       rider_earnings INSERT of kind adjustment / incentive
+--   rate_change            site_settings rider pay-rate keys (old → new)
+--   wallet_numbers_changed site_settings 'ops' wallets (the numbers customers pay)
+-- actor_id is auth.uid(); NULL means the service role / a database session.
+-- Safe to re-run.
+begin;
+
+create table if not exists money_audit_log (
+  id            uuid primary key default gen_random_uuid(),
+  at            timestamptz not null default now(),
+  actor_id      uuid,
+  actor_email   text,
+  event         text not null,
+  subject_type  text not null,
+  subject_id    text,
+  amount        bigint,
+  detail        jsonb not null default '{}'::jsonb
+);
+create index if not exists idx_money_audit_at on money_audit_log (at desc);
+create index if not exists idx_money_audit_event on money_audit_log (event, at desc);
+create index if not exists idx_money_audit_subject on money_audit_log (subject_type, subject_id);
+
+alter table money_audit_log enable row level security;
+drop policy if exists "money audit admin read" on money_audit_log;
+create policy "money audit admin read" on money_audit_log
+  for select using (ps_is_admin());
+
+-- Append-only, even for the service role.
+create or replace function ps_money_audit_immutable()
+returns trigger language plpgsql as $$
+begin
+  raise exception 'money_audit_log is append-only';
+end $$;
+drop trigger if exists trg_money_audit_immutable on money_audit_log;
+create trigger trg_money_audit_immutable
+  before update or delete on money_audit_log
+  for each row execute function ps_money_audit_immutable();
+
+revoke all on money_audit_log from public, anon, authenticated;
+grant select on money_audit_log to authenticated;
+grant select, insert on money_audit_log to service_role;
+
+-- One writer for every event.
+drop function if exists ps_money_audit_write(text, text, text, bigint, jsonb);
+create or replace function ps_money_audit_write(
+  p_event text, p_type text, p_subject text, p_amount bigint, p_detail jsonb,
+  p_actor uuid default null
+) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  -- the JWT user; else the actor the row itself names (paid_by / decided_by /
+  -- settled_by) so a service-role write is still attributed to a person.
+  v_actor uuid := coalesce(auth.uid(), p_actor);
+  v_email text;
+begin
+  if v_actor is not null then
+    begin
+      execute 'select email from auth.users where id = $1' into v_email using v_actor;
+    exception when others then
+      v_email := null;
+    end;
+  end if;
+  insert into money_audit_log (actor_id, actor_email, event, subject_type, subject_id, amount, detail)
+  values (v_actor, v_email, p_event, p_type, p_subject, p_amount, coalesce(p_detail, '{}'::jsonb));
+end $$;
+revoke all on function ps_money_audit_write(text, text, text, bigint, jsonb, uuid) from public, anon, authenticated;
+
+-- The trigger body: dispatches on the table.
+create or replace function ps_money_audit_trg()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
+begin
+  if tg_table_name = 'shop_payouts' then
+    perform ps_money_audit_write('shop_payout', 'shop', new.shop_id::text, new.amount,
+      jsonb_build_object('payoutId', new.id, 'method', new.method, 'reference', new.reference),
+      new.paid_by);
+
+  elsif tg_table_name = 'rider_payout_requests' then
+    if old.status = 'pending' and new.status in ('paid', 'rejected') then
+      perform ps_money_audit_write('rider_payout_' || new.status, 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('payoutId', new.id, 'method', new.method,
+                           'reference', new.reference, 'note', new.note),
+        new.decided_by);
+    end if;
+
+  elsif tg_table_name = 'rider_settlements' then
+    perform ps_money_audit_write('rider_settle', 'rider', new.rider_id::text, new.amount,
+      jsonb_build_object('settlementId', new.id, 'method', new.method, 'reference', new.reference,
+                         'netted', coalesce(to_jsonb(new) ->> 'netted_amount', '0')::bigint),
+      new.settled_by);
+
+  elsif tg_table_name = 'rider_settle_claims' then
+    if old.status = 'pending' and new.status = 'rejected' then
+      perform ps_money_audit_write('settle_claim_rejected', 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('claimId', new.id, 'note', to_jsonb(new) ->> 'note'),
+        nullif(to_jsonb(new) ->> 'decided_by', '')::uuid);
+    end if;
+
+  elsif tg_table_name = 'orders' then
+    if old.payment_status = 'pending_verification' and new.payment_status in ('verified', 'rejected') then
+      perform ps_money_audit_write('payment_' || new.payment_status, 'order', new.id::text, new.total,
+        jsonb_build_object('payment', new.payment, 'shopId', new.shop_id));
+    end if;
+
+  elsif tg_table_name = 'rider_earnings' then
+    if new.kind in ('adjustment', 'incentive') then
+      perform ps_money_audit_write('rider_adjustment', 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('kind', new.kind, 'note', new.note, 'orderId', new.order_id));
+    end if;
+
+  elsif tg_table_name = 'site_settings' then
+    if new.key in ('rider_base_fee_paisa', 'rider_cod_handling_fee_paisa', 'rider_min_payout_paisa') then
+      v_old := case when tg_op = 'UPDATE' then old.value end;  -- OLD does not exist on INSERT
+      if v_old is distinct from new.value then
+        perform ps_money_audit_write('rate_change', 'setting', new.key, null,
+          jsonb_build_object('from', v_old, 'to', new.value));
+      end if;
+    elsif new.key = 'ops' then
+      v_old := case when tg_op = 'UPDATE' then old.value -> 'wallets' end;
+      v_new := new.value -> 'wallets';
+      if v_new is distinct from v_old then
+        -- The numbers customers pay into: log THAT they changed and which
+        -- methods, never the numbers themselves.
+        perform ps_money_audit_write('wallet_numbers_changed', 'setting', 'ops', null,
+          jsonb_build_object('methods', (select coalesce(jsonb_agg(k order by k), '[]'::jsonb)
+                                         from jsonb_object_keys(coalesce(v_new, '{}'::jsonb)) k)));
+      end if;
+    end if;
+  end if;
+  return null;
+end $$;
+revoke all on function ps_money_audit_trg() from public, anon, authenticated;
+
+-- Triggers — only on tables that exist on this database (partial migrations).
+do $$
+begin
+  if to_regclass('public.shop_payouts') is not null then
+    drop trigger if exists trg_money_audit on shop_payouts;
+    create trigger trg_money_audit after insert on shop_payouts
+      for each row execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.rider_payout_requests') is not null then
+    drop trigger if exists trg_money_audit on rider_payout_requests;
+    create trigger trg_money_audit after update on rider_payout_requests
+      for each row execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.rider_settlements') is not null then
+    drop trigger if exists trg_money_audit on rider_settlements;
+    create trigger trg_money_audit after insert on rider_settlements
+      for each row execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.rider_settle_claims') is not null then
+    drop trigger if exists trg_money_audit on rider_settle_claims;
+    create trigger trg_money_audit after update on rider_settle_claims
+      for each row execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.orders') is not null then
+    drop trigger if exists trg_money_audit on orders;
+    create trigger trg_money_audit after update of payment_status on orders
+      for each row when (old.payment_status is distinct from new.payment_status)
+      execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.rider_earnings') is not null then
+    drop trigger if exists trg_money_audit on rider_earnings;
+    create trigger trg_money_audit after insert on rider_earnings
+      for each row when (new.kind in ('adjustment', 'incentive'))
+      execute function ps_money_audit_trg();
+  end if;
+  if to_regclass('public.site_settings') is not null then
+    drop trigger if exists trg_money_audit on site_settings;
+    create trigger trg_money_audit after insert or update on site_settings
+      for each row when (new.key in ('rider_base_fee_paisa', 'rider_cod_handling_fee_paisa',
+                                     'rider_min_payout_paisa', 'ops'))
+      execute function ps_money_audit_trg();
+  end if;
+end $$;
+
+commit;
+
+-- ==== Feature: daily money reconciliation (202610010007) ====
+-- ============================================================================
+-- U (2026-10-01) — DAILY MONEY RECONCILIATION.
+--
+-- ps_admin_money_daily(p_day) answers, for one Dhaka calendar day: what moved
+-- (orders delivered, COD cash riders collected, what riders handed in, what was
+-- paid out to riders and shops), what the position is NOW (cash riders hold,
+-- what is owed to riders and shops) and — the point of a reconciliation — a
+-- list of CHECKS that must all be clean: a rider wallet that no longer equals
+-- its journal, an overpaid shop, a delivered order with no shop ledger line,
+-- payouts / claims / failed deliveries that have sat untouched.
+--
+-- Read-only, staff-only on the caller's own JWT (ps_is_admin()). Optional
+-- columns / tables are read defensively so a partly migrated database still
+-- answers. Order recognition date = delivery moment, as in ps_admin_money_pnl.
+-- ============================================================================
+begin;
+
+create or replace function ps_admin_money_daily(p_day date default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_day date := coalesce(p_day, (now() at time zone 'Asia/Dhaka')::date);
+  v_from timestamptz := (coalesce(p_day, (now() at time zone 'Asia/Dhaka')::date))::timestamp at time zone 'Asia/Dhaka';
+  v_to timestamptz;
+  v_flows jsonb;
+  v_position jsonb;
+  v_checks jsonb := '[]'::jsonb;
+  v_count bigint;
+  v_sample text[];
+  v_has_claims boolean := to_regclass('public.rider_settle_claims') is not null;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  v_to := v_from + interval '1 day';
+
+  with d as (
+    select o.id, o.total, o.payment, o.delivery_charge,
+           coalesce(o.is_return, false) as is_return,
+           coalesce(
+             (select max(a.delivered_at) from delivery_assignments a
+               where a.order_id = o.id and a.state = 'delivered'),
+             (select min(h.created_at) from order_status_history h
+               where h.order_id = o.id and h.status = 'delivered'),
+             o.updated_at
+           ) as at,
+           exists (select 1 from delivery_assignments a
+                    where a.order_id = o.id and a.state = 'delivered') as by_rider
+    from orders o
+    where o.status = 'delivered'
+  ),
+  day_orders as (select * from d where at >= v_from and at < v_to),
+  earn as (
+    select kind, amount from rider_earnings where created_at >= v_from and created_at < v_to
+  ),
+  setl as (
+    select amount, coalesce((to_jsonb(s)->>'netted_amount')::bigint, 0) as netted
+    from rider_settlements s where settled_at >= v_from and settled_at < v_to
+  )
+  select jsonb_build_object(
+    'deliveredOrders',     (select count(*) from day_orders where not is_return),
+    'returnLegs',          (select count(*) from day_orders where is_return),
+    'orderValue',          coalesce((select sum(total) from day_orders where not is_return), 0),
+    'codCollectedByRiders',coalesce((select sum(total) from day_orders where payment = 'cod' and by_rider), 0),
+    'walletPaidOrders',    coalesce((select sum(total) from day_orders where payment <> 'cod'), 0),
+    'commission',          coalesce((select sum(l.commission) from shop_ledger l join day_orders o on o.id = l.order_id), 0),
+    'deliveryIncome',      coalesce((select sum(delivery_charge) from day_orders), 0),
+    'shopPayableAccrued',  coalesce((select sum(l.payable) from shop_ledger l join day_orders o on o.id = l.order_id), 0),
+    'shopPayoutsPaid',     coalesce((select sum(amount) from shop_payouts where paid_at >= v_from and paid_at < v_to), 0),
+    'riderEarned',         coalesce((select sum(amount) from earn where kind in ('tip', 'delivery_fee', 'cod_handling', 'incentive')), 0),
+    'riderAdjustments',    coalesce((select sum(amount) from earn where kind = 'adjustment'), 0),
+    'riderPayoutsRequested', coalesce((select sum(amount) from rider_payout_requests where requested_at >= v_from and requested_at < v_to), 0),
+    'riderPayoutsPaid',    coalesce((select sum(amount) from rider_payout_requests
+                                      where status = 'paid' and decided_at >= v_from and decided_at < v_to), 0),
+    'settlementsCount',    (select count(*) from setl),
+    'settlementsTotal',    coalesce((select sum(amount) from setl), 0),
+    'settlementsNetted',   coalesce((select sum(netted) from setl), 0),
+    'cashHandedIn',        coalesce((select sum(amount - netted) from setl), 0)
+  ) into v_flows;
+
+  v_position := jsonb_build_object(
+    'codCustody',  coalesce((select sum(cash_in_hand) from riders), 0),
+    'riderPayable',coalesce((select sum(earnings_balance) from riders), 0),
+    'shopPayable', coalesce((select sum(payable) from shop_ledger), 0)
+                   - coalesce((select sum(amount) from shop_payouts), 0)
+  );
+
+  -- ── CHECKS ───────────────────────────────────────────────────────────────
+  -- 1. every rider wallet equals the sum of its journal
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from (select r.id from riders r
+        where r.earnings_balance <> coalesce((select sum(e.amount) from rider_earnings e where e.rider_id = r.id), 0)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'wallet_journal', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 2. no rider holds negative cash
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample from riders where cash_in_hand < 0;
+  v_checks := v_checks || jsonb_build_object('key', 'negative_cash', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 3. no shop has been paid more than it earned
+  select count(*), (array_agg(shop_id::text))[1:5] into v_count, v_sample
+  from (select t.shop_id
+        from (select l.shop_id, l.payable as earned, 0::bigint as paid from shop_ledger l
+              union all
+              select p.shop_id, 0, p.amount from shop_payouts p) t
+        group by t.shop_id
+        having sum(t.earned) < sum(t.paid)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'shop_overpaid', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 4. every order delivered today (with a shop) has its shop ledger line
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from (select o.id from orders o
+        where o.status = 'delivered' and o.shop_id is not null
+          and not coalesce(o.is_return, false)
+          and o.updated_at >= v_from and o.updated_at < v_to
+          and not exists (select 1 from shop_ledger l where l.order_id = o.id)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'delivered_no_ledger', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 5. rider payout requests waiting more than 48 hours
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from rider_payout_requests where status = 'pending' and requested_at < now() - interval '48 hours';
+  v_checks := v_checks || jsonb_build_object('key', 'stale_payouts', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 6. settle claims waiting more than 48 hours
+  v_count := 0; v_sample := null;
+  if v_has_claims then
+    execute $q$select count(*), (array_agg(id::text))[1:5] from rider_settle_claims
+               where status = 'pending' and created_at < now() - interval '48 hours'$q$
+      into v_count, v_sample;
+  end if;
+  v_checks := v_checks || jsonb_build_object('key', 'stale_claims', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 7. failed deliveries nobody has resolved (202610010001 column)
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from orders o
+  where o.status = 'out-for-delivery' and nullif(to_jsonb(o)->>'delivery_failed_at', '') is not null;
+  v_checks := v_checks || jsonb_build_object('key', 'open_failed_deliveries', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 8. wallet payments awaiting a decision for more than a day
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from orders o
+  where o.payment <> 'cod' and o.payment_status = 'pending_verification'
+    and o.status <> 'cancelled' and o.created_at < now() - interval '24 hours';
+  v_checks := v_checks || jsonb_build_object('key', 'stale_payment_verification', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  return jsonb_build_object('day', v_day, 'flows', v_flows, 'position', v_position, 'checks', v_checks);
+end $$;
+
+revoke all on function ps_admin_money_daily(date) from public, anon;
+grant execute on function ps_admin_money_daily(date) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider inbox / announcements (202610020001) ====
+-- ============================================================================
+-- C4 / O (2026-10-02) — RIDER INBOX: office announcements to riders.
+--
+-- Until now the office had no way to tell riders anything inside the app
+-- ("settle by 8pm", "Zindabazar road closed", "your KYC photo is blurry").
+-- rider_announcements holds a message either for EVERY rider (rider_id null)
+-- or for ONE rider, optionally expiring. rider_inbox_state remembers when
+-- each rider last opened the inbox so the app can show an unread badge.
+--
+-- Writes go through two staff-only SECURITY DEFINER RPCs (ps_is_admin()), so
+-- no table grant is needed for staff. Riders read through the app's rider
+-- API (service role, scoped to the session rider) — they get no direct table
+-- access. Safe to re-run.
+-- ============================================================================
+begin;
+
+create table if not exists rider_announcements (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null check (char_length(btrim(title)) between 1 and 120),
+  body        text not null default '' check (char_length(body) <= 1000),
+  severity    text not null default 'info' check (severity in ('info', 'important')),
+  rider_id    uuid references riders (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  created_by  uuid,
+  expires_at  timestamptz
+);
+create index if not exists idx_rider_announcements_recent on rider_announcements (created_at desc);
+create index if not exists idx_rider_announcements_rider on rider_announcements (rider_id, created_at desc);
+
+create table if not exists rider_inbox_state (
+  rider_id      uuid primary key references riders (id) on delete cascade,
+  last_read_at  timestamptz not null default now()
+);
+
+alter table rider_announcements enable row level security;
+alter table rider_inbox_state enable row level security;
+
+drop policy if exists "rider announcements admin read" on rider_announcements;
+create policy "rider announcements admin read" on rider_announcements
+  for select using (ps_is_admin());
+
+revoke all on rider_announcements from public, anon, authenticated;
+revoke all on rider_inbox_state from public, anon, authenticated;
+grant select on rider_announcements to authenticated;
+grant select, insert, update, delete on rider_announcements to service_role;
+grant select, insert, update, delete on rider_inbox_state to service_role;
+
+-- Staff posts a message. p_rider_id null = everyone. p_expires_hours null/0 = never.
+drop function if exists ps_admin_post_announcement(text, text, text, uuid, integer);
+create or replace function ps_admin_post_announcement(
+  p_title text,
+  p_body text default '',
+  p_severity text default 'info',
+  p_rider_id uuid default null,
+  p_expires_hours integer default null
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+  v_title text := btrim(coalesce(p_title, ''));
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if char_length(v_title) = 0 or char_length(v_title) > 120 then
+    raise exception 'invalid_title';
+  end if;
+  if char_length(coalesce(p_body, '')) > 1000 then
+    raise exception 'invalid_body';
+  end if;
+  if p_rider_id is not null and not exists (select 1 from riders where id = p_rider_id) then
+    raise exception 'rider_not_found';
+  end if;
+  insert into rider_announcements (title, body, severity, rider_id, created_by, expires_at)
+  values (
+    v_title,
+    coalesce(p_body, ''),
+    case when p_severity = 'important' then 'important' else 'info' end,
+    p_rider_id,
+    auth.uid(),
+    case when coalesce(p_expires_hours, 0) > 0 then now() + make_interval(hours => least(p_expires_hours, 24 * 90)) end
+  )
+  returning id into v_id;
+  return v_id;
+end $$;
+
+drop function if exists ps_admin_delete_announcement(uuid);
+create or replace function ps_admin_delete_announcement(p_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  delete from rider_announcements where id = p_id;
+end $$;
+
+revoke all on function ps_admin_post_announcement(text, text, text, uuid, integer) from public, anon;
+revoke all on function ps_admin_delete_announcement(uuid) from public, anon;
+grant execute on function ps_admin_post_announcement(text, text, text, uuid, integer) to authenticated, service_role;
+grant execute on function ps_admin_delete_announcement(uuid) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: admin rider profile / COD risk (202610020002) ====
+-- ============================================================================
+-- L (2026-10-02) — ADMIN RIDER PROFILE: one read for "can I trust this rider
+-- with more cash?".
+--
+-- ps_admin_rider_overview(p_rider_id) returns, for ONE rider, staff-only:
+--   rider        identity, status, online, rating, lifetime deliveries
+--   money        wallet, cash in hand, lifetime earned, paid out, pending
+--                payout, netted against cash, handed in so far
+--   risk         the FACTS behind COD risk: cash vs the dispatch cap, COD
+--                deliveries since the last settlement (count / value / oldest),
+--                the pending claim, rejected claims in 30 days
+--   performance  30-day offer outcomes (delivered / failed / declined /
+--                expired) and 7/30-day deliveries
+--   journal / payouts / settlements / claims / trips  the latest rows
+-- The app turns the facts into a risk level (src/lib/rider-risk.ts) so the
+-- thresholds are unit-tested, not buried in SQL.
+--
+-- Read-only, staff-only on the caller's JWT (ps_is_admin()). rider_earnings,
+-- payouts and claims have RLS with no policies, so this SECURITY DEFINER read
+-- is the ONLY way staff see them. Optional tables are read defensively.
+-- Safe to re-run.
+-- ============================================================================
+begin;
+
+create or replace function ps_admin_rider_overview(p_rider_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_rider riders%rowtype;
+  v_has_claims boolean := to_regclass('public.rider_settle_claims') is not null;
+  v_has_earn boolean := to_regclass('public.rider_earnings') is not null;
+  v_has_payouts boolean := to_regclass('public.rider_payout_requests') is not null;
+  v_last_settled timestamptz;
+  v_cod_count bigint := 0;
+  v_cod_value bigint := 0;
+  v_cod_oldest timestamptz;
+  v_money jsonb;
+  v_perf jsonb;
+  v_claim jsonb := null;
+  v_rejected bigint := 0;
+  v_journal jsonb := '[]'::jsonb;
+  v_payouts jsonb := '[]'::jsonb;
+  v_claims jsonb := '[]'::jsonb;
+  v_settlements jsonb;
+  v_trips jsonb;
+  v_earned bigint := 0;
+  v_netted bigint := 0;
+  v_paid bigint := 0;
+  v_pending bigint := 0;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  select * into v_rider from riders where id = p_rider_id;
+  if not found then
+    raise exception 'rider_not_found';
+  end if;
+
+  select max(settled_at) into v_last_settled from rider_settlements where rider_id = p_rider_id;
+
+  -- COD parcels delivered since the last time the rider handed cash in. Only
+  -- meaningful while the rider still holds cash.
+  if coalesce(v_rider.cash_in_hand, 0) > 0 then
+    select count(*), coalesce(sum(o.total), 0), min(a.delivered_at)
+      into v_cod_count, v_cod_value, v_cod_oldest
+      from delivery_assignments a
+      join orders o on o.id = a.order_id
+     where a.rider_id = p_rider_id
+       and a.state = 'delivered'
+       and coalesce(o.payment, 'cod') = 'cod'
+       and coalesce(o.is_return, false) = false
+       and a.delivered_at > coalesce(v_last_settled, '-infinity'::timestamptz);
+  end if;
+
+  if v_has_earn then
+    select coalesce(sum(amount) filter (where kind in ('tip','delivery_fee','cod_handling','incentive')), 0),
+           coalesce(-sum(amount) filter (where kind = 'cod_netting'), 0)
+      into v_earned, v_netted
+      from rider_earnings where rider_id = p_rider_id;
+    select coalesce(jsonb_agg(j order by (j->>'at') desc), '[]'::jsonb) into v_journal from (
+      select jsonb_build_object('id', e.id, 'kind', e.kind, 'amount', e.amount, 'note', e.note,
+                                'at', e.created_at, 'orderNo', o.order_no) as j
+        from rider_earnings e left join orders o on o.id = e.order_id
+       where e.rider_id = p_rider_id
+       order by e.created_at desc limit 30) s;
+  end if;
+
+  if v_has_payouts then
+    select coalesce(sum(amount) filter (where status = 'paid'), 0),
+           coalesce(sum(amount) filter (where status = 'pending'), 0)
+      into v_paid, v_pending
+      from rider_payout_requests where rider_id = p_rider_id;
+    select coalesce(jsonb_agg(j order by (j->>'at') desc), '[]'::jsonb) into v_payouts from (
+      select jsonb_build_object('id', id, 'amount', amount, 'method', method, 'account', account,
+                                'status', status, 'at', requested_at, 'decidedAt', decided_at,
+                                'note', note, 'reference', reference) as j
+        from rider_payout_requests where rider_id = p_rider_id
+       order by requested_at desc limit 10) s;
+  end if;
+
+  if v_has_claims then
+    select jsonb_build_object('id', id, 'amount', amount, 'method', method, 'reference', reference, 'at', created_at)
+      into v_claim
+      from rider_settle_claims where rider_id = p_rider_id and status = 'pending'
+     order by created_at desc limit 1;
+    select count(*) into v_rejected from rider_settle_claims
+     where rider_id = p_rider_id and status = 'rejected' and created_at >= now() - interval '30 days';
+    select coalesce(jsonb_agg(j order by (j->>'at') desc), '[]'::jsonb) into v_claims from (
+      select jsonb_build_object('id', id, 'amount', amount, 'method', method, 'reference', reference,
+                                'status', status, 'at', created_at, 'decidedAt', decided_at, 'note', note) as j
+        from rider_settle_claims where rider_id = p_rider_id
+       order by created_at desc limit 10) s;
+  end if;
+
+  select coalesce(jsonb_agg(j order by (j->>'at') desc), '[]'::jsonb) into v_settlements from (
+    select jsonb_build_object('id', id, 'amount', amount, 'nettedAmount', coalesce(netted_amount, 0),
+                              'method', method, 'reference', reference, 'at', settled_at) as j
+      from rider_settlements where rider_id = p_rider_id
+     order by settled_at desc limit 10) s;
+
+  v_money := jsonb_build_object(
+    'cashInHand', coalesce(v_rider.cash_in_hand, 0),
+    'earningsBalance', coalesce(v_rider.earnings_balance, 0),
+    'lifetimeEarned', v_earned,
+    'paidOut', v_paid,
+    'pendingPayout', v_pending,
+    'nettedAgainstCash', v_netted,
+    'handedIn', coalesce((select sum(amount) from rider_settlements where rider_id = p_rider_id), 0)
+  );
+
+  select jsonb_build_object(
+    'offered30', count(*),
+    'delivered30', count(*) filter (where state = 'delivered'),
+    'failed30', count(*) filter (where state = 'failed'),
+    'declined30', count(*) filter (where state = 'cancelled' and cancelled_by = 'rider_decline'),
+    'expired30', count(*) filter (where state = 'expired'),
+    'delivered7', (select count(*) from delivery_assignments d
+                    where d.rider_id = p_rider_id and d.state = 'delivered'
+                      and d.delivered_at >= now() - interval '7 days'),
+    'avgDeliveryMinutes', v_rider.avg_delivery_minutes
+  ) into v_perf
+  from delivery_assignments
+  where rider_id = p_rider_id and offered_at >= now() - interval '30 days';
+
+  select coalesce(jsonb_agg(j order by (j->>'at') desc), '[]'::jsonb) into v_trips from (
+    select jsonb_build_object(
+             'id', a.id, 'orderNo', o.order_no, 'state', a.state,
+             'at', coalesce(a.delivered_at, a.offered_at), 'area', o.area, 'total', o.total,
+             'payment', coalesce(o.payment, 'cod'), 'isReturn', coalesce(o.is_return, false),
+             'shop', s.name, 'failedReason', a.failed_reason) as j
+      from delivery_assignments a
+      join orders o on o.id = a.order_id
+      left join shops s on s.id = o.shop_id
+     where a.rider_id = p_rider_id and a.state in ('delivered', 'failed')
+     order by a.offered_at desc limit 15) t;
+
+  return jsonb_build_object(
+    'rider', jsonb_build_object(
+      'id', v_rider.id, 'name', v_rider.name, 'phone', v_rider.phone, 'status', v_rider.status,
+      'vehicle', v_rider.vehicle, 'isOnline', v_rider.is_online, 'zoneIds', to_jsonb(v_rider.zone_ids),
+      'ratingAvg', v_rider.rating_avg, 'ratingCount', v_rider.rating_count,
+      'totalDeliveries', coalesce(v_rider.total_deliveries, 0), 'createdAt', v_rider.created_at),
+    'money', v_money,
+    'risk', jsonb_build_object(
+      'cashInHand', coalesce(v_rider.cash_in_hand, 0),
+      'cashLimit', 500000,
+      'codCountSinceSettle', v_cod_count,
+      'codValueSinceSettle', v_cod_value,
+      'oldestCodAt', v_cod_oldest,
+      'lastSettledAt', v_last_settled,
+      'pendingClaim', v_claim,
+      'rejectedClaims30', v_rejected),
+    'performance', v_perf,
+    'journal', v_journal,
+    'payouts', v_payouts,
+    'settlements', v_settlements,
+    'claims', v_claims,
+    'trips', v_trips
+  );
+end $$;
+
+revoke all on function ps_admin_rider_overview(uuid) from public, anon;
+grant execute on function ps_admin_rider_overview(uuid) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: dispatch rules as settings (202610020003) ====
+-- ============================================================================
+-- J (2026-10-02) — DISPATCH RULES AS SETTINGS: cash cap, offer window, attempts.
+--
+-- Three numbers that shape every delivery were hardcoded in SQL and TS:
+--   • the cash a rider may hold before dispatch stops (৳5,000 = 500000 paisa)
+--   • how long an offer stays open (90 seconds)
+--   • how many delivery attempts before a job is closed (already a setting,
+--     delivery_max_attempts — this file only gives it an editor and an audit)
+-- They now live in site_settings (keys rider_cash_cap_paisa, offer_ttl_seconds,
+-- delivery_max_attempts), read through two helpers with a clamp, so a typo can
+-- neither lock every rider out (cap) nor make offers unusable (window):
+--   ps_rider_cash_cap()      default 500000, clamp 50000 .. 5000000
+--   ps_offer_ttl_seconds()   default 90,     clamp 30 .. 600
+-- With no row the behaviour is EXACTLY what it was. The dispatch functions
+-- below are the latest definitions (202609250003 / 202609140014) with only the
+-- two literals swapped for the helpers; nothing else changed. The money audit
+-- trigger also logs changes of these keys as `rate_change`.
+-- Safe to re-run. Run after 202610010006 (audit trigger) and the dispatch files.
+-- ============================================================================
+begin;
+
+create or replace function ps_rider_cash_cap()
+returns bigint language sql stable security definer set search_path = public as $$
+  select least(greatest(ps_setting_int('rider_cash_cap_paisa', 500000), 50000), 5000000)
+$$;
+
+create or replace function ps_offer_ttl_seconds()
+returns integer language sql stable security definer set search_path = public as $$
+  select least(greatest(ps_setting_int('offer_ttl_seconds', 90), 30), 600)::integer
+$$;
+
+grant execute on function ps_rider_cash_cap() to authenticated, service_role;
+grant execute on function ps_offer_ttl_seconds() to authenticated, service_role;
+
+create or replace function ps_broadcast_order(p_order_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_id uuid;
+begin
+  select * into v_order from orders where id = p_order_id for update;
+  if not found or v_order.status <> 'ready-for-pickup'
+     or coalesce(v_order.is_pickup, false) or v_order.rider_id is not null
+     or (v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified') then
+    return null;
+  end if;
+  if exists (select 1 from delivery_assignments where order_id = p_order_id
+    and (state in ('accepted','picked_up') or (state = 'offered' and not is_broadcast))) then
+    return null; -- a manual offer is exclusive until it expires/is declined
+  end if;
+
+  insert into delivery_assignments(order_id, rider_id, state, offered_at, expires_at, is_broadcast)
+  select p_order_id, r.id, 'offered', now(), now() + make_interval(secs => ps_offer_ttl_seconds()), true
+  from riders r
+  where r.status = 'active' and r.is_online and ps_rider_on_shift(r)
+    and r.zone_ids @> array[v_order.zone_id]
+    and r.cash_in_hand < ps_rider_cash_cap() and r.current_load < 2
+    and not exists (select 1 from delivery_assignments a
+      where a.order_id = p_order_id and a.rider_id = r.id
+        and (a.state in ('offered','accepted','picked_up')
+          -- A rider who declined this order is never auto re-offered it.
+          or (a.state = 'cancelled' and a.cancelled_by = 'rider_decline')
+          -- Withdrawn/expired invitations cool down for five minutes; rows
+          -- superseded by an accept or a manual offer re-qualify at once, so
+          -- broadcasting resumes to the area the moment a manual request ends.
+          or (a.state in ('cancelled','expired')
+            and coalesce(a.cancelled_by, 'withdrawn') <> 'superseded'
+            and a.offered_at > now() - interval '5 minutes')))
+  on conflict do nothing;
+
+  select id into v_id from delivery_assignments
+  where order_id = p_order_id and state = 'offered' order by offered_at, id limit 1;
+  return v_id;
+end $$;
+
+create or replace function ps_rider_accept(p_assignment_id uuid)
+returns delivery_assignments language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_rider riders%rowtype;
+begin
+  select * into v_assignment from delivery_assignments where id = p_assignment_id;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  -- Different invitation IDs share this one lock: only the first can win.
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  select * into v_rider from riders where id = v_assignment.rider_id for update;
+  select * into v_assignment from delivery_assignments where id = p_assignment_id for update;
+  if v_assignment.state <> 'offered' or v_assignment.expires_at <= now()
+     or v_order.status <> 'ready-for-pickup' or v_order.rider_id is not null then
+    raise exception 'offer no longer available';
+  end if;
+  if v_rider.status <> 'active' or not v_rider.is_online
+     or v_rider.cash_in_hand >= ps_rider_cash_cap() or v_rider.current_load >= 2
+     or (v_assignment.is_broadcast and (
+       not ps_rider_on_shift(v_rider) or not (v_rider.zone_ids @> array[v_order.zone_id]))) then
+    raise exception 'rider not available';
+  end if;
+  if coalesce(v_order.is_pickup, false)
+     or (v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified') then
+    raise exception 'order not ready for dispatch';
+  end if;
+  update delivery_assignments set state = 'cancelled', cancelled_by = 'superseded'
+    where order_id = v_order.id and id <> p_assignment_id and state = 'offered';
+  update delivery_assignments set state = 'accepted' where id = p_assignment_id
+    returning * into v_assignment;
+  update orders set status = 'courier-assigned', rider_id = v_rider.id, updated_at = now()
+    where id = v_order.id;
+  insert into order_status_history(order_id, status, note, changed_by)
+    values(v_order.id, 'courier-assigned', 'First rider accepted the delivery request', auth.uid());
+  return v_assignment;
+end $$;
+
+create or replace function ps_assign_batch_to_rider(p_rider_id uuid, p_order_ids uuid[])
+returns int language plpgsql security definer set search_path = public as $$
+declare v_oid uuid; v_count int := 0; v_order orders%rowtype;
+begin
+  for v_oid in select distinct unnest(coalesce(p_order_ids, '{}'::uuid[])) order by 1 loop
+    select * into v_order from orders where id = v_oid for update;
+    if not found or v_order.status <> 'ready-for-pickup'
+       or coalesce(v_order.is_pickup, false) or v_order.rider_id is not null then continue; end if;
+    if v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified' then continue; end if;
+    if not exists(select 1 from riders where id = p_rider_id and status = 'active' and is_online
+      and cash_in_hand < ps_rider_cash_cap() and current_load < 2) then raise exception 'rider not available'; end if;
+    update delivery_assignments set state = 'cancelled', cancelled_by = 'superseded'
+      where order_id = v_oid and state = 'offered';
+    insert into delivery_assignments(order_id, rider_id, state, offered_at, expires_at)
+      values(v_oid, p_rider_id, 'offered', now(), now() + make_interval(secs => ps_offer_ttl_seconds()));
+    v_count := v_count + 1;
+  end loop;
+  return v_count;
+end $$;
+
+create or replace function ps_next_eligible_rider(p_order_id uuid)
+returns uuid
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_order_lat double precision;
+  v_order_lng double precision;
+  v_zone_id text;
+  v_rider_id uuid;
+begin
+  select lat, lng, zone_id into v_order_lat, v_order_lng, v_zone_id from orders where id = p_order_id;
+
+  -- Try nearest by geo if order has pin
+  if v_order_lat is not null and v_order_lng is not null then
+    select r.id into v_rider_id
+    from riders r
+    where r.status = 'active'
+      and r.is_online
+      and ps_rider_on_shift(r)
+      and r.zone_ids @> array[v_zone_id]
+      and r.cash_in_hand < ps_rider_cash_cap()
+      and r.current_load < 2 -- max 2 concurrent
+      and not exists (
+        select 1 from delivery_assignments a
+        where a.rider_id = r.id and a.state in ('offered','accepted','picked_up')
+      )
+      and not exists (
+        select 1 from delivery_assignments seen
+        where seen.order_id = p_order_id and seen.rider_id = r.id
+      )
+    order by
+      -- distance first (if rider has location)
+      case when r.lat is not null and r.lng is not null
+        then ps_haversine_km(v_order_lat, v_order_lng, r.lat, r.lng)
+        else 9999 end asc,
+      -- then rating high to low
+      r.rating_avg desc,
+      -- then least load
+      r.current_load asc,
+      -- then longest idle
+      r.created_at asc
+    limit 1;
+    if v_rider_id is not null then
+      return v_rider_id;
+    end if;
+  end if;
+
+  -- Fallback: original logic without geo
+  select r.id into v_rider_id
+  from riders r
+  where r.status = 'active'
+    and r.is_online
+    and ps_rider_on_shift(r)
+    and r.zone_ids @> array[v_zone_id]
+    and r.cash_in_hand < ps_rider_cash_cap()
+    and not exists (
+      select 1 from delivery_assignments a
+      where a.rider_id = r.id and a.state in ('offered','accepted','picked_up')
+    )
+    and not exists (
+      select 1 from delivery_assignments seen
+      where seen.order_id = p_order_id and seen.rider_id = r.id
+    )
+  order by r.rating_avg desc, r.current_load asc, r.created_at asc
+  limit 1;
+
+  return v_rider_id;
+end $$;
+
+-- Audit trigger: also log the dispatch-rule keys.
+create or replace function ps_money_audit_trg()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
+begin
+  if tg_table_name = 'shop_payouts' then
+    perform ps_money_audit_write('shop_payout', 'shop', new.shop_id::text, new.amount,
+      jsonb_build_object('payoutId', new.id, 'method', new.method, 'reference', new.reference),
+      new.paid_by);
+
+  elsif tg_table_name = 'rider_payout_requests' then
+    if old.status = 'pending' and new.status in ('paid', 'rejected') then
+      perform ps_money_audit_write('rider_payout_' || new.status, 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('payoutId', new.id, 'method', new.method,
+                           'reference', new.reference, 'note', new.note),
+        new.decided_by);
+    end if;
+
+  elsif tg_table_name = 'rider_settlements' then
+    perform ps_money_audit_write('rider_settle', 'rider', new.rider_id::text, new.amount,
+      jsonb_build_object('settlementId', new.id, 'method', new.method, 'reference', new.reference,
+                         'netted', coalesce(to_jsonb(new) ->> 'netted_amount', '0')::bigint),
+      new.settled_by);
+
+  elsif tg_table_name = 'rider_settle_claims' then
+    if old.status = 'pending' and new.status = 'rejected' then
+      perform ps_money_audit_write('settle_claim_rejected', 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('claimId', new.id, 'note', to_jsonb(new) ->> 'note'),
+        nullif(to_jsonb(new) ->> 'decided_by', '')::uuid);
+    end if;
+
+  elsif tg_table_name = 'orders' then
+    if old.payment_status = 'pending_verification' and new.payment_status in ('verified', 'rejected') then
+      perform ps_money_audit_write('payment_' || new.payment_status, 'order', new.id::text, new.total,
+        jsonb_build_object('payment', new.payment, 'shopId', new.shop_id));
+    end if;
+
+  elsif tg_table_name = 'rider_earnings' then
+    if new.kind in ('adjustment', 'incentive') then
+      perform ps_money_audit_write('rider_adjustment', 'rider', new.rider_id::text, new.amount,
+        jsonb_build_object('kind', new.kind, 'note', new.note, 'orderId', new.order_id));
+    end if;
+
+  elsif tg_table_name = 'site_settings' then
+    if new.key in ('rider_base_fee_paisa', 'rider_cod_handling_fee_paisa', 'rider_min_payout_paisa',
+                   'rider_cash_cap_paisa', 'offer_ttl_seconds', 'delivery_max_attempts') then
+      v_old := case when tg_op = 'UPDATE' then old.value end;  -- OLD does not exist on INSERT
+      if v_old is distinct from new.value then
+        perform ps_money_audit_write('rate_change', 'setting', new.key, null,
+          jsonb_build_object('from', v_old, 'to', new.value));
+      end if;
+    elsif new.key = 'ops' then
+      v_old := case when tg_op = 'UPDATE' then old.value -> 'wallets' end;
+      v_new := new.value -> 'wallets';
+      if v_new is distinct from v_old then
+        -- The numbers customers pay into: log THAT they changed and which
+        -- methods, never the numbers themselves.
+        perform ps_money_audit_write('wallet_numbers_changed', 'setting', 'ops', null,
+          jsonb_build_object('methods', (select coalesce(jsonb_agg(k order by k), '[]'::jsonb)
+                                         from jsonb_object_keys(coalesce(v_new, '{}'::jsonb)) k)));
+      end if;
+    end if;
+  end if;
+  return null;
+end $$;
+revoke all on function ps_money_audit_trg() from public, anon, authenticated;
+
+-- The trigger's WHEN clause filters by key as well; recreate it with the new keys.
+do $$
+begin
+  if to_regclass('public.site_settings') is not null then
+    drop trigger if exists trg_money_audit on site_settings;
+    create trigger trg_money_audit after insert or update on site_settings
+      for each row when (new.key in ('rider_base_fee_paisa', 'rider_cod_handling_fee_paisa',
+                                     'rider_min_payout_paisa', 'rider_cash_cap_paisa',
+                                     'offer_ttl_seconds', 'delivery_max_attempts', 'ops'))
+      execute function ps_money_audit_trg();
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider web push (202610020004) ====
+-- ============================================================================
+-- I (2026-10-02) — RIDER WEB PUSH: a new offer buzzes the rider's phone even
+-- with the app closed.
+--
+-- Until now an offer only reached a rider whose app was OPEN (the feed polls
+-- every 15 s and `use-offer-alert` vibrates). A rider with the phone in a
+-- pocket missed the 90-second window and the order went to someone else.
+--
+--   rider_push_subscriptions   one row per rider browser/phone. Service-role
+--                              only: RLS on, NO policies — /api/rider/push
+--                              writes after requireRider(), and the fan-out in
+--                              src/lib/rider-push.ts reads. A rider can never
+--                              read another rider's endpoint. Deleting a rider
+--                              deletes the devices.
+--   delivery_assignments.push_notified_at
+--                              "this offer has already been pushed". The
+--                              sender CLAIMS rows (update … where null) so two
+--                              concurrent sweeps never buzz a phone twice.
+--
+-- Offers are created in SQL (trigger + sweeps), so TypeScript cannot "see"
+-- them being born; the sender instead looks for offered, unexpired,
+-- not-yet-pushed rows right after anything that can create offers.
+-- Safe to re-run. Nothing else changes.
+-- ============================================================================
+begin;
+
+create table if not exists public.rider_push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  rider_id     uuid not null references public.riders(id) on delete cascade,
+  endpoint     text not null unique,
+  p256dh       text not null,
+  auth         text not null,
+  created_at   timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+
+create index if not exists idx_rider_push_rider
+  on public.rider_push_subscriptions (rider_id);
+
+alter table public.rider_push_subscriptions enable row level security;
+revoke all on table public.rider_push_subscriptions from anon, authenticated;
+grant all on table public.rider_push_subscriptions to service_role;
+
+alter table public.delivery_assignments
+  add column if not exists push_notified_at timestamptz;
+
+-- The sender's lookup: only offers that are still open and not yet pushed.
+create index if not exists idx_assignments_unpushed
+  on public.delivery_assignments (offered_at)
+  where state = 'offered' and push_notified_at is null;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: licence expiry (202610020005) ====
+-- Item N — driving-licence expiry.
+--
+-- A rider on a bike/scooter needs a valid licence. The photo has always been
+-- collected (riders.kyc), but nothing tracked WHEN it lapses, so an expired
+-- licence was invisible until a police checkpoint. Staff now record the expiry
+-- date from the licence photo; the scheduler warns before it lapses and takes
+-- the rider offline after, and the database refuses to put a rider with a
+-- lapsed licence back online.
+--
+-- Everything is additive and idempotent. A NULL date means "not recorded" and
+-- never blocks anybody (existing riders keep working until staff fill it in).
+
+begin;
+
+alter table riders
+  add column if not exists licence_expires_on date;
+
+-- A rider's own direct write may only flip is_online (jsonb whitelist since
+-- 202609160003), so this column is staff/service-only without a guard change.
+
+-- "Today" is the Dhaka calendar day. Only motorised riders are subject to it.
+create or replace function ps_block_expired_licence_online()
+returns trigger language plpgsql as $$
+begin
+  if new.is_online
+     and not coalesce(old.is_online, false)
+     and new.vehicle in ('bike', 'scooter')
+     and new.licence_expires_on is not null
+     and new.licence_expires_on < (now() at time zone 'Asia/Dhaka')::date then
+    raise exception 'licence_expired';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_riders_block_expired_licence on riders;
+create trigger trg_riders_block_expired_licence
+  before update of is_online on riders
+  for each row execute function ps_block_expired_licence_online();
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider scorecards (202610020006) ====
+-- ============================================================================
+-- M (2026-10-02) — RIDER SCORECARDS: every active rider's reliability facts in
+-- one read, for a ranked board and for the (opt-in) auto-suspend sweep.
+--
+--   ps_rider_scorecards_raw(p_days)   SERVICE ROLE ONLY — no admin check, so
+--                                     the scheduler (which has no staff JWT)
+--                                     can use it. Not callable by anon /
+--                                     authenticated.
+--   ps_admin_rider_scorecards(p_days) staff-only wrapper for the board.
+--
+-- Both return a jsonb ARRAY (one object per ACTIVE rider): identity, rating,
+-- cash position, the oldest unsettled COD parcel, whether a settle claim is
+-- pending, and the p_days-day offer outcomes. The app turns facts into scores
+-- (src/lib/rider-quality.ts) so thresholds stay unit-tested, not buried here.
+-- Read-only; safe to re-run.
+-- ============================================================================
+begin;
+
+create or replace function ps_rider_scorecards_raw(p_days int default 30)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_days int := least(greatest(coalesce(p_days, 30), 1), 365);
+  v_pending uuid[] := '{}';
+  v_out jsonb;
+begin
+  if to_regclass('public.rider_settle_claims') is not null then
+    execute $q$select coalesce(array_agg(distinct rider_id), '{}') from rider_settle_claims where status = 'pending'$q$
+      into v_pending;
+  end if;
+
+  select coalesce(jsonb_agg(c order by (c->>'name')), '[]'::jsonb) into v_out from (
+    select jsonb_build_object(
+      'id', r.id, 'name', r.name, 'vehicle', r.vehicle, 'isOnline', r.is_online,
+      'ratingAvg', r.rating_avg, 'ratingCount', r.rating_count,
+      'cashInHand', coalesce(r.cash_in_hand, 0), 'currentLoad', coalesce(r.current_load, 0),
+      'createdAt', r.created_at,
+      'pendingClaim', r.id = any (v_pending),
+      'lastSettledAt', (select max(settled_at) from rider_settlements s where s.rider_id = r.id),
+      'oldestCodAt', case when coalesce(r.cash_in_hand, 0) > 0 then (
+          select min(a.delivered_at)
+            from delivery_assignments a
+            join orders o on o.id = a.order_id
+           where a.rider_id = r.id and a.state = 'delivered'
+             and coalesce(o.payment, 'cod') = 'cod'
+             and coalesce(o.is_return, false) = false
+             and a.delivered_at > coalesce((select max(settled_at) from rider_settlements s where s.rider_id = r.id), '-infinity'::timestamptz)
+        ) end,
+      'offered', coalesce(p.offered, 0), 'delivered', coalesce(p.delivered, 0),
+      'failed', coalesce(p.failed, 0), 'declined', coalesce(p.declined, 0),
+      'expired', coalesce(p.expired, 0),
+      'avgDeliveryMinutes', r.avg_delivery_minutes
+    ) as c
+    from riders r
+    left join (
+      select a.rider_id,
+             count(*) as offered,
+             count(*) filter (where a.state = 'delivered') as delivered,
+             count(*) filter (where a.state = 'failed') as failed,
+             count(*) filter (where a.state = 'cancelled' and a.cancelled_by = 'rider_decline') as declined,
+             count(*) filter (where a.state = 'expired') as expired
+        from delivery_assignments a
+       where a.offered_at >= now() - make_interval(days => v_days)
+       group by a.rider_id
+    ) p on p.rider_id = r.id
+    where r.status = 'active'
+  ) s;
+  return v_out;
+end $$;
+
+revoke all on function ps_rider_scorecards_raw(int) from public, anon, authenticated;
+grant execute on function ps_rider_scorecards_raw(int) to service_role;
+
+create or replace function ps_admin_rider_scorecards(p_days int default 30)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  return ps_rider_scorecards_raw(p_days);
+end $$;
+
+revoke all on function ps_admin_rider_scorecards(int) from public, anon;
+grant execute on function ps_admin_rider_scorecards(int) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider disputes + manual wallet adjustments (202610020007) ====
+-- ============================================================================
+-- W (2026-10-02) — RIDER DISPUTES + MANUAL WALLET ADJUSTMENTS.
+--
+-- The wallet journal has always had an 'adjustment' kind (and the money audit
+-- trail logs it), but NOTHING could create one: when a rider said "I wasn't
+-- paid for PS-1042" or "the customer short-paid COD", the only fix was editing
+-- the database by hand — no record, no reason, no reply.
+--
+--   rider_disputes                the rider's complaint (category, message,
+--                                 optional claimed amount, the trip it is
+--                                 about) and staff's decision.
+--   ps_rider_raise_dispute()      rider-only (auth.uid() → riders.id). Needs
+--                                 an active account, a trip of THEIR OWN for
+--                                 trip-bound categories, at most 5 open.
+--   ps_admin_adjust_rider()       staff-only manual credit/debit with a
+--                                 mandatory reason. Moves riders.earnings_balance
+--                                 and the signed journal together (kind
+--                                 'adjustment'; the audit trigger records the
+--                                 staff actor). A debit can never push the
+--                                 wallet below zero.
+--   ps_admin_resolve_dispute()    staff-only: approve (optionally with an
+--                                 adjustment, linked to the journal row) or
+--                                 reject (reason required).
+--
+-- Riders read their own disputes through the service client; staff read the
+-- table through RLS. Nobody writes it directly. Safe to re-run.
+-- ============================================================================
+begin;
+
+create table if not exists rider_disputes (
+  id                uuid primary key default gen_random_uuid(),
+  rider_id          uuid not null references riders (id) on delete cascade,
+  assignment_id     uuid references delivery_assignments (id) on delete set null,
+  order_id          uuid references orders (id) on delete set null,
+  category          text not null
+                    check (category in ('missing_fee', 'wrong_cod', 'missing_tip', 'wrongly_failed', 'other')),
+  message           text not null check (char_length(message) between 5 and 500),
+  claimed_amount    bigint check (claimed_amount is null or claimed_amount >= 0),
+  status            text not null default 'pending'
+                    check (status in ('pending', 'approved', 'rejected')),
+  adjustment_amount bigint not null default 0,
+  note              text,
+  earning_id        uuid references rider_earnings (id) on delete set null,
+  created_at        timestamptz not null default now(),
+  decided_at        timestamptz,
+  decided_by        uuid
+);
+
+create index if not exists idx_rider_disputes_queue on rider_disputes (status, created_at desc);
+create index if not exists idx_rider_disputes_rider on rider_disputes (rider_id, created_at desc);
+-- One open complaint per trip: a second tap cannot queue the same grievance twice.
+create unique index if not exists rider_disputes_one_open_per_trip
+  on rider_disputes (rider_id, assignment_id)
+  where status = 'pending' and assignment_id is not null;
+
+alter table rider_disputes enable row level security;
+drop policy if exists "disputes admin read" on rider_disputes;
+create policy "disputes admin read" on rider_disputes
+  for select using (ps_is_admin());
+revoke all on table rider_disputes from anon, authenticated;
+grant select on table rider_disputes to authenticated;
+grant all on table rider_disputes to service_role;
+
+-- ----------------------------------------------------------------------------
+-- Rider raises a dispute.
+-- ----------------------------------------------------------------------------
+create or replace function ps_rider_raise_dispute(
+  p_assignment_id uuid,
+  p_category text,
+  p_message text,
+  p_claimed bigint default null
+)
+returns rider_disputes
+language plpgsql security definer set search_path = public as $$
+declare
+  v_rider riders%rowtype;
+  v_cat text := lower(coalesce(trim(p_category), ''));
+  v_msg text := coalesce(trim(p_message), '');
+  v_order uuid;
+  v_row rider_disputes%rowtype;
+begin
+  select * into v_rider from riders where id = ps_rider_id() for update;
+  if not found then
+    raise exception 'forbidden';
+  end if;
+  if v_rider.status <> 'active' then
+    raise exception 'rider not active';
+  end if;
+  if v_cat not in ('missing_fee', 'wrong_cod', 'missing_tip', 'wrongly_failed', 'other') then
+    raise exception 'unknown category';
+  end if;
+  if char_length(v_msg) < 5 then
+    raise exception 'message too short';
+  end if;
+  if char_length(v_msg) > 500 then
+    raise exception 'message too long';
+  end if;
+  if p_claimed is not null and (p_claimed < 0 or p_claimed > 5000000) then
+    raise exception 'invalid amount';
+  end if;
+
+  if p_assignment_id is not null then
+    select order_id into v_order from delivery_assignments
+     where id = p_assignment_id and rider_id = v_rider.id;
+    if not found then
+      raise exception 'not your trip';
+    end if;
+  elsif v_cat <> 'other' then
+    raise exception 'trip required';
+  end if;
+
+  if (select count(*) from rider_disputes where rider_id = v_rider.id and status = 'pending') >= 5 then
+    raise exception 'too many open disputes';
+  end if;
+  if p_assignment_id is not null and exists (
+      select 1 from rider_disputes
+       where rider_id = v_rider.id and assignment_id = p_assignment_id and status = 'pending') then
+    raise exception 'dispute already open';
+  end if;
+
+  insert into rider_disputes (rider_id, assignment_id, order_id, category, message, claimed_amount)
+  values (v_rider.id, p_assignment_id, v_order, v_cat, v_msg, p_claimed)
+  returning * into v_row;
+  return v_row;
+end $$;
+
+revoke all on function ps_rider_raise_dispute(uuid, text, text, bigint) from public, anon;
+grant execute on function ps_rider_raise_dispute(uuid, text, text, bigint) to authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- The one place the wallet is moved by hand. Internal: callers check staff.
+-- ----------------------------------------------------------------------------
+create or replace function ps__apply_rider_adjustment(p_rider_id uuid, p_amount bigint, p_note text)
+returns rider_earnings
+language plpgsql security definer set search_path = public as $$
+declare
+  v_balance bigint;
+  v_row rider_earnings%rowtype;
+begin
+  if p_amount is null or p_amount = 0 then
+    raise exception 'amount must not be zero';
+  end if;
+  if abs(p_amount) > 5000000 then
+    raise exception 'amount too large';
+  end if;
+  if char_length(coalesce(trim(p_note), '')) < 5 then
+    raise exception 'reason required';
+  end if;
+  select earnings_balance into v_balance from riders where id = p_rider_id for update;
+  if not found then
+    raise exception 'rider not found';
+  end if;
+  if v_balance + p_amount < 0 then
+    raise exception 'would make wallet negative';
+  end if;
+  update riders set earnings_balance = earnings_balance + p_amount where id = p_rider_id;
+  insert into rider_earnings (rider_id, order_id, kind, amount, note)
+  values (p_rider_id, null, 'adjustment', p_amount, left(trim(p_note), 400))
+  returning * into v_row;
+  return v_row;
+end $$;
+
+revoke all on function ps__apply_rider_adjustment(uuid, bigint, text) from public, anon, authenticated;
+
+create or replace function ps_admin_adjust_rider(p_rider_id uuid, p_amount bigint, p_note text)
+returns rider_earnings
+language plpgsql security definer set search_path = public as $$
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  return ps__apply_rider_adjustment(p_rider_id, p_amount, p_note);
+end $$;
+
+revoke all on function ps_admin_adjust_rider(uuid, bigint, text) from public, anon;
+grant execute on function ps_admin_adjust_rider(uuid, bigint, text) to authenticated, service_role;
+
+-- ----------------------------------------------------------------------------
+-- Staff decide a dispute.
+-- ----------------------------------------------------------------------------
+create or replace function ps_admin_resolve_dispute(
+  p_id uuid,
+  p_decision text,
+  p_amount bigint default 0,
+  p_note text default null
+)
+returns rider_disputes
+language plpgsql security definer set search_path = public as $$
+declare
+  v_row rider_disputes%rowtype;
+  v_decision text := lower(coalesce(trim(p_decision), ''));
+  v_note text := nullif(trim(coalesce(p_note, '')), '');
+  v_amount bigint := coalesce(p_amount, 0);
+  v_earn rider_earnings%rowtype;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  select * into v_row from rider_disputes where id = p_id for update;
+  if not found then
+    raise exception 'dispute not found';
+  end if;
+  if v_row.status <> 'pending' then
+    raise exception 'dispute already %', v_row.status;
+  end if;
+  if v_decision not in ('approve', 'reject') then
+    raise exception 'decision must be approve or reject';
+  end if;
+
+  if v_decision = 'reject' then
+    if char_length(coalesce(v_note, '')) < 3 then
+      raise exception 'reason required';
+    end if;
+    v_amount := 0;
+  elsif v_amount <> 0 then
+    select * into v_earn from ps__apply_rider_adjustment(
+      v_row.rider_id, v_amount, 'Dispute: ' || coalesce(v_note, v_row.category));
+  end if;
+
+  update rider_disputes
+     set status = case when v_decision = 'approve' then 'approved' else 'rejected' end,
+         adjustment_amount = v_amount,
+         note = v_note,
+         earning_id = v_earn.id,
+         decided_at = now(),
+         decided_by = auth.uid()
+   where id = v_row.id
+   returning * into v_row;
+  return v_row;
+end $$;
+
+revoke all on function ps_admin_resolve_dispute(uuid, text, bigint, text) from public, anon;
+grant execute on function ps_admin_resolve_dispute(uuid, text, bigint, text) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: durable rate limit (202610020008) ====
+-- ============================================================================
+-- P (2026-10-02) — DURABLE RATE LIMIT for the public write routes.
+--
+-- The in-memory limiter keeps one bucket per serverless instance, so an
+-- attacker who is routed across instances (or waits for a cold start) gets
+-- many times the intended allowance. This is the shared counter: one row per
+-- key, one atomic upsert per hit, so every instance sees the same number.
+--
+--   rate_limit_hits        RLS on, NO policies → only the service role touches it.
+--   ps_rate_limit_hit(...) SERVICE ROLE ONLY. Fixed window, atomic:
+--                          returns (allowed, retry_after_sec).
+--
+-- The app treats this as a SECOND opinion: it never makes a request fail when
+-- this file has not been run or the database hiccups (the in-memory limiter
+-- still applies), so running it is an upgrade, not a prerequisite.
+-- ============================================================================
+
+begin;
+
+create table if not exists rate_limit_hits (
+  key      text primary key,
+  hits     integer     not null,
+  reset_at timestamptz not null
+);
+
+alter table rate_limit_hits enable row level security;
+
+create index if not exists idx_rate_limit_hits_reset on rate_limit_hits (reset_at);
+
+create or replace function ps_rate_limit_hit(p_key text, p_limit int, p_window_ms int)
+returns table (allowed boolean, retry_after_sec int)
+language plpgsql security definer set search_path = public as $$
+declare
+  v_window interval;
+  v_hits   int;
+  v_reset  timestamptz;
+begin
+  if p_key is null or length(p_key) = 0 or length(p_key) > 200 then
+    raise exception 'bad key';
+  end if;
+  if p_limit is null or p_limit < 1 or p_limit > 100000 then
+    raise exception 'bad limit';
+  end if;
+  if p_window_ms is null or p_window_ms < 1000 or p_window_ms > 86400000 then
+    raise exception 'bad window';
+  end if;
+  v_window := make_interval(secs => p_window_ms / 1000.0);
+
+  -- Housekeeping, ~2% of calls: forget buckets that ended more than an hour ago.
+  if random() < 0.02 then
+    delete from rate_limit_hits where reset_at < now() - interval '1 hour';
+  end if;
+
+  insert into rate_limit_hits as t (key, hits, reset_at)
+  values (p_key, 1, now() + v_window)
+  on conflict (key) do update
+    set hits     = case when t.reset_at <= now() then 1 else t.hits + 1 end,
+        reset_at = case when t.reset_at <= now() then now() + v_window else t.reset_at end
+  returning t.hits, t.reset_at into v_hits, v_reset;
+
+  allowed := v_hits <= p_limit;
+  retry_after_sec := greatest(1, ceil(extract(epoch from (v_reset - now())))::int);
+  return next;
+end $$;
+
+revoke all on function ps_rate_limit_hit(text, int, int) from public, anon, authenticated;
+grant execute on function ps_rate_limit_hit(text, int, int) to service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: delivery feedback (202610020009) ====
+-- ============================================================================
+-- X (2026-10-02) — DELIVERY FEEDBACK: the customer can say WHY, not just how
+-- many stars (202609250008 only stored 1–5).
+--
+--   tags               quick reasons (late, rude, careless, polite, fast …)
+--   comment            optional words, ≤ 500 characters
+--   feedback_at        when the feedback was given — it can be given ONCE
+--                      (the app updates `where feedback_at is null`)
+--   hidden_from_rider  staff can keep an abusive / unfair comment from the
+--                      rider (staff still see it)
+--
+-- delivery_ratings stays service-role only (RLS on, no policies): customers
+-- are anonymous to riders; riders read only their own through the API.
+-- ============================================================================
+
+begin;
+
+alter table delivery_ratings
+  add column if not exists tags              text[]      not null default '{}',
+  add column if not exists comment           text,
+  add column if not exists feedback_at       timestamptz,
+  add column if not exists hidden_from_rider boolean     not null default false;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'delivery_ratings_comment_len') then
+    alter table delivery_ratings
+      add constraint delivery_ratings_comment_len
+      check (comment is null or char_length(comment) <= 500);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'delivery_ratings_tags_known') then
+    alter table delivery_ratings
+      add constraint delivery_ratings_tags_known
+      check (
+        cardinality(tags) <= 5
+        and tags <@ array['late','rude','careless','wrong_order','unreachable','polite','fast','careful']::text[]
+      );
+  end if;
+end $$;
+
+create index if not exists idx_delivery_ratings_created on delivery_ratings (created_at desc);
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: rider incentives (202610020010) ====
+-- ============================================================================
+-- V (2026-10-02) — RIDER INCENTIVES: a daily-target bonus and a refer-a-rider
+-- bonus, both OFF until staff set an amount, both paid through the wallet
+-- journal as `incentive` rows (so the wallet always equals the journal sum and
+-- the money audit trigger logs each one).
+--
+-- Settings (flat site_settings keys, 0 / missing = switched off):
+--   incentive_daily_target         deliveries in one Dhaka day (1–100)
+--   incentive_daily_bonus_paisa    bonus for reaching it       (≤ ৳5,000)
+--   incentive_referral_bonus_paisa bonus for the referrer      (≤ ৳5,000)
+--   incentive_referral_after       deliveries the referee must complete (default 10)
+--
+-- Tables (RLS on, NO policies — service role only; riders read via the API):
+--   rider_referral_codes     one short code per rider
+--   rider_referrals          referee → referrer, once per referee, new riders only
+--   rider_incentive_awards   one row per (rider, kind, key): the idempotency
+--                            guard that makes the sweep safe to run every tick
+--
+-- Functions are SERVICE ROLE ONLY: the cron and the apply route call them;
+-- nobody can award themselves money.
+-- ============================================================================
+
+begin;
+
+create table if not exists rider_referral_codes (
+  rider_id   uuid primary key references riders (id) on delete cascade,
+  code       text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists rider_referrals (
+  referee_id  uuid primary key references riders (id) on delete cascade,
+  referrer_id uuid not null references riders (id) on delete cascade,
+  code        text not null,
+  created_at  timestamptz not null default now(),
+  rewarded_at timestamptz,
+  check (referee_id <> referrer_id)
+);
+create index if not exists idx_rider_referrals_referrer on rider_referrals (referrer_id);
+
+create table if not exists rider_incentive_awards (
+  id         uuid primary key default gen_random_uuid(),
+  rider_id   uuid not null references riders (id) on delete cascade,
+  kind       text not null check (kind in ('daily_target', 'referral')),
+  ref_key    text not null,
+  amount     bigint not null check (amount > 0),
+  earning_id uuid references rider_earnings (id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (rider_id, kind, ref_key)
+);
+
+alter table rider_referral_codes   enable row level security;
+alter table rider_referrals        enable row level security;
+alter table rider_incentive_awards enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- A rider's code, created on first ask (no look-alike characters).
+-- ---------------------------------------------------------------------------
+create or replace function ps_rider_referral_code(p_rider uuid)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_code text;
+  v_alphabet constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  v_tries int := 0;
+  k int;
+begin
+  select code into v_code from rider_referral_codes where rider_id = p_rider;
+  if found then
+    return v_code;
+  end if;
+  if not exists (select 1 from riders where id = p_rider) then
+    raise exception 'rider not found';
+  end if;
+  loop
+    v_code := '';
+    for k in 1..6 loop
+      v_code := v_code || substr(v_alphabet, 1 + floor(random() * 32)::int, 1);
+    end loop;
+    begin
+      insert into rider_referral_codes (rider_id, code) values (p_rider, v_code);
+      return v_code;
+    exception when unique_violation then
+      select code into v_code from rider_referral_codes where rider_id = p_rider;
+      if found then
+        return v_code;
+      end if;
+      v_tries := v_tries + 1;
+      if v_tries > 20 then
+        raise exception 'could not generate a code';
+      end if;
+    end;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Link a NEW rider (still pending) to the rider whose code they typed.
+-- Answers: registered | unknown | self | already | not_new   (never raises on
+-- bad input — an application must not fail because of a mistyped code).
+-- ---------------------------------------------------------------------------
+create or replace function ps_register_rider_referral(p_referee uuid, p_code text)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_code text := upper(regexp_replace(coalesce(p_code, ''), '[^A-Za-z0-9]', '', 'g'));
+  v_referrer uuid;
+  v_status text;
+begin
+  if char_length(v_code) < 4 or char_length(v_code) > 12 then
+    return 'unknown';
+  end if;
+  select r.rider_id into v_referrer
+    from rider_referral_codes r
+    join riders x on x.id = r.rider_id and x.status = 'active'
+   where r.code = v_code;
+  if v_referrer is null then
+    return 'unknown';
+  end if;
+  if v_referrer = p_referee then
+    return 'self';
+  end if;
+  select status into v_status from riders where id = p_referee;
+  if not found or v_status <> 'pending' then
+    return 'not_new';
+  end if;
+  if exists (select 1 from rider_referrals where referee_id = p_referee) then
+    return 'already';
+  end if;
+  insert into rider_referrals (referee_id, referrer_id, code) values (p_referee, v_referrer, v_code);
+  return 'registered';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Internal: credit the wallet through the journal as an `incentive` row.
+-- ---------------------------------------------------------------------------
+create or replace function ps__credit_incentive(p_rider uuid, p_amount bigint, p_note text)
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_id uuid;
+begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'amount must be positive';
+  end if;
+  update riders set earnings_balance = earnings_balance + p_amount where id = p_rider;
+  if not found then
+    raise exception 'rider not found';
+  end if;
+  insert into rider_earnings (rider_id, order_id, kind, amount, note)
+  values (p_rider, null, 'incentive', p_amount, left(p_note, 400))
+  returning id into v_id;
+  return v_id;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- The sweep (cron, every tick). Idempotent: an award row per (rider, kind, key)
+-- is inserted FIRST; only the call that inserted it credits the wallet.
+--   daily_target  today's and yesterday's Dhaka day (yesterday catches a run
+--                 that straddled midnight); delivery legs only, not returns.
+--   referral      the referrer is paid once, when the referee has completed
+--                 `incentive_referral_after` deliveries and the referrer is
+--                 still an active rider.
+-- Returns {daily, referral, total, awards:[{riderId, kind, amount, note}]}.
+-- ---------------------------------------------------------------------------
+create or replace function ps_award_incentives(p_now timestamptz default now())
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_today   date := (p_now at time zone 'Asia/Dhaka')::date;
+  v_day     date;
+  v_target  int    := least(greatest(ps_setting_int('incentive_daily_target', 0), 0), 100);
+  v_bonus   bigint := least(greatest(ps_setting_int('incentive_daily_bonus_paisa', 0), 0), 500000);
+  v_rbonus  bigint := least(greatest(ps_setting_int('incentive_referral_bonus_paisa', 0), 0), 500000);
+  v_after   int    := least(greatest(ps_setting_int('incentive_referral_after', 10), 1), 200);
+  v_daily   int := 0;
+  v_ref     int := 0;
+  v_total   bigint := 0;
+  v_awards  jsonb := '[]'::jsonb;
+  v_note    text;
+  v_earning uuid;
+  r record;
+begin
+  if v_target > 0 and v_bonus > 0 then
+    foreach v_day in array array[v_today - 1, v_today] loop
+      for r in
+        select a.rider_id, count(*) as n
+          from delivery_assignments a
+          join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+          join riders x on x.id = a.rider_id and x.status = 'active'
+         where a.state = 'delivered'
+           and (a.delivered_at at time zone 'Asia/Dhaka')::date = v_day
+         group by a.rider_id
+        having count(*) >= v_target
+      loop
+        insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+        values (r.rider_id, 'daily_target', v_day::text, v_bonus)
+        on conflict (rider_id, kind, ref_key) do nothing;
+        if found then
+          v_note := format('Daily target: %s deliveries on %s', v_target, v_day);
+          v_earning := ps__credit_incentive(r.rider_id, v_bonus, v_note);
+          update rider_incentive_awards set earning_id = v_earning
+           where rider_id = r.rider_id and kind = 'daily_target' and ref_key = v_day::text;
+          v_daily := v_daily + 1;
+          v_total := v_total + v_bonus;
+          v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'daily_target', 'amount', v_bonus, 'note', v_note);
+        end if;
+      end loop;
+    end loop;
+  end if;
+
+  if v_rbonus > 0 then
+    for r in
+      select f.referee_id, f.referrer_id,
+             (select count(*) from delivery_assignments a
+               join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+              where a.rider_id = f.referee_id and a.state = 'delivered') as n
+        from rider_referrals f
+        join riders rr on rr.id = f.referrer_id and rr.status = 'active'
+       where f.rewarded_at is null
+    loop
+      continue when r.n < v_after;
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.referrer_id, 'referral', r.referee_id::text, v_rbonus)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := format('Referral bonus: the rider you referred completed %s deliveries', v_after);
+        v_earning := ps__credit_incentive(r.referrer_id, v_rbonus, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.referrer_id and kind = 'referral' and ref_key = r.referee_id::text;
+        v_ref := v_ref + 1;
+        v_total := v_total + v_rbonus;
+        v_awards := v_awards || jsonb_build_object('riderId', r.referrer_id, 'kind', 'referral', 'amount', v_rbonus, 'note', v_note);
+      end if;
+      update rider_referrals set rewarded_at = p_now where referee_id = r.referee_id and rewarded_at is null;
+    end loop;
+  end if;
+
+  return jsonb_build_object('daily', v_daily, 'referral', v_ref, 'total', v_total, 'awards', v_awards);
+end $$;
+
+revoke all on function ps_rider_referral_code(uuid)          from public, anon, authenticated;
+revoke all on function ps_register_rider_referral(uuid, text) from public, anon, authenticated;
+revoke all on function ps__credit_incentive(uuid, bigint, text) from public, anon, authenticated;
+revoke all on function ps_award_incentives(timestamptz)       from public, anon, authenticated;
+grant execute on function ps_rider_referral_code(uuid)          to service_role;
+grant execute on function ps_register_rider_referral(uuid, text) to service_role;
+grant execute on function ps_award_incentives(timestamptz)       to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Changing an incentive amount is a money decision: log it as `rate_change`
+-- (old → new) exactly like the pay-rate keys. A SEPARATE small trigger, so the
+-- existing audit function and its trigger are left untouched.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if to_regclass('public.site_settings') is not null
+     and to_regprocedure('public.ps_money_audit_write(text,text,text,bigint,jsonb,uuid)') is not null then
+    create or replace function ps_incentive_settings_audit()
+    returns trigger language plpgsql security definer set search_path = public as $f$
+    declare
+      v_old jsonb;
+    begin
+      v_old := case when tg_op = 'UPDATE' then old.value end;
+      if v_old is distinct from new.value then
+        perform ps_money_audit_write('rate_change', 'setting', new.key, null,
+          jsonb_build_object('from', v_old, 'to', new.value));
+      end if;
+      return null;
+    end $f$;
+    revoke all on function ps_incentive_settings_audit() from public, anon, authenticated;
+    drop trigger if exists trg_incentive_settings_audit on site_settings;
+    create trigger trg_incentive_settings_audit after insert or update on site_settings
+      for each row when (new.key in ('incentive_daily_target', 'incentive_daily_bonus_paisa',
+                                     'incentive_referral_bonus_paisa', 'incentive_referral_after'))
+      execute function ps_incentive_settings_audit();
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: dispatch follow-ups (202610020011) ====
+-- ============================================================================
+-- Follow-ups to the dispatch rules (2026-10-02, after the A–Z rollout).
+--
+--  1. LOAD LIMIT AS A SETTING. "A rider carries at most 2 active jobs" was a
+--     literal in four SQL functions and in the UI. It is now the site_settings
+--     key `rider_load_limit` (default 2, clamp 1..5) read through
+--     ps_rider_load_limit(). With no row, behaviour is EXACTLY what it was.
+--     ps_broadcast_order / ps_rider_accept / ps_assign_batch_to_rider /
+--     ps_next_eligible_rider below are the latest definitions (202610020003)
+--     with only that literal swapped.
+--
+--  2. NO RE-OFFER TO THE SAME RIDER. After a failed delivery or a rider
+--     handing a job back, a redispatch could offer the order to the very rider
+--     who just failed it. ps_broadcast_order now skips riders who have a
+--     `failed` assignment on the order, or one they released themselves
+--     (cancelled_by = 'rider_release'), in addition to the existing decline
+--     rule. Manual assignment by staff is not restricted.
+--
+--  3. RIDER CAN HAND BACK AN ACCEPTED JOB. Until now only staff could release
+--     a rider who had accepted but not yet picked up. ps_rider_release_accepted
+--     lets the rider do it themselves (reason ≥ 5 characters, own assignment,
+--     state 'accepted' only — once the parcel is in hand it is the failed-
+--     delivery flow). The order returns to the area queue at once.
+--
+--  4. SETTINGS AUDIT. Changes to rider_load_limit and the opt-in
+--     rider_auto_suspend switch are logged as `rate_change` in money_audit_log
+--     through a small separate trigger (the existing audit function is left
+--     untouched, same approach as 202610020010).
+--
+-- Safe to re-run. Run after 202610020003, 202610010006 and 202610020006.
+-- ============================================================================
+begin;
+
+create or replace function ps_rider_load_limit()
+returns integer language sql stable security definer set search_path = public as $$
+  select least(greatest(ps_setting_int('rider_load_limit', 2), 1), 5)::integer
+$$;
+grant execute on function ps_rider_load_limit() to authenticated, service_role;
+
+create or replace function ps_broadcast_order(p_order_id uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_id uuid;
+begin
+  select * into v_order from orders where id = p_order_id for update;
+  if not found or v_order.status <> 'ready-for-pickup'
+     or coalesce(v_order.is_pickup, false) or v_order.rider_id is not null
+     or (v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified') then
+    return null;
+  end if;
+  if exists (select 1 from delivery_assignments where order_id = p_order_id
+    and (state in ('accepted','picked_up') or (state = 'offered' and not is_broadcast))) then
+    return null; -- a manual offer is exclusive until it expires/is declined
+  end if;
+
+  insert into delivery_assignments(order_id, rider_id, state, offered_at, expires_at, is_broadcast)
+  select p_order_id, r.id, 'offered', now(), now() + make_interval(secs => ps_offer_ttl_seconds()), true
+  from riders r
+  where r.status = 'active' and r.is_online and ps_rider_on_shift(r)
+    and r.zone_ids @> array[v_order.zone_id]
+    and r.cash_in_hand < ps_rider_cash_cap() and r.current_load < ps_rider_load_limit()
+    and not exists (select 1 from delivery_assignments a
+      where a.order_id = p_order_id and a.rider_id = r.id
+        and (a.state in ('offered','accepted','picked_up')
+          -- A rider who declined it, handed it back after accepting, or whose
+          -- delivery of it FAILED is never auto re-offered it (a redispatch
+          -- goes to someone else; staff can still assign that rider by hand).
+          or a.state = 'failed'
+          or (a.state = 'cancelled' and a.cancelled_by in ('rider_decline', 'rider_release'))
+          -- Withdrawn/expired invitations cool down for five minutes; rows
+          -- superseded by an accept or a manual offer re-qualify at once, so
+          -- broadcasting resumes to the area the moment a manual request ends.
+          or (a.state in ('cancelled','expired')
+            and coalesce(a.cancelled_by, 'withdrawn') <> 'superseded'
+            and a.offered_at > now() - interval '5 minutes')))
+  on conflict do nothing;
+
+  select id into v_id from delivery_assignments
+  where order_id = p_order_id and state = 'offered' order by offered_at, id limit 1;
+  return v_id;
+end $$;
+
+create or replace function ps_rider_accept(p_assignment_id uuid)
+returns delivery_assignments language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_rider riders%rowtype;
+begin
+  select * into v_assignment from delivery_assignments where id = p_assignment_id;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  -- Different invitation IDs share this one lock: only the first can win.
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  select * into v_rider from riders where id = v_assignment.rider_id for update;
+  select * into v_assignment from delivery_assignments where id = p_assignment_id for update;
+  if v_assignment.state <> 'offered' or v_assignment.expires_at <= now()
+     or v_order.status <> 'ready-for-pickup' or v_order.rider_id is not null then
+    raise exception 'offer no longer available';
+  end if;
+  if v_rider.status <> 'active' or not v_rider.is_online
+     or v_rider.cash_in_hand >= ps_rider_cash_cap() or v_rider.current_load >= ps_rider_load_limit()
+     or (v_assignment.is_broadcast and (
+       not ps_rider_on_shift(v_rider) or not (v_rider.zone_ids @> array[v_order.zone_id]))) then
+    raise exception 'rider not available';
+  end if;
+  if coalesce(v_order.is_pickup, false)
+     or (v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified') then
+    raise exception 'order not ready for dispatch';
+  end if;
+  update delivery_assignments set state = 'cancelled', cancelled_by = 'superseded'
+    where order_id = v_order.id and id <> p_assignment_id and state = 'offered';
+  update delivery_assignments set state = 'accepted' where id = p_assignment_id
+    returning * into v_assignment;
+  update orders set status = 'courier-assigned', rider_id = v_rider.id, updated_at = now()
+    where id = v_order.id;
+  insert into order_status_history(order_id, status, note, changed_by)
+    values(v_order.id, 'courier-assigned', 'First rider accepted the delivery request', auth.uid());
+  return v_assignment;
+end $$;
+
+create or replace function ps_assign_batch_to_rider(p_rider_id uuid, p_order_ids uuid[])
+returns int language plpgsql security definer set search_path = public as $$
+declare v_oid uuid; v_count int := 0; v_order orders%rowtype;
+begin
+  for v_oid in select distinct unnest(coalesce(p_order_ids, '{}'::uuid[])) order by 1 loop
+    select * into v_order from orders where id = v_oid for update;
+    if not found or v_order.status <> 'ready-for-pickup'
+       or coalesce(v_order.is_pickup, false) or v_order.rider_id is not null then continue; end if;
+    if v_order.payment in ('bkash','nagad') and v_order.payment_status <> 'verified' then continue; end if;
+    if not exists(select 1 from riders where id = p_rider_id and status = 'active' and is_online
+      and cash_in_hand < ps_rider_cash_cap() and current_load < ps_rider_load_limit()) then raise exception 'rider not available'; end if;
+    update delivery_assignments set state = 'cancelled', cancelled_by = 'superseded'
+      where order_id = v_oid and state = 'offered';
+    insert into delivery_assignments(order_id, rider_id, state, offered_at, expires_at)
+      values(v_oid, p_rider_id, 'offered', now(), now() + make_interval(secs => ps_offer_ttl_seconds()));
+    v_count := v_count + 1;
+  end loop;
+  return v_count;
+end $$;
+
+create or replace function ps_next_eligible_rider(p_order_id uuid)
+returns uuid
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_order_lat double precision;
+  v_order_lng double precision;
+  v_zone_id text;
+  v_rider_id uuid;
+begin
+  select lat, lng, zone_id into v_order_lat, v_order_lng, v_zone_id from orders where id = p_order_id;
+
+  -- Try nearest by geo if order has pin
+  if v_order_lat is not null and v_order_lng is not null then
+    select r.id into v_rider_id
+    from riders r
+    where r.status = 'active'
+      and r.is_online
+      and ps_rider_on_shift(r)
+      and r.zone_ids @> array[v_zone_id]
+      and r.cash_in_hand < ps_rider_cash_cap()
+      and r.current_load < ps_rider_load_limit()
+      and not exists (
+        select 1 from delivery_assignments a
+        where a.rider_id = r.id and a.state in ('offered','accepted','picked_up')
+      )
+      and not exists (
+        select 1 from delivery_assignments seen
+        where seen.order_id = p_order_id and seen.rider_id = r.id
+      )
+    order by
+      -- distance first (if rider has location)
+      case when r.lat is not null and r.lng is not null
+        then ps_haversine_km(v_order_lat, v_order_lng, r.lat, r.lng)
+        else 9999 end asc,
+      -- then rating high to low
+      r.rating_avg desc,
+      -- then least load
+      r.current_load asc,
+      -- then longest idle
+      r.created_at asc
+    limit 1;
+    if v_rider_id is not null then
+      return v_rider_id;
+    end if;
+  end if;
+
+  -- Fallback: original logic without geo
+  select r.id into v_rider_id
+  from riders r
+  where r.status = 'active'
+    and r.is_online
+    and ps_rider_on_shift(r)
+    and r.zone_ids @> array[v_zone_id]
+    and r.cash_in_hand < ps_rider_cash_cap()
+    and not exists (
+      select 1 from delivery_assignments a
+      where a.rider_id = r.id and a.state in ('offered','accepted','picked_up')
+    )
+    and not exists (
+      select 1 from delivery_assignments seen
+      where seen.order_id = p_order_id and seen.rider_id = r.id
+    )
+  order by r.rating_avg desc, r.current_load asc, r.created_at asc
+  limit 1;
+
+  return v_rider_id;
+end $$;
+
+create or replace function ps_rider_release_accepted(p_assignment_id uuid, p_reason text)
+returns delivery_assignments
+language plpgsql security definer set search_path = public as $$
+declare
+  v_assignment delivery_assignments%rowtype;
+  v_order orders%rowtype;
+  v_reason text := trim(coalesce(p_reason, ''));
+begin
+  select * into v_assignment from delivery_assignments where id = p_assignment_id;
+  if not found or v_assignment.rider_id is distinct from ps_rider_id() then
+    raise exception 'forbidden';
+  end if;
+  if length(v_reason) < 5 then
+    raise exception 'a reason is required';
+  end if;
+  -- Same lock order as accept / reject, so racing calls are safe.
+  select * into v_order from orders where id = v_assignment.order_id for update;
+  select * into v_assignment from delivery_assignments where id = p_assignment_id for update;
+  if v_assignment.state <> 'accepted' then
+    raise exception 'only an accepted job that is not picked up yet can be handed back';
+  end if;
+  update delivery_assignments
+    set state = 'cancelled', cancelled_by = 'rider_release'
+    where id = p_assignment_id
+    returning * into v_assignment;
+  update orders
+    set rider_id = null, status = 'ready-for-pickup', updated_at = now()
+    where id = v_order.id;
+  insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup', 'Rider handed the job back: ' || v_reason, auth.uid());
+  perform ps_broadcast_order(v_order.id);
+  return v_assignment;
+end $$;
+
+revoke all on function ps_rider_release_accepted(uuid, text) from public, anon;
+grant execute on function ps_rider_release_accepted(uuid, text) to authenticated, service_role;
+
+do $$
+begin
+  if to_regclass('public.site_settings') is not null
+     and to_regprocedure('public.ps_money_audit_write(text,text,text,bigint,jsonb,uuid)') is not null then
+    create or replace function ps_dispatch_extras_audit()
+    returns trigger language plpgsql security definer set search_path = public as $f$
+    declare
+      v_old jsonb;
+    begin
+      v_old := case when tg_op = 'UPDATE' then old.value end;
+      if v_old is distinct from new.value then
+        perform ps_money_audit_write('rate_change', 'setting', new.key, null,
+          jsonb_build_object('from', v_old, 'to', new.value));
+      end if;
+      return null;
+    end $f$;
+    revoke all on function ps_dispatch_extras_audit() from public, anon, authenticated;
+    drop trigger if exists trg_dispatch_extras_audit on site_settings;
+    create trigger trg_dispatch_extras_audit after insert or update on site_settings
+      for each row when (new.key in ('rider_load_limit', 'rider_auto_suspend'))
+      execute function ps_dispatch_extras_audit();
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: failed-delivery fee + weekly tiered bonus (202610020012) ====
+-- ============================================================================
+-- Two money follow-ups (2026-10-02), both OFF until staff set an amount.
+--
+--  1. FAILED-DELIVERY FEE. A rider who rode to the customer, could not deliver and
+--     brought the parcel back earned nothing. Setting `rider_failed_delivery_fee_paisa`
+--     (0 = off, ≤ ৳500). It is paid only when STAFF resolve the failed delivery and
+--     choose "pay the rider" (ps_admin_resolve_failed_delivery gains p_pay_fee,
+--     default false → old callers pay nothing) — a rider cannot give themselves the
+--     fee by reporting a failure. Booked as an `incentive` journal row bound to the
+--     order: unique (order_id, kind) = once per order, the money audit trigger logs it,
+--     wallet / daily / P&L reports already count incentives as rider pay.
+--
+--  2. WEEKLY + TIERED BONUS. ps_award_incentives (202610020010) gains weekly tiers:
+--       incentive_weekly_target / incentive_weekly_bonus_paisa     tier 1
+--       incentive_weekly_target2 / incentive_weekly_bonus2_paisa   tier 2 (extra, above tier 1)
+--     Mon–Sun in Dhaka, delivery legs only, each tier once per rider per week; this week
+--     and last week are checked. Same idempotency guard as the daily bonus.
+--
+--  Setting changes are logged as `rate_change` (small separate triggers, the existing
+--  audit functions are untouched). Safe to re-run. Run after 202610020011.
+-- ============================================================================
+begin;
+
+create or replace function ps_failed_delivery_fee()
+returns bigint language sql stable security definer set search_path = public as $$
+  select least(greatest(ps_setting_int('rider_failed_delivery_fee_paisa', 0), 0), 50000)::bigint
+$$;
+grant execute on function ps_failed_delivery_fee() to authenticated, service_role;
+
+-- The signature gains a parameter: drop the old one so two overloads cannot make
+-- PostgREST named-argument calls ambiguous (old 3-arg callers work through the default).
+drop function if exists ps_admin_resolve_failed_delivery(uuid, text, text);
+
+create or replace function ps_admin_resolve_failed_delivery(
+  p_order_id uuid,
+  p_action text,
+  p_note text default null,
+  p_pay_fee boolean default false
+)
+returns orders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_order orders%rowtype;
+  v_action text := lower(coalesce(trim(p_action), ''));
+  v_note text := nullif(trim(coalesce(p_note, '')), '');
+  v_fee bigint := 0;
+  v_failed_rider uuid;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  if v_action not in ('redispatch', 'cancel') then
+    raise exception 'action must be redispatch or cancel';
+  end if;
+  select * into v_order from orders where id = p_order_id for update;
+  if not found then
+    raise exception 'order not found';
+  end if;
+  if v_order.delivery_failed_at is null or v_order.status in ('delivered', 'cancelled') then
+    raise exception 'no failed delivery to resolve';
+  end if;
+
+  -- Optional: pay the rider who made the failed attempt (a decision staff take per
+  -- case — a rider who went and could not deliver did the work; one who never went did not).
+  -- Journal row = kind 'incentive' bound to the order: the unique (order_id, kind) index is
+  -- the once-only gate, the money audit trigger logs it, every wallet/P&L report already
+  -- counts 'incentive' as rider pay. 0 in the setting = nothing is paid.
+  if coalesce(p_pay_fee, false) then
+    v_fee := ps_failed_delivery_fee();
+    if v_fee > 0 then
+      select a.rider_id into v_failed_rider
+        from delivery_assignments a
+       where a.order_id = v_order.id and a.state = 'failed'
+       order by a.offered_at desc
+       limit 1;
+      if v_failed_rider is not null then
+        insert into rider_earnings (rider_id, order_id, kind, amount, note)
+        values (v_failed_rider, v_order.id, 'incentive', v_fee,
+                left('Failed delivery fee — ' || coalesce(v_order.order_no, v_order.id::text), 400))
+        on conflict (order_id, kind) do nothing;
+        if found then
+          update riders set earnings_balance = earnings_balance + v_fee where id = v_failed_rider;
+          insert into order_status_history (order_id, status, note, changed_by)
+          values (v_order.id, v_order.status,
+                  'Rider paid ' || (v_fee / 100.0)::numeric(12,2) || ' Tk for the failed attempt', auth.uid());
+        end if;
+      end if;
+    end if;
+  end if;
+
+  if v_action = 'redispatch' then
+    -- Back to the area queue: the status change fires the broadcast trigger.
+    update orders
+    set status = 'ready-for-pickup', rider_id = null, delivery_attempts = 0,
+        delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'ready-for-pickup',
+            'Failed delivery — redispatched to the area' || coalesce(': ' || v_note, ''), auth.uid());
+  else
+    update orders
+    set status = 'cancelled', rider_id = null, delivery_failed_at = null, updated_at = now()
+    where id = v_order.id
+    returning * into v_order;
+    insert into order_status_history (order_id, status, note, changed_by)
+    values (v_order.id, 'cancelled',
+            'Failed delivery — order cancelled' || coalesce(': ' || v_note, '')
+              || case when v_order.payment in ('bkash', 'nagad')
+                       and coalesce(to_jsonb(v_order)->>'payment_status', '') = 'verified'
+                      then ' · PREPAID: refund the customer offline' else '' end,
+            auth.uid());
+  end if;
+  return v_order;
+end $$;
+
+revoke all on function ps_admin_resolve_failed_delivery(uuid, text, text, boolean) from public, anon;
+grant execute on function ps_admin_resolve_failed_delivery(uuid, text, text, boolean) to authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- Weekly awards: widen the allowed kinds.
+-- ---------------------------------------------------------------------------
+do $$
+declare c record;
+begin
+  if to_regclass('public.rider_incentive_awards') is not null then
+    for c in
+      select conname from pg_constraint
+       where conrelid = 'public.rider_incentive_awards'::regclass and contype = 'c'
+         and pg_get_constraintdef(oid) ilike '%daily_target%'
+    loop
+      execute format('alter table public.rider_incentive_awards drop constraint %I', c.conname);
+    end loop;
+    alter table rider_incentive_awards drop constraint if exists rider_incentive_awards_kind_check;
+    alter table rider_incentive_awards add constraint rider_incentive_awards_kind_check
+      check (kind in ('daily_target', 'weekly_target', 'referral'));
+  end if;
+end $$;
+
+create or replace function ps_award_incentives(p_now timestamptz default now())
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_today   date := (p_now at time zone 'Asia/Dhaka')::date;
+  v_day     date;
+  v_target  int    := least(greatest(ps_setting_int('incentive_daily_target', 0), 0), 100);
+  v_bonus   bigint := least(greatest(ps_setting_int('incentive_daily_bonus_paisa', 0), 0), 500000);
+  v_rbonus  bigint := least(greatest(ps_setting_int('incentive_referral_bonus_paisa', 0), 0), 500000);
+  v_after   int    := least(greatest(ps_setting_int('incentive_referral_after', 10), 1), 200);
+  v_week0   date   := date_trunc('week', p_now at time zone 'Asia/Dhaka')::date;  -- Monday (Dhaka)
+  v_week    date;
+  v_tier    int;
+  v_wt      int;
+  v_wb      bigint;
+  v_wt1     int    := least(greatest(ps_setting_int('incentive_weekly_target', 0), 0), 700);
+  v_wb1     bigint := least(greatest(ps_setting_int('incentive_weekly_bonus_paisa', 0), 0), 500000);
+  v_wt2     int    := least(greatest(ps_setting_int('incentive_weekly_target2', 0), 0), 700);
+  v_wb2     bigint := least(greatest(ps_setting_int('incentive_weekly_bonus2_paisa', 0), 0), 500000);
+  v_weekly  int := 0;
+  v_daily   int := 0;
+  v_ref     int := 0;
+  v_total   bigint := 0;
+  v_awards  jsonb := '[]'::jsonb;
+  v_note    text;
+  v_earning uuid;
+  r record;
+begin
+  if v_target > 0 and v_bonus > 0 then
+    foreach v_day in array array[v_today - 1, v_today] loop
+      for r in
+        select a.rider_id, count(*) as n
+          from delivery_assignments a
+          join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+          join riders x on x.id = a.rider_id and x.status = 'active'
+         where a.state = 'delivered'
+           and (a.delivered_at at time zone 'Asia/Dhaka')::date = v_day
+         group by a.rider_id
+        having count(*) >= v_target
+      loop
+        insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+        values (r.rider_id, 'daily_target', v_day::text, v_bonus)
+        on conflict (rider_id, kind, ref_key) do nothing;
+        if found then
+          v_note := format('Daily target: %s deliveries on %s', v_target, v_day);
+          v_earning := ps__credit_incentive(r.rider_id, v_bonus, v_note);
+          update rider_incentive_awards set earning_id = v_earning
+           where rider_id = r.rider_id and kind = 'daily_target' and ref_key = v_day::text;
+          v_daily := v_daily + 1;
+          v_total := v_total + v_bonus;
+          v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'daily_target', 'amount', v_bonus, 'note', v_note);
+        end if;
+      end loop;
+    end loop;
+  end if;
+
+  -- Weekly tiers (Mon–Sun, Dhaka). Tier 1 and tier 2 are paid SEPARATELY (tier 2 is an
+  -- extra on top), each once per rider per week. This week and last week are checked, so a
+  -- run that straddles Sunday midnight still pays. Tier 2 must sit above tier 1.
+  foreach v_week in array array[v_week0 - 7, v_week0] loop
+    for v_tier in 1..2 loop
+      v_wt := case v_tier when 1 then v_wt1 else v_wt2 end;
+      v_wb := case v_tier when 1 then v_wb1 else v_wb2 end;
+      continue when v_wt <= 0 or v_wb <= 0;
+      continue when v_tier = 2 and v_wt1 > 0 and v_wt <= v_wt1;
+      for r in
+        select a.rider_id, count(*) as n
+          from delivery_assignments a
+          join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+          join riders x on x.id = a.rider_id and x.status = 'active'
+         where a.state = 'delivered'
+           and (a.delivered_at at time zone 'Asia/Dhaka')::date >= v_week
+           and (a.delivered_at at time zone 'Asia/Dhaka')::date <  v_week + 7
+         group by a.rider_id
+        having count(*) >= v_wt
+      loop
+        insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+        values (r.rider_id, 'weekly_target', v_week::text || ':' || v_tier, v_wb)
+        on conflict (rider_id, kind, ref_key) do nothing;
+        if found then
+          v_note := format('Weekly target (tier %s): %s deliveries in the week of %s', v_tier, v_wt, v_week);
+          v_earning := ps__credit_incentive(r.rider_id, v_wb, v_note);
+          update rider_incentive_awards set earning_id = v_earning
+           where rider_id = r.rider_id and kind = 'weekly_target' and ref_key = v_week::text || ':' || v_tier;
+          v_weekly := v_weekly + 1;
+          v_total := v_total + v_wb;
+          v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'weekly_target', 'tier', v_tier, 'amount', v_wb, 'note', v_note);
+        end if;
+      end loop;
+    end loop;
+  end loop;
+
+  if v_rbonus > 0 then
+    for r in
+      select f.referee_id, f.referrer_id,
+             (select count(*) from delivery_assignments a
+               join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+              where a.rider_id = f.referee_id and a.state = 'delivered') as n
+        from rider_referrals f
+        join riders rr on rr.id = f.referrer_id and rr.status = 'active'
+       where f.rewarded_at is null
+    loop
+      continue when r.n < v_after;
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.referrer_id, 'referral', r.referee_id::text, v_rbonus)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := format('Referral bonus: the rider you referred completed %s deliveries', v_after);
+        v_earning := ps__credit_incentive(r.referrer_id, v_rbonus, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.referrer_id and kind = 'referral' and ref_key = r.referee_id::text;
+        v_ref := v_ref + 1;
+        v_total := v_total + v_rbonus;
+        v_awards := v_awards || jsonb_build_object('riderId', r.referrer_id, 'kind', 'referral', 'amount', v_rbonus, 'note', v_note);
+      end if;
+      update rider_referrals set rewarded_at = p_now where referee_id = r.referee_id and rewarded_at is null;
+    end loop;
+  end if;
+
+  return jsonb_build_object('daily', v_daily, 'weekly', v_weekly, 'referral', v_ref, 'total', v_total, 'awards', v_awards);
+end $$;
+
+revoke all on function ps_award_incentives(timestamptz) from public, anon, authenticated;
+grant execute on function ps_award_incentives(timestamptz) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- Audit the new keys. The two small triggers from 202610020010 / 202610020011 are
+-- recreated with the wider key lists (a trigger's WHEN filter cannot be altered).
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if to_regclass('public.site_settings') is not null
+     and to_regprocedure('public.ps_money_audit_write(text,text,text,bigint,jsonb,uuid)') is not null then
+    if to_regprocedure('public.ps_incentive_settings_audit()') is not null then
+      drop trigger if exists trg_incentive_settings_audit on site_settings;
+      create trigger trg_incentive_settings_audit after insert or update on site_settings
+        for each row when (new.key in ('incentive_daily_target', 'incentive_daily_bonus_paisa',
+                                       'incentive_referral_bonus_paisa', 'incentive_referral_after',
+                                       'incentive_weekly_target', 'incentive_weekly_bonus_paisa',
+                                       'incentive_weekly_target2', 'incentive_weekly_bonus2_paisa'))
+        execute function ps_incentive_settings_audit();
+    end if;
+    if to_regprocedure('public.ps_dispatch_extras_audit()') is not null then
+      drop trigger if exists trg_dispatch_extras_audit on site_settings;
+      create trigger trg_dispatch_extras_audit after insert or update on site_settings
+        for each row when (new.key in ('rider_load_limit', 'rider_auto_suspend', 'rider_failed_delivery_fee_paisa'))
+        execute function ps_dispatch_extras_audit();
+    end if;
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: shop-own-wallet settlement (202610020013) ====
+-- ============================================================================
+-- SHOP-OWN-WALLET settlement model (2026-10-02). OFF for every shop until staff
+-- switch ONE shop to it (Admin → Shops → edit → "How this shop is paid").
+--
+--  Today the customer pays PROSANTI's wallet and the shop is paid its
+--  `shop_ledger.payable` later (platform model — still the default and unchanged).
+--  In the shop_wallet model the customer pays the SHOP's own bKash/Nagad number,
+--  so the platform has already "paid" the shop that money. The ledger therefore
+--  books, for a delivered, VERIFIED bKash/Nagad order of such a shop:
+--
+--        payable := (subtotal − commission − shop-funded promo …) − order.total
+--
+--  which is exactly  −(commission + delivery + tip + surcharge)  when the shop
+--  funded its own promo, and gives PROSANTI-funded coupons back to the shop. A
+--  negative balance means the SHOP OWES PROSANTI (every existing balance formula,
+--  Σ payable − Σ payouts, keeps working unchanged).
+--
+--  * shops.settlement_model ('platform' default | 'shop_wallet'), wallet_bkash,
+--    wallet_nagad. A shop_wallet shop is forced to payment_verifier = 'shop': the
+--    money is in the shop's wallet, so only the shop can see it.
+--  * shop_ledger.collected_by_shop = what the shop took directly (informational).
+--  * COD is untouched (the rider's cash still goes to PROSANTI).
+--  * A shop pays what it owes by a NEGATIVE shop_payouts amount ("remittance"):
+--    ps_guard_payout_balance allows it only while the balance is negative and never
+--    past zero. Positive payouts are still capped at the balance, as before.
+--  * The daily reconciliation's "shop overpaid" check skips shop_wallet shops.
+--  * ps_place_order accepts a wallet method when the shop has its own number (patched in
+--    place, one line; if the anchor is not found you get a NOTICE and such shops take COD).
+--
+-- ps_write_shop_ledger is NOT redefined: a BEFORE trigger on shop_ledger nets the
+-- collected amount, and an orders trigger re-nets when the payment is verified
+-- after delivery. Safe to re-run. Run after 202609280003 and 202610010007.
+-- ============================================================================
+begin;
+
+alter table shops add column if not exists settlement_model text not null default 'platform';
+alter table shops drop constraint if exists shops_settlement_model_check;
+alter table shops add constraint shops_settlement_model_check
+  check (settlement_model in ('platform', 'shop_wallet'));
+alter table shops add column if not exists wallet_bkash text;
+alter table shops add column if not exists wallet_nagad text;
+alter table shops drop constraint if exists shops_wallet_numbers_check;
+alter table shops add constraint shops_wallet_numbers_check
+  check ((wallet_bkash is null or wallet_bkash ~ '^01[0-9]{9}$')
+     and (wallet_nagad is null or wallet_nagad ~ '^01[0-9]{9}$'));
+
+create or replace function ps_shop_wallet_defaults()
+returns trigger language plpgsql as $$
+begin
+  if new.settlement_model = 'shop_wallet' then
+    -- jsonb_populate_record ignores a key the row has no column for (older databases)
+    new := jsonb_populate_record(new, jsonb_build_object('payment_verifier', 'shop'));
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_shops_wallet_defaults on shops;
+create trigger trg_shops_wallet_defaults
+  before insert or update on shops
+  for each row execute function ps_shop_wallet_defaults();
+
+alter table shop_ledger add column if not exists collected_by_shop bigint not null default 0;
+
+-- What the shop took straight from the customer for this order (0 unless it applies).
+create or replace function ps_shop_wallet_collected(p_order_id uuid)
+returns bigint language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select case when s.settlement_model = 'shop_wallet'
+                 and o.payment::text in ('bkash', 'nagad')
+                 and o.payment_status = 'verified'
+                 and not coalesce(o.is_return, false)
+                then greatest(coalesce(o.total, 0), 0) else 0 end
+      from orders o join shops s on s.id = o.shop_id
+     where o.id = p_order_id
+  ), 0)::bigint
+$$;
+revoke all on function ps_shop_wallet_collected(uuid) from public, anon, authenticated;
+grant execute on function ps_shop_wallet_collected(uuid) to service_role;
+
+create or replace function ps_ledger_net_collected()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_collected bigint;
+begin
+  if coalesce(current_setting('ps.skip_collect', true), '') = '1' then
+    return new;
+  end if;
+  -- A fresh line (or ps_write_shop_ledger rewriting the base payable): net it.
+  if tg_op = 'INSERT' or new.payable is distinct from old.payable then
+    v_collected := ps_shop_wallet_collected(new.order_id);
+    new.collected_by_shop := v_collected;
+    new.payable := new.payable - v_collected;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_shop_ledger_net_collected on shop_ledger;
+create trigger trg_shop_ledger_net_collected
+  before insert or update on shop_ledger
+  for each row execute function ps_ledger_net_collected();
+
+-- The payment was verified AFTER the ledger line was written: re-net that line.
+create or replace function ps_orders_renet_collected()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_old bigint;
+  v_new bigint;
+begin
+  select collected_by_shop into v_old from shop_ledger where order_id = new.id;
+  if not found then
+    return new;
+  end if;
+  v_new := ps_shop_wallet_collected(new.id);
+  if v_new is distinct from v_old then
+    perform set_config('ps.skip_collect', '1', true);
+    update shop_ledger set payable = payable + collected_by_shop - v_new, collected_by_shop = v_new
+     where order_id = new.id;
+    perform set_config('ps.skip_collect', '0', true);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_orders_renet_collected on orders;
+create trigger trg_orders_renet_collected
+  after update of payment_status on orders
+  for each row when (old.payment_status is distinct from new.payment_status)
+  execute function ps_orders_renet_collected();
+
+-- Payout guard: also lets a shop REMIT what it owes (negative amount), never past zero.
+create or replace function ps_guard_payout_balance()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_earned bigint;
+  v_paid bigint;
+begin
+  if new.amount is null or new.amount = 0 then
+    raise exception 'payout must be positive';
+  end if;
+  -- Serialize payouts per shop so two staff can't overpay concurrently.
+  perform 1 from shops where id = new.shop_id for update;
+  select coalesce(sum(payable), 0) into v_earned from shop_ledger where shop_id = new.shop_id;
+  select coalesce(sum(amount), 0) into v_paid from shop_payouts where shop_id = new.shop_id;
+  if new.amount > 0 then
+    if new.amount > v_earned - v_paid then
+      raise exception 'payout exceeds balance';
+    end if;
+  else
+    -- remittance: the shop pays PROSANTI. Only while it owes, and not more than it owes.
+    if v_earned - v_paid >= 0 or new.amount < v_earned - v_paid then
+      raise exception 'remittance exceeds what the shop owes';
+    end if;
+  end if;
+  return new;
+end $$;
+
+-- (trg_payouts_check_balance has existed since 202609090004 and calls this function by name,
+-- so replacing the function is enough.)
+
+-- Placing an order: ps_place_order insists that the PLATFORM has a number for the chosen
+-- wallet ("bKash is not available right now"). A shop_wallet shop takes the payment on its
+-- OWN number, so that line must also accept "this shop has one". ps_place_order is patched
+-- in place (the installed text is not exactly a repository file — see 202609260003): one
+-- anchor line, skipped with a NOTICE when the anchor is not found, never a failure.
+create or replace function ps_shop_takes_wallet(p_shop uuid, p_method text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select s.settlement_model = 'shop_wallet'
+           and coalesce(case lower(p_method) when 'bkash' then s.wallet_bkash when 'nagad' then s.wallet_nagad end, '') <> ''
+      from shops s where s.id = p_shop
+  ), false)
+$$;
+revoke all on function ps_shop_takes_wallet(uuid, text) from public, anon, authenticated;
+grant execute on function ps_shop_takes_wallet(uuid, text) to service_role;
+
+do $$
+declare
+  v_oid oid;
+  v_def text;
+  v_anchor text := $q$if coalesce(v_ops->'wallets'->>v_payment, '') = '' then$q$;
+  v_new text := $q$if coalesce(v_ops->'wallets'->>v_payment, '') = '' and not ps_shop_takes_wallet(v_shop.id, v_payment) then$q$;
+begin
+  select p.oid into v_oid
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'ps_place_order'
+     and pg_get_function_identity_arguments(p.oid) = 'p_order jsonb, p_items jsonb';
+  if v_oid is null then
+    raise notice 'ps_place_order is not installed here — nothing to patch (shop wallets still need it patched later: re-run this file)';
+    return;
+  end if;
+  v_def := pg_get_functiondef(v_oid);
+  if position('ps_shop_takes_wallet' in v_def) > 0 then
+    raise notice 'ps_place_order already accepts a shop''s own wallet';
+    return;
+  end if;
+  if position(v_anchor in v_def) = 0 then
+    raise notice 'ps_place_order: wallet check anchor not found — a shop_wallet shop will only be able to take COD until it is patched';
+    return;
+  end if;
+  execute replace(v_def, v_anchor, v_new);
+  raise notice 'ps_place_order patched: a shop''s own wallet number is accepted';
+end $$;
+
+-- Daily reconciliation: the "shop overpaid" check skips shop_wallet shops
+-- (latest definition: 202610010007, one clause added).
+create or replace function ps_admin_money_daily(p_day date default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_day date := coalesce(p_day, (now() at time zone 'Asia/Dhaka')::date);
+  v_from timestamptz := (coalesce(p_day, (now() at time zone 'Asia/Dhaka')::date))::timestamp at time zone 'Asia/Dhaka';
+  v_to timestamptz;
+  v_flows jsonb;
+  v_position jsonb;
+  v_checks jsonb := '[]'::jsonb;
+  v_count bigint;
+  v_sample text[];
+  v_has_claims boolean := to_regclass('public.rider_settle_claims') is not null;
+begin
+  if not (select ps_is_admin()) then
+    raise exception 'forbidden';
+  end if;
+  v_to := v_from + interval '1 day';
+
+  with d as (
+    select o.id, o.total, o.payment, o.delivery_charge,
+           coalesce(o.is_return, false) as is_return,
+           coalesce(
+             (select max(a.delivered_at) from delivery_assignments a
+               where a.order_id = o.id and a.state = 'delivered'),
+             (select min(h.created_at) from order_status_history h
+               where h.order_id = o.id and h.status = 'delivered'),
+             o.updated_at
+           ) as at,
+           exists (select 1 from delivery_assignments a
+                    where a.order_id = o.id and a.state = 'delivered') as by_rider
+    from orders o
+    where o.status = 'delivered'
+  ),
+  day_orders as (select * from d where at >= v_from and at < v_to),
+  earn as (
+    select kind, amount from rider_earnings where created_at >= v_from and created_at < v_to
+  ),
+  setl as (
+    select amount, coalesce((to_jsonb(s)->>'netted_amount')::bigint, 0) as netted
+    from rider_settlements s where settled_at >= v_from and settled_at < v_to
+  )
+  select jsonb_build_object(
+    'deliveredOrders',     (select count(*) from day_orders where not is_return),
+    'returnLegs',          (select count(*) from day_orders where is_return),
+    'orderValue',          coalesce((select sum(total) from day_orders where not is_return), 0),
+    'codCollectedByRiders',coalesce((select sum(total) from day_orders where payment = 'cod' and by_rider), 0),
+    'walletPaidOrders',    coalesce((select sum(total) from day_orders where payment <> 'cod'), 0),
+    'commission',          coalesce((select sum(l.commission) from shop_ledger l join day_orders o on o.id = l.order_id), 0),
+    'deliveryIncome',      coalesce((select sum(delivery_charge) from day_orders), 0),
+    'shopPayableAccrued',  coalesce((select sum(l.payable) from shop_ledger l join day_orders o on o.id = l.order_id), 0),
+    'shopPayoutsPaid',     coalesce((select sum(amount) from shop_payouts where paid_at >= v_from and paid_at < v_to), 0),
+    'riderEarned',         coalesce((select sum(amount) from earn where kind in ('tip', 'delivery_fee', 'cod_handling', 'incentive')), 0),
+    'riderAdjustments',    coalesce((select sum(amount) from earn where kind = 'adjustment'), 0),
+    'riderPayoutsRequested', coalesce((select sum(amount) from rider_payout_requests where requested_at >= v_from and requested_at < v_to), 0),
+    'riderPayoutsPaid',    coalesce((select sum(amount) from rider_payout_requests
+                                      where status = 'paid' and decided_at >= v_from and decided_at < v_to), 0),
+    'settlementsCount',    (select count(*) from setl),
+    'settlementsTotal',    coalesce((select sum(amount) from setl), 0),
+    'settlementsNetted',   coalesce((select sum(netted) from setl), 0),
+    'cashHandedIn',        coalesce((select sum(amount - netted) from setl), 0)
+  ) into v_flows;
+
+  v_position := jsonb_build_object(
+    'codCustody',  coalesce((select sum(cash_in_hand) from riders), 0),
+    'riderPayable',coalesce((select sum(earnings_balance) from riders), 0),
+    'shopPayable', coalesce((select sum(payable) from shop_ledger), 0)
+                   - coalesce((select sum(amount) from shop_payouts), 0)
+  );
+
+  -- ── CHECKS ───────────────────────────────────────────────────────────────
+  -- 1. every rider wallet equals the sum of its journal
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from (select r.id from riders r
+        where r.earnings_balance <> coalesce((select sum(e.amount) from rider_earnings e where e.rider_id = r.id), 0)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'wallet_journal', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 2. no rider holds negative cash
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample from riders where cash_in_hand < 0;
+  v_checks := v_checks || jsonb_build_object('key', 'negative_cash', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 3. no shop has been paid more than it earned
+  select count(*), (array_agg(shop_id::text))[1:5] into v_count, v_sample
+  from (select t.shop_id
+        from (select l.shop_id, l.payable as earned, 0::bigint as paid from shop_ledger l
+              union all
+              select p.shop_id, 0, p.amount from shop_payouts p) t
+        -- a shop that sells into its OWN wallet (202610020013) runs a negative balance
+        -- by design — it owes PROSANTI — so only platform-settled shops can be "overpaid"
+        where not exists (select 1 from shops s where s.id = t.shop_id
+                            and coalesce(to_jsonb(s)->>'settlement_model', 'platform') = 'shop_wallet')
+        group by t.shop_id
+        having sum(t.earned) < sum(t.paid)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'shop_overpaid', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 4. every order delivered today (with a shop) has its shop ledger line
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from (select o.id from orders o
+        where o.status = 'delivered' and o.shop_id is not null
+          and not coalesce(o.is_return, false)
+          and o.updated_at >= v_from and o.updated_at < v_to
+          and not exists (select 1 from shop_ledger l where l.order_id = o.id)) x;
+  v_checks := v_checks || jsonb_build_object('key', 'delivered_no_ledger', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 5. rider payout requests waiting more than 48 hours
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from rider_payout_requests where status = 'pending' and requested_at < now() - interval '48 hours';
+  v_checks := v_checks || jsonb_build_object('key', 'stale_payouts', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 6. settle claims waiting more than 48 hours
+  v_count := 0; v_sample := null;
+  if v_has_claims then
+    execute $q$select count(*), (array_agg(id::text))[1:5] from rider_settle_claims
+               where status = 'pending' and created_at < now() - interval '48 hours'$q$
+      into v_count, v_sample;
+  end if;
+  v_checks := v_checks || jsonb_build_object('key', 'stale_claims', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 7. failed deliveries nobody has resolved (202610010001 column)
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from orders o
+  where o.status = 'out-for-delivery' and nullif(to_jsonb(o)->>'delivery_failed_at', '') is not null;
+  v_checks := v_checks || jsonb_build_object('key', 'open_failed_deliveries', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  -- 8. wallet payments awaiting a decision for more than a day
+  select count(*), (array_agg(id::text))[1:5] into v_count, v_sample
+  from orders o
+  where o.payment <> 'cod' and o.payment_status = 'pending_verification'
+    and o.status <> 'cancelled' and o.created_at < now() - interval '24 hours';
+  v_checks := v_checks || jsonb_build_object('key', 'stale_payment_verification', 'ok', v_count = 0, 'count', v_count,
+                                             'sample', coalesce(to_jsonb(v_sample), '[]'::jsonb));
+
+  return jsonb_build_object('day', v_day, 'flows', v_flows, 'position', v_position, 'checks', v_checks);
+end $$;
+
+revoke all on function ps_admin_money_daily(date) from public, anon;
+grant execute on function ps_admin_money_daily(date) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Fix: shop balance totals summed in the database (202610020014) ====
+-- ============================================================================
+-- Shop balances are SUMMED IN THE DATABASE (2026-10-03).
+--
+-- Until now the admin payouts screen, the "record a payout" pre-check, the vendor
+-- earnings page and the shop dossier all fetched ledger / payout ROWS and added
+-- them up in Node — capped at 5,000, 100, 20 or a window. PostgREST also caps a
+-- response at `max_rows` (1,000 by default), so once a shop (or the platform) had
+-- more rows than that the "lifetime paid" and "balance due" figures were quietly
+-- wrong. The database trigger `ps_guard_payout_balance` was always right; only the
+-- DISPLAY and the app-side pre-check were not.
+--
+-- One aggregate function. SECURITY INVOKER: row-level security still decides what
+-- the caller may see (staff: every shop, a vendor: their own), so it opens nothing.
+-- Safe to re-run.
+-- ============================================================================
+
+begin;
+
+create or replace function ps_shop_balance_totals(p_shop_id uuid default null)
+returns table (shop_id uuid, earned bigint, paid bigint, last_payout_at timestamptz)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with e as (
+    select l.shop_id, sum(l.payable)::bigint as earned
+      from shop_ledger l
+     where p_shop_id is null or l.shop_id = p_shop_id
+     group by l.shop_id
+  ), p as (
+    select s.shop_id, sum(s.amount)::bigint as paid, max(s.paid_at) as last_at
+      from shop_payouts s
+     where p_shop_id is null or s.shop_id = p_shop_id
+     group by s.shop_id
+  )
+  select coalesce(e.shop_id, p.shop_id),
+         coalesce(e.earned, 0)::bigint,
+         coalesce(p.paid, 0)::bigint,
+         p.last_at
+    from e full join p on p.shop_id = e.shop_id;
+$$;
+
+revoke all on function ps_shop_balance_totals(uuid) from public, anon;
+grant execute on function ps_shop_balance_totals(uuid) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: peak-hour + rainy-day order bonus (202610020015) ====
+-- ============================================================================
+-- Peak-hour and rainy-day delivery bonus (2026-10-03) — both OFF until staff set an amount.
+--
+--   rider_peak_bonus_paisa   flat bonus per delivered order, for orders delivered inside the
+--                            peak window (Dhaka clock). 0 = off, ≤ ৳200.
+--   rider_peak_start_hour    window start, 0–23 (inclusive)         default 18
+--   rider_peak_end_hour      window end,   0–23 (exclusive)         default 22
+--                            start > end wraps midnight (e.g. 22 → 2); start = end = no window.
+--   rider_rain_bonus_paisa   flat bonus per delivered order the CUSTOMER paid the rain
+--                            surcharge on (orders.surcharge_rain > 0). 0 = off, ≤ ৳200.
+--
+-- Both can apply to one order (they stack). Delivery legs only (returns excluded), active
+-- riders only, orders delivered in the last 48 h (so a late sweep still pays).
+--
+-- It is a SEPARATE function (ps_award_order_bonuses) so the daily/weekly/referral function is
+-- untouched. Idempotency = rider_incentive_awards (rider, kind, order id): paid once per order
+-- per kind, however often the sweep runs. The credit is an order-less `incentive` journal row
+-- (ps__credit_incentive), so it can never collide with another per-order journal row.
+-- Setting changes are audited. Safe to re-run. Run after 202610020014.
+-- ============================================================================
+begin;
+
+do $$
+declare c record;
+begin
+  if to_regclass('public.rider_incentive_awards') is not null then
+    for c in
+      select conname from pg_constraint
+       where conrelid = 'public.rider_incentive_awards'::regclass and contype = 'c'
+         and pg_get_constraintdef(oid) ilike '%daily_target%'
+    loop
+      execute format('alter table public.rider_incentive_awards drop constraint %I', c.conname);
+    end loop;
+    alter table rider_incentive_awards drop constraint if exists rider_incentive_awards_kind_check;
+    alter table rider_incentive_awards add constraint rider_incentive_awards_kind_check
+      check (kind in ('daily_target', 'weekly_target', 'referral', 'peak_bonus', 'rain_bonus'));
+  end if;
+end $$;
+
+create or replace function ps_award_order_bonuses(p_now timestamptz default now())
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_peak   bigint := least(greatest(ps_setting_int('rider_peak_bonus_paisa', 0), 0), 20000);
+  v_ps     int    := least(greatest(ps_setting_int('rider_peak_start_hour', 18), 0), 23);
+  v_pe     int    := least(greatest(ps_setting_int('rider_peak_end_hour', 22), 0), 23);
+  v_rain   bigint := least(greatest(ps_setting_int('rider_rain_bonus_paisa', 0), 0), 20000);
+  v_peaks  int := 0;
+  v_rains  int := 0;
+  v_total  bigint := 0;
+  v_awards jsonb := '[]'::jsonb;
+  v_earning uuid;
+  v_note   text;
+  r record;
+begin
+  if v_peak > 0 and v_ps <> v_pe then
+    for r in
+      select a.rider_id, a.order_id, o.order_no
+        from delivery_assignments a
+        join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+        join riders x on x.id = a.rider_id and x.status = 'active'
+       where a.state = 'delivered'
+         and a.delivered_at >= p_now - interval '48 hours'
+         and a.delivered_at <= p_now
+         and case
+               when v_ps < v_pe then extract(hour from a.delivered_at at time zone 'Asia/Dhaka') >= v_ps
+                                 and extract(hour from a.delivered_at at time zone 'Asia/Dhaka') <  v_pe
+               else extract(hour from a.delivered_at at time zone 'Asia/Dhaka') >= v_ps
+                 or extract(hour from a.delivered_at at time zone 'Asia/Dhaka') <  v_pe
+             end
+    loop
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.rider_id, 'peak_bonus', r.order_id::text, v_peak)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := left('Peak-hour bonus — ' || coalesce(r.order_no, r.order_id::text), 400);
+        v_earning := ps__credit_incentive(r.rider_id, v_peak, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.rider_id and kind = 'peak_bonus' and ref_key = r.order_id::text;
+        v_peaks := v_peaks + 1;
+        v_total := v_total + v_peak;
+        v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'peak_bonus', 'amount', v_peak, 'note', v_note);
+      end if;
+    end loop;
+  end if;
+
+  if v_rain > 0 then
+    for r in
+      select a.rider_id, a.order_id, o.order_no
+        from delivery_assignments a
+        join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+        join riders x on x.id = a.rider_id and x.status = 'active'
+       where a.state = 'delivered'
+         and a.delivered_at >= p_now - interval '48 hours'
+         and a.delivered_at <= p_now
+         and coalesce(o.surcharge_rain, 0) > 0
+    loop
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.rider_id, 'rain_bonus', r.order_id::text, v_rain)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := left('Rainy-day bonus — ' || coalesce(r.order_no, r.order_id::text), 400);
+        v_earning := ps__credit_incentive(r.rider_id, v_rain, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.rider_id and kind = 'rain_bonus' and ref_key = r.order_id::text;
+        v_rains := v_rains + 1;
+        v_total := v_total + v_rain;
+        v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'rain_bonus', 'amount', v_rain, 'note', v_note);
+      end if;
+    end loop;
+  end if;
+
+  return jsonb_build_object('peak', v_peaks, 'rain', v_rains, 'total', v_total, 'awards', v_awards);
+end $$;
+
+revoke all on function ps_award_order_bonuses(timestamptz) from public, anon, authenticated;
+grant execute on function ps_award_order_bonuses(timestamptz) to service_role;
+
+-- Audit the new keys (the trigger's WHEN filter cannot be altered, so it is recreated).
+do $$
+begin
+  if to_regclass('public.site_settings') is not null
+     and to_regprocedure('public.ps_money_audit_write(text,text,text,bigint,jsonb,uuid)') is not null
+     and to_regprocedure('public.ps_incentive_settings_audit()') is not null then
+    drop trigger if exists trg_incentive_settings_audit on site_settings;
+    create trigger trg_incentive_settings_audit after insert or update on site_settings
+      for each row when (new.key in ('incentive_daily_target', 'incentive_daily_bonus_paisa',
+                                     'incentive_referral_bonus_paisa', 'incentive_referral_after',
+                                     'incentive_weekly_target', 'incentive_weekly_bonus_paisa',
+                                     'incentive_weekly_target2', 'incentive_weekly_bonus2_paisa',
+                                     'rider_peak_bonus_paisa', 'rider_peak_start_hour',
+                                     'rider_peak_end_hour', 'rider_rain_bonus_paisa'))
+      execute function ps_incentive_settings_audit();
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Fix: daily report separates shop-wallet money and remittances (202610020016) ====
+-- ============================================================================
+-- Daily money report: separate the shop-own-wallet flows (2026-10-03).
+--
+-- After 202610020013 the daily report still lumped everything together:
+--   • "walletPaidOrders" counted EVERY non-COD order — including money that went straight
+--     into a shop's own bKash/Nagad and never touched PROSANTI;
+--   • "shopPayoutsPaid" summed shop_payouts including NEGATIVE rows (a shop remitting to
+--     PROSANTI), so a remittance quietly reduced the "paid out" figure.
+--
+-- Two new keys and one corrected one, patched into ps_admin_money_daily IN PLACE (the function
+-- is long and is redefined by earlier migrations; copying it again risks drift):
+--   shopWalletOrders   non-COD orders delivered that day whose shop sells into its own wallet
+--                      (walletPaidOrders is unchanged: all non-COD, as before)
+--   shopRemittances    money shops sent to PROSANTI that day (negative payouts, shown positive)
+--   shopPayoutsPaid    now POSITIVE payouts only
+-- Every anchor miss is a NOTICE, never an error: the report keeps working unpatched.
+-- Safe to re-run. Run after 202610020015.
+-- ============================================================================
+begin;
+
+do $$
+declare
+  v_oid oid;
+  v_def text;
+  v_new text;
+  -- anchors: unique substrings of the current definition
+  a_paid  text := $q$coalesce((select sum(amount) from shop_payouts where paid_at >= v_from and paid_at < v_to), 0)$q$;
+  b_paid  text := $q$coalesce((select sum(amount) from shop_payouts where amount > 0 and paid_at >= v_from and paid_at < v_to), 0)$q$;
+  a_key1  text := $q$'walletPaidOrders',$q$;
+  b_key1  text := $q$'shopWalletOrders', coalesce((select sum(o2.total) from day_orders d2 join orders o2 on o2.id = d2.id join shops s2 on s2.id = o2.shop_id where d2.payment <> 'cod' and s2.settlement_model = 'shop_wallet'), 0), 'walletPaidOrders',$q$;
+  a_key2  text := $q$'shopPayoutsPaid',$q$;
+  b_key2  text := $q$'shopRemittances', coalesce((select -sum(amount) from shop_payouts where amount < 0 and paid_at >= v_from and paid_at < v_to), 0), 'shopPayoutsPaid',$q$;
+begin
+  select p.oid into v_oid
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'ps_admin_money_daily'
+   order by p.oid desc limit 1;
+  if v_oid is null then
+    raise notice 'ps_admin_money_daily is not installed here — nothing to patch (re-run this file after 202610010007)';
+    return;
+  end if;
+  v_def := pg_get_functiondef(v_oid);
+  if position('shopRemittances' in v_def) > 0 then
+    raise notice 'ps_admin_money_daily already reports shop-wallet flows';
+    return;
+  end if;
+  if position(a_paid in v_def) = 0 or position(a_key1 in v_def) = 0 or position(a_key2 in v_def) = 0 then
+    raise notice 'ps_admin_money_daily: anchors not found — the daily report keeps its old shape until patched';
+    return;
+  end if;
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'shops' and column_name = 'settlement_model') then
+    raise notice 'shops.settlement_model is missing — run 202610020013 first, then re-run this file';
+    return;
+  end if;
+  v_new := replace(v_def, a_paid, b_paid);
+  v_new := replace(v_new, a_key1, b_key1);
+  v_new := replace(v_new, a_key2, b_key2);
+  execute v_new;
+  raise notice 'ps_admin_money_daily patched: shopWalletOrders + shopRemittances, payouts exclude remittances';
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: weekly streak bonus (202610020017) ====
+-- ============================================================================
+-- Weekly STREAK bonus (2026-10-03) — OFF until staff set weeks and an amount.
+--
+--   rider_streak_weeks         0 = off, otherwise 2–8: how many complete Mon–Sun weeks in a row
+--   rider_streak_bonus_paisa   0 = off, ≤ ৳5,000: paid once when the streak is reached
+--
+-- A "good week" is one in which the rider reached the weekly tier-1 target
+-- (incentive_weekly_target, set on Riders → Incentives); without that target there is no
+-- definition of a good week and the streak bonus pays nothing. Checked at the start of each
+-- week for the last K COMPLETE weeks (Dhaka). Once paid, the streak starts again: nothing more
+-- is paid while the earlier award falls inside the same K-week window. Idempotent through
+-- rider_incentive_awards ('streak_bonus', ref_key = the Monday of the streak's last week).
+--
+-- ps_award_order_bonuses (202610020015) is re-created whole — it is this project's own
+-- function, so there is nothing to patch in place — and now also returns `streak`.
+-- Safe to re-run. Run after 202610020016.
+-- ============================================================================
+begin;
+
+do $$
+declare c record;
+begin
+  if to_regclass('public.rider_incentive_awards') is not null then
+    for c in
+      select conname from pg_constraint
+       where conrelid = 'public.rider_incentive_awards'::regclass and contype = 'c'
+         and pg_get_constraintdef(oid) ilike '%daily_target%'
+    loop
+      execute format('alter table public.rider_incentive_awards drop constraint %I', c.conname);
+    end loop;
+    alter table rider_incentive_awards drop constraint if exists rider_incentive_awards_kind_check;
+    alter table rider_incentive_awards add constraint rider_incentive_awards_kind_check
+      check (kind in ('daily_target', 'weekly_target', 'referral', 'peak_bonus', 'rain_bonus', 'streak_bonus'));
+  end if;
+end $$;
+
+create or replace function ps_award_order_bonuses(p_now timestamptz default now())
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_peak   bigint := least(greatest(ps_setting_int('rider_peak_bonus_paisa', 0), 0), 20000);
+  v_ps     int    := least(greatest(ps_setting_int('rider_peak_start_hour', 18), 0), 23);
+  v_pe     int    := least(greatest(ps_setting_int('rider_peak_end_hour', 22), 0), 23);
+  v_rain   bigint := least(greatest(ps_setting_int('rider_rain_bonus_paisa', 0), 0), 20000);
+  v_sk     int    := least(greatest(ps_setting_int('rider_streak_weeks', 0), 0), 8);
+  v_sb     bigint := least(greatest(ps_setting_int('rider_streak_bonus_paisa', 0), 0), 500000);
+  v_wt1    int    := least(greatest(ps_setting_int('incentive_weekly_target', 0), 0), 700);
+  v_last   date   := date_trunc('week', p_now at time zone 'Asia/Dhaka')::date - 7;  -- Monday of the last COMPLETE week (Dhaka)
+  v_streaks int := 0;
+  v_peaks  int := 0;
+  v_rains  int := 0;
+  v_total  bigint := 0;
+  v_awards jsonb := '[]'::jsonb;
+  v_earning uuid;
+  v_note   text;
+  r record;
+begin
+  if v_peak > 0 and v_ps <> v_pe then
+    for r in
+      select a.rider_id, a.order_id, o.order_no
+        from delivery_assignments a
+        join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+        join riders x on x.id = a.rider_id and x.status = 'active'
+       where a.state = 'delivered'
+         and a.delivered_at >= p_now - interval '48 hours'
+         and a.delivered_at <= p_now
+         and case
+               when v_ps < v_pe then extract(hour from a.delivered_at at time zone 'Asia/Dhaka') >= v_ps
+                                 and extract(hour from a.delivered_at at time zone 'Asia/Dhaka') <  v_pe
+               else extract(hour from a.delivered_at at time zone 'Asia/Dhaka') >= v_ps
+                 or extract(hour from a.delivered_at at time zone 'Asia/Dhaka') <  v_pe
+             end
+    loop
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.rider_id, 'peak_bonus', r.order_id::text, v_peak)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := left('Peak-hour bonus — ' || coalesce(r.order_no, r.order_id::text), 400);
+        v_earning := ps__credit_incentive(r.rider_id, v_peak, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.rider_id and kind = 'peak_bonus' and ref_key = r.order_id::text;
+        v_peaks := v_peaks + 1;
+        v_total := v_total + v_peak;
+        v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'peak_bonus', 'amount', v_peak, 'note', v_note);
+      end if;
+    end loop;
+  end if;
+
+  if v_rain > 0 then
+    for r in
+      select a.rider_id, a.order_id, o.order_no
+        from delivery_assignments a
+        join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+        join riders x on x.id = a.rider_id and x.status = 'active'
+       where a.state = 'delivered'
+         and a.delivered_at >= p_now - interval '48 hours'
+         and a.delivered_at <= p_now
+         and coalesce(o.surcharge_rain, 0) > 0
+    loop
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.rider_id, 'rain_bonus', r.order_id::text, v_rain)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := left('Rainy-day bonus — ' || coalesce(r.order_no, r.order_id::text), 400);
+        v_earning := ps__credit_incentive(r.rider_id, v_rain, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.rider_id and kind = 'rain_bonus' and ref_key = r.order_id::text;
+        v_rains := v_rains + 1;
+        v_total := v_total + v_rain;
+        v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'rain_bonus', 'amount', v_rain, 'note', v_note);
+      end if;
+    end loop;
+  end if;
+
+  -- STREAK: the rider reached the weekly tier-1 target in each of the last K complete Mon–Sun
+  -- weeks (K = rider_streak_weeks, 2–8) → one bonus; the streak then starts again (no award is
+  -- paid while an earlier one still falls inside the same K-week window). Needs the weekly
+  -- tier-1 target (incentive_weekly_target) as its definition of a "good week".
+  if v_sk >= 2 and v_sb > 0 and v_wt1 > 0 then
+    for r in
+      select x.id as rider_id
+        from riders x
+       where x.status = 'active'
+         and not exists (
+           select 1 from rider_incentive_awards w
+            where w.rider_id = x.id and w.kind = 'streak_bonus'
+              and w.ref_key::date > v_last - 7 * v_sk)
+         and (
+           select count(*) from generate_series(0, v_sk - 1) k
+            where (
+              select count(*) from delivery_assignments a
+                join orders o on o.id = a.order_id and not coalesce(o.is_return, false)
+               where a.rider_id = x.id and a.state = 'delivered'
+                 and (a.delivered_at at time zone 'Asia/Dhaka')::date >= v_last - 7 * k
+                 and (a.delivered_at at time zone 'Asia/Dhaka')::date <  v_last - 7 * k + 7
+            ) >= v_wt1
+         ) = v_sk
+    loop
+      insert into rider_incentive_awards (rider_id, kind, ref_key, amount)
+      values (r.rider_id, 'streak_bonus', v_last::text, v_sb)
+      on conflict (rider_id, kind, ref_key) do nothing;
+      if found then
+        v_note := format('Streak bonus — %s weeks in a row at %s+ deliveries (ending week of %s)', v_sk, v_wt1, v_last);
+        v_earning := ps__credit_incentive(r.rider_id, v_sb, v_note);
+        update rider_incentive_awards set earning_id = v_earning
+         where rider_id = r.rider_id and kind = 'streak_bonus' and ref_key = v_last::text;
+        v_streaks := v_streaks + 1;
+        v_total := v_total + v_sb;
+        v_awards := v_awards || jsonb_build_object('riderId', r.rider_id, 'kind', 'streak_bonus', 'amount', v_sb, 'note', v_note);
+      end if;
+    end loop;
+  end if;
+
+  return jsonb_build_object('peak', v_peaks, 'rain', v_rains, 'streak', v_streaks, 'total', v_total, 'awards', v_awards);
+end $$;
+
+revoke all on function ps_award_order_bonuses(timestamptz) from public, anon, authenticated;
+grant execute on function ps_award_order_bonuses(timestamptz) to service_role;
+
+-- Audit the new keys (recreate the trigger: its WHEN filter cannot be altered).
+do $$
+begin
+  if to_regclass('public.site_settings') is not null
+     and to_regprocedure('public.ps_money_audit_write(text,text,text,bigint,jsonb,uuid)') is not null
+     and to_regprocedure('public.ps_incentive_settings_audit()') is not null then
+    drop trigger if exists trg_incentive_settings_audit on site_settings;
+    create trigger trg_incentive_settings_audit after insert or update on site_settings
+      for each row when (new.key in ('incentive_daily_target', 'incentive_daily_bonus_paisa',
+                                     'incentive_referral_bonus_paisa', 'incentive_referral_after',
+                                     'incentive_weekly_target', 'incentive_weekly_bonus_paisa',
+                                     'incentive_weekly_target2', 'incentive_weekly_bonus2_paisa',
+                                     'rider_peak_bonus_paisa', 'rider_peak_start_hour',
+                                     'rider_peak_end_hour', 'rider_rain_bonus_paisa',
+                                     'rider_streak_weeks', 'rider_streak_bonus_paisa'))
+      execute function ps_incentive_settings_audit();
+  end if;
+end $$;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: vendor (shop) web push (202610020018) ====
+-- ============================================================================
+-- Vendor (shop) WEB PUSH (2026-10-03): a new order buzzes the shop's phone even with
+-- the vendor panel closed, and a shop that owes PROSANTI gets a daily reminder.
+--
+-- Until now a shop only heard about an order while its panel was OPEN (a 20-second poll
+-- plus a beep) — a shop owner with the phone in a pocket found out from the customer's
+-- phone call. Same VAPID pair and `web-push` as the staff, shopper and rider channels; a
+-- separate table because the audience (a shop, any of its staff devices) differs.
+--
+--   vendor_push_subscriptions   one row per shop browser/phone. Service-role only: RLS on,
+--                               NO policies — /api/vendor/push writes after requireVendor(),
+--                               the fan-out in src/lib/vendor-push.ts reads. A shop can never
+--                               read another shop's endpoints. Deleting a shop deletes them.
+--
+-- Safe to re-run. Nothing else changes.
+-- ============================================================================
+begin;
+
+create table if not exists public.vendor_push_subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  shop_id      uuid not null references public.shops(id) on delete cascade,
+  user_id      uuid,
+  endpoint     text not null unique,
+  p256dh       text not null,
+  auth         text not null,
+  created_at   timestamptz not null default now(),
+  last_seen_at timestamptz not null default now()
+);
+
+create index if not exists idx_vendor_push_shop
+  on public.vendor_push_subscriptions (shop_id);
+
+alter table public.vendor_push_subscriptions enable row level security;
+revoke all on table public.vendor_push_subscriptions from anon, authenticated;
+grant all on table public.vendor_push_subscriptions to service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: GPS jump flags (202610020019) ====
+-- ============================================================================
+-- GPS-JUMP FLAGS (2026-10-03): a rider whose reported position "teleports" is flagged for staff.
+--
+-- Fake-GPS apps let a rider appear near a shop (to win offers) or near a customer (to mark a
+-- delivery done). A server cannot PROVE spoofing, but one signal is hard to hide: IMPOSSIBLE
+-- SPEED — the new fix is ≥ 2 km from the previous one and reaching it would need more than
+-- 120 km/h given the time between the two pings. Real riders on motorbikes never do that;
+-- a spoofing app flipping between two places does it constantly.
+--
+--   rider_gps_flags            one row per suspicious jump (from/to, distance, seconds, km/h).
+--                              Staff-readable (RLS ps_is_admin), written only by the SQL below.
+--   ps_rider_update_location   same signature and return type as before (202609090014); now also
+--                              records a flag. At most ONE flag per rider per 5 minutes, so a
+--                              spoofer flipping every ping does not flood the table. A failure
+--                              while flagging can NEVER block the location update itself.
+--
+-- It only RECORDS and SHOWS (Admin → Rider profile → "GPS jump alerts"); nothing is suspended or
+-- withheld automatically — a bad fix after a tunnel or a phone swap is a human decision.
+-- Thresholds are site_settings (0 turns it off):
+--   gps_jump_max_kmh  (default 120)     gps_jump_min_m  (default 2000)
+--
+-- Safe to re-run.
+-- ============================================================================
+begin;
+
+-- Already present in production (202609090014); repeated so this file stands alone.
+alter table public.riders add column if not exists lat double precision;
+alter table public.riders add column if not exists lng double precision;
+alter table public.riders add column if not exists last_location_at timestamptz;
+
+create table if not exists public.rider_gps_flags (
+  id          uuid primary key default gen_random_uuid(),
+  rider_id    uuid not null references public.riders(id) on delete cascade,
+  from_lat    double precision not null,
+  from_lng    double precision not null,
+  to_lat      double precision not null,
+  to_lng      double precision not null,
+  distance_m  integer not null check (distance_m >= 0),
+  seconds     integer not null check (seconds >= 0),
+  speed_kmh   integer not null check (speed_kmh >= 0),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_rider_gps_flags_rider
+  on public.rider_gps_flags (rider_id, created_at desc);
+
+alter table public.rider_gps_flags enable row level security;
+drop policy if exists "gps flags admin read" on public.rider_gps_flags;
+create policy "gps flags admin read" on public.rider_gps_flags
+  for select using (ps_is_admin());
+revoke all on table public.rider_gps_flags from anon, authenticated;
+grant select on table public.rider_gps_flags to authenticated;
+grant all on table public.rider_gps_flags to service_role;
+
+create or replace function public.ps_rider_update_location(p_lat double precision, p_lng double precision)
+returns riders
+language plpgsql security definer set search_path = public as $$
+declare
+  v_rider    riders%rowtype;
+  v_prev_lat double precision;
+  v_prev_lng double precision;
+  v_prev_at  timestamptz;
+  v_max_kmh  bigint;
+  v_min_m    bigint;
+  v_dist_m   double precision;
+  v_secs     double precision;
+  v_kmh      double precision;
+begin
+  if p_lat is null or p_lng is null or p_lat < -90 or p_lat > 90 or p_lng < -180 or p_lng > 180 then
+    raise exception 'invalid coordinates';
+  end if;
+  select * into v_rider from riders where id = ps_rider_id() for update;
+  if not found then
+    raise exception 'forbidden';
+  end if;
+  v_prev_lat := v_rider.lat;
+  v_prev_lng := v_rider.lng;
+  v_prev_at  := v_rider.last_location_at;
+
+  update riders
+  set lat = p_lat, lng = p_lng, last_location_at = now()
+  where id = v_rider.id
+  returning * into v_rider;
+
+  -- The flag is best-effort: whatever happens here, the position above is already saved.
+  begin
+    v_max_kmh := least(greatest(ps_setting_int('gps_jump_max_kmh', 120), 0), 1000);
+    v_min_m   := least(greatest(ps_setting_int('gps_jump_min_m', 2000), 100), 100000);
+    if v_max_kmh > 0 and v_prev_lat is not null and v_prev_lng is not null and v_prev_at is not null then
+      -- haversine, metres
+      v_dist_m := 2 * 6371000 * asin(least(1, sqrt(
+        power(sin(radians(p_lat - v_prev_lat) / 2), 2)
+        + cos(radians(v_prev_lat)) * cos(radians(p_lat)) * power(sin(radians(p_lng - v_prev_lng) / 2), 2)
+      )));
+      v_secs := greatest(extract(epoch from (now() - v_prev_at)), 1);
+      v_kmh  := v_dist_m / v_secs * 3.6;
+      if v_dist_m >= v_min_m and v_kmh > v_max_kmh
+         and not exists (
+           select 1 from rider_gps_flags
+           where rider_id = v_rider.id and created_at > now() - interval '5 minutes'
+         ) then
+        insert into rider_gps_flags (rider_id, from_lat, from_lng, to_lat, to_lng, distance_m, seconds, speed_kmh)
+        values (
+          v_rider.id, v_prev_lat, v_prev_lng, p_lat, p_lng,
+          round(v_dist_m)::integer, least(round(v_secs), 2000000000)::integer, least(round(v_kmh), 2000000000)::integer
+        );
+      end if;
+    end if;
+  exception when others then
+    null;
+  end;
+  return v_rider;
+end $$;
+
+-- Same grants as before (the function was created without an explicit grant; keep callable by riders only).
+revoke all on function public.ps_rider_update_location(double precision, double precision) from public, anon;
+grant execute on function public.ps_rider_update_location(double precision, double precision) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+commit;
+
+-- ==== Feature: failed-delivery proof (202610020020) ====
+-- ============================================================================
+-- FAILED-DELIVERY PROOF (2026-10-03): an optional photo when a rider reports a failed attempt.
+--
+-- "Customer not answering" is the rider's word alone. Staff can now (optionally) ask for a photo
+-- — the closed door, the locked gate — so a disputed failure, a returned parcel or a "failed
+-- delivery fee" is backed by something. Whether it is asked for is a staff decision, stored as the
+-- site_settings key `failed_delivery_proof`:  0 = not asked (the default — nothing changes),
+-- 1 = optional (the rider app offers it), 2 = required (a photo, or a written reason why none
+-- could be taken — same escape hatch as the delivery proof). No SQL reads the setting.
+--
+--   delivery_failed_proofs   one row per failed attempt that carried a photo and/or a "no photo"
+--                            reason. Written by the server after the attempt is recorded
+--                            (service role). Staff read it (RLS ps_is_admin()) — the customer-facing
+--                            order view never includes it. Deleted with its order.
+--
+-- Safe to re-run.
+-- ============================================================================
+begin;
+
+create table if not exists public.delivery_failed_proofs (
+  id            uuid primary key default gen_random_uuid(),
+  order_id      uuid not null references public.orders(id) on delete cascade,
+  assignment_id uuid,
+  rider_id      uuid references public.riders(id) on delete set null,
+  photo_url     text,
+  no_photo_note text,
+  created_at    timestamptz not null default now(),
+  check (photo_url is not null or no_photo_note is not null)
+);
+
+create index if not exists idx_delivery_failed_proofs_order
+  on public.delivery_failed_proofs (order_id, created_at desc);
+
+alter table public.delivery_failed_proofs enable row level security;
+drop policy if exists "failed proofs admin read" on public.delivery_failed_proofs;
+create policy "failed proofs admin read" on public.delivery_failed_proofs
+  for select using (ps_is_admin());
+revoke all on table public.delivery_failed_proofs from anon, authenticated;
+grant select on table public.delivery_failed_proofs to authenticated;
+grant all on table public.delivery_failed_proofs to service_role;
 
 notify pgrst, 'reload schema';
 

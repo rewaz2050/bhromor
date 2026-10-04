@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
+import type { MoneyPnl, PnlRange } from "./money-pnl";
 
 export interface AdminMoneySummaryView {
   commissionIncome: number;
@@ -63,15 +64,20 @@ export function useAdminMoney() {
   const [decided, setDecided] = useState<RiderPayoutQueueRowView[]>([]);
   const [settings, setSettings] = useState<RiderPaySettingsView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Net P&L window (202610010003); null pnl = migration not run yet.
+  const [range, setRange] = useState<PnlRange>("30d");
+  const [pnl, setPnl] = useState<MoneyPnl | null>(null);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     try {
       const data = await apiGet<{
+        pnl?: MoneyPnl | null;
         ready: boolean;
         summary: AdminMoneySummaryView | null;
         queue: { pending: RiderPayoutQueueRowView[]; decided: RiderPayoutQueueRowView[] } | null;
         settings: RiderPaySettingsView;
-      }>("/api/admin/money");
+      }>(`/api/admin/money?range=${range}`);
+      setPnl(data.pnl ?? null);
       setReady(data.ready);
       setSummary(data.summary);
       setPending(data.queue?.pending ?? []);
@@ -83,7 +89,7 @@ export function useAdminMoney() {
       setError(apiErrorMessage(err));
       return false;
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     if (!live) {
@@ -92,6 +98,7 @@ export function useAdminMoney() {
       setPending([]);
       setDecided([]);
       setSettings(null);
+      setPnl(null);
       setError(null);
       return;
     }
@@ -138,6 +145,9 @@ export function useAdminMoney() {
     loading: live && (!checked || settings === null),
     ready,
     summary,
+    pnl,
+    range,
+    setRange,
     pending,
     decided,
     settings,

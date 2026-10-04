@@ -8,7 +8,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+// ps_rider_money_summary resolves the rider through auth.uid(), which is NULL
+// on the service-role client — it MUST get the rider's own JWT client.
+const RIDER_DB = vi.hoisted(() => ({ kind: "rider-jwt" }));
+const SERVICE = vi.hoisted(() => ({ kind: "service-role" }));
+
 const state = vi.hoisted(() => ({
+  summaryClients: [] as unknown[],
   requested: [] as unknown[],
   summary: null as unknown,
   entries: [] as unknown[],
@@ -27,7 +33,10 @@ vi.mock("@/lib/db/rider-money", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/lib/db/rider-money")>();
   return {
     ...orig,
-    getRiderMoneySummary: async () => state.summary,
+    getRiderMoneySummary: async (client: unknown) => {
+      state.summaryClients.push(client);
+      return state.summary;
+    },
     listRiderMoneyEntries: async () => state.entries,
     listRiderPayouts: async () => state.payouts,
     requestRiderPayout: async (_db: unknown, input: unknown) => {
@@ -52,13 +61,14 @@ const callPost = (body: unknown) =>
 
 beforeEach(() => {
   state.requested = [];
+  state.summaryClients = [];
   state.summary = null;
   state.entries = [];
   state.payouts = [];
   state.ctx = {
     rider: { id: "r1", cashInHand: 220000 },
-    db: {},
-    service: {},
+    db: RIDER_DB,
+    service: SERVICE,
     user: { id: "u1" },
     email: "rider@example.com",
   };
@@ -69,6 +79,11 @@ describe("GET /api/rider/earnings", () => {
     const body = (await (await callGet()).json()) as { ready: boolean; summary: unknown };
     expect(body.ready).toBe(false);
     expect(body.summary).toBeNull();
+  });
+
+  it("reads the statement with the rider's JWT client, never the service key", async () => {
+    await callGet();
+    expect(state.summaryClients).toEqual([RIDER_DB]);
   });
 
   it("answers the statement, feed and payout history when ready", async () => {
@@ -93,6 +108,11 @@ describe("POST /api/rider/earnings", () => {
     const res = await callPost({ amount: 50, method: "bkash", account: "01700000000" });
     expect(res.status).toBe(201);
     expect(state.requested).toEqual([{ amount: 5000, method: "bkash", account: "01700000000" }]);
+  });
+
+  it("refreshes the summary with the rider's JWT client after a request", async () => {
+    await callPost({ amount: 50, method: "bkash", account: "01700000000" });
+    expect(state.summaryClients).toEqual([RIDER_DB]);
   });
 
   it("refuses a nonsense amount", async () => {

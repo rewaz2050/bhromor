@@ -13,7 +13,13 @@
 
 import { useState } from "react";
 import { IconCheck, IconClose, IconShield } from "@/components/ui/icons";
+import Link from "next/link";
 import { formatBdt } from "@/lib/format";
+import {
+  shopMayVerify,
+  staffMayVerify,
+  type PaymentVerifier,
+} from "@/lib/payment-verifier";
 
 interface PaymentCardProps {
   orderNo: string;
@@ -37,6 +43,12 @@ interface PaymentCardProps {
    * (2026-09-18) posts to /api/vendor/… — the shop verifies its own wallet.
    */
   actor?: "staff" | "vendor";
+  /**
+   * N6 — the shop's payment-verifier setting (admin chooses per shop). When
+   * this side may not decide, the card explains who does instead of showing
+   * buttons the database would refuse. Absent = both (the old behaviour).
+   */
+  verifier?: PaymentVerifier;
 }
 
 const endpointFor = (actor: "staff" | "vendor", orderNo: string): string =>
@@ -66,6 +78,7 @@ export default function PaymentCard({
   orderStatus,
   onDecided,
   actor = "staff",
+  verifier,
 }: PaymentCardProps) {
   const [busy, setBusy] = useState<"verified" | "rejected" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +86,7 @@ export default function PaymentCard({
   if (payment === "cod") return null;
 
   const method = payment === "bkash" ? "bKash" : "Nagad";
+  const mayDecide = actor === "vendor" ? shopMayVerify(verifier) : staffMayVerify(verifier);
 
   const decide = async (action: "verified" | "rejected") => {
     let note: string | undefined;
@@ -118,7 +132,28 @@ export default function PaymentCard({
         <br />
         <span className="font-semibold">Customer:</span> {customerPhone}
       </p>
-      {paymentStatus === "pending_verification" && (
+      {paymentStatus === "pending_verification" && !mayDecide && (
+        <p className="mt-2 text-xs leading-5" data-testid="payment-not-yours">
+          {actor === "vendor" ? (
+            <>
+              PROSANTI staff verify this shop&apos;s {method} payments — you
+              don&apos;t need to do anything here. The decision will show up on
+              this card.
+            </>
+          ) : (
+            <>
+              Waiting for the shop: it verifies its own {method} payments. To
+              decide this one yourself, set the shop&apos;s payment verifier to
+              &ldquo;Staff&rdquo; or &ldquo;Both&rdquo; in{" "}
+              <Link href="/admin/shops" className="font-semibold underline">
+                Admin → Shops
+              </Link>
+              .
+            </>
+          )}
+        </p>
+      )}
+      {paymentStatus === "pending_verification" && mayDecide && (
         <>
           <p className="mt-2 text-xs leading-5">
             {orderStatus === "cancelled" ? (

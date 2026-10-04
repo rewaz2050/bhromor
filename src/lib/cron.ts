@@ -47,9 +47,24 @@ import { customerPushMessage } from "@/lib/notify-messages";
 import { dhakaDateString, dhakaParts, deliverySlotSummary } from "@/lib/delivery-slots";
 import { digestBody, digestHref, digestTitle, type DigestStats } from "@/lib/digest";
 import { runAbandonedBags } from "@/lib/abandoned-bag";
+import { runLicenceSweep } from "@/lib/db/licence-expiry";
+import { runQualitySweep } from "@/lib/db/rider-quality";
+import { runIncentiveSweep } from "@/lib/db/rider-incentives";
+import { runOrderBonusSweep } from "@/lib/db/rider-order-bonus";
+import { runShopOwesReminder } from "@/lib/db/shop-owes-reminder";
+import { pushRiderAnnouncement } from "@/lib/rider-push";
 import type { Language } from "@/lib/translations";
 
-export type CronJobName = "expire-offers" | "delivery-reminders" | "daily-digest" | "abandoned-bags";
+export type CronJobName =
+  | "expire-offers"
+  | "delivery-reminders"
+  | "daily-digest"
+  | "abandoned-bags"
+  | "licence-expiry"
+  | "rider-quality"
+  | "rider-incentives"
+  | "rider-order-bonus"
+  | "shop-owes-reminder";
 
 export interface CronJobReport {
   job: CronJobName;
@@ -461,6 +476,94 @@ export const runCronTick = async (input: {
       did: 0,
       detail: err instanceof Error ? err.message : "abandoned-bags failed",
     });
+  }
+
+  // N: lapsed licences go offline; staff + rider hear once per rider per date.
+  try {
+    const sweep = await runLicenceSweep(input.service, nowMs, {
+      claim: (key) => claimMark(input.service, key),
+      notifyStaff: (title, body) =>
+        notifyStaff(input.service, { kind: "system", title, body, href: "/admin/riders" }),
+      pushRider: (riderId, title, body, important) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important }),
+    });
+    jobs.push({ job: "licence-expiry", ...sweep });
+  } catch (err) {
+    jobs.push({
+      job: "licence-expiry",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "licence-expiry failed",
+    });
+  }
+
+  // M: opt-in auto-suspend for riders that meet a hard quality / cash rule.
+  try {
+    const quality = await runQualitySweep(input.service, nowMs, {
+      notifyStaff: (title, body) =>
+        notifyStaff(input.service, { kind: "system", title, body, href: "/admin/riders/scorecard" }),
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: true }),
+    });
+    jobs.push({ job: "rider-quality", ...quality });
+  } catch (err) {
+    jobs.push({
+      job: "rider-quality",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-quality failed",
+    });
+  }
+
+  // V: daily-target and referral bonuses (off until staff set amounts).
+  try {
+    const incentives = await runIncentiveSweep(input.service, {
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: false }),
+    });
+    jobs.push({ job: "rider-incentives", ...incentives });
+  } catch (err) {
+    jobs.push({
+      job: "rider-incentives",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-incentives failed",
+    });
+  }
+
+  // Peak-hour and rainy-day per-order bonuses (off until staff set an amount).
+  try {
+    const orderBonus = await runOrderBonusSweep(input.service, {
+      pushRider: (riderId, title, body) =>
+        pushRiderAnnouncement(input.service, { riderId, title, body, important: false }),
+    });
+    jobs.push({ job: "rider-order-bonus", ...orderBonus });
+  } catch (err) {
+    jobs.push({
+      job: "rider-order-bonus",
+      status: "failed",
+      did: 0,
+      detail: err instanceof Error ? err.message : "rider-order-bonus failed",
+    });
+  }
+
+  // Shops that owe PROSANTI (shop-own-wallet) get one reminder push a day.
+  try {
+    const owes = await runShopOwesReminder(input.service, nowMs, {
+      claim: (key) => claimMark(input.service, key),
+    });
+    jobs.push({ job: "shop-owes-reminder", ...owes });
+  } catch (err) {
+    if (err instanceof CronMarksMissingError) {
+      jobs.push({ job: "shop-owes-reminder", status: "skipped", did: 0, detail: err.message });
+    } else {
+      jobs.push({
+        job: "shop-owes-reminder",
+        status: "failed",
+        did: 0,
+        detail: err instanceof Error ? err.message : "shop-owes-reminder failed",
+      });
+    }
   }
 
   // Remembered for /api/health: "the scheduler is alive" is a row, not a hope.

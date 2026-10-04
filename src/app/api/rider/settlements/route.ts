@@ -1,5 +1,6 @@
 import { apiJson } from "@/lib/api-response";
 import {
+  listRiderRecentClaims,
   listRiderSettleClaim,
   listRiderSettlements,
   settleClaimsReady,
@@ -17,10 +18,11 @@ export const dynamic = "force-dynamic";
  * notice instead of a dead control.
  */
 export const GET = riderRoute("settlements", async (ctx) => {
-  const [settlements, pendingClaim, claimsReady] = await Promise.all([
+  const [settlements, pendingClaim, claimsReady, recentClaims] = await Promise.all([
     listRiderSettlements(ctx.service, ctx.rider.id),
     listRiderSettleClaim(ctx.service, ctx.rider.id),
     settleClaimsReady(ctx.service),
+    listRiderRecentClaims(ctx.service, ctx.rider.id).catch((): never[] => []),
   ]);
-  return apiJson({ settlements, pendingClaim, claimsReady });
+  return apiJson({ settlements, pendingClaim, claimsReady, recentClaims });
 });

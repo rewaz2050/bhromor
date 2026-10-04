@@ -62,11 +62,16 @@ export default function VendorEarningsPage() {
             </div>
             <div className="rounded-2xl bg-forest-800 p-5 ring-1 ring-forest-800">
               <p className="text-xs font-semibold uppercase tracking-wider text-forest-100">
-                Balance due
+                {earnings.balance < 0 ? "You owe PROSANTI" : "Balance due"}
               </p>
-              <p className="mt-1 font-display text-2xl text-white">
-                {formatBdt(earnings.balance)}
+              <p className="mt-1 font-display text-2xl text-white" data-testid="vendor-balance">
+                {formatBdt(Math.abs(earnings.balance))}
               </p>
+              {earnings.balance < 0 && (
+                <p className="mt-1 text-xs leading-5 text-forest-100">
+                  Customers paid your own bKash/Nagad, so you keep that money and send PROSANTI the commission, delivery charge and tip. Send it and staff will record it here.
+                </p>
+              )}
             </div>
           </div>
 
@@ -144,7 +149,7 @@ export default function VendorEarningsPage() {
                   >
                     <span>
                       <span className="font-semibold text-forest-900">
-                        {formatBdt(p.amount)}
+                        {p.amount < 0 ? `Sent to PROSANTI ${formatBdt(-p.amount)}` : formatBdt(p.amount)}
                       </span>{" "}
                       <span className="text-ink-soft">
                         via {p.method}

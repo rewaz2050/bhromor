@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   shopApply: vi.fn(),
   riderApply: vi.fn(),
   notified: [] as Record<string, unknown>[],
+  referrals: [] as { id: string; code: unknown }[],
 }));
 
 vi.mock("@/lib/env", async (importOriginal) => {
@@ -25,6 +26,13 @@ vi.mock("@/lib/supabase-server", () => ({
   getSupabaseServer: async () => null,
   getSupabaseService: () => ({ service: true }),
   getSupabaseAnon: () => null,
+}));
+
+vi.mock("@/lib/db/rider-incentives", () => ({
+  registerReferral: async (_db: unknown, id: string, code: unknown) => {
+    state.referrals.push({ id, code });
+    return code === "GOODCODE" ? "registered" : code === undefined ? "none" : "unknown";
+  },
 }));
 
 vi.mock("@/lib/db/engagement", () => ({
@@ -63,6 +71,7 @@ const post = (path: string, body: unknown): Request =>
 beforeEach(() => {
   state.configured = true;
   state.notified = [];
+  state.referrals = [];
   state.shopApply.mockReset();
   state.riderApply.mockReset();
 });
@@ -128,6 +137,27 @@ describe("POST /api/riders/apply (apply = sign up)", () => {
       { applicantUserId: undefined, applicantEmail: null, password: "secret1" },
     );
     expect(state.notified[0]).toMatchObject({ href: "/admin/riders" });
+  });
+
+  it("registers an optional referral code against the new rider and says so", async () => {
+    state.riderApply.mockResolvedValue({ id: "rider-9", userId: "u-9", accountCreated: true });
+    const res = await ridersApply(
+      post("/api/riders/apply", { name: "Tanvir", password: "secret1", referralCode: "GOODCODE" }),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.referral).toBe("registered");
+    expect(typeof body.referralMessage).toBe("string");
+    expect(state.referrals).toEqual([{ id: "rider-9", code: "GOODCODE" }]);
+  });
+
+  it("a wrong referral code never fails the application", async () => {
+    state.riderApply.mockResolvedValue({ id: "rider-8", userId: "u-8", accountCreated: true });
+    const res = await ridersApply(
+      post("/api/riders/apply", { name: "Tanvir", password: "secret1", referralCode: "NOPE" }),
+    );
+    expect(res.status).toBe(201);
+    expect((await res.json()).referral).toBe("unknown");
   });
 
   it("surfaces intake validation and account refusals with their status", async () => {

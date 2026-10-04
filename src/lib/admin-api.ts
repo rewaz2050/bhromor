@@ -122,6 +122,35 @@ export const apiSend = async <T>(
   return (await res.json()) as T;
 };
 
+/** GET a file (e.g. a CSV) with the staff bearer token; the caller saves it. */
+export const apiDownload = async (
+  path: string,
+): Promise<{ text: string; filename: string; rows: number; truncated: boolean }> => {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: await bearerHeaders(),
+    });
+  } catch {
+    throw new AdminApiError("Could not reach the server.", 0);
+  }
+  if (res.status === 401) {
+    signOutAdmin();
+    throw new AdminApiError("Session expired — please sign in again.", 401);
+  }
+  if (!res.ok) throw new AdminApiError(await readError(res), res.status);
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "export.csv";
+  return {
+    text: await res.text(),
+    filename,
+    rows: Number(res.headers.get("X-Export-Rows")) || 0,
+    truncated: res.headers.get("X-Export-Truncated") === "1",
+  };
+};
+
 export const apiErrorMessage = (err: unknown): string =>
   err instanceof AdminApiError
     ? err.message

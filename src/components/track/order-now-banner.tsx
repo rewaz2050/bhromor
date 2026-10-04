@@ -25,13 +25,19 @@ export type OrderStage =
   | "confirmed"
   | "ready"
   | "assigned"
-  | "out";
+  | "out"
+  /** The final delivery attempt failed; the rider is gone and staff decide (redispatch / cancel). */
+  | "failed";
 
 /** One stage per order — the same rules the banner and the panel gating use. */
 export const orderStage = (order: Order): OrderStage => {
   if (order.status === "cancelled") return "cancelled";
   if (order.status === "delivered") return "delivered";
   if (order.payment !== "cod" && order.paymentStatus === "pending_verification") return "verifying";
+  // 202610010001: a final failed attempt frees the rider but leaves the status at
+  // out-for-delivery until staff resolve it — without this the tracker kept saying
+  // "on the way" and showed a PIN for a rider who is no longer coming.
+  if (order.deliveryFailedAt && !order.isPickup && !order.isReturn && !isCourierZone(order.zoneId)) return "failed";
   switch (order.status) {
     case "pending":
       return "pending";
@@ -54,7 +60,7 @@ export const showsRiderMap = (order: Order): boolean => {
   const stage = orderStage(order);
   if (order.isPickup || order.isReturn) return false;
   if (isCourierZone(order.zoneId)) return false;
-  return stage !== "cancelled" && stage !== "delivered";
+  return stage !== "cancelled" && stage !== "delivered" && stage !== "failed";
 };
 
 export default function OrderNowBanner({ order }: { order: Order }) {
@@ -66,6 +72,7 @@ export default function OrderNowBanner({ order }: { order: Order }) {
   let text: string;
   if (stage === "cancelled") text = t("track.nowCancelled");
   else if (stage === "delivered") text = t("track.nowDelivered");
+  else if (stage === "failed") text = t("track.nowFailed");
   else if (stage === "verifying") text = t("track.nowVerifying").replace("{wallet}", wallet ?? "");
   else if (order.isPickup && (stage === "ready" || stage === "assigned" || stage === "out"))
     text = t("track.nowPickup").replace("{hub}", SUNAMGANJ_HUB);
@@ -85,7 +92,7 @@ export default function OrderNowBanner({ order }: { order: Order }) {
       ? "bg-rose-50 text-rose-900 ring-rose-200"
       : stage === "delivered"
         ? "bg-forest-50 text-forest-900 ring-forest-200"
-        : stage === "verifying"
+        : stage === "verifying" || stage === "failed"
           ? "bg-amber-50 text-amber-900 ring-amber-200"
           : "bg-gold-50 text-forest-900 ring-gold-200";
 

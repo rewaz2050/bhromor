@@ -26,6 +26,8 @@ export default function AdminPayoutsPage() {
   const [reference, setReference] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Owes PROSANTI" filter: the shops that collected into their own wallet and still owe the platform.
+  const [onlyOwing, setOnlyOwing] = useState(false);
 
   const selected = useMemo(
     () => balances.find((b) => b.shop.id === shopId) ?? null,
@@ -34,8 +36,18 @@ export default function AdminPayoutsPage() {
   const totals = useMemo(() => {
     const earned = balances.reduce((s, b) => s + b.earned, 0);
     const paid = balances.reduce((s, b) => s + b.paid, 0);
-    return { earned, paid, balance: earned - paid };
+    // Shops PROSANTI owes and shops that owe PROSANTI are shown apart — netting
+    // them would hide a real debt behind a real payable.
+    const payable = balances.reduce((s, b) => s + Math.max(b.balance, 0), 0);
+    const owed = balances.reduce((s, b) => s + Math.max(-b.balance, 0), 0);
+    return { earned, paid, balance: payable, owed };
   }, [balances]);
+
+  const owingCount = useMemo(() => balances.filter((b) => b.balance < 0).length, [balances]);
+  const visible = useMemo(
+    () => (onlyOwing ? balances.filter((b) => b.balance < 0) : balances),
+    [balances, onlyOwing],
+  );
 
   const submitPayout = async () => {
     if (!selected) return;
@@ -48,6 +60,8 @@ export default function AdminPayoutsPage() {
     const ok = await record({
       shopId: selected.shop.id,
       amountTaka: taka,
+      // A negative balance = the shop owes PROSANTI; what staff record then is money coming IN.
+      ...(selected.balance < 0 ? { direction: "remit" as const } : {}),
       method,
       reference: reference.trim(),
     });
@@ -107,6 +121,11 @@ export default function AdminPayoutsPage() {
           <p className="mt-1 font-display text-2xl text-white">
             {formatBdt(totals.balance)}
           </p>
+          {totals.owed > 0 && (
+            <p className="mt-1 text-xs font-semibold text-amber-200" data-testid="shops-owe-total">
+              Shops owe PROSANTI {formatBdt(totals.owed)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -126,6 +145,18 @@ export default function AdminPayoutsPage() {
         </p>
       )}
 
+      {owingCount > 0 && (
+        <button
+          type="button"
+          aria-pressed={onlyOwing}
+          onClick={() => setOnlyOwing((v) => !v)}
+          data-testid="owing-filter"
+          className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ring-1 ${onlyOwing ? "bg-amber-100 text-amber-900 ring-amber-300" : "text-amber-900 ring-amber-300 hover:bg-amber-50"}`}
+        >
+          {onlyOwing ? "Showing" : "Show only"} shops that owe PROSANTI ({owingCount})
+        </button>
+      )}
+
       <div className="overflow-x-auto rounded-2xl bg-paper ring-1 ring-line">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
@@ -141,7 +172,7 @@ export default function AdminPayoutsPage() {
             </tr>
           </thead>
           <tbody>
-            {balances.map((b) => (
+            {visible.map((b) => (
               <tr
                 key={b.shop.id}
                 className={`border-b border-line/60 last:border-0 ${shopId === b.shop.id ? "bg-forest-50/60" : ""}`}
@@ -161,8 +192,11 @@ export default function AdminPayoutsPage() {
                 <td className="px-4 py-2.5 text-right text-ink-soft">
                   {formatBdt(b.paid)}
                 </td>
-                <td className="px-4 py-2.5 text-right font-semibold text-forest-900">
-                  {formatBdt(b.balance)}
+                <td
+                  className={`px-4 py-2.5 text-right font-semibold ${b.balance < 0 ? "text-rose-700" : "text-forest-900"}`}
+                  data-testid={b.balance < 0 ? "owes-platform" : undefined}
+                >
+                  {b.balance < 0 ? `Owes PROSANTI ${formatBdt(-b.balance)}` : formatBdt(b.balance)}
                 </td>
                 <td className="px-4 py-2.5 text-xs text-ink-soft">
                   {b.lastPayoutAt ? fmtDate(b.lastPayoutAt) : "—"}
@@ -205,20 +239,20 @@ export default function AdminPayoutsPage() {
             </h2>
             <button
               type="button"
-              disabled={selected.balance <= 0}
+              disabled={selected.balance === 0}
               onClick={() => {
                 setPaying((v) => !v);
-                setAmount(
-                  selected.balance > 0
-                    ? String(selected.balance / 100)
-                    : "",
-                );
+                setAmount(selected.balance !== 0 ? String(Math.abs(selected.balance) / 100) : "");
                 setFormError(null);
               }}
               className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-4 py-2 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-50"
             >
               <IconPlus className="h-3.5 w-3.5" />
-              {selected.balance > 0 ? "Record payout" : "Nothing to pay"}
+              {selected.balance > 0
+                ? "Record payout"
+                : selected.balance < 0
+                  ? "Record remittance (shop paid PROSANTI)"
+                  : "Nothing to settle"}
             </button>
           </div>
 
@@ -242,7 +276,7 @@ export default function AdminPayoutsPage() {
                     step="any"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    placeholder={String(selected.balance / 100)}
+                    placeholder={String(Math.abs(selected.balance) / 100)}
                   />
                 </label>
                 <label className="block">
@@ -271,8 +305,9 @@ export default function AdminPayoutsPage() {
                 </label>
               </div>
               <p className="mt-2 text-xs text-ink-soft">
-                Unsettled: {formatBdt(selected.balance)} — the database
-                refuses anything above it, even from two staff at once.
+                {selected.balance < 0
+                  ? `The shop owes PROSANTI ${formatBdt(-selected.balance)} (it collected customer payments itself). Record what it has sent you — the database refuses more than it owes.`
+                  : `Unsettled: ${formatBdt(selected.balance)} — the database refuses anything above it, even from two staff at once.`}
               </p>
               <button
                 type="button"
@@ -281,7 +316,7 @@ export default function AdminPayoutsPage() {
                 className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
               >
                 <IconCheck className="h-3.5 w-3.5" />{" "}
-                {saving ? "Recording…" : "Confirm payout"}
+                {saving ? "Recording…" : selected.balance < 0 ? "Confirm remittance" : "Confirm payout"}
               </button>
             </div>
           )}
@@ -337,7 +372,7 @@ export default function AdminPayoutsPage() {
                     >
                       <span>
                         <span className="font-semibold text-forest-900">
-                          {formatBdt(p.amount)}
+                          {p.amount < 0 ? `Remitted ${formatBdt(-p.amount)}` : formatBdt(p.amount)}
                         </span>{" "}
                         <span className="text-xs text-ink-soft">
                           via {p.method}

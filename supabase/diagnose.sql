@@ -110,7 +110,64 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('60',  'Payout request RPC (rider files, money held)',     '202609300002_rider_money.sql', 'function', 'ps_rider_request_payout'),
   ('61',  'Payout decision RPC (staff paid/rejected)',        '202609300002_rider_money.sql', 'function', 'ps_admin_decide_rider_payout'),
   ('62',  'Admin money summary RPC',                          '202609300002_rider_money.sql', 'function', 'ps_admin_money_summary'),
-  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary')
+  ('63',  'Rider money statement RPC (own wallet)',           '202609300002_rider_money.sql', 'function', 'ps_rider_money_summary'),
+  -- Rider fixes Phase A (2026-10-01): failed deliveries, release rider, COD fee.
+  ('64',  'Failed-delivery flag on orders',                   '202610010001_rider_fixes_phase_a.sql', 'column', 'orders.delivery_failed_at'),
+  ('65',  'Failed-attempt RPC (attempt cap, frees the rider)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_rider_failed_attempt'),
+  ('66',  'Staff resolves a failed delivery (redispatch/cancel)', '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_resolve_failed_delivery'),
+  ('67',  'Staff releases an unresponsive rider',             '202610010001_rider_fixes_phase_a.sql', 'function', 'ps_admin_release_assignment'),
+  -- Who verifies wallet payments (2026-10-01): per-shop platform/shop/both.
+  ('68',  'Per-shop payment verifier (platform/shop/both)',   '202610010002_payment_verifier.sql', 'column', 'shops.payment_verifier'),
+  -- Net platform P&L (2026-10-01).
+  ('69',  'Admin net P&L RPC (income - rider pay - discounts)', '202610010003_money_pnl.sql', 'function', 'ps_admin_money_pnl'),
+  -- COD netting against the rider wallet (2026-10-01).
+  ('70',  'Settle can net COD cash against the rider wallet', '202610010004_cod_netting.sql', 'column', 'rider_settlements.netted_amount'),
+  -- Shop sees the rider on its order (2026-10-01).
+  ('71',  'Vendor can see the rider on its order', '202610010005_vendor_rider_view.sql', 'function', 'ps_vendor_order_rider'),
+  -- Append-only money audit trail (2026-10-01).
+  ('72',  'Money audit trail (who approved which payout/settle)', '202610010006_money_audit.sql', 'table', 'money_audit_log'),
+  -- Daily money reconciliation (2026-10-01).
+  ('73',  'Daily money reconciliation report', '202610010007_money_daily.sql', 'function', 'ps_admin_money_daily'),
+  -- Rider inbox: office announcements (2026-10-02).
+  ('74',  'Rider inbox (office announcements to riders)', '202610020001_rider_inbox.sql', 'table', 'rider_announcements'),
+  -- Admin rider profile with COD risk facts (2026-10-02).
+  ('75',  'Admin rider profile (ledger, COD risk, performance)', '202610020002_admin_rider_overview.sql', 'function', 'ps_admin_rider_overview'),
+  -- Dispatch rules as admin-editable settings (2026-10-02).
+  ('76',  'Dispatch rules settings (cash cap, offer window)', '202610020003_dispatch_settings.sql', 'function', 'ps_rider_cash_cap'),
+  -- Rider web push: closed-app offer alerts (2026-10-02).
+  ('77',  'Rider web push (device table, offer claim)', '202610020004_rider_push.sql', 'table', 'rider_push_subscriptions'),
+  -- Driving-licence expiry (2026-10-02).
+  ('78',  'Rider licence expiry (date + online guard)', '202610020005_licence_expiry.sql', 'column', 'riders.licence_expires_on'),
+  -- Rider scorecards + opt-in auto-suspend (2026-10-02).
+  ('79',  'Rider scorecards (board + auto-suspend facts)', '202610020006_rider_scorecards.sql', 'function', 'ps_admin_rider_scorecards'),
+  -- Rider disputes + manual wallet adjustments (2026-10-02).
+  ('80',  'Rider disputes + wallet adjustments', '202610020007_rider_disputes.sql', 'table', 'rider_disputes'),
+  -- Durable rate limit (2026-10-02).
+  ('81',  'Durable rate limit (shared counter)', '202610020008_rate_limit.sql', 'function', 'ps_rate_limit_hit'),
+  -- Delivery feedback: reasons + words on ratings (2026-10-02).
+  ('82',  'Delivery feedback (tags, comment, hide)', '202610020009_delivery_feedback.sql', 'column', 'delivery_ratings.feedback_at'),
+  -- Rider incentives: daily target + refer-a-rider (2026-10-02).
+  ('83',  'Rider incentives (daily target, referral)', '202610020010_rider_incentives.sql', 'function', 'ps_award_incentives'),
+  -- Dispatch follow-ups: load limit setting, rider hand-back (2026-10-02).
+  ('84',  'Dispatch follow-ups (load limit, rider hand-back)', '202610020011_dispatch_followups.sql', 'function', 'ps_rider_release_accepted'),
+  -- Failed-delivery fee + weekly tiered bonus (2026-10-02).
+  ('85',  'Failed-delivery fee + weekly bonus', '202610020012_failed_fee_weekly_bonus.sql', 'function', 'ps_failed_delivery_fee'),
+  -- Shop-own-wallet settlement (2026-10-02).
+  ('86',  'Shop-own-wallet settlement', '202610020013_shop_own_wallet.sql', 'function', 'ps_shop_wallet_collected'),
+  -- Shop balance totals aggregated in SQL (2026-10-03).
+  ('87',  'Shop balance totals (SQL aggregate)', '202610020014_shop_balance_totals.sql', 'function', 'ps_shop_balance_totals'),
+  -- Peak-hour + rainy-day order bonus (2026-10-03).
+  ('88',  'Peak + rain order bonus', '202610020015_peak_rain_bonus.sql', 'function', 'ps_award_order_bonuses'),
+  -- Daily report: shop-wallet flows split out (2026-10-03).
+  ('89',  'Daily report: shop-wallet split', '202610020016_daily_shop_wallet_split.sql', 'function', 'ps_admin_money_daily'),
+  -- Weekly streak bonus (2026-10-03).
+  ('90',  'Weekly streak bonus', '202610020017_streak_bonus.sql', 'function', 'ps_award_order_bonuses'),
+  -- Vendor (shop) web push (2026-10-03).
+  ('91',  'Vendor web push', '202610020018_vendor_push.sql', 'table', 'vendor_push_subscriptions'),
+  -- GPS jump flags (2026-10-03).
+  ('92',  'GPS jump flags', '202610020019_gps_jump_flags.sql', 'table', 'rider_gps_flags'),
+  -- Failed-delivery proof (2026-10-03).
+  ('93',  'Failed-delivery proof', '202610020020_failed_delivery_proof.sql', 'table', 'delivery_failed_proofs')
 )
 select step as ord,
        label,

@@ -80,4 +80,47 @@ describe("RiderRatingAsk — the customer closes the delivery loop", () => {
     fireEvent.click(screen.getByLabelText("4 stars"));
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
+
+  describe("feedback step (item X)", () => {
+    const rateThen = async (stars: number, fetchMock: ReturnType<typeof vi.fn>) => {
+      vi.stubGlobal("fetch", fetchMock);
+      renderAsk(order());
+      fireEvent.click(screen.getByLabelText(`${stars} star${stars > 1 ? "s" : ""}`));
+      await screen.findByTestId("feedback-step");
+    };
+    const okJson = { ok: true, json: async () => ({ ok: true }) };
+
+    it("a low rating offers complaint reasons and posts tags + words with the same proof", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okJson);
+      await rateThen(1, fetchMock);
+      expect(screen.getByText(/কী সমস্যা হয়েছিল|what went wrong/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Polite/i })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Arrived late" }));
+      fireEvent.change(screen.getByLabelText("Your words"), { target: { value: "45 minutes late" } });
+      fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+      await screen.findByTestId("feedback-thanks");
+      expect(fetchMock.mock.calls[1][0]).toBe("/api/track/rate/feedback");
+      const body = JSON.parse((fetchMock.mock.calls[1][1] as { body: string }).body);
+      expect(body).toEqual({ id: "PS-20260921-0004", phone: "01711111111", tags: ["late"], comment: "45 minutes late" });
+    });
+
+    it("a happy rating offers praise reasons; nothing can be sent while empty; skip hides the step", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(okJson);
+      await rateThen(5, fetchMock);
+      expect(screen.getByRole("button", { name: "Polite" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
+      fireEvent.click(screen.getByText("Skip"));
+      expect(screen.queryByTestId("feedback-step")).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the server's refusal and keeps the form", async () => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(okJson).mockResolvedValueOnce({ ok: false, json: async () => ({ error: "আবার চেষ্টা করুন।" }) });
+      await rateThen(2, fetchMock);
+      fireEvent.click(screen.getByRole("button", { name: "Rude" }));
+      fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
+      expect(await screen.findAllByRole("alert")).not.toHaveLength(0);
+      expect(screen.getByTestId("feedback-step")).toBeInTheDocument();
+    });
+  });
 });
