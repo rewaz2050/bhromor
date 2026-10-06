@@ -31,8 +31,8 @@ export interface DrawerProps {
   onClose: () => void;
   /** Accessible name for the dialog. */
   label: string;
-  /** Where the panel is anchored. */
-  side?: "left" | "right" | "bottom";
+  /** Where the panel is anchored. `center` is the command-palette layout. */
+  side?: "left" | "right" | "bottom" | "center";
   /** Extra classes for the panel element. */
   panelClassName?: string;
   /** Panel background utility (kept separate so it never fights the default). */
@@ -47,6 +47,8 @@ const SIDE_CLASS: Record<NonNullable<DrawerProps["side"]>, string> = {
     "absolute inset-y-0 right-0 flex w-[86%] max-w-sm flex-col overflow-y-auto shadow-2xl",
   bottom:
     "absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl p-6 shadow-2xl",
+  center:
+    "absolute left-1/2 top-[8vh] flex max-h-[84vh] w-[min(92vw,32rem)] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-2xl",
 };
 
 export default function Drawer({
