@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { Order } from "@/lib/orders";
 import { EXCHANGE_WINDOW_MS, exchangeCountdown } from "@/lib/exchange-window";
+import { fitOptions, type FitKey } from "@/lib/review-fit";
 import { IconBox, IconCheck, IconRefresh } from "@/components/ui/icons";
 
 const RETURN_STATUS_COPY: Record<
@@ -88,6 +89,9 @@ export default function ReturnPanel({
   );
 
   const [reason, setReason] = useState("size");
+  // A size return is the most honest fit signal a shop gets: somebody
+  // bothered to send the piece back. One tap while they are already here.
+  const [fit, setFit] = useState<FitKey | null>(null);
   const [details, setDetails] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -242,6 +246,7 @@ export default function ReturnPanel({
           phone: order.customer.phone,
           reason,
           details: details.trim(),
+          fit: reason === "size" && fit ? fit : undefined,
         }),
       });
       const data = (await res.json().catch(() => null)) as {
@@ -306,6 +311,37 @@ export default function ReturnPanel({
             </button>
           ))}
         </div>
+        {reason === "size" ? (
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-ink">
+              সাইজ কেমন পেয়েছিলেন? / How did the size feel?{" "}
+              <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+            </p>
+            <div
+              className="flex flex-wrap gap-2"
+              role="radiogroup"
+              aria-label="How the size felt"
+            >
+              {fitOptions(lang).map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={fit === option.key}
+                  data-testid={`return-fit-${option.key}`}
+                  onClick={() => setFit(option.key)}
+                  className={`min-h-11 rounded-full px-4 text-xs font-medium transition-colors ${
+                    fit === option.key
+                      ? "bg-forest-800 font-semibold text-ivory-50"
+                      : "bg-paper text-ink ring-1 ring-line hover:ring-forest-400"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <textarea
           value={details}
           onChange={(e) => {

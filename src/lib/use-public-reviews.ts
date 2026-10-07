@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Review } from "./review-store";
+import type { FitKey } from "./review-fit";
 
 /**
  * Public review reads/writes — live only.
@@ -59,6 +60,8 @@ export function usePublicReviews(opts: { product?: string; featured?: boolean } 
       /** Purchase proof from the track page (UX plan §4/§7, R10) — the server re-checks it. */
       orderId?: string;
       phone?: string;
+      /** One-tap fit answer (fit-data pass 2026-10-06) — optional, ignored when blank. */
+      fit?: FitKey;
     }): Promise<{ ok: boolean; error?: string; stampEligible?: boolean }> => {
       try {
         const res = await fetch("/api/reviews", {

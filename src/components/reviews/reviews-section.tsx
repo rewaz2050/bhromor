@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePublicReviews } from "@/lib/use-public-reviews";
+import { fitBadge, fitOptions, fitSummary, type FitKey } from "@/lib/review-fit";
+import { useLanguage } from "@/components/i18n/language-provider";
 import {
   averageOf,
   visibleCount,
@@ -80,10 +82,14 @@ function Stars({
 /** §30 customer reviews — approved entries + submission form (moderated). */
 export default function ReviewsSection({ product }: { product: Product }) {
   const { reviews, submit } = usePublicReviews({ product: product.id });
+  const { lang } = useLanguage();
   const [name, setName] = useState("");
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  // Fit answer (fit-data pass): one tap, no thinking. The data the product
+  // page's true-to-size bar has been waiting for.
+  const [fit, setFit] = useState<FitKey | null>(null);
   const [sent, setSent] = useState<false | "plain" | "stamp">(false);
   const { settings: publicSettings } = usePublicSettings();
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +141,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
     [],
   );
 
+  /** Published fit answers, or null when there is not enough to say. */
+  const fitStats = useMemo(() => fitSummary(reviews, lang), [reviews, lang]);
+
   const addReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (rating < 1) return setError("Pick a star rating first.");
@@ -152,6 +161,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       photos: photos.length > 0 ? photos : undefined,
       orderId: proof?.orderId,
       phone: proof?.phone,
+      fit: fit ?? undefined,
     }).then(({ ok, error: submitError, stampEligible }) => {
       if (!ok) {
         setError(submitError ?? "Could not save the review.");
@@ -161,6 +171,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       setTitle("");
       setBody("");
       setPhotos([]);
+      setFit(null);
       setSent(stampEligible && publicSettings.loyaltyEnabled ? "stamp" : "plain");
       setError(null);
       if (sentTimer.current !== null) window.clearTimeout(sentTimer.current);
@@ -190,6 +201,52 @@ export default function ReviewsSection({ product }: { product: Product }) {
               </p>
             )}
           </div>
+
+          {/* Fit-data pass (2026-10-06): the number a cloth shop can show
+              that a food app cannot — what real buyers said about the size.
+              Nothing at all until enough approved answers exist. */}
+          {fitStats ? (
+            <div
+              data-testid="fit-bar"
+              className="mt-4 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                  সাইজ কেমন পেয়েছেন / Fit
+                </p>
+                <p className="text-sm font-semibold text-forest-900">
+                  {fitStats.label}
+                </p>
+              </div>
+              <div
+                className="mt-2 flex h-2 overflow-hidden rounded-full bg-ivory-200"
+                role="img"
+                aria-label={fitStats.label}
+              >
+                <span
+                  className="bg-amber-400"
+                  style={{
+                    width: `${(fitStats.counts.small / fitStats.total) * 100}%`,
+                  }}
+                />
+                <span
+                  className="bg-forest-600"
+                  style={{
+                    width: `${(fitStats.counts.true / fitStats.total) * 100}%`,
+                  }}
+                />
+                <span
+                  className="bg-sky-400"
+                  style={{
+                    width: `${(fitStats.counts.large / fitStats.total) * 100}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-ink-soft">
+                {fitStats.total} জনের মতামত · ছোট / ঠিক / বড়
+              </p>
+            </div>
+          ) : null}
 
           {buyerPhotos.length > 0 && (
             <div className="mt-6">
@@ -253,6 +310,16 @@ export default function ReviewsSection({ product }: { product: Product }) {
                         {r.title}
                       </p>
                     )}
+                    {/* One buyer's size answer, right where the next buyer
+                        reads their words — the whole point of collecting it. */}
+                    {r.fit ? (
+                      <span
+                        data-testid="review-fit-badge"
+                        className="rounded-full bg-ivory-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-ink"
+                      >
+                        {fitBadge(r.fit, lang)}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-2 text-sm leading-7 text-ink-soft">
                     {r.body}
@@ -331,6 +398,39 @@ export default function ReviewsSection({ product }: { product: Product }) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* One tap, no thinking: "will it fit me?" is the question every
+                cloth buyer has and no description answers. */}
+            <div className="mt-4">
+              <span className="mb-1.5 block text-sm font-medium text-ink">
+                সাইজ কেমন পেয়েছেন? / How was the size?{" "}
+                <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+              </span>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Fit">
+                {fitOptions(lang).map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={fit === option.key}
+                    data-testid={`fit-option-${option.key}`}
+                    onClick={() => setFit(option.key)}
+                    className={`min-h-11 rounded-full px-4 text-xs font-medium transition-colors ${
+                      fit === option.key
+                        ? "bg-forest-800 font-semibold text-ivory-50"
+                        : "bg-paper text-ink ring-1 ring-line hover:ring-forest-400"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {fit ? (
+                <p className="mt-1.5 text-[11px] text-ink-soft">
+                  আপনার উত্তর পণ্যের পেজে দেখাবে — সাইজ নিয়ে পরের ক্রেতার সিদ্ধান্ত সহজ হবে।
+                </p>
+              ) : null}
             </div>
 
             <label className="mt-4 block">

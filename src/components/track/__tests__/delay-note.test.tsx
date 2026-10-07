@@ -8,8 +8,6 @@ import { LanguageProvider } from "@/components/i18n/language-provider";
 import { makePlacedOrder, type Order, type OrderStatus } from "@/lib/orders";
 import DelayNote from "../delay-note";
 
-const HOUR = 60 * 60_000;
-
 const order = (status: OrderStatus, minutesAgo: number, over: Partial<Order> = {}): Order => ({
   ...makePlacedOrder({
     id: "PS-42",

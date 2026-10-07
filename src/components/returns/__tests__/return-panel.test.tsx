@@ -241,3 +241,46 @@ describe("ReturnPanel — exchange countdown (post-purchase pass 2026-10-06)", (
     expect(screen.queryByTestId("exchange-countdown")).not.toBeInTheDocument();
   });
 });
+
+describe("ReturnPanel — size return tells the shop how the size felt (fit-data pass)", () => {
+  it("offers the three taps while the size reason is chosen, and sends the answer", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ order: { id: "PS-20260912-0007" } }),
+      }),
+    );
+    render(
+      <LanguageProvider>
+        <ReturnPanel order={makeOrder()} onTrack={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByTestId("return-fit-small")).toBeInTheDocument();
+    expect(screen.getByTestId("return-fit-true")).toBeInTheDocument();
+    expect(screen.getByTestId("return-fit-large")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("return-fit-small"));
+    fireEvent.change(screen.getByPlaceholderText(/tight across the chest/), {
+      target: { value: "A bit tight across the chest." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request home pickup" }));
+    await screen.findByText(/PS-20260912-0007/);
+
+    const body = JSON.parse(
+      String(vi.mocked(fetch).mock.calls[0][1]?.body),
+    ) as Record<string, string>;
+    expect(body.reason).toBe("size");
+    expect(body.fit).toBe("small");
+  });
+
+  it("keeps the taps away when the reason is not size", () => {
+    render(
+      <LanguageProvider>
+        <ReturnPanel order={makeOrder()} onTrack={vi.fn()} />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Colour swap" }));
+    expect(screen.queryByTestId("return-fit-small")).toBeNull();
+  });
+});
