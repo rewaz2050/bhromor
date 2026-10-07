@@ -21,27 +21,16 @@ import { useNow } from "@/lib/use-now";
 import AdminDataError from "@/components/admin/admin-data-error";
 import {
   IconBell,
-  IconBox,
-  IconCard,
-  IconBolt,
-  IconChart,
   IconExternal,
-  IconFlag,
-  IconGrid,
-  IconImage,
-  IconLeaf,
   IconLogout,
-  IconMail,
-  IconMapPin,
   IconMenu,
-  IconSend,
-  IconSettings,
-  IconShield,
-  IconTag,
-  IconTruck,
-  IconUser,
-  IconVideo,
+  IconSearch,
 } from "@/components/ui/icons";
+import AdminSidebarNav, {
+  type AdminQueueCounts,
+} from "@/components/admin/admin-sidebar-nav";
+import AdminCommandPalette from "@/components/admin/command-palette";
+import { adminTitleFor } from "@/components/admin/admin-nav";
 import {
   getAdminAuthed,
   ADMIN_LOGIN_PATH,
@@ -50,67 +39,6 @@ import {
   subscribeAdminAuth,
 } from "@/lib/admin-auth";
 import { isSupabaseConfigured } from "@/lib/env";
-
-const NAV = [
-  { href: "/admin", label: "Dashboard", icon: IconGrid, match: (p: string) => p === "/admin" },
-  { href: "/admin/staff", label: "Staff", icon: IconShield, match: (p: string) => p === "/admin/staff" },
-  { href: "/admin/orders", label: "Orders", icon: IconBox, match: (p: string) => p.startsWith("/admin/orders") },
-  { href: "/admin/reports", label: "Reports", icon: IconChart, match: (p: string) => p === "/admin/reports" },
-  { href: "/admin/products", label: "Products", icon: IconTag, match: (p: string) => p.startsWith("/admin/products") },
-  { href: "/admin/categories", label: "Categories", icon: IconGrid, match: (p: string) => p === "/admin/categories" },
-  { href: "/admin/zones", label: "Delivery zones", icon: IconMapPin, match: (p: string) => p === "/admin/zones" },
-  { href: "/admin/homepage", label: "Homepage", icon: IconLeaf, match: (p: string) => p === "/admin/homepage" },
-  { href: "/admin/customers", label: "Customers", icon: IconUser, match: (p: string) => p === "/admin/customers" },
-  { href: "/admin/messages", label: "Messages", icon: IconMail, match: (p: string) => p === "/admin/messages" },
-  { href: "/admin/newsletter", label: "Newsletter", icon: IconSend, match: (p: string) => p === "/admin/newsletter" },
-  { href: "/admin/shops", label: "Shops", icon: IconBox, match: (p: string) => p === "/admin/shops" },
-  { href: "/admin/money", label: "Money", icon: IconCard, match: (p: string) => p === "/admin/money" || p.startsWith("/admin/money/") },
-  { href: "/admin/payouts", label: "Payouts", icon: IconCard, match: (p: string) => p === "/admin/payouts" },
-  { href: "/admin/deliveries", label: "Deliveries", icon: IconTruck, match: (p: string) => p === "/admin/deliveries" },
-  { href: "/admin/riders", label: "Riders", icon: IconTruck, match: (p: string) => p === "/admin/riders" },
-  { href: "/admin/access", label: "Access requests", icon: IconShield, match: (p: string) => p === "/admin/access" },
-  { href: "/admin/reviews", label: "Reviews", icon: IconFlag, match: (p: string) => p === "/admin/reviews" },
-  { href: "/admin/coupons", label: "Coupons", icon: IconTag, match: (p: string) => p === "/admin/coupons" },
-  { href: "/admin/inventory", label: "Inventory", icon: IconBox, match: (p: string) => p === "/admin/inventory" },
-  { href: "/admin/growth", label: "Growth", icon: IconBolt, match: (p: string) => p.startsWith("/admin/growth") },
-  { href: "/admin/media", label: "Media", icon: IconImage, match: (p: string) => p === "/admin/media" },
-  { href: "/admin/notifications", label: "Notifications", icon: IconBell, match: (p: string) => p.startsWith("/admin/notifications") },
-  { href: "/admin/payments", label: "Payments", icon: IconCard, match: (p: string) => p === "/admin/payments" },
-  { href: "/admin/live", label: "Live", icon: IconVideo, match: (p: string) => p.startsWith("/admin/live") },
-  { href: "/admin/settings", label: "Settings", icon: IconSettings, match: (p: string) => p === "/admin/settings" },
-];
-
-const TITLES: [RegExp, string][] = [
-  [/^\/admin\/orders\/.+/, "Order details"],
-  [/^\/admin\/orders$/, "Orders"],
-  [/^\/admin\/reports$/, "Reports"],
-  [/^\/admin\/growth$/, "Growth"],
-  [/^\/admin\/products\/(new|[^/]+)$/, "Product editor"],
-  [/^\/admin\/products$/, "Products"],
-  [/^\/admin\/categories$/, "Categories"],
-  [/^\/admin\/zones$/, "Delivery zones"],
-  [/^\/admin\/homepage$/, "Homepage"],
-  [/^\/admin\/customers$/, "Customers"],
-  [/^\/admin\/shops$/, "Shops"],
-  [/^\/admin\/money$/, "Money"],
-  [/^\/admin\/payouts$/, "Payouts"],
-  [/^\/admin\/riders$/, "Riders"],
-  [/^\/admin\/access$/, "Access requests"],
-  [/^\/admin\/deliveries$/, "Deliveries"],
-  [/^\/admin\/reviews$/, "Reviews"],
-  [/^\/admin\/coupons$/, "Coupons"],
-  [/^\/admin\/inventory$/, "Inventory"],
-  [/^\/admin\/media$/, "Media"],
-  [/^\/admin\/notifications$/, "Notifications"],
-  [/^\/admin\/payments$/, "Payments"],
-  [/^\/admin\/live$/, "Live shopping"],
-  [/^\/admin\/settings$/, "Settings"],
-  [/^\/admin\/staff$/, "Staff"],
-  [/^\/admin$/, "Dashboard"],
-];
-
-const titleFor = (pathname: string): string =>
-  TITLES.find(([re]) => re.test(pathname))?.[1] ?? "Admin";
 
 export default function AdminGate({
   children,
@@ -130,14 +58,11 @@ export default function AdminGate({
   // Apply = sign up (2026-09-26): new shop / rider applications wait for a
   // human Approve, so their count sits on the two queue links.
   const applications = useApplicationsPending();
-  const pendingFor = (href: string): number =>
-    href === "/admin/shops"
-      ? applications.shops
-      : href === "/admin/riders"
-        ? applications.riders
-        : href === "/admin/access"
-          ? applications.resets
-          : 0;
+  const queueCounts: AdminQueueCounts = {
+    shops: applications.shops,
+    riders: applications.riders,
+    resets: applications.resets,
+  };
   // Header date: a clock read in render is impure (hydration mismatch and a
   // date that never rolls over on a tab left open past midnight).
   const now = useNow(60_000);
@@ -146,8 +71,10 @@ export default function AdminGate({
   // empty lists as if the shop had no data — say why, once, up here.
   const staffLive = useStaffLive();
   /** Phones had no way to reach the admin nav: the sidebar simply stacked its
-   *  17 links above every page. It is a drawer below `lg` now. */
+   *  26 links above every page. It is a drawer below `lg` now. */
   const [navOpen, setNavOpen] = useState(false);
+  /** ⌘K / Ctrl+K palette — the shortcut past the grouped sidebar. */
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const lastPath = useRef(pathname);
   useEffect(() => {
     if (lastPath.current !== pathname) {
@@ -215,45 +142,20 @@ export default function AdminGate({
           </span>
         </div>
 
-        <nav aria-label="Admin" className="flex-1 space-y-1 px-3 py-4">
-          {NAV.map((item) => {
-            const active = item.match(pathname);
-            const waiting = pendingFor(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-ivory-50/10 text-ivory-50 ring-1 ring-white/10"
-                    : "text-ivory-100/60 hover:bg-white/5 hover:text-ivory-50"
-                }`}
-              >
-                <item.icon className="h-[1.1rem] w-[1.1rem]" />
-                <span className="flex-1">{item.label}</span>
-                {waiting > 0 && (
-                  <span
-                    className="rounded-full bg-gold-500 px-1.5 py-0.5 text-[0.62rem] font-bold leading-none text-white"
-                    aria-label={`${waiting} ${item.href === "/admin/access" ? "request" : "application"}${waiting === 1 ? "" : "s"} waiting`}
-                  >
-                    {waiting > 99 ? "99+" : waiting}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+        <AdminSidebarNav
+          pathname={pathname}
+          counts={queueCounts}
+          onNavigate={() => setNavOpen(false)}
+        />
 
-          <div className="pt-2">
-            <p className="px-3.5 pb-1 text-[0.6rem] uppercase tracking-[0.28em] text-ivory-100/40">
-              Backend (next)
-            </p>
-            <p className="px-3.5 pb-3 text-xs leading-5 text-ivory-100/50">
-              SMS/WhatsApp · online gateways
-            </p>
-          </div>
-        </nav>
-
+        <div className="px-6 pb-4">
+          <p className="pb-1 text-[0.6rem] uppercase tracking-[0.28em] text-ivory-100/40">
+            Backend (next)
+          </p>
+          <p className="text-xs leading-5 text-ivory-100/50">
+            SMS/WhatsApp · online gateways
+          </p>
+        </div>
         <div className="space-y-1 border-t border-white/10 px-3 py-4">
           <Link
             href="/"
@@ -296,6 +198,14 @@ export default function AdminGate({
         {sidebar}
       </Drawer>
 
+      <AdminCommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onOpen={() => setPaletteOpen(true)}
+        pathname={pathname}
+        counts={queueCounts}
+      />
+
       {/* Main column */}
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-line bg-ivory-50/90 px-4 py-4 backdrop-blur sm:px-6 lg:px-10">
@@ -311,20 +221,35 @@ export default function AdminGate({
               <IconMenu className="h-5 w-5" />
             </button>
             <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
-              {titleFor(pathname)}
+              {adminTitleFor(pathname)}
             </h1>
             <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-800">
               Live data
             </span>
           </div>
-          <p className="hidden text-sm text-ink-soft sm:block">
-            {new Date(now).toLocaleDateString("en-GB", {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-keyshortcuts="Meta+K Control+K"
+              className="flex h-10 items-center gap-2 rounded-full border border-line bg-paper px-3 text-sm text-ink-soft transition-colors hover:border-forest-300 hover:text-forest-900"
+            >
+              <IconSearch className="h-4 w-4" />
+              <span className="hidden lg:inline">Jump to…</span>
+              <kbd className="hidden rounded border border-line px-1.5 py-0.5 text-[0.65rem] font-semibold lg:inline">
+                ⌘K
+              </kbd>
+              <span className="sr-only">Search admin pages</span>
+            </button>
+            <p className="hidden text-sm text-ink-soft sm:block">
+              {new Date(now).toLocaleDateString("en-GB", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </p>
+          </div>
           <Link
             href="/admin/notifications"
             aria-label={`Notifications, ${unread} unread`}

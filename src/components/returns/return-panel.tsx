@@ -15,10 +15,10 @@
  */
 
 import { useMemo, useState } from "react";
+import { useLanguage } from "@/components/i18n/language-provider";
 import type { Order } from "@/lib/orders";
+import { EXCHANGE_WINDOW_MS, exchangeCountdown } from "@/lib/exchange-window";
 import { IconBox, IconCheck, IconRefresh } from "@/components/ui/icons";
-
-const EXCHANGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const RETURN_STATUS_COPY: Record<
   string,
@@ -61,6 +61,7 @@ export default function ReturnPanel({
   /** Pre-fill the track form with a pickup-leg order number. */
   onTrack: (orderNo: string, phone: string) => void;
 }) {
+  const { t, lang } = useLanguage();
   const deliveredAt = useMemo(
     () => order.timeline.find((t) => t.status === "delivered")?.at,
     [order],
@@ -69,7 +70,11 @@ export default function ReturnPanel({
   // Both date computations live with the other hooks (before any early
   // return) so the hook order is stable across order lookups.
   // eslint-disable-next-line react-hooks/purity -- a 7-day window can only be evaluated against the wall clock at render
-  const expired = windowEndsAt !== null && Date.now() > windowEndsAt;
+  const nowMs = Date.now();
+  const expired = windowEndsAt !== null && nowMs > windowEndsAt;
+  // "Within 7 days" is a policy; "আর ৫ দিন" is information (post-purchase
+  // pass, 2026-10-06) — on day six nobody should have to do the arithmetic.
+  const countdown = exchangeCountdown(deliveredAt, nowMs, lang);
   const windowDate = useMemo(
     () =>
       windowEndsAt === null
@@ -259,9 +264,23 @@ export default function ReturnPanel({
 
   return (
     <section className="rounded-3xl bg-paper p-6 ring-1 ring-line">
-      <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-        Return / exchange
-      </h3>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
+          Return / exchange
+        </h3>
+        {countdown && !countdown.closed && (
+          <p
+            data-testid="exchange-countdown"
+            className={`text-xs font-semibold ${
+              countdown.closing ? "text-amber-700" : "text-ink-soft"
+            }`}
+          >
+            {countdown.closing
+              ? t("track.exchangeClosing")
+              : t("track.exchangeLeft").replace("{left}", countdown.label)}
+          </p>
+        )}
+      </div>
       <p className="mt-2 text-sm leading-6 text-ink-soft">
         Wrong size or colour? A rider can pick the item up from your home and
         bring it back to the shop — free, until{" "}
