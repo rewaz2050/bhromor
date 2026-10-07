@@ -29,6 +29,8 @@ import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
 import ReceiptRail from "@/components/checkout/receipt-rail";
+import KeepOrderCard from "@/components/checkout/keep-order-card";
+import { composeFullAddress } from "@/lib/address-compose";
 import NotifyOptIn from "@/components/track/notify-opt-in";
 import { haptic } from "@/lib/haptics";
 import BagSkeleton from "@/components/cart/bag-skeleton";
@@ -151,6 +153,9 @@ interface FormState {
   paraCustom: string;
   houseNo: string;
   roadName: string;
+  /** What the rider actually looks for — a house number is not how people
+      find a home here (checkout pass 2026-10-06). */
+  landmark: string;
   address: string;
   note: string;
   couponCode: string;
@@ -182,6 +187,7 @@ const initialForm: FormState = {
   paraCustom: "",
   houseNo: "",
   roadName: "",
+  landmark: "",
   address: "",
   note: "",
   couponCode: "",
@@ -367,6 +373,9 @@ function WalletPaySteps({
  *  and the "use this one" button, so both fill exactly the same fields. */
 const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
   const savedPara = addr.area;
+  // A saved address keeps its landmark in its own field, so a restored one
+  // never duplicates it into the full-address box.
+  const savedLandmark = addr.landmark ?? "";
   const listed = SADAR_PARA_OPTIONS.some((p) => p.name === savedPara);
   const savedDistrict = addr.district || SUNAMGANJ_DISTRICT;
   const savedUpazila = addr.upazila || SUNAMGANJ_UPAZILA;
@@ -385,6 +394,7 @@ const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
     paraCustom: savedPara,
     houseNo: addr.houseNo,
     roadName: addr.roadName,
+    landmark: savedLandmark,
     address: addr.fullAddress,
     note: addr.note,
   };
@@ -1351,6 +1361,15 @@ export default function CheckoutView() {
           </p>
         </div>
 
+        {/* Checkout pass (2026-10-06): the account AFTER the order, not in
+            front of it — one password, and this order stays with you. */}
+        <KeepOrderCard
+          key={`keep-${placed.orderId}`}
+          name={form.name}
+          phone={form.phone}
+          orderId={placed.orderId}
+        />
+
         {/* P2 #18 — what happens next, for THIS order (wallet / courier / pickup aware) */}
         <ReceiptNextSteps
           title={t("checkout.nextTitle")}
@@ -1504,18 +1523,18 @@ export default function CheckoutView() {
   };
 
 
-  /** Full address string — house/road + para/upazila/district auto-append. */
-  const buildFullAddress = () => {
-    const segs: string[] = [];
-    if (form.houseNo.trim()) segs.push(`House: ${form.houseNo.trim()}`);
-    if (form.roadName.trim()) segs.push(`Road: ${form.roadName.trim()}`);
-    if (form.address.trim()) segs.push(form.address.trim());
-    if (effectivePara.trim()) segs.push(`Para: ${effectivePara.trim()}`);
-    if (effectiveUpazila.trim()) segs.push(effectiveUpazila.trim());
-    segs.push(form.district);
-    if (pinPos) segs.push(`Pin: ${pinPos.lat.toFixed(5)},${pinPos.lng.toFixed(5)}`);
-    return segs.join(", ");
-  };
+  /** Full address string — house/road/landmark + para/upazila/district. */
+  const buildFullAddress = () =>
+    composeFullAddress({
+      houseNo: form.houseNo,
+      roadName: form.roadName,
+      landmark: form.landmark,
+      address: form.address,
+      para: effectivePara,
+      upazila: effectiveUpazila,
+      district: form.district,
+      pin: pinPos,
+    });
 
   const persistAddress = () => {
     try {
@@ -1526,6 +1545,7 @@ export default function CheckoutView() {
         area: effectivePara,
         houseNo: form.houseNo,
         roadName: form.roadName,
+        landmark: form.landmark,
         fullAddress: form.address,
         note: form.note,
         zoneId: derivedZoneId,
@@ -2319,6 +2339,22 @@ export default function CheckoutView() {
               </datalist>
             </label>
           </div>
+
+          {/* Checkout pass (2026-10-06): how a rider actually finds a home
+              here — "মসজিদের পাশে" beats a holding number. Optional, kept in
+              its own field, and sent with the address the rider reads. */}
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
+              ল্যান্ডমার্ক / Landmark <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+            </span>
+            <input
+              value={form.landmark}
+              onChange={(e) => update("landmark", e.target.value)}
+              placeholder="যেমন: মসজিদের পাশে, স্কুলের উল্টো দিকে, লাল বাড়ি"
+              data-testid="checkout-landmark"
+              className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+            />
+          </label>
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
