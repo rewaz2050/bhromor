@@ -4,6 +4,8 @@
  */
 import type { Order } from "./orders";
 import type { RiderJob } from "./db/riders";
+import { formatBdt } from "./format";
+import type { Language } from "./translations";
 
 export interface RiderTask {
   /** Identifier of the action target — the live assignment id. */
@@ -57,4 +59,24 @@ export const cashMeter = (cashInHand: number, limit: number): CashMeter => {
     percent: Math.min(100, Math.round((cashInHand / limit) * 100)),
     tone: reached ? "rose" : cashInHand > CASH_WARN_PAISA ? "amber" : "emerald",
   };
+};
+
+/**
+ * Going offline with the shop's cash in your pocket (vendor + rider pass,
+ * 2026-10-07).
+ *
+ * Nothing on the board said it: a rider could switch off after a COD day and
+ * ride home with ৳3,000 of the platform's money still in their pocket — no
+ * warning, no nudge, just a quiet toggle. This is the sentence the board
+ * says before it lets that happen. Null when there is nothing to hand over,
+ * so a rider with an empty pocket is never nagged.
+ */
+export const offlineCashNote = (
+  cashInHand: number,
+  lang: Language = "bn",
+): string | null => {
+  if (cashInHand <= 0) return null;
+  return lang === "bn"
+    ? `হাতে ${formatBdt(cashInHand)} ক্যাশ আছে — অফলাইন যাওয়ার আগে জমা দিয়ে যান।`
+    : `You are holding ${formatBdt(cashInHand)} in COD cash — settle before going offline.`;
 };

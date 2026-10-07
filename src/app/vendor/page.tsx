@@ -56,6 +56,8 @@ import type { ShopVacation } from "@/lib/catalog";
 import { isOnVacation, vacationVendorLine } from "@/lib/shop-vacation";
 import PromoCard from "@/components/vendor/promo-card";
 import VendorReviewsCard from "@/components/vendor/vendor-reviews-card";
+import WaitingParcels from "@/components/vendor/waiting-parcels";
+import { useNow } from "@/lib/use-now";
 
 export default function VendorDashboardPage() {
   const me = useVendor();
@@ -75,6 +77,9 @@ export default function VendorDashboardPage() {
   const [open, setOpen] = useState<boolean | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  // The shelf clock (vendor + rider pass 2026-10-07): a parcel that has been
+  // packed and is still waiting is the shop's blind spot, so it ticks here.
+  const now = useNow(60_000);
 
   // B6 — the holiday lives in local state until the save answers, because the
   // dashboard's own `me` is refreshed by a reload, not by this request.
@@ -442,6 +447,10 @@ export default function VendorDashboardPage() {
           />
         </div>
       )}
+
+      {/* The parcels that are packed and still here — with the rider's name
+          the moment somebody accepts (vendor + rider pass 2026-10-07). */}
+      <WaitingParcels orders={list.filter((o) => !o.isReturn)} now={now} />
 
       {lowStock.length > 0 && (
         <div className="mt-6 rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-200">
