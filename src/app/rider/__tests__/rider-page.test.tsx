@@ -601,3 +601,35 @@ describe("Rider Mobile Portal (/rider)", () => {
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
   });
 });
+
+describe("Going offline with the shop's cash (vendor + rider pass 2026-10-07)", () => {
+  it("asks first instead of silently switching off", () => {
+    state.isOnline = true;
+    state.cashInHand = 220000; // ৳2,200 of COD cash
+    render(<RiderPage />);
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    const nudge = screen.getByTestId("rider-offline-cash-nudge");
+    expect(nudge).toHaveTextContent("হাতে ৳2,200 ক্যাশ আছে");
+    // The rider is still online: nothing has been handed over yet.
+    expect(screen.getByRole("button", { name: /অনলাইন/ })).toBeInTheDocument();
+  });
+
+  it("can go offline anyway — the rider decides, the board just told them", () => {
+    state.isOnline = true;
+    state.cashInHand = 50000;
+    render(<RiderPage />);
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    fireEvent.click(screen.getByTestId("rider-offline-anyway"));
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+  });
+
+  it("nags nobody whose pocket is empty", () => {
+    state.isOnline = true;
+    state.cashInHand = 0;
+    render(<RiderPage />);
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+  });
+});

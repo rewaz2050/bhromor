@@ -17,7 +17,7 @@ import { useOfferBeep } from "@/lib/use-offer-beep";
 import { useRiderLocationTracking } from "@/lib/use-rider-location";
 import { useKeepAwakePref, useWakeLock } from "@/lib/use-wake-lock";
 import { trackingState } from "@/lib/location-health";
-import { cashMeter, countActiveTrips, offeredIds, toRiderTasks, type RiderTask } from "@/lib/rider-tasks";
+import { cashMeter, countActiveTrips, offlineCashNote, offeredIds, toRiderTasks, type RiderTask } from "@/lib/rider-tasks";
 import { IconBox, IconCheck } from "@/components/ui/icons";
 import { RiderPushCard } from "@/components/rider/rider-push-card";
 import { LicenceBanner } from "@/components/rider/licence-banner";
@@ -41,6 +41,9 @@ export default function RiderPage() {
   const [selectedPinTask, setSelectedPinTask] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [settle, setSettle] = useState(false);
+  // Going offline with COD cash in the pocket used to be a silent tap. The
+  // board now asks first — the money is not the rider's to carry home.
+  const [offlineCashHold, setOfflineCashHold] = useState(false);
   const flashTimer = useRef<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
@@ -62,6 +65,7 @@ export default function RiderPage() {
   const CASH_LIMIT_PAISA = riderStats.stats?.cashLimit ?? 500000;
   const cashInHand = activeRider?.cashInHand ?? 0;
   const isCashLimitReached = cashMeter(cashInHand, CASH_LIMIT_PAISA).reached;
+  const cashNote = offlineCashNote(cashInHand);
 
   const tasks = useMemo<RiderTask[]>(() => toRiderTasks(riderJobsApi.jobs), [riderJobsApi.jobs]);
   // Ticks once a second only while an offer is on screen (the countdown);
@@ -99,8 +103,14 @@ export default function RiderPage() {
     [riderJobsApi.jobs],
   );
 
-  const toggleOnline = async () => {
+  const toggleOnline = async (force = false) => {
     const nextState = !isOnline;
+    // Switching OFF while holding cash: ask once, then let them decide.
+    if (!nextState && !force && offlineCashNote(cashInHand) !== null) {
+      setOfflineCashHold(true);
+      return;
+    }
+    setOfflineCashHold(false);
     const ok = await riderJobsApi.setOnline(nextState);
     if (!ok) {
       setActionError(riderJobsApi.error);
@@ -201,7 +211,7 @@ export default function RiderPage() {
 
   return (
     <div className="flex-1 flex flex-col pb-12">
-      <RiderTopBar name={activeRider.name} live={riderJobsApi.live} isOnline={isOnline} onToggle={toggleOnline} />
+      <RiderTopBar name={activeRider.name} live={riderJobsApi.live} isOnline={isOnline} onToggle={() => void toggleOnline()} />
 
       {/* Main Content Area */}
       <div className="p-4 sm:p-5 space-y-5">
@@ -263,6 +273,36 @@ export default function RiderPage() {
             </span>
           </Link>
         )}
+
+        {offlineCashHold && cashNote ? (
+          <div
+            role="alert"
+            data-testid="rider-offline-cash-nudge"
+            className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300"
+          >
+            <p className="text-xs font-semibold text-amber-900">{cashNote}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setOfflineCashHold(false);
+                  setSettle(true);
+                }}
+                className="min-h-11 rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
+              >
+                টাকা জমা দিন
+              </button>
+              <button
+                type="button"
+                data-testid="rider-offline-anyway"
+                onClick={() => void toggleOnline(true)}
+                className="min-h-11 rounded-full px-4 text-xs font-semibold text-ink-soft ring-1 ring-line hover:text-ink"
+              >
+                তবুও অফলাইন যাব
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <CashCard
           cashInHand={cashInHand}
