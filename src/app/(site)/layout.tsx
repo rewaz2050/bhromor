@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 // Bengali serif, storefront-only (see root layout): the rider/vendor/admin
 // apps never render font-bengali, so they skip these ~3 weights.
 import "@fontsource/noto-serif-bengali/400.css";
@@ -10,6 +11,10 @@ import BagMiniBar from "@/components/cart/bag-mini-bar";
 import BagSnapshotSync from "@/components/cart/bag-snapshot-sync";
 import CustomerProvider from "@/components/account/customer-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
+import {
+  LANGUAGE_COOKIE_KEY,
+  languageFromCookie,
+} from "@/lib/translations";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -68,17 +73,25 @@ export const metadata: Metadata = {
   },
 };
 
-export default function SiteLayout({
+export default async function SiteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // The device's own choice, read before the first byte is sent (fix-all
+  // pass 2026-10-07): a shopper who picked English used to be served a
+  // Bangla page and watch every word change when React hydrated. The
+  // pre-paint script below keeps <html lang> honest either way; this is
+  // what makes the React tree agree with it from frame one.
+  const jar = await cookies();
+  const initialLang = languageFromCookie(jar.get(LANGUAGE_COOKIE_KEY)?.value) ?? "bn";
+
   return (
     // Bangla first (UX audit 2026-09-18, P1 #8): the shop serves Sunamganj,
     // so a device that never picked a language reads Bangla; the switcher
     // (header on every width, drawer, bottom sheet) flips to English and the
     // choice is remembered on this device.
-    <LanguageProvider initialLang="bn">
+    <LanguageProvider initialLang={initialLang}>
       {/* Menubar redesign (2026-09-26): set <html lang> before the first
           paint (stored choice, else Bangla) so the :lang(bn) typography rules
           in globals.css — display fallback, no letter-spacing — apply from

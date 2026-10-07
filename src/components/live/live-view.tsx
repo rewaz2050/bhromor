@@ -16,6 +16,7 @@
  */
 
 import { useProductHref } from "@/lib/use-product-href";
+import { useNow } from "@/lib/use-now";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -53,11 +54,12 @@ const fmtWhen = (ms: number): string =>
 
 /** Ticking countdown to a future timestamp (the honest "starts in"). */
 function Countdown({ to }: { to: number }) {
-  const [left, setLeft] = useState(() => Math.max(0, to - Date.now()));
-  useEffect(() => {
-    const t = setInterval(() => setLeft(Math.max(0, to - Date.now())), 1000);
-    return () => clearInterval(t);
-  }, [to]);
+  // The shared clock (flicker pass): its own useState(() => Date.now())
+  // rendered the server's second in the HTML and the browser's second one
+  // frame later, so a countdown's first paint was always a number about to
+  // change. One interval per second, shared by every countdown on the page.
+  const now = useNow(1000);
+  const left = Math.max(0, to - now);
   const s = Math.floor(left / 1000);
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);

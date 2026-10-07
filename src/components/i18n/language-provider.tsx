@@ -5,10 +5,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { translations, type Language, type TranslationKey } from "@/lib/translations";
+import {
+  LANGUAGE_COOKIE_KEY,
+  translations,
+  type Language,
+  type TranslationKey,
+} from "@/lib/translations";
 
 type LanguageContextValue = {
   lang: Language;
@@ -19,7 +25,7 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-export const LANGUAGE_STORAGE_KEY = "prosanti-lang";
+export const LANGUAGE_STORAGE_KEY = LANGUAGE_COOKIE_KEY;
 const STORAGE_KEY = LANGUAGE_STORAGE_KEY;
 
 /** The stored choice (localStorage first, then the cookie) — or null. */
@@ -66,13 +72,22 @@ export function LanguageProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialLang is a mount-time default
   }, []);
 
+  // Write only when the shopper actually chose — the server's answer is
+  // already stored (it came from the same cookie), so a page load writes
+  // nothing. Writing on every mount also meant every visit re-touched
+  // localStorage before the first paint had settled.
+  const wroteInitial = useRef(false);
   useEffect(() => {
     if (!mounted) return;
+    document.documentElement.lang = lang === "bn" ? "bn" : "en";
+    if (!wroteInitial.current) {
+      wroteInitial.current = true;
+      return;
+    }
     try {
-      document.documentElement.lang = lang === "bn" ? "bn" : "en";
       window.localStorage.setItem(STORAGE_KEY, lang);
-      // also set cookie for potential SSR reading
-      document.cookie = `prosanti-lang=${lang}; path=/; max-age=31536000; samesite=lax`;
+      // also set cookie for the server to read on the next page
+      document.cookie = `${STORAGE_KEY}=${lang}; path=/; max-age=31536000; samesite=lax`;
     } catch {
       // ignore
     }

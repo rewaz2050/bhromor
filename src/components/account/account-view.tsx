@@ -5,7 +5,7 @@ import { tidyPhoneInput } from "@/lib/phone";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { getAuthSnapshot } from "@/lib/customer-session";
+import { getAuthSnapshot, type CustomerInfo } from "@/lib/customer-session";
 import { useCustomer } from "@/lib/use-customer";
 import {
   getWishlist,
@@ -58,9 +58,14 @@ const nextFromQuery = (): string | null => {
 
 type AccountTab = "orders" | "profile" | "card" | "refer" | "plus";
 
-export default function AccountView() {
+export default function AccountView({
+  /** The session the server already proved for this request (see /account). */
+  initialCustomer,
+}: {
+  initialCustomer?: CustomerInfo | null;
+} = {}) {
   const { t } = useLanguage();
-  const { customer, checked, refresh, signOut } = useCustomer();
+  const { customer, checked, refresh, signOut } = useCustomer(initialCustomer);
   const guest = useSyncExternalStore(
     subscribeWishlist,
     getWishlist,
