@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
+import { fetchWithDeadline } from "@/lib/fetch-with-deadline";
 import { formatBdt } from "@/lib/format";
 import { trackHref } from "@/lib/last-order";
 import { PUBLIC_STEPS, publicPhase, type OrderStatus } from "@/lib/orders";
@@ -63,7 +64,10 @@ export default function OrderHistory({ phone }: { phone: string }) {
     let live = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- (re)load on demand
     setState({ kind: "loading" });
-    fetch("/api/account/orders", { cache: "no-store", credentials: "same-origin" })
+    fetchWithDeadline("/api/account/orders", {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as { orders?: HistoryRow[] };

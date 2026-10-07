@@ -29,6 +29,8 @@ import Link from "next/link";
 import { useCart } from "@/components/cart/cart-provider";
 import ReceiptReferralRow from "@/components/checkout/receipt-referral-row";
 import ReceiptRail from "@/components/checkout/receipt-rail";
+import KeepOrderCard from "@/components/checkout/keep-order-card";
+import { composeFullAddress } from "@/lib/address-compose";
 import NotifyOptIn from "@/components/track/notify-opt-in";
 import { haptic } from "@/lib/haptics";
 import BagSkeleton from "@/components/cart/bag-skeleton";
@@ -151,6 +153,9 @@ interface FormState {
   paraCustom: string;
   houseNo: string;
   roadName: string;
+  /** What the rider actually looks for — a house number is not how people
+      find a home here (checkout pass 2026-10-06). */
+  landmark: string;
   address: string;
   note: string;
   couponCode: string;
@@ -167,10 +172,18 @@ interface FormState {
   submitting: boolean;
 }
 
-/** Module-level "today" (Dhaka calendar) — bounds the date picker. */
-const NOW_MS = Date.now();
-const MIN_DELIVERY_DATE = dhakaDateString(NOW_MS);
-const MAX_DELIVERY_DATE = dhakaDateString(NOW_MS + 3 * 86400000);
+/**
+ * The date picker's reach, in Dhaka calendar days. Computed from a clock the
+ * caller passes in — never at module load (flicker pass 2026-10-07): a module
+ * constant is frozen when the FILE is evaluated, so a server that booted on
+ * Tuesday bounded every shopper's picker to Tuesday while the browser, one
+ * frame later, moved it to today. Two different `min` values for one input is
+ * a hydration repair the shopper sees as the field twitching.
+ */
+const DELIVERY_DATE_REACH_DAYS = 3;
+const minDeliveryDate = (nowMs: number): string => dhakaDateString(nowMs);
+const maxDeliveryDate = (nowMs: number): string =>
+  dhakaDateString(nowMs + DELIVERY_DATE_REACH_DAYS * 86_400_000);
 
 const initialForm: FormState = {
   name: "",
@@ -182,11 +195,12 @@ const initialForm: FormState = {
   paraCustom: "",
   houseNo: "",
   roadName: "",
+  landmark: "",
   address: "",
   note: "",
   couponCode: "",
   timeSlot: "now",
-  deliveryDate: MIN_DELIVERY_DATE,
+  deliveryDate: "",
   deliveryWindow: "2-4",
   isPickup: false,
   pickupSlot: "now",
@@ -367,6 +381,9 @@ function WalletPaySteps({
  *  and the "use this one" button, so both fill exactly the same fields. */
 const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
   const savedPara = addr.area;
+  // A saved address keeps its landmark in its own field, so a restored one
+  // never duplicates it into the full-address box.
+  const savedLandmark = addr.landmark ?? "";
   const listed = SADAR_PARA_OPTIONS.some((p) => p.name === savedPara);
   const savedDistrict = addr.district || SUNAMGANJ_DISTRICT;
   const savedUpazila = addr.upazila || SUNAMGANJ_UPAZILA;
@@ -385,6 +402,7 @@ const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
     paraCustom: savedPara,
     houseNo: addr.houseNo,
     roadName: addr.roadName,
+    landmark: savedLandmark,
     address: addr.fullAddress,
     note: addr.note,
   };
@@ -440,7 +458,11 @@ export default function CheckoutView() {
     [basketGroups, shops],
   );
 
-  const [form, setForm] = useState<FormState>(initialForm);
+  // Today, from the shared clock: the same date the server rendered.
+  const [form, setForm] = useState<FormState>(() => ({
+    ...initialForm,
+    deliveryDate: minDeliveryDate(nowMs),
+  }));
   const [placed, setPlaced] = useState<{
     orderId: string;
     /** C2 — the other orders the same tap placed (one per shop). */
@@ -1351,6 +1373,15 @@ export default function CheckoutView() {
           </p>
         </div>
 
+        {/* Checkout pass (2026-10-06): the account AFTER the order, not in
+            front of it — one password, and this order stays with you. */}
+        <KeepOrderCard
+          key={`keep-${placed.orderId}`}
+          name={form.name}
+          phone={form.phone}
+          orderId={placed.orderId}
+        />
+
         {/* P2 #18 — what happens next, for THIS order (wallet / courier / pickup aware) */}
         <ReceiptNextSteps
           title={t("checkout.nextTitle")}
@@ -1504,18 +1535,18 @@ export default function CheckoutView() {
   };
 
 
-  /** Full address string — house/road + para/upazila/district auto-append. */
-  const buildFullAddress = () => {
-    const segs: string[] = [];
-    if (form.houseNo.trim()) segs.push(`House: ${form.houseNo.trim()}`);
-    if (form.roadName.trim()) segs.push(`Road: ${form.roadName.trim()}`);
-    if (form.address.trim()) segs.push(form.address.trim());
-    if (effectivePara.trim()) segs.push(`Para: ${effectivePara.trim()}`);
-    if (effectiveUpazila.trim()) segs.push(effectiveUpazila.trim());
-    segs.push(form.district);
-    if (pinPos) segs.push(`Pin: ${pinPos.lat.toFixed(5)},${pinPos.lng.toFixed(5)}`);
-    return segs.join(", ");
-  };
+  /** Full address string — house/road/landmark + para/upazila/district. */
+  const buildFullAddress = () =>
+    composeFullAddress({
+      houseNo: form.houseNo,
+      roadName: form.roadName,
+      landmark: form.landmark,
+      address: form.address,
+      para: effectivePara,
+      upazila: effectiveUpazila,
+      district: form.district,
+      pin: pinPos,
+    });
 
   const persistAddress = () => {
     try {
@@ -1526,6 +1557,7 @@ export default function CheckoutView() {
         area: effectivePara,
         houseNo: form.houseNo,
         roadName: form.roadName,
+        landmark: form.landmark,
         fullAddress: form.address,
         note: form.note,
         zoneId: derivedZoneId,
@@ -2320,6 +2352,22 @@ export default function CheckoutView() {
             </label>
           </div>
 
+          {/* Checkout pass (2026-10-06): how a rider actually finds a home
+              here — "মসজিদের পাশে" beats a holding number. Optional, kept in
+              its own field, and sent with the address the rider reads. */}
+          <label className="mt-4 block">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
+              ল্যান্ডমার্ক / Landmark <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+            </span>
+            <input
+              value={form.landmark}
+              onChange={(e) => update("landmark", e.target.value)}
+              placeholder="যেমন: মসজিদের পাশে, স্কুলের উল্টো দিকে, লাল বাড়ি"
+              data-testid="checkout-landmark"
+              className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+            />
+          </label>
+
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               বিস্তারিত ঠিকানা / Full address <span className="text-rose-600">*</span>
@@ -2488,8 +2536,8 @@ export default function CheckoutView() {
                         <input
                           type="date"
                           value={form.deliveryDate}
-                          min={MIN_DELIVERY_DATE}
-                          max={MAX_DELIVERY_DATE}
+                          min={minDeliveryDate(nowMs)}
+                          max={maxDeliveryDate(nowMs)}
                           onChange={(e) => update("deliveryDate", e.target.value)}
                           className="h-10 w-full rounded-xl bg-paper px-3 text-sm ring-1 ring-line"
                         />

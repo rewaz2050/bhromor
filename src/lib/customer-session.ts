@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithDeadline } from "./fetch-with-deadline";
+
 /**
  * Customer session — live only.
  *
@@ -89,6 +91,24 @@ export const __resetLiveAuthForTests = (): void => {
   notify();
 };
 
+/**
+ * What the SERVER already proved, handed to the first paint (account
+ * loading pass 2026-10-07).
+ *
+ * The storefront used to ship "সেশন চেক করা হচ্ছে…" in the HTML and swap the
+ * whole page a moment later — every visit, for every shopper, including one
+ * who has been signed in for months. Seeding lets the browser start from the
+ * server's answer: no spinner, no swap, and the probe afterwards only has to
+ * confirm (or correct) it.
+ *
+ * Never clears a truth the client already holds — a later seed (a second
+ * mount) must not undo a sign-in that has happened since.
+ */
+export const seedCustomerSession = (customer: CustomerInfo | null): void => {
+  if (liveAuth.checked) return;
+  setLiveAuth({ checked: true, mode: "live", customer });
+};
+
 /* ------------------------------ live probe -------------------------------- */
 
 let probePromise: Promise<{
@@ -100,6 +120,13 @@ let probePromise: Promise<{
  * Probe `/api/account/me` once per cycle (shared promise) and publish the
  * result to the store every `useCustomer()` consumer reads from.
  */
+/**
+ * How long the probe may hang before the page stops waiting for it. A phone
+ * on a dying connection used to sit on "checking…" forever, because a fetch
+ * that never answers is indistinguishable from one still thinking.
+ */
+export const SESSION_PROBE_TIMEOUT_MS = 8_000;
+
 export const probeCustomerSession = (): Promise<{
   customer: CustomerInfo | null;
   mode: "live";
@@ -108,7 +135,11 @@ export const probeCustomerSession = (): Promise<{
     probePromise = (async () => {
       let result: { customer: CustomerInfo | null; mode: "live" };
       try {
-        const res = await fetch("/api/account/me", { cache: "no-store" });
+        const res = await fetchWithDeadline(
+          "/api/account/me",
+          { cache: "no-store" },
+          SESSION_PROBE_TIMEOUT_MS,
+        );
         if (res.status === 401) {
           result = { customer: null, mode: "live" as const };
         } else {
@@ -120,15 +151,20 @@ export const probeCustomerSession = (): Promise<{
             mode: "live" as const,
           };
         }
+        // A DEFINITIVE answer (200 or 401) is the truth — it may correct a
+        // seed whose session expired between the render and this probe.
+        setLiveAuth({
+          checked: true,
+          mode: result.mode,
+          customer: result.customer,
+        });
       } catch {
-        // Network failure — treat as signed out for this cycle.
-        result = { customer: null, mode: "live" as const };
+        // A slow or broken network is NOT a sign-out. Keep whatever is known
+        // (the server's seed, or simply "unknown") and stop the spinner — a
+        // page that waits forever is worse than one that waits too little.
+        result = { customer: liveAuth.customer, mode: "live" as const };
+        setLiveAuth({ checked: true });
       }
-      setLiveAuth({
-        checked: true,
-        mode: result.mode,
-        customer: result.customer,
-      });
       return result;
     })();
   }

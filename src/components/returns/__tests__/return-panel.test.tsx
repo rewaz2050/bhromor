@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Order } from "@/lib/orders";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import ReturnPanel from "../return-panel";
 
 afterEach(() => {
@@ -194,5 +195,92 @@ describe("ReturnPanel", () => {
         "The 7-day exchange window for this order has ended.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ReturnPanel — exchange countdown (post-purchase pass 2026-10-06)", () => {
+  const renderPanel = (order: Order) =>
+    render(
+      <LanguageProvider initialLang="en">
+        <ReturnPanel order={order} onTrack={vi.fn()} />
+      </LanguageProvider>,
+    );
+
+  it("counts the days left instead of only printing a closing date", () => {
+    renderPanel(makeOrder()); // delivered 2 days ago
+    const countdown = screen.getByTestId("exchange-countdown");
+    expect(countdown).toHaveTextContent(/Exchange window/);
+    // Delivered two days ago → five days left (the fixture clock ticks a
+    // hair between fixture and render, so accept either side of it).
+    expect(countdown).toHaveTextContent(/[45] days/);
+  });
+
+  it("says it is the last day when it is the last day", () => {
+    renderPanel(
+      makeOrder({
+        timeline: [
+          { status: "pending", at: Date.now() - 7 * DAY },
+          { status: "delivered", at: Date.now() - 6.5 * DAY },
+        ],
+      }),
+    );
+    expect(screen.getByTestId("exchange-countdown")).toHaveTextContent(
+      /Last day to exchange/i,
+    );
+  });
+
+  it("shows no countdown once the window has closed", () => {
+    renderPanel(
+      makeOrder({
+        timeline: [
+          { status: "pending", at: Date.now() - 20 * DAY },
+          { status: "delivered", at: Date.now() - 12 * DAY },
+        ],
+      }),
+    );
+    expect(screen.queryByTestId("exchange-countdown")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReturnPanel — size return tells the shop how the size felt (fit-data pass)", () => {
+  it("offers the three taps while the size reason is chosen, and sends the answer", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ order: { id: "PS-20260912-0007" } }),
+      }),
+    );
+    render(
+      <LanguageProvider>
+        <ReturnPanel order={makeOrder()} onTrack={vi.fn()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByTestId("return-fit-small")).toBeInTheDocument();
+    expect(screen.getByTestId("return-fit-true")).toBeInTheDocument();
+    expect(screen.getByTestId("return-fit-large")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("return-fit-small"));
+    fireEvent.change(screen.getByPlaceholderText(/tight across the chest/), {
+      target: { value: "A bit tight across the chest." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Request home pickup" }));
+    await screen.findByText(/PS-20260912-0007/);
+
+    const body = JSON.parse(
+      String(vi.mocked(fetch).mock.calls[0][1]?.body),
+    ) as Record<string, string>;
+    expect(body.reason).toBe("size");
+    expect(body.fit).toBe("small");
+  });
+
+  it("keeps the taps away when the reason is not size", () => {
+    render(
+      <LanguageProvider>
+        <ReturnPanel order={makeOrder()} onTrack={vi.fn()} />
+      </LanguageProvider>,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Colour swap" }));
+    expect(screen.queryByTestId("return-fit-small")).toBeNull();
   });
 });
