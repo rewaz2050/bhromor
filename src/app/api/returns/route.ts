@@ -20,6 +20,7 @@ import {
   ReturnRequestError,
 } from "@/lib/db/returns";
 import { notifyStaff } from "@/lib/db/engagement";
+import { isFitKey } from "@/lib/review-fit";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,15 @@ export async function POST(request: Request) {
   if (!REASONS.has(reason)) {
     return apiError("Pick a return reason.", 422);
   }
+  // Fit answer (fit-data pass 2026-10-06): a size return is the most honest
+  // fit signal a shop gets — somebody bothered to send the piece back. It
+  // rides along in the note the shop and the rider read, so no schema change
+  // and no lost data when the column is absent.
+  const fit = isFitKey(b.fit) ? b.fit : null;
+  const detailsText = fit
+    ? `${details} · Size felt: ${fit}`.slice(0, 380)
+    : details;
+
   if (details.length < 5 || details.length > 400) {
     return apiError(
       "Tell the shop a little more — a sentence is enough.",
@@ -75,7 +85,7 @@ export async function POST(request: Request) {
       orderNo: id,
       phone,
       reason,
-      details,
+      details: detailsText,
     });
     await notifyStaff(db, {
       kind: "order",

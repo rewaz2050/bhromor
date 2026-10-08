@@ -4,6 +4,9 @@ import Home from "../home-client";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { __resetHomeSettings } from "@/lib/use-home-settings";
+// Reviews are cached per (product, featured) key (flicker pass); each test
+// in this file is a fresh page load, so start each one cold.
+import { refreshPublicReviews } from "@/lib/use-public-reviews";
 import { MY_ZONE_KEY } from "@/lib/use-my-zone";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
 import { __resetRecentlyViewed, recordView } from "@/lib/recently-viewed";
@@ -65,6 +68,7 @@ beforeEach(() => {
   // The homepage settings store is fetch-once per page lifetime (P2.2);
   // each test is a fresh page.
   __resetHomeSettings();
+  refreshPublicReviews();
   globalThis.fetch = mockFetch as unknown as typeof fetch;
 });
 
@@ -74,6 +78,9 @@ afterEach(() => {
 });
 
 async function renderHome() {
+  // A fresh page load: the review store is cached per key at runtime, and
+  // this test changes the payload between renders.
+  refreshPublicReviews();
   const view = render(
     <CartProvider>
       <Home />

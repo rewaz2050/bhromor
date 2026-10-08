@@ -22,44 +22,17 @@ import { clientIpFromHeaders } from "@/lib/rate-limit";
 import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
+import { readContactChannels } from "@/lib/db/contact";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const db = getSupabaseService();
-  if (!db) return apiError("Contact details are temporarily unavailable.", 503);
-  try {
-    const { data, error } = await db
-      .from("site_settings")
-      .select("value")
-      .eq("key", "ops")
-      .maybeSingle();
-    if (error) return apiError("Contact details are temporarily unavailable.", 503);
-    const ops = (data?.value ?? {}) as Record<string, unknown>;
-    const contact = (ops.contact ?? {}) as Record<string, unknown>;
-    const mobile = (v: unknown): string | null => {
-      let digits = typeof v === "string" ? v.replace(/\D/g, "") : "";
-      if (digits.length > 11 && digits.startsWith("88")) digits = digits.slice(2);
-      return BD_MOBILE.test(digits) ? digits : null;
-    };
-    const emailRaw =
-      typeof contact.email === "string" ? contact.email.trim().toLowerCase() : "";
-    return apiJson({
-      phone: mobile(contact.phone),
-      whatsapp: mobile(contact.whatsapp) ?? mobile(contact.phone),
-      email:
-        emailRaw.length >= 5 &&
-        emailRaw.length <= 254 &&
-        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)
-          ? emailRaw
-          : null,
-    });
-  } catch {
-    return apiError("Contact details are temporarily unavailable.", 503);
-  }
+  const channels = await readContactChannels();
+  // 503 keeps the old contract: the storefront then shows only what can be
+  // real (the message form) instead of a made-up inbox.
+  if (!channels) return apiError("Contact details are temporarily unavailable.", 503);
+  return apiJson(channels);
 }
-
-const BD_MOBILE = /^01\d{9}$/;
 
 export async function POST(request: Request) {
   const ip = clientIpFromHeaders(request.headers);

@@ -18,7 +18,7 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 7 — Returns & Exchanges (7-day instant size exchange intake flow) | ✅ Complete |
 | Phase 8 — Admin Control & Ops (live orders state machine, catalog CRUD, staff/shops/riders queues, cash settlements) | ✅ Complete |
 
-The storefront paints the launch catalog instantly (`src/lib/catalog.ts` — the same source `scripts/seed-supabase.mjs` and `src/lib/db/auto-seed.ts` upsert into Supabase), then swaps in live database rows as soon as the backend answers. The admin order state machine lives in `src/lib/orders.ts`. Everything is live-only: there is no demo mode, no demo login, and no browser-local fallback store. When the backend is unconfigured, endpoints answer an honest 503/unavailable instead of pretending.
+The storefront paints the launch catalog instantly (`src/lib/catalog.ts` — the same source `scripts/seed-supabase.mjs` upserts into Supabase), then swaps in live database rows as soon as the backend answers. The admin order state machine lives in `src/lib/orders.ts`. Everything is live-only: there is no demo mode, no demo login, and no browser-local fallback store. When the backend is unconfigured, endpoints answer an honest 503/unavailable instead of pretending.
 
 ## Getting started
 
@@ -289,7 +289,7 @@ Tests: `src/lib/__tests__/{quick-chips,ends-at,install-prompt}.test.ts`,
 `src/components/shop/__tests__/{shop-grid-pages,shop-products,shop-browser}.test.tsx`,
 `src/components/wishlist/__tests__/wishlist-view.test.tsx`,
 `src/app/(site)/__tests__/home.test.tsx`,
-`src/app/(site)/product/__tests__/product-page-tail.test.tsx`.
+`src/app/(site)/shops/[slug]/p/[product]/__tests__/product-page-tail.test.tsx`.
 
 ## UX plan R10 — the last "pending" items (2026-09-27)
 

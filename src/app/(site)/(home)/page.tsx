@@ -7,7 +7,7 @@ import { HOME_DEFAULTS } from "@/lib/home-cms";
 import { CACHE_TAG_HOMEPAGE, PUBLIC_CACHE_SECONDS } from "@/lib/public-cache";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import HomeSettingsHydrator from "@/components/home/home-settings-hydrator";
-import HomeClient from "./home-client";
+import HomeClient from "../home-client";
 
 export const metadata: Metadata = {
   title: "PROSANTI — Premium Panjabi, Shirts & More in Sunamganj",

@@ -1,3 +1,4 @@
+import { fetchWithDeadline } from "./fetch-with-deadline";
 /**
  * Live catalog registry — the bridge between sync UI code and the async
  * backend. NOTHING paints until the database answers: the demo launch
@@ -152,7 +153,7 @@ export const ensureLiveZones = (): Promise<boolean> => {
   if (zonesPromise) return zonesPromise;
   zonesPromise = (async () => {
     try {
-      const res = await fetch("/api/zones");
+      const res = await fetchWithDeadline("/api/zones");
       if (!res.ok) return false;
       const data = (await res.json()) as {
         zones?: DeliveryZone[];

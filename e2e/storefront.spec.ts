@@ -249,3 +249,34 @@ for (const route of [
     await accessible(page);
   });
 }
+
+/**
+ * Unknown URLs must answer a REAL 404, not the 404 page under a 200 (scan
+ * 2026-10-08). The heading alone is not enough to assert on — a soft 404
+ * renders exactly the same heading, which is why this went unnoticed for so
+ * long. Assert on the status code.
+ */
+test("unknown URLs answer HTTP 404, not a soft 200", async ({ request, page }) => {
+  for (const path of [
+    "/this-page-does-not-exist",
+    "/product/no-such-piece",
+    "/shops/no-such-shop",
+    "/shops/no-such-shop/p/no-such-piece",
+    "/admin/no-such-page",
+  ]) {
+    const res = await request.get(path);
+    expect(res.status(), `${path} status`).toBe(404);
+  }
+
+  // And the page the browser shows for it is still the shop's own 404.
+  const res = await page.goto("/this-page-does-not-exist");
+  expect(res?.status()).toBe(404);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+});
+
+/** An unknown /api path belongs to the JSON contract, not to the storefront. */
+test("unknown API paths answer a JSON 404", async ({ request }) => {
+  const res = await request.get("/api/definitely-not-an-endpoint");
+  expect(res.status()).toBe(404);
+  expect(await res.json()).toEqual({ error: "No such endpoint." });
+});

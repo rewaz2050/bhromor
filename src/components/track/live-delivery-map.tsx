@@ -1,5 +1,6 @@
 "use client";
 
+import { formatShopDate } from "@/lib/format";
 import { useCallback, useEffect, useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { riderDistance } from "@/lib/rider-distance";
@@ -223,7 +224,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                 : order.etaLabel}
           </p>
           {riderLive && (
-            <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {new Date(riderLive.updatedAt).toLocaleTimeString()}{fresh && fresh.level !== "unknown" ? ` (${freshnessLabel(fresh)})` : ""}</p>
+            <p className="mt-1 text-[10px] text-emerald-300"><IconMapPin className="mr-0.5 inline h-3 w-3 align-[-2px]" />Rider live {riderLive.lat.toFixed(4)},{riderLive.lng.toFixed(4)} · {formatShopDate(riderLive.updatedAt, { hour: "2-digit", minute: "2-digit" })}{fresh && fresh.level !== "unknown" ? ` (${freshnessLabel(fresh)})` : ""}</p>
           )}
           {riderLive && !isDelivered && fresh?.level === "stale" && (
             <p data-testid="rider-stale" className="mt-1 text-[11px] font-semibold text-amber-200">
@@ -302,6 +303,22 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                         ? `বাইক${riderRating ? ` • রেটিং ${riderRating}` : ""}`
                         : "অ্যাসাইন হলে নাম ও নম্বর এখানে দেখা যাবে"}
                   </p>
+                  {/* UX plan §7 (post-purchase pass 2026-10-06): the number a
+                      family actually wants — how far, how long — belongs next
+                      to the rider's name, not only in the map's ETA corner.
+                      A stale fix gets the honest "last position" line instead. */}
+                  {away && !isDelivered ? (
+                    <p
+                      data-testid="rider-card-away"
+                      className="mt-1 text-[11px] font-semibold text-emerald-700"
+                    >
+                      রাইডার প্রায় {away.distanceLabel} দূরে · ~{bnDigits(String(away.minutes))} মিনিট
+                    </p>
+                  ) : riderLive && fresh?.level === "stale" ? (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      শেষ অবস্থান {freshnessLabel(fresh)} — দূরত্ব আপাতত বন্ধ
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
