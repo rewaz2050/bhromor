@@ -185,7 +185,9 @@ describe("Rider Mobile Portal (/rider)", () => {
     render(<RiderPage />);
     const countdown = screen.getByTestId("rider-offer-countdown");
     expect(countdown).toHaveTextContent(/একসেপ্ট করার সময় বাকি/);
-    expect(countdown).toHaveTextContent(/4[0-5] সেকেন্ড/);
+    // The shared clock floors to the second, so a 45 s offer answers 45–46 s
+    // (never less time than the rider really has).
+    expect(countdown).toHaveTextContent(/4[5-6] সেকেন্ড/);
     expect(screen.getByText("অর্ডার একসেপ্ট করুন")).toBeInTheDocument();
   });
 
@@ -599,5 +601,37 @@ describe("Rider Mobile Portal (/rider)", () => {
     state.jobs = [];
     render(<RiderPage />);
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+});
+
+describe("Going offline with the shop's cash (vendor + rider pass 2026-10-07)", () => {
+  it("asks first instead of silently switching off", () => {
+    state.isOnline = true;
+    state.cashInHand = 220000; // ৳2,200 of COD cash
+    render(<RiderPage />);
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    const nudge = screen.getByTestId("rider-offline-cash-nudge");
+    expect(nudge).toHaveTextContent("হাতে ৳2,200 ক্যাশ আছে");
+    // The rider is still online: nothing has been handed over yet.
+    expect(screen.getByRole("button", { name: /অনলাইন/ })).toBeInTheDocument();
+  });
+
+  it("can go offline anyway — the rider decides, the board just told them", () => {
+    state.isOnline = true;
+    state.cashInHand = 50000;
+    render(<RiderPage />);
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    fireEvent.click(screen.getByTestId("rider-offline-anyway"));
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+  });
+
+  it("nags nobody whose pocket is empty", () => {
+    state.isOnline = true;
+    state.cashInHand = 0;
+    render(<RiderPage />);
+    fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
   });
 });

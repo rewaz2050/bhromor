@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { countdownLabel } from "@/lib/promos";
 import { endsAtLabel } from "@/lib/ends-at";
-import { ensurePromos } from "@/lib/use-promos";
+import { ensurePromos, promoNowMs } from "@/lib/use-promos";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { formatBdt } from "@/lib/format";
 import { IconBolt } from "@/components/ui/icons";
@@ -24,7 +24,11 @@ export function FlashTimer({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const [left, setLeft] = useState(() => Math.max(0, endsAtMs - Date.now()));
+  // Seeded from the deadline the SERVER published and the clock it published
+  // it at: a countdown computed from Date.now() on both sides differs by the
+  // few hundred milliseconds between them, and React would tear the text out
+  // and repaint it. The ticker below takes over the moment the page is live.
+  const [left, setLeft] = useState(() => Math.max(0, endsAtMs - (promoNowMs() ?? Date.now())));
   const refreshed = useRef(false);
 
   useEffect(() => {
@@ -56,7 +60,9 @@ export function FlashTimer({
  */
 export function FlashEndsAt({ endsAtMs, className = "" }: { endsAtMs: number; className?: string }) {
   const { lang } = useLanguage();
-  const [label, setLabel] = useState(() => endsAtLabel(endsAtMs, lang));
+  const [label, setLabel] = useState(() =>
+    endsAtLabel(endsAtMs, lang, promoNowMs() ?? Date.now()),
+  );
   useEffect(() => {
     const tick = () => setLabel(endsAtLabel(endsAtMs, lang));
     tick();
@@ -74,7 +80,7 @@ export function FlashEndsAt({ endsAtMs, className = "" }: { endsAtMs: number; cl
 /** "Starts in 01:12:40" for the window that has not opened yet. */
 export function FlashCountup({ atMs }: { atMs: number }) {
   const { t } = useLanguage();
-  const [left, setLeft] = useState(() => Math.max(0, atMs - Date.now()));
+  const [left, setLeft] = useState(() => Math.max(0, atMs - (promoNowMs() ?? Date.now())));
   useEffect(() => {
     const id = window.setInterval(() => {
       const next = Math.max(0, atMs - Date.now());

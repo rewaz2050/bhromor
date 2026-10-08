@@ -1,4 +1,16 @@
+import type { Metadata } from "next";
 import { ButtonLink } from "@/components/ui/primitives";
+
+/**
+ * Without this the 404 page carried the homepage's <title>, so a broken link
+ * was labelled "PROSANTI — Rooted in Bangladesh…" in the tab, in the history
+ * and in a share sheet (scan 2026-10-08).
+ */
+export const metadata: Metadata = {
+  title: "Page not found",
+  description: "This page does not exist or has moved.",
+  robots: { index: false, follow: false },
+};
 
 export default function NotFound() {
   return (

@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/inter";
+// The variable face, imported for its URL: the <link rel="preload"> below
+// asks for it before the CSS that names it is even parsed, so the Latin text
+// paints in Inter instead of appearing in a fallback and swapping.
+import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2";
 import "@fontsource-variable/playfair-display";
 // Noto Serif Bengali lives in (site)/layout: only the storefront uses
 // font-bengali — the rider/vendor/admin apps must not pay for 3 weights.
@@ -57,6 +61,15 @@ export default function RootLayout({
       <head>
         {/* Media lives on other hosts — warm those connections before the
             catalog images are discovered, especially on mobile networks. */}
+        {/* Self-hosted, same origin — one request, no DNS, no TLS, and it
+            lands before the first paint instead of after it. */}
+        <link
+          rel="preload"
+          as="font"
+          type="font/woff2"
+          href={interWoff2}
+          crossOrigin="anonymous"
+        />
         <link rel="preconnect" href="https://res.cloudinary.com" crossOrigin="" />
         <link rel="preconnect" href="https://lh3.googleusercontent.com" crossOrigin="" />
         <link rel="dns-prefetch" href="https://img.youtube.com" />

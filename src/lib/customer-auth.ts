@@ -225,11 +225,15 @@ const tokenFromRequest = (request: Request): string | null => {
   return null;
 };
 
-/** Resolve the signed-in customer from the session cookie (or null). */
-export const resolveCustomer = async (
-  request: Request,
+/**
+ * Resolve a session TOKEN to its customer (or null). The server side of the
+ * storefront uses this directly with `next/headers` (see /account) so the
+ * page can be painted already signed in, instead of shipping "checking…"
+ * and swapping the whole block a moment later.
+ */
+export const resolveCustomerByToken = async (
+  token: string | null,
 ): Promise<CustomerInfo | null> => {
-  const token = tokenFromRequest(request);
   if (!token) return null;
   const db = getSupabaseService();
   if (!db) return null;
@@ -248,6 +252,11 @@ export const resolveCustomer = async (
     : row.customers;
   return customer && customer.id ? customer : null;
 };
+
+/** Resolve the signed-in customer from a Request's session cookie (or null). */
+export const resolveCustomer = async (
+  request: Request,
+): Promise<CustomerInfo | null> => resolveCustomerByToken(tokenFromRequest(request));
 
 export const destroySession = async (request: Request): Promise<void> => {
   const token = tokenFromRequest(request);

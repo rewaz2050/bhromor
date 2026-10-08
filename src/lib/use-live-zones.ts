@@ -1,45 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { DELIVERY_ZONES, type DeliveryZone } from "./catalog";
+import {
+  ensureLiveZones,
+  getZonesSnapshot,
+  isZonesSettled,
+  subscribeLiveCatalog,
+} from "./live-catalog";
 
 /**
- * Public delivery zones — live only. Checkout and the delivery checker read
- * through here. Until the backend answers, the shipped launch zones serve as
- * the reference list (they are the same rows the seed script writes); once
- * GET /api/zones returns live rows, the hook swaps them in.
+ * Public delivery zones — one shared read, live only.
+ *
+ * This hook used to keep its own `useState` and fetch `/api/zones` in every
+ * consumer: the header's area pill, the home delivery check, checkout's zone
+ * list, the two apply forms and the vendor's settings page each fired their
+ * OWN request on every page, and each one flashed the shipped fallback rows
+ * before its copy answered (fix-all pass 2026-10-07). Zones now live in the
+ * same module store as the catalog — one request per page session, shared by
+ * everybody, and a page revisited a second later paints from memory.
+ *
+ * Until the backend answers, the shipped launch zones serve as the reference
+ * list (they are the same rows the seed writes); live rows replace them.
  */
 export function useLiveZones() {
-  const [liveZones, setLiveZones] = useState<DeliveryZone[] | null>(null);
-  const [settled, setSettled] = useState(false);
+  const rows = useSyncExternalStore(
+    subscribeLiveCatalog,
+    getZonesSnapshot,
+    getZonesSnapshot,
+  );
+  const [settled, setSettled] = useState(() => isZonesSettled());
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/zones")
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = (await res.json()) as { zones?: DeliveryZone[] };
-        return data.zones ?? null;
-      })
-      .then((zones) => {
-        if (cancelled) return;
-        if (zones && zones.length > 0) setLiveZones(zones);
-        setSettled(true);
-      })
-      .catch(() => {
-        if (!cancelled) setSettled(true);
-      });
+    void ensureLiveZones().then(() => {
+      if (cancelled) return;
+      setSettled(true);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const zones = liveZones ?? DELIVERY_ZONES;
-  const live = liveZones !== null;
+  const zones: DeliveryZone[] = rows.length > 0 ? rows : DELIVERY_ZONES;
   return {
     zones,
     activeZones: zones.filter((z) => z.active !== false),
-    live,
+    live: rows.length > 0,
     loading: !settled,
   };
 }

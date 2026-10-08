@@ -1,0 +1,49 @@
+# CI — the gates that used to run only if somebody remembered (scan 2026-10-08).
+#
+# `.github/workflows/` held nothing but the shop clock, so lint, typecheck and
+# the unit suite (3,450 of them) were never run automatically: Vercel catches a
+# broken build on deploy, nothing catches a broken test.
+#
+# Deliberately NOT here: the Playwright suites (`npm run test:e2e`,
+# `test:dashboards`). They need a seeded backend and a browser, so they stay
+# opt-in until there is a staging database to point them at.
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Next 16 needs Node 20.9+; 22 is what Vercel runs in production.
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

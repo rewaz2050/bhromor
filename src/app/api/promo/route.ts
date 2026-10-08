@@ -7,35 +7,29 @@
  * trust this answer — it re-reads the same settings server-side and recomputes
  * every taka (see lib/order-validation.ts).
  *
+ * The storefront layout no longer waits for this call: it seeds the client
+ * store from `readPromoSeed()` (the same function, read on the server), so
+ * the first paint already carries the bar and the prices. This route is what
+ * refreshes them afterwards — when a window opens or closes, and on any page
+ * the layout did not seed.
+ *
  * Unconfigured backend → an honest "nothing is running" (flash off), never a
  * stale cached sale.
  */
 
-import { PROMO_DEFAULTS, promoView } from "@/lib/promos";
-import { CAMPAIGN_DEFAULTS, campaignView } from "@/lib/campaign";
-import { readOpsSettings } from "@/lib/db/engagement";
-import { isServiceRoleConfigured } from "@/lib/env";
-import { getSupabaseService } from "@/lib/supabase-server";
+import { readPromoSeed } from "@/lib/db/promo";
 import { apiJson } from "@/lib/api-response";
 import { publicJson } from "@/lib/public-cache";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const off = promoView(PROMO_DEFAULTS, Date.now());
-  if (!isServiceRoleConfigured())
-    return apiJson({ source: "none", promos: off, campaign: campaignView(CAMPAIGN_DEFAULTS) });
-  const db = getSupabaseService();
-  if (!db) return apiJson({ source: "none", promos: off });
-  const settings = await readOpsSettings(db);
+  const seed = await readPromoSeed();
+  // Unconfigured backend → no-store, so the moment the shop configures a
+  // drop this answer is live.
+  if (!seed.live) return apiJson({ source: "none", ...seed });
   // Edge-cached 60 s (speed pass): identical for every visitor, and the
   // checkout recomputes every taka server-side, so a ≤60 s stale flag can
-  // never mist-price an order. Unconfigured fallbacks above stay no-store.
-  return publicJson({
-    source: "live",
-    promos: promoView({ flash: settings.flash, bundle: settings.bundle }, Date.now()),
-    // P2 #20 — the campaign state rides the same poll, so the strip and the
-    // landing flip teaser→live→ended without a reload, at the exact minute.
-    campaign: campaignView(settings.campaign ?? CAMPAIGN_DEFAULTS, Date.now()),
-  });
+  // never mist-price an order.
+  return publicJson({ source: "live", ...seed });
 }
