@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useNow } from "@/lib/use-now";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { useMyZone } from "@/lib/use-my-zone";
 import { usePublicSettings } from "@/lib/use-public-settings";
@@ -8,9 +8,10 @@ import { arrivalCue } from "@/lib/arrival";
 import { IconClock } from "@/components/ui/icons";
 
 /**
- * The live "order now → by about HH:MM" line. Computed on the client after
- * mount (the server does not know the shopper's clock or zone) and refreshed
- * every minute while visible. Renders nothing for the courier zone.
+ * The live "order now → by about HH:MM" line. Clock from the shared store
+ * (SSR and hydration agree), refreshed every minute while visible; it waits
+ * for the shopper's zone, which only this device knows. Renders nothing for
+ * the courier zone.
  */
 export default function ArrivalCue({
   shopPrepMinutes,
@@ -21,18 +22,11 @@ export default function ArrivalCue({
 }) {
   const { lang } = useLanguage();
   const { zoneId } = useMyZone();
-  const [now, setNow] = useState<number | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clock is browser-only
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  // Hooks before the clock gate — SSR renders nothing, but the order never changes.
+  // The shared clock (flicker pass): the server paints the same minute the
+  // browser hydrates with, so the line does not appear, then re-word itself.
+  // (It still waits for the shopper's zone, which only this device knows.)
+  const now = useNow(60_000);
   const { settings } = usePublicSettings();
-  if (now === null) return null;
   const cue = arrivalCue(
     {
       zoneId,

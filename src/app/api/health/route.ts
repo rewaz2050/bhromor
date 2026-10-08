@@ -139,6 +139,7 @@ export async function GET(request?: Request) {
   riderFixesReady: false,
   // 202610010002 — admin chooses who verifies each shop's wallet payments.
   paymentVerifierReady: false,
+  reviewFitReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

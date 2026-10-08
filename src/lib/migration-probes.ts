@@ -79,7 +79,8 @@ export type RoundProbeKey =
   | "riderEarningsReady"
   | "riderPayoutsReady"
   | "riderFixesReady"
-  | "paymentVerifierReady";
+  | "paymentVerifierReady"
+  | "reviewFitReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -99,6 +100,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   riderPayoutsReady: "202609300002_rider_money.sql",
   riderFixesReady: "202610010001_rider_fixes_phase_a.sql",
   paymentVerifierReady: "202610010002_payment_verifier.sql",
+  reviewFitReady: "202610060001_review_fit.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -115,6 +117,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "riderPayoutsReady",
   "riderFixesReady",
   "paymentVerifierReady",
+  "reviewFitReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -143,6 +146,8 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale rider-er payout/COD handling fee bhul hishab thakbe (return-e fee), 'delivery fail' report staff-er kache pouchabe na (job atke thakbe) ar admin 'Release rider' / failed-delivery redispatch kaj korbe na",
   paymentVerifierReady:
     "na chalale Admin → Shops e 'Who verifies bKash/Nagad payments' save 503 dibe ar shop ar staff duijon-i agei moto payment verify korte parbe (platform-only / shop-only niyom kaj korbe na)",
+  reviewFitReady:
+    "na chalale review form e 'ছোট / ঠিক / বড়' fit tap dekhabe na ar product page e 'Will it fit me?' bar asbei na (review niteo thakbe — fit chara)",
 };
 
 /** All of them, in parallel — one round trip each. */
@@ -165,6 +170,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     riderPayoutsTable,
     deliveryFailedColumn,
     paymentVerifierColumn,
+    reviewFitColumn,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -183,6 +189,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     tableReady(db, "rider_payout_requests"),
     columnReady(db, "orders", "delivery_failed_at"),
     columnReady(db, "shops", "payment_verifier"),
+    columnReady(db, "reviews", "fit"),
   ]);
 
   return {
@@ -208,6 +215,10 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     riderFixesReady: deliveryFailedColumn,
     // 202610010002 — the per-shop "who verifies wallet payments" column.
     paymentVerifierReady: paymentVerifierColumn,
+    // 202610060001 — the buyer's one-tap size answer. Nothing breaks without
+    // it (the review insert retries without the column); the fit bar just
+    // never has data to show.
+    reviewFitReady: reviewFitColumn,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,

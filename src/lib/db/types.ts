@@ -421,6 +421,8 @@ export interface DbReview {
   order_ref?: string | null;
   /** B2 — the shop's public reply (migration 202609280002; absent before it). */
   vendor_reply?: string | null;
+  /** Fit answer (migration 202610060001; absent before it). */
+  fit?: string | null;
   vendor_reply_at?: string | null;
   vendor_reply_by?: string | null;
   created_at: string;

@@ -24,6 +24,8 @@ export interface SavedAddress {
   area: string; // para
   houseNo: string;
   roadName: string;
+  /** What the rider actually looks for ("মসজিদের পাশে") — optional. */
+  landmark?: string;
   fullAddress: string;
   note: string;
   zoneId: string;

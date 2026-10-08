@@ -93,7 +93,9 @@ describe("useHomeSettings", () => {
     const src = read("lib/use-home-settings.ts");
     expect(src).not.toMatch(/use-staff-live|admin-api|admin-auth|supabase-browser/);
     for (const consumer of [
-      "app/(site)/page.tsx",
+      // The homepage lives in a `(home)` group so its skeleton cannot put a
+      // streaming boundary above the routes that must answer a real 404.
+      "app/(site)/(home)/page.tsx",
       "components/layout/announcement-bar.tsx",
       "components/account/referral-card.tsx",
     ]) {
