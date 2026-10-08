@@ -21,6 +21,7 @@ function ZoneRow({
   onSave,
   onMove,
   onDelete,
+  deleteArmed = false,
 }: {
   zone: DeliveryZone;
   first: boolean;
@@ -28,6 +29,8 @@ function ZoneRow({
   onSave: (z: DeliveryZone) => Promise<boolean> | void;
   onMove: (dir: -1 | 1) => void;
   onDelete: () => void;
+  /** True while this row's delete is waiting for the confirming press. */
+  deleteArmed?: boolean;
 }) {
   const [name, setName] = useState(zone.name);
   const [chargeTaka, setChargeTaka] = useState(String(zone.charge / 100));
@@ -126,13 +129,25 @@ function ZoneRow({
             type="button"
             onClick={onDelete}
             disabled={false}
-            aria-label="Delete zone"
-            className="rounded-full p-2 text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"
+            aria-label={deleteArmed ? "Press again to delete" : "Delete zone"}
+            data-armed={deleteArmed}
+            className={`rounded-full p-2 ring-1 transition-colors ${
+              deleteArmed
+                ? "bg-rose-50 text-rose-700 ring-rose-400"
+                : "text-ink-soft ring-line hover:text-rose-700 hover:ring-rose-300"
+            }`}
           >
             <IconTrash className="h-4 w-4" />
           </button>
         </div>
       </div>
+
+      {deleteArmed && (
+        <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+          Delete “{zone.name}”? Customers will no longer see it at checkout —
+          press delete again to confirm.
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
@@ -206,6 +221,8 @@ export default function AdminZonesPage() {
   const [newName, setNewName] = useState("");
   const [newAreas, setNewAreas] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  const [delError, setDelError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const add = async () => {
     const name = newName.trim();
@@ -247,25 +264,23 @@ export default function AdminZonesPage() {
   };
 
   const del = async (z: DeliveryZone) => {
-    // The last zone can never be removed — say so instead of asking a
-    // question whose "OK" then failed with a second alert.
+    // The last zone can never be removed — say so in the page instead of a
+    // dialog that stopped the whole tab.
     if (zones.length <= 1) {
-      window.alert(
-        "Keep at least one delivery zone — checkout needs a default.",
-      );
+      setDelError("Keep at least one delivery zone — checkout needs a default.");
       return;
     }
-    if (
-      !window.confirm(
-        `Delete “${z.name}”? Customers will no longer see it at checkout.`,
-      )
-    ) {
+    // Two-step delete on the row itself: the button asks "Delete?", and only
+    // a second press removes anything. No window.confirm (it blocks the
+    // console and cannot be styled), no accidental one-click loss.
+    if (confirming !== z.id) {
+      setDelError(null);
+      setConfirming(z.id);
       return;
     }
+    setConfirming(null);
     if (!(await removeZone(z.id))) {
-      window.alert(
-        "Could not delete this zone — it may already have orders.",
-      );
+      setDelError(`Could not delete “${z.name}” — it may already have orders.`);
     }
   };
 
@@ -302,6 +317,12 @@ export default function AdminZonesPage() {
           </button>
         </div>
       </div>
+
+      {delError && (
+        <p role="alert" className="mb-4 rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+          {delError}
+        </p>
+      )}
 
       {adding && (
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
@@ -351,6 +372,7 @@ export default function AdminZonesPage() {
           onSave={saveZone}
           onMove={(dir) => moveZone(z.id, dir)}
           onDelete={() => del(z)}
+          deleteArmed={confirming === z.id}
         />
       ))}
     </div>

@@ -5,10 +5,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { translations, type Language, type TranslationKey } from "@/lib/translations";
+import {
+  LANGUAGE_COOKIE_KEY,
+  translations,
+  type Language,
+  type TranslationKey,
+} from "@/lib/translations";
 
 type LanguageContextValue = {
   lang: Language;
@@ -19,7 +25,7 @@ type LanguageContextValue = {
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
-export const LANGUAGE_STORAGE_KEY = "prosanti-lang";
+export const LANGUAGE_STORAGE_KEY = LANGUAGE_COOKIE_KEY;
 const STORAGE_KEY = LANGUAGE_STORAGE_KEY;
 
 /** The stored choice (localStorage first, then the cookie) — or null. */
@@ -49,16 +55,17 @@ export function LanguageProvider({
   initialLang?: Language;
 }) {
   const [lang, setLangState] = useState<Language>(initialLang);
-  const [mounted, setMounted] = useState(false);
 
-  // Hydration-safe: read stored preference after mount. A device that never
-  // chose stays on `initialLang`; one that did gets its choice back.
+  // The storefront already painted the language this device chose — the
+  // server read the cookie and passed it down as `initialLang`. So this only
+  // ever CORRECTS: a device whose localStorage disagrees with the cookie
+  // (an older session, a blocked cookie write) gets its own answer back, and
+  // every other device renders on without a second pass over the whole tree.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
-    setMounted(true);
     try {
       const stored = readStoredLanguage();
-      if (stored) setLangState(stored);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable in the browser; this corrects, it does not decide
+      if (stored && stored !== initialLang) setLangState(stored);
       document.documentElement.lang = (stored ?? initialLang) === "bn" ? "bn" : "en";
     } catch {
       // ignore storage errors
@@ -66,17 +73,26 @@ export function LanguageProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialLang is a mount-time default
   }, []);
 
+  // Write only when the shopper actually chose — the server's answer is
+  // already stored (it came from the same cookie), so a page load writes
+  // nothing. Writing on every mount also meant every visit re-touched
+  // localStorage before the first paint had settled.
+  const lastWritten = useRef<Language | null>(null);
   useEffect(() => {
-    if (!mounted) return;
+    document.documentElement.lang = lang === "bn" ? "bn" : "en";
+    if (lastWritten.current === null || lastWritten.current === lang) {
+      lastWritten.current = lang;
+      return;
+    }
+    lastWritten.current = lang;
     try {
-      document.documentElement.lang = lang === "bn" ? "bn" : "en";
       window.localStorage.setItem(STORAGE_KEY, lang);
-      // also set cookie for potential SSR reading
-      document.cookie = `prosanti-lang=${lang}; path=/; max-age=31536000; samesite=lax`;
+      // also set cookie for the server to read on the next page
+      document.cookie = `${STORAGE_KEY}=${lang}; path=/; max-age=31536000; samesite=lax`;
     } catch {
       // ignore
     }
-  }, [lang, mounted]);
+  }, [lang]);
 
   const setLang = (next: Language) => {
     setLangState(next);

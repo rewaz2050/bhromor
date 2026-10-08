@@ -1,20 +1,54 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { makePlacedOrder, type Order, type OrderStatus } from "@/lib/orders";
 import AdminDashboard from "../page";
+
+const NOW = Date.now();
+
+/** A real order record (the checkout factory), N minutes old, in `status`. */
+const order = (
+  id: string,
+  status: OrderStatus,
+  minutesAgo: number,
+  over: Partial<Order> = {},
+): Order => ({
+  ...makePlacedOrder({
+    id,
+    createdAt: NOW - minutesAgo * 60_000,
+    customer: { name: "Rahat Ahmed", phone: "01712345678", area: "Boropara" },
+    zone: { id: "z1", name: "Zone A", etaLabel: "40–50 min", charge: 6000 },
+    items: [
+      {
+        product: { id: "p1", slug: "panjabi", sku: "SKU-1", name: "Panjabi", price: 250000 },
+        image: "/img.jpg",
+        variant: "M",
+        qty: 1,
+      },
+    ],
+  }),
+  status,
+  ...over,
+});
 
 const state = vi.hoisted(() => ({
   loading: true,
+  orders: [] as Order[],
+  reviews: [] as { id: string; status: string; productId: string }[],
   applications: { shops: 0, riders: 0, resets: 0, total: 0 },
 }));
 
 vi.mock("@/lib/use-orders", () => ({
   useOrders: () => ({
-    orders: [],
+    orders: state.orders,
     loading: state.loading,
     error: null,
     clearError: vi.fn(),
     reset: vi.fn(),
   }),
+}));
+
+vi.mock("@/lib/use-reviews", () => ({
+  useReviews: () => ({ reviews: state.reviews }),
 }));
 
 vi.mock("@/lib/use-catalog", () => ({
@@ -46,6 +80,8 @@ vi.mock("@/lib/use-applications-pending", () => ({
 afterEach(() => {
   cleanup();
   state.loading = true;
+  state.orders = [];
+  state.reviews = [];
   state.applications = { shops: 0, riders: 0, resets: 0, total: 0 };
 });
 
@@ -92,5 +128,64 @@ describe("admin dashboard — pending applications (apply = sign up)", () => {
     expect(screen.queryByRole("link", { name: /^Shops/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Riders/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^Access requests/ })).toHaveAttribute("href", "/admin/access");
+  });
+});
+
+describe("admin dashboard — today's work", () => {
+  it("says every queue is clear instead of listing zeros", () => {
+    state.loading = false;
+    render(<AdminDashboard />);
+    const panel = screen.getByLabelText("Today's work");
+    expect(panel).toHaveTextContent(/Nothing is waiting/i);
+    expect(panel).toHaveTextContent(/every queue is clear/i);
+  });
+
+  it("lists what is waiting, oldest first, each row a door to that queue", () => {
+    state.loading = false;
+    state.orders = [
+      order("4821", "pending", 4),
+      order("4822", "preparing", 6),
+      order("4820", "courier-assigned", 41),
+    ];
+    render(<AdminDashboard />);
+    const panel = screen.getByLabelText("Today's work");
+    // The parcel past its 30-minute SLA comes above the two fresh orders.
+    expect(panel).toHaveTextContent(/Parcels waiting for a rider/);
+    const rows = screen
+      .getAllByRole("link")
+      .filter((link) => panel.contains(link));
+    expect(rows[0]).toHaveAttribute("href", "/admin/deliveries");
+    expect(rows[1]).toHaveAttribute("href", "/admin/orders?status=action");
+    expect(panel).toHaveTextContent(/oldest waiting 41 min/);
+  });
+
+  it("counts bKash/Nagad waiting for verification as work, in its own tone", () => {
+    state.loading = false;
+    state.orders = [
+      order("4823", "confirmed", 6, {
+        payment: "bkash",
+        paymentStatus: "pending_verification",
+      }),
+    ];
+    render(<AdminDashboard />);
+    const panel = screen.getByLabelText("Today's work");
+    expect(panel).toHaveTextContent(/bKash \/ Nagad to verify/);
+    expect(panel).toHaveTextContent(/TrxID/);
+  });
+
+  it("counts reviews waiting for moderation — pending and flagged", () => {
+    state.loading = false;
+    state.reviews = [
+      { id: "r1", status: "pending", productId: "p1" },
+      { id: "r2", status: "flagged", productId: "p1" },
+      { id: "r3", status: "approved", productId: "p1" },
+    ];
+    render(<AdminDashboard />);
+    const panel = screen.getByLabelText("Today's work");
+    expect(panel).toHaveTextContent(/Reviews to moderate/);
+    expect(screen.getByRole("link", { name: /Reviews to moderate/ })).toHaveAttribute(
+      "href",
+      "/admin/reviews",
+    );
   });
 });

@@ -13,6 +13,8 @@ import {
   PUBLIC_STEPS,
 } from "@/lib/orders";
 import { displayStock } from "@/lib/catalog-store";
+import { ACTION_SLA_MS, RIDER_SLA_MS } from "@/lib/admin-todays-work";
+import TodaysWork from "@/components/admin/todays-work";
 import { formatBdt } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { ageLabel, oldestOf } from "@/lib/order-actions";
@@ -102,7 +104,7 @@ export default function AdminDashboard() {
       note: waitingNote(oldestAction, "nothing waiting on the shop"),
       icon: IconClock,
       href: "/admin/orders?status=action",
-      urgent: oldestAction !== null && now - oldestAction > 15 * 60_000,
+      urgent: oldestAction !== null && now - oldestAction > ACTION_SLA_MS,
     },
     {
       label: "Waiting for rider",
@@ -112,7 +114,7 @@ export default function AdminDashboard() {
       note: waitingNote(oldestRider, "no parcel waiting at the shop"),
       icon: IconBox,
       href: "/admin/deliveries",
-      urgent: oldestRider !== null && now - oldestRider > 30 * 60_000,
+      urgent: oldestRider !== null && now - oldestRider > RIDER_SLA_MS,
     },
     {
       label: "On the road",
@@ -135,6 +137,18 @@ export default function AdminDashboard() {
         <AdminDashboardSkeleton />
       ) : (
         <>
+      {/* The one list the person on shift actually needs: what is waiting,
+          how long it has waited, and the door to that queue. */}
+      <TodaysWork
+        now={now}
+        actionOrders={actionCount}
+        oldestActionAt={oldestAction}
+        walletPending={walletPending}
+        waitingRider={agg.byStatus["ready-for-pickup"] + agg.byStatus["courier-assigned"]}
+        oldestRiderAt={oldestRider}
+        lowStock={lowStock.length}
+      />
+
       {/* KPI cards — each one is the door to its queue */}
       <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c) => {
@@ -169,18 +183,6 @@ export default function AdminDashboard() {
           );
         })}
       </section>
-
-      {walletPending > 0 && (
-        <Link
-          href="/admin/orders?status=action"
-          className="flex items-center justify-between rounded-2xl bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100"
-        >
-          <span>
-            💳 {walletPending} bKash/Nagad payment{walletPending === 1 ? "" : "s"} waiting for verification — check the wallet, then verify or reject.
-          </span>
-          <IconArrowRight className="h-4 w-4" />
-        </Link>
-      )}
 
       {/* Apply = sign up (2026-09-26): applications and password-reset
           requests wait for a human decision; the person on the other side

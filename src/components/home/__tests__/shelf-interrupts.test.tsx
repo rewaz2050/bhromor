@@ -7,6 +7,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 import { ReviewInterrupt, WhyBand } from "@/components/home/shelf-interrupts";
 import { PRODUCTS } from "@/lib/catalog";
+// Reviews are cached per key now (flicker pass), so each test starts cold.
+import { refreshPublicReviews } from "@/lib/use-public-reviews";
 
 const product = PRODUCTS.find((p) => p.inStock && p.status !== "draft")!;
 const reviews = [
@@ -42,6 +44,7 @@ vi.mock("@/lib/use-live-catalog", async () => {
 
 let payload: unknown = { reviews };
 beforeEach(() => {
+  refreshPublicReviews();
   localStorage.clear();
   document.cookie = "prosanti-lang=; max-age=0; path=/";
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))));

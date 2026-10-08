@@ -17,6 +17,7 @@ import type {
 } from "../catalog";
 import type { Coupon } from "../coupons";
 import { normalizeKyc } from "../rider-kyc";
+import { isFitKey } from "../review-fit";
 import { DATE_RE, VACATION_NOTE_MAX } from "../shop-vacation";
 import { staffHandle, type VendorStaffMember, type VendorStaffRole } from "../vendor-staff";
 import type {
@@ -510,4 +511,7 @@ export const mapReview = (row: DbReview): Review => ({
       : undefined,
   vendorReplyAt: row.vendor_reply_at ? epoch(row.vendor_reply_at) : undefined,
   vendorReplyBy: row.vendor_reply_by ?? undefined,
+  // Fit answer (202610060001) — ignored when the column is not there or
+  // holds something we do not recognise, so a pre-migration row still works.
+  fit: row.fit != null && isFitKey(row.fit) ? row.fit : undefined,
 });

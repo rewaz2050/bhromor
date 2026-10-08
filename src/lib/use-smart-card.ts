@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useCustomer } from "./use-customer";
+import { fetchWithDeadline } from "./fetch-with-deadline";
 
 export interface SmartCard {
   stamps: number;
@@ -41,7 +42,7 @@ export function useSmartCard(): {
     if (mode !== "live" || !customer) return;
     const key = customer.id;
     let cancelled = false;
-    void fetch("/api/account/card", { cache: "no-store" })
+    void fetchWithDeadline("/api/account/card", { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         const body = (await res.json()) as {

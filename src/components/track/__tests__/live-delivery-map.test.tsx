@@ -128,6 +128,10 @@ describe("LiveDeliveryMap Component", () => {
       const away = await screen.findByTestId("rider-away");
       expect(away.textContent).toMatch(/রাইডার প্রায় [০-৯.]+ কিমি দূরে · ~[০-৯]+ মিনিট/);
       expect(away.textContent).not.toMatch(/\d/);
+      // Post-purchase pass (2026-10-06): the same number sits next to the
+      // rider's name — the overlay alone was too easy to miss on a phone.
+      const card = await screen.findByTestId("rider-card-away");
+      expect(card.textContent).toMatch(/রাইডার প্রায় [০-৯.]+ কিমি দূরে/);
     });
 
     it("labels how old the rider's fix is", async () => {
@@ -145,6 +149,8 @@ describe("LiveDeliveryMap Component", () => {
       const note = await screen.findByTestId("rider-stale");
       expect(note.textContent).toContain("৮ মিনিট ধরে আসছে না");
       expect(screen.queryByTestId("rider-away")).not.toBeInTheDocument();
+      // And the rider card says the same thing in its own words.
+      expect(screen.getByText(/শেষ অবস্থান/)).toBeInTheDocument();
     });
 
     it("stops polling while the tab is hidden", async () => {

@@ -26,6 +26,7 @@ import { isUuid } from "@/lib/db/order-lookup";
 import { provenPurchase } from "@/lib/db/orders";
 import { resolveCustomer } from "@/lib/customer-auth";
 import { normalizePhone } from "@/lib/orders";
+import { isFitKey } from "@/lib/review-fit";
 import {
   attachReviewPhotos,
   sanitizeReviewPhotos,
@@ -63,6 +64,17 @@ async function photosForReviews(
 }
 
 export const dynamic = "force-dynamic";
+
+/**
+ * A column this deployment's database does not have yet: Postgres 42703, or
+ * PostgREST refusing the payload (PGRST204) because the column is not in its
+ * schema cache. The review is kept either way — the fit answer is a bonus,
+ * never a reason to lose what somebody wrote.
+ */
+const isMissingColumn = (error: { code?: string; message?: string }): boolean =>
+  error?.code === "42703" ||
+  error?.code === "PGRST204" ||
+  /column .* does not exist/i.test(error?.message ?? "");
 
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -185,6 +197,9 @@ export async function POST(request: Request) {
     } catch {
       proof = null;
     }
+    // Fit answer (fit-data pass 2026-10-06): one tap on the form, stored with
+    // the review and shown on the product page once enough are approved.
+    const fit = isFitKey(b.fit) ? b.fit : null;
     const baseRow = {
       product_id: productId,
       author: clean(b.author, 80) || "Anonymous customer",
@@ -195,13 +210,24 @@ export async function POST(request: Request) {
       verified: proof !== null,
       featured: false,
     };
+    const withFit: Record<string, unknown> = fit ? { ...baseRow, fit } : baseRow;
     const fullRow: Record<string, unknown> = proof
-      ? { ...baseRow, customer_phone: proof.phone, order_ref: proof.orderNo }
-      : baseRow;
-    let inserted = await db.from("reviews").insert(fullRow).select("*").single();
+      ? { ...withFit, customer_phone: proof.phone, order_ref: proof.orderNo }
+      : withFit;
+    const insert = () => db.from("reviews").insert(fullRow).select("*").single();
+    const insertWithoutProof = () =>
+      db.from("reviews").insert(withFit).select("*").single();
+    const insertWithoutFit = () =>
+      db.from("reviews").insert(baseRow).select("*").single();
+
+    let inserted = await insert();
     if (inserted.error && proof) {
       // Migration 202609270004 not run yet — keep the review, drop the proof columns.
-      inserted = await db.from("reviews").insert(baseRow).select("*").single();
+      inserted = await insertWithoutProof();
+    }
+    if (inserted.error && fit && isMissingColumn(inserted.error)) {
+      // Migration 202610060001 not run yet — keep the review, drop the fit.
+      inserted = await insertWithoutFit();
     }
     const { data, error } = inserted;
     if (error || !data) return apiError("Could not save the review.", 503);

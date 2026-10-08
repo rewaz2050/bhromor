@@ -14,6 +14,7 @@
  * component across order lookups, so hook order must stay stable.
  */
 
+import { formatShopDate } from "@/lib/format";
 import { useEffect, useMemo, useState } from "react";
 import type { Order, OrderItem } from "@/lib/orders";
 import { IconCheck, IconClose, IconShield } from "@/components/ui/icons";
@@ -53,11 +54,7 @@ const CLAIM_STATUS_COPY: Record<
 };
 
 const fmtDate = (ms: number): string =>
-  new Date(ms).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  formatShopDate(ms, { day: "numeric", month: "long", year: "numeric" });
 
 export default function WarrantyPanel({ order }: { order: Order }) {
   const deliveredAt = useMemo(
