@@ -4,6 +4,7 @@ import ContactChannels from "@/components/contact/contact-channels";
 import ContactForm from "@/components/contact/contact-form";
 import { Eyebrow } from "@/components/ui/primitives";
 import L from "@/components/i18n/l";
+import { readContactChannels } from "@/lib/db/contact";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -11,7 +12,10 @@ export const metadata: Metadata = {
     "Reach PROSANTI support — phone, WhatsApp, or a quick message form.",
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  // Read on the server so the real channels are in the first paint instead of
+  // arriving after /api/contact and pushing the column down.
+  const contact = await readContactChannels();
   return (
     <>
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
@@ -27,7 +31,7 @@ export default function ContactPage() {
       </p>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_1.2fr]">
-        <ContactChannels />
+        <ContactChannels initial={contact} />
         <ContactForm />
       </div>
     </div>

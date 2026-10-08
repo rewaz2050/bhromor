@@ -35,6 +35,8 @@ import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
 import NotifyOptIn from "./notify-opt-in";
 import ShareTrackerButton from "./share-tracker-button";
 import WhileYouWaitRail from "./while-you-wait-rail";
+import DelayNote from "./delay-note";
+import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
 
@@ -335,6 +337,15 @@ export default function TrackView() {
                 actually come (P2 #21): not for pickup, courier, delivered
                 or cancelled orders. */}
             {showsRiderMap(order) ? <LiveDeliveryMap order={order} /> : null}
+
+            {/* Post-purchase pass (2026-10-06): when the promised window has
+                passed, say so in minutes — silence is what turns a late
+                parcel into a phone call. */}
+            <DelayNote order={order} contactNumber={contactNumber} />
+
+            {/* The rider's handover photo — the parcel did arrive, here is
+                where it was left. Renders nothing without a photo. */}
+            <DeliveryProof order={order} />
 
             {/* P1 #13: return/exchange — status, or the home-pickup request */}
             <ReturnPanel

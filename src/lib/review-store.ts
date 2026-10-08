@@ -7,6 +7,8 @@
  * from the order records.
  */
 
+import type { FitKey } from "./review-fit";
+
 export type ReviewStatus = "pending" | "approved" | "hidden" | "flagged";
 
 export interface Review {
@@ -39,6 +41,13 @@ export interface Review {
   vendorReplyAt?: number;
   /** Which vendor account wrote it — audit trail for staff-run shops. */
   vendorReplyBy?: string;
+  /**
+   * Fit answer (fit-data pass 2026-10-06) — one tap on the review form:
+   * "runs small" / "true to size" / "runs large". The strongest fit signal a
+   * cloth shop can show, and the data the product page's true-to-size bar
+   * was waiting for. Absent before migration 202610060001.
+   */
+  fit?: FitKey;
 }
 
 export const STATUS_LABEL: Record<ReviewStatus, string> = {

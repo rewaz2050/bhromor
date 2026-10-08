@@ -6,7 +6,7 @@
  * things the rider will ask for — the amount and the 4-digit PIN.
  */
 
-import { useEffect, useState } from "react";
+import { useNow } from "@/lib/use-now";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { codEstimate } from "@/lib/cod-estimate";
 import { formatBdt } from "@/lib/format";
@@ -17,12 +17,11 @@ import { IconBanknote } from "@/components/ui/icons";
 export default function CodReminder({ subtotal, className = "" }: { subtotal: number; className?: string }) {
   const { t } = useLanguage();
   const { zoneId } = useMyZone();
-  // Clock only matters for the night surcharge; re-evaluate each minute.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
+  // Clock only matters for the night surcharge. It reads the SHARED clock
+  // (flicker pass): a useState(() => Date.now()) rendered the server's time
+  // in the HTML and the browser's time one frame later, so the cash amount
+  // could change under the shopper's eyes at the night-surcharge boundary.
+  const now = useNow(60_000);
   // Hooks before any early return — the empty bag renders nothing, but the
   // hook order must not change.
   const { settings } = usePublicSettings();

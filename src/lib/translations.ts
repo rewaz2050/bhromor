@@ -885,6 +885,13 @@ export const translations = {
       whileYouWaitSub: "Fresh pieces from the shops you already buy from.",
       whileYouWaitSeeAll: "See all new arrivals",
       riderAway: "Rider is about {distance} away · ~{minutes} min",
+      riderCall: "Call rider",
+      delayTitle: "About {minutes} min later than promised",
+      delayBody: "The parcel is still on its way — the promised window has passed. Nothing is lost: call the rider to hear exactly where they are.",
+      proofTitle: "Handed over — proof photo",
+      proofNote: "Your rider left the parcel at your door and photographed it. Anything wrong? Start an exchange below — you have 7 days.",
+      exchangeLeft: "Exchange window — {left} left",
+      exchangeClosing: "Last day to exchange this order.",
       cancelTitle: "Need to cancel?",
       cancelBody: "Free until the shop starts packing. After that, call or WhatsApp us.",
       cancelButton: "Cancel this order",
@@ -1810,6 +1817,13 @@ export const translations = {
       whileYouWaitSub: "যে দোকানগুলো থেকে কেনেন, সেখানকার নতুন পিস।",
       whileYouWaitSeeAll: "সব নতুন পণ্য দেখুন",
       riderAway: "রাইডার প্রায় {distance} দূরে · ~{minutes} মিনিট",
+      riderCall: "রাইডারকে কল",
+      delayTitle: "প্রতিশ্রুত সময়ের চেয়ে প্রায় {minutes} মিনিট দেরি",
+      delayBody: "পার্সেল পথেই আছে — প্রতিশ্রুত সময় পার হয়ে গেছে। কিছু হারায়নি: চাইলে কল করে ঠিক কোথায় আছে জেনে নিন।",
+      proofTitle: "হ্যান্ডওভার — ডেলিভারির ছবি",
+      proofNote: "আপনার রাইডার পার্সেলটি দরজায় রেখে ছবি তুলেছে। কিছু সমস্যা হলে নিচের এক্সচেঞ্জ অপশনটি দিন — ৭ দিন সময় আছে।",
+      exchangeLeft: "বদলের সময় — আর {left} বাকি",
+      exchangeClosing: "বদলের শেষ দিন আজ।",
       cancelTitle: "বাতিল করতে চান?",
       cancelBody: "দোকান প্যাক শুরু করার আগ পর্যন্ত ফ্রি। এরপর কল বা WhatsApp করুন।",
       cancelButton: "এই অর্ডার বাতিল করুন",
@@ -1853,6 +1867,22 @@ export const translations = {
     },
   },
 } as const;
+
+/**
+ * The language cookie every surface agrees on, and the one pure reader of
+ * it — kept here (not in the provider) because the storefront LAYOUT is a
+ * server component and must be able to call it: an export from a
+ * "use client" module is a client reference, not a function, on the server.
+ */
+export const LANGUAGE_COOKIE_KEY = "prosanti-lang";
+
+/**
+ * The stored choice as the server sees it. Null when the cookie is missing
+ * or nonsense — a first visit is not a choice, and the default stands.
+ */
+export const languageFromCookie = (
+  raw: string | undefined | null,
+): Language | null => (raw === "en" || raw === "bn" ? raw : null);
 
 export type TranslationKey =
   | `nav.${keyof typeof translations.en.nav}`

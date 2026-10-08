@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 // Bengali serif, storefront-only (see root layout): the rider/vendor/admin
 // apps never render font-bengali, so they skip these ~3 weights.
 import "@fontsource/noto-serif-bengali/400.css";
+// The shop reads Bangla, so THIS is the face that paints the page — preload
+// it or the whole body text arrives in a fallback and swaps a beat later.
+import bengaliWoff2 from "@fontsource/noto-serif-bengali/files/noto-serif-bengali-bengali-400-normal.woff2";
 import "@fontsource/noto-serif-bengali/500.css";
 import "@fontsource/noto-serif-bengali/600.css";
 import { CartProvider } from "@/components/cart/cart-provider";
@@ -10,16 +14,22 @@ import BagMiniBar from "@/components/cart/bag-mini-bar";
 import BagSnapshotSync from "@/components/cart/bag-snapshot-sync";
 import CustomerProvider from "@/components/account/customer-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
+import {
+  LANGUAGE_COOKIE_KEY,
+  languageFromCookie,
+} from "@/lib/translations";
 import Header from "@/components/layout/header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LiveCatalogBoot from "@/components/shop/live-catalog-boot";
 import FlashStrip from "@/components/promo/flash-strip";
 import CampaignStrip from "@/components/promo/campaign-strip";
+import PromoBoot from "@/components/promo/promo-boot";
 import RefCapture from "@/components/promo/ref-capture";
 import InstallPrompt from "@/components/layout/install-prompt";
 import { storefrontJsonLd } from "@/lib/marketing-feeds";
 import { siteBaseUrl } from "@/lib/site-url";
+import { readPromoSeed } from "@/lib/db/promo";
 
 /**
  * Runs before hydration; mirrors LanguageProvider's lookup (localStorage,
@@ -68,21 +78,42 @@ export const metadata: Metadata = {
   },
 };
 
-export default function SiteLayout({
+export default async function SiteLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // The device's own choice, read before the first byte is sent (fix-all
+  // pass 2026-10-07): a shopper who picked English used to be served a
+  // Bangla page and watch every word change when React hydrated. The
+  // pre-paint script below keeps <html lang> honest either way; this is
+  // what makes the React tree agree with it from frame one.
+  const jar = await cookies();
+  const initialLang = languageFromCookie(jar.get(LANGUAGE_COOKIE_KEY)?.value) ?? "bn";
+  // What is running in the shop right now, read on the server (flicker pass
+  // 2026-10-07): the flash bar, the campaign strip and every flash price
+  // used to arrive after /api/promo answered — the page jumped down and each
+  // price silently changed under the shopper's thumb. Cached for a minute
+  // and tagged, so this costs no extra database round trip.
+  const promo = await readPromoSeed();
+
   return (
     // Bangla first (UX audit 2026-09-18, P1 #8): the shop serves Sunamganj,
     // so a device that never picked a language reads Bangla; the switcher
     // (header on every width, drawer, bottom sheet) flips to English and the
     // choice is remembered on this device.
-    <LanguageProvider initialLang="bn">
+    <LanguageProvider initialLang={initialLang}>
       {/* Menubar redesign (2026-09-26): set <html lang> before the first
           paint (stored choice, else Bangla) so the :lang(bn) typography rules
           in globals.css — display fallback, no letter-spacing — apply from
           frame one instead of flipping after hydration. */}
+      <link
+        rel="preload"
+        as="font"
+        type="font/woff2"
+        href={bengaliWoff2}
+        crossOrigin="anonymous"
+      />
       <script
         dangerouslySetInnerHTML={{ __html: LANG_BOOTSTRAP }}
       />
@@ -105,6 +136,9 @@ export default function SiteLayout({
           <Header />
           {/* P0 growth chrome: the flash bar only exists while a drop runs, and
               ?ref= is captured on whatever page a share link lands on. */}
+          {/* Seeds the promo store before the two strips below render — it
+              paints nothing itself. */}
+          <PromoBoot seed={promo} />
           <FlashStrip />
           <CampaignStrip />
           <RefCapture />
