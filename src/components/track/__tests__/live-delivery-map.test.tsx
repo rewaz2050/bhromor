@@ -95,7 +95,7 @@ describe("LiveDeliveryMap Component", () => {
       return fetchMock;
     };
 
-    it("asks for the rider's position once on mount, then every 15 s while the tab is visible", async () => {
+    it("asks for the rider's position once on mount, then every 10 s while the tab is visible", async () => {
       vi.useFakeTimers();
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       const fetchMock = stubFetch();
@@ -110,11 +110,16 @@ describe("LiveDeliveryMap Component", () => {
       await act(async () => {
         vi.advanceTimersByTime(30_000);
       });
-      expect(fetchMock).toHaveBeenCalledTimes(3);
+      // 10 s cadence: mount + 10 + 20 + 30.
+      expect(fetchMock).toHaveBeenCalledTimes(4);
       // The real position lands in the ETA card.
       expect(screen.getByText(/Rider live 25\.0658,91\.3950/)).toBeInTheDocument();
       // No delivery pin on this order → no distance claim (UX plan §7).
       expect(screen.queryByTestId("rider-away")).not.toBeInTheDocument();
+      // No realtime socket in this environment → the tracker says so, and
+      // names the poll it is actually running on.
+      expect(screen.getByTestId("track-live-poll").textContent).toContain("১০ সেকেন্ডে");
+      expect(screen.queryByTestId("track-live-socket")).not.toBeInTheDocument();
     });
 
     it("says how far the rider is when the order has a real pin — Bengali digits, honest minutes", async () => {

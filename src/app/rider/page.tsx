@@ -15,6 +15,7 @@ import { useNow } from "@/lib/use-now";
 import { useOfferAlert } from "@/lib/use-offer-alert";
 import { useOfferBeep } from "@/lib/use-offer-beep";
 import { useRiderLocationTracking } from "@/lib/use-rider-location";
+import { useRiderLiveBroadcast } from "@/lib/use-rider-live-broadcast";
 import { useKeepAwakePref, useWakeLock } from "@/lib/use-wake-lock";
 import { trackingState } from "@/lib/location-health";
 import { cashMeter, countActiveTrips, offlineCashNote, offeredIds, toRiderTasks, type RiderTask } from "@/lib/rider-tasks";
@@ -80,10 +81,22 @@ export default function RiderPage() {
     useCallback((n: number) => setFlash(n > 1 ? `${n}টি নতুন অফার এসেছে!` : "নতুন অফার এসেছে!"), []),
   );
   useOfferBeep(offerIds);
+  // Live tracking: shout each fix on the channel of every job this rider is
+  // carrying, so the customer's pin moves the instant the phone reports
+  // instead of on the tracker's next poll. The PATCH below stays the source
+  // of truth; this is only the fast lane, and it fails silent.
+  const liveChannels = useMemo(
+    () => riderJobsApi.jobs.map((j) => j.liveChannel ?? null),
+    [riderJobsApi.jobs],
+  );
+  const broadcast = useRiderLiveBroadcast({ channels: liveChannels, enabled: isLive && isOnline });
   const gps = useRiderLocationTracking({
     enabled: isLive && isOnline,
     hasActiveTrip,
-    send: (lat, lng) => riderJobsApi.updateLocation(lat, lng),
+    send: (lat, lng) => {
+      broadcast.publish(lat, lng);
+      return riderJobsApi.updateLocation(lat, lng);
+    },
   });
   // Q: a sleeping screen suspends GPS — hold it awake while a trip is running.
   const [keepAwake, setKeepAwake] = useKeepAwakePref();

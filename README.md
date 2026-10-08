@@ -13,7 +13,7 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 2 — Catalog & Multi-Vendor Marketplace (shops, shop apply, vendor panel, single-shop cart) | ✅ Complete |
 | Phase 3 — Rider Network & Dispatch (mobile rider app, rider apply/login, 4-digit PIN verification, cash cap & settlements) | ✅ Complete |
 | Phase 4 — Cart & Checkout (atomic ordering, 4-digit security PIN display, instant ETA split) | ✅ Complete |
-| Phase 5 — Realtime Order Tracking (interactive live route map, simulated rider GPS, live ETA) | ✅ Complete |
+| Phase 5 — Realtime Order Tracking (real Leaflet/OSM map for the customer, live rider GPS, realtime pin, live ETA) | ✅ Complete |
 | Phase 6 — Loyalty & Retention (10-order stamp card, admin reward engine, celebration unlock) | ✅ Complete |
 | Phase 7 — Returns & Exchanges (7-day instant size exchange intake flow) | ✅ Complete |
 | Phase 8 — Admin Control & Ops (live orders state machine, catalog CRUD, staff/shops/riders queues, cash settlements) | ✅ Complete |
@@ -45,6 +45,40 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm start` | Serve production build |
 
 Unit/component suite: 1,533 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
+
+## Live tracking — the customer's real map (2026-10-08)
+
+The tracker at `/track` used to draw a decorative SVG route and print the
+rider's coordinates as text. It now shows the customer **their own
+neighbourhood on a real map** — OpenStreetMap tiles, the delivery pin, the
+rider's pin on it, and the line between the two — and the pin moves the instant
+the rider's phone reports. Full write-up: `docs/live-tracking.md`.
+
+- **Map**: `components/track/rider-tile-map.tsx` over the pure rules in
+  `lib/live-map.ts` (Leaflet + OSM — the same free, keyless stack the admin
+  dispatch map and the checkout pin picker already use). The pin *slides*
+  between fixes for a real move and *snaps* a >2 km jump, because that is a GPS
+  correction and not a bike; a fix older than the freshness window goes hollow
+  with a `?` instead of posing as live; the map follows the rider until the
+  customer pans it, then offers a re-centre button; page scroll is never
+  hijacked; and if Leaflet cannot load, the schematic route takes over rather
+  than leaving a blank rectangle. `0,0` is rejected as a coordinate — an unset
+  column must not send a family to the Gulf of Guinea.
+- **Realtime**: each fix is also broadcast on the order's channel
+  (`lib/use-rider-live-broadcast` on the rider's board,
+  `lib/use-live-rider-position` in the tracker). The channel name is derived
+  server-side from the order UUID + the stored phone
+  (`lib/live-track-channel`), so an unguessable name carries the same proof the
+  rest of the tracker uses. HTTP polling stays the fallback and slows to 30 s
+  while a socket is up — **no migration, no publication, nothing to run**.
+- **Cost ৳0**: Leaflet is MIT and already a dependency; OSM tiles are free;
+  Realtime is inside the existing Supabase plan. Google Maps is not used.
+- **Rate limit**: `GET /api/track/rider-location` had no limiter at all and is
+  now polled every 10 s — it is limited to 60/min per IP like every other
+  public lookup (429 + `Retry-After`).
+- **Honest limit**: a browser suspends GPS when the tab is hidden or the screen
+  sleeps, so the wake-lock + "signal lost" notices remain the mechanism. Truly
+  background tracking would need a native shell around this same code.
 
 ## Premium storefront refresh
 

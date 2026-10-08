@@ -307,4 +307,62 @@ describe("job feeds carry Order.id (order number), not the row uuid", () => {
     expect(job.orderId).toBe("PS-20260918-0042");
     expect(job.id).toBe("asg-1");
   });
+
+  /**
+   * Live tracking (2026-10-08). The rider's board broadcasts its fixes on a
+   * channel name and the customer's tracker listens on one — derived
+   * independently, in two different requests, from two different shapes of the
+   * same order. If they ever disagree the customer watches an empty room and
+   * the pin only moves on the 30 s backup poll, which looks like a bug nobody
+   * can see. So the name is pinned to the order UUID + the stored phone here,
+   * exactly as `/api/track/rider-location` derives it.
+   */
+  it("listRiderJobs: hands the rider the SAME live channel the tracker listens on", async () => {
+    const { liveTrackChannel } = await import("@/lib/live-track-channel");
+    const CUSTOMER_PHONE = "01711111111";
+    vi.spyOn(await import("../orders"), "toDomainMany").mockImplementation(
+      async (_db, rows) =>
+        rows.map(
+          (r) =>
+            ({
+              id: (r as { order_no: string }).order_no,
+              customer: { name: "Rahim", phone: CUSTOMER_PHONE, area: "Boropara" },
+            }) as never,
+        ),
+    );
+    const [job] = await listRiderJobs(service, RIDER_UUID);
+    expect(job.liveChannel).toBe(liveTrackChannel(ORDER_UUID, CUSTOMER_PHONE));
+    expect(job.liveChannel).toMatch(/^track:[0-9a-f]{24}$/);
+  });
+
+  it("listRiderJobs: no channel for an offer the rider has not accepted yet", async () => {
+    const offered = {
+      delivery_assignments: [
+        {
+          id: "asg-2",
+          order_id: ORDER_UUID,
+          rider_id: RIDER_UUID,
+          state: "offered",
+          offered_at: "2026-09-18T10:00:00Z",
+          expires_at: "2026-09-18T10:01:30Z",
+        },
+      ],
+      orders: [{ id: ORDER_UUID, order_no: "PS-20260918-0042", status: "courier-assigned" }],
+      riders: [{ id: RIDER_UUID, name: "Rafiq", phone: "01712345678" }],
+    };
+    vi.spyOn(await import("../orders"), "toDomainMany").mockImplementation(
+      async (_db, rows) =>
+        rows.map(
+          (r) =>
+            ({
+              id: (r as { order_no: string }).order_no,
+              customer: { name: "Rahim", phone: "01711111111", area: "Boropara" },
+            }) as never,
+        ),
+    );
+    const offeredTables = offered as Record<string, unknown[]>;
+    const offeredService = { from: (t: string) => query(offeredTables[t] ?? []), rpc } as never;
+    const [job] = await listRiderJobs(offeredService, RIDER_UUID);
+    expect(job.liveChannel).toBeNull();
+  });
 });
