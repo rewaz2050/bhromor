@@ -240,6 +240,27 @@ export const SADAR_PARA_OPTIONS: ParaOption[] = [
 ];
 
 /**
+ * The paras one zone covers — what a map pin can narrow the choice to.
+ *
+ * A pin knows where the shopper is to a few metres, but Sunamganj Sadar has
+ * no parcel-level address data anywhere (OSM stops at the mohalla at best),
+ * so a pin cannot *name* the para. What it can do is take the 27-option list
+ * down to the 8-9 in the zone the pin fell in, which turns typing into one
+ * tap. Pure (unit-tested) — the checkout only renders the result.
+ */
+export const parasForZone = (zoneId: string): string[] =>
+  SUNAMGANJ_ZONES.find((z) => z.id === zoneId)?.areas.map((a) => a.trim()).filter(Boolean) ?? [];
+
+/**
+ * The zone a pin landed in, for labelling. Deliberately separate from
+ * `deriveZoneChoice` — that one answers "what does the form say", and with the
+ * para still empty it falls back to the extended-Sadar zone, so using it to
+ * describe a pin prints the wrong zone name over the pin's own answer.
+ */
+export const zoneById = (zoneId: string): DeliveryZone | null =>
+  SUNAMGANJ_ZONES.find((z) => z.id === zoneId) ?? null;
+
+/**
  * Derive the delivery zone from the simple form picks.
  *
  *  • Sunamganj + Sunamganj Sadar + para from the A list → z1 (free-delivery zone)
