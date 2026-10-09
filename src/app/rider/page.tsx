@@ -98,9 +98,14 @@ export default function RiderPage() {
       return riderJobsApi.updateLocation(lat, lng);
     },
   });
-  // Q: a sleeping screen suspends GPS — hold it awake while a trip is running.
   const [keepAwake, setKeepAwake] = useKeepAwakePref();
-  const wake = useWakeLock(isLive && isOnline && hasActiveTrip && keepAwake);
+  // Q: a sleeping screen suspends GPS — hold it awake while a trip is running.
+  // Not inside the app: there the location runs as an Android foreground
+  // service that survives the screen sleeping, so a wake lock would only drain
+  // the rider's battery for nothing.
+  const wake = useWakeLock(
+    isLive && isOnline && hasActiveTrip && keepAwake && gps.engine !== "native",
+  );
   const tracking = trackingState({
     enabled: isLive && isOnline,
     hasActiveTrip,
@@ -266,6 +271,7 @@ export default function RiderPage() {
           keepAwake={keepAwake}
           awakeHeld={wake.held}
           onKeepAwakeChange={setKeepAwake}
+          engine={gps.engine}
         />
 
         {/* Today (Dhaka): what the day has earned so far. Hidden until the

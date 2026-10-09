@@ -46,6 +46,30 @@ npm run lint && npm run typecheck && npm test && npm run build
 
 Unit/component suite: 1,533 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
 
+## Android rider app — tracking that survives the screen going off (2026-10-09)
+
+A browser suspends GPS when the tab is hidden or the screen sleeps, so a rider
+with the phone in their pocket stopped being tracked. The installed app cannot
+be fooled that way: `@capgo/background-geolocation` runs an Android **foreground
+service**, so fixes keep arriving with the screen off. Full owner guide (বাংলা):
+`docs/android-app.md`.
+
+- **It is not a second codebase.** `capacitor.config.ts` points the native shell
+  at the deployed storefront, so a Vercel deploy reaches every rider's phone at
+  once — no store update. The shell exists to hand the site the native bridge.
+- **Two engines, one contract** (`lib/use-rider-location`): native when the APK
+  and its plugin are present, `navigator.geolocation` otherwise. Same 50 m
+  throttle, same health reporting, so an old build or a phone browser keeps
+  working and the board simply stops offering the "keep the screen awake"
+  switch, which would only burn battery for nothing.
+- **Cost ৳0**: Capacitor 8.5.3 and the Capgo plugin (MPL-2.0) are free — the
+  TransistorSoft plugin was rejected because it needs a paid licence.
+- **No PC needed to build**: `.github/workflows/android-apk.yml` builds an
+  installable debug APK on GitHub Actions (this repo is public, so the minutes
+  are free). Actions → Android APK → Run workflow → download the artifact.
+- `android.useLegacyBridge` is **required**: without it Android switches to the
+  modern bridge and location halts ~5 minutes into the background.
+
 ## Live tracking — the customer's real map (2026-10-08)
 
 The tracker at `/track` used to draw a decorative SVG route and print the

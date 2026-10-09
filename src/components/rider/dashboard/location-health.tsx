@@ -1,6 +1,10 @@
 "use client";
 
-import { trackingNotice, type TrackingState } from "@/lib/location-health";
+import {
+  trackingNotice,
+  type LocationEngine,
+  type TrackingState,
+} from "@/lib/location-health";
 
 /**
  * Tells the rider when their phone stopped reporting its position (permission
@@ -15,6 +19,7 @@ export function LocationHealth({
   keepAwake,
   awakeHeld,
   onKeepAwakeChange,
+  engine = null,
 }: {
   state: TrackingState;
   hasActiveTrip: boolean;
@@ -23,9 +28,14 @@ export function LocationHealth({
   /** The browser actually granted the wake lock right now. */
   awakeHeld: boolean;
   onKeepAwakeChange: (next: boolean) => void;
+  /** `native` inside the installed app — tracking survives the screen sleeping. */
+  engine?: LocationEngine | null;
 }) {
-  const notice = trackingNotice(state, hasActiveTrip);
-  const showSwitch = hasActiveTrip && wakeSupported && state !== "off";
+  const notice = trackingNotice(state, hasActiveTrip, engine);
+  // Inside the app the OS keeps the service alive, so holding the screen on
+  // would only burn the rider's battery for nothing.
+  const showSwitch = hasActiveTrip && wakeSupported && state !== "off" && engine !== "native";
+  const nativeLive = engine === "native" && state !== "off";
   if (!notice && !showSwitch) return null;
   return (
     <section aria-label="Location" data-testid="location-health" className="space-y-2">
@@ -40,6 +50,14 @@ export function LocationHealth({
           <p className="font-semibold">📍 {notice.title}</p>
           <p className="mt-1">{notice.hint}</p>
         </div>
+      )}
+      {nativeLive && (
+        <p
+          data-testid="native-tracking-on"
+          className="rounded-2xl bg-emerald-50 px-3.5 py-2.5 text-[11px] font-medium text-emerald-900 ring-1 ring-emerald-300"
+        >
+          ✅ অ্যাপে ব্যাকগ্রাউন্ড ট্র্যাকিং চালু — স্ক্রিন বন্ধ করলেও কাস্টমার আপনাকে ম্যাপে দেখবেন।
+        </p>
       )}
       {showSwitch && (
         <label className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-paper px-3.5 py-2.5 text-xs text-forest-900">

@@ -50,8 +50,24 @@ export interface TrackingNotice {
   hint: string;
 }
 
+/**
+ * Which GPS engine is running.
+ *
+ * The advice differs because the CAUSE differs: on the browser a stale fix
+ * almost always means the screen slept, so the rider is told to keep the app
+ * open. Inside the installed app the location runs as an Android foreground
+ * service and survives the screen going off, so that advice would send the
+ * rider chasing a problem they do not have — a stale fix there means the
+ * service died or the notification permission was refused.
+ */
+export type LocationEngine = "native" | "browser";
+
 /** What the rider is told. `null` for the healthy / not-applicable states. */
-export const trackingNotice = (state: TrackingState, hasActiveTrip: boolean): TrackingNotice | null => {
+export const trackingNotice = (
+  state: TrackingState,
+  hasActiveTrip: boolean,
+  engine: LocationEngine | null = null,
+): TrackingNotice | null => {
   switch (state) {
     case "denied":
       return {
@@ -64,11 +80,17 @@ export const trackingNotice = (state: TrackingState, hasActiveTrip: boolean): Tr
     case "unavailable":
       return { tone: "warn", title: "GPS সিগন্যাল পাওয়া যাচ্ছে না", hint: "খোলা জায়গায় যান এবং ফোনের Location/GPS চালু আছে কি না দেখুন।" };
     case "stale":
-      return {
-        tone: "warn",
-        title: "লোকেশন আপডেট হচ্ছে না",
-        hint: "অ্যাপটি খোলা রাখুন ও স্ক্রিন জাগিয়ে রাখুন — ব্যাকগ্রাউন্ডে গেলে ফোন লোকেশন পাঠানো থামিয়ে দেয়।",
-      };
+      return engine === "native"
+        ? {
+            tone: "warn",
+            title: "লোকেশন আপডেট হচ্ছে না",
+            hint: "ফোনের নোটিফিকেশনে “PROSANTI ডেলিভারি চলছে” আছে কি না দেখুন। না থাকলে অ্যাপে ফিরে একবার অফলাইন → অনলাইন করুন, আর নোটিফিকেশনের অনুমতি চালু আছে কি না দেখুন।",
+          }
+        : {
+            tone: "warn",
+            title: "লোকেশন আপডেট হচ্ছে না",
+            hint: "অ্যাপটি খোলা রাখুন ও স্ক্রিন জাগিয়ে রাখুন — ব্যাকগ্রাউন্ডে গেলে ফোন লোকেশন পাঠানো থামিয়ে দেয়। অথবা PROSANTI রাইডার অ্যাপটি ইনস্টল করুন: সেটি স্ক্রিন বন্ধ থাকলেও লোকেশন পাঠায়।",
+          };
     case "send_failed":
       return { tone: "warn", title: "লোকেশন সার্ভারে যাচ্ছে না", hint: "ইন্টারনেট সংযোগ পরীক্ষা করুন — নিজে থেকেই আবার চেষ্টা হবে।" };
     default:
