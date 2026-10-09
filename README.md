@@ -69,6 +69,15 @@ service**, so fixes keep arriving with the screen off. Full owner guide (বা�
   are free). Actions → Android APK → Run workflow → download the artifact.
 - `android.useLegacyBridge` is **required**: without it Android switches to the
   modern bridge and location halts ~5 minutes into the background.
+- **Notifications inside the app: not yet.** The staff pipeline
+  (`notifyStaff()` → inbox row + `pushStaffNotice()` → phone, fired by new
+  orders, reviews, returns and the rest) is Web Push, and Android's System
+  WebView ships no `PushManager`, so the app cannot register at all. The card
+  now says that in plain words rather than calling the shop's own app "an
+  in-app browser" — the WebView carries Android's stock `; wv)` marker and
+  Capacitor only rewrites the user agent when configured to. Until FCM is wired
+  (`@capacitor/push-notifications`, free) the panel must be opened in Chrome or
+  installed to the home screen; `docs/android-app.md` §6 lists both routes.
 
 ## Live tracking — the customer's real map (2026-10-08)
 

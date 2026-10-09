@@ -3,7 +3,7 @@ import { riderPushBlocker, riderRecoverySteps } from "../rider-push-client";
 import type { PushEnv } from "../push-client";
 
 const env = (over: Partial<PushEnv> = {}): PushEnv => ({
-  https: true, serviceWorker: true, pushManager: true, notification: true, standalone: false, platform: "android", inApp: null, ...over,
+  https: true, serviceWorker: true, pushManager: true, notification: true, standalone: false, platform: "android", inApp: null, nativeApp: false, ...over,
 });
 
 describe("rider push — what this phone can do (Bangla)", () => {

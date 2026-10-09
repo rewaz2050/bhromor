@@ -89,7 +89,41 @@ Debug APK সরাসরি ইনস্টল হয়, কিন্তু Pl
    Google-এর "sensitive permissions" ফর্ম পূরণ করতে হয় — দিতে হবে কেন তা লিখলেই হয়
    (রাইডার লাইভ ট্র্যাকিং, গ্রাহক নিজের ডেলিভারি দেখেন)।
 
-## ৬) যা এখনো যাচাই করা হয়নি
+## ৬) নোটিফিকেশন — অ্যাপের ভেতরে আসবে কি?
+
+**প্যানেলে: হ্যাঁ, এখনই কাজ করে।** `notifyStaff()` (`src/lib/db/engagement.ts`) প্রতিটি স্টাফ
+ইভেন্টে দুটো কাজ করে — প্যানেলের ইনবক্সে সারি **এবং** `pushStaffNotice()` দিয়ে ফোনে Web Push।
+যেখান থেকে ডাকা হয় সেগুলো আসল: `POST /api/orders` (নতুন অর্ডার), রিভিউ, রিটার্ন, কনট্যাক্ট,
+পাসওয়ার্ড-রিসেট রিকোয়েস্ট, নিউজলেটার, অর্ডার অ্যাডভান্স/পেমেন্ট, রাইডার রিলিজ। প্যানেল খোলা
+থাকলে ১৫ সেকেন্ড পোল + বিপ; বন্ধ থাকলে সরাসরি ফোনে নোটিফিকেশন। সেটআপ একবারই —
+README → "Realtime phone notifications for admin" (দুটি VAPID কী + মাইগ্রেশন
+`202609210001_push_subscriptions.sql`)।
+
+**অ্যাপের ভেতরে: না — এই প্ল্যাটফর্মে Web Push-ই নেই।** Android-এর System WebView-তে
+`PushManager` নামের কিছুই নেই, তাই সাবস্ক্রাইব করার মতো কিছু নেই। এটা সেটিং নয়,
+প্ল্যাটফর্মের সীমা।
+
+আরেকটা জিনিস: অ্যাপের WebView Android-এর স্টক `; wv)` মার্কার নিয়েই ঘোরে (Capacitor user agent
+তখনই বদলায় যখন `android.appendUserAgent` / `overrideUserAgentString` সেট করা থাকে —
+আমাদের `capacitor.config.ts`-এ দুটোই নেই)। ফলে push কার্ড আগে রাইডারকে বলত "আপনি একটা
+in-app browser-এ খুলেছেন, Chrome-এ খুলুন" — নিজের অ্যাপের ভেতরে দাঁড়িয়ে। এখন
+`PushEnv.nativeApp` Capacitor bridge দেখে আগে চেক করে, তাই কার্ড সত্যি কথাটা বলে:
+
+> PROSANTI app er bhitore Web Push chole na (Android WebView e PushManager nei)…
+
+### নোটিফিকেশন চাইলে দুটি রাস্তা
+
+| | কী | খরচ |
+|---|---|---|
+| **ক. আজই** | অ্যাডমিন/রাইডার URL টা **Chrome**-এ খুলুন, অথবা Chrome-এর মেনু থেকে **Add to Home Screen** করুন। তারপর আগের push কার্ড দিয়েই ON করুন — সব কাজ করবে | ৳০, এখনই |
+| **খ. অ্যাপের ভেতরেই** | Firebase Cloud Messaging: `@capacitor/push-notifications@8.1.3` (MIT) + Firebase প্রজেক্ট + `google-services.json` (`android/app/`-এ — `com.google.gms.google-services` classpath ইতিমধ্যে `android/build.gradle`-এ আছে) + সার্ভারে `firebase-admin` সেন্ডার + একটি token টেবিল | ৳০ (FCM ফ্রি), তবে একদিনের কাজ |
+
+খ রাস্তার মানে: Firebase console থেকে প্রজেক্ট বানানো, `google-services.json` নামিয়ে
+`android/app/`-এ রাখা, অ্যাপ স্টার্টে `PushNotifications.requestPermissions()` + `getToken()` →
+token টা ডাটাবেজে সংরক্ষণ, আর `pushStaffNotice`/রাইডার push-এর পাশে একটি FCM fan-out।
+`POST_NOTIFICATIONS` অনুমতি ম্যানিফেস্টে আগে থেকেই আছে, তাই runtime প্রম্পট প্লাগিনই নেবে।
+
+## ৭) যা এখনো যাচাই করা হয়নি
 
 সততার সাথে: এই স্যান্ডবক্সে Java/Gradle/Android SDK নেই, তাই **APK এখানে কম্পাইল
 করা হয়নি**। যা যাচাই করা হয়েছে:
