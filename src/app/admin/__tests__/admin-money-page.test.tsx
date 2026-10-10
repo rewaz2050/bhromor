@@ -22,6 +22,13 @@ const state = vi.hoisted(() => ({
   saveSettings: vi.fn(async () => true),
 }));
 
+// The page's admin-only controls are gated on the staff role (permission
+// matrix, 2026-10-09). These tests walk the admin's own flow, so sign the
+// probe in as one — a manager would not see these buttons at all.
+vi.mock("@/lib/use-staff-live", () => ({
+  useStaffLive: () => ({ live: true, checked: true, error: null, role: "admin", retry: () => {} }),
+}));
+
 vi.mock("@/lib/use-admin-money", () => ({
   useAdminMoney: () => ({
     live: state.live,

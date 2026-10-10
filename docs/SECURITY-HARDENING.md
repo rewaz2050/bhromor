@@ -110,6 +110,31 @@ riders / scorecards / licence / applications / access-requests।
 - **টাকা-সেটল RPC:** `ps_admin_settle_rider` / `ps_admin_reject_settle` ভেতরে আবার
   `ps_is_admin()` চেক করে — তাই `grant execute … to authenticated` ঝুঁকি নয়।
 
+## Manager কেন বাটন দেখে না (UI gate)
+
+API-ই তালা — সবসময় ছিল। কিন্তু manager প্রতিদিনের কাজ করতে গিয়ে এমন এক
+ডজন বাটনের সামনে পড়ত যেগুলো চাপলে সার্ভার `403 Admin access is required`
+ফেরত দেয়। সেটা security সমস্যা না, বিরক্তিকর UX। তাই `<AdminOnly>`
+(`components/admin/admin-only.tsx`) সেই কন্ট্রোলগুলো শুধু `admin`/`super_admin`-কে
+দেখায়, manager-কে এক লাইন নোট দেখায়। role আসে `/api/admin/me` থেকে
+(`useStaffRole`)।
+
+গেট করা হয়েছে: staff পেজ (পুরোটাই), rider settle/net/claim approve/reject,
+review ও login-link, নতুন দোকান ও vendor login, payout approve ও record,
+money export, broadcast, আর settings পেজে একটি নোট (settings পড়া যায়,
+save আটকায়)।
+
+**দুটো নিয়ম ইচ্ছা করে:**
+
+1. **লক না, শুধু লুকানো।** `<AdminOnly>` ক্লায়েন্টে চলে, তাই এটা বাইপাস
+   করা যায় — কিন্তু তখন API 403 দেয়। এই কম্পোনেন্ট কখনোই একমাত্র প্রতিরক্ষা
+   হতে পারে না, নতুন গেটেড রাউট যোগ করার সময় `roles:` দেওয়া বাধ্যতামূলক।
+2. **probe না আসা পর্যন্ত কিছু দেখায় না।** বাটন দেখিয়ে পরে সরিয়ে নেওয়া
+   তার চেয়ে খারাপ যে এক মুহূর্ত ফাঁকা থাকে।
+
+টেস্ট: `admin-only.test.tsx` (৪ স্টেট) + `admin-manager-visibility.test.tsx`
+(একই পেজ, দুই role)।
+
 ## সীমাবদ্ধতা
 
 Automated test ও source/config review **লাইভ penetration test নয়**। এই সেশনে Production Supabase, Cloudinary, Vercel Firewall, বাস্তব MFA enrollment বা backup restore-এ ঢুকে পরীক্ষা করা হয়নি। তাই এগুলো production-এ যাচাই না হওয়া পর্যন্ত security hardening পুরোপুরি শেষ বলা যাবে না।

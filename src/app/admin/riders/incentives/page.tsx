@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { INCENTIVE_BOUNDS, anyIncentiveOn } from "@/lib/rider-incentives";
+import AdminOnly from "@/components/admin/admin-only";
 import OrderBonusCard from "@/components/admin/order-bonus-card";
 import { useRiderIncentiveSettings, type IncentiveForm } from "@/lib/use-rider-incentive-settings";
 
@@ -168,16 +169,20 @@ export default function RiderIncentivesPage() {
           <p className="text-xs text-ink-soft" data-testid="incentives-state">
             এখন: {anyIncentiveOn(settings) ? "চালু আছে" : "সব বন্ধ"}
           </p>
+          <AdminOnly note="রাইডার incentive আর order bonus বদলানো শুধু admin করতে পারে — আপনার role manager, তাই Save নেই।">
           <button
             type="submit" disabled={busy || !loaded}
             className="rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>
+          </AdminOnly>
         </form>
       )}
 
-      <OrderBonusCard />
+      <AdminOnly>
+        <OrderBonusCard />
+      </AdminOnly>
     </div>
   );
 }

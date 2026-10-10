@@ -34,6 +34,7 @@ import type { PlusConfig } from "@/lib/membership";
 import { field, hint, label } from "@/components/admin/form-ui";
 import AdminDataError from "@/components/admin/admin-data-error";
 import { IconBell, IconBolt, IconCheck, IconClock, IconGift, IconSend, IconTag, IconTrendDown, IconUser } from "@/components/ui/icons";
+import AdminOnly from "@/components/admin/admin-only";
 import BroadcastCard from "@/components/admin/broadcast-card";
 
 const taka = (paisa: number): string => String(paisa / 100);
@@ -705,6 +706,7 @@ export default function AdminGrowthPage() {
       </div>
 
       {/* ---------------- Weekly push broadcast (UX plan §12) ---------------- */}
+      <AdminOnly note="সবাইকে একসাথে push পাঠানো শুধু admin করতে পারে — আপনার role manager।">
       <Card
         title="Drops & offers broadcast"
         sub="One push a week to every shopper who asked for it — no SMS, no email, no cost per message. Say it in Bengali; the English is for phones reading the site in English."
@@ -712,6 +714,7 @@ export default function AdminGrowthPage() {
       >
         <BroadcastCard />
       </Card>
+      </AdminOnly>
 
       {/* ---------------- PROSANTI+ (P2 #17) ---------------- */}
       <Card

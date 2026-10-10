@@ -9,6 +9,7 @@ import { useTransientValue } from "@/lib/use-transient-value";
 import { FREE_DELIVERY_MAX_PAISA, FREE_DELIVERY_MIN_PAISA } from "@/lib/free-delivery";
 import { field, label } from "@/components/admin/form-ui";
 import AdminDataError from "@/components/admin/admin-data-error";
+import AdminOnly from "@/components/admin/admin-only";
 import {
   IconBanknote,
   IconCheck,
@@ -225,6 +226,8 @@ export default function AdminSettingsPage() {
           </p>
         </div>
       </div>
+
+      <AdminOnly note="সেটিংস বদলানো (ডেলিভারি চার্জ, wallet, contact) শুধু admin করতে পারে — আপনি দেখতে পারবেন, save করলে API আটকাবে।" />
 
       <AdminDataError label="Settings" error={settingsError} onRetry={reloadSettings} onDismiss={clearSettingsError} />
       <AdminDataError label="Catalog" error={catalogApi.error} onRetry={catalogApi.reset} onDismiss={catalogApi.clearError} />
