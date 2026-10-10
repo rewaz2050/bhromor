@@ -33,6 +33,11 @@ export type Permission = NotificationPermission | "unsupported";
 /** Why this phone cannot receive pushes at all (null = it can). */
 export const riderPushBlocker = (env: PushEnv): string | null => {
   if (!env.https) return "এই পেজ https ছাড়া খুলেছে — নোটিফিকেশন শুধু https-এ কাজ করে।";
+  if (env.nativeApp) {
+    // The installed app's WebView ships no PushManager, so Web Push cannot
+    // register here at all — this is the platform, not a rider setting.
+    return "PROSANTI অ্যাপের ভেতরে Web Push চলে না (Android-এর WebView-তে PushManager নেই)। নোটিফিকেশন পেতে প্যানেলটি Chrome-এ খুলুন বা হোম স্ক্রিনে যোগ করুন।";
+  }
   if (env.inApp) {
     return `আপনি ${env.inApp}-এর ভেতরে অ্যাপ খুলেছেন — সেখানে নোটিফিকেশন আসে না। Chrome-এ খুলুন।`;
   }

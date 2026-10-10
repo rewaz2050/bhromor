@@ -27,6 +27,13 @@ const state = vi.hoisted(() => ({
   })),
 }));
 
+// The controls this test drives are admin-only (permission matrix,
+// 2026-10-09), so sign the staff probe in as an admin — a manager would not
+// see them at all.
+vi.mock("@/lib/use-staff-live", () => ({
+  useStaffLive: () => ({ live: true, checked: true, error: null, role: "admin", retry: () => {} }),
+}));
+
 vi.mock("@/lib/use-access-requests", () => ({
   useAccessRequests: () => ({
     pending: state.pending,

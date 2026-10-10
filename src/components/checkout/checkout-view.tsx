@@ -93,6 +93,8 @@ import {
   SUNAMGANJ_UPAZILAS,
   deriveZoneChoice,
   distanceFromHubKm,
+  parasForZone,
+  zoneById,
   findZoneByDistance,
   type LatLng,
 } from "@/lib/sunamganj";
@@ -595,6 +597,12 @@ export default function CheckoutView() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoNote, setGeoNote] = useState<string | null>(null);
   const [pinPos, setPinPos] = useState<LatLng | null>(null);
+  /**
+   * Zone the dropped pin fell in. A pin cannot name a para (Sunamganj has no
+   * parcel-level address data), but it can take the 27-para list down to the
+   * 8-9 in this zone — which turns typing into one tap.
+   */
+  const [pinZoneId, setPinZoneId] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [addrTag, setAddrTag] = useState<AddressTag>("home");
   const [bestLoading, setBestLoading] = useState(false);
@@ -2316,6 +2324,35 @@ export default function CheckoutView() {
                 পাড়া বা গ্রামের নাম লিখলেই ডেলিভারি চার্জ ও সময় দেখা যাবে।
               </p>
             )}
+            {pinZoneId && !form.isPickup ? (
+              <div className="mt-2" data-testid="pin-para-suggestions">
+                <p className="text-[11px] font-semibold text-forest-800">
+                  📌 আপনার পিন {zoneById(pinZoneId)?.name ?? zone.name}-এ পড়েছে — এক
+                  ট্যাপে বসান:
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {parasForZone(pinZoneId).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        update("paraCustom", name);
+                        update("paraSelected", name);
+                        clearFieldError("area");
+                      }}
+                      aria-pressed={effectivePara.trim() === name}
+                      className={`min-h-9 rounded-full px-3 text-xs font-medium ring-1 ${
+                        effectivePara.trim() === name
+                          ? "bg-forest-700 text-paper ring-forest-700"
+                          : "bg-paper text-forest-900 ring-line hover:bg-ivory-100"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* House / Road structured fields */}
@@ -2419,6 +2456,7 @@ export default function CheckoutView() {
                 <MapPinPicker
                   value={pinPos}
                   onChange={(pos) => setPinPos(pos)}
+                  onZoneDetected={(zoneId) => setPinZoneId(zoneId)}
                 />
               </div>
             )}

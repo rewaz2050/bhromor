@@ -16,6 +16,9 @@ import { describeLoginEmail, phoneLoginEmail } from "@/lib/phone-login";
 import { apiJson } from "@/lib/api-response";
 import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const POST = staffRoute(
   "shop-link-vendor",
   async ({ db }, request, routeContext) => {
@@ -74,5 +77,5 @@ export const POST = staffRoute(
     revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ linked: describeLoginEmail(lookup), email: lookup });
   },
-  { limit: 20 },
+  { limit: 20, roles: ADMIN_ONLY },
 );

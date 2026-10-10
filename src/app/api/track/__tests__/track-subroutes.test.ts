@@ -13,6 +13,8 @@
  * therefore fails here too.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetRateLimits } from "@/lib/rate-limit";
+import { liveTrackChannel } from "@/lib/live-track-channel";
 
 vi.mock("server-only", () => ({}));
 
@@ -120,6 +122,9 @@ beforeEach(() => {
   state.updates = [];
   state.history = [];
   state.orderFilters = [];
+  // The rider-location read is rate-limited per IP (the tracker polls it
+  // every 10 s), so each case starts from an empty bucket.
+  __resetRateLimits();
 });
 
 describe("GET /api/track/rider-location (phone-gated)", () => {
@@ -224,6 +229,66 @@ describe("GET /api/track/rider-location (phone-gated)", () => {
     );
     expect(res.status).toBe(404);
     expect(state.orderFilters).toEqual([]);
+  });
+
+  /* ---------------- live tracking pass (2026-10-08) ---------------- */
+
+  it("hands the owner the live channel — the same name the rider's board is given", async () => {
+    state.orderRow = ORDER;
+    state.riderRow = { lat: 25.1, lng: 91.0, last_location_at: null, is_online: true };
+    const res = await riderLocation(
+      new Request(
+        `http://localhost/api/track/rider-location?orderId=PS-1&phone=${ORDER_PHONE}`,
+      ),
+    );
+    const data = (await res.json()) as { liveChannel?: string | null };
+    // Derived from the order's uuid + the STORED phone, so the rider's job
+    // feed (which reads the same assignment row) lands on the identical channel.
+    expect(data.liveChannel).toBe(liveTrackChannel(ORDER_UUID, ORDER_PHONE));
+    expect(data.liveChannel).toMatch(/^track:[0-9a-f]{24}$/);
+  });
+
+  it("offers the channel even before the first fix, so the tracker is already listening", async () => {
+    state.orderRow = ORDER;
+    state.riderRow = { lat: null, lng: null, last_location_at: null, is_online: true };
+    const res = await riderLocation(
+      new Request(
+        `http://localhost/api/track/rider-location?orderId=PS-1&phone=${ORDER_PHONE}`,
+      ),
+    );
+    expect(res.status).toBe(404);
+    const data = (await res.json()) as { liveChannel?: string | null };
+    expect(data.liveChannel).toBe(liveTrackChannel(ORDER_UUID, ORDER_PHONE));
+  });
+
+  it("never offers a channel to someone who failed the phone check", async () => {
+    state.orderRow = ORDER;
+    state.riderRow = { lat: 25.1, lng: 91.0, last_location_at: null, is_online: true };
+    const res = await riderLocation(
+      new Request(
+        `http://localhost/api/track/rider-location?orderId=PS-1&phone=01899999999`,
+      ),
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json().catch(() => null)) as { liveChannel?: unknown } | null;
+    expect(body?.liveChannel).toBeUndefined();
+  });
+
+  it("rate-limits a runaway tracker instead of hammering the database", async () => {
+    state.orderRow = ORDER;
+    state.riderRow = { lat: 25.1, lng: 91.0, last_location_at: null, is_online: true };
+    const url = `http://localhost/api/track/rider-location?orderId=PS-1&phone=${ORDER_PHONE}`;
+    let blocked: Response | null = null;
+    // 60/min is the bucket; the 61st call in the same minute must be refused.
+    for (let i = 0; i < 61; i += 1) {
+      const res = await riderLocation(new Request(url));
+      if (res.status === 429) {
+        blocked = res;
+        break;
+      }
+    }
+    expect(blocked).not.toBeNull();
+    expect(blocked!.headers.get("Retry-After")).toBeTruthy();
   });
 });
 

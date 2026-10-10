@@ -1,13 +1,13 @@
 "use client";
 
 import { formatShopDate } from "@/lib/format";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { riderDistance } from "@/lib/rider-distance";
 import { bnDigits } from "@/lib/arrival";
 import { freshnessLabel, locationFreshness } from "@/lib/location-health";
 import { useNow } from "@/lib/use-now";
-import { usePoll } from "@/lib/use-poll";
+import { LIVE_POLL_MS, useLiveRiderPosition } from "@/lib/use-live-rider-position";
 import type { Order } from "@/lib/orders";
 import { getDeliveryCode } from "@/lib/orders";
 import {
@@ -16,14 +16,7 @@ import {
   IconShield,
   IconTruck,
 } from "@/components/ui/icons";
-
-interface RiderLivePos {
-  lat: number;
-  lng: number;
-  updatedAt: string;
-  /** When this tab read it — the freshness clock can never be behind this. */
-  seenAt: number;
-}
+import { RiderTileMap } from "./rider-tile-map";
 
 interface LiveDeliveryMapProps {
   order: Order;
@@ -43,37 +36,21 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   // rider position is available it is shown as the "Rider live" coordinates
   // in the ETA card, and nothing here animates invented movement.
   const baseProgress = isDelivered ? 1 : isOut ? 0.65 : isAssigned ? 0.25 : 0.05;
-  const [riderLive, setRiderLive] = useState<RiderLivePos | null>(null);
   // Q: how old the rider's last fix is — a stale pin must not pose as live.
   const clock = useNow(30_000);
 
-  // Real rider position while the parcel is on the road (existing
-  // rider/location API). One read on mount, then every 15 s while the tab is
-  // visible — a tracking tab in a customer's pocket no longer polls all trip.
-  const orderId = order.id;
-  const phone = order.customer.phone;
-  const fetchRiderPos = useCallback(async () => {
-    if (!isOut || !orderId) return;
-    try {
-      const res = await fetch(
-        `/api/track/rider-location?orderId=${encodeURIComponent(orderId)}&phone=${encodeURIComponent(phone)}`,
-      );
-      if (!res.ok) return;
-      const data = (await res.json().catch(() => null)) as {
-        lat?: number | null;
-        lng?: number | null;
-        updatedAt?: string | null;
-      } | null;
-      if (data?.lat && data?.lng) {
-        setRiderLive({ lat: data.lat, lng: data.lng, updatedAt: data.updatedAt || new Date().toISOString(), seenAt: Date.now() });
-      }
-    } catch {}
-  }, [isOut, orderId, phone]);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount; setState lands after the await
-    void fetchRiderPos();
-  }, [fetchRiderPos]);
-  usePoll(fetchRiderPos, 15_000, isOut && !!orderId);
+  // Real rider position while the parcel is on the road: HTTP on mount and
+  // then on a timer, plus the rider's Realtime broadcast once the first read
+  // hands back a channel name (`lib/use-live-rider-position`). Polling stays
+  // the fallback — no socket, no keys, no migration and it still works.
+  const { rider: riderLive, live } = useLiveRiderPosition({
+    orderId: order.id,
+    phone: order.customer.phone,
+    enabled: isOut && !!order.id,
+  });
+  // The tile map is progressive enhancement: if Leaflet cannot load (offline,
+  // blocked CDN) the schematic below takes over instead of a blank rectangle.
+  const [tileMapFailed, setTileMapFailed] = useState(false);
 
   const transitProgress = Math.min(1, Math.max(0, baseProgress));
 
@@ -122,10 +99,37 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
         ? "Nagad (ওয়ালেট)"
         : "ক্যাশ অন ডেলিভারি (COD)";
 
+  // A real map needs a real coordinate. With neither a delivery pin from
+  // checkout nor a rider fix there is nothing honest to draw, so the
+  // schematic below stands in.
+  const destination =
+    typeof order.lat === "number" && typeof order.lng === "number"
+      ? { lat: order.lat, lng: order.lng }
+      : null;
+  const riderPoint = riderLive ? { lat: riderLive.lat, lng: riderLive.lng } : null;
+  const showTileMap = !tileMapFailed && (destination !== null || riderPoint !== null);
+
   return (
     <div className="overflow-hidden rounded-3xl border border-line bg-paper shadow-sm" data-testid="live-delivery-map">
-      {/* Map Graphic Container */}
-      <div className="relative h-64 w-full overflow-hidden bg-forest-950 sm:h-72">
+      {/* Map surface: the customer's own neighbourhood, the rider's pin on it,
+          and the line between the two — Leaflet + OpenStreetMap, no API key. */}
+      <div
+        className="relative h-80 w-full overflow-hidden bg-forest-950 sm:h-96"
+        data-testid={showTileMap ? "track-map-tiles" : "track-map-schematic"}
+      >
+        {showTileMap && (
+          <RiderTileMap
+            destination={destination}
+            rider={riderPoint}
+            stale={fresh?.level === "stale"}
+            destinationLabel={order.customer.area}
+            riderLabel={rider?.name ?? "রাইডার"}
+            onFailed={() => setTileMapFailed(true)}
+          />
+        )}
+
+        {/* Fallback surface — also what renders before the first coordinate. */}
+        <div className={showTileMap ? "hidden" : "absolute inset-0"}>
         {/* Subtle Map Grid Background */}
         <div className="absolute inset-0 opacity-20 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
 
@@ -191,20 +195,33 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
             </g>
           )}
         </svg>
+        </div>
 
         {/* Floating Map Badges */}
-        <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-forest-900/95 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 ring-1 ring-white/10">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-          {isDelivered
-            ? "ডেলিভারি সম্পন্ন (Delivered)"
-            : isOut
-            ? "রাইডার আপনার পথে (On the way)"
-            : isAssigned
-            ? "রাইডার দোকানে উপস্থিত হচ্ছে (Heading to Hub)"
-            : "অর্ডার প্রস্তুত হচ্ছে (Preparing)"}
+        <div className="absolute left-4 top-4 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-full bg-forest-900/95 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 ring-1 ring-white/10">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            {isDelivered
+              ? "ডেলিভারি সম্পন্ন (Delivered)"
+              : isOut
+              ? "রাইডার আপনার পথে (On the way)"
+              : isAssigned
+              ? "রাইডার দোকানে উপস্থিত হচ্ছে (Heading to Hub)"
+              : "অর্ডার প্রস্তুত হচ্ছে (Preparing)"}
+          </div>
+          {/* How fresh the pin is, in plain words: a live socket, or the poll
+              interval. Never a claim the tracker cannot keep. */}
+          {isOut && !isDelivered && (
+            <span
+              data-testid={live ? "track-live-socket" : "track-live-poll"}
+              className="rounded-full bg-forest-900/95 px-3 py-1.5 text-[11px] font-semibold text-ivory-100 ring-1 ring-white/10"
+            >
+              {live ? "🟢 লাইভ ট্র্যাকিং চালু" : `প্রতি ${bnDigits(String(LIVE_POLL_MS / 1000))} সেকেন্ডে হালনাগাদ`}
+            </span>
+          )}
         </div>
 
         {/* Live ETA Card overlay */}

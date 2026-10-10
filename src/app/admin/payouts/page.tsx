@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { usePayouts } from "@/lib/use-payouts";
 import { formatBdt } from "@/lib/format";
+import AdminOnly from "@/components/admin/admin-only";
 import { field, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 
@@ -237,6 +238,7 @@ export default function AdminPayoutsPage() {
             <h2 className="font-display text-lg text-forest-900">
               Settlement · {selected.shop.name}
             </h2>
+            <AdminOnly note="Staff-কে payout রেকর্ড করা শুধু admin করতে পারে — আপনার role manager।">
             <button
               type="button"
               disabled={selected.balance === 0}
@@ -254,6 +256,7 @@ export default function AdminPayoutsPage() {
                   ? "Record remittance (shop paid PROSANTI)"
                   : "Nothing to settle"}
             </button>
+            </AdminOnly>
           </div>
 
           {paying && (
