@@ -46,6 +46,57 @@
 সত্যি কথাই ফিরবে ("Admin access is required for this action.") এবং `use-riders`-এর
 `setError` সেটা স্ক্রিনে দেখাবে, চুপচাপ ব্যর্থ হবে না।
 
+### কে কাকে কী রোল দিতে পারে
+
+`STAFF_ROLE_RANK = { manager: 0, admin: 1, super_admin: 2 }` আর
+`canManageRole()` — একজন স্টাফ শুধু **নিজের র‍্যাঙ্ক বা তার নিচের** রোল ছুঁতে পারে
+(`lib/db/admin.ts:2794`)।
+
+| আপনার রোল | কাকে রোল দিতে/বদলাতে পারেন |
+|---|---|
+| `super_admin` | manager, admin, super_admin — সবাইকে |
+| `admin` | manager, admin — **super_admin না** |
+| `manager` | কাউকে না (`/api/admin/staff` ই admin-only) |
+
+দুটো অতিরিক্ত বাধা: নিজের রোল নিজে বদলানো যায় না; শেষ `super_admin`-কে ডিমোট
+বা revoke করা যায় না (`countSuperAdmins()` ≤ 1 হলে 403)।
+
+### manager যা করতে পারে (৮৩টি হ্যান্ডলার)
+
+রোজকার কাজ: অর্ডার (`GET`/`advance`/`payment`/`return`/`failed-delivery`), ক্যাটালগ
+(products, categories, media), ডেলিভারি কিউ (offer/batch/cancel/release,
+dispatch-settings), রিভিউ, জোন, কুপন, growth, homepage, live session, warranty,
+messages, notifications, wa-outbox, রাইডার অ্যানাউন্সমেন্ট/ডিসপিউট/ফিডব্যাক,
+reports, আর **পড়া** হিসেবে money / money-audit / money-daily / payouts / settings /
+riders / scorecards / licence / applications / access-requests।
+
+### ভেন্ডর — `owner` বনাম `staff`
+
+`vendorShopPatch(raw, role)` (`lib/db/vendor.ts:84`) ফিল্ড ধরে ধরে ছাঁকে:
+
+| | `staff` | `owner` |
+|---|---|---|
+| দোকান খোলা/বন্ধ, প্রস্টপ টাইম | ✅ | ✅ |
+| নিজের দোকানের প্রোডাক্ট/অর্ডার/রিভিউ/প্রোমো | ✅ | ✅ |
+| দোকানের প্রোফাইল (নাম, ট্যাগলাইন, লোগো, কভার), ছুটি বুক করা | ❌ 403 | ✅ |
+| স্টাফ লগইন (তালিকা/তৈরি/বাতিল/পাসওয়ার্ড রিসেট) | ❌ 403 | ✅ — সর্বোচ্চ **৫টি** (`VENDOR_STAFF_MAX`) |
+| `status`, `commission`, `zones`, `slug`, `featured`, `isNew` | ❌ | ❌ — platform-owned |
+
+### রাইডার — স্ট্যাটাস অনুযায়ী
+
+| স্ট্যাটাস | কী পায় |
+|---|---|
+| `pending` / `rejected` | শুধু KYC আপলোড (`rider/kyc`, `rider/kyc/sign` — `allowApplicant: true`); বাকি সব 403, কারণসহ বাংলা বার্তা |
+| `active` | নিজের জব, নিজের আয়, নিজের লোকেশন, নিজের প্রোফাইল — **অন্য রাইডারের কিছুই না** (প্রতিটি RPC-তে `rider_id = ps_rider_id()` চেক) |
+| `suspended` | কিছুই না (403) |
+
+### কাস্টমার / পাবলিক
+
+- **ট্র্যাকিং** (`/api/track/*`): অর্ডার আইডি **+ সেই ফোন নম্বর** যা দিয়ে অর্ডার করা —
+  একা অর্ডার আইডি যথেষ্ট না; রেট-লিমিট ৬০/মিনিট।
+- **অ্যাকাউন্ট** (`/api/account/*`): নিজের প্রোফাইল ও নিজের অর্ডার।
+- বাকি পাবলিক রাউট শুধু পড়া (products, zones, settings, shops, promo)।
+
 ### যেগুলো যাচাই করে ঠিক পাওয়া গেছে (বদলাবেন না)
 
 - **রাইডার IDOR:** যেসব `ps_rider_*` ফাংশন id নেয়, সবগুলোতে
