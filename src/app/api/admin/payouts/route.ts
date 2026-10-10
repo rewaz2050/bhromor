@@ -12,6 +12,9 @@ import {
 import { apiJson } from "@/lib/api-response";
 import { staffRoute } from "../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("payouts", async ({ db }, request) => {
@@ -33,5 +36,5 @@ export const POST = staffRoute(
     const payout = await recordPayout(db, user.id, body);
     return apiJson({ payout }, 201);
   },
-  { limit: 20 },
+  { limit: 20, roles: ADMIN_ONLY },
 );

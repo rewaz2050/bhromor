@@ -8,6 +8,9 @@ import { getRiderLicence, setRiderLicenceExpiry } from "@/lib/db/licence-expiry"
 import { RiderInputError } from "@/lib/db/riders";
 import { staffRoute, routeId } from "../../../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 const validId = (id: string): boolean => /^[0-9a-f-]{36}$/i.test(id);
@@ -45,5 +48,5 @@ export const PATCH = staffRoute(
       throw err;
     }
   },
-  { limit: 30 },
+  { limit: 30, roles: ADMIN_ONLY },
 );
