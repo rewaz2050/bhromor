@@ -68,9 +68,17 @@ describe("coupon carry (offers card → checkout)", () => {
     mount();
     await ready();
     const more = screen.getByTestId("more-options");
-    const input = await within(more).findByPlaceholderText("Coupon code");
-    expect((input as HTMLInputElement).value).toBe("EID10");
-    expect(within(more).getByTestId("coupon-carried").textContent).toContain("Apply চাপুন");
+    const input = (await within(more).findByPlaceholderText(
+      "Coupon code",
+    )) as HTMLInputElement;
+    // The carry lands in a post-mount effect gated on the view's own `ready`
+    // flag, which can flip one render after the panel is already in the DOM.
+    // Read synchronously that is a race — it passed locally and failed on a
+    // loaded CI runner (2026-10-10) with the field still empty.
+    await waitFor(() => expect(input.value).toBe("EID10"));
+    await waitFor(() =>
+      expect(within(more).getByTestId("coupon-carried").textContent).toContain("Apply চাপুন"),
+    );
     await new Promise((r) => setTimeout(r, 400));
     expect(validateCalls).toBe(0);
     expect(within(more).queryByTestId("coupon-applied")).toBeNull();
