@@ -54,6 +54,15 @@ export const getSavedAddresses = (): SavedAddress[] => {
   return safeParse(localStorage.getItem(KEY));
 };
 
+/**
+ * Replace the whole local book — how the server copy lands on a new device
+ * (see lib/address-sync). Capped at the same 5 as every other write here.
+ */
+export const setSavedAddresses = (addresses: SavedAddress[]): void => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(KEY, JSON.stringify(addresses.slice(0, 5)));
+};
+
 export const saveAddress = (
   addr: Omit<SavedAddress, "id" | "createdAt" | "district" | "upazila" | "tag"> & {
     tag?: AddressTag;

@@ -106,6 +106,7 @@ import {
   type AddressTag,
   type SavedAddress,
 } from "@/lib/address-book";
+import { pushAddresses } from "@/lib/address-sync";
 import { getUpazilasForDistrict } from "@/lib/bd-geo";
 import { useCustomer } from "@/lib/use-customer";
 import { useSmartCard } from "@/lib/use-smart-card";
@@ -1575,6 +1576,9 @@ export default function CheckoutView() {
         lat: pinPos?.lat,
         lng: pinPos?.lng,
       });
+      // The local save is the one checkout reads; the mirror follows so the
+      // same address is waiting on the customer's other device (2026-10-11).
+      void pushAddresses();
     } catch {
       // storage unavailable — continue without saving
     }
@@ -2081,6 +2085,7 @@ export default function CheckoutView() {
                         onClick={() => {
                           deleteAddress(addr.id);
                           setSavedAddrs(getSavedAddresses());
+                          void pushAddresses();
                         }}
                         aria-label="ঠিকানা মুছুন"
                         className="rounded-full bg-paper px-2.5 py-1 text-xs ring-1 ring-line"
