@@ -103,6 +103,53 @@ describe("Account — order history (P1 #15)", () => {
     await waitFor(() => expect(history.textContent).toMatch(/No orders on this number yet/));
     expect(screen.getByRole("link", { name: /Shop/ })).toHaveAttribute("href", "/shop");
   });
+
+  it("names the shop each order came from (2026-10-11)", async () => {
+    routes["/api/account/me"] = async () => jsonResponse({ customer });
+    routes["/api/account/orders"] = async () =>
+      jsonResponse({
+        phone: customer.phone,
+        orders: [
+          {
+            id: "PS-1",
+            createdAt: Date.UTC(2026, 9, 11, 6, 30),
+            status: "confirmed",
+            total: 90000,
+            itemCount: 1,
+            firstItem: "Cotton Panjabi",
+            payment: "cod",
+            paymentStatus: null,
+            scheduledAt: null,
+            deliveryWindow: null,
+            isPickup: false,
+            isReturn: false,
+            shopId: "s2",
+            shopName: "Rafiq Store",
+          },
+          {
+            // Older API shape — no shop fields at all. The row still renders.
+            id: "PS-0",
+            createdAt: Date.UTC(2026, 8, 1, 6, 30),
+            status: "delivered",
+            total: 40000,
+            itemCount: 1,
+            firstItem: "Silk Scarf",
+            payment: "cod",
+            paymentStatus: null,
+            scheduledAt: null,
+            deliveryWindow: null,
+            isPickup: false,
+            isReturn: false,
+          },
+        ],
+      });
+    render(<AccountView />);
+    const history = await screen.findByTestId("order-history");
+    await waitFor(() => expect(history.textContent).toContain("PS-1"));
+    expect(history.textContent).toContain("Rafiq Store");
+    // Named once — the shop line is a label, not repeated per item.
+    expect(history.textContent?.split("Rafiq Store")).toHaveLength(2);
+  });
 });
 
 describe("Account — forgot password (P1 #15)", () => {

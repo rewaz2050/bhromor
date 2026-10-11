@@ -33,6 +33,9 @@ export interface HistoryRow {
   deliveryWindow: string | null;
   isPickup: boolean;
   isReturn: boolean;
+  /** Optional (older API shapes omit it) — which shop this came from. */
+  shopId?: string | null;
+  shopName?: string | null;
   /** Optional (older API shapes omit it) — powers "Order again". */
   lines?: { productId: string; variantLabel: string; qty: number; name: string }[];
 }
@@ -160,6 +163,11 @@ export default function OrderHistory({ phone }: { phone: string }) {
                       </span>
                     ) : null}
                   </p>
+                  {row.shopName ? (
+                    <p className="mt-1 truncate text-xs font-semibold text-forest-800">
+                      {row.shopName}
+                    </p>
+                  ) : null}
                   <p className="mt-1 truncate text-sm text-ink">
                     {row.firstItem ?? "—"}
                     {row.itemCount > 1 ? (
