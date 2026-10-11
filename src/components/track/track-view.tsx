@@ -37,6 +37,7 @@ import ShareTrackerButton from "./share-tracker-button";
 import WhileYouWaitRail from "./while-you-wait-rail";
 import DelayNote from "./delay-note";
 import RiderCard from "./rider-card";
+import MessageShop from "./message-shop";
 import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
@@ -380,6 +381,11 @@ export default function TrackView() {
                 passed, say so in minutes — silence is what turns a late
                 parcel into a phone call. */}
             <DelayNote order={order} contactNumber={contactNumber} />
+
+            {/* Ask the shop without leaving the page — the thread stays with
+                the order (2026-10-11). Hidden for pickup/courier orders where
+                there is no shop conversation to have about a delivery. */}
+            <MessageShop order={order} />
 
             {/* The rider's handover photo — the parcel did arrive, here is
                 where it was left. Renders nothing without a photo. */}

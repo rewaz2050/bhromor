@@ -29,6 +29,7 @@ const NAV = [
   { href: "/vendor/products", label: "Products" },
   { href: "/vendor/earnings", label: "Earnings" },
   { href: "/vendor/reviews", label: "Reviews" },
+  { href: "/vendor/messages", label: "Messages" },
   { href: "/vendor/promo", label: "Promo codes" },
   { href: "/vendor/funnel", label: "Funnel" },
   { href: "/vendor/settings", label: "Shop settings" },
@@ -41,6 +42,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/vendor\/products\/.+/, "Edit product"],
   [/^\/vendor\/products$/, "Products"],
   [/^\/vendor\/earnings$/, "Earnings"],
+  [/^\/vendor\/messages$/, "Messages"],
   [/^\/vendor\/settings$/, "Shop settings"],
   [/^\/vendor$/, "Dashboard"],
 ];

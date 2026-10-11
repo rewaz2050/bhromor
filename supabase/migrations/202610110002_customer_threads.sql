@@ -25,6 +25,12 @@ create table if not exists public.customer_threads (
   /** The order this is about, when it is about one. */
   order_no text,
   status text not null default 'open' check (status in ('open', 'closed')),
+  /**
+   * When the shopper last looked at the thread. "Unread" is every reply that
+   * arrived after it — no read receipts per message, which a small shop inbox
+   * does not need and a per-message table would cost.
+   */
+  customer_read_at timestamptz,
   created_at timestamptz not null default now(),
   /** So the inbox sorts by "who spoke last" without a join. */
   last_message_at timestamptz not null default now()
