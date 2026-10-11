@@ -36,6 +36,7 @@ import NotifyOptIn from "./notify-opt-in";
 import ShareTrackerButton from "./share-tracker-button";
 import WhileYouWaitRail from "./while-you-wait-rail";
 import DelayNote from "./delay-note";
+import RiderCard from "./rider-card";
 import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
@@ -336,6 +337,11 @@ export default function TrackView() {
             {/* Live delivery map & security PIN — only while a rider can
                 actually come (P2 #21): not for pickup, courier, delivered
                 or cancelled orders. */}
+            {/* Who is coming and how to reach them — always, not only once
+                the parcel is late (2026-10-11). Renders nothing with no rider
+                on the job, so pickup / courier orders stay clean. */}
+            <RiderCard order={order} />
+
             {showsRiderMap(order) ? <LiveDeliveryMap order={order} /> : null}
 
             {/* Post-purchase pass (2026-10-06): when the promised window has
