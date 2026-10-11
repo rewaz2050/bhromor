@@ -88,7 +88,7 @@ describe("AccountView — the rebuilt dashboard", () => {
     );
   });
 
-  it("the last-order shortcut points at the tracker for the remembered order", async () => {
+  it("the last-order shortcut points at the tracker, carrying the phone so it opens by itself", async () => {
     signedInRoutes();
     window.localStorage.setItem(
       "prosanti.last-order.v1",
@@ -97,7 +97,9 @@ describe("AccountView — the rebuilt dashboard", () => {
     try {
       render(<AccountView />);
       const shortcut = await screen.findByTestId("account-hero-track");
-      expect(shortcut).toHaveAttribute("href", "/track?id=PS-77");
+      // The phone rides along: /track only looks the order up by itself when
+      // it has both (2026-10-11). Without it the customer retyped their number.
+      expect(shortcut).toHaveAttribute("href", "/track?id=PS-77&phone=01712345678");
     } finally {
       window.localStorage.removeItem("prosanti.last-order.v1");
     }

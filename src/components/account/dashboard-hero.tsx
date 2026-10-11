@@ -11,7 +11,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { readLastOrder } from "@/lib/last-order";
+import { readLastOrder, trackHref } from "@/lib/last-order";
 import {
   IconClock,
   IconStar,
@@ -115,7 +115,7 @@ export default function DashboardHero({
         <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
           {lastOrderId ? (
             <Link
-              href={`/track?id=${encodeURIComponent(lastOrderId)}`}
+              href={trackHref(lastOrderId, customer.phone)}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-gold-400 px-5 text-sm font-semibold text-forest-950 transition-colors hover:bg-gold-300"
               data-testid="account-hero-track"
             >

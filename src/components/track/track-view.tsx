@@ -40,6 +40,7 @@ import RiderCard from "./rider-card";
 import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
 
 /** How often an open tracker re-reads the order (see the poll below). */
 const TRACK_REFRESH_MS = 15_000;
@@ -165,19 +166,14 @@ export default function TrackView() {
    * on the tracker overnight costs nothing.
    */
   const order = result?.found ? result.order : null;
-  useEffect(() => {
-    if (!order) return;
-    const stage = orderStage(order);
-    // Nothing left to change — stop asking.
-    if (stage === "delivered" || stage === "cancelled" || stage === "failed") return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void lookup(orderId, phone, true);
-    }, TRACK_REFRESH_MS);
-    return () => {
-      window.clearInterval(id);
-    };
-  }, [order, orderId, phone, lookup]);
+  const stage = order ? orderStage(order) : null;
+  // Nothing left to change — stop asking.
+  const orderMoving =
+    stage !== null && stage !== "delivered" && stage !== "cancelled" && stage !== "failed";
+  const recheck = useCallback(() => {
+    void lookup(orderId, phone, true);
+  }, [lookup, orderId, phone]);
+  useLiveRefresh(orderMoving, TRACK_REFRESH_MS, recheck);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
