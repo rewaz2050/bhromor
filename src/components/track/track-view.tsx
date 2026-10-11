@@ -31,7 +31,7 @@ import RiderRatingAsk from "@/components/track/rider-rating-ask";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
-import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
+import OrderNowBanner, { orderStage, showsRiderMap } from "./order-now-banner";
 import NotifyOptIn from "./notify-opt-in";
 import ShareTrackerButton from "./share-tracker-button";
 import WhileYouWaitRail from "./while-you-wait-rail";
@@ -40,6 +40,9 @@ import RiderCard from "./rider-card";
 import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
+
+/** How often an open tracker re-reads the order (see the poll below). */
+const TRACK_REFRESH_MS = 15_000;
 
 /**
  * Public-facing steps — the four milestones from `PUBLIC_STEPS`
@@ -114,32 +117,67 @@ export default function TrackView() {
     };
   }, []);
 
-  const lookup = useCallback(async (rawId: string, rawPhone: string) => {
-    const id = rawId.trim().toUpperCase();
-    const ph = rawPhone.trim();
-    if (!id || !ph) return;
-    setChecking(true);
-    setLookupFailed(false);
-    try {
-      const res = await fetch(
-        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
-      );
-      const data = (await res.json().catch(() => null)) as {
-        order?: Order;
-      } | null;
-      if (res.ok && data?.order) {
-        setResult({ found: true, order: data.order, via: "live" });
-      } else if (res.status === 404) {
-        setResult({ found: false });
-      } else {
-        setLookupFailed(true);
+  const lookup = useCallback(
+    async (rawId: string, rawPhone: string, silent = false) => {
+      const id = rawId.trim().toUpperCase();
+      const ph = rawPhone.trim();
+      if (!id || !ph) return;
+      // A background re-check must not flash the form: the customer is
+      // reading a live order, not waiting on a search.
+      if (!silent) {
+        setChecking(true);
+        setLookupFailed(false);
       }
-    } catch {
-      setLookupFailed(true);
-    } finally {
-      setChecking(false);
-    }
-  }, []);
+      try {
+        const res = await fetch(
+          `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
+        );
+        const data = (await res.json().catch(() => null)) as {
+          order?: Order;
+        } | null;
+        if (res.ok && data?.order) {
+          setResult({ found: true, order: data.order, via: "live" });
+        } else if (silent) {
+          // One dropped poll is not news — the next tick tries again.
+          return;
+        } else if (res.status === 404) {
+          setResult({ found: false });
+        } else {
+          setLookupFailed(true);
+        }
+      } catch {
+        if (!silent) setLookupFailed(true);
+      } finally {
+        if (!silent) setChecking(false);
+      }
+    },
+    [],
+  );
+
+  /**
+   * The page used to read the order exactly once, so it could sit on
+   * "Confirmed" for the whole delivery while the rider had already picked it
+   * up — the rider's pin moved (LIVE_POLL_MS) but the milestone did not. Push
+   * covers a closed tab; nothing covered an open one.
+   *
+   * 15 s sits far inside /api/track's 30-per-minute-per-IP limit even with a
+   * couple of tabs open, and the poll pauses on a hidden tab so a phone left
+   * on the tracker overnight costs nothing.
+   */
+  const order = result?.found ? result.order : null;
+  useEffect(() => {
+    if (!order) return;
+    const stage = orderStage(order);
+    // Nothing left to change — stop asking.
+    if (stage === "delivered" || stage === "cancelled" || stage === "failed") return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void lookup(orderId, phone, true);
+    }, TRACK_REFRESH_MS);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [order, orderId, phone, lookup]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,8 +214,6 @@ export default function TrackView() {
     setPhone(lastOrder.phone);
     void lookup(lastOrder.id, lastOrder.phone);
   };
-
-  const order = result?.found ? result.order : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[420px_1fr]">
