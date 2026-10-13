@@ -46,6 +46,7 @@ import {
   zoneDemand,
 } from "@/lib/insights";
 import { shelfState } from "@/lib/product-shelf";
+import MessagesAwaitingCard from "@/components/vendor/messages-awaiting-card";
 import OnboardingChecklist from "@/components/vendor/onboarding-checklist";
 import ServiceScoreCard from "@/components/vendor/service-score-card";
 import FollowersCard from "@/components/vendor/followers-card";
@@ -224,6 +225,10 @@ export default function VendorDashboardPage() {
       )}
 
       <VendorPushCard enabled={me?.shop.status === "active"} />
+
+      {/* 2026-10-13 — a shopper's question is the one queue here that did
+          not announce itself. Renders nothing when the inbox is clear. */}
+      <MessagesAwaitingCard />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">

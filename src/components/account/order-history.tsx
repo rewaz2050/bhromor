@@ -64,9 +64,11 @@ const STEP_LABEL: Record<(typeof PUBLIC_STEPS)[number]["key"], TranslationKey> =
   delivered: "track.stepDelivered",
 };
 
-/** Still somewhere between the shop and the doorstep. */
-export const isOrderActive = (status: OrderStatus): boolean =>
-  status !== "delivered" && status !== "cancelled";
+// The rule moved to `lib/order-activity` so the home page can ask the same
+// question without pulling this whole component into its bundle; re-exported
+// here so every existing caller keeps working.
+export { isOrderActive } from "@/lib/order-activity";
+import { isOrderActive } from "@/lib/order-activity";
 
 const when = (ms: number, lang: "en" | "bn"): string =>
   new Date(ms).toLocaleString(lang === "bn" ? "bn-BD" : "en-GB", {

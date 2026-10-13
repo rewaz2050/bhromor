@@ -17,6 +17,16 @@ afterEach(() => {
   cleanup();
 });
 
+/** `+offset` days from today, as YYYY-MM-DD — a fixed window here would
+ * disable the save button the morning after it ends. */
+const day = (offset: number): string => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offset);
+  return d.toISOString().slice(0, 10);
+};
+const START = day(2);
+const END = day(4);
+
 const saved: Array<{ start: string | null; end: string | null; note: string }> = [];
 
 const renderCard = (vacation?: ShopVacation | null, fail = false) => {
@@ -48,15 +58,15 @@ describe("VacationCard (B6)", () => {
 
   it("saves the two dates the shop picked, exactly as picked", async () => {
     const onSave = renderCard(null);
-    type("vacation-start", "2026-10-10");
-    type("vacation-end", "2026-10-12");
+    type("vacation-start", START);
+    type("vacation-end", END);
     type("vacation-note", "Closed for Eid");
     fireEvent.click(screen.getByTestId("vacation-save"));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
     expect(saved.at(-1)).toEqual({
-      start: "2026-10-10",
-      end: "2026-10-12",
+      start: START,
+      end: END,
       note: "Closed for Eid",
     });
     await waitFor(() =>
@@ -66,8 +76,8 @@ describe("VacationCard (B6)", () => {
 
   it("blocks a save that ends before it starts, and says why", async () => {
     const onSave = renderCard(null);
-    type("vacation-start", "2026-10-12");
-    type("vacation-end", "2026-10-10");
+    type("vacation-start", END);
+    type("vacation-end", START);
     expect(screen.getByTestId("vacation-save")).toBeDisabled();
     expect(screen.getByTestId("vacation-hint")).toHaveTextContent("cannot end before it starts");
     fireEvent.click(screen.getByTestId("vacation-save"));
@@ -76,8 +86,8 @@ describe("VacationCard (B6)", () => {
 
   it("blocks a holiday longer than the cap and points at the Open switch", async () => {
     const onSave = renderCard(null);
-    type("vacation-start", "2026-10-01");
-    type("vacation-end", "2026-12-31");
+    type("vacation-start", START);
+    type("vacation-end", day(400));
     expect(screen.getByTestId("vacation-hint")).toHaveTextContent("at most 45 days");
     fireEvent.click(screen.getByTestId("vacation-save"));
     expect(onSave).not.toHaveBeenCalled();
@@ -156,8 +166,8 @@ describe("VacationCard (B6)", () => {
 
   it("reports a failed save instead of pretending it worked", async () => {
     renderCard(null, true);
-    type("vacation-start", "2026-10-10");
-    type("vacation-end", "2026-10-12");
+    type("vacation-start", START);
+    type("vacation-end", END);
     fireEvent.click(screen.getByTestId("vacation-save"));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Could not save"));
     expect(screen.queryByRole("status")).toBeNull();

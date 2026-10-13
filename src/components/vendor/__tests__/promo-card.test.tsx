@@ -24,7 +24,10 @@ const promo = (over: Partial<VendorPromoRow> = {}): VendorPromoRow => ({
   usageLimit: 50,
   used: over.used ?? 7,
   active: over.active ?? true,
-  validUntil: Date.parse("2026-10-12T00:00:00Z"),
+  // Computed, never typed: a fixed expiry makes every "Live" row read
+  // "Expired" the morning after that day, which is a fixture going stale,
+  // not the card breaking.
+  validUntil: over.validUntil ?? Date.now() + 30 * 24 * 60 * 60 * 1000,
   ...over,
 });
 

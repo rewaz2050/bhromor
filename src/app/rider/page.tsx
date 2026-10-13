@@ -29,6 +29,8 @@ import { TaskCard } from "@/components/rider/dashboard/task-card";
 import { PinModal } from "@/components/rider/dashboard/pin-modal";
 import { SettleModal } from "@/components/rider/dashboard/settle-modal";
 import { LocationHealth } from "@/components/rider/dashboard/location-health";
+import IncentiveProgress from "@/components/rider/dashboard/incentive-progress";
+import RatingTile from "@/components/rider/dashboard/rating-tile";
 
 export default function RiderPage() {
   const session = useRiderSession();
@@ -333,6 +335,14 @@ export default function RiderPage() {
         />
 
         <StatsStrip activeTrips={activeTrips} deliveredCount={deliveredCount} stats={riderStats.stats} />
+
+        {/* 2026-10-13 — what to aim at and where the rider stands. The
+            bonus target lived only on /rider/earnings; the rating was a
+            10px footnote. Both belong on the screen work starts from. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <RatingTile stats={riderStats.stats} />
+          <IncentiveProgress enabled={isLive} />
+        </div>
 
         {/* Active Jobs Section */}
         <section aria-label="Active tasks">

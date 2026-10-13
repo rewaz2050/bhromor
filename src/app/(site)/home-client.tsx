@@ -15,6 +15,7 @@ import type { HomeSettings } from "@/lib/home-cms";
 import { useLanguage } from "@/components/i18n/language-provider";
 import LiveBanner from "@/components/live/live-banner";
 import HomeDeliveryCheck from "@/components/home/home-delivery-check";
+import HomeOrders from "@/components/home/home-orders";
 import CategoryRow from "@/components/home/category-row";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
@@ -70,6 +71,9 @@ export default function HomeClient() {
       <ScrollDepthTracker />
       {/* P1 #9 — real live-shopping state only; renders nothing otherwise. */}
       <LiveBanner />
+      {/* 2026-10-13 — a shopper with a parcel on the way sees it before the
+          shelf. Guests see nothing; the read never happens without a session. */}
+      <HomeOrders />
       {sections.hero && <Hero cms={settings} />}
       {/* UX plan §2 (R11) — one tap from the first screen into a filtered shop. */}
       {!booting && <QuickChips pool={pool} />}

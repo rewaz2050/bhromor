@@ -24,6 +24,14 @@ const state = vi.hoisted(() => ({
   pendingClaim: null as unknown,
 }));
 
+// The dashboard grew a bonus card in 2026-10-13, which reaches the API
+// through riderFetch. Stubbing the hook at its own boundary keeps this file
+// about the job list rather than about the incentives endpoint; the card has
+// its own tests in components/rider/dashboard/__tests__/home-cards.test.tsx.
+vi.mock("@/lib/use-rider-incentives", () => ({
+  useRiderIncentives: () => ({ view: null, loading: false }),
+}));
+
 vi.mock("@/lib/use-rider", () => ({
   useRiderSession: () => ({
     rider: {
