@@ -34,22 +34,31 @@ seeded backend and a browser". Only one of them does.
 
 | Suite | Network | In CI? |
 | --- | --- | --- |
-| `test:dashboards` — `e2e/dashboards.spec.ts` | intercepts every `**/api/**` with fixtures; config points Supabase at `https://verification.invalid` | yes — job `browser` in `.github/workflows/ci.yml`, Chromium only, no secrets, **`continue-on-error: true`** |
+| `test:dashboards` — `e2e/dashboards.spec.ts` | intercepts every `**/api/**` with fixtures; config points Supabase at `https://verification.invalid` | on `main` and on demand — job `browser` in `.github/workflows/ci.yml`, Chromium only, no secrets, `continue-on-error`, skipped on pull requests |
 | `test:e2e` — `e2e/storefront.spec.ts` | stubs nothing; asserts on `/product/heritage-green-panjabi` by slug | no — needs a real seeded catalog, so it would fail against an empty shop |
 
 So the storefront suite is opt-in until there is a staging database to point it
-at. The dashboards suite runs on every push, but it is **not yet a gate**: its
-first CI run (`38404495301`) installed Chromium cleanly and then failed in the
-test step, and the detail could not be read — the Actions log host
-(`results-receiver.actions.githubusercontent.com`) and the artifact blob
-(`*.blob.core.windows.net`) are both outside the network allowlist of the
+at. The dashboards suite runs, but it is **not a gate and not on pull
+requests**: its first CI run (`38404495301`) installed Chromium cleanly and
+then failed in the test step, and the detail could not be read — the Actions
+log host (`results-receiver.actions.githubusercontent.com`) and the artifact
+blob (`*.blob.core.windows.net`) are both outside the network allowlist of the
 sandbox that wired the job up, and the check-run annotation says only "Process
 completed with exit code 1".
 
+What *was* ruled out from the source, without a browser: every selector and
+route the spec uses still resolves. `account-tab-profile` is generated from
+`` data-testid={`account-tab-${key}`} `` with `profile` in the tab list, the
+six Bengali button/label strings all still appear in `src`, and the five
+routes (`/account`, `/admin/deliveries`, `/rider/profile`, `/vendor/orders`,
+`/vendor/settings`) all exist. So it is not a stale selector — which is why
+guessing further was not worth more than saying so.
+
 **To close this out:** open run `38404495301` → job `browser` → step
 `Dashboards` in the GitHub UI, or download the `playwright-report` artifact
-from that run. Fix what it names, then remove `continue-on-error: true` from
-the job in `.github/workflows/ci.yml` and it becomes a real gate.
+from that run. Fix what it names, then in `.github/workflows/ci.yml` remove
+both `continue-on-error: true` and the `if: github.event_name != 'pull_request'`
+line, and it becomes a real gate on pull requests.
 
 For an existing preview:
 ```bash

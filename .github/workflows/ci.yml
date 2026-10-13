@@ -69,7 +69,13 @@ jobs:
   # allowlist. Pretending that is a verified gate would be worse than saying
   # so. Read the uploaded `playwright-report`, fix what it names, then drop
   # `continue-on-error` and let it gate.
+  #
+  # Skipped on pull requests for the same reason: a failing check that cannot
+  # block still paints the PR "UNSTABLE", and a permanent yellow cross
+  # teaches people to stop reading the rest of them. It runs on main and on
+  # demand, which is where a report nobody has triaged yet belongs.
   browser:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
