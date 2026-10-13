@@ -5,15 +5,16 @@
  * question was invisible until the shop opened the tab. The card's whole job
  * is to be loud when there is something to answer and absent when there is
  * not — a permanent empty card on a counter phone is just noise.
+ *
+ * Presentational since the same read also feeds the bell, so these tests hand
+ * it rows rather than a fetch.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import MessagesAwaitingCard from "../messages-awaiting-card";
+import type { ThreadSummary } from "@/lib/db/customer-threads";
 
-const jsonResponse = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status });
-
-const thread = (over: Record<string, unknown> = {}) => ({
+const thread = (over: Partial<ThreadSummary> = {}): ThreadSummary => ({
   id: "t1",
   orderNo: "PS-20261013-0004",
   shopId: "s1",
@@ -27,46 +28,42 @@ const thread = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const originalFetch = globalThis.fetch;
-let threads: unknown[];
-
-beforeEach(() => {
-  threads = [thread()];
-  globalThis.fetch = vi.fn(async () => jsonResponse({ threads })) as unknown as typeof fetch;
-});
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  cleanup();
-  vi.restoreAllMocks();
-});
+afterEach(cleanup);
 
 describe("MessagesAwaitingCard", () => {
-  it("shouts when a shopper's question has no answer", async () => {
-    render(<MessagesAwaitingCard />);
-    await waitFor(() =>
-      expect(screen.getByTestId("messages-awaiting-card")).toBeTruthy(),
+  it("shouts when a shopper's question has no answer", () => {
+    render(
+      <MessagesAwaitingCard threads={[thread()]} awaiting={1} loading={false} />,
     );
-    expect(screen.getByText(/waiting on your reply/)).toBeTruthy();
+    expect(screen.getByTestId("messages-awaiting-card")).toBeTruthy();
+    expect(screen.getByText(/1 shopper is waiting on your reply/)).toBeTruthy();
     expect(screen.getByText(/Is the M in stock\?/)).toBeTruthy();
   });
 
-  it("stays out of the way once the shop has the last word", async () => {
-    threads = [thread({ lastSender: "shop", lastBody: "Yes, two left." })];
-    render(<MessagesAwaitingCard />);
-    // Give the read time to land before asserting absence.
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.queryByTestId("messages-awaiting-card")).toBeNull(),
+  it("stays out of the way once the shop has the last word", () => {
+    render(
+      <MessagesAwaitingCard
+        threads={[thread({ lastSender: "shop", lastBody: "Yes, two left." })]}
+        awaiting={0}
+        loading={false}
+      />,
     );
+    expect(screen.queryByTestId("messages-awaiting-card")).toBeNull();
   });
 
-  it("ignores a closed thread — nobody owes an answer there", async () => {
-    threads = [thread({ status: "closed" })];
-    render(<MessagesAwaitingCard />);
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.queryByTestId("messages-awaiting-card")).toBeNull(),
+  it("says nothing while the inbox is still loading — no empty flash", () => {
+    render(<MessagesAwaitingCard threads={[]} awaiting={1} loading />);
+    expect(screen.queryByTestId("messages-awaiting-card")).toBeNull();
+  });
+
+  it("lists at most three, so a backlog does not push the order queue down", () => {
+    const threads = [1, 2, 3, 4].map((n) =>
+      thread({ id: `t${n}`, orderNo: `PS-20261013-000${n}` }),
     );
+    render(
+      <MessagesAwaitingCard threads={threads} awaiting={4} loading={false} />,
+    );
+    expect(screen.getByText(/4 shoppers are waiting/)).toBeTruthy();
+    expect(screen.getAllByText(/PS-20261013-000/)).toHaveLength(3);
   });
 });

@@ -12,14 +12,24 @@
  * reply" is an open thread whose last message came from the customer, which
  * clears by itself the moment the shop answers — no read marker, no third
  * migration, and nothing that can get stuck.
+ *
+ * Presentational on purpose: the dashboard reads the inbox once and feeds
+ * both this card and the bell, rather than the two of them polling it apart.
  */
 
 import Link from "next/link";
-import { useVendorThreads } from "@/lib/use-vendor";
 import { formatDateTime } from "@/components/vendor/vendor-ui";
+import type { ThreadSummary } from "@/lib/db/customer-threads";
 
-export default function MessagesAwaitingCard() {
-  const { threads, awaiting, loading } = useVendorThreads(true);
+export default function MessagesAwaitingCard({
+  threads,
+  awaiting,
+  loading,
+}: {
+  threads: ThreadSummary[];
+  awaiting: number;
+  loading: boolean;
+}) {
   if (loading || awaiting === 0) return null;
 
   const waiting = threads

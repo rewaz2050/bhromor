@@ -13,7 +13,7 @@
  * the order server-side, never from here.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustomer } from "@/lib/use-customer";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconChat } from "@/components/ui/icons";
@@ -27,6 +27,32 @@ export default function MessageShop({ order }: { order: Order }) {
   const [busy, setBusy] = useState(false);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  // A conversation that already exists is shown, not re-offered as a blank
+  // composer. Without this the shopper who had written before came back to an
+  // empty box — and if the shop had answered, nothing on the page said so.
+  useEffect(() => {
+    if (!customer || threadId) return;
+    let cancelled = false;
+    fetch(`/api/account/threads?orderNo=${encodeURIComponent(order.id)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const first = (data as { threads?: { id: string }[] } | null)?.threads?.[0];
+        // A 501 (migration not run) leaves threadId null, so the composer
+        // stays and says so when the shopper tries to send.
+        if (first?.id) setThreadId(first.id);
+      })
+      .catch(() => {
+        /* offline or unconfigured — the composer still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customer, threadId, order.id]);
 
   const signInHref = `/account?next=${encodeURIComponent(
     typeof window === "undefined" ? "/track" : `${window.location.pathname}${window.location.search}`,

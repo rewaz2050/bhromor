@@ -26,6 +26,7 @@ import {
   useVendorPromos,
   useVendorReviews,
   useVendorProducts,
+  useVendorThreads,
   vendorErrorMessage,
 } from "@/lib/use-vendor";
 import {
@@ -101,9 +102,13 @@ export default function VendorDashboardPage() {
   // the very orders this page already loaded. No order in the window means
   // no score, not a fake 0%.
   const service = serviceScore(list, { prepMinutes: me?.shop.prepMinutes ?? 0 });
+  // 2026-10-13 — one read of the inbox feeds both the card below and the
+  // bell, so the two of them cannot disagree or poll it apart.
+  const threadInbox = useVendorThreads(me !== null);
   const alertOrder = useVendorOrderAlert(list, {
     enabled: me !== null && me.shop.status === "active",
     shopName: me?.shop.name,
+    messageAwaiting: threadInbox.awaiting,
   });
   // P2 #23 — real demand analytics over the shop's most recent ≤100 orders
   // (the same list this page already shows — cancellations never count).
@@ -228,7 +233,11 @@ export default function VendorDashboardPage() {
 
       {/* 2026-10-13 — a shopper's question is the one queue here that did
           not announce itself. Renders nothing when the inbox is clear. */}
-      <MessagesAwaitingCard />
+      <MessagesAwaitingCard
+        threads={threadInbox.threads}
+        awaiting={threadInbox.awaiting}
+        loading={threadInbox.loading}
+      />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">

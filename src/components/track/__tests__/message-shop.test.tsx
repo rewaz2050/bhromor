@@ -95,6 +95,28 @@ describe("MessageShop", () => {
     expect(await screen.findByTestId("message-thread")).toBeTruthy();
   });
 
+  it("shows the conversation that already exists instead of a blank composer", async () => {
+    signedIn = { customer: { id: "c1", name: "Rahim", phone: "01712345678" } };
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/account/me")) return jsonResponse(signedIn);
+      if (url.includes("/api/account/threads/t1")) return jsonResponse({ messages: [] });
+      if (init?.method === "POST") return jsonResponse({ threadId: "t1" });
+      if (url.includes("/api/account/threads")) {
+        return jsonResponse({ threads: [{ id: "t1", orderNo: "PS-20261011-0001" }] });
+      }
+      return jsonResponse({});
+    }) as unknown as typeof fetch;
+
+    mount();
+    // The shopper wrote before and left; the shop may have answered since.
+    // The conversation takes the place of the "start a conversation" box —
+    // the thread has its own reply field, so the thing that must be gone is
+    // the placeholder that invites a first message.
+    await waitFor(() => expect(screen.getByTestId("message-thread")).toBeTruthy());
+    expect(screen.queryByPlaceholderText(/What would you like to ask/)).toBeNull();
+  });
+
   it("says WhatsApp for now when the tables are not migrated", async () => {
     signedIn = { customer: { id: "c1", name: "Rahim", phone: "01712345678" } };
     globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {

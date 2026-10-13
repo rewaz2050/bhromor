@@ -5,7 +5,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import AdminSidebarNav from "../admin-sidebar-nav";
-import { ADMIN_NAV_GROUPS, __resetAdminNavCache } from "../admin-nav";
+import {
+  ADMIN_NAV_GROUPS,
+  ADMIN_NAV_ITEMS,
+  __resetAdminNavCache,
+} from "../admin-nav";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -24,7 +28,9 @@ describe("AdminSidebarNav", () => {
         screen.getByRole("button", { name: new RegExp(group.label, "i") }),
       ).toBeInTheDocument();
     }
-    expect(screen.getAllByRole("link")).toHaveLength(26);
+    // Derived, not typed: a hardcoded 26 turned adding one nav item into a
+    // red suite that had nothing wrong with it.
+    expect(screen.getAllByRole("link")).toHaveLength(ADMIN_NAV_ITEMS.length);
   });
 
   it("marks the page you are on", () => {

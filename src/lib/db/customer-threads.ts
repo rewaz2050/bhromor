@@ -94,7 +94,7 @@ const toMessage = (row: MessageRow): ThreadMessage => ({
  */
 export const listThreads = async (
   db: SupabaseClient,
-  filter: { phone?: string; shopId?: string; status?: ThreadStatus },
+  filter: { phone?: string; shopId?: string; status?: ThreadStatus; orderNo?: string },
 ): Promise<{ threads: ThreadSummary[]; reason?: ThreadOutcome }> => {
   let query = db
     .from(THREADS_TABLE)
@@ -104,6 +104,9 @@ export const listThreads = async (
   if (filter.phone) query = query.eq("customer_phone", filter.phone);
   if (filter.shopId) query = query.eq("shop_id", filter.shopId);
   if (filter.status) query = query.eq("status", filter.status);
+  // The tracker and the vendor order page need one order's thread, not a
+  // whole inbox — a shopper who wrote three times gets the same row back.
+  if (filter.orderNo) query = query.eq("order_no", filter.orderNo);
 
   const { data, error } = await query;
   if (error) return { threads: [], reason: outcomeOf(error) };
@@ -168,6 +171,25 @@ export const openThread = async (
     .single();
   if (orderError || !order) return { reason: outcomeOf(orderError) };
   const shopId = (order as { shop_id: string | null }).shop_id;
+
+  // One conversation per order, not one per message. Without this every
+  // message from the tracker opened a fresh thread, so a shopper who wrote
+  // three times split one question across three inboxes — and the shop's
+  // answer landed in the first one, where the shopper had stopped looking.
+  const { data: found, error: foundError } = await db
+    .from(THREADS_TABLE)
+    .select("id")
+    .eq("customer_phone", input.phone)
+    .eq("order_no", input.orderNo)
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (foundError) return { reason: outcomeOf(foundError) };
+  const existingId = ((found ?? []) as { id: string }[])[0]?.id;
+  if (existingId) {
+    const appended = await appendMessage(db, existingId, "customer", input.senderName, input.body);
+    return appended === "saved" ? { threadId: existingId, reason: "saved" } : { reason: appended };
+  }
 
   const { data, error } = await db
     .from(THREADS_TABLE)

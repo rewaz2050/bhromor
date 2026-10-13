@@ -129,7 +129,9 @@ describe("openThread", () => {
   it("takes the shop from the order, not from the caller", async () => {
     const { db, inserts, log } = fake({
       orders: [{ data: { id: "o1", shop_id: "s7" } }],
-      customer_threads: [{ data: { id: "t9" } }],
+      // First read is the "does this order already have a thread" check; the
+      // second is the insert's own .select("id").
+      customer_threads: [{ data: [] }, { data: { id: "t9" } }],
       customer_messages: [{ data: { id: "m1" } }],
     });
 
@@ -145,6 +147,33 @@ describe("openThread", () => {
     expect(inserts[0].rows).toMatchObject({ customer_phone: "01712345678", shop_id: "s7" });
     // The first message is the shopper's own words.
     expect(inserts[1].rows).toMatchObject({ thread_id: "t9", sender: "customer", body: "Is this in stock?" });
+  });
+
+  it("adds to the order's existing thread instead of opening another", async () => {
+    // This is the bug the feature shipped with: every message from the
+    // tracker opened a fresh thread, so one question split across three
+    // inboxes and the shop's answer landed where the shopper had stopped
+    // looking.
+    const { db, inserts } = fake({
+      orders: [{ data: { id: "o1", shop_id: "s7" } }],
+      customer_threads: [{ data: [{ id: "t5" }] }],
+      customer_messages: [{ data: { id: "m2" } }],
+    });
+
+    const out = await openThread(db, {
+      phone: "01712345678",
+      orderNo: "PS-1",
+      body: "And the blue one?",
+      senderName: "Rahim",
+    });
+
+    expect(out).toEqual({ threadId: "t5", reason: "saved" });
+    // One insert — the message. No second thread was created.
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]).toMatchObject({
+      table: "customer_messages",
+      rows: { thread_id: "t5", sender: "customer", body: "And the blue one?" },
+    });
   });
 
   it("refuses an order number that is not there", async () => {

@@ -20,7 +20,14 @@ export async function GET(request: Request) {
   if (!customer) return apiError("আগে লগ ইন করুন।", 401);
   const db = getSupabaseService();
   if (!db) return apiError("সেবা সাময়িক বন্ধ আছে।", 503);
-  const { threads, reason } = await listThreads(db, { phone: normalizePhone(customer.phone) });
+  // `?orderNo=` narrows to one order — the tracker asks for the conversation
+  // it is standing on rather than downloading the whole inbox to search it.
+  const url = new URL(request.url);
+  const asked = url.searchParams.get("orderNo")?.trim().toUpperCase().slice(0, 32) ?? "";
+  const { threads, reason } = await listThreads(db, {
+    phone: normalizePhone(customer.phone),
+    orderNo: asked === "" ? undefined : asked,
+  });
   return apiJson({ threads, reason: reason ?? null });
 }
 

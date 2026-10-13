@@ -18,6 +18,8 @@ export const GET = vendorRoute("threads-list", async (ctx, request) => {
   const threads = await listThreads(ctx.db, {
     shopId: ctx.shopId,
     status: status === "open" || status === "closed" ? (status as ThreadStatus) : undefined,
+    // The order page asks for this order's conversation only.
+    orderNo: (url.searchParams.get("orderNo")?.trim().toUpperCase().slice(0, 32)) || undefined,
   });
   return apiJson(threads);
 });

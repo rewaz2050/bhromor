@@ -25,6 +25,7 @@ import { canQuickCancel, primaryAction } from "@/lib/order-actions";
 import { useVendorOrder, vendorErrorMessage } from "@/lib/use-vendor";
 import PaymentCard from "@/components/admin/payment-card";
 import ShopRiderCard from "@/components/vendor/shop-rider-card";
+import VendorOrderThread from "@/components/vendor/vendor-order-thread";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 
 /** Optional extra step — packing takes a while and the customer should see it. */
@@ -312,6 +313,9 @@ export default function VendorOrderDetailPage({
         </section>
 
         <div className="space-y-4">
+          {/* 2026-10-13 — the shopper's question, on the order it is about.
+              Renders nothing when nobody has written. */}
+          <VendorOrderThread orderNo={order.id} />
           <section className="rounded-2xl bg-paper p-5 ring-1 ring-line">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">
               {order.isPickup ? "Customer — collects at the counter" : "Customer + delivery"}
