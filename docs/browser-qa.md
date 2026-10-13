@@ -27,6 +27,21 @@ npx playwright install --with-deps chromium
 npm run test:e2e
 ```
 
+### Which suite runs where (2026-10-13)
+
+The two suites were kept out of CI together, on the grounds that both "need a
+seeded backend and a browser". Only one of them does.
+
+| Suite | Network | In CI? |
+| --- | --- | --- |
+| `test:dashboards` — `e2e/dashboards.spec.ts` | intercepts every `**/api/**` with fixtures; config points Supabase at `https://verification.invalid` | **yes** — job `browser` in `.github/workflows/ci.yml`, Chromium only, no secrets |
+| `test:e2e` — `e2e/storefront.spec.ts` | stubs nothing; asserts on `/product/heritage-green-panjabi` by slug | no — needs a real seeded catalog, so it would fail against an empty shop |
+
+So the storefront suite is opt-in until there is a staging database to point it
+at, and the dashboards suite is a gate. Neither was verified in the sandbox
+they were wired from — Playwright's browser CDN is unreachable there — so the
+first CI run is the check.
+
 For an existing preview:
 ```bash
 E2E_BASE_URL=http://localhost:3000 npm run test:e2e
