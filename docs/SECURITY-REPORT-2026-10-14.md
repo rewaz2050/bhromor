@@ -284,3 +284,32 @@ Vercel/বেশিরভাগ প্রক্সি ক্লায়েন�
 3. **L1 CSP enforce** — report-only পর্যবেক্ষণের পর `Content-Security-Policy`-তে উন্নীত করুন (ক্রমান্বয়ে)।
 4. **Cloudinary monitoring/alerting (L7)** — GitHub Actions cleanup workflow আগে থেকেই আছে; পরিমাণ/ব্যয় alerting অ্যাকাউন্ট-স্তরের কাজ।
 5. **Cookie name switch** — production deploy-এ সব মানুষ একবার লগ আউট হবে (`__Host-` prefix)।
+
+---
+
+## Round 2 sweep (১৪ অক্টোবর ২০২৬) — অতিরিক্ত ফাইন্ডিং ও প্রতিকার
+
+প্রথম রাউন্ডের পর কোডবেসের বাকি অংশ আবার ঘেঁটে (proxy/middleware, checkout
+pricing, webhooks, cron fallback, uploads, events sink, headers, deps, repo
+hygiene) যা যা পাওয়া গেল:
+
+| # | গ্যাপ | প্রতিকার | গুরুত্ব |
+|---|------|---------|---------|
+| R1 | Production dependencies-এ **১ critical + ২ high CVE**: `next` 16.3.4 (next/og RCE — GHSA-vcvr-r3jv-pc5j, SSG/ISR cache poisoning ×২, Image Optimization SSRF, metadata image disclosure), `sharp` (librsvg CVE-2026-96889), `source-map-js` (event-loop DoS) | `next` → **16.4.0**, `npm audit fix` — এখন `npm audit --omit=dev` = **0 vulnerabilities**; সম্পূর্ণ test suite (৩৬৭৫) + build নতুন ভার্সনে পাস | **গুরুতর** |
+| R2 | `/api/health`-এর `x-health-token` তুলনা সাধারণ `===` (timing side-channel) | `timingSafeEqual` — cron/service secret-এর একই প্যাটার্ন | নিম্ন |
+| — | H3 লাইব্রেরি (track-token/track-gate) টেস্ট-কভার ছাড়া | ১২টি নতুন unit test (HMAC stability/normalize, verify নাকচ, strict vs relaxed budget, cross-site guard) | হাইজিন |
+
+**যাচাই করা হয়েছে, আগেই ঠিক আছে (ভাঙা হয়নি):**
+- Checkout pricing **server-side** recompute (`order-split.ts`: "price the SHOP
+  published, never the client's") — ক্লায়েন্ট total tamper সম্ভব নয়।
+- `CRON_SECRET` না থাকলে cron 503 (fail-closed) — কোনো `local-dev` fallback নেই।
+- Uploads: `/api/media/sign` staffRoute + folder allow-list; rider আলাদা সাইনে।
+- `/api/events`: whitelist + ≤25/batch + 16KB cap + rate limit + no PII।
+- Health detail (counts/flags) শুধু staff বা `HEALTH_TOKEN` ধারীকে; পাবলিক শুধু `live` boolean।
+- Admin pages `robots: index:false`; `src/app/robots.ts` আছে।
+- `?next=` redirect: same-origin check (`url.origin` mismatch → null) — open redirect নেই।
+- Security headers পূর্ণ: HSTS, nosniff, Referrer-Policy, Permissions-Policy, CSP (report-only), X-Frame-Options (non-Vercel সহ)।
+- কোডবেসে কোনো TODO/FIXME নেই; গিটে কোনো secret/`.env` ট্র্যাকড নেই।
+- `src/proxy.ts` (Next 16 middleware) — distributed rate limit + Supabase session refresh।
+
+**Verification (round 2):** `tsc` clean · `next build` (16.4.0) pass · `vitest` ৫৩৬ files / ৩৬৭৫ tests pass · `npm audit --omit=dev` 0 vulnerabilities।
