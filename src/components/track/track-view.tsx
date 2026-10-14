@@ -31,14 +31,20 @@ import RiderRatingAsk from "@/components/track/rider-rating-ask";
 import PaymentStatus from "./payment-status";
 import CancelPanel from "./cancel-panel";
 import ReorderButton from "@/components/orders/reorder-button";
-import OrderNowBanner, { showsRiderMap } from "./order-now-banner";
+import OrderNowBanner, { orderStage, showsRiderMap } from "./order-now-banner";
 import NotifyOptIn from "./notify-opt-in";
 import ShareTrackerButton from "./share-tracker-button";
 import WhileYouWaitRail from "./while-you-wait-rail";
 import DelayNote from "./delay-note";
+import RiderCard from "./rider-card";
+import MessageShop from "./message-shop";
 import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
+import { useLiveRefresh } from "@/lib/use-live-refresh";
+
+/** How often an open tracker re-reads the order (see the poll below). */
+const TRACK_REFRESH_MS = 15_000;
 
 /**
  * Public-facing steps — the four milestones from `PUBLIC_STEPS`
@@ -113,32 +119,62 @@ export default function TrackView() {
     };
   }, []);
 
-  const lookup = useCallback(async (rawId: string, rawPhone: string) => {
-    const id = rawId.trim().toUpperCase();
-    const ph = rawPhone.trim();
-    if (!id || !ph) return;
-    setChecking(true);
-    setLookupFailed(false);
-    try {
-      const res = await fetch(
-        `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
-      );
-      const data = (await res.json().catch(() => null)) as {
-        order?: Order;
-      } | null;
-      if (res.ok && data?.order) {
-        setResult({ found: true, order: data.order, via: "live" });
-      } else if (res.status === 404) {
-        setResult({ found: false });
-      } else {
-        setLookupFailed(true);
+  const lookup = useCallback(
+    async (rawId: string, rawPhone: string, silent = false) => {
+      const id = rawId.trim().toUpperCase();
+      const ph = rawPhone.trim();
+      if (!id || !ph) return;
+      // A background re-check must not flash the form: the customer is
+      // reading a live order, not waiting on a search.
+      if (!silent) {
+        setChecking(true);
+        setLookupFailed(false);
       }
-    } catch {
-      setLookupFailed(true);
-    } finally {
-      setChecking(false);
-    }
-  }, []);
+      try {
+        const res = await fetch(
+          `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
+        );
+        const data = (await res.json().catch(() => null)) as {
+          order?: Order;
+        } | null;
+        if (res.ok && data?.order) {
+          setResult({ found: true, order: data.order, via: "live" });
+        } else if (silent) {
+          // One dropped poll is not news — the next tick tries again.
+          return;
+        } else if (res.status === 404) {
+          setResult({ found: false });
+        } else {
+          setLookupFailed(true);
+        }
+      } catch {
+        if (!silent) setLookupFailed(true);
+      } finally {
+        if (!silent) setChecking(false);
+      }
+    },
+    [],
+  );
+
+  /**
+   * The page used to read the order exactly once, so it could sit on
+   * "Confirmed" for the whole delivery while the rider had already picked it
+   * up — the rider's pin moved (LIVE_POLL_MS) but the milestone did not. Push
+   * covers a closed tab; nothing covered an open one.
+   *
+   * 15 s sits far inside /api/track's 30-per-minute-per-IP limit even with a
+   * couple of tabs open, and the poll pauses on a hidden tab so a phone left
+   * on the tracker overnight costs nothing.
+   */
+  const order = result?.found ? result.order : null;
+  const stage = order ? orderStage(order) : null;
+  // Nothing left to change — stop asking.
+  const orderMoving =
+    stage !== null && stage !== "delivered" && stage !== "cancelled" && stage !== "failed";
+  const recheck = useCallback(() => {
+    void lookup(orderId, phone, true);
+  }, [lookup, orderId, phone]);
+  useLiveRefresh(orderMoving, TRACK_REFRESH_MS, recheck);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,8 +211,6 @@ export default function TrackView() {
     setPhone(lastOrder.phone);
     void lookup(lastOrder.id, lastOrder.phone);
   };
-
-  const order = result?.found ? result.order : null;
 
   return (
     <div className="grid gap-10 lg:grid-cols-[420px_1fr]">
@@ -336,12 +370,22 @@ export default function TrackView() {
             {/* Live delivery map & security PIN — only while a rider can
                 actually come (P2 #21): not for pickup, courier, delivered
                 or cancelled orders. */}
+            {/* Who is coming and how to reach them — always, not only once
+                the parcel is late (2026-10-11). Renders nothing with no rider
+                on the job, so pickup / courier orders stay clean. */}
+            <RiderCard order={order} />
+
             {showsRiderMap(order) ? <LiveDeliveryMap order={order} /> : null}
 
             {/* Post-purchase pass (2026-10-06): when the promised window has
                 passed, say so in minutes — silence is what turns a late
                 parcel into a phone call. */}
             <DelayNote order={order} contactNumber={contactNumber} />
+
+            {/* Ask the shop without leaving the page — the thread stays with
+                the order (2026-10-11). Hidden for pickup/courier orders where
+                there is no shop conversation to have about a delivery. */}
+            <MessageShop order={order} />
 
             {/* The rider's handover photo — the parcel did arrive, here is
                 where it was left. Renders nothing without a photo. */}

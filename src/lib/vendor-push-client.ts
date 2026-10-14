@@ -32,6 +32,10 @@ export type VendorPermission = NotificationPermission | "unsupported";
 /** Why this phone cannot receive pushes at all (null = it can). */
 export const vendorPushBlocker = (env: PushEnv): string | null => {
   if (!env.https) return "This page is not on https — notifications only work on https.";
+  if (env.nativeApp) {
+    // No PushManager in Android's WebView — Web Push cannot register here.
+    return "The PROSANTI app cannot receive Web Push (Android's WebView has no PushManager). Open the panel in Chrome, or add it to the home screen.";
+  }
   if (env.inApp) {
     return `You opened the panel inside ${env.inApp} — notifications do not arrive there. Open it in Chrome.`;
   }

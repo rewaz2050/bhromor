@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useStaff } from "@/lib/use-staff";
 import type { StaffRole } from "@/lib/staff-auth";
+import AdminOnly from "@/components/admin/admin-only";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus, IconShield } from "@/components/ui/icons";
 
@@ -86,6 +87,7 @@ export default function AdminStaffPage() {
   }
 
   return (
+    <AdminOnly note="Staff যোগ করা, role বদলানো আর login তৈরি শুধু admin বা super_admin করতে পারে — আপনার role manager।">
     <div className="space-y-6">
       <div>
         <h2 className="font-display text-lg font-medium text-forest-900">
@@ -254,5 +256,6 @@ export default function AdminStaffPage() {
         until a successor exists.
       </p>
     </div>
+    </AdminOnly>
   );
 }

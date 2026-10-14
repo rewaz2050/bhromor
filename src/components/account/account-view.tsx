@@ -22,6 +22,7 @@ import { Eyebrow } from "@/components/ui/primitives";
 import { LoyaltyCard } from "./loyalty-card";
 import { ReferralCard } from "./referral-card";
 import PlusCard from "./plus-card";
+import MessageInbox from "@/components/messages/message-inbox";
 import OrderHistory from "./order-history";
 import DashboardHero from "./dashboard-hero";
 import { CustomerProfile } from "./customer-profile";
@@ -56,7 +57,7 @@ const nextFromQuery = (): string | null => {
   }
 };
 
-type AccountTab = "orders" | "profile" | "card" | "refer" | "plus";
+type AccountTab = "orders" | "messages" | "profile" | "card" | "refer" | "plus";
 
 export default function AccountView({
   /** The session the server already proved for this request (see /account). */
@@ -64,7 +65,7 @@ export default function AccountView({
 }: {
   initialCustomer?: CustomerInfo | null;
 } = {}) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { customer, checked, refresh, signOut } = useCustomer(initialCustomer);
   const guest = useSyncExternalStore(
     subscribeWishlist,
@@ -182,6 +183,7 @@ export default function AccountView({
   if (customer) {
     const TABS: { key: AccountTab; label: string; icon: React.ReactNode }[] = [
       { key: "orders", label: t("accountTabs.orders"), icon: <IconGift className="h-4 w-4" /> },
+      { key: "messages", label: t("accountTabs.messages"), icon: <IconSend className="h-4 w-4" /> },
       { key: "profile", label: "আমার তথ্য ও ঠিকানা", icon: <IconCheck className="h-4 w-4" /> },
       { key: "card", label: t("accountTabs.card"), icon: <IconStar className="h-4 w-4" /> },
       { key: "refer", label: t("accountTabs.refer"), icon: <IconSend className="h-4 w-4" /> },
@@ -246,6 +248,21 @@ export default function AccountView({
           data-testid={`account-panel-${tab}`}
         >
           {tab === "orders" ? <OrderHistory phone={customer.phone} /> : null}
+          {tab === "messages" ? (
+            <section className="border border-line bg-paper p-6 sm:p-8">
+              <h2 className="font-display text-2xl text-forest-900">
+                {t("accountTabs.messages")}
+              </h2>
+              <div className="mt-4">
+                <MessageInbox
+                  basePath="/api/account/threads"
+                  self="customer"
+                  lang={lang}
+                  emptyHint="এখনো কোনো বার্তা নেই। কোনো অর্ডারের ট্র্যাক পেজ থেকে দোকানকে বার্তা পাঠাতে পারবেন।"
+                />
+              </div>
+            </section>
+          ) : null}
           {tab === "profile" ? <CustomerProfile key={customer.id} customer={customer} onSaved={refresh} /> : null}
           {tab === "card" ? <LoyaltyCard /> : null}
           {tab === "refer" ? <ReferralCard /> : null}

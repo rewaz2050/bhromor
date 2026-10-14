@@ -15,6 +15,9 @@ import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "@/lib/phone";
 import { describeLoginEmail, phoneLoginEmail } from "@/lib/phone-login";
 import { apiJson } from "@/lib/api-response";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const POST = staffRoute(
   "rider-link-rider",
   async ({ db }, request, routeContext) => {
@@ -97,5 +100,5 @@ export const POST = staffRoute(
     }
     return apiJson({ linked: describeLoginEmail(lookup) });
   },
-  { limit: 20 },
+  { limit: 20, roles: ADMIN_ONLY },
 );

@@ -12,6 +12,9 @@ import { pushRiderAnnouncement } from "@/lib/rider-push";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { staffRoute, routeId } from "../../../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const POST = staffRoute(
@@ -32,5 +35,5 @@ export const POST = staffRoute(
     }
     return apiJson({ entry }, 201);
   },
-  { limit: 20 },
+  { limit: 20, roles: ADMIN_ONLY },
 );

@@ -22,6 +22,7 @@ import {
   resetRejectedWhatsAppLink,
 } from "@/lib/onboarding-messages";
 import { waLink } from "@/lib/whatsapp-order";
+import AdminOnly from "@/components/admin/admin-only";
 import { IconCheck, IconPhone, IconShield } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
 
@@ -147,6 +148,7 @@ function PendingCard({
         </div>
       </div>
 
+      <AdminOnly note="Approve/Reject শুধু admin করতে পারে — এটা কারও login-এর দরজা খুলে দেয়। আপনার role manager, তাই তালিকা দেখতে পারবেন, সিদ্ধান্ত নিতে পারবেন না।">
       <div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200">
         <p className="font-semibold">Before approving, call {req.phone} and ask whether they requested this.</p>
         <p className="mt-1">
@@ -182,6 +184,7 @@ function PendingCard({
           {busy === "reject" ? "Rejecting…" : "Reject with note"}
         </button>
       </div>
+      </AdminOnly>
     </li>
   );
 }

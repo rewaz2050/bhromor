@@ -135,3 +135,59 @@ describe("useVendorOrderAlert", () => {
     expect(state.notices[0].href).toBe("/vendor/orders");
   });
 });
+
+describe("useVendorOrderAlert — a shopper is waiting (2026-10-13)", () => {
+  const renderAlert = (initial: number) =>
+    renderHook(
+      ({ n }: { n: number }) =>
+        useVendorOrderAlert([], { enabled: true, messageAwaiting: n }),
+      { initialProps: { n: initial } },
+    );
+
+  it("does not ring at the backlog it opens to", () => {
+    window.localStorage.setItem(VENDOR_ALERT_KEY, "on");
+    installNotification("granted");
+    const { rerender } = renderAlert(2);
+    rerender({ n: 2 });
+    expect(state.notices).toEqual([]);
+  });
+
+  it("rings when another question lands, and points at the inbox", async () => {
+    window.localStorage.setItem(VENDOR_ALERT_KEY, "on");
+    installNotification("granted");
+    const { rerender } = renderAlert(0);
+    await act(async () => {
+      rerender({ n: 1 });
+    });
+    await waitFor(() => expect(state.notices).toHaveLength(1));
+    expect(state.notices[0].href).toBe("/vendor/messages");
+    expect(state.notices[0].title).toMatch(/waiting/);
+  });
+
+  it("keeps quiet while the shop has the ring switched off", async () => {
+    installNotification("granted");
+    const { rerender } = renderAlert(0);
+    await act(async () => {
+      rerender({ n: 1 });
+    });
+    expect(state.notices).toEqual([]);
+  });
+
+  it("rings on the way up, not for every tick the count stays high", async () => {
+    window.localStorage.setItem(VENDOR_ALERT_KEY, "on");
+    installNotification("granted");
+    const { rerender } = renderAlert(0);
+    await act(async () => {
+      rerender({ n: 3 });
+    });
+    await waitFor(() => expect(state.notices).toHaveLength(1));
+    // Answered one, then no change: neither is news.
+    await act(async () => {
+      rerender({ n: 2 });
+    });
+    await act(async () => {
+      rerender({ n: 2 });
+    });
+    expect(state.notices).toHaveLength(1);
+  });
+});

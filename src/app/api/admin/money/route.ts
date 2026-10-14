@@ -28,6 +28,9 @@ import { parsePnlRange, pnlWindow } from "@/lib/money-pnl";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { staffRoute } from "../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("money-read", async ({ db }, request) => {
@@ -86,7 +89,7 @@ export const POST = staffRoute(
     });
     return apiJson({ ok: true, payout });
   },
-  { limit: 30 },
+  { limit: 30, roles: ADMIN_ONLY },
 );
 
 export const PATCH = staffRoute(
@@ -98,5 +101,5 @@ export const PATCH = staffRoute(
     const settings = await writeRiderPaySettings(db, body?.settings ?? body ?? {});
     return apiJson({ settings });
   },
-  { limit: 30 },
+  { limit: 30, roles: ADMIN_ONLY },
 );

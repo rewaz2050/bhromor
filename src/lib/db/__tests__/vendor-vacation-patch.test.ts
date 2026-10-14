@@ -20,23 +20,33 @@ import { vendorShopPatch } from "@/lib/db/vendor";
 // next morning (it did, on 2026-09-29, with a 422 no shop had asked for).
 const TODAY = new Date().toISOString().slice(0, 10);
 
+/** `+offset` days from the module's own "today", as YYYY-MM-DD. */
+const day = (offset: number): string => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offset);
+  return d.toISOString().slice(0, 10);
+};
+/** A window that is still coming, whatever day the suite runs on. */
+const START = day(2);
+const END = day(4);
+
 const patchFor = (body: Record<string, unknown>, role: "owner" | "staff" = "owner") =>
   vendorShopPatch(body, role);
 
 describe("vendorShopPatch — the holiday (B6)", () => {
   it("stores the window the owner booked, with the note", () => {
-    const patch = patchFor({ vacationStart: "2026-10-10", vacationEnd: "2026-10-12", vacationNote: "Eid" });
+    const patch = patchFor({ vacationStart: START, vacationEnd: END, vacationNote: "Eid" });
     expect(patch).toMatchObject({
-      vacation_start: "2026-10-10",
-      vacation_end: "2026-10-12",
+      vacation_start: START,
+      vacation_end: END,
       vacation_note: "Eid",
     });
   });
 
   it("reads the database's own field names as well as the form's", () => {
     expect(
-      patchFor({ vacation_start: "2026-10-10", vacation_end: "2026-10-12" }),
-    ).toMatchObject({ vacation_start: "2026-10-10", vacation_end: "2026-10-12" });
+      patchFor({ vacation_start: START, vacation_end: END }),
+    ).toMatchObject({ vacation_start: START, vacation_end: END });
   });
 
   it("clears the holiday when both dates come back empty", () => {
@@ -48,31 +58,31 @@ describe("vendorShopPatch — the holiday (B6)", () => {
   });
 
   it("refuses a window that ends before it starts", () => {
-    expect(() => patchFor({ vacationStart: "2026-10-12", vacationEnd: "2026-10-10" })).toThrow(
+    expect(() => patchFor({ vacationStart: END, vacationEnd: START })).toThrow(
       /cannot end before/i,
     );
   });
 
   it("refuses half a window", () => {
-    expect(() => patchFor({ vacationStart: "2026-10-10" })).toThrow(/last day/i);
-    expect(() => patchFor({ vacationEnd: "2026-10-12" })).toThrow(/first day/i);
+    expect(() => patchFor({ vacationStart: START })).toThrow(/last day/i);
+    expect(() => patchFor({ vacationEnd: END })).toThrow(/first day/i);
   });
 
   it("refuses a holiday that is already over", () => {
-    expect(() => patchFor({ vacationStart: "2026-01-01", vacationEnd: "2026-01-05" })).toThrow(
+    expect(() => patchFor({ vacationStart: day(-20), vacationEnd: day(-16) })).toThrow(
       /already over/i,
     );
   });
 
   it("refuses an endless holiday and points at the Open switch", () => {
-    expect(() => patchFor({ vacationStart: "2026-10-01", vacationEnd: "2027-10-01" })).toThrow(
+    expect(() => patchFor({ vacationStart: START, vacationEnd: day(400) })).toThrow(
       /at most 45 days/i,
     );
   });
 
   it("answers 422 — a bad date is the caller's mistake, not a server fault", () => {
     try {
-      patchFor({ vacationStart: "2026-10-12", vacationEnd: "2026-10-10" });
+      patchFor({ vacationStart: END, vacationEnd: START });
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toMatchObject({ status: 422 });
@@ -91,8 +101,8 @@ describe("vendorShopPatch — the holiday (B6)", () => {
 
   it("keeps the note short, because it is printed for shoppers", () => {
     const patch = patchFor({
-      vacationStart: "2026-10-10",
-      vacationEnd: "2026-10-12",
+      vacationStart: START,
+      vacationEnd: END,
       vacationNote: "y".repeat(300),
     });
     expect(String(patch.vacation_note)).toHaveLength(160);
@@ -100,7 +110,7 @@ describe("vendorShopPatch — the holiday (B6)", () => {
 
   it("stops a STAFF login from booking a holiday — that is the owner's call", () => {
     expect(() =>
-      patchFor({ vacationStart: "2026-10-10", vacationEnd: "2026-10-12" }, "staff"),
+      patchFor({ vacationStart: START, vacationEnd: END }, "staff"),
     ).toThrow(/only the shop owner/i);
   });
 

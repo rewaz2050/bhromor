@@ -4,9 +4,17 @@
 # the unit suite (3,450 of them) were never run automatically: Vercel catches a
 # broken build on deploy, nothing catches a broken test.
 #
-# Deliberately NOT here: the Playwright suites (`npm run test:e2e`,
-# `test:dashboards`). They need a seeded backend and a browser, so they stay
-# opt-in until there is a staging database to point them at.
+# `npm run test:dashboards` joined on 2026-10-13. It had been left out with the
+# storefront suite as "needs a seeded backend and a browser", but only half of
+# that was true: `e2e/dashboards.spec.ts` intercepts every `**/api/**` call with
+# its own fixtures and its config points the dev server at
+# `https://verification.invalid`, so it needs a browser and nothing else. The
+# browser was the only thing actually missing, and Actions provides it.
+#
+# `npm run test:e2e` (storefront) stays opt-in, and for a narrower reason than
+# before: it stubs nothing, so it needs a real catalog — it asserts on
+# `/product/heritage-green-panjabi` by slug. Wiring it now would just fail on
+# an empty shop.
 
 name: CI
 
@@ -47,3 +55,54 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Browser contracts — the five flows in e2e/dashboards.spec.ts (customer
+  # profile save, rider, vendor, admin). Every API call is answered by a
+  # fixture and Supabase points at an invalid host, so this job needs no
+  # secrets and no seeded database; it catches what the unit suite cannot,
+  # which is a real click in a real browser.
+  #
+  # NON-BLOCKING, and not by preference: its first CI run (38404495301)
+  # installed Chromium cleanly and then failed in the test step, and the
+  # failure detail is unreachable from the sandbox that wired it up — both
+  # the Actions log host and the artifact blob are outside its network
+  # allowlist. Pretending that is a verified gate would be worse than saying
+  # so. Read the uploaded `playwright-report`, fix what it names, then drop
+  # `continue-on-error` and let it gate.
+  #
+  # Skipped on pull requests for the same reason: a failing check that cannot
+  # block still paints the PR "UNSTABLE", and a permanent yellow cross
+  # teaches people to stop reading the rest of them. It runs on main and on
+  # demand, which is where a report nobody has triaged yet belongs.
+  browser:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Installs only Chromium: the suite pins one browser, and Firefox/WebKit
+      # would triple the download for nothing.
+      - name: Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Dashboards
+        run: npm run test:dashboards
+
+      - name: Report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: .cache/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

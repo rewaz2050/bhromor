@@ -1,0 +1,85 @@
+# Android APK — built in the cloud, because the owner has no PC.
+#
+# The rider app is a Capacitor shell that loads the deployed storefront
+# (capacitor.config.ts → server.url), so building it does NOT need the Next.js
+# bundle: `cap sync` copies the tiny `mobile-web/` offline page and the
+# generated config, then Gradle builds the APK. That keeps this under a few
+# minutes and free — this repo is public, so Actions minutes cost nothing.
+#
+# What you get: an installable DEBUG APK. Fine to hand to riders directly
+# (Android → "install unknown apps"). It is NOT Play-Store-ready; release
+# signing is a separate step — see docs/android-app.md §5.
+#
+# Trigger it from the Actions tab (Run workflow), or push a tag:
+#     git tag android-v1.0.1 && git push origin android-v1.0.1
+
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_url:
+        description: "Storefront URL the app loads (blank = production)"
+        required: false
+        default: ""
+  push:
+    tags: ["android-v*"]
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # @capacitor/cli 8 requires Node >= 22.
+          node-version: "22"
+          cache: npm
+
+      # AGP 8.13 / compileSdk 36 want a current JDK; 21 is the supported LTS.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Regenerates android/app/src/main/assets/capacitor.config.json (gitignored
+      # on purpose) and copies mobile-web/. Without it the APK ships no config.
+      - name: Sync the native project
+        env:
+          MOBILE_SITE_URL: ${{ inputs.site_url }}
+        run: npx cap sync android
+
+      # The runner's SDK may not carry platform 36 yet; accept the licences and
+      # let Gradle pull what AGP asks for.
+      - name: Accept Android SDK licences
+        run: |
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
+
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the artifact
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist/PROSANTI-rider-${GITHUB_REF_NAME//\//-}.apk"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: prosanti-rider-apk
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 30

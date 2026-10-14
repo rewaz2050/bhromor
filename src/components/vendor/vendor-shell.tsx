@@ -17,7 +17,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
-import { useVendorSession, type VendorMe } from "@/lib/use-vendor";
+import { useVendorSession, useVendorThreads, type VendorMe } from "@/lib/use-vendor";
 
 const VendorCtx = createContext<VendorMe | null>(null);
 
@@ -29,6 +29,7 @@ const NAV = [
   { href: "/vendor/products", label: "Products" },
   { href: "/vendor/earnings", label: "Earnings" },
   { href: "/vendor/reviews", label: "Reviews" },
+  { href: "/vendor/messages", label: "Messages" },
   { href: "/vendor/promo", label: "Promo codes" },
   { href: "/vendor/funnel", label: "Funnel" },
   { href: "/vendor/settings", label: "Shop settings" },
@@ -41,6 +42,7 @@ const TITLES: [RegExp, string][] = [
   [/^\/vendor\/products\/.+/, "Edit product"],
   [/^\/vendor\/products$/, "Products"],
   [/^\/vendor\/earnings$/, "Earnings"],
+  [/^\/vendor\/messages$/, "Messages"],
   [/^\/vendor\/settings$/, "Shop settings"],
   [/^\/vendor$/, "Dashboard"],
 ];
@@ -51,6 +53,9 @@ export default function VendorShell({ children }: { children: ReactNode }) {
   const isLogin = pathname === "/vendor/login";
   const { me, status, error, denyReason, signOut } = useVendorSession();
   const [signingOut, setSigningOut] = useState(false);
+  // Called unconditionally (the gate below returns early) but only fetches
+  // once the session has actually resolved — a guest never hits the inbox.
+  const { awaiting } = useVendorThreads(status === "authed");
 
   useEffect(() => {
     if (!isLogin && status === "guest") router.replace("/vendor/login");
@@ -162,6 +167,18 @@ export default function VendorShell({ children }: { children: ReactNode }) {
                   }`}
                 >
                   {item.label}
+                  {/* A shopper is waiting on this shop's answer. The tab was
+                      there but nothing pointed at it, so the question sat
+                      unseen until the shop happened to open it. */}
+                  {item.href === "/vendor/messages" && awaiting > 0 && (
+                    <span
+                      data-testid="messages-awaiting"
+                      title={`${awaiting} awaiting your reply`}
+                      className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-forest-950"
+                    >
+                      {awaiting > 9 ? "9+" : awaiting}
+                    </span>
+                  )}
                 </Link>
               );
             })}

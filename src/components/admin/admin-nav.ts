@@ -250,6 +250,13 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
         keywords: ["contact", "inbox", "support", "whatsapp"],
       },
       {
+        href: "/admin/threads",
+        label: "Shopper threads",
+        icon: IconChat,
+        match: exact("/admin/threads"),
+        keywords: ["conversation", "chat", "reply", "shop message", "oversight"],
+      },
+      {
         href: "/admin/reviews",
         label: "Reviews",
         icon: IconFlag,
@@ -328,6 +335,7 @@ const TITLES: readonly (readonly [RegExp, string])[] = [
   [/^\/admin\/payments$/, "Payments"],
   [/^\/admin\/live$/, "Live shopping"],
   [/^\/admin\/settings$/, "Settings"],
+  [/^\/admin\/threads$/, "Shopper threads"],
   [/^\/admin\/staff$/, "Staff"],
   [/^\/admin$/, "Dashboard"],
 ];

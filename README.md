@@ -13,7 +13,7 @@ Built with **Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Vitest*
 | Phase 2 — Catalog & Multi-Vendor Marketplace (shops, shop apply, vendor panel, single-shop cart) | ✅ Complete |
 | Phase 3 — Rider Network & Dispatch (mobile rider app, rider apply/login, 4-digit PIN verification, cash cap & settlements) | ✅ Complete |
 | Phase 4 — Cart & Checkout (atomic ordering, 4-digit security PIN display, instant ETA split) | ✅ Complete |
-| Phase 5 — Realtime Order Tracking (interactive live route map, simulated rider GPS, live ETA) | ✅ Complete |
+| Phase 5 — Realtime Order Tracking (real Leaflet/OSM map for the customer, live rider GPS, realtime pin, live ETA) | ✅ Complete |
 | Phase 6 — Loyalty & Retention (10-order stamp card, admin reward engine, celebration unlock) | ✅ Complete |
 | Phase 7 — Returns & Exchanges (7-day instant size exchange intake flow) | ✅ Complete |
 | Phase 8 — Admin Control & Ops (live orders state machine, catalog CRUD, staff/shops/riders queues, cash settlements) | ✅ Complete |
@@ -45,6 +45,73 @@ npm run lint && npm run typecheck && npm test && npm run build
 | `npm start` | Serve production build |
 
 Unit/component suite: 1,533 tests. Browser suite: 14 Chromium checks against a configured storefront (see `docs/browser-qa.md`).
+
+## Android rider app — tracking that survives the screen going off (2026-10-09)
+
+A browser suspends GPS when the tab is hidden or the screen sleeps, so a rider
+with the phone in their pocket stopped being tracked. The installed app cannot
+be fooled that way: `@capgo/background-geolocation` runs an Android **foreground
+service**, so fixes keep arriving with the screen off. Full owner guide (বাংলা):
+`docs/android-app.md`.
+
+- **It is not a second codebase.** `capacitor.config.ts` points the native shell
+  at the deployed storefront, so a Vercel deploy reaches every rider's phone at
+  once — no store update. The shell exists to hand the site the native bridge.
+- **Two engines, one contract** (`lib/use-rider-location`): native when the APK
+  and its plugin are present, `navigator.geolocation` otherwise. Same 50 m
+  throttle, same health reporting, so an old build or a phone browser keeps
+  working and the board simply stops offering the "keep the screen awake"
+  switch, which would only burn battery for nothing.
+- **Cost ৳0**: Capacitor 8.5.3 and the Capgo plugin (MPL-2.0) are free — the
+  TransistorSoft plugin was rejected because it needs a paid licence.
+- **No PC needed to build**: `.github/workflows/android-apk.yml` builds an
+  installable debug APK on GitHub Actions (this repo is public, so the minutes
+  are free). Actions → Android APK → Run workflow → download the artifact.
+- `android.useLegacyBridge` is **required**: without it Android switches to the
+  modern bridge and location halts ~5 minutes into the background.
+- **Notifications inside the app: not yet.** The staff pipeline
+  (`notifyStaff()` → inbox row + `pushStaffNotice()` → phone, fired by new
+  orders, reviews, returns and the rest) is Web Push, and Android's System
+  WebView ships no `PushManager`, so the app cannot register at all. The card
+  now says that in plain words rather than calling the shop's own app "an
+  in-app browser" — the WebView carries Android's stock `; wv)` marker and
+  Capacitor only rewrites the user agent when configured to. Until FCM is wired
+  (`@capacitor/push-notifications`, free) the panel must be opened in Chrome or
+  installed to the home screen; `docs/android-app.md` §6 lists both routes.
+
+## Live tracking — the customer's real map (2026-10-08)
+
+The tracker at `/track` used to draw a decorative SVG route and print the
+rider's coordinates as text. It now shows the customer **their own
+neighbourhood on a real map** — OpenStreetMap tiles, the delivery pin, the
+rider's pin on it, and the line between the two — and the pin moves the instant
+the rider's phone reports. Full write-up: `docs/live-tracking.md`.
+
+- **Map**: `components/track/rider-tile-map.tsx` over the pure rules in
+  `lib/live-map.ts` (Leaflet + OSM — the same free, keyless stack the admin
+  dispatch map and the checkout pin picker already use). The pin *slides*
+  between fixes for a real move and *snaps* a >2 km jump, because that is a GPS
+  correction and not a bike; a fix older than the freshness window goes hollow
+  with a `?` instead of posing as live; the map follows the rider until the
+  customer pans it, then offers a re-centre button; page scroll is never
+  hijacked; and if Leaflet cannot load, the schematic route takes over rather
+  than leaving a blank rectangle. `0,0` is rejected as a coordinate — an unset
+  column must not send a family to the Gulf of Guinea.
+- **Realtime**: each fix is also broadcast on the order's channel
+  (`lib/use-rider-live-broadcast` on the rider's board,
+  `lib/use-live-rider-position` in the tracker). The channel name is derived
+  server-side from the order UUID + the stored phone
+  (`lib/live-track-channel`), so an unguessable name carries the same proof the
+  rest of the tracker uses. HTTP polling stays the fallback and slows to 30 s
+  while a socket is up — **no migration, no publication, nothing to run**.
+- **Cost ৳0**: Leaflet is MIT and already a dependency; OSM tiles are free;
+  Realtime is inside the existing Supabase plan. Google Maps is not used.
+- **Rate limit**: `GET /api/track/rider-location` had no limiter at all and is
+  now polled every 10 s — it is limited to 60/min per IP like every other
+  public lookup (429 + `Retry-After`).
+- **Honest limit**: a browser suspends GPS when the tab is hidden or the screen
+  sleeps, so the wake-lock + "signal lost" notices remain the mechanism. Truly
+  background tracking would need a native shell around this same code.
 
 ## Premium storefront refresh
 

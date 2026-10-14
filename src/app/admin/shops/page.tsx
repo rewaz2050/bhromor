@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useShops, type AdminShopClient } from "@/lib/use-shops";
 import { useZones } from "@/lib/use-zones";
 import type { Shop } from "@/lib/catalog";
+import AdminOnly from "@/components/admin/admin-only";
 import ShopVerificationCard from "@/components/admin/shop-verification-card";
 import type { VerificationHistory } from "@/lib/shop-verification";
 import { field, hint, label } from "@/components/admin/form-ui";
@@ -239,6 +240,7 @@ function ShopCard({
           </p>
           <ReviewSummary status={shop.status} review={shop.review} />
         </div>
+        <AdminOnly note="দোকান approve/reject/suspend শুধু admin করতে পারে।">
         <ReviewActions
           kind="shop"
           name={shop.name}
@@ -246,6 +248,7 @@ function ShopCard({
           onDecide={(status, note) => onStatus(shop.id, status, note)}
           suspendEffect="Its products disappear from the storefront immediately."
         />
+        </AdminOnly>
         <button
           type="button"
           onClick={() => {
@@ -418,6 +421,7 @@ function ShopCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
+          <AdminOnly note="NID / trade licence যাচাই শুধু admin করতে পারে।">
           <ShopVerificationCard
             key={`verify-${shop.id}-${shop.verification?.nid === true ? "n" : ""}${
               shop.verification?.tradeLicence === true ? "l" : ""
@@ -429,7 +433,9 @@ function ShopCard({
               await onVerify(shop.id, patch);
             }}
           />
+          </AdminOnly>
 
+          <AdminOnly note="নতুন দোকান যোগ করা আর vendor login তৈরি শুধু admin করতে পারে — আপনার role manager।">
           <ApplicantLoginBox
             kind="vendor"
             name={shop.name}
@@ -442,6 +448,7 @@ function ShopCard({
             onLink={(email) => onLinkVendor(shop.id, email)}
             onResetPassword={() => onResetPassword(shop.id)}
           />
+          </AdminOnly>
         </div>
       )}
     </li>
@@ -615,6 +622,7 @@ export default function AdminShopsPage() {
             storefront — suspending removes it instantly.
           </p>
         </div>
+        <AdminOnly note="নতুন দোকান যোগ করা আর vendor login তৈরি শুধু admin করতে পারে — আপনার role manager।">
         <div className="flex gap-2">
           <button
             type="button"
@@ -625,6 +633,7 @@ export default function AdminShopsPage() {
             {creating ? "Cancel" : "New shop"}
           </button>
         </div>
+        </AdminOnly>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

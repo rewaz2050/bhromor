@@ -4,6 +4,9 @@ import { settleRiderCashByAdmin } from "@/lib/db/riders";
 import { apiError, apiJson } from "@/lib/api-response";
 import { staffRoute, routeId } from "../../../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const POST = staffRoute(
@@ -22,5 +25,5 @@ export const POST = staffRoute(
     await settleRiderCashByAdmin(db, id, method, reference, b.netWallet === true);
     return apiJson({ ok: true });
   },
-  { limit: 20 },
+  { limit: 20, roles: ADMIN_ONLY },
 );

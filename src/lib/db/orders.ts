@@ -189,6 +189,13 @@ export interface CustomerOrderSummary {
   deliveryWindow: string | null;
   isPickup: boolean;
   isReturn: boolean;
+  /**
+   * Which shop it came from. A marketplace history that names only the first
+   * product cannot be scanned — with five orders from three shops the row is
+   * unrecognisable, so the owning shop's name rides along (2026-10-11).
+   */
+  shopId: string | null;
+  shopName: string | null;
   /** Snapshot lines so "Order again" can re-add exactly what was bought. */
   lines: { productId: string; variantLabel: string; qty: number; name: string }[];
 }
@@ -210,7 +217,7 @@ export async function listOrdersForPhone(
   const { data, error } = await db
     .from("orders")
     .select(
-      "id, order_no, customer_phone, status, total, payment, payment_status, scheduled_at, delivery_window, is_pickup, is_return, created_at",
+      "id, order_no, customer_phone, shop_id, status, total, payment, payment_status, scheduled_at, delivery_window, is_pickup, is_return, created_at",
     )
     .ilike("customer_phone", phoneNeedle(digits))
     .order("created_at", { ascending: false })
@@ -221,6 +228,7 @@ export async function listOrdersForPhone(
     | "id"
     | "order_no"
     | "customer_phone"
+    | "shop_id"
     | "status"
     | "total"
     | "payment"
@@ -250,6 +258,15 @@ export async function listOrdersForPhone(
     }
     byOrder.set(it.order_id, cur);
   }
+  const shopIds = [...new Set(rows.map((r) => r.shop_id).filter((v): v is string => !!v))];
+  const shops = await selectIn<{ id: string; name: string }>(
+    db,
+    "shops",
+    "id, name",
+    "id",
+    shopIds,
+  );
+  const shopNameById = new Map(shops.data.map((sh) => [sh.id, sh.name]));
   return rows.map((row) => {
     const agg = byOrder.get(row.id) ?? { count: 0, first: null, lines: [] };
     return {
@@ -265,6 +282,8 @@ export async function listOrdersForPhone(
       deliveryWindow: row.delivery_window ?? null,
       isPickup: !!row.is_pickup,
       isReturn: !!row.is_return,
+      shopId: row.shop_id ?? null,
+      shopName: row.shop_id ? (shopNameById.get(row.shop_id) ?? null) : null,
       lines: agg.lines,
     };
   });

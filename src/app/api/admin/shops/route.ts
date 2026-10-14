@@ -8,6 +8,9 @@ import { apiJson } from "@/lib/api-response";
 import { CACHE_TAG_SHOPS, revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("shops-list", async ({ db }) => {
@@ -23,5 +26,5 @@ export const POST = staffRoute(
     revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ shop });
   },
-  { limit: 30 },
+  { limit: 30, roles: ADMIN_ONLY },
 );

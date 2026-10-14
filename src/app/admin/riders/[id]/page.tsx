@@ -12,6 +12,7 @@ import { useParams } from "next/navigation";
 import { formatBdt } from "@/lib/format";
 import type { RiskLevel } from "@/lib/rider-risk";
 import { useRiderOverview } from "@/lib/use-rider-overview";
+import AdminOnly from "@/components/admin/admin-only";
 import { RiderLicenceCard } from "@/components/admin/rider-licence-card";
 import { RiderGpsCard } from "@/components/admin/rider-gps-card";
 import { RiderAdjustCard } from "@/components/admin/rider-adjust-card";
@@ -94,11 +95,15 @@ export default function AdminRiderProfilePage() {
       )}
 
       {/* N: driving-licence expiry (staff record it from the KYC photo). */}
-      {live && riderId && <RiderLicenceCard riderId={riderId} />}
+      <AdminOnly note="লাইসেন্স আর wallet adjust শুধু admin বদলাতে পারে।">
+        {live && riderId && <RiderLicenceCard riderId={riderId} />}
+      </AdminOnly>
       {/* GPS-jump alerts (impossible speed between two pings). */}
       {live && riderId && <RiderGpsCard riderId={riderId} />}
       {/* W: manual wallet credit/debit with a mandatory reason. */}
-      {live && riderId && <RiderAdjustCard riderId={riderId} onDone={() => void refresh()} />}
+      <AdminOnly>
+        {live && riderId && <RiderAdjustCard riderId={riderId} onDone={() => void refresh()} />}
+      </AdminOnly>
 
       {overview && assessment && (
         <>

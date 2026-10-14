@@ -15,6 +15,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import AdminOnly from "@/components/admin/admin-only";
 import { formatBdt } from "@/lib/format";
 import { computeNet, PNL_RANGES, type PnlRange } from "@/lib/money-pnl";
 import {
@@ -372,11 +373,13 @@ export default function AdminMoneyPage() {
           ·{" "}
           <Link href="/admin/money/daily" className="font-semibold underline underline-offset-2">
             Daily reconciliation
-          </Link>{" "}
-          ·{" "}
-          <Link href="/admin/money/export" className="font-semibold underline underline-offset-2">
-            Export CSV
           </Link>
+          <AdminOnly>
+            {" "}·{" "}
+            <Link href="/admin/money/export" className="font-semibold underline underline-offset-2">
+              Export CSV
+            </Link>
+          </AdminOnly>
         </p>
       </section>
 
@@ -422,6 +425,7 @@ export default function AdminMoneyPage() {
                     </td>
                     <td className="px-4 py-3 text-ink-soft">{formatBdt(row.cashInHand)}</td>
                     <td className="px-4 py-3">
+                      <AdminOnly note="Payout approve শুধু admin করতে পারে।">
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
@@ -446,6 +450,7 @@ export default function AdminMoneyPage() {
                           Reject
                         </button>
                       </div>
+                      </AdminOnly>
                     </td>
                   </tr>
                 ))}

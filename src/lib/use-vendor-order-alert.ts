@@ -68,7 +68,7 @@ export interface UseVendorOrderAlert {
 
 export function useVendorOrderAlert(
   orders: Order[],
-  opts: { enabled: boolean; shopName?: string },
+  opts: { enabled: boolean; shopName?: string; messageAwaiting?: number },
 ): UseVendorOrderAlert {
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(() =>
     typeof window !== "undefined" && "Notification" in window
@@ -82,6 +82,11 @@ export function useVendorOrderAlert(
   const beep = useRef(createBeep());
   const known = useRef<Set<string>>(new Set());
   const primed = useRef(false);
+  // Separate priming for the message signal: the order backlog and the
+  // unanswered-question backlog are two different numbers, and each one's
+  // first sighting is the backlog rather than news.
+  const messagePrimed = useRef(false);
+  const knownAwaiting = useRef(0);
 
   // Unlock the audio graph on the shop's first tap anywhere on the page —
   // an Android Chrome tab that never had a gesture cannot play the beep.
@@ -138,6 +143,59 @@ export function useVendorOrderAlert(
       ring(latest);
     }
   }, [orders, armed, permission, opts.enabled, ring]);
+
+  /* ------------------------------------------------------------------ */
+  /* A shopper is waiting (2026-10-13)                                    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * A message is quieter than an order — nobody is standing at the counter
+   * for it — which is exactly why it goes unanswered: the badge moves, the
+   * shop is packing, and the question waits until the customer chases.
+   *
+   * It rings on the count going UP, never on the count being high. A shop
+   * that opens the dashboard to three unanswered questions should read the
+   * card, not be rung at three times.
+   *
+   * One switch, not two: this uses the ring the shop already armed for
+   * orders, and never asks for permission itself.
+   */
+  const ringMessage = useCallback((count: number) => {
+    beep.current.play();
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      try {
+        (
+          navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean }
+        ).vibrate?.([120, 80, 120]);
+      } catch {
+        // vibration is a bonus
+      }
+    }
+    void showPanelNotice(
+      count === 1 ? "A shopper is waiting" : `${count} shoppers are waiting`,
+      "Someone asked about an order and nobody has answered yet.",
+      "/vendor/messages",
+    );
+    setLastRangAt(Date.now());
+  }, []);
+
+  useEffect(() => {
+    if (!opts.enabled) return;
+    const count = opts.messageAwaiting ?? 0;
+    // The first number after a load is the backlog, not news.
+    if (!messagePrimed.current) {
+      messagePrimed.current = true;
+      knownAwaiting.current = count;
+      return;
+    }
+    const grew = count > knownAwaiting.current;
+    knownAwaiting.current = count;
+    if (!grew) return;
+    if (armed && (permission === "granted" || permission === "unsupported")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fires only on the way up, so at most once per new question, not on every render
+      ringMessage(count);
+    }
+  }, [opts.enabled, opts.messageAwaiting, armed, permission, ringMessage]);
 
   const enableAlerts = useCallback(async () => {
     beep.current.unlock();

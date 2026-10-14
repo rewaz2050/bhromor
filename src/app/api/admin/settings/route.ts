@@ -10,6 +10,9 @@ import { apiError, apiJson } from "@/lib/api-response";
 import { CACHE_TAG_OPS, revalidateCatalogCaches } from "@/lib/public-cache";
 import { staffRoute } from "../_lib";
 
+/** Admin/super_admin only — see the permission matrix in docs/SECURITY-HARDENING.md. */
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("settings-read", async ({ db }) => {
@@ -27,4 +30,4 @@ export const PATCH = staffRoute("settings-write", async ({ db }, request) => {
   const settings = await writeOpsSettings(db, body);
   revalidateCatalogCaches(CACHE_TAG_OPS);
   return apiJson({ settings });
-});
+}, { roles: ADMIN_ONLY });

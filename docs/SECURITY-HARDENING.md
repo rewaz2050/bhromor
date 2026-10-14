@@ -17,6 +17,124 @@
 7. **Dependency alert:** Production dependency audit পরিষ্কার; পূর্ণ audit-এ Vitest/@vitest/mocker-এর দুইটি moderate dev-only alert আছে। `--force` দিয়ে অন্ধ upgrade না করে আলাদা tested major upgrade করুন।
 8. **Monitoring/recovery:** Auth failure, 413/429 spike, staff roster change, upload volume, payout, product price/status change-এ alert দিন। Backup restore drill এবং incident-time key rotation-ও পরীক্ষা করুন।
 
+## Permission matrix — admin / vendor / rider (অডিট ২০২৬-১০-০৯)
+
+**মডেল:** তিনটি গার্ড — `staffRoute` (`api/admin/_lib.ts`), `vendorRoute`, `riderRoute` —
+লগইন যাচাই ও রেট-লিমিট করে; আসল মালিকানা ডাটাবেজে (RLS + `security definer` ফাংশন)।
+
+**একটা গুরুত্বপূর্ণ সত্য:** `ps_is_admin()` তিনটি রোলকেই (`admin`, `super_admin`,
+**`manager`**) স্টাফ ধরে, তাই RLS manager-কে super_admin-এর সমান টেবিল-অ্যাক্সেস দেয়।
+রোল আলাদা করার **একমাত্র** জায়গা হলো রাউটের `opts.roles`। তাই নিচের তালিকাটা
+`src/app/api/__tests__/admin-permission-matrix.test.ts` পিন করে রাখে — কোনো
+রিফ্যাক্টরে `roles:` মুছে গেলে CI ফেল করবে।
+
+### যেগুলো শুধু admin / super_admin (manager নয়)
+
+| গোষ্ঠী | রাউট |
+|---|---|
+| টাকা বের করা / ব্যালেন্স | `POST riders/[id]/settle`, `POST riders/[id]/settle-claim`, `POST riders/[id]/adjust`, `POST payouts`, `POST`+`PATCH money`, `GET money/export` |
+| কাস্টমারের টাকা কোথায় যায় | `PATCH settings` (`wallets.bkash` / `wallets.nagad`) |
+| লগইন তৈরি | `GET`+`POST`+`DELETE staff`, `POST riders/[id]/link-rider`, `POST shops/[id]/link-vendor`, `POST riders/[id]/reset-password`, `POST shops/[id]/reset-password` |
+| পরিচয় / ভেটিং | `POST riders/[id]/review`, `PATCH riders/[id]/licence`, `POST shops/[id]/review`, `POST shops/[id]/verification`, `POST access-requests/[id]` |
+| দোকানের গঠন | `POST shops`, `GET shops/[id]`, `GET shops/[id]/commission` |
+| সবার কাছে ব্রডকাস্ট | `GET`+`POST push/broadcast` |
+
+**পড়া (GET) ইচ্ছে করেই খোলা** — manager রোজকার কিউ চালায়, তাই `payouts`, `money`,
+`money/daily`, `money/audit`, `settings` পড়তে পারে; লেখা আটকানো।
+
+**manager-এর UI-তে বাটন লুকানো হয়নি** — এটা সীমানা নয়, সুবিধা। চাপ দিলে সার্ভারের
+সত্যি কথাই ফিরবে ("Admin access is required for this action.") এবং `use-riders`-এর
+`setError` সেটা স্ক্রিনে দেখাবে, চুপচাপ ব্যর্থ হবে না।
+
+### কে কাকে কী রোল দিতে পারে
+
+`STAFF_ROLE_RANK = { manager: 0, admin: 1, super_admin: 2 }` আর
+`canManageRole()` — একজন স্টাফ শুধু **নিজের র‍্যাঙ্ক বা তার নিচের** রোল ছুঁতে পারে
+(`lib/db/admin.ts:2794`)।
+
+| আপনার রোল | কাকে রোল দিতে/বদলাতে পারেন |
+|---|---|
+| `super_admin` | manager, admin, super_admin — সবাইকে |
+| `admin` | manager, admin — **super_admin না** |
+| `manager` | কাউকে না (`/api/admin/staff` ই admin-only) |
+
+দুটো অতিরিক্ত বাধা: নিজের রোল নিজে বদলানো যায় না; শেষ `super_admin`-কে ডিমোট
+বা revoke করা যায় না (`countSuperAdmins()` ≤ 1 হলে 403)।
+
+### manager যা করতে পারে (৮৩টি হ্যান্ডলার)
+
+রোজকার কাজ: অর্ডার (`GET`/`advance`/`payment`/`return`/`failed-delivery`), ক্যাটালগ
+(products, categories, media), ডেলিভারি কিউ (offer/batch/cancel/release,
+dispatch-settings), রিভিউ, জোন, কুপন, growth, homepage, live session, warranty,
+messages, notifications, wa-outbox, রাইডার অ্যানাউন্সমেন্ট/ডিসপিউট/ফিডব্যাক,
+reports, আর **পড়া** হিসেবে money / money-audit / money-daily / payouts / settings /
+riders / scorecards / licence / applications / access-requests।
+
+### ভেন্ডর — `owner` বনাম `staff`
+
+`vendorShopPatch(raw, role)` (`lib/db/vendor.ts:84`) ফিল্ড ধরে ধরে ছাঁকে:
+
+| | `staff` | `owner` |
+|---|---|---|
+| দোকান খোলা/বন্ধ, প্রস্টপ টাইম | ✅ | ✅ |
+| নিজের দোকানের প্রোডাক্ট/অর্ডার/রিভিউ/প্রোমো | ✅ | ✅ |
+| দোকানের প্রোফাইল (নাম, ট্যাগলাইন, লোগো, কভার), ছুটি বুক করা | ❌ 403 | ✅ |
+| স্টাফ লগইন (তালিকা/তৈরি/বাতিল/পাসওয়ার্ড রিসেট) | ❌ 403 | ✅ — সর্বোচ্চ **৫টি** (`VENDOR_STAFF_MAX`) |
+| `status`, `commission`, `zones`, `slug`, `featured`, `isNew` | ❌ | ❌ — platform-owned |
+
+### রাইডার — স্ট্যাটাস অনুযায়ী
+
+| স্ট্যাটাস | কী পায় |
+|---|---|
+| `pending` / `rejected` | শুধু KYC আপলোড (`rider/kyc`, `rider/kyc/sign` — `allowApplicant: true`); বাকি সব 403, কারণসহ বাংলা বার্তা |
+| `active` | নিজের জব, নিজের আয়, নিজের লোকেশন, নিজের প্রোফাইল — **অন্য রাইডারের কিছুই না** (প্রতিটি RPC-তে `rider_id = ps_rider_id()` চেক) |
+| `suspended` | কিছুই না (403) |
+
+### কাস্টমার / পাবলিক
+
+- **ট্র্যাকিং** (`/api/track/*`): অর্ডার আইডি **+ সেই ফোন নম্বর** যা দিয়ে অর্ডার করা —
+  একা অর্ডার আইডি যথেষ্ট না; রেট-লিমিট ৬০/মিনিট।
+- **অ্যাকাউন্ট** (`/api/account/*`): নিজের প্রোফাইল ও নিজের অর্ডার।
+- বাকি পাবলিক রাউট শুধু পড়া (products, zones, settings, shops, promo)।
+
+### যেগুলো যাচাই করে ঠিক পাওয়া গেছে (বদলাবেন না)
+
+- **রাইডার IDOR:** যেসব `ps_rider_*` ফাংশন id নেয়, সবগুলোতে
+  `rider_id is distinct from ps_rider_id()` → `'forbidden'`।
+- **রাইডার ডেটা ফাঁস নেই:** `ps_rider_scorecards_raw` ও `ps_rider_referral_code`
+  `revoke all … from public, anon, authenticated` + শুধু `service_role`-কে grant।
+- **ভেন্ডর স্টাফ:** `assertOwner(role)` (`lib/db/vendor-staff.ts:41`) চারটি হেল্পারেই
+  কল হয়, ২২টি টেস্টে পিন করা।
+- **স্টাফ ম্যানেজমেন্ট:** `canManageRole()`, নিজের রোল বদলানো যায় না, শেষ
+  super_admin ডিমোট করা যায় না (`lib/db/admin.ts:2889`)।
+- **টাকা-সেটল RPC:** `ps_admin_settle_rider` / `ps_admin_reject_settle` ভেতরে আবার
+  `ps_is_admin()` চেক করে — তাই `grant execute … to authenticated` ঝুঁকি নয়।
+
+## Manager কেন বাটন দেখে না (UI gate)
+
+API-ই তালা — সবসময় ছিল। কিন্তু manager প্রতিদিনের কাজ করতে গিয়ে এমন এক
+ডজন বাটনের সামনে পড়ত যেগুলো চাপলে সার্ভার `403 Admin access is required`
+ফেরত দেয়। সেটা security সমস্যা না, বিরক্তিকর UX। তাই `<AdminOnly>`
+(`components/admin/admin-only.tsx`) সেই কন্ট্রোলগুলো শুধু `admin`/`super_admin`-কে
+দেখায়, manager-কে এক লাইন নোট দেখায়। role আসে `/api/admin/me` থেকে
+(`useStaffRole`)।
+
+গেট করা হয়েছে: staff পেজ (পুরোটাই), rider settle/net/claim approve/reject,
+review ও login-link, নতুন দোকান ও vendor login, payout approve ও record,
+money export, broadcast, আর settings পেজে একটি নোট (settings পড়া যায়,
+save আটকায়)।
+
+**দুটো নিয়ম ইচ্ছা করে:**
+
+1. **লক না, শুধু লুকানো।** `<AdminOnly>` ক্লায়েন্টে চলে, তাই এটা বাইপাস
+   করা যায় — কিন্তু তখন API 403 দেয়। এই কম্পোনেন্ট কখনোই একমাত্র প্রতিরক্ষা
+   হতে পারে না, নতুন গেটেড রাউট যোগ করার সময় `roles:` দেওয়া বাধ্যতামূলক।
+2. **probe না আসা পর্যন্ত কিছু দেখায় না।** বাটন দেখিয়ে পরে সরিয়ে নেওয়া
+   তার চেয়ে খারাপ যে এক মুহূর্ত ফাঁকা থাকে।
+
+টেস্ট: `admin-only.test.tsx` (৪ স্টেট) + `admin-manager-visibility.test.tsx`
+(একই পেজ, দুই role)।
+
 ## সীমাবদ্ধতা
 
 Automated test ও source/config review **লাইভ penetration test নয়**। এই সেশনে Production Supabase, Cloudinary, Vercel Firewall, বাস্তব MFA enrollment বা backup restore-এ ঢুকে পরীক্ষা করা হয়নি। তাই এগুলো production-এ যাচাই না হওয়া পর্যন্ত security hardening পুরোপুরি শেষ বলা যাবে না।

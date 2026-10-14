@@ -11,6 +11,7 @@ import { formatBdt } from "@/lib/format";
 import { field, hint, label } from "@/components/admin/form-ui";
 import { IconCheck, IconPlus } from "@/components/ui/icons";
 import AdminDataError from "@/components/admin/admin-data-error";
+import AdminOnly from "@/components/admin/admin-only";
 import { ApplicantLoginBox } from "@/components/admin/applicant-login-box";
 import { ReviewActions, ReviewSummary } from "@/components/admin/review-actions";
 import { RiderKycSummary } from "@/components/admin/rider-kyc-summary";
@@ -178,6 +179,7 @@ function RiderCard({
           </p>
           <ReviewSummary status={rider.status} review={rider.review} now={now} />
         </div>
+        <AdminOnly note="টাকা settle, bonus আর approve/reject শুধু admin করতে পারে — আপনার role manager।">
         {rider.cashInHand > 0 && (
           <button
             type="button"
@@ -224,6 +226,7 @@ function RiderCard({
           onDecide={(status, note) => onStatus(rider.id, status, note)}
           suspendEffect="Future dispatch offers stop immediately."
         />
+        </AdminOnly>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -314,6 +317,7 @@ function RiderCard({
               <IconCheck className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save"}
             </button>
           </div>
+          <AdminOnly note="Login তৈরি বা password reset শুধু admin করতে পারে।">
           <ApplicantLoginBox
             kind="rider"
             name={rider.name}
@@ -326,6 +330,7 @@ function RiderCard({
             onLink={(email) => onLinkRider(rider.id, email)}
             onResetPassword={() => onResetPassword(rider.id)}
           />
+          </AdminOnly>
         </div>
       )}
     </li>
@@ -548,6 +553,7 @@ export default function AdminRidersPage() {
                     })}
                   </p>
                 </div>
+                <AdminOnly note="দাবি approve বা reject শুধু admin করতে পারে।">
                 <button
                   type="button"
                   onClick={() => {
@@ -573,6 +579,7 @@ export default function AdminRidersPage() {
                 >
                   Reject
                 </button>
+                </AdminOnly>
               </li>
               );
             })}

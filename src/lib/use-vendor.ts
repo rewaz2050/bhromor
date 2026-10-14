@@ -16,6 +16,7 @@ import { usePoll } from "./use-poll";
 import type { Category, Product, Shop } from "./catalog";
 import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
+import type { ThreadSummary } from "./db/customer-threads";
 
 /** Why a signed-in user was refused (mirrors VendorDenyReason server-side). */
 export type VendorDenyReason = "none" | "pending" | "suspended" | "rejected";
@@ -633,4 +634,48 @@ export const useShopFollowers = (enabled: boolean) => {
 export const patchVendorShop = async (patch: Record<string, unknown>): Promise<Shop> => {
   const data = await vendorSend<{ shop: Shop }>("/api/vendor/shop", "PATCH", patch);
   return data.shop;
+};
+
+/**
+ * Shopper threads waiting on THIS shop's answer (2026-10-13).
+ *
+ * The vendor panel got a Messages tab but nothing pointed at it, so a
+ * customer's question sat invisible until the shop happened to tap the tab —
+ * every other queue on that dashboard refreshes by itself.
+ *
+ * It says "needs a reply" rather than "unread", because there is no
+ * shop-side read marker and inventing one would mean a third migration for a
+ * number the shop reads less carefully than its order queue. An open thread
+ * whose last message came from the customer IS the state that needs a human,
+ * and it clears by itself the moment the shop answers — it cannot get stuck
+ * the way a read receipt can when a tab is closed mid-thread.
+ */
+export const VENDOR_THREADS_POLL_MS = 60_000;
+
+export const useVendorThreads = (
+  enabled: boolean,
+): {
+  threads: ThreadSummary[];
+  /** Open threads whose last word came from the customer. */
+  awaiting: number;
+  loading: boolean;
+  error: string | null;
+  refresh: () => void;
+} => {
+  const res = useVendorResource<{ threads?: ThreadSummary[]; reason?: string }>(
+    "/api/vendor/threads",
+    enabled,
+    VENDOR_THREADS_POLL_MS,
+  );
+  const threads = res.data?.threads ?? [];
+  const awaiting = threads.filter(
+    (t) => t.status === "open" && t.lastSender === "customer",
+  ).length;
+  return {
+    threads,
+    awaiting,
+    loading: res.loading,
+    error: res.error,
+    refresh: res.refresh,
+  };
 };

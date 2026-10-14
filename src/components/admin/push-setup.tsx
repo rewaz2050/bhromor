@@ -52,6 +52,7 @@ const UNKNOWN_ENV: PushEnv = {
   standalone: false,
   platform: "desktop",
   inApp: null,
+  nativeApp: false,
 };
 
 const readLocal = async (): Promise<LocalState> => {

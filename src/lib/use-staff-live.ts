@@ -40,6 +40,12 @@ export interface StaffLiveState {
   checked: boolean;
   /** Why the session is not live although the browser holds a staff flag. */
   error: string | null;
+  /**
+   * `manager` | `admin` | `super_admin`, or null before the probe answers.
+   * Convenience only — the API re-checks the role on every call, so a hidden
+   * button is never the lock (permission matrix, 2026-10-09).
+   */
+  role: string | null;
 }
 
 export function useStaffLive(): StaffLiveState & { retry: () => void } {
@@ -52,13 +58,14 @@ export function useStaffLive(): StaffLiveState & { retry: () => void } {
     live: false,
     checked: !authed,
     error: null,
+    role: null,
   });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!authed) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets probe state
-      setState({ live: false, checked: true, error: null });
+      setState({ live: false, checked: true, error: null, role: null });
       return;
     }
     let cancelled = false;
@@ -68,6 +75,7 @@ export function useStaffLive(): StaffLiveState & { retry: () => void } {
         live: probe.staff,
         checked: true,
         error: probe.staff ? null : staffProbeError(probe),
+        role: probe.staff ? (probe.role ?? null) : null,
       });
     });
     return () => {

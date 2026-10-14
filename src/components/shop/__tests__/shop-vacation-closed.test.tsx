@@ -47,6 +47,12 @@ describe("ShopHero — the shop's own reason", () => {
   });
 
   it("prints no note when the shop is not away — a reason needs a closure", () => {
+    // Pinned before the window on purpose. This test used to read the real
+    // clock, so on 2026-10-10 — the first day of its own fixture's holiday —
+    // the vacation became "active", the note legitimately rendered, and the
+    // suite started failing on a date instead of on a change.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(Date.parse("2026-09-28T12:00:00Z"));
     render(
       <ShopHero shop={shop({ isOpen: false, vacation: { start: "2026-10-10", end: "2026-10-12", note: "Closed for Eid" } })} zoneNames={[]} />,
     );

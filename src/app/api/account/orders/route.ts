@@ -22,6 +22,12 @@ export async function GET(request: Request) {
   const db = getSupabaseService();
   if (!db) return apiJson({ error: "Not configured." }, 503);
 
-  const orders = await listOrdersForPhone(db, customer.phone, 20);
-  return apiJson({ orders, phone: customer.phone });
+  // The first page is 20; "Load more" asks for the next step. The list caps
+  // at 50 (listOrdersForPhone clamps), so a shopper with a long history still
+  // gets the recent ones fast and the older ones on the tracker.
+  const url = new URL(request.url);
+  const asked = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+  const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 50) : 20;
+  const orders = await listOrdersForPhone(db, customer.phone, limit);
+  return apiJson({ orders, phone: customer.phone, limit });
 }

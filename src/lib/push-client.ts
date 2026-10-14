@@ -25,6 +25,7 @@
  */
 
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
+import { isNativeApp } from "./native-location";
 
 export type PushPlatform = "android" | "ios" | "desktop";
 
@@ -39,6 +40,13 @@ export interface PushEnv {
   platform: PushPlatform;
   /** Name of the in-app browser, e.g. "WhatsApp" — null in a real browser. */
   inApp: string | null;
+  /**
+   * True inside the installed Android app (Capacitor). Checked BEFORE `inApp`
+   * because the app's own WebView carries Android's stock `; wv)` marker too —
+   * without this the rider is told "you opened this in an in-app browser, use
+   * Chrome" while standing inside the shop's own app.
+   */
+  nativeApp: boolean;
 }
 
 export interface PushStatus {
@@ -108,6 +116,7 @@ export const readPushEnv = (): PushEnv => {
       standalone: false,
       platform: "desktop",
       inApp: null,
+      nativeApp: false,
     };
   }
   const ua = navigator.userAgent;
@@ -125,6 +134,7 @@ export const readPushEnv = (): PushEnv => {
     standalone,
     platform: detectPlatform(ua),
     inApp: detectInAppBrowser(ua),
+    nativeApp: isNativeApp(),
   };
 };
 
@@ -140,6 +150,11 @@ export const readPermission = (): NotificationPermission | "unsupported" => {
 export const pushBlocker = (env: PushEnv): string | null => {
   if (!env.https) {
     return "Ei page ta https chara khulche — Web Push sudhu https e kaj kore.";
+  }
+  if (env.nativeApp) {
+    // Android's WebView ships no PushManager at all, so Web Push cannot even
+    // register here — this is the platform, not a switch the rider can flip.
+    return "PROSANTI app er bhitore Web Push chole na (Android WebView e PushManager nei). Notification pete panel ta Chrome e khulun ba home screen e add korun. App er bhitorei notification chaile Firebase (FCM) jog korte hobe — docs/android-app.md dekhum.";
   }
   if (env.inApp) {
     return `Ei page ta ${env.inApp} er bhitore khulche. In-app browser e notification kono din asbe na — Chrome (ba Firefox) e kholun.`;
@@ -289,7 +304,11 @@ export const saveThisDevice = async (
   const env = readPushEnv();
   const blocked = pushBlocker(env);
   if (blocked) {
-    return { ok: false, reason: env.inApp ? "in-app" : env.https ? "unsupported" : "insecure", message: blocked };
+    return {
+      ok: false,
+      reason: env.inApp || env.nativeApp ? "in-app" : env.https ? "unsupported" : "insecure",
+      message: blocked,
+    };
   }
   try {
     const { sub, resubscribed } = await ensureSubscription(status.publicKey);

@@ -17,6 +17,25 @@ const ANDROID_UA =
 const WHATSAPP_UA = `${ANDROID_UA} WhatsApp/2.24.1`;
 const IPHONE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+/**
+ * The stock Android System WebView UA the installed app sends: Capacitor only
+ * rewrites the user agent when it is configured to (android.appendUserAgent /
+ * overrideUserAgentString), so the shop's own app carries the same `; wv)`
+ * marker as a WhatsApp WebView.
+ */
+const APP_WEBVIEW_UA =
+  "Mozilla/5.0 (Linux; Android 15; Nothing Phone (2a) Build/AP3A.240905.015.A2; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.0.0 Mobile Safari/537.36";
+
+/** The bridge Capacitor injects before any web code runs. */
+const installCapacitorBridge = () => {
+  (window as Window & { Capacitor?: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    Plugins: {},
+  };
+};
+const removeCapacitorBridge = () => {
+  delete (window as Window & { Capacitor?: unknown }).Capacitor;
+};
 
 const setUa = (ua: string) => {
   Object.defineProperty(window.navigator, "userAgent", { value: ua, configurable: true });
@@ -107,6 +126,7 @@ import {
   detectPlatform,
   ensurePermission,
   pushBlocker,
+  pushSupported,
   readPushEnv,
   recoverySteps,
   removeThisDevice,
@@ -143,6 +163,32 @@ describe("push-client — environment detection", () => {
     const env = { ...readPushEnv(), inApp: "WhatsApp" };
     expect(pushBlocker(env)).toContain("WhatsApp");
     expect(pushBlocker(readPushEnv())).toBeNull(); // a real Chrome on Android is fine
+  });
+
+  it("names the installed app instead of calling it an in-app browser", () => {
+    installBrowser({ permission: "default" });
+    setUa(APP_WEBVIEW_UA);
+
+    // The collision this guards: the app's own WebView looks exactly like
+    // WhatsApp's to a user-agent sniff.
+    expect(detectInAppBrowser(APP_WEBVIEW_UA)).toBe("an in-app browser");
+
+    installCapacitorBridge();
+    try {
+      const env = readPushEnv();
+      expect(env.nativeApp).toBe(true);
+      const blocker = pushBlocker(env);
+      expect(blocker).toContain("PROSANTI app");
+      expect(blocker).toContain("FCM");
+      expect(blocker).not.toContain("in-app browser");
+      expect(pushSupported(env)).toBe(false);
+    } finally {
+      removeCapacitorBridge();
+    }
+
+    // Same UA in a real WhatsApp WebView: the old wording must still stand.
+    expect(readPushEnv().nativeApp).toBe(false);
+    expect(pushBlocker(readPushEnv())).toContain("in-app browser");
   });
 
   it("blocks an http origin — Web Push only exists on https", () => {

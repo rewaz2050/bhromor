@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { CustomerInfo } from "@/lib/customer-session";
 import { deleteAddress, getSavedAddresses, preferAddress, type SavedAddress } from "@/lib/address-book";
+import { addressSyncState, pushAddresses, syncAddresses, type AddressSyncState } from "@/lib/address-sync";
 import { samePhone } from "@/lib/orders";
 
 export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo; onSaved: () => Promise<void> }) {
@@ -11,11 +12,24 @@ export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo;
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
+  const [sync, setSync] = useState<AddressSyncState>("idle");
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only address storage
       setAddresses(getSavedAddresses().filter(a => samePhone(a.phone, customer.phone)));
     } catch { setError("এই ব্রাউজারে ঠিকানা পড়া যাচ্ছে না।"); }
+    // The local copy lands first so the list is never blank while the server
+    // answers, then the merged book replaces it — that is what makes an
+    // address saved on a phone appear on a laptop.
+    let live = true;
+    void syncAddresses()
+      .then((merged) => {
+        if (!live) return;
+        setAddresses(merged.filter(a => samePhone(a.phone, customer.phone)));
+        setSync(addressSyncState());
+      })
+      .catch(() => { if (live) setSync(addressSyncState()); });
+    return () => { live = false; };
   }, [customer.phone]);
   const editAddress = (id: string, remove: boolean) => {
     setError(""); setMessage("");
@@ -23,6 +37,8 @@ export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo;
       if (remove) deleteAddress(id); else preferAddress(id);
       setAddresses(getSavedAddresses().filter(a => samePhone(a.phone, customer.phone)));
       setMessage(remove ? "ঠিকানা মুছে ফেলা হয়েছে।" : "পরের checkout-এ এই ঠিকানা আগে আসবে।");
+      // The local change is already done and shown; the mirror follows.
+      void pushAddresses();
     } catch { setError("ঠিকানা সেভ হয়নি—ব্রাউজারের storage অনুমতি দেখুন।"); }
   };
   return <section className="rounded-2xl border border-line bg-paper p-5 sm:p-7 space-y-6">
@@ -45,7 +61,7 @@ export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo;
     {message && <p role="status" className="rounded-xl bg-forest-50 p-3 text-sm text-forest-800">{message}</p>}
     <div className="border-t border-line pt-5 space-y-3">
       <h3 className="font-semibold text-forest-900">আমার সেভ করা ঠিকানা</h3>
-      <p className="text-xs text-ink-soft">এই ফোন নম্বরের checkout-এ সেভ করা ঠিকানা। শুধু এই ব্রাউজারে থাকে—অন্য ডিভাইসে নয়।</p>
+      <p className="text-xs text-ink-soft">{sync === "signed-out" || sync === "missing-table" || sync === "error" ? "এই ফোন নম্বরের checkout-এ সেভ করা ঠিকানা। এখন শুধু এই ব্রাউজারে আছে—অন্য ডিভাইসে যাবে না।" : "এই ফোন নম্বরের checkout-এ সেভ করা ঠিকানা। লগ ইন করা থাকলে অন্য ডিভাইসেও পাবেন।"}</p>
       {addresses.length === 0 && <p className="rounded-xl bg-ivory-50 p-4 text-sm text-ink-soft">এখনো ঠিকানা সেভ করা হয়নি। অর্ডারের checkout-এ ঠিকানা সেভ করতে পারবেন।</p>}
       {addresses.map((a, i) => <article key={a.id} className="rounded-xl border border-line p-4">
         <p className="text-sm font-semibold">{a.label || a.area}{i === 0 && <span className="ml-2 text-xs text-forest-700">পছন্দের ঠিকানা</span>}</p>

@@ -103,6 +103,113 @@ describe("Account — order history (P1 #15)", () => {
     await waitFor(() => expect(history.textContent).toMatch(/No orders on this number yet/));
     expect(screen.getByRole("link", { name: /Shop/ })).toHaveAttribute("href", "/shop");
   });
+
+  it("names the shop each order came from (2026-10-11)", async () => {
+    routes["/api/account/me"] = async () => jsonResponse({ customer });
+    routes["/api/account/orders"] = async () =>
+      jsonResponse({
+        phone: customer.phone,
+        orders: [
+          {
+            id: "PS-1",
+            createdAt: Date.UTC(2026, 9, 11, 6, 30),
+            status: "confirmed",
+            total: 90000,
+            itemCount: 1,
+            firstItem: "Cotton Panjabi",
+            payment: "cod",
+            paymentStatus: null,
+            scheduledAt: null,
+            deliveryWindow: null,
+            isPickup: false,
+            isReturn: false,
+            shopId: "s2",
+            shopName: "Rafiq Store",
+          },
+          {
+            // Older API shape — no shop fields at all. The row still renders.
+            id: "PS-0",
+            createdAt: Date.UTC(2026, 8, 1, 6, 30),
+            status: "delivered",
+            total: 40000,
+            itemCount: 1,
+            firstItem: "Silk Scarf",
+            payment: "cod",
+            paymentStatus: null,
+            scheduledAt: null,
+            deliveryWindow: null,
+            isPickup: false,
+            isReturn: false,
+          },
+        ],
+      });
+    render(<AccountView />);
+    const history = await screen.findByTestId("order-history");
+    await waitFor(() => expect(history.textContent).toContain("PS-1"));
+    expect(history.textContent).toContain("Rafiq Store");
+    // A confirmed order is still moving, so it appears twice by design: once
+    // in the "on its way" strip and once in the full list.
+    expect(screen.getByTestId("active-orders").textContent).toContain("Rafiq Store");
+    // The delivered one is not in the strip.
+    expect(screen.getByTestId("active-orders").textContent).not.toContain("Silk Scarf");
+  });
+});
+
+/** A row good enough to fill a page. */
+const row = (id: string, status: string, shop: string | null = "Rafiq Store") => ({
+  id,
+  createdAt: Date.UTC(2026, 9, 11, 6, 30),
+  status,
+  total: 90000,
+  itemCount: 1,
+  firstItem: `Item ${id}`,
+  payment: "cod",
+  paymentStatus: null,
+  scheduledAt: null,
+  deliveryWindow: null,
+  isPickup: false,
+  isReturn: false,
+  shopId: shop ? "s1" : null,
+  shopName: shop,
+});
+
+describe("Account — the moving orders get their own strip (2026-10-11)", () => {
+  /**
+   * The 30 s tick itself is covered where it can be driven — use-live-refresh
+   * under fake timers, and the tracker end to end. What matters here is the
+   * shopper-visible half: an order that is still moving is pulled to the top,
+   * and it leaves the strip once it has landed.
+   */
+  it("lifts a moving order to the top and drops it once delivered", async () => {
+    routes["/api/account/me"] = async () => jsonResponse({ customer });
+    const served = "confirmed";
+    routes["/api/account/orders"] = async () =>
+      jsonResponse({
+        orders: [
+          row("PS-LIVE", served, "Rafiq Store"),
+          row("PS-OLD", "delivered", "Rafiq Store"),
+        ],
+      });
+    render(<AccountView />);
+    const strip = await screen.findByTestId("active-orders");
+    expect(strip.textContent).toContain("PS-LIVE");
+    expect(strip.textContent).toContain("Rafiq Store");
+    // The finished order stays in the list but out of the strip.
+    expect(strip.textContent).not.toContain("PS-OLD");
+    expect(screen.getByTestId("order-history").textContent).toContain("PS-OLD");
+    // The strip says why it exists, so nobody mistakes it for a stuck page.
+    expect(strip.textContent).toMatch(/refreshes itself/);
+  });
+
+  it("shows no strip at all when nothing is moving", async () => {
+    routes["/api/account/me"] = async () => jsonResponse({ customer });
+    routes["/api/account/orders"] = async () =>
+      jsonResponse({ orders: [row("PS-OLD", "delivered", null), row("PS-X", "cancelled", null)] });
+    render(<AccountView />);
+    const history = await screen.findByTestId("order-history");
+    await waitFor(() => expect(history.textContent).toContain("PS-OLD"));
+    expect(screen.queryByTestId("active-orders")).toBeNull();
+  });
 });
 
 describe("Account — forgot password (P1 #15)", () => {

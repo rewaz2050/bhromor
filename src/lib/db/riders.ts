@@ -41,6 +41,14 @@ import {
   type RiderAvailability,
 } from "../rider-hours";
 import { pushPendingRiderOffers } from "@/lib/rider-push";
+import { liveTrackChannel } from "@/lib/live-track-channel";
+
+/**
+ * Assignment states where the rider holds the customer's contact
+ * (`riderOrderView`), and therefore the only states where broadcasting this
+ * rider's position to that customer's tracker is appropriate.
+ */
+const LIVE_CHANNEL_STATES = new Set(["accepted", "picked_up"]);
 
 export interface RiderJob {
   id: string;
@@ -51,6 +59,14 @@ export interface RiderJob {
   expiresAt: number;
   order: Order;
   pickupShop?: { name: string; address: string; phone: string };
+  /**
+   * Realtime channel this rider's fixes are broadcast on, so the customer's
+   * tracker pin moves the instant the phone reports instead of on its next
+   * poll. Only present once the job is accepted/picked up — the same point at
+   * which the rider is allowed to see the customer's contact
+   * (`riderOrderView`). Absent = no live channel, and the tracker just polls.
+   */
+  liveChannel?: string | null;
 }
 
 /** A rider pay-in. Shown to the rider so they can reconcile COD vs deposit. */
@@ -560,6 +576,15 @@ export async function listRiderJobs(
   for (const assignment of rows) {
     const order = orderMap.get(assignment.order_id);
     if (!order) continue;
+    // Live tracking: the channel name is derived from the order's UUID + the
+    // stored phone, so it is computed here (server-side, from the real row)
+    // and only for a job this rider has actually taken on. The UUID, not the
+    // public order number: it is what `/api/track/rider-location` also holds,
+    // and `order_no` is nullable in this schema — two sides must never derive
+    // different names or the customer's tracker listens to an empty room.
+    const channel = LIVE_CHANNEL_STATES.has(assignment.state)
+      ? liveTrackChannel(assignment.order_id, order.customer?.phone)
+      : null;
     jobs.push({
       id: assignment.id,
       orderId: order.id,
@@ -568,6 +593,7 @@ export async function listRiderJobs(
       expiresAt: epoch(assignment.expires_at),
       order: riderOrderView(order, assignment.state),
       pickupShop: order.shopId ? shops.get(order.shopId) : undefined,
+      liveChannel: channel,
     });
   }
   return jobs;
