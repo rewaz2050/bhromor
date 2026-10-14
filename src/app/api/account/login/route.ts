@@ -30,12 +30,16 @@ export async function POST(request: Request) {
     return apiError("Invalid request.", 400);
   }
 
-  // Per-phone budget (M6): credential stuffing against ONE account must not
-  // get the whole per-IP allowance — key the tight limit on the phone too.
+  // Per-phone budget (M6, hardened round 3): credential stuffing against ONE
+  // account must not get the whole per-IP allowance — 5 attempts / 15 min per
+  // phone (durable, shared across instances) is the brute-force lockout.
   const phoneKey = typeof body.phone === "string" ? body.phone.trim().slice(-11) : "x";
-  const phoneLimit = await checkDurableRateLimit(`login-phone:${phoneKey}`, 10, 15 * 60_000);
+  const phoneLimit = await checkDurableRateLimit(`login-phone:${phoneKey}`, 5, 15 * 60_000);
   if (!phoneLimit.allowed) {
-    const res = apiError("অনেকবার চেষ্টা হয়েছে — একটু পরে আবার চেষ্টা করুন।", 429);
+    const res = apiError(
+      "এই নম্বর থেকে অনেকবার চেষ্টা হয়েছে — ১৫ মিনিট পরে আবার চেষ্টা করুন, অথবা লগইন পেইজের “পাসওয়ার্ড ভুলে গেছেন?” দেখুন।",
+      429,
+    );
     res.headers.set("Retry-After", String(phoneLimit.retryAfterSec));
     return res;
   }

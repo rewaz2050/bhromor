@@ -53,6 +53,46 @@ const securityHeaders = [
         // Non-Vercel hosts: at least keep the clickjacking guard (L1).
         { key: "X-Frame-Options", value: "SAMEORIGIN" },
       ]),
+  // Round 3 (2026-10-14): process-isolation headers on everything.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+];
+
+/**
+ * Staff surfaces (/admin/* incl. the ops gate): the same CSP, now ENFORCED.
+ * Staff traffic is small and can report a breakage; the storefront stays
+ * report-only until the policy is proven there too (2026-10-14, L1 step 2).
+ */
+const staffCspHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.googleusercontent.com https://*.tile.openstreetmap.org",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com https://www.google-analytics.com https://analytics.google.com https://*.facebook.net https://*.facebook.com",
+      "media-src 'self' blob: https://res.cloudinary.com",
+      "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+    ].join("; "),
+  },
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+];
+
+/** Personal/PII JSON: never cache it in a shared or browser cache. */
+const noStoreHeaders = [{ key: "Cache-Control", value: "no-store" }];
+const noStoreRoutes = [
+  "/api/account/:path*",
+  "/api/admin/:path*",
+  "/api/track/:path*",
+  "/api/rider/:path*",
+  "/api/vendor/:path*",
+  "/api/ops/:path*",
 ];
 
 const nextConfig: NextConfig = {
@@ -60,7 +100,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.e2b.app"],
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      { source: "/admin/:path*", headers: staffCspHeaders },
+      ...noStoreRoutes.map((source) => ({ source, headers: noStoreHeaders })),
+    ];
   },
   images: {
     // Product/category media hosts: Cloudinary uploads, Google Drive

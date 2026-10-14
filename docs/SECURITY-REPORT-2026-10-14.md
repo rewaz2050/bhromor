@@ -313,3 +313,21 @@ hygiene) যা যা পাওয়া গেল:
 - `src/proxy.ts` (Next 16 middleware) — distributed rate limit + Supabase session refresh।
 
 **Verification (round 2):** `tsc` clean · `next build` (16.4.0) pass · `vitest` ৫৩৬ files / ৩৬৭৫ tests pass · `npm audit --omit=dev` 0 vulnerabilities।
+
+---
+
+## Round 3 — আরও শক্তিশালীকরণ (১৪ অক্টোবর ২০২৬)
+
+| # | যা শক্ত করা হলো | বিস্তারিত |
+|---|----------------|----------|
+| S1 | **DB RPC grant lockdown** (migration `202610140002_rpc_grant_hardening.sql`) | Supabase নতুন function-এ PUBLIC EXECUTE দেয় — repair 4 (202609160004)-এর পর নতুন write RPC গুলো আবার খুলে গিয়েছিল (`ps_place_multi_order`, `ps_rate_limit_hit`, `ps_purge_customer_sessions`, dispatch/incentive/offer RPCs)। এখন **anon key কোনো RPC চালাতে পারবে না** যা allowlist-এ নেই (policy helpers + read-only); service-only গুলো `authenticated`-ও হারালো। Audit probe `supabase/checks/rpc-grant-audit.sql` allowlist-সহ আপডেটেড; bootstrap-fresh + `bootstrap-parts/23`-এ mirror। |
+| S2 | **CSP এখন staff surfaces-এ enforce** (`/admin/*` সহ ops-gate) | Storefront এখনো report-only (L1 rollout); অ্যাডমিন-এ পূর্ণ CSP বাধ্যতামূলক + `X-Robots-Tag: noindex`। |
+| S3 | Process-isolation headers | `Cross-Origin-Opener-Policy: same-origin`, `X-Permitted-Cross-Domain-Policies: none`। |
+| S4 | PII JSON **`Cache-Control: no-store`** | `/api/account/*`, `/api/admin/*`, `/api/track/*`, `/api/rider/*`, `/api/vendor/*`, `/api/ops/*` — shared/browser cache-এ আর ফোন/অর্ডার বসবে না। |
+| S5 | **Login brute-force lockout** | প্রতি ফোনে ৫ বার/১৫ মিনিট (durable, cross-instance) — আগে ১০ ছিল; 429-এ স্পষ্ট বার্তা + forgot-password নির্দেশনা। |
+| S6 | **GitHub Actions least privilege** | ci.yml `permissions: contents: read` + `persist-credentials: false`; cron.yml `permissions: {}` (token-এ কোনো অনুমতি নেই)। |
+| S7 | H3/H1/M6-এ **নতুন unit tests** | `client-ip.test.ts` (M1 rightmost-XFF), `customer-auth-policy.test.ts` (M6 password policy + phone normalize) — মোট টেস্ট এখন ৩৬৯৮। |
+
+**Round 3 verification:** `tsc` clean · `next build` pass · `vitest` ৫৪০ files / ৩৬৯৮ tests pass।
+
+**স্বীকৃত সীমা (unchanged):** CSP report-only → enforce করার আগে storefront-এ কয়েক দিন console রিপোর্ট দেখুন; OTP provider নেই; staff MFA = Supabase dashboard config; deploy-এ একবার সবার লগ-আউট (`__Host-` cookie)।
