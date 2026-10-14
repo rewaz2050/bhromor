@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) data extraction rules — security 2026-10-14 (M5).
+  allowBackup is false; these rules additionally exclude the WebView's
+  cookies/session and any local storage from device-to-device transfer and
+  cloud backup on the platforms that consult these files.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

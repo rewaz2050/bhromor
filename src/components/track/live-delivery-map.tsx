@@ -46,6 +46,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   const { rider: riderLive, live } = useLiveRiderPosition({
     orderId: order.id,
     phone: order.customer.phone,
+    trackToken: order.trackToken,
     enabled: isOut && !!order.id,
   });
   // The tile map is progressive enhancement: if Leaflet cannot load (offline,

@@ -17,6 +17,7 @@
  */
 
 import { formatBdt } from "./format";
+import { trackHrefWithToken } from "./track-links";
 import type { Language } from "./translations";
 
 /** What a shopper is pushed about. */
@@ -135,6 +136,12 @@ export interface MessageInput {
    */
   orderCount?: number | null;
   lang?: Language;
+  /**
+   * Signed /track token (security 2026-10-14, H3). Server callers pass the
+   * order's precomputed token so the push link taps through with full proof;
+   * without it the link still works under the tracker's strict rate limit.
+   */
+  trackToken?: string | null;
 }
 
 interface EventCopy {
@@ -355,9 +362,7 @@ export const customerPushMessage = (input: MessageInput): CustomerMessage => {
   return {
     title: copy.title,
     body: `${body}${total}${parcels}`,
-    href: `/track?id=${encodeURIComponent(orderNo)}&phone=${encodeURIComponent(
-      (input.phone ?? "").trim(),
-    )}`,
+    href: trackHrefWithToken(orderNo, (input.phone ?? "").trim(), input.trackToken),
   };
 };
 

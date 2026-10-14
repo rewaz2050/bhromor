@@ -23,12 +23,36 @@ const securityHeaders = [
     value: "geolocation=(self), camera=(self), microphone=(), payment=(), usb=()",
   },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  // Security 2026-10-14 (L1): CSP rollout step 1 — REPORT-ONLY. Violations
+  // land in the browser console (open DevTools → Console on a few pages)
+  // without breaking anything. Once the report matches reality, flip this
+  // key to "Content-Security-Policy" and tighten script-src with nonces.
+  {
+    key: "Content-Security-Policy-Report-Only",
+    value: [
+      "default-src 'self'",
+      // Next hydration inlines scripts; report-only collects what else is needed.
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.googleusercontent.com https://*.tile.openstreetmap.org",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com https://www.google-analytics.com https://analytics.google.com https://*.facebook.net https://*.facebook.com",
+      "media-src 'self' blob: https://res.cloudinary.com",
+      "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; "),
+  },
   ...(process.env.VERCEL
     ? [
         { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
         { key: "X-Frame-Options", value: "SAMEORIGIN" },
       ]
-    : []),
+    : [
+        // Non-Vercel hosts: at least keep the clickjacking guard (L1).
+        { key: "X-Frame-Options", value: "SAMEORIGIN" },
+      ]),
 ];
 
 const nextConfig: NextConfig = {
@@ -41,11 +65,11 @@ const nextConfig: NextConfig = {
   images: {
     // Product/category media hosts: Cloudinary uploads, Google Drive
     // direct links, and YouTube thumbnails (§13–15, §48–51).
+    // Security 2026-10-14 (L4): the `*.googleusercontent.com` wildcard and
+    // the `drive.google` typo are gone — exact hosts only.
     remotePatterns: [
       { protocol: "https", hostname: "res.cloudinary.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
-      { protocol: "https", hostname: "*.googleusercontent.com" },
-      { protocol: "https", hostname: "drive.google" },
       { protocol: "https", hostname: "i.ytimg.com" },
       { protocol: "https", hostname: "img.youtube.com" },
     ],

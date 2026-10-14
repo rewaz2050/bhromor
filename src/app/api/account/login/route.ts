@@ -30,6 +30,16 @@ export async function POST(request: Request) {
     return apiError("Invalid request.", 400);
   }
 
+  // Per-phone budget (M6): credential stuffing against ONE account must not
+  // get the whole per-IP allowance — key the tight limit on the phone too.
+  const phoneKey = typeof body.phone === "string" ? body.phone.trim().slice(-11) : "x";
+  const phoneLimit = await checkDurableRateLimit(`login-phone:${phoneKey}`, 10, 15 * 60_000);
+  if (!phoneLimit.allowed) {
+    const res = apiError("অনেকবার চেষ্টা হয়েছে — একটু পরে আবার চেষ্টা করুন।", 429);
+    res.headers.set("Retry-After", String(phoneLimit.retryAfterSec));
+    return res;
+  }
+
   try {
     const customer = await loginCustomer({phone: body.phone, password: body.password});
     const { token, maxAgeSec } = await createSession(customer.id);

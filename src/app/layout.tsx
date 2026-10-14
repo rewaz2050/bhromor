@@ -8,7 +8,7 @@ import "@fontsource-variable/playfair-display";
 // Noto Serif Bengali lives in (site)/layout: only the storefront uses
 // font-bengali — the rider/vendor/admin apps must not pay for 3 weights.
 import "./globals.css";
-import AnalyticsScripts from "@/components/analytics/analytics-scripts";
+import AnalyticsConsentGate from "@/components/analytics/analytics-consent-gate";
 import AnalyticsRouteTracker from "@/components/analytics/analytics-route-tracker";
 import { siteBaseUrl } from "@/lib/site-url";
 
@@ -76,8 +76,9 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">
         {children}
-        {/* Meta Pixel / GA4 — nothing is loaded unless the ids are set. */}
-        <AnalyticsScripts />
+        {/* Meta Pixel / GA4 — only after explicit consent (privacy 2026-10-14),
+            and never at all unless the ids are set. */}
+        <AnalyticsConsentGate />
         <AnalyticsRouteTracker />
       </body>
     </html>

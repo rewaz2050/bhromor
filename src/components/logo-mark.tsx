@@ -4,7 +4,7 @@ import Image from "next/image";
  * PROSANTI brand emblem — official artwork.
  *
  * Raster extracted from the brand-kit artwork
- * (file_00000000b59081fa895b43e61079fe57.png → public/brand/logo-emblem.png,
+ * (docs/assets/prosanti-logo-source.png → public/brand/logo-emblem.png,
  * transparent background). Intrinsic ratio kept via width/height; callers
  * control display size through className (e.g. "h-10 w-auto").
  */

@@ -127,6 +127,14 @@ export default function AccountView({
     // so instead of a fake success that leaves the form on screen.
     const snap = getAuthSnapshot();
     if (snap.mode === "live" && !snap.customer) {
+      if (signup) {
+        // Security 2026-10-14 (M2): signup never reveals whether the number
+        // already had an account — no cookie means "try logging in instead".
+        setAuthTab("login");
+        throw new Error(
+          "অ্যাকাউন্ট হয়ে থাকতে পারে — লগ ইন করে দেখুন (অথবা অন্য নম্বর দিয়ে চেষ্টা করুন)।",
+        );
+      }
       throw new Error(
         "সেশন তৈরি হলো বলে মনে হচ্ছে না — ব্রাউজারে third-party/cookie block বন্ধ করে আবার চেষ্টা করুন।",
       );

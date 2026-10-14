@@ -1561,18 +1561,24 @@ commit;
 -- the state changes and never trust the client.
 begin;
 
--- Every order gets a delivery code so live rider verification matches the
--- 4-digit code shown to the customer at checkout. Existing rows backfill
--- deterministically on the first read below; new rows are set before insert.
+-- Every order gets a RANDOM 4-digit delivery code (security 2026-10-14 H2:
+-- the old hashtext(order_no) derivation was recomputable by anyone holding
+-- the order number). Existing rows backfill on the first read below; new
+-- rows are set before insert.
+create or replace function ps_random_delivery_code()
+returns text language plpgsql security definer set search_path = public as $$
+declare
+  v_b bytea;
+begin
+  v_b := gen_random_bytes(2);
+  return lpad(((get_byte(v_b, 0) * 256 + get_byte(v_b, 1)) % 9000 + 1000)::text, 4, '0');
+end $$;
+
 create or replace function ps_set_order_delivery_code()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if new.delivery_code is null or new.delivery_code !~ '^[0-9]{4}$' then
-    new.delivery_code := lpad(
-      (mod(hashtext(coalesce(new.order_no, new.id::text))::bigint, 9000)::int + 1000)::text,
-      4,
-      '0'
-    );
+    new.delivery_code := ps_random_delivery_code();
   end if;
   return new;
 end $$;
@@ -1583,11 +1589,7 @@ create trigger trg_orders_set_delivery_code
   for each row execute function ps_set_order_delivery_code();
 
 update orders
-set delivery_code = lpad(
-  (mod(hashtext(coalesce(order_no, id::text))::bigint, 9000)::int + 1000)::text,
-  4,
-  '0'
-)
+set delivery_code = ps_random_delivery_code()
 where delivery_code is null
    or delivery_code !~ '^[0-9]{4}$';
 

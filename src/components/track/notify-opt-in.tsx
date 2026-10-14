@@ -38,15 +38,18 @@ export default function NotifyOptIn({
   orderId,
   phone,
   status,
+  trackToken,
 }: {
   orderId: string;
   /** The checkout phone — the tracker's own proof, and what the row binds to. */
   phone: string;
   /** Order status, when the caller knows it (the tracker does). */
   status?: string;
+  /** Signed /track token (H3) — optional; proves ownership on subscribe. */
+  trackToken?: string;
 }) {
   const { t, lang } = useLanguage();
-  const { state, enable, disable, sendTest, setMarketing } = useOrderPush(orderId, phone);
+  const { state, enable, disable, sendTest, setMarketing } = useOrderPush(orderId, phone, trackToken);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

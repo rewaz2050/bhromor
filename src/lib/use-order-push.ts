@@ -114,7 +114,7 @@ export interface UseOrderPush {
  * when subscribing — so the subscription is bound to the number that placed
  * the order, never to whatever a visitor typed into the URL bar.
  */
-export function useOrderPush(orderId: string, phone: string): UseOrderPush {
+export function useOrderPush(orderId: string, phone: string, trackToken?: string | null): UseOrderPush {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [envReady, setEnvReady] = useState(false);
   const [env, setEnv] = useState(() => readPushEnv());
@@ -198,6 +198,9 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
           ...json,
           id: orderId,
           phone,
+          // Security 2026-10-14 (H3) — signed track token when the tracker
+          // has one; the server treats it as full ownership proof.
+          t: trackToken || undefined,
           lang: document.documentElement.lang === "en" ? "en" : "bn",
         }),
       });
@@ -212,7 +215,7 @@ export function useOrderPush(orderId: string, phone: string): UseOrderPush {
     } catch (err) {
       return { ok: false, message: apiErrorMessage(err) };
     }
-  }, [orderId, phone, refresh, status]);
+  }, [orderId, phone, trackToken, refresh, status]);
 
   const disable = useCallback(async () => {
     const sub = await currentSubscription();

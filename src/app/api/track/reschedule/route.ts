@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { findOwnedOrder } from "@/lib/db/order-lookup";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { gateTrackRequest } from "@/lib/track-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -13,19 +13,13 @@ const WINDOW_MS = 60_000;
 const LIMIT = 10;
 
 export async function POST(req: Request) {
-  const ip = clientIpFromHeaders(req.headers);
-  const gate = checkRateLimit(`track-reschedule:${ip}`, LIMIT, WINDOW_MS);
-  if (!gate.allowed) {
-    return NextResponse.json(
-      { error: "Too many attempts — please wait a moment." },
-      { status: 429, headers: { "Retry-After": String(gate.retryAfterSec) } },
-    );
-  }
   const body = (await req.json().catch(() => null)) as {
     orderId?: string;
     phone?: string;
     scheduled_at?: string;
     delivery_window?: string;
+    /** Signed track token (security 2026-10-14, H3) — optional. */
+    t?: string;
   } | null;
   const orderId = body?.orderId?.trim();
   const phone = body?.phone?.trim();
@@ -44,6 +38,15 @@ export async function POST(req: Request) {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(scheduledAt)) {
     return NextResponse.json({ error: "invalid scheduled time" }, { status: 400 });
   }
+
+  const gate = await gateTrackRequest(req, {
+    name: "track-reschedule",
+    id: orderId,
+    phone,
+    token: body?.t,
+    limit: 10,
+  });
+  if (!gate.allowed) return gate.response;
 
   const db = getSupabaseService();
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });

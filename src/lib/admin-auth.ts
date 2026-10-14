@@ -26,17 +26,16 @@ const browserClient = (): Promise<SupabaseClient | null> =>
     .catch(() => null);
 
 /**
- * The single real admin (owner) email. Shown as a prefill on the admin
- * login screen; access itself is still granted by the `admin_users` row
- * in Supabase, never by hard-coding credentials.
- */
-export const ADMIN_EMAIL = "rahatbd2050@gmail.com";
-
-/**
- * Secret admin login path — security by obscurity layer.
+ * Secret admin login path — security by obscurity layer ONLY (the real lock
+ * is the Supabase JWT + `admin_users` role on every API route).
  * The real route lives under this random-looking segment so /admin/login
- * is never exposed. Only staff who know this exact URL can reach the form.
- * Change the suffix here + rename the folder to rotate the path.
+ * is never exposed. Change the suffix here + rename the folder to rotate the path.
+ *
+ * Security 2026-10-14 (M4): this constant and the owner's email used to be
+ * exported here — and `admin-api.ts` (reached from storefront code) pulled
+ * the whole module into public bundles, advertising both. The email prefill
+ * is gone entirely (it was a phishing target); keep this module out of
+ * storefront import graphs — `admin-api` loads it lazily on 401 only.
  */
 export const ADMIN_LOGIN_PATH = "/admin/ops-gate-7f3a9c";
 

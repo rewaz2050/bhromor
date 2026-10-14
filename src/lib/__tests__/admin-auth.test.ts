@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  ADMIN_EMAIL,
+  ADMIN_LOGIN_PATH,
   mapSupabaseAuthError,
   staffProbeError,
 } from "../admin-auth";
 
 describe("staff login copy", () => {
-  it("pins the single wired admin email", () => {
-    expect(ADMIN_EMAIL).toBe("rahatbd2050@gmail.com");
+  it("keeps the admin gate path out of the storefront conceptually (M4)", () => {
+    // The email prefill is gone entirely; only the obscurity-layer path
+    // remains, and admin-api loads this module lazily (never in visitor bundles).
+    expect(ADMIN_LOGIN_PATH).toMatch(/^\/admin\//);
   });
 
   it("explains unconfirmed email instead of a generic password error", () => {

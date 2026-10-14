@@ -478,6 +478,8 @@ export default function CheckoutView() {
     cardFull?: boolean;
     smartCardNote?: string;
     deliveryCode?: string;
+    /** Signed /track token (security 2026-10-14, H3) — rides the receipt link. */
+    trackToken?: string;
     /** P1 #8 — wallet orders say so on the receipt, with the honest state. */
     payment?: "cod" | "bkash" | "nagad";
     /** One line on the receipt: the gift is booked, not just ticked. */
@@ -1290,7 +1292,11 @@ export default function CheckoutView() {
             this order (confirmed → প্যাকিং → রাইডার → পথে → ডেলিভারি) is pushed
             to the number they just ordered with. */}
         <div className="mx-auto mt-6 max-w-sm text-left">
-          <NotifyOptIn orderId={placed.orderId} phone={placed.phone} />
+          <NotifyOptIn
+            orderId={placed.orderId}
+            phone={placed.phone}
+            trackToken={placed.trackToken}
+          />
         </div>
 
         {/* P0 #7 — the referral ask lands the moment the order is placed. */}
@@ -1455,7 +1461,7 @@ export default function CheckoutView() {
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
-            href={trackHref(placed.orderId, placed.phone)}
+            href={trackHref(placed.orderId, placed.phone, placed.trackToken)}
             data-testid="receipt-track-link"
             className="inline-flex h-12 items-center gap-2 rounded-full bg-forest-800 px-7 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
@@ -1829,6 +1835,7 @@ export default function CheckoutView() {
         phone: form.phone,
         placedAt: Date.now(),
         total: data.order.total,
+        trackToken: data.order.trackToken,
       });
       // Conversion (pixel/GA, only when configured) — once per order id.
       trackPurchaseOnce({
@@ -1848,6 +1855,7 @@ export default function CheckoutView() {
       haptic("success");
       setPlaced({
         orderId: data.order.id,
+        trackToken: data.order.trackToken,
         // C2 — every order this tap created, so the receipt can name each
         // parcel and the shopper stops wondering where the second one is.
         orders: placedOrders.map((placedOrder, index) => ({

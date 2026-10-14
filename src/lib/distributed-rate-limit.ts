@@ -34,8 +34,16 @@ export async function distributedRateLimit(request: NextRequest): Promise<NextRe
     return null;
   }
 
+  // Rightmost x-forwarded-for entry: proxies APPEND the real client IP, so
+  // the leftmost entry is spoofable (security 2026-10-14, M1). `x-real-ip`
+  // is set by the platform proxy and is first choice.
   let ip = request.headers.get("x-real-ip")?.trim();
-  if (!ip) ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!ip) {
+    const fwd = request.headers.get("x-forwarded-for");
+    const parts = (fwd ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+    ip = parts.length > 0 ? parts[parts.length - 1] : "";
+  }
+  if (!ip) ip = "unknown";
   const path = request.nextUrl.pathname.replace(/\/+$/, "") || "/";
   const { limit, windowMs } = policyFor(path);
   // Collapse attacker-controlled record ids so changing order/product IDs

@@ -22,7 +22,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { findOwnedOrder } from "@/lib/db/order-lookup";
 import { notifyStaff } from "@/lib/db/engagement";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { gateTrackRequest, rejectCrossSite } from "@/lib/track-gate";
 import { CUSTOMER_CANCELLABLE, type OrderStatus } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -44,18 +44,15 @@ const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: NO_STORE });
 
 export async function POST(req: Request) {
-  const ip = clientIpFromHeaders(req.headers);
-  const gate = checkRateLimit(`track-cancel:${ip}`, LIMIT, WINDOW_MS);
-  if (!gate.allowed) {
-    return NextResponse.json(
-      { error: "Too many attempts — please wait a moment." },
-      { status: 429, headers: { ...NO_STORE, "Retry-After": String(gate.retryAfterSec) } },
-    );
+  if (rejectCrossSite(req)) {
+    return json({ error: "Forbidden" }, 403);
   }
   const body = (await req.json().catch(() => null)) as {
     orderId?: string;
     phone?: string;
     reason?: string;
+    /** Signed track token (security 2026-10-14, H3) — optional. */
+    t?: string;
   } | null;
   const orderId = body?.orderId?.trim();
   const phone = body?.phone?.trim();
@@ -63,6 +60,16 @@ export async function POST(req: Request) {
   if (!orderId || !phone) {
     return json({ error: "orderId and phone required" }, 400);
   }
+
+  const gate = await gateTrackRequest(req, {
+    name: "track-cancel",
+    id: orderId,
+    phone,
+    token: body?.t,
+    limit: LIMIT,
+    windowMs: WINDOW_MS,
+  });
+  if (!gate.allowed) return gate.response;
 
   const db = getSupabaseService();
   if (!db) return json({ error: "not configured" }, 503);

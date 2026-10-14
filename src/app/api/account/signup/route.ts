@@ -1,8 +1,14 @@
 /**
  * POST /api/account/signup — create a customer account, instantly signed in.
- * No email/OTP verification by design: response sets the session cookie.
- * An unseeded accounts store (migration not applied yet) answers 503 with a
- * clear pointer in the server log instead of a silent 500.
+ * No email/OTP verification by design. An unseeded accounts store (migration
+ * not applied yet) answers 503 with a clear pointer in the server log.
+ *
+ * Security 2026-10-14 (M2): the response is IDENTICAL whether or not the
+ * phone already had an account — `202 { ok: true }`, session cookie only
+ * when a new account was actually created. The client decides what to show
+ * by probing /api/account/me, so a signup probe cannot enumerate which
+ * phone numbers hold accounts. Signup also spends one scrypt on the
+ * already-exists path (see signupCustomer) to keep timing flat.
  */
 
 import {
@@ -38,12 +44,29 @@ export async function POST(request: Request) {
     return apiError("Invalid request.", 400);
   }
 
-  try {
-    const customer = await signupCustomer({name: body.name, phone: body.phone, password: body.password});
-    const { token, maxAgeSec } = await createSession(customer.id);
-    const res = apiJson({ customer }, 201);
-    res.headers.set("Set-Cookie", sessionCookie(token, maxAgeSec));
+  // Per-phone budget (H5/M6): slows both signup spam and phone probing.
+  const phoneKey = typeof body.phone === "string" ? body.phone.trim().slice(-11) : "x";
+  const phoneLimit = await checkDurableRateLimit(`signup-phone:${phoneKey}`, 5, 15 * 60_000);
+  if (!phoneLimit.allowed) {
+    const res = apiError("অনেকবার চেষ্টা হয়েছে — একটু পরে আবার চেষ্টা করুন।", 429);
+    res.headers.set("Retry-After", String(phoneLimit.retryAfterSec));
     return res;
+  }
+
+  try {
+    const { customer, created } = await signupCustomer({
+      name: body.name,
+      phone: body.phone,
+      password: body.password,
+    });
+    if (created && customer) {
+      const { token, maxAgeSec } = await createSession(customer.id);
+      const res = apiJson({ ok: true }, 202);
+      res.headers.set("Set-Cookie", sessionCookie(token, maxAgeSec));
+      return res;
+    }
+    // Already existed: same body, no cookie — never say which it was.
+    return apiJson({ ok: true }, 202);
   } catch (err) {
     if (err instanceof CustomerAuthError) {
       if (err.storeMissing) {

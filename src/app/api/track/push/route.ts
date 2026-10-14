@@ -19,7 +19,9 @@
 
 import { findLiveOrder } from "@/lib/db/orders";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { checkDurableRateLimit } from "@/lib/rate-limit-durable";
+import { clientIpFromHeaders } from "@/lib/rate-limit";
+import { gateTrackRequest } from "@/lib/track-gate";
 import { apiError, apiJson } from "@/lib/api-response";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { normalizePhone } from "@/lib/orders";
@@ -43,8 +45,10 @@ const LIMIT = 20;
 const MISSING_TABLE =
   "customer_push_subscriptions table nai — Supabase → SQL Editor e supabase/migrations/202609240001_customer_push.sql run korun.";
 
-const guard = (ip: string) => {
-  const bucket = checkRateLimit(`track-push:${ip}`, LIMIT, WINDOW_MS);
+const guard = async (ip: string) => {
+  // Durable (cross-instance) since 2026-10-14 — in-memory buckets multiply
+  // across serverless instances (H3 hardening).
+  const bucket = await checkDurableRateLimit(`track-push:${ip}`, LIMIT, WINDOW_MS);
   if (bucket.allowed) return null;
   const res = apiError("Too many attempts — please wait a moment.", 429);
   res.headers.set("Retry-After", String(bucket.retryAfterSec));
@@ -91,7 +95,7 @@ export async function GET(request?: Request) {
  * device the caller's browser holds (UX plan §12; migration 202609270001).
  */
 export async function PATCH(request: Request) {
-  const limited = guard(clientIpFromHeaders(request.headers));
+  const limited = await guard(clientIpFromHeaders(request.headers));
   if (limited) return limited;
   if (!isServiceRoleConfigured()) return apiError("Could not update notifications.", 503);
   const db = getSupabaseService();
@@ -121,8 +125,6 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const limited = guard(clientIpFromHeaders(request.headers));
-  if (limited) return limited;
   if (!isServiceRoleConfigured()) {
     return apiError("Could not turn on notifications right now.", 503);
   }
@@ -141,6 +143,18 @@ export async function POST(request: Request) {
   if (id === "" || phoneRaw === "") {
     return apiError("Order ID and phone number are required.", 400);
   }
+
+  // Security 2026-10-14 (H3): durable + token-aware gate — subscribing is
+  // exactly the step an order-number enumerator would take.
+  const gate = await gateTrackRequest(request, {
+    name: "track-push",
+    id,
+    phone: phoneRaw,
+    token: typeof body.t === "string" ? body.t : null,
+    limit: LIMIT,
+    windowMs: WINDOW_MS,
+  });
+  if (!gate.allowed) return gate.response;
 
   try {
     const order = await orderOwnedBy(id, phoneRaw);
@@ -171,7 +185,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const limited = guard(clientIpFromHeaders(request.headers));
+  const limited = await guard(clientIpFromHeaders(request.headers));
   if (limited) return limited;
   if (!isServiceRoleConfigured()) return apiError("Could not update notifications.", 503);
   const db = getSupabaseService();

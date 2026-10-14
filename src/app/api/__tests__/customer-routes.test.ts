@@ -28,6 +28,15 @@ import { POST as signupPost } from "@/app/api/account/signup/route";
 import { POST as loginPost } from "@/app/api/account/login/route";
 import { POST as logoutPost } from "@/app/api/account/logout/route";
 import { GET as cardGet } from "@/app/api/account/card/route";
+import { __resetRateLimits } from "@/lib/rate-limit";
+import { __resetDurableRateLimit } from "@/lib/rate-limit-durable";
+
+// Per-phone / per-IP buckets accumulate across tests in a file — clear them
+// so one test's traffic never 429s the next (2026-10-14 rate-limit hardening).
+beforeEach(() => {
+  __resetRateLimits();
+  __resetDurableRateLimit();
+});
 
 const makeDb = () => {
   const customers: Record<string, unknown>[] = [];
@@ -122,16 +131,19 @@ describe("customer account routes — no verification, instant session", () => {
       phone: "01712345678",
       password: "secret123",
     }));
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as { customer: { name: string; phone: string } };
-    expect(body.customer.phone).toBe("01712345678");
+    // Security 2026-10-14 (M2): the body is the SAME { ok: true } whether or
+    // not the phone already had an account — no account enumeration.
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
     expect(res.headers.get("Set-Cookie") ?? "").toContain("ps_customer=");
     expect((res.headers.get("Set-Cookie") ?? "")).toContain("HttpOnly");
     // No verification step exists anywhere in the contract:
-    expect(body.customer).not.toHaveProperty("confirmation");
+    expect(body).not.toHaveProperty("customer");
+    expect(body).not.toHaveProperty("confirmation");
   });
 
-  it("signup rejects duplicate phone and invalid input", async () => {
+  it("signup answers identically for a duplicate phone (no enumeration) and still validates input", async () => {
     await signupPost(send("/api/account/signup", {
       name: "রহিম",
       phone: "01712345678",
@@ -142,7 +154,11 @@ describe("customer account routes — no verification, instant session", () => {
       phone: "+8801712345678",
       password: "secret123",
     }));
-    expect(dup.status).toBe(409);
+    // M2: same 202 { ok: true } as a fresh signup — but NO session cookie,
+    // so a probe cannot tell "created" from "already existed".
+    expect(dup.status).toBe(202);
+    expect((await dup.json()) as { ok: boolean }).toEqual({ ok: true });
+    expect(dup.headers.get("Set-Cookie")).toBeNull();
     const badPhone = await signupPost(send("/api/account/signup", {
       name: "করিম",
       phone: "12345",
@@ -155,6 +171,13 @@ describe("customer account routes — no verification, instant session", () => {
       password: "123",
     }));
     expect(shortPw.status).toBe(422);
+    // M6: new passwords need 8+ chars and must not be trivially guessable.
+    const weakPw = await signupPost(send("/api/account/signup", {
+      name: "করিম",
+      phone: "01812345678",
+      password: "1234567",
+    }));
+    expect(weakPw.status).toBe(422);
   });
 
   it("login works with the password right after signup — wrong password 401s", async () => {

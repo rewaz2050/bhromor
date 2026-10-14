@@ -36,6 +36,7 @@ import {
 } from "./mappers";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "../phone";
+import { trackTokenFor } from "../track-token";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
 import { forgetStaffRole, type StaffRole } from "../staff-auth";
@@ -266,7 +267,7 @@ export async function listOrders(
 
   const orders = rows.map((order) => {
     const zone = zones.get(order.zone_id);
-    return mapOrder({
+    const domain = mapOrder({
       order,
       items: itemsByOrder.get(order.id) ?? [],
       history: historyByOrder.get(order.id) ?? [],
@@ -277,6 +278,9 @@ export async function listOrders(
         : undefined,
       products,
     });
+    // Security 2026-10-14 (H3): signed /track token for staff-built links.
+    domain.trackToken = trackTokenFor(domain.id, order.customer_phone ?? "");
+    return domain;
   });
   return { orders, nextCursor };
 }

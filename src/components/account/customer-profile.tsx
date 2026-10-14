@@ -5,6 +5,7 @@ import type { CustomerInfo } from "@/lib/customer-session";
 import { deleteAddress, getSavedAddresses, preferAddress, type SavedAddress } from "@/lib/address-book";
 import { addressSyncState, pushAddresses, syncAddresses, type AddressSyncState } from "@/lib/address-sync";
 import { samePhone } from "@/lib/orders";
+import CustomerPasswordCard from "./customer-password-card";
 
 export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo; onSaved: () => Promise<void> }) {
   const [name, setName] = useState(customer.name);
@@ -59,6 +60,7 @@ export function CustomerProfile({ customer, onSaved }: { customer: CustomerInfo;
     </form>
     {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}
     {message && <p role="status" className="rounded-xl bg-forest-50 p-3 text-sm text-forest-800">{message}</p>}
+    <CustomerPasswordCard />
     <div className="border-t border-line pt-5 space-y-3">
       <h3 className="font-semibold text-forest-900">আমার সেভ করা ঠিকানা</h3>
       <p className="text-xs text-ink-soft">{sync === "signed-out" || sync === "missing-table" || sync === "error" ? "এই ফোন নম্বরের checkout-এ সেভ করা ঠিকানা। এখন শুধু এই ব্রাউজারে আছে—অন্য ডিভাইসে যাবে না।" : "এই ফোন নম্বরের checkout-এ সেভ করা ঠিকানা। লগ ইন করা থাকলে অন্য ডিভাইসেও পাবেন।"}</p>

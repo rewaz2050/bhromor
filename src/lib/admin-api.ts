@@ -16,7 +16,28 @@
  *   round trip on every list fetch.
  */
 
-import { ADMIN_SESSION_KEY, signOutAdmin } from "./admin-auth";
+/**
+ * Security 2026-10-14 (M4): `admin-auth` used to be imported statically —
+ * dragging ADMIN_LOGIN_PATH (and, before today, the owner's email) into the
+ * storefront's public chunks via use-cms → admin-api. The session-flag
+ * literal is duplicated here and sign-out is loaded lazily, so visitor
+ * bundles never contain the admin module at all.
+ */
+const ADMIN_SESSION_KEY = "prosanti.admin.session.v1";
+
+/** Best-effort staff sign-out without a static link to admin-auth. */
+const signOutAdminLazy = async (): Promise<void> => {
+  try {
+    const m = await import("./admin-auth");
+    m.signOutAdmin();
+  } catch {
+    try {
+      window.localStorage.removeItem(ADMIN_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+};
 
 type BrowserClient = import("@supabase/supabase-js").SupabaseClient;
 
@@ -91,7 +112,7 @@ export const apiGet = async <T>(path: string): Promise<T> => {
     throw new AdminApiError("Could not reach the server.", 0);
   }
   if (res.status === 401) {
-    signOutAdmin();
+    await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
   if (!res.ok) throw new AdminApiError(await readError(res), res.status);
@@ -115,7 +136,7 @@ export const apiSend = async <T>(
     throw new AdminApiError("Could not reach the server.", 0);
   }
   if (res.status === 401) {
-    signOutAdmin();
+    await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
   if (!res.ok) throw new AdminApiError(await readError(res), res.status);
@@ -137,7 +158,7 @@ export const apiDownload = async (
     throw new AdminApiError("Could not reach the server.", 0);
   }
   if (res.status === 401) {
-    signOutAdmin();
+    await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
   if (!res.ok) throw new AdminApiError(await readError(res), res.status);

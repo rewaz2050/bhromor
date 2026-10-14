@@ -18,8 +18,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { findOwnedOrder } from "@/lib/db/order-lookup";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
-import { apiError } from "@/lib/api-response";
+import { gateTrackRequest } from "@/lib/track-gate";
 import { liveTrackChannel } from "@/lib/live-track-channel";
 
 export const dynamic = "force-dynamic";
@@ -46,23 +45,25 @@ interface RiderRow {
 const EN_ROUTE = new Set(["out-for-delivery", "courier-assigned", "ready-for-pickup"]);
 
 export async function GET(req: Request) {
-  const ip = clientIpFromHeaders(req.headers);
-  const gate = checkRateLimit(`track-rider-loc:${ip}`, LIMIT, WINDOW_MS);
-  if (!gate.allowed) {
-    const res = apiError("Too many attempts — please wait a moment.", 429);
-    res.headers.set("Retry-After", String(gate.retryAfterSec));
-    return res;
-  }
-
   const { searchParams } = new URL(req.url);
   const orderId = searchParams.get("orderId")?.trim();
   const phone = searchParams.get("phone")?.trim();
+  const token = searchParams.get("t")?.trim();
   if (!orderId || !phone) {
     return NextResponse.json(
       { error: "orderId and phone required" },
       { status: 400 },
     );
   }
+
+  const gate = await gateTrackRequest(req, {
+    name: "track-rider-loc",
+    id: orderId,
+    phone,
+    token,
+    limit: LIMIT,
+  });
+  if (!gate.allowed) return gate.response;
 
   const db = getSupabaseService();
   if (!db) return NextResponse.json({ error: "not configured" }, { status: 503 });

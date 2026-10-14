@@ -28,6 +28,7 @@ import PromoBoot from "@/components/promo/promo-boot";
 import RefCapture from "@/components/promo/ref-capture";
 import InstallPrompt from "@/components/layout/install-prompt";
 import { storefrontJsonLd } from "@/lib/marketing-feeds";
+import { safeJsonLd } from "@/lib/jsonld";
 import { siteBaseUrl } from "@/lib/site-url";
 import { readPromoSeed } from "@/lib/db/promo";
 
@@ -122,7 +123,7 @@ export default async function SiteLayout({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(storefrontJsonLd(siteBaseUrl())),
+          __html: safeJsonLd(storefrontJsonLd(siteBaseUrl())),
         }}
       />
       <CartProvider>

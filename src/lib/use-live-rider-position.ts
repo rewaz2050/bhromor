@@ -52,10 +52,13 @@ interface FixMessage {
 export function useLiveRiderPosition(opts: {
   orderId: string;
   phone: string;
+  /** Signed /track token (H3) — optional; widens the poll budget when present. */
+  trackToken?: string | null;
   /** False until the parcel is actually on the road. */
   enabled: boolean;
 }): { rider: LiveRiderFix | null; live: boolean } {
   const { orderId, phone, enabled } = opts;
+  const trackToken = opts.trackToken ?? "";
   const [rider, setRider] = useState<LiveRiderFix | null>(null);
   const [live, setLive] = useState(false);
   // Learned from the first HTTP answer — the channel name is derived from the
@@ -78,7 +81,8 @@ export function useLiveRiderPosition(opts: {
     if (!enabled || !orderId) return;
     try {
       const res = await fetch(
-        `/api/track/rider-location?orderId=${encodeURIComponent(orderId)}&phone=${encodeURIComponent(phone)}`,
+        `/api/track/rider-location?orderId=${encodeURIComponent(orderId)}&phone=${encodeURIComponent(phone)}` +
+          (trackToken ? `&t=${encodeURIComponent(trackToken)}` : ""),
       );
       const data = (await res.json().catch(() => null)) as {
         lat?: number | null;
@@ -98,7 +102,7 @@ export function useLiveRiderPosition(opts: {
     } catch {
       /* offline — the next tick or a broadcast will catch up */
     }
-  }, [enabled, orderId, phone, accept]);
+  }, [enabled, orderId, phone, trackToken, accept]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount; setState lands after the await
