@@ -149,21 +149,23 @@ it("shows the two parcels before the tap, each with its own delivery", async () 
 
 it("places ONE request and names both orders on the receipt", async () => {
   render(
-    createElement(
-      LanguageProvider,
-      null,
-      createElement(CartProvider, null, createElement(CheckoutView)),
-    ),
+    createElement(LanguageProvider, {
+      initialLang: "bn",
+      children: createElement(CartProvider, null, createElement(CheckoutView)),
+    }),
   );
 
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Place Order/i })).toBeInTheDocument(),
+    expect(screen.getAllByRole("button", { name: /অর্ডার করুন/ }).length).toBeGreaterThan(0),
   );
   fill();
-  fireEvent.click(screen.getByRole("button", { name: /Place Order/i }));
+  const placeOrder = screen
+    .getAllByRole("button", { name: /অর্ডার করুন/ })
+    .find((b) => b.getAttribute("type") === "submit")!;
+  fireEvent.click(placeOrder);
 
   await waitFor(
-    () => expect(screen.getAllByText(/order confirmed/i).length).toBeGreaterThan(0),
+    () => expect(screen.getAllByTestId("receipt-order-id").length).toBeGreaterThan(0),
     { timeout: 5000 },
   );
 

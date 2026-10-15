@@ -1241,13 +1241,13 @@ export default function CheckoutView() {
           {t("checkout.orderConfirmed")}
         </h1>
         <p className="mt-4 text-ink-soft">
-          ধন্যবাদ{form.name ? `, ${form.name.split(" ")[0]}` : ""}। আপনার ডেলিভারি প্রস্তুত করা হচ্ছে।
+          {t("checkout.receiptThanks").replace("{name}", form.name ? `, ${form.name.split(" ")[0]}` : "")}
         </p>
 
         {/* Order ID — big, selectable, one-tap copy (P0 #5) */}
         <div className="mx-auto mt-5 flex max-w-sm items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line">
           <div className="min-w-0 text-left">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">অর্ডার নম্বর</p>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">{t("checkout.receiptOrderNumber")}</p>
             <p className="select-all font-mono text-base font-bold text-forest-900" data-testid="receipt-order-id">
               {placed.orderId}
             </p>
@@ -1273,7 +1273,10 @@ export default function CheckoutView() {
             data-testid="receipt-orders"
           >
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-forest-900">
-              এক চেকআউটে {bnDigits(String(placed.orders.length))}টি অর্ডার
+              {t("checkout.receiptMultiTitle").replace(
+                "{n}",
+                lang === "bn" ? bnDigits(String(placed.orders.length)) : String(placed.orders.length),
+              )}
             </p>
             <ul className="mt-2 space-y-1.5">
               {placed.orders.map((entry) => (
@@ -1293,8 +1296,10 @@ export default function CheckoutView() {
               ))}
             </ul>
             <p className="mt-2 text-[0.68rem] leading-5 text-forest-900">
-              প্রতিটি দোকান নিজের পার্সেল আলাদাভাবে পাঠাবে — তাই{" "}
-              {bnDigits(String(placed.orders.length))}টি ডেলিভারি আসবে।
+              {t("checkout.receiptMultiNote").replace(
+                "{n}",
+                lang === "bn" ? bnDigits(String(placed.orders.length)) : String(placed.orders.length),
+              )}
             </p>
           </div>
         )}
@@ -1321,15 +1326,16 @@ export default function CheckoutView() {
             role="status"
             className="mx-auto mt-6 max-w-sm rounded-2xl border border-gold-300 bg-gold-50 p-4 text-sm font-medium text-forest-900"
           >
-            🎉 <strong>স্মার্ট কার্ড পূর্ণ!</strong> আপনি আকর্ষণীয় পুরস্কার
-            জিতেছেন — পরবর্তী অর্ডারের সাথে উপহার পৌঁছে যাবে।
+            🎉 <strong>{t("checkout.receiptCardFullTitle")}</strong>
+            {t("checkout.receiptCardFullBody")}
           </div>
         )}
         {placed.smartCardNote && !placed.cardFull && (
           <p className="mt-4 flex items-start gap-2 text-xs text-ink-soft">
             <IconGift className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" />
             <span>
-              {placed.smartCardNote} — প্রতি অর্ডারে ১টি করে পড়বে।
+              {placed.smartCardNote}
+              {t("checkout.receiptCardNote")}
             </span>
           </p>
         )}
@@ -1337,7 +1343,7 @@ export default function CheckoutView() {
         <div className="mx-auto mt-6 max-w-sm rounded-2xl bg-gold-50/80 p-5 ring-1 ring-gold-300 shadow-sm text-center">
           <div className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-forest-900">
             <IconShield className="h-4 w-4 text-gold-600" />
-            আপনার নিরাপদ ডেলিভারি পিন (Security PIN)
+            {t("checkout.receiptPinTitle")}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 font-mono text-2xl font-bold text-forest-900">
             {deliveryCode.split("").map((digit, i) => (
@@ -1350,7 +1356,7 @@ export default function CheckoutView() {
             ))}
           </div>
           <p className="mt-2 text-[11px] text-ink-soft">
-            পার্সেল ও ক্যাশ লেনদেনের সময় এই ৪-সংখ্যার কোডটি রাইডারকে বলুন।
+            {t("checkout.receiptPinHelp")}
           </p>
         </div>
 
@@ -1359,24 +1365,22 @@ export default function CheckoutView() {
             <IconGift className="h-4 w-4" />
           </span>
           <div>
-            <strong className="block font-semibold">১০-অর্ডার রিওয়ার্ড প্রগ্রেস</strong>
-            <span className="text-ink-soft text-[11px]">
-              এই অর্ডার ডেলিভারি রিসিভ করলে আপনার লয়্যালটি কার্ডে +১ স্ট্যাম্প যোগ হবে!
-            </span>
+            <strong className="block font-semibold">{t("checkout.receiptRewardTitle")}</strong>
+            <span className="text-ink-soft text-[11px]">{t("checkout.receiptRewardBody")}</span>
           </div>
         </div>
 
         <div className="mx-auto mt-6 max-w-sm space-y-3 rounded-3xl bg-paper p-6 text-left text-sm ring-1 ring-line">
           <p className="flex items-center gap-3">
             <IconTruck className="h-5 w-5 text-forest-700" />
-            আনুমানিক সময়:{" "}
+            {t("checkout.receiptEtaLabel")}{" "}
             <strong className="text-ink">{placed.eta}</strong>
           </p>
           {placed.slotNote ? (
             <p className="flex items-center gap-3" data-testid="receipt-slot">
               <IconMoon className="h-4 w-4 shrink-0 text-gold-300" />
               <span>
-                ডেলিভারি সময়: <strong className="text-ink">{placed.slotNote}</strong>
+                {t("checkout.receiptSlotLabel")} <strong className="text-ink">{placed.slotNote}</strong>
               </span>
             </p>
           ) : null}
@@ -1394,7 +1398,7 @@ export default function CheckoutView() {
           ) : null}
           <p className="flex items-center justify-between border-t border-line pt-3 font-medium text-ink">
             {placed.payment && placed.payment !== "cod"
-              ? `Total — ${placed.payment === "bkash" ? "bKash" : "Nagad"}`
+              ? `${t("checkout.totalCod")} — ${placed.payment === "bkash" ? "bKash" : "Nagad"}`
               : `${t("checkout.totalCod")} — ${t("checkout.cashOnDelivery")}`}
             <span>{formatBdt(placed.total)}</span>
           </p>
@@ -1421,17 +1425,17 @@ export default function CheckoutView() {
                 body: wallet
                   ? t("checkout.nextVerifyWallet").replace("{wallet}", wallet)
                   : t("checkout.nextConfirmCall"),
-                when: lang === "bn" ? "কিছুক্ষণের মধ্যে" : "shortly",
+                when: t("checkout.receiptShortly"),
               },
               placed.isPickup
                 ? {
-                    title: lang === "bn" ? "পিকআপ" : "Pickup",
+                    title: t("checkout.receiptPickup"),
                     body: t("checkout.nextPickup").replace("{hub}", SUNAMGANJ_HUB),
                     when: placed.eta,
                   }
                 : placed.isCourier
                   ? {
-                      title: lang === "bn" ? "কুরিয়ার" : "Courier",
+                      title: t("checkout.receiptCourier"),
                       body: t("checkout.nextCourier").replace("{eta}", courierEta(lang)),
                       when: null,
                     }
@@ -1461,13 +1465,9 @@ export default function CheckoutView() {
             className="mx-auto mt-4 max-w-sm rounded-2xl bg-amber-50 p-4 text-left text-xs leading-6 text-amber-900 ring-1 ring-amber-200"
           >
             <strong className="block text-sm font-semibold">
-              {placed.payment === "bkash" ? "bKash" : "Nagad"} payment — under
-              verification
+              {placed.payment === "bkash" ? "bKash" : "Nagad"} {t("checkout.receiptVerifyTitle")}
             </strong>
-            আপনি টাকা পাঠিয়েছেন — দোকান নিজের wallet-এ TRXID যাচাই করে order
-            confirm করবে। Order টি track page-এ “payment under verification”
-            status-এ দেখাবে; verify হলেই prep শুরু হবে। টাকা পাঠানোর আগে ভুল
-            হলে track page থেকে বাতিল করুন।
+            {t("checkout.receiptVerifyBody")}
           </div>
         )}
 
