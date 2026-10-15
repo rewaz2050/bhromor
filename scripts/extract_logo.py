@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract the PROSANTI emblem from the cream-background artwork.
 
-Source: file_00000000b59081fa895b43e61079fe57.png (1254x1254, opaque cream bg)
+Source: docs/assets/prosanti-logo-source.png (1254x1254, opaque cream bg)
 Outputs:
   public/brand/logo-emblem.png  — emblem only (y < wordmark), transparent bg
   public/brand/logo-lockup.png  — full artwork trimmed (cream bg kept, og/social)
@@ -10,7 +10,7 @@ Outputs:
 import numpy as np
 from PIL import Image
 
-SRC = "file_00000000b59081fa895b43e61079fe57.png"
+SRC = "docs/assets/prosanti-logo-source.png"
 im = Image.open(SRC).convert("RGB")
 arr = np.asarray(im).astype(np.float64)
 H, W, _ = arr.shape

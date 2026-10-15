@@ -12,7 +12,7 @@
 import { findOwnedOrder } from "@/lib/db/order-lookup";
 import { applyDeliveryRating } from "@/lib/db/riders";
 import { isServiceRoleConfigured } from "@/lib/env";
-import { checkRateLimit, clientIpFromHeaders } from "@/lib/rate-limit";
+import { gateTrackRequest } from "@/lib/track-gate";
 import { getSupabaseService } from "@/lib/supabase-server";
 import { apiError, apiJson } from "@/lib/api-response";
 
@@ -22,22 +22,12 @@ export async function POST(request: Request) {
   if (request.headers.get("sec-fetch-site") === "cross-site") {
     return apiError("Forbidden", 403);
   }
-  const ip = clientIpFromHeaders(request.headers);
-  const limit = checkRateLimit(`track-rate:${ip}`, 10, 60_000);
-  if (!limit.allowed) {
-    const res = apiError("অনেকবার চেষ্টা হয়েছে — এক মিনিট পরে চেষ্টা করুন।", 429);
-    res.headers.set("Retry-After", String(limit.retryAfterSec));
-    return res;
-  }
-  const service = getSupabaseService();
-  if (!isServiceRoleConfigured() || !service) {
-    return apiError("রেটিং সাময়িকভাবে বন্ধ আছে।", 503);
-  }
-
   const body = (await request.json().catch(() => null)) as {
     id?: unknown;
     phone?: unknown;
     stars?: unknown;
+    /** Signed track token (security 2026-10-14, H3) — optional. */
+    t?: unknown;
   } | null;
   const id = typeof body?.id === "string" ? body.id.trim().slice(0, 64) : "";
   const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
@@ -45,6 +35,21 @@ export async function POST(request: Request) {
   if (!id || !phone) return apiError("Order ID ও ফোন নম্বর দিন।", 400);
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
     return apiError("১ থেকে ৫ এর মধ্যে রেটিং দিন।", 422);
+  }
+
+  const gate = await gateTrackRequest(request, {
+    name: "track-rate",
+    id,
+    phone,
+    token: typeof body?.t === "string" ? body.t : null,
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (!gate.allowed) return gate.response;
+
+  const service = getSupabaseService();
+  if (!isServiceRoleConfigured() || !service) {
+    return apiError("রেটিং সাময়িকভাবে বন্ধ আছে।", 503);
   }
 
   const order = await findOwnedOrder(

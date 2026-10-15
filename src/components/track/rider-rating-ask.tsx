@@ -135,7 +135,12 @@ export default function RiderRatingAsk({
       const res = await fetch("/api/track/rate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: order.id, phone, stars: value }),
+        body: JSON.stringify({
+          id: order.id,
+          phone,
+          stars: value,
+          t: order.trackToken || undefined,
+        }),
       });
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;

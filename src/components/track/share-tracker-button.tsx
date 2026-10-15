@@ -13,10 +13,13 @@ import { trackHref } from "@/lib/last-order";
 export default function ShareTrackerButton({
   orderId,
   phone,
+  trackToken,
   className = "",
 }: {
   orderId: string;
   phone: string;
+  /** Signed token (H3) — the shared link then opens with full proof. */
+  trackToken?: string;
   className?: string;
 }) {
   const { t } = useLanguage();
@@ -24,7 +27,7 @@ export default function ShareTrackerButton({
   return (
     <ShareLink
       text={t("track.shareTrackerText").replace("{id}", orderId)}
-      url={`${origin}${trackHref(orderId, phone)}`}
+      url={`${origin}${trackHref(orderId, phone, trackToken)}`}
       label={t("track.shareTracker")}
       copiedLabel={t("track.shareTrackerCopied")}
       testId="share-tracker"

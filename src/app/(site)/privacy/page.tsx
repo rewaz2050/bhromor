@@ -67,8 +67,8 @@ export default function PrivacyPage() {
           <li>
             <strong><L en="Technical:" bn="প্রযুক্তিগত:" /></strong>{" "}
             <L
-              en="basic first-party analytics such as pages viewed, searches and device type, used to improve the experience — no advertising trackers, no user id. No payment-card data is handled by us at launch — Cash on Delivery is primary."
-              bn="কোন পেজ দেখা হলো, কী খোঁজা হলো, কোন ধরনের ডিভাইস — শুধু আমাদের নিজস্ব সাধারণ পরিসংখ্যান, সেবা ভালো করার জন্য; কোনো বিজ্ঞাপনী ট্র্যাকার বা ইউজার-আইডি নেই। কার্ডের তথ্য আমরা নিই না — ক্যাশ অন ডেলিভারিই মূল পদ্ধতি।"
+              en="basic first-party analytics such as pages viewed, searches and device type, used to improve the experience. If you consent, we also load Google Analytics 4 and Meta Pixel (advertising/analytics cookies from Google and Meta) to measure the funnel — they are never loaded before you accept, and declining costs you nothing. We never send them your phone number or name. No payment-card data is handled by us at launch — Cash on Delivery is primary."
+              bn="কোন পেজ দেখা হলো, কী খোঁজা হলো, কোন ধরনের ডিভাইস — আমাদের নিজস্ব সাধারণ পরিসংখ্যান, সেবা ভালো করার জন্য। আপনি মঞ্জুর করলে অতিরিক্তভাবে Google Analytics 4 ও Meta Pixel (Google ও Meta-র বিজ্ঞাপনী/পরিসংখ্যান কুকি) লোড হয় — মঞ্জুরির আগে এগুলো কখনো লোড হয় না, আর না বললেও সব কাজ চলবে। এদের কাছে আপনার ফোন নম্বর বা নাম পাঠানো হয় না। কার্ডের তথ্য আমরা নিই না — ক্যাশ অন ডেলিভারিই মূল পদ্ধতি।"
             />
           </li>
         </ul>
@@ -104,16 +104,16 @@ export default function PrivacyPage() {
         <h2><L en="Sharing" bn="কার সাথে ভাগ হয়" /></h2>
         <p>
           <L
-            en="We do not sell personal information. Delivery riders receive only the name, phone number and address needed to complete your delivery. Shops on the marketplace see the order details needed to prepare it. Service providers (hosting, media, analytics, and in the future payment gateways) process data under our instruction with appropriate safeguards."
-            bn="আমরা ব্যক্তিগত তথ্য বিক্রি করি না। ডেলিভারি রাইডার শুধু ডেলিভারির জন্য দরকারি নাম, ফোন নম্বর ও ঠিকানা পান। মার্কেটপ্লেসের দোকান অর্ডার প্রস্তুত করতে যতটুকু দরকার ততটুকু দেখে। সেবাদাতা প্রতিষ্ঠান (হোস্টিং, মিডিয়া, পরিসংখ্যান, ভবিষ্যতে পেমেন্ট গেটওয়ে) আমাদের নির্দেশে যথাযথ সুরক্ষা মেনে তথ্য প্রক্রিয়া করে।"
+            en="We do not sell personal information. Delivery riders receive only the name, phone number and address needed to complete your delivery — and during an active delivery you see the rider's name and phone number so you can coordinate the handoff. Shops on the marketplace see the order details needed to prepare it. Service providers (hosting, media, analytics, and in the future payment gateways) process data under our instruction with appropriate safeguards."
+            bn="আমরা ব্যক্তিগত তথ্য বিক্রি করি না। ডেলিভারি রাইডার শুধু ডেলিভারির জন্য দরকারি নাম, ফোন নম্বর ও ঠিকানা পান — আর চলমান ডেলিভারির সময় হাতে হাতে দেওয়ার জন্য আপনি রাইডারের নাম ও ফোন নম্বর দেখেন। মার্কেটপ্লেসের দোকান অর্ডার প্রস্তুত করতে যতটুকু দরকার ততটুকু দেখে। সেবাদাতা প্রতিষ্ঠান (হোস্টিং, মিডিয়া, পরিসংখ্যান, ভবিষ্যতে পেমেন্ট গেটওয়ে) আমাদের নির্দেশে যথাযথ সুরক্ষা মেনে তথ্য প্রক্রিয়া করে।"
           />
         </p>
 
         <h2><L en="Location" bn="অবস্থান" /></h2>
         <p>
           <L
-            en="Live courier location is collected only during an active delivery, shared only with the order’s customer, and stopped when delivery completes. Courier personal information is never exposed."
-            bn="রাইডারের লাইভ অবস্থান শুধু চলমান ডেলিভারির সময় নেওয়া হয়, শুধু সেই অর্ডারের ক্রেতাকে দেখানো হয়, আর ডেলিভারি শেষ হলেই বন্ধ। রাইডারের ব্যক্তিগত তথ্য কখনো প্রকাশ করা হয় না।"
+            en="Live courier location is collected only during an active delivery, shared only with the order’s customer, and stopped when delivery completes. Beyond the delivery contact details described above, courier personal information is never exposed."
+            bn="রাইডারের লাইভ অবস্থান শুধু চলমান ডেলিভারির সময় নেওয়া হয়, শুধু সেই অর্ডারের ক্রেতাকে দেখানো হয়, আর ডেলিভারি শেষ হলেই বন্ধ। উপরে বলা ডেলিভারি যোগাযোগের তথ্য ছাড়া রাইডারের অন্য কোনো ব্যক্তিগত তথ্য প্রকাশ করা হয় না।"
           />
         </p>
 

@@ -31,6 +31,10 @@ concurrency:
   group: shop-clock
   cancel-in-progress: false
 
+# Round 3 hardening: this workflow only curls the site — the GITHUB_TOKEN
+# needs no permissions at all.
+permissions: {}
+
 jobs:
   tick:
     runs-on: ubuntu-latest

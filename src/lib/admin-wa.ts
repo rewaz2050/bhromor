@@ -15,6 +15,7 @@ import type { Order } from "./orders";
 import { waE164 } from "./whatsapp-order";
 import { formatBdt } from "./format";
 import { absoluteUrl } from "./site-url";
+import { trackHrefWithToken } from "./track-links";
 import { SUNAMGANJ_HUB } from "./sunamganj";
 
 export type WaStatusKind =
@@ -37,7 +38,7 @@ const paymentLabel = (order: Order): string =>
 
 const trackLink = (order: Order): string =>
   absoluteUrl(
-    `/track?id=${encodeURIComponent(order.id)}&phone=${encodeURIComponent(order.customer.phone)}`,
+    trackHrefWithToken(order.id, order.customer.phone, order.trackToken),
   );
 
 const pinOf = (order: Order): string => order.deliveryCode ?? "";

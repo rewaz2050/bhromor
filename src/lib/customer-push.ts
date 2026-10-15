@@ -48,6 +48,7 @@ import {
   type ProductEventKind,
 } from "@/lib/notify-messages";
 import { queueWaDraft } from "@/lib/wa-outbox";
+import { trackTokenFor } from "@/lib/track-token";
 
 /** Same VAPID pair the staff devices use — one key for the whole site. */
 const nonEmpty = (value: string | undefined | null, max = 500): string | null => {
@@ -468,6 +469,9 @@ export const pushOrderMilestone = async (
         when: input.when ?? null,
         orderCount: input.orderCount ?? null,
         lang,
+        // Security 2026-10-14 (H3): signed /track token so the tapped link
+        // arrives with full ownership proof (this module is server-side).
+        trackToken: trackTokenFor(orderNo, input.phone ?? ""),
       }),
   });
   if (reached === 0) {

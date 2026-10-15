@@ -20,15 +20,24 @@ import { getSupabaseService } from "./supabase-server";
 import { isServiceRoleConfigured } from "./env";
 import { normalizePhone, samePhone } from "./orders";
 
-export const CUSTOMER_COOKIE = "ps_customer";
+/**
+ * Session cookie name. Security 2026-10-14 (L9): the `__Host-` prefix in
+ * production pins the cookie to THIS exact host (Secure + Path=/ + no
+ * Domain) — a sibling subdomain or a sloppy Domain= copy can never receive
+ * it. Browsers reject `__Host-` over plain http, so `npm run dev` keeps the
+ * unprefixed name. One-time effect on deploy: existing sessions must log
+ * in again (the old cookie name is simply no longer read).
+ */
+export const CUSTOMER_COOKIE =
+  process.env.NODE_ENV === "production" ? "__Host-ps_customer" : "ps_customer";
 export const SESSION_DAYS = 30;
-
-const KEYLEN = 64;
 
 export interface CustomerInfo {
   id: string;
   name: string;
   phone: string;
+  /** When the account was opened — history is scoped from here (H5). */
+  createdAt?: string;
 }
 
 export class CustomerAuthError extends Error {
@@ -64,16 +73,32 @@ export const customerStoreReady = async (db: ServiceDb): Promise<boolean> => {
 
 /* ----------------------------- passwords ----------------------------- */
 
+/**
+ * scrypt, versioned (round 4 hardening, 2026-10-14):
+ *   s1 = N=16384 — legacy hashes from before this round (verify-only).
+ *   s2 = N=32768 — ~2× the memory cost of s1; every NEW hash uses it.
+ * Old `s1` hashes keep verifying forever; the next password change writes s2.
+ */
+const KEYLEN = 64;
+const SCRYPT_PARAMS = {
+  s1: { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
+  s2: { N: 32768, r: 8, p: 1, maxmem: 128 * 1024 * 1024 },
+} as const;
+type ScryptVersion = keyof typeof SCRYPT_PARAMS;
+
+const deriveKey = (password: string, salt: string, v: ScryptVersion): Buffer =>
+  scryptSync(password, salt, KEYLEN, SCRYPT_PARAMS[v]);
+
 export const hashPassword = (password: string): string => {
   const salt = randomBytes(16).toString("hex");
-  const key = scryptSync(password, salt, KEYLEN).toString("hex");
-  return `s1:${salt}:${key}`;
+  const key = deriveKey(password, salt, "s2").toString("hex");
+  return `s2:${salt}:${key}`;
 };
 
 export const verifyPassword = (password: string, stored: string): boolean => {
   const [tag, salt, key] = stored.split(":");
-  if (tag !== "s1" || !salt || !key) return false;
-  const candidate = scryptSync(password, salt, KEYLEN);
+  if ((tag !== "s1" && tag !== "s2") || !salt || !key) return false;
+  const candidate = deriveKey(password, salt, tag);
   const expected = Buffer.from(key, "hex");
   return (
     candidate.length === expected.length && timingSafeEqual(candidate, expected)
@@ -104,13 +129,52 @@ const checkPassword = (raw: unknown): string => {
   return raw;
 };
 
+/**
+ * NEW passwords (signup / change) — security 2026-10-14 (M6): 8+ chars and
+ * a small common-password denylist. Login keeps the old 6-char floor so
+ * existing accounts are never locked out by the new rule.
+ */
+const COMMON_PASSWORDS = new Set([
+  "password", "password1", "password123", "12345678", "123456789", "1234567890",
+  "qwertyui", "qwerty123", "iloveyou", "admin123", "welcome1", "letmein1",
+  "abc12345", "11111111", "00000000", "football", "baseball", "sunshine",
+  "princess", "dragon12", "monkey12", "superman", "trustno1", "passw0rd",
+]);
+
+export const checkNewPassword = (raw: unknown): string => {
+  const value = checkPassword(raw);
+  if (value.length < 8) {
+    throw new CustomerAuthError("পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।", 422);
+  }
+  if (COMMON_PASSWORDS.has(value.toLowerCase())) {
+    throw new CustomerAuthError(
+      "এই পাসওয়ার্ডটি খুবই সাধারণ — অন্য একটি কঠিন পাসওয়ার্ড দিন।",
+      422,
+    );
+  }
+  if (/^(.)\1+$/.test(value) || /^(0123456789|abcdefgh)/i.test(value)) {
+    throw new CustomerAuthError("পাসওয়ার্ডটি সহজে অনুমান করা যায় — অন্য একটি দিন।", 422);
+  }
+  return value;
+};
+
+/** Dummy hash used to equalize login timing for unknown phones (M2). */
+const DUMMY_HASH = hashPassword("timing-equalizer-not-a-real-password");
+
 /* ----------------------------- accounts ------------------------------ */
 
+/**
+ * Create an account. Non-enumerating by design (security 2026-10-14, M2):
+ * when the phone already has an account the result is `created: false` with
+ * NO session — and the caller (route) answers with the SAME body either way,
+ * so a signup probe cannot map which phone numbers hold accounts. The
+ * exists-path still spends one scrypt so timing matches the create-path.
+ */
 export const signupCustomer = async (input: {
   name: unknown;
   phone: unknown;
   password: unknown;
-}): Promise<CustomerInfo> => {
+}): Promise<{ customer: CustomerInfo | null; created: boolean }> => {
   const name = checkName(input.name);
   const phone = validCustomerPhone(input.phone);
   if (!phone) {
@@ -119,7 +183,7 @@ export const signupCustomer = async (input: {
       422,
     );
   }
-  const password = checkPassword(input.password);
+  const password = checkNewPassword(input.password);
 
   const db = getSupabaseService();
   if (!isServiceRoleConfigured() || !db) {
@@ -135,16 +199,15 @@ export const signupCustomer = async (input: {
     throw new CustomerAuthError(MISSING_STORE_MESSAGE, 503, true);
   }
   if (existing.data) {
-    throw new CustomerAuthError(
-      "এই নম্বরে অ্যাকাউন্ট আগেই আছে — লগ ইন করুন।",
-      409,
-    );
+    // Equalize timing with the create path (which hashes before insert).
+    hashPassword(password);
+    return { customer: null, created: false };
   }
 
   const inserted = await db
     .from("customers")
     .insert({ name, phone, password_hash: hashPassword(password) })
-    .select("id, name, phone")
+    .select("id, name, phone, created_at")
     .single();
   if (inserted.error) {
     if (isMissingTableError(inserted.error)) {
@@ -155,7 +218,7 @@ export const signupCustomer = async (input: {
   if (!inserted.data) {
     throw new CustomerAuthError("অ্যাকাউন্ট খোলা গেল না — আবার চেষ্টা করুন।", 500);
   }
-  return inserted.data as CustomerInfo;
+  return { customer: inserted.data as CustomerInfo, created: true };
 };
 
 export const loginCustomer = async (input: {
@@ -170,7 +233,7 @@ export const loginCustomer = async (input: {
   }
   const found = await db
     .from("customers")
-    .select("id, name, phone, password_hash")
+    .select("id, name, phone, created_at, password_hash")
     .eq("phone", phone ?? "")
     .maybeSingle();
   if (found.error && isMissingTableError(found.error)) {
@@ -179,11 +242,15 @@ export const loginCustomer = async (input: {
   const row = found.data as
     | (CustomerInfo & { password_hash: string })
     | null;
-  // Same message for unknown phone and wrong password — no account probing.
-  if (!row || !verifyPassword(password, row.password_hash)) {
+  // Same message AND same work for unknown phone and wrong password —
+  // no account probing via status or timing (M2).
+  const ok = row
+    ? verifyPassword(password, row.password_hash)
+    : (verifyPassword(password, DUMMY_HASH), false);
+  if (!row || !ok) {
     throw new CustomerAuthError("নম্বর বা পাসওয়ার্ড মিলছে না।", 401);
   }
-  return { id: row.id, name: row.name, phone: row.phone };
+  return { id: row.id, name: row.name, phone: row.phone, createdAt: row.createdAt };
 };
 
 /* ----------------------------- sessions ------------------------------ */
@@ -212,7 +279,8 @@ export const createSession = async (
   return { token, maxAgeSec };
 };
 
-const tokenFromRequest = (request: Request): string | null => {
+/** The raw session token from the request cookie, or null. */
+export const tokenFromRequest = (request: Request): string | null => {
   const header = request.headers.get("cookie");
   if (!header) return null;
   for (const part of header.split(";")) {
@@ -240,17 +308,27 @@ export const resolveCustomerByToken = async (
   const hashed = createHash("sha256").update(token).digest("hex");
   const res = await db
     .from("customer_sessions")
-    .select("expires_at, customers (id, name, phone)")
+    .select("expires_at, customers (id, name, phone, created_at)")
     .eq("token", hashed)
     .maybeSingle();
   const row = res.data as
-    | { expires_at: string; customers: CustomerInfo | CustomerInfo[] | null }
+    | {
+        expires_at: string;
+        customers:
+          | (CustomerInfo & { created_at?: string })
+          | (CustomerInfo & { created_at?: string })[]
+          | null;
+      }
     | null;
   if (!row?.customers || new Date(row.expires_at) <= new Date()) return null;
-  const customer = Array.isArray(row.customers)
-    ? row.customers[0]
-    : row.customers;
-  return customer && customer.id ? customer : null;
+  const raw = Array.isArray(row.customers) ? row.customers[0] : row.customers;
+  if (!raw || !raw.id) return null;
+  return {
+    id: raw.id,
+    name: raw.name,
+    phone: raw.phone,
+    createdAt: raw.createdAt ?? raw.created_at,
+  };
 };
 
 /** Resolve the signed-in customer from a Request's session cookie (or null). */

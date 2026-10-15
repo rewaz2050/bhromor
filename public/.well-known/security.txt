@@ -1,0 +1,4 @@
+Contact: mailto:privacy.prosanti@gmail.com
+Policy: https://bhromor-zeta.vercel.app/privacy
+Preferred-Languages: bn, en
+Expires: 2027-10-14T00:00:00.000Z

@@ -5,6 +5,7 @@
  * installed. Never leaks keys — booleans and counts only.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { getSupabaseServer } from "@/lib/supabase-server";
 import { getSupabaseService } from "@/lib/supabase-server";
 import {
@@ -36,7 +37,15 @@ export const dynamic = "force-dynamic";
  */
 const mayReadDetails = async (request: Request | undefined): Promise<boolean> => {
   const token = process.env.HEALTH_TOKEN?.trim();
-  if (token && request?.headers.get("x-health-token") === token) return true;
+  const given = request?.headers.get("x-health-token")?.trim() ?? "";
+  // Constant-time compare (2026-10-14 round 2) — same pattern as cron/service secrets.
+  if (
+    token &&
+    given.length === token.length &&
+    timingSafeEqual(Buffer.from(given), Buffer.from(token))
+  ) {
+    return true;
+  }
   try {
     await requireStaff();
     return true;

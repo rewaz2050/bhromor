@@ -52,8 +52,23 @@ export const __resetRateLimits = (): void => {
   buckets.clear();
 };
 
-/** Best-effort client IP for bucketing (Vercel/proxy aware). */
-export const clientIpFromHeaders = (headers: Headers): string =>
-  headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-  headers.get("x-real-ip")?.trim() ||
-  "unknown";
+/** Best-effort client IP for bucketing (Vercel/proxy aware).
+ *
+ * Security fix (2026-10-14, M1): the LEFTMOST `x-forwarded-for` entry is
+ * attacker-controlled — proxies APPEND the real client IP to the right, so
+ * a request with `X-Forwarded-For: 1.2.3.4` used to mint a fresh rate-limit
+ * bucket on every call. Order of trust:
+ *   1. `x-real-ip` — overwritten by the platform proxy (Vercel sets it).
+ *   2. RIGHTMOST x-forwarded-for entry — the hop our own proxy appended.
+ *   3. "unknown" — one shared bucket, never a per-request spoofable one.
+ */
+export const clientIpFromHeaders = (headers: Headers): string => {
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const fwd = headers.get("x-forwarded-for");
+  if (fwd) {
+    const parts = fwd.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return "unknown";
+};

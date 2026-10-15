@@ -58,7 +58,14 @@ export default function CancelPanel({
       const res = await fetch("/api/track/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, phone, reason: reason.trim() || undefined }),
+        body: JSON.stringify({
+          orderId: order.id,
+          phone,
+          reason: reason.trim() || undefined,
+          // Security 2026-10-14 (H3): signed track token, when the tracker
+          // has one (link open) — proves ownership without a second lookup.
+          t: order.trackToken || undefined,
+        }),
       });
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;

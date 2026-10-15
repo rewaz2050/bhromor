@@ -27,7 +27,10 @@ import CampaignStrip from "@/components/promo/campaign-strip";
 import PromoBoot from "@/components/promo/promo-boot";
 import RefCapture from "@/components/promo/ref-capture";
 import InstallPrompt from "@/components/layout/install-prompt";
+import AnalyticsConsentGate from "@/components/analytics/analytics-consent-gate";
+import AnalyticsRouteTracker from "@/components/analytics/analytics-route-tracker";
 import { storefrontJsonLd } from "@/lib/marketing-feeds";
+import { safeJsonLd } from "@/lib/jsonld";
 import { siteBaseUrl } from "@/lib/site-url";
 import { readPromoSeed } from "@/lib/db/promo";
 
@@ -122,7 +125,7 @@ export default async function SiteLayout({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(storefrontJsonLd(siteBaseUrl())),
+          __html: safeJsonLd(storefrontJsonLd(siteBaseUrl())),
         }}
       />
       <CartProvider>
@@ -160,6 +163,11 @@ export default async function SiteLayout({
               installed app, quiet for a month after "Not now". */}
           <InstallPrompt />
           <LiveCatalogBoot />
+          {/* Meta Pixel / GA4 — storefront only (round 4, 2026-10-14): only
+              after explicit consent, never unless the ids are set, and never
+              inside the admin/rider/vendor apps. */}
+          <AnalyticsConsentGate />
+          <AnalyticsRouteTracker />
         </CustomerProvider>
       </CartProvider>
     </LanguageProvider>

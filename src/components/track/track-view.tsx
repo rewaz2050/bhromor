@@ -635,7 +635,11 @@ export default function TrackView() {
                   {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
                   {/* UX plan §7 — hand the same tracker to whoever is at home */}
                   {order.status !== "cancelled" ? (
-                    <ShareTrackerButton orderId={order.id} phone={order.customer.phone || phone} />
+                    <ShareTrackerButton
+                      orderId={order.id}
+                      phone={order.customer.phone || phone}
+                      trackToken={order.trackToken}
+                    />
                   ) : null}
                 </div>
                 {order.customer.note && (

@@ -267,6 +267,11 @@ export interface Order {
   shopId?: string;
   /** Live 4-digit proof code from the server. */
   deliveryCode?: string;
+  /**
+   * Signed token for /track links (security 2026-10-14, H3). Precomputed
+   * server-side — clients only append it to links they build.
+   */
+  trackToken?: string;
   /** Geo pin from map — exact delivery location */
   lat?: number;
   lng?: number;

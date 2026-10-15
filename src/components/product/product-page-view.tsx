@@ -14,6 +14,7 @@
 
 import Link from "next/link";
 import { completeTheLook } from "@/lib/merchandising";
+import { safeJsonLd } from "@/lib/jsonld";
 import { moreInCategory } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 import MoreInCategory from "@/components/product/more-in-category";
@@ -139,7 +140,7 @@ export default function ProductPageView({
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
 
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">

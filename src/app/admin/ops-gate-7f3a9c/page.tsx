@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
 import {
-  ADMIN_EMAIL,
   getAdminMode,
   isAdminAuthed,
   signInStaff,
@@ -13,7 +12,9 @@ import { IconCheck } from "@/components/ui/icons";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState(ADMIN_EMAIL);
+  // Security 2026-10-14 (M4): no email prefill — the owner's address used to
+  // ship in every bundle and made phishing trivial. Staff type their own.
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

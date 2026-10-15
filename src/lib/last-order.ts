@@ -6,6 +6,7 @@
  * a second ago (order id + phone). Nothing here is trusted by the server:
  * /api/track still asks for id + phone and answers 404 on a mismatch.
  */
+import { trackHrefWithToken } from "./track-links";
 
 export const LAST_ORDER_KEY = "prosanti.last-order.v1";
 /** Keep the shortcut for a week — after that the parcel has long arrived. */
@@ -16,6 +17,8 @@ export interface LastOrder {
   phone: string;
   placedAt: number;
   total?: number;
+  /** Signed /track token from the placement response (security 2026-10-14, H3). */
+  trackToken?: string;
 }
 
 export const saveLastOrder = (order: LastOrder): void => {
@@ -50,6 +53,10 @@ export const readLastOrder = (now = Date.now()): LastOrder | null => {
       phone: parsed.phone,
       placedAt: parsed.placedAt,
       total: typeof parsed.total === "number" ? parsed.total : undefined,
+      trackToken:
+        typeof parsed.trackToken === "string" && parsed.trackToken !== ""
+          ? parsed.trackToken
+          : undefined,
     };
   } catch {
     return null;
@@ -65,6 +72,8 @@ export const clearLastOrder = (): void => {
   }
 };
 
-/** `/track?id=PS-…&phone=017…` — the receipt's "track" link, prefilled. */
-export const trackHref = (id: string, phone: string): string =>
-  `/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(phone)}`;
+/** `/track?id=PS-…&phone=017…[&t=…]` — the receipt's "track" link, prefilled.
+ *  The optional signed token (H3) lets the tracker skip its strict
+ *  rate-limit path; without one the link still works. */
+export const trackHref = (id: string, phone: string, token?: string | null): string =>
+  trackHrefWithToken(id, phone, token);

@@ -34,6 +34,7 @@ import type {
   DbZone,
 } from "./types";
 import { normalizePhone, type Order } from "../orders";
+import { trackTokenFor } from "../track-token";
 import { sanitizeBundle, sanitizeFlash } from "../promos";
 import { sanitizeGift } from "../gift";
 import { normalizeRefCode, sanitizeReferral, type ReferralRecord } from "../referral";
@@ -211,15 +212,24 @@ export async function listOrdersForPhone(
   db: SupabaseClient,
   phone: string,
   limit = 20,
+  /**
+   * Security 2026-10-14 (H5): only orders from this instant on. Signup is
+   * OTP-free, so an account must NOT resurrect another person's historical
+   * guest orders just by claiming the phone number — history starts when
+   * the account does.
+   */
+  since?: string | null,
 ): Promise<CustomerOrderSummary[]> {
   const digits = normalizePhone(phone);
   if (digits === "") return [];
-  const { data, error } = await db
+  let query = db
     .from("orders")
     .select(
       "id, order_no, customer_phone, shop_id, status, total, payment, payment_status, scheduled_at, delivery_window, is_pickup, is_return, created_at",
     )
-    .ilike("customer_phone", phoneNeedle(digits))
+    .ilike("customer_phone", phoneNeedle(digits));
+  if (since) query = query.gte("created_at", since);
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(Math.max(1, Math.min(limit, 50)) * 2);
   if (error) return [];
@@ -1011,6 +1021,10 @@ export const toDomainMany = async (
     });
     if (!domain) return null;
     if (order.delivery_code) domain.deliveryCode = order.delivery_code;
+    // Security 2026-10-14 (H3): precompute the signed /track token so every
+    // link builder (push, WA, receipts) can hand it out without touching the
+    // HMAC key. Empty when there is no phone to sign.
+    domain.trackToken = trackTokenFor(domain.id, order.customer_phone ?? "");
 
     if (!order.is_return) {
       const c = latestChild.get(order.id);

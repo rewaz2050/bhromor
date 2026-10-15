@@ -11,6 +11,8 @@ interface SignResponse {
   apiKey?: string;
   timestamp?: number;
   folder?: string;
+  allowedFormats?: string;
+  maxFileSize?: number;
   signature?: string;
   uploadUrl?: string;
   error?: string;
@@ -39,6 +41,10 @@ export const uploadDeliveryProof = async (file: File): Promise<ProofUpload> => {
     form.append("api_key", sign.apiKey ?? "");
     form.append("timestamp", String(sign.timestamp ?? ""));
     form.append("folder", sign.folder ?? "");
+    // Every param the server signed must travel with the upload or Cloudinary
+    // rejects the signature (round 4: formats + size cap included).
+    form.append("allowed_formats", sign.allowedFormats ?? "");
+    form.append("max_file_size", String(sign.maxFileSize ?? ""));
     form.append("signature", sign.signature ?? "");
     const upRes = await fetch(sign.uploadUrl, { method: "POST", body: form });
     const up = (await upRes.json().catch(() => null)) as { secure_url?: string; error?: { message?: string } } | null;

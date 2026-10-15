@@ -28,6 +28,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const asked = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
   const limit = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 50) : 20;
-  const orders = await listOrdersForPhone(db, customer.phone, limit);
+  // Security 2026-10-14 (H5): history starts at account creation — claiming
+  // a phone number without verification must not expose earlier guest orders.
+  const orders = await listOrdersForPhone(db, customer.phone, limit, customer.createdAt ?? null);
   return apiJson({ orders, phone: customer.phone, limit });
 }
