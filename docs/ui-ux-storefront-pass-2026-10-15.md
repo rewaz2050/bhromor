@@ -7,11 +7,19 @@
 Cost: **৳0**. No new dependency, no schema change, no new endpoint. Every
 line below reads data the app already had.
 
-Quality gate: `npx eslint` (clean on every file touched — the 3 errors it
-reports live in `api/track/reschedule`, `api/track/rider-location` and
-`analytics-consent-gate.tsx`, none of which this pass opened),
-`tsc --noEmit` clean, **542 files / 3,712 tests pass** (was 541 / 3,706),
-`npm run build` clean.
+Quality gate — the exact steps `.github/workflows/ci.yml` runs, in order:
+
+| Step | Result |
+| --- | --- |
+| `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities |
+| `npm run lint` | exit 0 (0 errors, 3 warnings — see §7) |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **542 files / 3,712 tests pass** (was 541 / 3,706) |
+| `npm run build` | exit 0, 83/83 static pages |
+
+CI on `main` was already **red** before this branch: runs `38705235320` (the
+PR #45 merge this branch is cut from) and `38681729490` (PR #44) both failed,
+last green was PR #43. §7 is what turned it back on.
 
 ---
 
@@ -156,6 +164,27 @@ renders in Bangla digits for a Bangla reader; an empty bag renders no bar.
   of scope for a storefront pass; worth a follow-up.
 - **`about` / `delivery` / `returns` / `contact`-এর মূল কপি** — still
   English, still listed as open in the UX plan §1.4. Bigger than one pass.
+
+---
+
+## ৭. CI আবার সবুজ — দুটো pre-existing lint error 🔴
+
+CI was red on `main` before this branch, at the **Lint** step — so the
+`Types`, `Unit tests` and `Build` steps never ran on the last two merges.
+Both errors were in one file, `components/analytics/analytics-consent-gate.tsx`,
+added by `3a04b7f` (PR #45), the commit this branch is cut from. Neither was
+in this pass's diff; both are cleared here because a PR whose gate is red
+gets merged without being read.
+
+| Error | Fix |
+| --- | --- |
+| `react-hooks/set-state-in-effect` (`:28`) | An `eslint-disable-next-line` with the reason, matching the convention already used in 10+ files here (`admin/growth`, `admin/orders`, `i18n/language-provider`…). The effect is **correct**: `readAnalyticsConsent()` reads localStorage, and a lazy `useState` initializer would render the stored choice on the client and `null` on the server — a hydration mismatch on every returning visit. The rule is being told why, not being worked around. |
+| `@next/next/no-html-link-for-pages` (`:77`) | `<a href="/privacy">` → `<Link>`. This one is a real UX fix and it belongs in a storefront pass: the consent banner is rendered by `(site)/layout.tsx`, so the `<a>` did a full document load that tore down the banner and the visitor's half-made choice just to read one info page. |
+
+The 3 remaining **warnings** (`WINDOW_MS` / `LIMIT` unused in
+`api/track/reschedule/route.ts` and `api/track/rider-location/route.ts`) do
+not fail `eslint` and were left alone — deleting a named constant from a
+route file that someone is evidently mid-edit on is not this pass's call.
 
 ---
 

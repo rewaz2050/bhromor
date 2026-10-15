@@ -8,6 +8,7 @@
  * choice itself is remembered in localStorage (no tracking cookie).
  */
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AnalyticsScripts from "./analytics-scripts";
 import { ga4Id, metaPixelId } from "@/lib/analytics";
@@ -25,6 +26,7 @@ export default function AnalyticsConsentGate() {
   const configured = Boolean(pixel || ga);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is only readable in the browser; reading it in a lazy useState initializer would render the stored choice on the client and null on the server, i.e. a hydration mismatch on every returning visit
     setConsent(readAnalyticsConsent());
     setReady(true);
   }, []);
@@ -74,12 +76,15 @@ export default function AnalyticsConsentGate() {
             >
               মঞ্জুর নই / Decline
             </button>
-            <a
+            {/* <Link>, not <a>: the banner sits on a storefront page, and a
+                hard navigation away from it would throw away the banner and
+                the visitor's half-made choice to reload one info page. */}
+            <Link
               href="/privacy"
               className="rounded-full px-5 py-2 text-sm font-medium text-forest-700 underline-offset-2 hover:underline"
             >
               বিস্তারিত / Details
-            </a>
+            </Link>
           </div>
         </div>
       ) : null}
