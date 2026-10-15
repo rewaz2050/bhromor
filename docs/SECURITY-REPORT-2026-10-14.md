@@ -331,3 +331,18 @@ hygiene) যা যা পাওয়া গেল:
 **Round 3 verification:** `tsc` clean · `next build` pass · `vitest` ৫৪০ files / ৩৬৯৮ tests pass।
 
 **স্বীকৃত সীমা (unchanged):** CSP report-only → enforce করার আগে storefront-এ কয়েক দিন console রিপোর্ট দেখুন; OTP provider নেই; staff MFA = Supabase dashboard config; deploy-এ একবার সবার লগ-আউট (`__Host-` cookie)।
+
+---
+
+## Round 4 — আরও গভীর শক্তিশালীকরণ (১৪ অক্টোবর ২০২৬)
+
+| # | যা শক্ত করা হলো | বিস্তারিত |
+|---|----------------|----------|
+| T1 | **Live-track channel এখন HMAC-keyed** | `live-track-channel.ts` — আগে plain SHA-256(order UUID + phone); এখন সার্ভার-সিক্রেট-সহ HMAC (track link-এর মতো একই key)। UUID+phone দুটোই ফাঁস হলেও channel নাম আর হিসাব করা যায় না। |
+| T2 | **Password hashing cost দ্বিগুণ** | scrypt `s2` (N=32768) — নতুন সব হ্যাশ; পুরনো `s1` (N=16384) যাচাই চলতেই থাকবে, তাই কেউ lockout হবে না। |
+| T3 | **Analytics শুধু storefront-এ** | GA4/Meta Pixel consent-gate এখন `(site)` layout-এ — admin/rider/vendor অ্যাপে consent cookie থাকলেও কোনো tracker লোড হয় না। |
+| T4 | **Admin CSP আরও টাইট** | Staff surfaces-এ `script-src`-এ এখন কোনো external host নেই (GTM/Facebook বাদ) — stored XSS পেলোড আর নেটওয়ার্ক থেকে লোড বা phone-home করতে পারবে না। |
+| T5 | **Upload size cap সইসহ** | Cloudinary signature-এ `max_file_size` (ছবি ১০ MB, ভিডিও ১০০ MB) — সই ছাড়া কেউ বিশাল ফাইল ফেলতে পারবে না; তিনটো uploader (admin media, rider KYC, delivery proof) সব signed param পাঠায় (rider form-এ `allowed_formats` পাঠানো হত না — signature mismatch ঠিক হলো)। |
+| T6 | **Android cleartext স্পষ্টভাবে বন্ধ** | `minSdk 24` (Android 7/8-তে cleartext ডিফল্টে খোলা ছিল) — `android:usesCleartextTraffic="false"` যোগ হলো। Capacitor-এ `allowNavigation` আগেই host-লকড ছিল। |
+
+**Round 4 verification:** `tsc` clean · `next build` pass · `vitest` ৫৪১ files / ৩৭০৩ tests pass (নতুন: scrypt s1/s2 compat, upload signature cap, channel HMAC)।

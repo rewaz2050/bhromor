@@ -35,6 +35,8 @@ export interface CloudinarySignature {
   signature: string;
   resource: "image" | "video";
   allowedFormats: string;
+  /** Round 4: signed upload cap — 10 MB images, 100 MB videos. */
+  maxFileSize: number;
   uploadUrl: string;
 }
 
@@ -45,7 +47,10 @@ export const signCloudinaryUpload = (
 ): CloudinarySignature => {
   const timestamp = Math.floor(Date.now() / 1000);
   const allowedFormats = resource === "image" ? "avif,jpeg,jpg,png,webp" : "mov,mp4,webm";
-  const toSign = `allowed_formats=${allowedFormats}&folder=${folder}&timestamp=${timestamp}${cloudinaryApiSecret() ?? ""}`;
+  const maxFileSize = resource === "image" ? 10_000_000 : 100_000_000;
+  // Cloudinary signs the params alphabetically; max_file_size must be sent
+  // back with the upload or the signature will not match.
+  const toSign = `allowed_formats=${allowedFormats}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${cloudinaryApiSecret() ?? ""}`;
   const signature = createHash("sha1").update(toSign).digest("hex");
   const cloudName = cloudinaryCloudName() ?? "";
   return {
@@ -56,6 +61,7 @@ export const signCloudinaryUpload = (
     signature,
     resource,
     allowedFormats,
+    maxFileSize,
     uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${resource}/upload`,
   };
 };

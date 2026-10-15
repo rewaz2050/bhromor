@@ -32,8 +32,6 @@ export const CUSTOMER_COOKIE =
   process.env.NODE_ENV === "production" ? "__Host-ps_customer" : "ps_customer";
 export const SESSION_DAYS = 30;
 
-const KEYLEN = 64;
-
 export interface CustomerInfo {
   id: string;
   name: string;
@@ -75,16 +73,32 @@ export const customerStoreReady = async (db: ServiceDb): Promise<boolean> => {
 
 /* ----------------------------- passwords ----------------------------- */
 
+/**
+ * scrypt, versioned (round 4 hardening, 2026-10-14):
+ *   s1 = N=16384 — legacy hashes from before this round (verify-only).
+ *   s2 = N=32768 — ~2× the memory cost of s1; every NEW hash uses it.
+ * Old `s1` hashes keep verifying forever; the next password change writes s2.
+ */
+const KEYLEN = 64;
+const SCRYPT_PARAMS = {
+  s1: { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
+  s2: { N: 32768, r: 8, p: 1, maxmem: 128 * 1024 * 1024 },
+} as const;
+type ScryptVersion = keyof typeof SCRYPT_PARAMS;
+
+const deriveKey = (password: string, salt: string, v: ScryptVersion): Buffer =>
+  scryptSync(password, salt, KEYLEN, SCRYPT_PARAMS[v]);
+
 export const hashPassword = (password: string): string => {
   const salt = randomBytes(16).toString("hex");
-  const key = scryptSync(password, salt, KEYLEN).toString("hex");
-  return `s1:${salt}:${key}`;
+  const key = deriveKey(password, salt, "s2").toString("hex");
+  return `s2:${salt}:${key}`;
 };
 
 export const verifyPassword = (password: string, stored: string): boolean => {
   const [tag, salt, key] = stored.split(":");
-  if (tag !== "s1" || !salt || !key) return false;
-  const candidate = scryptSync(password, salt, KEYLEN);
+  if ((tag !== "s1" && tag !== "s2") || !salt || !key) return false;
+  const candidate = deriveKey(password, salt, tag);
   const expected = Buffer.from(key, "hex");
   return (
     candidate.length === expected.length && timingSafeEqual(candidate, expected)

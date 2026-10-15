@@ -31,6 +31,7 @@ interface SignPayload {
   timestamp?: number;
   folder?: string;
   allowedFormats?: string;
+  maxFileSize?: number;
   signature?: string;
   uploadUrl?: string;
   error?: string;
@@ -101,6 +102,7 @@ export default function KycUploadCard({ className = "" }: { className?: string }
       form.append("timestamp", String(sign.timestamp ?? ""));
       form.append("folder", sign.folder ?? "");
       form.append("allowed_formats", sign.allowedFormats ?? "");
+      form.append("max_file_size", String(sign.maxFileSize ?? ""));
       form.append("signature", sign.signature ?? "");
       const upRes = await fetch(sign.uploadUrl, { method: "POST", body: form });
       const up = await readJson<{ secure_url?: string; error?: { message?: string } }>(upRes);

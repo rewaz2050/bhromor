@@ -66,13 +66,16 @@ const securityHeaders = [
 const staffCspHeaders = [
   {
     key: "Content-Security-Policy",
+    // Round 4: analytics (GTM/Pixel/GA) moved to the storefront layout, so
+    // the staff surfaces allow NO external script hosts at all — a stored
+    // XSS here can neither load a payload from the network nor phone home.
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.googleusercontent.com https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com https://www.google-analytics.com https://analytics.google.com https://*.facebook.net https://*.facebook.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com",
       "media-src 'self' blob: https://res.cloudinary.com",
       "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://www.google.com",
       "object-src 'none'",

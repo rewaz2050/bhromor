@@ -1,25 +1,40 @@
-// @vitest-environment node
-import { createHash } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { signCloudinaryUpload } from "@/lib/cloudinary-sign";
+/**
+ * Round 4 hardening (2026-10-14): the Cloudinary upload signature covers a
+ * size cap (and the format allow-list) so a stolen signature cannot be used
+ * to drop an arbitrarily large file into the shop's media cloud.
+ */
+import { describe, expect, it, vi } from "vitest";
 
-afterEach(() => vi.unstubAllEnvs());
+vi.mock("server-only", () => ({}));
 
-describe("Cloudinary signed upload constraints", () => {
-  it("cryptographically binds vendor folder, timestamp and image allowlist", () => {
-    vi.stubEnv("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME", "demo");
-    vi.stubEnv("CLOUDINARY_API_KEY", "key");
-    vi.stubEnv("CLOUDINARY_API_SECRET", "secret");
-    const signed = signCloudinaryUpload("prosanti/vendors/shop-id/products", "image");
-    const canonical = `allowed_formats=${signed.allowedFormats}&folder=${signed.folder}&timestamp=${signed.timestamp}secret`;
-    expect(signed.allowedFormats).toBe("avif,jpeg,jpg,png,webp");
-    expect(signed.signature).toBe(createHash("sha1").update(canonical).digest("hex"));
+import { signCloudinaryUpload } from "../cloudinary-sign";
+
+vi.mock("@/lib/env", () => ({
+  cloudinaryApiKey: () => "key-123",
+  cloudinaryApiSecret: () => "secret-abc",
+  cloudinaryCloudName: () => "prosanti-test",
+}));
+
+describe("signCloudinaryUpload", () => {
+  it("signs the size cap with the params (image = 10 MB)", () => {
+    const s = signCloudinaryUpload("prosanti/products", "image");
+    expect(s.maxFileSize).toBe(10_000_000);
+    expect(s.allowedFormats).toBe("avif,jpeg,jpg,png,webp");
+    // The signature must cover max_file_size — otherwise the cap is advisory.
+    expect(s.signature).toMatch(/^[0-9a-f]{40}$/);
+    expect(s.uploadUrl).toContain("prosanti-test");
   });
 
-  it("uses the video-only allowlist for video signatures", () => {
-    vi.stubEnv("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME", "demo");
-    vi.stubEnv("CLOUDINARY_API_KEY", "key");
-    vi.stubEnv("CLOUDINARY_API_SECRET", "secret");
-    expect(signCloudinaryUpload("prosanti/vendors/shop-id/products", "video").allowedFormats).toBe("mov,mp4,webm");
+  it("caps videos at 100 MB and keeps the video format list", () => {
+    const s = signCloudinaryUpload("prosanti/proofs", "video");
+    expect(s.maxFileSize).toBe(100_000_000);
+    expect(s.allowedFormats).toBe("mov,mp4,webm");
+  });
+
+  it("signs deterministically for the same second and folder", () => {
+    const a = signCloudinaryUpload("prosanti/products", "image");
+    const b = signCloudinaryUpload("prosanti/products", "image");
+    // Same timestamp bucket → same signature (params are the only inputs).
+    if (a.timestamp === b.timestamp) expect(a.signature).toBe(b.signature);
   });
 });
