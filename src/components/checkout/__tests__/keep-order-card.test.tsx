@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import KeepOrderCard, { MIN_PASSWORD } from "../keep-order-card";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 
 const h = vi.hoisted(() => ({ fetch: vi.fn() }));
 
@@ -25,7 +26,11 @@ const jsonResponse = (status: number, body: unknown = {}) => ({
 });
 
 const renderCard = () =>
-  render(<KeepOrderCard name="Rahat Ahmed" phone="01712345678" orderId="PS-42" />);
+  render(
+    <LanguageProvider initialLang="bn">
+      <KeepOrderCard name="Rahat Ahmed" phone="01712345678" orderId="PS-42" />
+    </LanguageProvider>,
+  );
 
 const type = (value: string) =>
   fireEvent.change(screen.getByPlaceholderText(/পাসওয়ার্ড/), { target: { value } });
@@ -87,5 +92,13 @@ describe("KeepOrderCard", () => {
     type("secret123");
     fireEvent.click(screen.getByRole("button", { name: /সংরক্ষণ করুন/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/সংযোগ/);
+  });
+});
+
+describe("KeepOrderCard — English", () => {
+  it("renders English copy by default", () => {
+    render(<KeepOrderCard name="Rahat Ahmed" phone="01712345678" orderId="PS-42" />);
+    expect(screen.getByRole("heading", { name: "Keep this order in your account" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 });
