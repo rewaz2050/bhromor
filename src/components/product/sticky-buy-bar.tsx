@@ -6,6 +6,7 @@ import { coverImage, type Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { useFlashPrice } from "@/lib/use-promos";
 import { IconBag } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 /**
  * The sticky buy bar (phones): when the real add-to-bag panel has scrolled
@@ -25,6 +26,8 @@ export default function StickyBuyBar({
   const flash = useFlashPrice(product);
   const shown = flash.was === null ? product.price : flash.price;
   const [panelGone, setPanelGone] = useState(false);
+  const { t } = useLanguage();
+  const addLabel = t("purchase.stickyAdd");
 
   useEffect(() => {
     const target = document.getElementById(targetId);
@@ -80,10 +83,11 @@ export default function StickyBuyBar({
           type="button"
           onClick={scrollToPanel}
           tabIndex={panelGone ? 0 : -1}
+          aria-label={`${addLabel} — ${product.name}`}
           className="tap-press inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50 hover:bg-forest-700"
         >
           <IconBag className="h-4 w-4" />
-          Add
+          {addLabel}
         </button>
       </div>
     </div>

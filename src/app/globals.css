@@ -761,13 +761,15 @@ body {
 .storefront-bottom-nav > button {
   position: relative;
   color: var(--color-ink-soft);
-  font-size: 0.66rem;
+  /* Mobile readability pass: 0.66rem (~10.5px) was too small to read on a
+     phone in daylight; 0.72rem keeps five tabs fitting a 360px screen. */
+  font-size: 0.72rem;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
 }
 .storefront-bottom-nav > a:lang(bn),
 .storefront-bottom-nav > button:lang(bn) {
-  font-size: 0.74rem;
+  font-size: 0.8rem;
 }
 .storefront-bottom-nav .tab-icon {
   position: relative;
