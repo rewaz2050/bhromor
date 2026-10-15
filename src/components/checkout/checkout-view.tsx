@@ -293,7 +293,7 @@ function WalletPaySteps({
         <div className="flex items-center justify-between gap-3 rounded-xl bg-paper px-4 py-3 ring-1 ring-line">
           <div className="min-w-0">
             <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-              {brand} Personal
+              {t("checkout.walletPersonal").replace("{brand}", brand)}
             </p>
             <p className="select-all font-mono text-base font-bold tracking-wide text-ink" data-testid="wallet-number">
               {number}
@@ -334,13 +334,13 @@ function WalletPaySteps({
 
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-6 text-ink-soft">
         <li>
-          {brand} অ্যাপ → <strong className="text-ink">Send Money</strong> → উপরের নম্বরে{" "}
-          <strong className="text-ink">{formatBdt(amount)}</strong> পাঠান।
+          {brand} {t("checkout.walletStep1a")}<strong className="text-ink">Send Money</strong>{t("checkout.walletStep1b")}
+          <strong className="text-ink">{formatBdt(amount)}</strong>{t("checkout.walletStep1c")}
         </li>
         <li>
-          সফল হলে অ্যাপ/SMS-এ <strong className="text-ink">TRXID</strong> দেখাবে — সেটি নিচে লিখুন।
+          {t("checkout.walletStep2a")}<strong className="text-ink">TRXID</strong>{t("checkout.walletStep2b")}
         </li>
-        <li>দোকান নিজের wallet-এ মিলিয়ে order confirm করবে।</li>
+        <li>{t("checkout.walletStep3")}</li>
       </ol>
 
       <label className="mt-3 block">
@@ -373,8 +373,7 @@ function WalletPaySteps({
         {error && <p className="mt-1.5 text-xs text-rose-700">{error}</p>}
       </label>
       <p className="mt-2 text-[11px] leading-5 text-ink-soft">
-        দোকান verify করার আগ পর্যন্ত order “payment under verification” থাকবে —
-        রাইডার পাঠানো হবে না। ভুল হয়ে গেলে track page থেকে বাতিল করা যাবে।
+        {t("checkout.walletVerifyNote")}
       </p>
     </div>
   );
@@ -811,8 +810,18 @@ export default function CheckoutView() {
             setCouponMsg({
               ok: true,
               text: anyFree
-                ? `${firstCode} — ${chosen.length > 1 ? "প্রতিটি পার্সেলে " : ""}Free Delivery`
-                : `${firstCode} applied — ${formatBdt(total)} off${chosen.length > 1 ? ` (${chosen.length}টি দোকানের পার্সেলে)` : ""}.`,
+                ? t("checkout.couponMsgFreeLine")
+                    .replace("{code}", firstCode)
+                    .replace("{each}", chosen.length > 1 ? t("checkout.couponMsgEach") : "")
+                : t("checkout.couponMsgApplied")
+                    .replace("{code}", firstCode)
+                    .replace("{amount}", formatBdt(total))
+                    .replace(
+                      "{parcels}",
+                      chosen.length > 1
+                        ? t("checkout.couponMsgParcels").replace("{n}", String(chosen.length))
+                        : "",
+                    ),
             });
             forgetCoupon();
             return;
@@ -836,8 +845,13 @@ export default function CheckoutView() {
             setCouponMsg({
               ok: true,
               text: isFree
-                ? `${data.code} — Free Delivery ${data.description ? `· ${data.description}` : ""}`
-                : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
+                ? t("checkout.couponMsgFreeSingle")
+                    .replace("{code}", data.code)
+                    .replace("{desc}", data.description ? ` · ${data.description}` : "")
+                : t("checkout.couponMsgSingleApplied")
+                    .replace("{code}", data.code)
+                    .replace("{amount}", formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal))))
+                    .replace("{desc}", data.description ? ` ${data.description}` : ""),
             });
             // The carried code has done its job once a code is applied.
             forgetCoupon();
@@ -850,9 +864,7 @@ export default function CheckoutView() {
         setCouponCheck({
           code: null,
           discount: 0,
-          problem:
-            data?.reason ??
-            "That code is no longer valid for this order.",
+          problem: data?.reason ?? t("checkout.couponMsgInvalid"),
         });
       })();
     }, 350);
@@ -874,7 +886,7 @@ export default function CheckoutView() {
     async (source: "auto" | "manual") => {
       setBestLoading(true);
       setAutoCoupon("searching");
-      if (source === "manual") setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
+      if (source === "manual") setCouponMsg({ ok: true, text: t("checkout.couponMsgSearching") });
       try {
         const res = await fetch("/api/coupons/best", {
           method: "POST",
@@ -895,20 +907,20 @@ export default function CheckoutView() {
           setAutoCoupon("applied");
         } else if (res.ok && data?.none) {
           setAutoCoupon("none");
-          if (source === "manual") setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
+          if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgNone") });
         } else {
           setAutoCoupon("error");
-          if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+          if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgFail") });
         }
       } catch {
         setAutoCoupon("error");
-        if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+        if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgFail") });
       } finally {
         setBestLoading(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detail is captured via cartKey by the caller
-    [derivedZoneId, cartKey],
+    [derivedZoneId, cartKey, t],
   );
 
   /* Auto-apply: once per cart shape, signed-in, nothing applied, not dismissed. */
