@@ -1526,10 +1526,10 @@ export default function CheckoutView() {
     return (
       <div className="flex flex-col items-center px-6 py-20 text-center">
         <h2 className="font-display text-2xl font-medium text-forest-900">
-          Delivery zones are being set up
+          {t("checkout.zonesTitle")}
         </h2>
         <p className="mt-2 max-w-sm text-sm text-ink-soft">
-          Please check back shortly — no service area is configured yet.
+          {t("checkout.zonesBody")}
         </p>
       </div>
     );
@@ -1546,7 +1546,7 @@ export default function CheckoutView() {
     const code = form.couponCode.trim().toUpperCase();
     if (!code) return;
     setCouponCheck({ code: null, discount: 0, problem: null });
-    setCouponMsg({ ok: true, text: "Checking code…" });
+    setCouponMsg({ ok: true, text: t("checkout.couponMsgChecking") });
     setAppliedCode(code);
   };
 
@@ -1626,21 +1626,13 @@ export default function CheckoutView() {
           setShowMap(true);
         } else {
           // Never clamp a phone in Sylhet onto a Sunamganj street — say so.
-          setGeoNote(
-            lang === "bn"
-              ? "আপনার বর্তমান লোকেশন সুনামগঞ্জ সদরের বাইরে — ম্যাপে বাড়ি পিন করুন বা ঠিকানা লিখুন।"
-              : "Your current location is outside Sunamganj Sadar — drop a pin on the map or type your address.",
-          );
+          setGeoNote(t("checkout.geoOutside"));
           setShowMap(true);
         }
         setGeoLoading(false);
       },
       () => {
-        setGeoNote(
-          lang === "bn"
-            ? "লোকেশন পাওয়া যায়নি — ব্রাউজারে অনুমতি দিন বা ম্যাপে পিন করুন।"
-            : "Location not found — allow it in your browser or drop a pin on the map.",
-        );
+        setGeoNote(t("checkout.geoNotFound"));
         setGeoLoading(false);
       },
       { enableHighAccuracy: false, timeout: 5000 },
@@ -1724,22 +1716,19 @@ export default function CheckoutView() {
     };
 
     const localErrors: Record<string, string> = {};
-    if (form.name.trim().length < 2)
-      localErrors.name = "আপনার পুরো নাম লিখুন (কমপক্ষে ২ অক্ষর) — Please share your full name.";
-    if (!phoneOk)
-      localErrors.phone =
-        "সঠিক মোবাইল নম্বর দিন — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
-    if (effectivePara.trim().length < 2)
-      localErrors.area = "পাড়া / গ্রামের নাম লিখুন — please enter your village or area.";
+    if (form.name.trim().length < 2) localErrors.name = t("checkout.errName");
+    if (!phoneOk) localErrors.phone = t("checkout.errPhone");
+    if (effectivePara.trim().length < 2) localErrors.area = t("checkout.errArea");
     if (minOrderShortfall > 0)
-      localErrors.items = `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${courierMinLabel} টাকার অর্ডার করতে হবে — আরও ${formatBdt(minOrderShortfall)} যোগ করুন।`;
+      localErrors.items = t("checkout.minOrderHint")
+        .replace("{amount}", formatBdt(minOrderShortfall))
+        .replace("{min}", courierMinLabel);
     if (!form.isPickup && form.address.trim().length < 6)
-      localErrors.address =
-        "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
+      localErrors.address = t("checkout.errAddress");
     if (form.payMethod !== "cod" && form.trxid.trim().length < 6)
-      localErrors.trxid = `আগে ${formatBdt(summary.total)} ${
-        form.payMethod === "bkash" ? "bKash" : "Nagad"
-      } পাঠান, তারপর যে TRXID পেয়েছেন সেটি লিখুন।`;
+      localErrors.trxid = t("checkout.errTrxid")
+        .replace("{amount}", formatBdt(summary.total))
+        .replace("{wallet}", form.payMethod === "bkash" ? "bKash" : "Nagad");
     if (Object.keys(localErrors).length > 0) {
       fail(
         {
@@ -1913,7 +1902,9 @@ export default function CheckoutView() {
               .join(" · ")
           : undefined,
         smartCardNote: data.smartCard
-          ? `স্মার্ট কার্ড: ${data.smartCard.stamps}/${data.smartCard.target} স্ট্যাম্প`
+          ? t("checkout.smartCardStamps")
+              .replace("{stamps}", String(data.smartCard.stamps))
+              .replace("{target}", String(data.smartCard.target))
           : undefined,
         slotNote,
       });
@@ -1954,16 +1945,16 @@ export default function CheckoutView() {
   const deliveryPromise = lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN;
   // P1 #17 — outside the rider area the honest answer is days, not minutes.
   const etaLabel = form.isPickup
-    ? `Ready in ${bagPrepMinutes} min`
+    ? t("checkout.etaReady").replace("{min}", String(bagPrepMinutes))
     : isCourierZone(derivedZoneId)
       ? courierEta(lang)
       : (summary.breakdown?.eta ?? zone.etaLabel);
   const extrasBadge = [
     activeCoupon ? `${t("checkout.coupon")} ${activeCoupon.code} ✓` : null,
     giftValue.on ? t("gift.badge") : null,
-    form.tipAmount > 0 ? `Tip ৳${form.tipAmount}` : null,
-    referralCode.trim() ? `Ref ${referralCode.trim()}` : null,
-    form.note.trim() ? "Note ✓" : null,
+    form.tipAmount > 0 ? t("checkout.badgeTip").replace("{amount}", String(form.tipAmount)) : null,
+    referralCode.trim() ? t("checkout.badgeRef").replace("{code}", referralCode.trim()) : null,
+    form.note.trim() ? t("checkout.badgeNote") : null,
   ].filter((part): part is string => part !== null);
   const stickyHint =
     minOrderShortfall > 0
@@ -1971,7 +1962,9 @@ export default function CheckoutView() {
           .replace("{amount}", formatBdt(minOrderShortfall))
           .replace("{min}", courierMinLabel)
       : orderError
-        ? orderError.bn
+        ? lang === "bn"
+          ? orderError.bn
+          : orderError.en
         : `${t("checkout.delivery")} ${summary.freeDelivery ? "FREE" : formatBdt(summary.charge)} · ${etaLabel}`;
 
   const summaryCard = (compact: boolean) => (

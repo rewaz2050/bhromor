@@ -271,11 +271,21 @@ describe("P0 #6 — errors in Bangla, on the field", () => {
   });
 
   it("local validation: the empty form yields Bangla field hints, no request is sent", async () => {
-    mount();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Place Order/i })).toBeInTheDocument(),
+    // Bangla locale: the field hints follow the active language now.
+    render(
+      createElement(LanguageProvider, {
+        initialLang: "bn",
+        children: createElement(CartProvider, null, createElement(CheckoutView)),
+      }),
     );
-    fireEvent.click(screen.getByRole("button", { name: /Place Order/i }));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /অর্ডার করুন/ }).length).toBeGreaterThan(0),
+    );
+    fireEvent.click(
+      screen
+        .getAllByRole("button", { name: /অর্ডার করুন/ })
+        .find((b) => b.getAttribute("type") === "submit")!,
+    );
     await waitFor(() => expect(screen.getByTestId("order-error")).toBeInTheDocument());
     expect(fetchCalls.some((c) => c.url.includes("/api/orders"))).toBe(false);
     expect(screen.getByPlaceholderText("017XXXXXXXX")).toHaveAttribute("aria-invalid", "true");
