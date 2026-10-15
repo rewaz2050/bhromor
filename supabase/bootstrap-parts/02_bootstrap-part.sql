@@ -762,13 +762,18 @@ begin;
 -- the old hashtext(order_no) derivation was recomputable by anyone holding
 -- the order number). Existing rows backfill on the first read below; new
 -- rows are set before insert.
+-- pg_catalog only on purpose: gen_random_bytes() is pgcrypto and is NOT
+-- resolvable under `search_path = public` (Supabase keeps it in `extensions`,
+-- and a fresh project may not have it at all) — it raises 42883 at RUN time.
 create or replace function ps_random_delivery_code()
 returns text language plpgsql security definer set search_path = public as $$
 declare
   v_b bytea;
+  v_n integer;
 begin
-  v_b := gen_random_bytes(2);
-  return lpad(((get_byte(v_b, 0) * 256 + get_byte(v_b, 1)) % 9000 + 1000)::text, 4, '0');
+  v_b := uuid_send(gen_random_uuid());   -- crypto-random, pg_catalog, PG13+
+  v_n := get_byte(v_b, 0) * 65536 + get_byte(v_b, 1) * 256 + get_byte(v_b, 2);
+  return lpad(((v_n % 9000) + 1000)::text, 4, '0');
 end $$;
 
 create or replace function ps_set_order_delivery_code()

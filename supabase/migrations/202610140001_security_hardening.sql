@@ -4,9 +4,19 @@
 -- H2  Delivery PIN was DERIVED from the order number
 --     (`mod(hashtext(order_no), 9000) + 1000`) — anyone who saw the order
 --     number (receipt, screenshot, WhatsApp) could recompute the handoff
---     PIN with any Postgres. Replaced with a crypto-random code
---     (gen_random_bytes); live (not yet delivered/cancelled) orders get
---     fresh codes so old predictable ones stop working.
+--     PIN with any Postgres. Replaced with a crypto-random code drawn from
+--     gen_random_uuid() (core pg_catalog); live (not yet delivered/cancelled)
+--     orders get fresh codes so old predictable ones stop working.
+--
+--     NOTE (2026-10-15): the first version used pgcrypto's gen_random_bytes()
+--     and failed on apply with
+--       42883: function gen_random_bytes(integer) does not exist
+--     because pgcrypto is not on this function's path (Supabase installs it
+--     into the `extensions` schema; a fresh project may not have it at all)
+--     and `create function` does not resolve plpgsql bodies, so the error
+--     only surfaced at RUN time, inside the UPDATE below. Everything now
+--     comes from pg_catalog, which is always in scope — do NOT reintroduce
+--     gen_random_bytes()/digest()/crypt() here.
 --
 -- H4  `reviews customer insert` (schema.sql) allowed ANY caller — including
 --     the anon key — to insert a review with `status='approved',
@@ -38,9 +48,15 @@ security definer set search_path = public
 as $$
 declare
   v_b bytea;
+  v_n integer;
 begin
-  v_b := gen_random_bytes(2);
-  return lpad(((get_byte(v_b, 0) * 256 + get_byte(v_b, 1)) % 9000 + 1000)::text, 4, '0');
+  -- uuid_send(gen_random_uuid()) — both pg_catalog (Postgres 13+), so this
+  -- resolves no matter what the search_path is or whether pgcrypto exists.
+  -- gen_random_uuid() is filled by the OS CSPRNG, so these are crypto-random
+  -- bytes; the version/variant nibbles are skipped because they are fixed.
+  v_b := uuid_send(gen_random_uuid());
+  v_n := get_byte(v_b, 0) * 65536 + get_byte(v_b, 1) * 256 + get_byte(v_b, 2);
+  return lpad(((v_n % 9000) + 1000)::text, 4, '0');
 end $$;
 
 revoke all on function ps_random_delivery_code() from public, anon, authenticated;
@@ -61,15 +77,25 @@ begin
   return new;
 end $$;
 
+-- Re-assert the trigger (202609090007 owns its first definition): identical,
+-- and it means a project that somehow missed the trigger still gets codes.
+drop trigger if exists trg_orders_set_delivery_code on orders;
+create trigger trg_orders_set_delivery_code
+  before insert on orders
+  for each row execute function ps_set_order_delivery_code();
+
 -- ----------------------------------------------------------------------------
 -- H2c. Rotate the codes of every order still in flight: the old values are
 --      publicly recomputable. Delivered/cancelled rows keep history.
 --      Customers see the current code on their tracker and in new messages.
+--      NULL codes are filled in the same pass (a live order with no stored
+--      code is one the tracker would have to guess — the old UI fell back to
+--      a client-side derivation that the rider's `ps_rider_deliver` check
+--      then rejected, burning PIN attempts).
 -- ----------------------------------------------------------------------------
 update orders
 set delivery_code = ps_random_delivery_code(), updated_at = now()
-where delivery_code is not null
-  and status not in ('delivered'::ps_order_status, 'cancelled'::ps_order_status);
+where status not in ('delivered'::ps_order_status, 'cancelled'::ps_order_status);
 
 -- ----------------------------------------------------------------------------
 -- H4. Reviews: only an authenticated session, only its own row, always

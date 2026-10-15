@@ -14,7 +14,7 @@
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconCheck, IconShield, IconTruck } from "@/components/ui/icons";
 import { courierEta, isCourierZone } from "@/lib/delivery";
-import { getDeliveryCode, type Order } from "@/lib/orders";
+import { displayedDeliveryCode, type Order } from "@/lib/orders";
 import { SUNAMGANJ_HUB } from "@/lib/sunamganj";
 
 export type OrderStage =
@@ -100,7 +100,7 @@ export default function OrderNowBanner({ order }: { order: Order }) {
   // the way. A third-party courier never sees the PIN, pickup hands over at
   // the counter, and a return parcel goes the other way.
   const showPin = stage === "out" && !order.isPickup && !order.isReturn && !courier;
-  const pin = order.deliveryCode ?? getDeliveryCode(order.id);
+  const pin = displayedDeliveryCode(order.deliveryCode);
 
   return (
     <div

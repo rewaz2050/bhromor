@@ -44,7 +44,7 @@ import {
   shopById,
   shopClosedCopy,
 } from "@/lib/shop-utils";
-import { getDeliveryCode, type Order } from "@/lib/orders";
+import { displayedDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { bnDigits } from "@/lib/arrival";
 import {
@@ -1207,7 +1207,7 @@ export default function CheckoutView() {
   }, [ready, empty, placed]);
 
   if (placed) {
-    const deliveryCode = placed.deliveryCode ?? getDeliveryCode(placed.orderId);
+    const deliveryCode = displayedDeliveryCode(placed.deliveryCode);
     const copyOrderId = async () => {
       try {
         await navigator.clipboard.writeText(placed.orderId);

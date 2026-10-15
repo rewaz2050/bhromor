@@ -10,10 +10,10 @@ import {
   PUBLIC_STEPS,
   STATUS_META,
   canCancel,
+  displayedDeliveryCode,
   flowIndex,
-  getDeliveryCode,
-  normalizePhone,
   nextActions,
+  normalizePhone,
   publicPhase,
   publicStepDone,
   type OrderStatus,
@@ -261,7 +261,7 @@ export default function AdminOrderDetailPage() {
             <p className="text-sm text-ink-soft">
               Counter pickup — no rider. Check the customer&apos;s PIN{" "}
               <span className="font-mono font-semibold text-forest-900">
-                {order.deliveryCode ?? getDeliveryCode(order.id)}
+                {displayedDeliveryCode(order.deliveryCode)}
               </span>{" "}
               and hand the parcel over.
             </p>
@@ -414,7 +414,7 @@ export default function AdminOrderDetailPage() {
                 Customer & delivery
               </h3>
               <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold font-mono text-emerald-800">
-                <IconShield className="h-3 w-3" /> PIN: {order.deliveryCode ?? getDeliveryCode(order.id)}
+                <IconShield className="h-3 w-3" /> PIN: {displayedDeliveryCode(order.deliveryCode)}
               </span>
             </div>
             <dl className="mt-4 space-y-3 text-sm">
