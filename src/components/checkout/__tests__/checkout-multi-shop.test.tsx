@@ -128,11 +128,10 @@ const fill = () => {
 
 it("shows the two parcels before the tap, each with its own delivery", async () => {
   render(
-    createElement(
-      LanguageProvider,
-      { initialLang: "bn" },
-      createElement(CartProvider, null, createElement(CheckoutView)),
-    ),
+    createElement(LanguageProvider, {
+      initialLang: "bn",
+      children: createElement(CartProvider, null, createElement(CheckoutView)),
+    }),
   );
 
   // The card is rendered twice on purpose (inside step ③ for phones, in the
