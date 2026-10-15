@@ -3,6 +3,7 @@
 import { useProductHref } from "@/lib/use-product-href";
 import { InlineSizeGuide } from "./size-guide";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { haptic } from "@/lib/haptics";
 import Link from "next/link";
 import type { Product } from "@/lib/catalog";
@@ -29,8 +30,16 @@ export default function QuickAdd({
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
   const { openBag } = useCart();
+  const router = useRouter();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("card");
+  /* "Buy now" = add the same line, then go straight to checkout. Remembered
+     here so a shop-conflict confirmation also lands on checkout. */
+  const [pendingBuyNow, setPendingBuyNow] = useState(false);
   const ready = product.inStock && (product.sizes.length === 0 || !!size);
+  const variantLabel = () =>
+    [color, /^(free|one) size$/i.test(size) && color ? "" : size]
+      .filter(Boolean)
+      .join(" · ") || "Default";
   return (
     <Drawer
       open
@@ -147,27 +156,44 @@ export default function QuickAdd({
           </button>
         </div>
       </div>
-      <button
-        disabled={!ready}
-        onClick={() => {
-          const variant =
-            [color, /^(free|one) size$/i.test(size) && color ? "" : size]
-              .filter(Boolean)
-              .join(" · ") || "Default";
-          if (add(product, variant, qty)) {
-            haptic("tap");
-            onClose();
-            openBag();
-          }
-        }}
-        className="editorial-button mt-6 w-full justify-center bg-forest-800 text-white disabled:opacity-40"
-      >
-        {!product.inStock
-          ? t("product.soldOut")
-          : ready
-            ? t("product.addToBag")
-            : t("product.selectSize")}
-      </button>
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <button
+          disabled={!ready}
+          onClick={() => {
+            setPendingBuyNow(false);
+            if (add(product, variantLabel(), qty)) {
+              haptic("tap");
+              onClose();
+              openBag();
+            }
+          }}
+          className="editorial-button w-full justify-center bg-forest-800 text-white disabled:opacity-40"
+        >
+          {!product.inStock
+            ? t("product.soldOut")
+            : ready
+              ? t("product.addToBag")
+              : t("product.selectSize")}
+        </button>
+        {product.inStock && (
+          <button
+            type="button"
+            disabled={!ready}
+            data-testid="quick-add-buy-now"
+            onClick={() => {
+              setPendingBuyNow(true);
+              if (add(product, variantLabel(), qty)) {
+                haptic("tap");
+                onClose();
+                router.push("/checkout");
+              }
+            }}
+            className="editorial-button w-full justify-center bg-gold-500 text-forest-950 hover:bg-gold-400 disabled:opacity-40"
+          >
+            {t("purchase.buyNow")}
+          </button>
+        )}
+      </div>
       <Link
         href={hrefFor(product)}
         onClick={onClose}
@@ -183,7 +209,8 @@ export default function QuickAdd({
           onStartNew={() => {
             confirmConflict();
             onClose();
-            openBag();
+            if (pendingBuyNow) router.push("/checkout");
+            else openBag();
           }}
         />
       )}
