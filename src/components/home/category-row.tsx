@@ -7,7 +7,7 @@ import { Eyebrow } from "@/components/ui/primitives";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
 import type { Category, Product } from "@/lib/catalog";
-import { categoryLabel, categoryShelves } from "@/lib/home-shelves";
+import { categoryInitial, categoryLabel, categoryShelves } from "@/lib/home-shelves";
 
 const fmt = (tpl: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), tpl);
@@ -79,7 +79,7 @@ export default function CategoryRow({
                 <Reveal delay={Math.min(index, 4) * 60}>
                   <Link href={shelf.href} className="group block">
                     <span className="relative block aspect-[5/4] overflow-hidden rounded-md bg-ivory-200 ring-1 ring-line">
-                      {category.image && (
+                      {category.image ? (
                         <Image
                           src={category.image}
                           alt=""
@@ -91,6 +91,13 @@ export default function CategoryRow({
                           sizes="(min-width: 1024px) 224px, (min-width: 640px) 200px, 44vw"
                           className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
                         />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 flex items-center justify-center bg-forest-100 font-display text-5xl text-forest-700"
+                        >
+                          {categoryInitial(category, lang)}
+                        </span>
                       )}
                       <span
                         aria-hidden="true"
@@ -103,14 +110,15 @@ export default function CategoryRow({
                     <span className="mt-3 flex items-baseline justify-between gap-2">
                       <span
                         lang={lang === "bn" ? "bn" : undefined}
-                        className={`truncate font-display text-lg font-medium tracking-[-0.02em] text-forest-900 ${lang === "bn" ? "font-bengali" : ""}`}
+                        className={`min-w-0 truncate font-display text-lg font-medium tracking-[-0.02em] text-forest-900 ${lang === "bn" ? "font-bengali" : ""}`}
                       >
                         {label}
                       </span>
-                      <span className="shrink-0 text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
+                      <span className="shrink-0 whitespace-nowrap text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
                         {count}
                       </span>
                     </span>
+
                   </Link>
                 </Reveal>
               </li>
