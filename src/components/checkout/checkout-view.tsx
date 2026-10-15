@@ -48,7 +48,6 @@ import { displayedDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { bnDigits } from "@/lib/arrival";
 import {
-  DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
   DELIVERY_CHARGE_PROMISE_EN,
   INSTANT_DELIVERY_TITLE,
@@ -2012,7 +2011,7 @@ export default function CheckoutView() {
                 <IconTruck className="h-4 w-4 shrink-0" /> {deliveryPromise}
               </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
-                {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
+                {t("checkout.chargeLadder")}
               </p>
             </div>
           </div>
@@ -2025,7 +2024,7 @@ export default function CheckoutView() {
           id="checkout-step-1"
           n={1}
           title={t("checkout.step1")}
-          hint="নাম, মোবাইল ও ঠিকানা — রাইডার এই তথ্যেই পৌঁছাবে।"
+          hint={t("checkout.step1Hint")}
           done={step1Done}
         >
           {/* Saved addresses + geolocate */}
@@ -2038,8 +2037,8 @@ export default function CheckoutView() {
             >
               <IconMapPin className="h-3.5 w-3.5" />
               {geoLoading
-                ? (lang === "bn" ? "লোকেশন খুঁজছি…" : "Finding location…")
-                : (lang === "bn" ? "আমার লোকেশন ব্যবহার করুন" : "Use my location")}
+                ? t("checkout.locFinding")
+                : t("checkout.locUse")}
             </button>
             {savedAddrs.length > 0 && (
               <button
@@ -2047,7 +2046,7 @@ export default function CheckoutView() {
                 onClick={() => setShowSaved(!showSaved)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
               >
-                📚 {lang === "bn" ? "সেভ করা ঠিকানা" : "Saved addresses"} ({savedAddrs.length})
+                📚 {t("checkout.savedAddrsBtn")} ({savedAddrs.length})
               </button>
             )}
           </div>
@@ -2087,7 +2086,7 @@ export default function CheckoutView() {
           ) : null}
           {showSaved && savedAddrs.length > 0 && (
             <div className="mb-5 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-soft">সেভ করা ঠিকানা</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-soft">{t("checkout.savedAddrsBtn")}</p>
               <div className="space-y-2">
                 {savedAddrs.map((addr) => (
                   <div key={addr.id} className="flex items-center justify-between rounded-xl bg-paper px-3 py-2.5 ring-1 ring-line">
@@ -2101,7 +2100,7 @@ export default function CheckoutView() {
                         onClick={() => handleUseSaved(addr)}
                         className="rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
                       >
-                        ব্যবহার করুন
+                        {t("checkout.useSavedBtn")}
                       </button>
                       <button
                         type="button"
@@ -2110,7 +2109,7 @@ export default function CheckoutView() {
                           setSavedAddrs(getSavedAddresses());
                           void pushAddresses();
                         }}
-                        aria-label="ঠিকানা মুছুন"
+                        aria-label={t("checkout.deleteAddrAria")}
                         className="rounded-full bg-paper px-2.5 py-1 text-xs ring-1 ring-line"
                       >
                         ✕
@@ -2125,7 +2124,7 @@ export default function CheckoutView() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                মোবাইল নম্বর / Mobile number <span className="text-rose-600">*</span>
+                {t("checkout.mobileLabel")} <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={phoneRef}
@@ -2153,7 +2152,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                আপনার নাম / Full name <span className="text-rose-600">*</span>
+                {t("checkout.nameLabel")} <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={nameRef}
@@ -2164,7 +2163,7 @@ export default function CheckoutView() {
                   update("name", e.target.value);
                   clearFieldError("name");
                 }}
-                placeholder="যেমন: রাহাত আহমেদ / Rahat Ahmed"
+                placeholder={t("checkout.namePlaceholder")}
                 aria-invalid={!!fieldErrors.name}
                 aria-describedby={fieldErrors.name ? "err-name" : undefined}
                 className={inputClass("name")}
