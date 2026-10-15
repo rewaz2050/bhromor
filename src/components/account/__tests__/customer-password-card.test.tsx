@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import CustomerPasswordCard from "../customer-password-card";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+
+/* The card follows the storefront language; these assertions are the Bangla copy. */
+const renderBn = () =>
+  render(
+    <LanguageProvider initialLang="bn">
+      <CustomerPasswordCard />
+    </LanguageProvider>,
+  );
 
 /**
  * Security 2026-10-14 M6: customers can rotate their own password from the
@@ -30,7 +39,7 @@ const submit = () => {
 describe("customer password card", () => {
   it("posts current + next and reports success", async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
-    render(<CustomerPasswordCard />);
+    renderBn();
     fill("বর্তমান পাসওয়ার্ড", "old-secret-1");
     fill("নতুন পাসওয়ার্ড", "brand-new-pass-2");
     fill("নতুন পাসওয়ার্ড আবার", "brand-new-pass-2");
@@ -47,7 +56,7 @@ describe("customer password card", () => {
   });
 
   it("blocks mismatched confirmation before any request", async () => {
-    render(<CustomerPasswordCard />);
+    renderBn();
     fill("বর্তমান পাসওয়ার্ড", "old-secret-1");
     fill("নতুন পাসওয়ার্ড", "brand-new-pass-2");
     fill("নতুন পাসওয়ার্ড আবার", "different-pass-3");
@@ -62,7 +71,7 @@ describe("customer password card", () => {
       status: 422,
       json: async () => ({ error: "নতুন পাসওয়ার্ড খুব সহজ — আরও জটিল করুন।" }),
     });
-    render(<CustomerPasswordCard />);
+    renderBn();
     fill("বর্তমান পাসওয়ার্ড", "old-secret-1");
     fill("নতুন পাসওয়ার্ড", "12345678");
     fill("নতুন পাসওয়ার্ড আবার", "12345678");
