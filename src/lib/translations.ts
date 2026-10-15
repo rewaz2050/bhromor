@@ -235,6 +235,22 @@ export const translations = {
     /* UI/UX pass 2026-10-15 — the footer's opt-in card sits on EVERY
        storefront page under a fully translated footer; it was the one block
        of English a Bangla shopper always met. */
+    contactForm: {
+      title: "Send us a message",
+      sub: "Order, delivery or product questions — we read everything.",
+      name: "Name",
+      namePlaceholder: "Your name",
+      phone: "Phone",
+      topic: "Topic",
+      message: "Message",
+      messagePlaceholder: "How can we help?",
+      send: "Send message",
+      sending: "Sending…",
+      sentTitle: "Message received",
+      sentBody: "Thank you{name}. We reply within a few hours during support hours (Sat–Thu, 9am–9pm).",
+      reachFail: "Could not reach the shop — check your connection.",
+      sendFail: "Could not send — please try again.",
+    },
     newsletter: {
       title: "A little inspiration in your inbox.",
       body: "New collections, exclusive offers and seasonal edits. Join the list below — one email a month, unsubscribe anytime.",
@@ -1258,6 +1274,22 @@ export const translations = {
       checkShop: "এই এলাকার জন্য কিনুন →",
       checkMissing: "এখনও তালিকায় নেই — সদরের বাইরে কুরিয়ারে পাঠাই ({eta}, ন্যূনতম অর্ডার ৳৫০০)। অথবা WhatsApp করে নিশ্চিত হোন।",
     },
+    contactForm: {
+      title: "আমাদের বার্তা পাঠান",
+      sub: "অর্ডার, ডেলিভারি বা পণ্য নিয়ে প্রশ্ন — আমরা প্রতিটি বার্তা পড়ি।",
+      name: "নাম",
+      namePlaceholder: "আপনার নাম",
+      phone: "ফোন",
+      topic: "বিষয়",
+      message: "বার্তা",
+      messagePlaceholder: "আমরা কীভাবে সাহায্য করতে পারি?",
+      send: "বার্তা পাঠান",
+      sending: "পাঠানো হচ্ছে…",
+      sentTitle: "বার্তা পেয়েছি",
+      sentBody: "ধন্যবাদ{name}। সাপোর্ট সময়ে (শনি–বৃহস্পতি, সকাল ৯টা–রাত ৯টা) আমরা কয়েক ঘণ্টার মধ্যে উত্তর দিই।",
+      reachFail: "দোকানে পৌঁছানো যাচ্ছে না — আপনার ইন্টারনেট সংযোগ দেখুন।",
+      sendFail: "পাঠানো যায়নি — আবার চেষ্টা করুন।",
+    },
     newsletter: {
       title: "ইনবক্সে একটু অনুপ্রেরণা।",
       body: "নতুন কালেকশন, এক্সক্লুসিভ অফার আর সিজনের বাছাই। নিচের তালিকায় যোগ দিন — মাসে একটিই ইমেইল, যেকোনো সময় বের হতে পারবেন।",
@@ -2073,6 +2105,7 @@ export type TranslationKey =
   | `trust.${keyof typeof translations.en.trust}`
   | `install.${keyof typeof translations.en.install}`
   | `newsletter.${keyof typeof translations.en.newsletter}`
+  | `contactForm.${keyof typeof translations.en.contactForm}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
