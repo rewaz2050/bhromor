@@ -130,7 +130,7 @@ it("shows the two parcels before the tap, each with its own delivery", async () 
   render(
     createElement(
       LanguageProvider,
-      null,
+      { initialLang: "bn" },
       createElement(CartProvider, null, createElement(CheckoutView)),
     ),
   );
