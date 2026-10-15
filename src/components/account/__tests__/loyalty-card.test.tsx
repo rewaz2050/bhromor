@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LoyaltyCard } from "../loyalty-card";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import type { SmartCard } from "@/lib/use-smart-card";
 
 const cardState = vi.hoisted(() => ({ card: null as SmartCard | null, signedIn: false }));
@@ -17,7 +18,7 @@ vi.mock("@/lib/use-customer", () => ({
 
 describe("LoyaltyCard — Smart Card (signed-out teaser)", () => {
   it("shows the join card: 10 stamps, free prize, account required, no verification", () => {
-    render(<LoyaltyCard />);
+    render(<LanguageProvider initialLang="bn"><LoyaltyCard /></LanguageProvider>);
 
     expect(screen.getByTestId("loyalty-stamp-card")).toBeInTheDocument();
     expect(screen.getByText(/১০টা স্ট্যাম্প পূর্ণ করলেই/)).toBeInTheDocument();
@@ -45,11 +46,21 @@ describe("LoyaltyCard — Smart Card (signed-out teaser)", () => {
       afterOrderStamps: 4,
     };
     try {
-      render(<LoyaltyCard />);
+      render(<LanguageProvider initialLang="bn"><LoyaltyCard /></LanguageProvider>);
       expect(screen.getByText(/সর্বমোট অর্ডার: 2 টি/)).toHaveTextContent(/রিভিউ স্ট্যাম্প: 1/);
     } finally {
       cardState.signedIn = false;
       cardState.card = null;
     }
+  });
+});
+
+describe("LoyaltyCard — English", () => {
+  it("renders English copy by default", () => {
+    cardState.signedIn = false;
+    cardState.card = null;
+    render(<LoyaltyCard />);
+    expect(screen.getByText("Fill 10 stamps and get a special reward — completely free")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open a free account →" })).toBeInTheDocument();
   });
 });
