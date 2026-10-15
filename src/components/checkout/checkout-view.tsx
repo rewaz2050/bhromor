@@ -1614,13 +1614,21 @@ export default function CheckoutView() {
           setShowMap(true);
         } else {
           // Never clamp a phone in Sylhet onto a Sunamganj street — say so.
-          setGeoNote("আপনার বর্তমান লোকেশন সুনামগঞ্জ সদরের বাইরে — ম্যাপে বাড়ি পিন করুন বা ঠিকানা লিখুন।");
+          setGeoNote(
+            lang === "bn"
+              ? "আপনার বর্তমান লোকেশন সুনামগঞ্জ সদরের বাইরে — ম্যাপে বাড়ি পিন করুন বা ঠিকানা লিখুন।"
+              : "Your current location is outside Sunamganj Sadar — drop a pin on the map or type your address.",
+          );
           setShowMap(true);
         }
         setGeoLoading(false);
       },
       () => {
-        setGeoNote("লোকেশন পাওয়া যায়নি — ব্রাউজারে অনুমতি দিন বা ম্যাপে পিন করুন।");
+        setGeoNote(
+          lang === "bn"
+            ? "লোকেশন পাওয়া যায়নি — ব্রাউজারে অনুমতি দিন বা ম্যাপে পিন করুন।"
+            : "Location not found — allow it in your browser or drop a pin on the map.",
+        );
         setGeoLoading(false);
       },
       { enableHighAccuracy: false, timeout: 5000 },
@@ -2024,7 +2032,9 @@ export default function CheckoutView() {
               className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
             >
               <IconMapPin className="h-3.5 w-3.5" />
-              {geoLoading ? "লোকেশন খুঁজছি…" : "আমার লোকেশন ব্যবহার করুন"}
+              {geoLoading
+                ? (lang === "bn" ? "লোকেশন খুঁজছি…" : "Finding location…")
+                : (lang === "bn" ? "আমার লোকেশন ব্যবহার করুন" : "Use my location")}
             </button>
             {savedAddrs.length > 0 && (
               <button
@@ -2032,7 +2042,7 @@ export default function CheckoutView() {
                 onClick={() => setShowSaved(!showSaved)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
               >
-                📚 সেভ করা ঠিকানা ({savedAddrs.length})
+                📚 {lang === "bn" ? "সেভ করা ঠিকানা" : "Saved addresses"} ({savedAddrs.length})
               </button>
             )}
           </div>
