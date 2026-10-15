@@ -18,7 +18,20 @@ export const APPLICANT_PASSWORD_MAX = 72;
 export const passwordProblem = (
   password: string,
   confirm?: string,
+  lang: "bn" | "en" = "bn",
 ): string | null => {
+  if (lang === "en") {
+    if (password.length < APPLICANT_PASSWORD_MIN) {
+      return `The password must be at least ${APPLICANT_PASSWORD_MIN} characters.`;
+    }
+    if (password.length > APPLICANT_PASSWORD_MAX) {
+      return `The password can be at most ${APPLICANT_PASSWORD_MAX} characters.`;
+    }
+    if (confirm !== undefined && confirm !== password) {
+      return "The two passwords don't match — type the same password twice.";
+    }
+    return null;
+  }
   if (password.length < APPLICANT_PASSWORD_MIN) {
     return `পাসওয়ার্ড অন্তত ${bnDigits(String(APPLICANT_PASSWORD_MIN))} অক্ষরের হতে হবে।`;
   }
