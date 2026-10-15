@@ -8,6 +8,18 @@ import {
   validateContact,
 } from "@/lib/engagement";
 
+/* Topic values are sent to the server as the English strings in
+   CONTACT_TOPICS (the inbox and the admin filter rely on them); only the
+   label the shopper reads is Bangla. */
+const TOPIC_LABEL_BN: Record<string, string> = {
+  "Order support": "অর্ডার সাপোর্ট",
+  Delivery: "ডেলিভারি",
+  "Product question": "পণ্য সম্পর্কে প্রশ্ন",
+  "Return / exchange": "ফেরত / বদল",
+  Feedback: "মতামত",
+  Partnership: "ব্যবসায়িক সহযোগিতা",
+};
+
 export default function ContactForm() {
   const { t, lang } = useLanguage();
   const [name, setName] = useState("");
@@ -23,11 +35,16 @@ export default function ContactForm() {
     if (sending) return;
     const checked = validateContact({ name, phone, topic, message });
     if (!checked.ok) {
+      // Show the first failing field in the shopper's language. The English
+      // reasons from validateContact stay on the server contract.
       setError(
-        checked.errors.name ??
-          checked.errors.phone ??
-          checked.errors.message ??
-          "Please fix the highlighted fields.",
+        checked.errors.name
+          ? t("contactForm.errName")
+          : checked.errors.phone
+            ? t("contactForm.errPhone")
+            : checked.errors.message
+              ? t("contactForm.errMessage")
+              : t("contactForm.fixFields"),
       );
       return;
     }
@@ -133,7 +150,9 @@ export default function ContactForm() {
           className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
         >
           {CONTACT_TOPICS.map((option) => (
-            <option key={option}>{option}</option>
+            <option key={option} value={option}>
+              {lang === "bn" ? (TOPIC_LABEL_BN[option] ?? option) : option}
+            </option>
           ))}
         </select>
       </label>

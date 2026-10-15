@@ -250,6 +250,10 @@ export const translations = {
       sentBody: "Thank you{name}. We reply within a few hours during support hours (Sat–Thu, 9am–9pm).",
       reachFail: "Could not reach the shop — check your connection.",
       sendFail: "Could not send — please try again.",
+      errName: "Tell us your name.",
+      errPhone: "Enter a valid Bangladeshi mobile number.",
+      errMessage: "Tell us a little more — at least a sentence.",
+      fixFields: "Please fix the highlighted fields.",
     },
     newsletter: {
       title: "A little inspiration in your inbox.",
@@ -1289,6 +1293,10 @@ export const translations = {
       sentBody: "ধন্যবাদ{name}। সাপোর্ট সময়ে (শনি–বৃহস্পতি, সকাল ৯টা–রাত ৯টা) আমরা কয়েক ঘণ্টার মধ্যে উত্তর দিই।",
       reachFail: "দোকানে পৌঁছানো যাচ্ছে না — আপনার ইন্টারনেট সংযোগ দেখুন।",
       sendFail: "পাঠানো যায়নি — আবার চেষ্টা করুন।",
+      errName: "আপনার নাম লিখুন।",
+      errPhone: "একটি সঠিক বাংলাদেশি মোবাইল নম্বর লিখুন।",
+      errMessage: "আর একটু বলুন — অন্তত একটি বাক্য লিখুন।",
+      fixFields: "হাইলাইট করা ঘরগুলো ঠিক করুন।",
     },
     newsletter: {
       title: "ইনবক্সে একটু অনুপ্রেরণা।",

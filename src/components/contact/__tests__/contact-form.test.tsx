@@ -69,4 +69,34 @@ describe("ContactForm — language", () => {
     expect(screen.getByText(/ধন্যবাদ, রহিম।/)).toBeTruthy();
     expect(screen.getByText(/শনি–বৃহস্পতি, সকাল ৯টা–রাত ৯টা/)).toBeTruthy();
   });
+
+  it("shows the first validation problem in Bangla and never sends", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <LanguageProvider initialLang="bn">
+        <ContactForm />
+      </LanguageProvider>,
+    );
+    const form = container.querySelector("form")!;
+    fireEvent.change(form.querySelector("textarea")!, {
+      target: { value: "আমার অর্ডার নিয়ে প্রশ্ন আছে।" },
+    });
+    fireEvent.submit(form);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("আপনার নাম লিখুন।");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("labels topics in Bangla but keeps the English value the server expects", () => {
+    const { container } = render(
+      <LanguageProvider initialLang="bn">
+        <ContactForm />
+      </LanguageProvider>,
+    );
+    const options = Array.from(container.querySelectorAll("select option")) as HTMLOptionElement[];
+    expect(options[0].textContent).toBe("অর্ডার সাপোর্ট");
+    expect(options[0].value).toBe("Order support");
+    expect(options[3].value).toBe("Return / exchange");
+  });
 });
