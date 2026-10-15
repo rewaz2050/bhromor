@@ -232,6 +232,24 @@ export const translations = {
       checkShop: "Shop for this area →",
       checkMissing: "Not on our list yet — outside Sadar we send by courier ({eta}, min. order ৳500). Or WhatsApp us to confirm.",
     },
+    /* UI/UX pass 2026-10-15 — the footer's opt-in card sits on EVERY
+       storefront page under a fully translated footer; it was the one block
+       of English a Bangla shopper always met. */
+    newsletter: {
+      title: "A little inspiration in your inbox.",
+      body: "New collections, exclusive offers and seasonal edits. Join the list below — one email a month, unsubscribe anytime.",
+      hostedCta: "Join the list ↗",
+      hostedNote:
+        "Opens our email signup page in a new tab. Enter your email and confirm your preferences there.",
+      emailLabel: "Email address",
+      submit: "Join the list",
+      sending: "Joining…",
+      done: "You’re on the list — new collections and offers, straight to your inbox.",
+      invalidEmail: "Enter a valid email address.",
+      saveFailed: "Could not save — please try again.",
+      offline: "Could not reach the shop — check your connection.",
+      cadence: "One email a month, unsubscribe anytime.",
+    },
     footer: {
       shop: "Shop",
       help: "Help",
@@ -952,6 +970,61 @@ export const translations = {
       forgotTitle: "Forgot your password?",
       forgotBody: "WhatsApp or call the shop from the number on your account — they reset it for you (no OTP on this site).",
       current: "Current",
+      /* UI/UX pass 2026-10-15 — the lookup form and the snapshot used to be
+         literal English (with two literal Bangla strings), so a Bangla
+         reader met a half-translated screen on the page the bottom nav
+         sends them to. Everything the shopper reads on /track now comes
+         from here. */
+      lookupTitle: "Track your order — Sunamganj Sadar",
+      lookupSub:
+        "District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point. No account needed — order ID + phone. PIN required for COD delivery.",
+      lastOrderLabel: "Your last order",
+      lastOrderTrack: "Track it",
+      lastOrderDismiss: "Remove the last-order shortcut",
+      orderIdLabel: "Order ID",
+      phoneLabel: "Phone number",
+      phoneTitle:
+        "A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX",
+      checking: "Checking…",
+      submit: "Track order",
+      lookupFailed:
+        "Could not reach the shop — check your connection and try again.",
+      emptyTitle: "Where is my order?",
+      emptyBody:
+        "Enter your details to see the live timeline — confirmation, preparation, courier assignment and delivery.",
+      notFoundTitle: "No order found",
+      notFoundBody:
+        "Double-check the order ID and the phone number you ordered with.",
+      cancelledNote:
+        "This order was cancelled. If that looks wrong, call/WhatsApp us on {number} with the order ID and we will check it for you.",
+      snapshotTitle: "Your order",
+      itemQty: "×{qty}",
+      subtotal: "Subtotal",
+      delivery: "Delivery",
+      deliveryPickup: "Delivery — Pickup",
+      deliveryExpress: "Delivery — Express",
+      freePickup: "Free (Pickup)",
+      freeShop: "Free (shop offer)",
+      freePlatform: "Free (PROSANTI offer)",
+      free: "Free",
+      surchargeNight: "Night",
+      surchargeRain: "Rain",
+      surchargeDistance: "Distance",
+      surchargeExpress: "Express",
+      surchargeWeight: "Weight",
+      tip: "💝 Tip",
+      coupon: "Coupon",
+      total: "Total",
+      pickupSuffix: " — Pickup",
+      paymentCod: "COD",
+      deliveryCardTitle: "Delivery — Sunamganj Sadar",
+      districtLine:
+        "District: Sunamganj · Upazila: Sunamganj Sadar · Hub: Traffic Point",
+      outsideSadar: "Outside Sadar · Courier",
+      pickupBadge: "Pickup",
+      whatsappSupport: "WhatsApp Support",
+      viewPin: "View Pin on Map",
+      noteLabel: "Note:",
     },
   },
   bn: {
@@ -1184,6 +1257,21 @@ export const translations = {
       checkFound: "{zone} · ডেলিভারি {charge} · {eta}",
       checkShop: "এই এলাকার জন্য কিনুন →",
       checkMissing: "এখনও তালিকায় নেই — সদরের বাইরে কুরিয়ারে পাঠাই ({eta}, ন্যূনতম অর্ডার ৳৫০০)। অথবা WhatsApp করে নিশ্চিত হোন।",
+    },
+    newsletter: {
+      title: "ইনবক্সে একটু অনুপ্রেরণা।",
+      body: "নতুন কালেকশন, এক্সক্লুসিভ অফার আর সিজনের বাছাই। নিচের তালিকায় যোগ দিন — মাসে একটিই ইমেইল, যেকোনো সময় বের হতে পারবেন।",
+      hostedCta: "তালিকায় যোগ দিন ↗",
+      hostedNote:
+        "নতুন ট্যাবে আমাদের ইমেইল সাইনআপ পেজ খুলবে। সেখানে ইমেইল দিয়ে পছন্দ ঠিক করে নিন।",
+      emailLabel: "ইমেইল ঠিকানা",
+      submit: "তালিকায় যোগ দিন",
+      sending: "যোগ হচ্ছে…",
+      done: "আপনি তালিকায় আছেন — নতুন কালেকশন আর অফার সরাসরি আপনার ইনবক্সে।",
+      invalidEmail: "সঠিক ইমেইল ঠিকানা দিন।",
+      saveFailed: "সংরক্ষণ করা যায়নি — আবার চেষ্টা করুন।",
+      offline: "দোকানের সাথে যোগাযোগ করা যাচ্ছে না — ইন্টারনেট দেখুন।",
+      cadence: "মাসে একটিই ইমেইল, যেকোনো সময় বের হতে পারবেন।",
     },
     footer: {
       shop: "শপ",
@@ -1904,6 +1992,56 @@ export const translations = {
       forgotTitle: "পাসওয়ার্ড ভুলে গেছেন?",
       forgotBody: "অ্যাকাউন্টের নম্বর থেকে দোকানে WhatsApp বা কল করুন — তারা রিসেট করে দেবে (এই সাইটে OTP নেই)।",
       current: "এখন",
+      lookupTitle: "অর্ডার ট্র্যাক করুন — সুনামগঞ্জ সদর",
+      lookupSub:
+        "জেলা: সুনামগঞ্জ · উপজেলা: সুনামগঞ্জ সদর · হাব: ট্রাফিক পয়েন্ট। অ্যাকাউন্ট লাগবে না — অর্ডার আইডি আর ফোন নম্বরই যথেষ্ট। ক্যাশ অন ডেলিভারিতে PIN লাগবে।",
+      lastOrderLabel: "আপনার শেষ অর্ডার",
+      lastOrderTrack: "ট্র্যাক করুন",
+      lastOrderDismiss: "শেষ অর্ডার শর্টকাট সরান",
+      orderIdLabel: "অর্ডার আইডি",
+      phoneLabel: "মোবাইল নম্বর",
+      phoneTitle:
+        "সঠিক বাংলাদেশি মোবাইল নম্বর, যেমন 017XXXXXXXX বা +88017XXXXXXXX",
+      checking: "দেখা হচ্ছে…",
+      submit: "অর্ডার ট্র্যাক করুন",
+      lookupFailed:
+        "দোকানের সাথে যোগাযোগ করা যাচ্ছে না — ইন্টারনেট দেখে আবার চেষ্টা করুন।",
+      emptyTitle: "আমার অর্ডার কোথায়?",
+      emptyBody:
+        "অর্ডার আইডি আর ফোন নম্বর দিন — কনফার্ম থেকে প্যাক, রাইডার আর ডেলিভারি, পুরো লাইভ টাইমলাইন দেখুন।",
+      notFoundTitle: "কোনো অর্ডার পাওয়া যায়নি",
+      notFoundBody:
+        "অর্ডার আইডি আর যে ফোন নম্বর দিয়ে অর্ডার করেছিলেন, সেটা আবার মিলিয়ে দেখুন।",
+      cancelledNote:
+        "এই অর্ডারটি বাতিল হয়েছে। ভুল মনে হলে {number} নম্বরে কল বা WhatsApp করে অর্ডার আইডি বলুন — আমরা দেখে দিচ্ছি।",
+      snapshotTitle: "আপনার অর্ডার",
+      itemQty: "×{qty}",
+      subtotal: "সাবটোটাল",
+      delivery: "ডেলিভারি",
+      deliveryPickup: "ডেলিভারি — পিকআপ",
+      deliveryExpress: "ডেলিভারি — এক্সপ্রেস",
+      freePickup: "ফ্রি (পিকআপ)",
+      freeShop: "ফ্রি (দোকানের অফার)",
+      freePlatform: "ফ্রি (প্রসান্তির অফার)",
+      free: "ফ্রি",
+      surchargeNight: "রাত",
+      surchargeRain: "বৃষ্টি",
+      surchargeDistance: "দূরত্ব",
+      surchargeExpress: "এক্সপ্রেস",
+      surchargeWeight: "ওজন",
+      tip: "💝 বকশিশ",
+      coupon: "কুপন",
+      total: "সর্বমোট",
+      pickupSuffix: " — পিকআপ",
+      paymentCod: "ক্যাশ",
+      deliveryCardTitle: "ডেলিভারি — সুনামগঞ্জ সদর",
+      districtLine:
+        "জেলা: সুনামগঞ্জ · উপজেলা: সুনামগঞ্জ সদর · হাব: ট্রাফিক পয়েন্ট",
+      outsideSadar: "সদরের বাইরে · কুরিয়ার",
+      pickupBadge: "পিকআপ",
+      whatsappSupport: "WhatsApp-এ যোগাযোগ",
+      viewPin: "ম্যাপে পিন দেখুন",
+      noteLabel: "নোট:",
     },
   },
 } as const;
@@ -1934,6 +2072,7 @@ export type TranslationKey =
   | `home.${keyof typeof translations.en.home}`
   | `trust.${keyof typeof translations.en.trust}`
   | `install.${keyof typeof translations.en.install}`
+  | `newsletter.${keyof typeof translations.en.newsletter}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`

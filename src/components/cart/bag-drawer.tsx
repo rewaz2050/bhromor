@@ -29,6 +29,7 @@ import StampLine from "@/components/loyalty/stamp-line";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
+import { bnDigits } from "@/lib/arrival";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
 
 export default function BagDrawer() {
@@ -93,7 +94,11 @@ export default function BagDrawer() {
       <div className="flex items-center justify-between border-b border-line px-6 py-5">
         <h2 className="font-display text-3xl text-forest-900">
           {t("bag.yourBag")}{" "}
-          <span className="font-sans text-sm text-ink-soft">({itemCount})</span>
+          {/* UI/UX pass 2026-10-15 — the count in the heading follows the
+              same digit rule as the rest of the shop (UX plan §1.4). */}
+          <span className="font-sans text-sm text-ink-soft">
+            ({lang === "bn" ? bnDigits(String(itemCount)) : itemCount})
+          </span>
         </h2>
         <button
           type="button"

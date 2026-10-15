@@ -5,9 +5,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createElement } from "react";
 import TrackView from "@/components/track/track-view";
 import { LanguageProvider } from "@/components/i18n/language-provider";
+import { translations, type Language } from "@/lib/translations";
 import type { Order } from "@/lib/orders";
 import { LAST_ORDER_KEY } from "@/lib/last-order";
 
@@ -59,7 +59,12 @@ const mockFetch = (input: RequestInfo | URL) => {
   return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
 };
 
-const mount = () => render(createElement(LanguageProvider, null, createElement(TrackView)));
+const mount = (lang?: Language) =>
+  render(
+    <LanguageProvider initialLang={lang}>
+      <TrackView />
+    </LanguageProvider>,
+  );
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -110,7 +115,13 @@ describe("TrackView — last-order shortcut", () => {
     mount();
     const shortcut = await screen.findByTestId("last-order-shortcut");
     expect(shortcut.textContent).toContain("PS-20260918-0007");
-    fireEvent.click(screen.getByRole("button", { name: "ট্র্যাক করুন" }));
+    // Read from the dictionary, not a pasted string: the tracker is bilingual
+    // (UI/UX pass 2026-10-15) and the test must not pin one language.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: translations.en.track.lastOrderTrack,
+      }),
+    );
     await waitFor(() => expect(screen.getByTestId("track-slot")).toBeInTheDocument());
     // Once the order is on screen the shortcut steps aside.
     expect(screen.queryByTestId("last-order-shortcut")).not.toBeInTheDocument();
@@ -123,7 +134,11 @@ describe("TrackView — last-order shortcut", () => {
     );
     mount();
     await screen.findByTestId("last-order-shortcut");
-    fireEvent.click(screen.getByRole("button", { name: "শেষ অর্ডার শর্টকাট সরান" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: translations.en.track.lastOrderDismiss,
+      }),
+    );
     expect(screen.queryByTestId("last-order-shortcut")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(LAST_ORDER_KEY)).toBeNull();
   });
@@ -131,5 +146,65 @@ describe("TrackView — last-order shortcut", () => {
   it("does not show a shortcut on a fresh device", () => {
     mount();
     expect(screen.queryByTestId("last-order-shortcut")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * UI/UX pass 2026-10-15 — the tracker used to be literal English (with two
+ * literal Bangla strings for the last-order shortcut), so a Bangla shopper
+ * met a half-translated screen on the page the bottom nav sends them to.
+ * Every line the shopper reads now comes from the dictionary; this pins both
+ * languages so the screen cannot drift back to one.
+ */
+describe("TrackView — the lookup is bilingual", () => {
+  it("reads Bangla for a Bangla shopper", () => {
+    mount("bn");
+    expect(
+      screen.getByRole("heading", {
+        name: translations.bn.track.lookupTitle,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(translations.bn.track.orderIdLabel)).toBeInTheDocument();
+    expect(screen.getByText(translations.bn.track.phoneLabel)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: translations.bn.track.submit }),
+    ).toBeInTheDocument();
+    // The empty state answers the question the shopper actually asked.
+    expect(
+      screen.getByRole("heading", { name: translations.bn.track.emptyTitle }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(translations.bn.track.emptyBody)).toBeInTheDocument();
+  });
+
+  it("reads English for an English shopper", () => {
+    mount("en");
+    expect(
+      screen.getByRole("heading", {
+        name: translations.en.track.lookupTitle,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(translations.en.track.orderIdLabel)).toBeInTheDocument();
+    expect(screen.getByText(translations.en.track.phoneLabel)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: translations.en.track.submit }),
+    ).toBeInTheDocument();
+  });
+
+  it("answers 'no order found' in the shopper's language", async () => {
+    mount("bn");
+    fireEvent.change(screen.getByPlaceholderText("PS-YYYYMMDD-XXXX"), {
+      target: { value: "PS-20260918-9999" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
+      target: { value: "01799999999" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: translations.bn.track.submit }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: translations.bn.track.notFoundTitle,
+      }),
+    ).toBeInTheDocument();
   });
 });

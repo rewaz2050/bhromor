@@ -11,6 +11,7 @@ import { averageOf, hasPhotos, type Review } from "@/lib/review-store";
 import { Eyebrow } from "@/components/ui/primitives";
 import { IconStar } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { bnDigits } from "@/lib/arrival";
 
 /** `products` is the SERVING catalog the caller resolves live — no seeds. */
 export function approvedStories(reviews: Review[], products: Product[]) {
@@ -91,14 +92,23 @@ export default function CustomerStories({
         </div>
         {approved.length > 0 && (
           <div className="text-forest-900">
+            {/* UI/UX pass 2026-10-15 — the same digit rule the product
+                card's rating follows: a Bangla reader reads Bangla digits. */}
             <p className="font-display text-4xl">
-              {averageOf(approved).toFixed(1)}{" "}
+              {lang === "bn"
+                ? bnDigits(averageOf(approved).toFixed(1))
+                : averageOf(approved).toFixed(1)}{" "}
               <span className="text-xl text-ink-soft">/ 5</span>
             </p>
             <p className="mt-2 text-xs text-ink-soft">
               {approved.length === 1
                 ? t("home.storiesAcrossOne")
-                : t("home.storiesAcross").replace("{count}", String(approved.length))}
+                : t("home.storiesAcross").replace(
+                    "{count}",
+                    lang === "bn"
+                      ? bnDigits(String(approved.length))
+                      : String(approved.length),
+                  )}
             </p>
           </div>
         )}

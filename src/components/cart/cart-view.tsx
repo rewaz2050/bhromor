@@ -36,6 +36,7 @@ import { SaveForLaterButton, SavedForLaterNotice, useSaveForLater } from "./save
 import { useBagOffer } from "@/lib/use-bag-offer";
 import { lineShopIds, shopById } from "@/lib/shop-utils";
 import { bagWaMessage, waLink } from "@/lib/whatsapp-order";
+import { bnDigits } from "@/lib/arrival";
 
 export default function CartView() {
   const { t, lang } = useLanguage();
@@ -46,6 +47,9 @@ export default function CartView() {
   /** Hook BEFORE the empty early-return — hook order must not change. */
   const { shops } = useLiveCatalog();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
+  /** The one number rule (UX plan §1.4) — a Bangla reader reads Bangla
+   *  digits, here too. */
+  const digits = (n: number) => (lang === "bn" ? bnDigits(String(n)) : String(n));
   const empty = detail.length === 0;
 
   /** WhatsApp order for the whole bag (P1 #15) — single-shop cart, so one
@@ -244,7 +248,8 @@ export default function CartView() {
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-ink-soft">
-                {t("cart.subtotal")} ({itemCount} {itemCount === 1 ? t("cart.item") : t("cart.items")})
+                {t("cart.subtotal")} ({digits(itemCount)}{" "}
+                {itemCount === 1 ? t("cart.item") : t("cart.items")})
               </dt>
               <dd className="font-medium text-ink">{formatBdt(subtotal)}</dd>
             </div>
@@ -301,6 +306,34 @@ export default function CartView() {
           </p>
         </div>
       </aside>
+
+      {/* UI/UX pass 2026-10-15 — on a phone the summary above stacks under
+          the line items, so a three-piece bag pushed the one action that
+          matters below the fold. This keeps the total and the checkout in
+          thumb reach; the sticky aside on lg+ is unchanged. The listing
+          pages' mini-bar deliberately skips /cart (its own test pins that),
+          so this is the cart's version of the same affordance — same
+          geometry, same one primary action. */}
+      <div
+        data-testid="cart-sticky-checkout"
+        className="fixed inset-x-3 z-30 flex items-center gap-3 rounded-2xl bg-forest-950/97 p-2 pl-4 text-ivory-50 shadow-lg ring-1 ring-forest-800 lg:hidden"
+        style={{ bottom: "calc(4.25rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-[0.62rem] font-medium uppercase tracking-[0.16em] text-ivory-100/70">
+            {t("cart.estimatedTotal")}
+          </p>
+          <p className="truncate font-display text-lg leading-tight">
+            {lang === "bn" ? bnDigits(formatBdt(total)) : formatBdt(total)}
+          </p>
+        </div>
+        <Link
+          href="/checkout"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gold-400 px-5 text-sm font-bold text-forest-950 hover:bg-gold-300"
+        >
+          {t("cart.proceedToCheckout")} <IconArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
     </div>
   );
 }

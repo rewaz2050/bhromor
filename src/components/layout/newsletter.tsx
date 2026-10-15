@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cleanEmail, isPlausibleEmail } from "@/lib/engagement";
 import { IconCheck } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 /** A hosted opt-in form owns consent/unsubscribe; never pretend a local click subscribes. */
 export function newsletterSignupUrl(value: string | undefined): string | null {
@@ -17,6 +18,7 @@ export function newsletterSignupUrl(value: string | undefined): string | null {
 }
 
 function NewsletterForm() {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">(
     "idle",
@@ -28,7 +30,7 @@ function NewsletterForm() {
     const value = cleanEmail(email);
     if (!isPlausibleEmail(value)) {
       setState("error");
-      setError("Enter a valid email address.");
+      setError(t("newsletter.invalidEmail"));
       return;
     }
     setState("sending");
@@ -45,13 +47,13 @@ function NewsletterForm() {
       } | null;
       if (!res.ok) {
         setState("error");
-        setError(data?.error ?? "Could not save — please try again.");
+        setError(data?.error ?? t("newsletter.saveFailed"));
         return;
       }
       setState("done");
     } catch {
       setState("error");
-      setError("Could not reach the shop — check your connection.");
+      setError(t("newsletter.offline"));
     }
   };
 
@@ -59,8 +61,7 @@ function NewsletterForm() {
     return (
       <p className="mt-6 flex items-start gap-2 rounded-2xl bg-white/10 px-4 py-3 text-sm leading-6 text-ivory-100">
         <IconCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold-200" />
-        You’re on the list — new collections and offers, straight to your
-        inbox.
+        {t("newsletter.done")}
       </p>
     );
   }
@@ -69,7 +70,7 @@ function NewsletterForm() {
     <form onSubmit={(e) => void submit(e)} className="mt-6">
       <div className="flex flex-col gap-2 sm:flex-row">
         <label htmlFor="newsletter-email" className="sr-only">
-          Email address
+          {t("newsletter.emailLabel")}
         </label>
         <input
           id="newsletter-email"
@@ -79,14 +80,17 @@ function NewsletterForm() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
           autoComplete="email"
-          className="h-12 w-full rounded-full border border-white/25 bg-white/10 px-5 text-sm text-ivory-100 placeholder:text-ivory-100/50 focus:border-gold-300 focus:outline-none"
+          /* UI/UX pass 2026-10-15 — `focus:outline-none` on its own left a
+             keyboard shopper with nothing but a faint border colour change
+             on a dark background; the ring is the actual indicator. */
+          className="h-12 w-full rounded-full border border-white/25 bg-white/10 px-5 text-sm text-ivory-100 placeholder:text-ivory-100/50 focus:border-gold-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-300 focus-visible:ring-offset-2 focus-visible:ring-offset-forest-950"
         />
         <button
           type="submit"
           disabled={state === "sending"}
           className="editorial-button shrink-0 bg-gold-200 text-forest-950 hover:bg-gold-300 disabled:opacity-60"
         >
-          {state === "sending" ? "Joining…" : "Join the list"}
+          {state === "sending" ? t("newsletter.sending") : t("newsletter.submit")}
         </button>
       </div>
       {state === "error" && error && (
@@ -95,22 +99,26 @@ function NewsletterForm() {
         </p>
       )}
       <p className="mt-3 text-xs leading-6 text-ivory-100/60">
-        One email a month, unsubscribe anytime.
+        {t("newsletter.cadence")}
       </p>
     </form>
   );
 }
 
 export default function Newsletter({ signupUrl }: { signupUrl?: string }) {
+  /* UI/UX pass 2026-10-15 — this card sits in the footer of every
+     storefront page, under a fully translated footer. It was the one block
+     a Bangla shopper always read in English; it now follows the shop's
+     language like everything around it. */
+  const { t } = useLanguage();
   const url = newsletterSignupUrl(signupUrl);
   return (
     <div className="w-full border border-white/20 p-6 sm:p-8">
       <p className="font-display text-2xl text-ivory-100">
-        A little inspiration in your inbox.
+        {t("newsletter.title")}
       </p>
       <p className="mt-3 text-sm leading-7 text-ivory-100/70">
-        New collections, exclusive offers and seasonal edits. Join the list
-        below — one email a month, unsubscribe anytime.
+        {t("newsletter.body")}
       </p>
       {url ? (
         <>
@@ -120,11 +128,10 @@ export default function Newsletter({ signupUrl }: { signupUrl?: string }) {
             rel="noopener noreferrer"
             className="editorial-button mt-6 w-full bg-gold-200 text-forest-950 hover:bg-gold-300"
           >
-            Join the list ↗
+            {t("newsletter.hostedCta")}
           </a>
           <p className="mt-3 text-xs leading-6 text-ivory-100/60">
-            Opens our email signup page in a new tab. Enter your email and
-            confirm your preferences there.
+            {t("newsletter.hostedNote")}
           </p>
         </>
       ) : (
