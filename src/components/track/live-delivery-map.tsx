@@ -9,7 +9,7 @@ import { freshnessLabel, locationFreshness } from "@/lib/location-health";
 import { useNow } from "@/lib/use-now";
 import { LIVE_POLL_MS, useLiveRiderPosition } from "@/lib/use-live-rider-position";
 import type { Order } from "@/lib/orders";
-import { getDeliveryCode } from "@/lib/orders";
+import { displayedDeliveryCode } from "@/lib/orders";
 import {
   IconMapPin,
   IconPhone,
@@ -29,7 +29,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   const isAssigned = order.status === "courier-assigned" || order.status === "ready-for-pickup";
   const isPreparing = order.status === "preparing" || order.status === "confirmed" || order.status === "pending";
 
-  const deliveryCode = order.deliveryCode ?? getDeliveryCode(order.id);
+  const deliveryCode = displayedDeliveryCode(order.deliveryCode);
 
   // Progress is a STATUS-based position on the schematic route (pending →
   // assigned → on the way → delivered). It is NOT a GPS claim: when a real

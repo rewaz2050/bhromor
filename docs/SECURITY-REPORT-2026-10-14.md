@@ -257,7 +257,7 @@ Vercel/বেশিরভাগ প্রক্সি ক্লায়েন�
 | আইডি | প্রতিকার | ফাইল |
 |------|---------|------|
 | **H1** | JSON-LD `safeJsonLd()` — `</script>`/`<!--`/U+2028 escape (encodeURIComponent) | `src/lib/jsonld.ts` + layout.tsx, product-page-view.tsx |
-| **H2** | PIN `ps_random_delivery_code` — `gen_random_bytes` → 1000–9999; non-final অর্ডারে trigger দিয়ে rotate; bootstrap-এও mirror | `supabase/migrations/202610140001_security_hardening.sql`, `supabase/bootstrap-fresh.sql`, `supabase/bootstrap-parts/02_bootstrap-part.sql` |
+| **H2** | PIN `ps_random_delivery_code` — pg_catalog-only (`uuid_send(gen_random_uuid())`) → 1000–9999; non-final অর্ডারে trigger দিয়ে rotate (null কোডও ভরে); bootstrap-এও mirror; client-এর `getDeliveryCode()` বাদ | `supabase/migrations/202610140001_security_hardening.sql`, `supabase/bootstrap-fresh.sql`, `supabase/bootstrap-parts/02_bootstrap-part.sql` |
 | **H3** | HMAC-SHA256 signed track token (`t=`, 24 hex, timing-safe verify) — সব track/cancel/rate/reschedule/rider-loc/push রুটে ownership gate; টোকেন ছাড়া strict rate budget; link সব জায়গায় টোকেনসহ | `src/lib/track-token.ts`, `track-gate.ts`, `track-links.ts` + ৬টি `/api/track/*` রুট + checkout/notify/admin-wa/wa-outbox/customer-push + UI hooks |
 | **H4** | Reviews insert policy → `authenticated` + `customer_id = auth.uid()` + `pending`/`verified=false`/`featured=false` + rating 1–5; ৩টি anon insert policy drop | `supabase/migrations/202610140001_security_hardening.sql` |
 | **H5** | অপ্রমাণিত অ্যাকাউন্ট যেন pre-signup guest অর্ডার না দেখে: `listOrdersForPhone(phone, since=createdAt)`; per-phone rate limit (signup 5/15min, login 10/15min); signup enumeration বন্ধ (M2) | `src/lib/customer-auth.ts`, `src/lib/orders.ts`, `src/lib/db/orders.ts`, `src/app/api/account/orders/route.ts`, `signup/route.ts`, `login/route.ts` |
@@ -346,3 +346,63 @@ hygiene) যা যা পাওয়া গেল:
 | T6 | **Android cleartext স্পষ্টভাবে বন্ধ** | `minSdk 24` (Android 7/8-তে cleartext ডিফল্টে খোলা ছিল) — `android:usesCleartextTraffic="false"` যোগ হলো। Capacitor-এ `allowNavigation` আগেই host-লকড ছিল। |
 
 **Round 4 verification:** `tsc` clean · `next build` pass · `vitest` ৫৪১ files / ৩৭০৩ tests pass (নতুন: scrypt s1/s2 compat, upload signature cap, channel HMAC)।
+
+---
+
+## Apply fix — ১৫ অক্টোবর ২০২৬ (`gen_random_bytes` missing → migration থেমে গিয়েছিল)
+
+প্রোডাকশনে `202610140001_security_hardening.sql` চালাতে গিয়ে H2 ধাপে থেমে গেছে:
+
+```
+ERROR:  42883: function gen_random_bytes(integer) does not exist
+QUERY:  v_b := gen_random_bytes(2)
+CONTEXT: PL/pgSQL function ps_random_delivery_code() line 5 at assignment
+```
+
+**কারণ:** `gen_random_bytes()` pgcrypto-র ফাংশন। Supabase একে **`extensions`
+schema**-তে ইনস্টল করে, আর `ps_random_delivery_code()` ইচ্ছাকৃতভাবে
+`set search_path = public` করে রাখে — তাই ফাংশনটা পথে পড়েই না (নতুন প্রজেক্টে
+pgcrypto একেবারেই না-ও থাকতে পারে)। `create function` plpgsql body রেজলভ করে না,
+তাই ভুলটা CREATE-এ ধরা পড়ে না — নিচের rotate `UPDATE` চলার সময়ে ধরা পড়ে।
+পুরো ফাইল `begin; … commit;`-এ থাকায় **কিছুই সেভ হয়নি**: অর্ডারের PIN তখনো
+পুরোনো `hashtext(order_no)` derivation-ই দিচ্ছিল (অর্থাৎ H2 খোলা ছিল)।
+
+**প্রতিকার (এখন pgcrypto-মুক্ত, শুধু pg_catalog):**
+
+1. `ps_random_delivery_code()` এখন `uuid_send(gen_random_uuid())` থেকে ৩ বাইট
+   নেয় — `gen_random_uuid()` (PG13+, OS CSPRNG) ও `uuid_send()` দুটোই
+   **pg_catalog**-এ, তাই `search_path`/pgcrypto যা-ই হোক রেজলভ হয়। ফলাফল
+   আগের মতোই 1000–9999 (৪ ডিজিট)।
+2. Rotate statement এখন `delivery_code is null` ওয়ালা live অর্ডারও **ভরে দেয়**
+   (আগে null → null থেকে যেত; UI তখন নিজে একটা PIN "হিসাব" করে দেখাত, যা
+   `ps_rider_deliver` কখনো মেলাতে পারত না — কাস্টমার ভুল কোড বলত, ৫ চেষ্টায়
+   lockout)।
+3. `trg_orders_set_delivery_code` trigger-টা এখানেও re-assert করা — যে প্রজেক্ট
+   202609090007 ঠিকভাবে পায়নি, সেখানেও insert-এ কোড বসবে।
+4. **Client-side PIN generator বাদ:** `src/lib/orders.ts`-এর `getDeliveryCode()`
+   (order id থেকে ৪ ডিজিট বানাত) সরানো হয়েছে। এখন `displayedDeliveryCode()` —
+   DB-র `orders.delivery_code` হুবহু দেখায়, না থাকলে `————`। যেখানে যেখানে
+   fallback ছিল (checkout success, track map, order-now banner, admin detail)
+   সব জায়গায় এটাই বসানো; `orders.test.ts`-এ ৩টি regression test।
+5. `supabase/bootstrap-fresh.sql` + `supabase/bootstrap-parts/02` একইভাবে sync।
+
+**Verification:** migration-টা pgcrypto ছাড়া একটি WASM Postgres-এ (PGlite)
+**হুবহু** চালিয়ে দেখা হয়েছে — পুরোনো কোডে একই `42883`, নতুন কোডে apply OK,
+দ্বিতীয়বার চালালেও OK (idempotent); ৫০০০ call = সব `^[0-9]{4}$`, 1000–9999;
+live অর্ডারের কোড rotate হলো, delivered-এর ইতিহাস অপরিবর্তিত, null কোড ভরে
+গেল, নতুন insert-এ trigger কোড বসাল; ACL: `anon`/`authenticated` execute হারাল;
+reviews insert policy `authenticated`-only; price/stock watch + shop follow
+এর insert policy drop। `tsc` clean · বদলানো ফাইলগুলোতে `eslint` clean ·
+`vitest` ৫৪১ files / ৩৭০৬ tests pass। (`npm run lint`-এ ২টি error
+`src/components/analytics/analytics-consent-gate.tsx`-এ — এ কাজের আগে থেকেই ছিল,
+এই বদলের সাথে সম্পর্ক নেই।)
+
+**এখন যা চালাতে হবে:** `supabase/migrations/202610140001_security_hardening.sql`
+আবার (পুরো ফাইল, `begin;…commit;` সহ) — re-runnable। চালানোর পর একবার দেখে নিন:
+
+```sql
+select ps_random_delivery_code();  -- 1000–9999, প্রতিবার নতুন
+select count(*) from orders
+ where status not in ('delivered','cancelled')
+   and delivery_code !~ '^[0-9]{4}$';  -- 0 হওয়া উচিত
+```

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ACTION_LABEL,
+  DELIVERY_CODE_PLACEHOLDER,
   ORDER_FLOW,
   PUBLIC_STEPS,
   TRANSITIONS,
@@ -8,6 +9,7 @@ import {
   aggregateOrders,
   canCancel,
   deliveryStats,
+  displayedDeliveryCode,
   flowIndex,
   isTerminal,
   makePlacedOrder,
@@ -449,5 +451,26 @@ describe("phone matching (order tracking)", () => {
     expect(samePhone("+8801712345678", "01712345678")).toBe(true);
     expect(samePhone("01712345678", "01712345679")).toBe(false);
     expect(samePhone("", "01712345678")).toBe(false);
+  });
+});
+
+describe("delivery PIN display (security 2026-10-14 H2)", () => {
+  it("shows the code stored by the database, verbatim", () => {
+    expect(displayedDeliveryCode("4821")).toBe("4821");
+  });
+
+  it("never invents digits when the row has no code", () => {
+    // `ps_rider_deliver` compares the handoff code against `orders.delivery_code`,
+    // so a PIN derived in the browser can only ever be rejected (and five wrong
+    // tries lock the order) — the UI must show a placeholder instead.
+    expect(displayedDeliveryCode(undefined)).toBe(DELIVERY_CODE_PLACEHOLDER);
+    expect(displayedDeliveryCode(null)).toBe(DELIVERY_CODE_PLACEHOLDER);
+    expect(displayedDeliveryCode("")).toBe(DELIVERY_CODE_PLACEHOLDER);
+    expect(displayedDeliveryCode(undefined)).not.toMatch(/[0-9]/);
+  });
+
+  it("has no client-side generator left to fall back on", async () => {
+    const mod = (await import("../orders")) as Record<string, unknown>;
+    expect(mod.getDeliveryCode).toBeUndefined();
   });
 });
