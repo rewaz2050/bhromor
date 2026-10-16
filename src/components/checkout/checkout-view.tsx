@@ -2728,10 +2728,10 @@ export default function CheckoutView() {
                 />
                 <span className="flex-1">
                   <span className="block text-sm font-semibold text-ink">
-                    ক্যাশ অন ডেলিভারি / {t("checkout.cashOnDelivery")}
+                    {t("checkout.cashOnDelivery")}
                   </span>
                   <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                    পার্সেল হাতে পেয়ে টাকা পরিশোধ করবেন।
+                    {t("checkout.payCodDesc")}
                   </span>
                 </span>
                 <span className="rounded-full bg-ivory-100 px-3 py-1 text-xs font-semibold text-forest-800 ring-1 ring-line">
@@ -2757,7 +2757,7 @@ export default function CheckoutView() {
                   <span className="flex-1">
                     <span className="block text-sm font-semibold text-ink">bKash</span>
                     <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                      আমাদের bKash নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                      {t("checkout.payWalletDesc").replace("{wallet}", "bKash")}
                     </span>
                   </span>
                 </label>
@@ -2781,7 +2781,7 @@ export default function CheckoutView() {
                   <span className="flex-1">
                     <span className="block text-sm font-semibold text-ink">Nagad</span>
                     <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                      আমাদের Nagad নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                      {t("checkout.payWalletDesc").replace("{wallet}", "Nagad")}
                     </span>
                   </span>
                 </label>
@@ -2803,12 +2803,14 @@ export default function CheckoutView() {
               )}
               {wallets?.payTo === "shop" && (wallets.bkash || wallets.nagad) && (
                 <p className="text-xs leading-5 text-ink-soft" data-testid="pay-to-shop-note">
-                  এই টাকা সরাসরি {wallets.payeeName ? `${wallets.payeeName}-এর` : "দোকানের"} নিজস্ব নম্বরে যাবে।
+                  {wallets.payeeName
+                    ? t("checkout.payToShopNamed").replace("{name}", wallets.payeeName)
+                    : t("checkout.payToShopGeneric")}
                 </p>
               )}
               {wallets?.payTo === "shop" && !wallets.bkash && !wallets.nagad && cartShopKey.includes(",") && (
                 <p className="text-xs leading-5 text-ink-soft" data-testid="mixed-bag-cod-note">
-                  একাধিক দোকানের ব্যাগে শুধু ক্যাশ অন ডেলিভারি চলবে।
+                  {t("checkout.payMixedCodOnly")}
                 </p>
               )}
               {fieldErrors.payMethod && (
