@@ -1113,7 +1113,7 @@ export default function CheckoutView() {
       // C2 — the per-parcel view the screen lists above the combined card.
       parcels: parcels.map((p) => ({
         shopId: p.group.shopId,
-        shopName: p.shop?.name ?? "দোকান",
+        shopName: p.shop?.name ?? t("checkout.shopFallback"),
         qty: p.group.qty,
         subtotal: p.group.subtotal,
         delivery: p.breakdown.totalCharge,
@@ -2645,7 +2645,7 @@ export default function CheckoutView() {
               <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
               <div className="flex-1 text-sm leading-6">
                 <p className="font-semibold">
-                  {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : zone.name}
+                  {form.isPickup ? `${t("checkout.dlPickup")} — ${SUNAMGANJ_HUB}` : zone.name}
                   {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
                 </p>
                 <p className="mt-1 text-ivory-100/70">
