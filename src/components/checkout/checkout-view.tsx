@@ -2845,8 +2845,8 @@ export default function CheckoutView() {
                       {activeCoupon.code}
                     </span>
                     <span className="text-xs text-forest-700">
-                      প্রয়োগ হয়েছে ✓
-                      {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? " · ফ্রি ডেলিভারি" : ""}
+                      {t("checkout.couponAppliedTag")}
+                      {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? t("checkout.couponFreeDeliveryTag") : ""}
                     </span>
                     {autoCoupon === "applied" && (
                       <span
@@ -2991,7 +2991,7 @@ export default function CheckoutView() {
           {/* Tip */}
           {!form.isPickup && (
             <div>
-              <p className="text-sm font-semibold text-ink">💝 রাইডারকে টিপ <span className="font-normal text-ink-soft">(ঐচ্ছিক — পুরোটা রাইডার পায়)</span></p>
+              <p className="text-sm font-semibold text-ink">{t("checkout.tipTitle")} <span className="font-normal text-ink-soft">{t("checkout.tipOptional")}</span></p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[0, 10, 20, 30, 50].map((tip) => (
                   <button
@@ -3001,12 +3001,12 @@ export default function CheckoutView() {
                     onClick={() => update("tipAmount", tip)}
                     className={`rounded-full px-4 py-2 text-xs font-semibold ring-1 ${form.tipAmount === tip ? "bg-forest-800 text-white ring-forest-700" : "bg-paper text-ink ring-line"}`}
                   >
-                    {tip === 0 ? "টিপ নয়" : `৳${tip}`}
+                    {tip === 0 ? t("checkout.tipNone") : `৳${tip}`}
                   </button>
                 ))}
               </div>
               {form.tipAmount > 0 && (
-                <p className="mt-2 text-xs text-forest-700">ধন্যবাদ! ৳{form.tipAmount} আপনার রাইডার পাবে।</p>
+                <p className="mt-2 text-xs text-forest-700">{t("checkout.tipThanks").replace("{amount}", String(form.tipAmount))}</p>
               )}
             </div>
           )}
@@ -3014,14 +3014,14 @@ export default function CheckoutView() {
           {/* Saved-address label (optional) — tagged for one-tap reuse */}
           <div>
             <span className="mb-1.5 block text-sm font-semibold text-ink">
-              এই ঠিকানার লেবেল <span className="font-normal text-ink-soft">(ঐচ্ছিক — অর্ডারের পর সেভ হয়)</span>
+              {t("checkout.addrLabelTitle")} <span className="font-normal text-ink-soft">{t("checkout.addrLabelOptional")}</span>
             </span>
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: "home", label: "বাসা / Home", icon: <IconHome className="h-3.5 w-3.5" /> },
-                  { id: "office", label: "অফিস / Office", icon: <IconBriefcase className="h-3.5 w-3.5" /> },
-                  { id: "other", label: "অন্যান্য / Other", icon: <IconMapPin className="h-3.5 w-3.5" /> },
+                  { id: "home", label: t("checkout.addrHome"), icon: <IconHome className="h-3.5 w-3.5" /> },
+                  { id: "office", label: t("checkout.addrOffice"), icon: <IconBriefcase className="h-3.5 w-3.5" /> },
+                  { id: "other", label: t("checkout.addrOther"), icon: <IconMapPin className="h-3.5 w-3.5" /> },
                 ] as const
               ).map((tag) => (
                 <button
@@ -3045,12 +3045,12 @@ export default function CheckoutView() {
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-semibold text-ink">
-              অর্ডার নোট <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
+              {t("checkout.orderNoteLabel")} <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
             </span>
             <input
               value={form.note}
               onChange={(e) => update("note", e.target.value)}
-              placeholder="যেমন: ডেলিভারির আগে কল করবেন"
+              placeholder={t("checkout.orderNoteExample")}
               className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
           </label>
@@ -3064,7 +3064,7 @@ export default function CheckoutView() {
             id="checkout-step-3"
             n={3}
             title={t("checkout.step3")}
-            hint="একবার চোখ বুলিয়ে নিন — তারপর এক ট্যাপে অর্ডার।"
+            hint={t("checkout.reviewHint")}
           >
             {/* The summary card on phones lives HERE, in the step; desktop keeps the aside. */}
             <div className="lg:hidden">{summaryCard(true)}</div>
@@ -3082,7 +3082,7 @@ export default function CheckoutView() {
                   every parcel is a real delivery to arrange. */}
               {tooManyShopsInBag && (
                 <p role="alert" data-testid="too-many-shops" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-                  ব্যাগে {basketGroups.length}টি দোকানের পণ্য আছে — এক চেকআউটে সর্বোচ্চ {MULTI_SHOP_MAX}টি দোকান সম্ভব। কয়েকটি পণ্য ব্যাগ থেকে সরিয়ে আলাদা করে অর্ডার করুন।
+                  {t("checkout.bagTooMany").replace("{shops}", String(basketGroups.length)).replace("{max}", String(MULTI_SHOP_MAX))}
                 </p>
               )}
               {/* One line per shop that cannot take the order: closed for the
@@ -3153,18 +3153,18 @@ export default function CheckoutView() {
               {!form.submitting && <IconArrowRight className="h-4 w-4" />}
             </button>
             {(tooManyShopsInBag || anyShopClosed) && (
-              <p className="mt-3 text-xs text-amber-800">উপরের ব্যাগ-সমস্যাটি ঠিক করে তারপর অর্ডার করুন।</p>
+              <p className="mt-3 text-xs text-amber-800">{t("checkout.bagFixFirst")}</p>
             )}
             <p className="mt-4 text-xs leading-5 text-ink-soft">
-              অর্ডার করলে আপনি আমাদের{" "}
+              {t("checkout.legalPre")}{" "}
               <Link href="/terms" className="underline underline-offset-2">
-                শর্তাবলী
+                {t("checkout.legalTerms")}
               </Link>{" "}
-              ও{" "}
+              {t("checkout.legalAnd")}{" "}
               <Link href="/privacy" className="underline underline-offset-2">
-                প্রাইভেসি পলিসি
+                {t("checkout.legalPrivacy")}
               </Link>
-              -তে সম্মত হচ্ছেন। একবার চাপলেই যথেষ্ট — ডাবল অর্ডার হয় না।
+              {t("checkout.legalPost")}
             </p>
           </StepSection>
         </div>
