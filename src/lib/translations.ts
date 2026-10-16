@@ -919,6 +919,29 @@ export const translations = {
       hint: "Click the map or drag the marker to select your exact house. Auto zone and delivery charge update automatically. OSM — free, no API key.",
       hubPopup: "Traffic Point - Hub (Sunamganj Sadar)",
     },
+    brandJournal: {
+      eyebrow: "Visual journal",
+      heading: "Stories in cloth and light.",
+      body: "A closer look at the people, textures and everyday rituals that shape the PROSANTI point of view.",
+      discover: "Discover our world",
+      caption: "PROSANTI journal · Bangladesh, in the everyday",
+      alt1: "A woman in an emerald three-piece beside a sunlit heritage-home window",
+      alt2: "A man wearing a checked lungi in the quiet morning light of a veranda",
+      alt3: "Tonal embroidery and natural texture on forest-green cloth",
+      alt4: "A hand-finished gold border on emerald fabric",
+    },
+    checkoutAssurance: {
+      ariaLabel: "Order with confidence",
+      cod: "Cash on delivery",
+      codText: "Pay when your order arrives.",
+      quality: "Quality checked",
+      qualityText: "Carefully checked before dispatch.",
+      exchange: "Exchange guidance",
+      exchangeText: "Read eligibility before ordering.",
+      delivery: "Transparent delivery",
+      deliveryText: "Area-based fee shown before placing your order.",
+      newTab: "Opens in a new tab",
+    },
     sizeGuide: {
       availableSizes: "Available sizes:",
       noSizes: "Contact us for sizing",
@@ -2202,6 +2225,29 @@ export const translations = {
       hint: "ঠিক বাড়িটি বেছে নিতে ম্যাপে ক্লিক করুন বা মার্কার টেনে সরান। অটো জোন ও ডেলিভারি চার্জ নিজে থেকেই আপডেট হবে। OSM ফ্রি, কোনো API key লাগে না।",
       hubPopup: "ট্রাফিক পয়েন্ট - হাব (সুনামগঞ্জ সদর)",
     },
+    brandJournal: {
+      eyebrow: "ভিজ্যুয়াল জার্নাল",
+      heading: "কাপড় আর আলোর গল্প।",
+      body: "মানুষ, বুনন আর প্রতিদিনের আচার-অভ্যাসের একটু কাছ থেকে দেখা, যা PROSANTI-এর দৃষ্টিভঙ্গি গড়ে তোলে।",
+      discover: "আমাদের জগৎ দেখুন",
+      caption: "PROSANTI জার্নাল · বাংলাদেশ, প্রতিদিনের জীবনে",
+      alt1: "সূর্যালোকিত ঐতিহ্যবাহী বাড়ির জানালার পাশে জমকালো সবুজ থ্রি-পিসে একজন নারী",
+      alt2: "সকালের নরম আলোয় বারান্দায় চেক লুঙ্গি পরা একজন পুরুষ",
+      alt3: "বন-সবুজ কাপড়ে টোনাল এমব্রয়ডারি আর প্রাকৃতিক বুনন",
+      alt4: "এমারেল্ড কাপড়ে হাতে করা সোনালি বর্ডার",
+    },
+    checkoutAssurance: {
+      ariaLabel: "নিশ্চিন্তে অর্ডার করুন",
+      cod: "ক্যাশ অন ডেলিভারি",
+      codText: "অর্ডার হাতে পেয়ে পেমেন্ট করুন।",
+      quality: "মান যাচাই করা",
+      qualityText: "পাঠানোর আগে সযত্নে যাচাই করা।",
+      exchange: "বিনিময়ের নিয়ম",
+      exchangeText: "অর্ডারের আগে যোগ্যতার শর্ত পড়ুন।",
+      delivery: "স্বচ্ছ ডেলিভারি",
+      deliveryText: "অর্ডার দেওয়ার আগেই এলাকাভিত্তিক চার্জ দেখানো হয়।",
+      newTab: "নতুন ট্যাবে খুলবে",
+    },
     sizeGuide: {
       availableSizes: "পাওয়া যাচ্ছে:",
       noSizes: "সাইজের জন্য আমাদের সাথে যোগাযোগ করুন",
@@ -2594,6 +2640,8 @@ export type TranslationKey =
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
   | `sizeGuide.${keyof typeof translations.en.sizeGuide}`
+  | `checkoutAssurance.${keyof typeof translations.en.checkoutAssurance}`
+  | `brandJournal.${keyof typeof translations.en.brandJournal}`
   | `mapPin.${keyof typeof translations.en.mapPin}`
   | `deliveryChecker.${keyof typeof translations.en.deliveryChecker}`
   | `liveBanner.${keyof typeof translations.en.liveBanner}`
