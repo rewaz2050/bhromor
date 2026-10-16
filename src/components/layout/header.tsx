@@ -19,11 +19,11 @@ import { IconUser } from "@/components/ui/icons";
 /**
  * Sticky storefront header (menubar redesign, 2026-09-26).
  *
- * Three balanced zones on desktop — brand | primary nav | actions — with
- * the nav as a wayfinding strip (hairline under the current section, a
- * category drop-down) and the actions in the order people expect on a
- * shop: language, search, wishlist, account, bag. A thin gold line shows
- * reading progress.
+ * Desktop balances the brand, wayfinding nav and shopping controls; the
+ * search launcher sits beside the account actions. Phones use a two-row app
+ * shell: brand/language/bag above the full-width search field. The nav keeps
+ * a hairline under the current section and a category drop-down. A thin gold
+ * line shows reading progress.
  *
  * Scroll audit 2026-09-27 — the header must never make scrolling itself
  * jerky, so it is now paint-only while the page moves:
