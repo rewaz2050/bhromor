@@ -74,7 +74,7 @@ export default function FlashRail({
             {t("promo.seeDrop")} <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
+        <div className="shopping-app-card-grid mt-8 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
           {picks.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

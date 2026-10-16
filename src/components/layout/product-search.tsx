@@ -93,19 +93,20 @@ export default function ProductSearch() {
 
   return (
     <>
-      {/* One trigger, two looks (CSS): a round icon where the bar is tight,
-          and from xl up a field-shaped button showing the placeholder —
-          people recognise an input at a glance; a lone magnifier is a guess. */}
+      {/* One trigger, responsive app chrome: phones get a full-width search
+          field in the second header row; compact screens use the icon, and
+          xl screens show the placeholder in the right-side action row. */}
       <button
         type="button"
         aria-label={t("header.searchProducts")}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={openSearch}
-        className="header-search-trigger"
+        className="header-search-trigger sm:order-4"
       >
         <IconSearch className="h-[1.15rem] w-[1.15rem] shrink-0" />
-        <span className="header-search-label">{t("header.searchPlaceholder")}</span>
+        <span className="header-search-label min-w-0 truncate">{t("header.searchPlaceholder")}</span>
+        <span className="header-search-mobile-label min-w-0 truncate">{t("header.search")}</span>
       </button>
       <Drawer
         open={open}

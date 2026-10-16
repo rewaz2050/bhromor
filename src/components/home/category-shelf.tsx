@@ -46,10 +46,10 @@ export default function CategoryShelfBlock({
       data-category={category.id}
       data-list={`shelf-${category.id}`}
       data-layout={rail ? "rail" : "grid"}
-      className={`scroll-mt-24 ${index % 2 === 0 ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
+      className={`home-category-shelf scroll-mt-24 ${index % 2 === 0 ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
     >
       <ListImpression list={`shelf-${category.id}`} count={products.length} />
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      <div className="home-category-shelf-inner mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <Reveal>
           <Link
             href={href}
@@ -100,8 +100,8 @@ export default function CategoryShelfBlock({
         <div
           className={
             rail
-              ? "-mx-4 mt-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7"
-              : "mt-6 grid grid-cols-2 gap-x-4 gap-y-8 sm:mt-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-4 lg:gap-x-7"
+              ? "home-category-product-grid -mx-4 mt-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:mt-8 sm:grid sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7"
+              : "home-category-product-grid mt-6 grid grid-cols-2 gap-x-4 gap-y-8 sm:mt-8 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-4 lg:gap-x-7"
           }
         >
           {products.map((product, i) => (
