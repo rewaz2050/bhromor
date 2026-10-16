@@ -909,6 +909,16 @@ export const translations = {
       contactUs: "contact us",
       notConfirmedAfter: "before ordering.",
     },
+    mapPin: {
+      title: "Map Pin — Sunamganj Sadar (Traffic Point hub)",
+      useMyLocation: "Use my location",
+      loading: "Loading Sunamganj map...",
+      hub: "Hub: Traffic Point {lat}, {lng}",
+      distance: "Distance: {km} km",
+      autoZone: "Auto Zone: {zone} · {charge}",
+      hint: "Click the map or drag the marker to select your exact house. Auto zone and delivery charge update automatically. OSM — free, no API key.",
+      hubPopup: "Traffic Point - Hub (Sunamganj Sadar)",
+    },
     sizeGuide: {
       availableSizes: "Available sizes:",
       noSizes: "Contact us for sizing",
@@ -2182,6 +2192,16 @@ export const translations = {
       contactUs: "আমাদের সাথে যোগাযোগ করুন",
       notConfirmedAfter: "।",
     },
+    mapPin: {
+      title: "মানচিত্রে পিন — সুনামগঞ্জ সদর (ট্রাফিক পয়েন্ট হাব)",
+      useMyLocation: "আমার অবস্থান ব্যবহার করুন",
+      loading: "সুনামগঞ্জের ম্যাপ লোড হচ্ছে...",
+      hub: "হাব: ট্রাফিক পয়েন্ট {lat}, {lng}",
+      distance: "দূরত্ব: {km} কিমি",
+      autoZone: "অটো জোন: {zone} · {charge}",
+      hint: "ঠিক বাড়িটি বেছে নিতে ম্যাপে ক্লিক করুন বা মার্কার টেনে সরান। অটো জোন ও ডেলিভারি চার্জ নিজে থেকেই আপডেট হবে। OSM ফ্রি, কোনো API key লাগে না।",
+      hubPopup: "ট্রাফিক পয়েন্ট - হাব (সুনামগঞ্জ সদর)",
+    },
     sizeGuide: {
       availableSizes: "পাওয়া যাচ্ছে:",
       noSizes: "সাইজের জন্য আমাদের সাথে যোগাযোগ করুন",
@@ -2574,6 +2594,7 @@ export type TranslationKey =
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
   | `sizeGuide.${keyof typeof translations.en.sizeGuide}`
+  | `mapPin.${keyof typeof translations.en.mapPin}`
   | `deliveryChecker.${keyof typeof translations.en.deliveryChecker}`
   | `liveBanner.${keyof typeof translations.en.liveBanner}`
   | `paymentStatus.${keyof typeof translations.en.paymentStatus}`

@@ -10,6 +10,7 @@ import {
   type LatLng,
 } from "@/lib/sunamganj";
 import { formatBdt } from "@/lib/format";
+import { useLanguage } from "@/components/i18n/language-provider";
 import { IconMapPin } from "@/components/ui/icons";
 
 interface MapPinPickerProps {
@@ -19,6 +20,8 @@ interface MapPinPickerProps {
 }
 
 export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPinPickerProps) {
+  const { t } = useLanguage();
+  const hubMarkerRef = useRef<Marker | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -86,9 +89,9 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
         iconSize: [32, 32],
         iconAnchor: [16, 16],
       });
-      L.marker([SUNAMGANJ_HUB_COORDS.lat, SUNAMGANJ_HUB_COORDS.lng], { icon: hubIcon })
+      hubMarkerRef.current = L.marker([SUNAMGANJ_HUB_COORDS.lat, SUNAMGANJ_HUB_COORDS.lng], { icon: hubIcon })
         .addTo(map)
-        .bindPopup("Traffic Point - Hub (Sunamganj Sadar)");
+        .bindPopup(t("mapPin.hubPopup"));
 
       // Zone circles
       const zones = [
@@ -152,10 +155,17 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
+        hubMarkerRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leafletReady]);
+
+  // Keep the hub popup in the active language
+  const hubPopup = t("mapPin.hubPopup");
+  useEffect(() => {
+    hubMarkerRef.current?.setPopupContent(hubPopup);
+  }, [hubPopup]);
 
   // Update marker when value changes externally
   useEffect(() => {
@@ -196,7 +206,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">
-          Map Pin — Sunamganj Sadar (Traffic Point hub)
+          {t("mapPin.title")}
         </p>
         <button
           type="button"
@@ -204,7 +214,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
           className="inline-flex items-center gap-1 rounded-full bg-paper px-3 py-1 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
         >
           <IconMapPin className="h-3.5 w-3.5" />
-          Use my location
+          {t("mapPin.useMyLocation")}
         </button>
       </div>
 
@@ -215,28 +225,28 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
       >
         {!loaded && (
           <div className="flex h-full items-center justify-center text-sm text-ink-soft">
-            Loading Sunamganj map...
+            {t("mapPin.loading")}
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full bg-forest-50 px-2.5 py-1 ring-1 ring-forest-200">
-          Hub: Traffic Point {SUNAMGANJ_HUB_COORDS.lat.toFixed(4)}, {SUNAMGANJ_HUB_COORDS.lng.toFixed(4)}
+          {t("mapPin.hub").replace("{lat}", SUNAMGANJ_HUB_COORDS.lat.toFixed(4)).replace("{lng}", SUNAMGANJ_HUB_COORDS.lng.toFixed(4))}
         </span>
         {distance !== null && value && (
           <>
             <span className="rounded-full bg-gold-50 px-2.5 py-1 ring-1 ring-gold-200 font-semibold">
-              Distance: {distance.toFixed(2)} km
+              {t("mapPin.distance").replace("{km}", distance.toFixed(2))}
             </span>
             <span className="rounded-full bg-emerald-50 px-2.5 py-1 ring-1 ring-emerald-200">
-              Auto Zone: {findZoneByDistance(value).name} · {formatBdt(findZoneByDistance(value).charge)}
+              {t("mapPin.autoZone").replace("{zone}", findZoneByDistance(value).name).replace("{charge}", formatBdt(findZoneByDistance(value).charge))}
             </span>
           </>
         )}
       </div>
       <p className="text-[11px] text-ink-soft">
-        Click map e ba marker drag kore exact bari select korun. Auto zone + delivery charge update hobe. OSM free, no API key.
+        {t("mapPin.hint")}
       </p>
     </div>
   );
