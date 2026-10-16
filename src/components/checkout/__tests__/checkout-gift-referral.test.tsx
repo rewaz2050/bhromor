@@ -84,7 +84,7 @@ const fillAndSubmit = async () => {
   });
   // District + Upazila default to Sunamganj / Sunamganj Sadar; the para is
   // a free-text field (no chips since PR #28).
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+  fireEvent.change(screen.getByLabelText("Para or village name"), {
     target: { value: "Boropara" },
   });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {

@@ -98,7 +98,7 @@ async function fillAndPlace() {
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), {
     target: { value: "01712345678" },
   });
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+  fireEvent.change(screen.getByLabelText("Para or village name"), {
     target: { value: "Boropara" },
   });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {

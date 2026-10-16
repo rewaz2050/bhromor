@@ -85,7 +85,7 @@ const ready = () =>
 const fillStepOne = (phone = "01712345678") => {
   fireEvent.change(screen.getByPlaceholderText(/রাহাত আহমেদ/), { target: { value: "Test Customer" } });
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), { target: { value: phone } });
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), { target: { value: "Boropara" } });
+  fireEvent.change(screen.getByLabelText("Para or village name"), { target: { value: "Boropara" } });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 12, College Road" },
   });

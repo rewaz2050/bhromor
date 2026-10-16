@@ -2214,7 +2214,7 @@ export default function CheckoutView() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                জেলা / District <span className="text-rose-600">*</span>
+                {t("checkout.districtLabel")} <span className="text-rose-600">*</span>
               </span>
               <select
                 required
@@ -2236,14 +2236,14 @@ export default function CheckoutView() {
               </select>
               {!sunamganjDistrict && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  অন্য জেলায় কুরিয়ারে পাঠানো হয় — চার্জ ৳১৫০, ন্যূনতম অর্ডার {courierMinLabel}।
+                  {t("checkout.districtCourierNote").replace("{min}", courierMinLabel)}
                 </p>
               )}
             </label>
 
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                উপজেলা / Upazila <span className="text-rose-600">*</span>
+                {t("checkout.upazilaLabel")} <span className="text-rose-600">*</span>
               </span>
               {(() => {
                 const otherUz = getUpazilasForDistrict(form.district);
@@ -2280,7 +2280,7 @@ export default function CheckoutView() {
                       className={inputClass("upazila")}
                     >
                       <option value="" disabled>
-                        — উপজেলা সিলেক্ট করুন —
+                        {t("checkout.selectUpazila")}
                       </option>
                       {otherUz.map((u) => (
                         <option key={u} value={u}>{u}</option>
@@ -2296,7 +2296,7 @@ export default function CheckoutView() {
                       update("upazilaCustom", e.target.value);
                       update("paraSelected", "");
                     }}
-                    placeholder="উপজেলার নাম লিখুন"
+                    placeholder={t("checkout.upazilaPlaceholder")}
                     className={inputClass("upazila")}
                   />
                 );
@@ -2306,7 +2306,7 @@ export default function CheckoutView() {
 
           <div className="mt-4">
             <span className="mb-2 block text-sm font-medium text-ink">
-              পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
+              {t("checkout.paraLabel")} <span className="text-rose-600">*</span>
             </span>
             <input
               ref={paraRef}
@@ -2319,8 +2319,8 @@ export default function CheckoutView() {
                 update("paraSelected", PARA_CUSTOM);
                 clearFieldError("area");
               }}
-              placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
-              aria-label="পাড়া বা গ্রামের নাম"
+              placeholder={t("checkout.paraPlaceholder")}
+              aria-label={t("checkout.paraAria")}
               aria-invalid={!!fieldErrors.area}
               className={inputClass("area")}
             />
@@ -2353,7 +2353,7 @@ export default function CheckoutView() {
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-ink-soft">
-                পাড়া বা গ্রামের নাম লিখলেই ডেলিভারি চার্জ ও সময় দেখা যাবে।
+                {t("checkout.paraHint")}
               </p>
             )}
             {pinZoneId && !form.isPickup ? (
