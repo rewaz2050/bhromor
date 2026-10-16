@@ -2183,23 +2183,28 @@ export default function CheckoutView() {
               {!cardCustomer ? (
                 <>
                   <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong> {t("checkout.smartCardJoin")}{" "}
                   <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
-                    ফ্রি অ্যাকাউন্ট খুলুন
-                  </Link>{" "}
-                  — কোনো ভেরিফিকেশন লাগে না, সাইন আপ করলেই সাথে সাথে লগ ইন।
+                    {t("checkout.smartCardOpenAccount")}
+                  </Link>
+                  {t("checkout.smartCardNoVerify")}
                 </>
               ) : smartCard ? (
                 <>
                   <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> {smartCard.stamps}/{smartCard.target} স্ট্যাম্প — এই অর্ডারের পরে {smartCard.afterOrderStamps}/{smartCard.target} হবে।{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong>{" "}
+                  {t("checkout.smartCardAfter")
+                    .replace("{stamps}", String(smartCard.stamps))
+                    .replace("{after}", String(smartCard.afterOrderStamps))
+                    .split("{target}")
+                    .join(String(smartCard.target))}{" "}
                   {smartCard.revealed
-                    ? `পুরস্কার: ${smartCard.rewardTitle}`
-                    : "পুরস্কার সারপ্রাইজ — প্রথম অর্ডারের পরেই দেখা যাবে!"}
+                    ? t("checkout.smartCardRewardShown").replace("{title}", smartCard.rewardTitle)
+                    : t("checkout.smartCardRewardSurprise")}
                 </>
               ) : (
                 <>
-                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> স্মার্ট কার্ড লোড হচ্ছে…
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> {t("checkout.smartCardLoading")}
                 </>
               )}
             </div>
