@@ -5,6 +5,7 @@ import { useState } from "react";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { riderDistance } from "@/lib/rider-distance";
 import { bnDigits } from "@/lib/arrival";
+import { useLanguage } from "@/components/i18n/language-provider";
 import { freshnessLabel, locationFreshness } from "@/lib/location-health";
 import { useNow } from "@/lib/use-now";
 import { LIVE_POLL_MS, useLiveRiderPosition } from "@/lib/use-live-rider-position";
@@ -23,6 +24,8 @@ interface LiveDeliveryMapProps {
 }
 
 export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
+  const { t, lang } = useLanguage();
+  const digits = (n: number | string) => (lang === "bn" ? bnDigits(String(n)) : String(n));
   const isDelivered = order.status === "delivered";
   const isCancelled = order.status === "cancelled";
   const isOut = order.status === "out-for-delivery";
@@ -82,7 +85,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   // UX plan §7 — how far, how long: only from a real rider fix and a real
   // delivery pin; never while delivered.
   const fresh = riderLive ? locationFreshness(riderLive.updatedAt, Math.max(clock, riderLive.seenAt)) : null;
-  const away = riderLive && !isDelivered && fresh?.level !== "stale" ? riderDistance(riderLive, order, "bn") : null;
+  const away = riderLive && !isDelivered && fresh?.level !== "stale" ? riderDistance(riderLive, order, lang) : null;
 
   // A real rider comes from the dispatch data — nothing is invented here:
   // no fake name, no invented phone, no made-up rating.
@@ -95,10 +98,10 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
   // P1 #8 — the payment row must say what this order actually pays.
   const paymentLabel =
     order.payment === "bkash"
-      ? "bKash (ওয়ালেট)"
+      ? t("checkout.livePayBkash")
       : order.payment === "nagad"
-        ? "Nagad (ওয়ালেট)"
-        : "ক্যাশ অন ডেলিভারি (COD)";
+        ? t("checkout.livePayNagad")
+        : t("checkout.livePayCod");
 
   // A real map needs a real coordinate. With neither a delivery pin from
   // checkout nor a rider fix there is nothing honest to draw, so the
@@ -124,7 +127,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
             rider={riderPoint}
             stale={fresh?.level === "stale"}
             destinationLabel={order.customer.area}
-            riderLabel={rider?.name ?? "রাইডার"}
+            riderLabel={rider?.name ?? t("checkout.liveRiderFallback")}
             onFailed={() => setTileMapFailed(true)}
           />
         )}
@@ -206,12 +209,12 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
             {isDelivered
-              ? "ডেলিভারি সম্পন্ন (Delivered)"
+              ? t("checkout.liveStatusDelivered")
               : isOut
-              ? "রাইডার আপনার পথে (On the way)"
+              ? t("checkout.liveStatusOnWay")
               : isAssigned
-              ? "রাইডার দোকানে উপস্থিত হচ্ছে (Heading to Hub)"
-              : "অর্ডার প্রস্তুত হচ্ছে (Preparing)"}
+              ? t("checkout.liveStatusHub")
+              : t("checkout.liveStatusPreparing")}
           </div>
           {/* How fresh the pin is, in plain words: a live socket, or the poll
               interval. Never a claim the tracker cannot keep. */}
@@ -220,7 +223,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               data-testid={live ? "track-live-socket" : "track-live-poll"}
               className="rounded-full bg-forest-900/95 px-3 py-1.5 text-[11px] font-semibold text-ivory-100 ring-1 ring-white/10"
             >
-              {live ? "🟢 লাইভ ট্র্যাকিং চালু" : `প্রতি ${bnDigits(String(LIVE_POLL_MS / 1000))} সেকেন্ডে হালনাগাদ`}
+              {live ? t("checkout.liveTrackingOn") : t("checkout.liveEvery").replace("{sec}", digits(LIVE_POLL_MS / 1000))}
             </span>
           )}
         </div>
@@ -228,15 +231,15 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
         {/* Live ETA Card overlay */}
         <div className="absolute right-4 top-4 rounded-2xl bg-forest-900/95 p-3 text-right text-ivory-50 ring-1 ring-white/10">
           <p className="text-[10px] uppercase tracking-wider text-ivory-100/70">
-            আনুমানিক সময় (ETA)
+            {t("checkout.liveEtaLabel")}
           </p>
           <p className="font-display text-base font-bold text-gold-300 sm:text-lg">
             {isDelivered
-              ? "ডেলিভার্ড ✓"
+              ? t("checkout.liveEtaDelivered")
               : isCancelled
-              ? "বাতিল"
+              ? t("checkout.liveEtaCancelled")
               : isOut
-              ? "১০–১৫ মিনিট বাকি"
+              ? t("checkout.liveEtaOnWay")
               : isCourierZone(order.zoneId) && !order.isPickup
                 ? courierEta("bn")
                 : order.etaLabel}
@@ -246,14 +249,14 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
           )}
           {riderLive && !isDelivered && fresh?.level === "stale" && (
             <p data-testid="rider-stale" className="mt-1 text-[11px] font-semibold text-amber-200">
-              রাইডারের লোকেশন {bnDigits(String(fresh.minutes ?? 0))} মিনিট ধরে আসছে না — শেষ জানা অবস্থান দেখানো হচ্ছে। দূরত্ব/সময়ের অনুমান আপাতত বন্ধ।
+              {t("checkout.liveStaleNote").replace("{min}", digits(fresh.minutes ?? 0))}
             </p>
           )}
           {/* UX plan §7 — the number a family actually wants: how far, how
               long. Only from a real rider fix and a real delivery pin. */}
           {away ? (
             <p data-testid="rider-away" className="mt-1 text-[11px] font-semibold text-ivory-50">
-              রাইডার প্রায় {away.distanceLabel} দূরে · ~{bnDigits(String(away.minutes))} মিনিট
+              {t("checkout.liveAway").replace("{distance}", away.distanceLabel).replace("{min}", digits(away.minutes))}
             </p>
           ) : null}
         </div>
@@ -274,10 +277,10 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               <IconShield className="h-5 w-5 text-gold-600" />
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-forest-900">
-                  নিরাপদ ডেলিভারি কোড (Security PIN)
+                  {t("checkout.liveSecurePin")}
                 </p>
                 <p className="text-[11px] text-ink-soft">
-                  রাইডার পার্সেল দিলে এই ৪-ডিজিটের কোডটি বলুন
+                  {t("checkout.liveSecurePinHint")}
                 </p>
               </div>
             </div>
@@ -294,7 +297,7 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
             </div>
 
             <p className="mt-2.5 text-center text-[11px] font-medium text-emerald-700">
-              🔒 এসএমএস ছাড়াই শতভাগ নিশ্চিত ও ফেক-ডেলিভারি মুক্ত প্রমাণ
+              {t("checkout.liveNoSmsTrust")}
             </p>
           </div>
 
@@ -307,19 +310,21 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                 </span>
                 <div>
                   <p className="text-xs font-semibold text-ink-soft uppercase tracking-wider">
-                    অ্যাসাইন্ড রাইডার
+                    {t("checkout.liveAssignedRider")}
                   </p>
                   <p className="text-sm font-bold text-forest-900">
                     {isPreparing || !rider
-                      ? "রাইডার খোঁজা হচ্ছে…"
+                      ? t("checkout.liveRiderSearching")
                       : rider.name}
                   </p>
                   <p className="text-xs text-ink-soft">
                     {isPreparing
-                      ? "দোকান প্যাক করছে"
+                      ? t("checkout.liveShopPacking")
                       : rider
-                        ? `বাইক${riderRating ? ` • রেটিং ${riderRating}` : ""}`
-                        : "অ্যাসাইন হলে নাম ও নম্বর এখানে দেখা যাবে"}
+                        ? riderRating
+                          ? t("checkout.liveBikeRating").replace("{rating}", riderRating)
+                          : t("checkout.liveBike")
+                        : t("checkout.liveRiderAwaitName")}
                   </p>
                   {/* UX plan §7 (post-purchase pass 2026-10-06): the number a
                       family actually wants — how far, how long — belongs next
@@ -330,11 +335,11 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                       data-testid="rider-card-away"
                       className="mt-1 text-[11px] font-semibold text-emerald-700"
                     >
-                      রাইডার প্রায় {away.distanceLabel} দূরে · ~{bnDigits(String(away.minutes))} মিনিট
+                      {t("checkout.liveAway").replace("{distance}", away.distanceLabel).replace("{min}", digits(away.minutes))}
                     </p>
                   ) : riderLive && fresh?.level === "stale" ? (
                     <p className="mt-1 text-[11px] text-amber-700">
-                      শেষ অবস্থান {freshnessLabel(fresh)} — দূরত্ব আপাতত বন্ধ
+                      {t("checkout.liveLastPosition").replace("{when}", freshnessLabel(fresh))}
                     </p>
                   ) : null}
                 </div>
@@ -345,14 +350,14 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                   href={`tel:${rider.phone}`}
                   className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-900"
                 >
-                  <IconPhone className="h-3.5 w-3.5" /> কল দিন
+                  <IconPhone className="h-3.5 w-3.5" /> {t("checkout.liveCallRider")}
                 </a>
               )}
             </div>
 
             <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2 text-[11px] text-ink-soft">
-              <span>ডেলিভারি জোন: <strong>{order.zoneName}</strong></span>
-              <span>পেমেন্ট: <strong>{paymentLabel}</strong></span>
+              <span>{t("checkout.liveZone")} <strong>{order.zoneName}</strong></span>
+              <span>{t("checkout.livePaymentRow")} <strong>{paymentLabel}</strong></span>
             </div>
           </div>
         </div>
