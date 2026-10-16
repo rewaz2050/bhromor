@@ -8,7 +8,6 @@
  */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createElement } from "react";
 import CheckoutView from "@/components/checkout/checkout-view";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { LanguageProvider } from "@/components/i18n/language-provider";
@@ -128,10 +127,11 @@ const fill = () => {
 
 it("shows the two parcels before the tap, each with its own delivery", async () => {
   render(
-    createElement(LanguageProvider, {
-      initialLang: "bn",
-      children: createElement(CartProvider, null, createElement(CheckoutView)),
-    }),
+    <LanguageProvider initialLang="bn">
+      <CartProvider>
+        <CheckoutView />
+      </CartProvider>
+    </LanguageProvider>,
   );
 
   // The card is rendered twice on purpose (inside step ③ for phones, in the
@@ -149,10 +149,11 @@ it("shows the two parcels before the tap, each with its own delivery", async () 
 
 it("places ONE request and names both orders on the receipt", async () => {
   render(
-    createElement(LanguageProvider, {
-      initialLang: "bn",
-      children: createElement(CartProvider, null, createElement(CheckoutView)),
-    }),
+    <LanguageProvider initialLang="bn">
+      <CartProvider>
+        <CheckoutView />
+      </CartProvider>
+    </LanguageProvider>,
   );
 
   await waitFor(() =>

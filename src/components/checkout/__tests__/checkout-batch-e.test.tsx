@@ -273,10 +273,11 @@ describe("P0 #6 — errors in Bangla, on the field", () => {
   it("local validation: the empty form yields Bangla field hints, no request is sent", async () => {
     // Bangla locale: the field hints follow the active language now.
     render(
-      createElement(LanguageProvider, {
-        initialLang: "bn",
-        children: createElement(CartProvider, null, createElement(CheckoutView)),
-      }),
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <CheckoutView />
+        </CartProvider>
+      </LanguageProvider>,
     );
     await waitFor(() =>
       expect(screen.getAllByRole("button", { name: /অর্ডার করুন/ }).length).toBeGreaterThan(0),
