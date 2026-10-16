@@ -887,6 +887,19 @@ export const translations = {
       soonOne: "Live shopping {when} — 1 piece — get ready",
       soonMany: "Live shopping {when} — {count} pieces — get ready",
     },
+    deliveryChecker: {
+      title: "Good things. Closer than you think.",
+      intro: "Enter your area to check delivery availability and estimated time.",
+      label: "Area or location",
+      placeholder: "Enter area / location",
+      submit: "Check availability",
+      available: "✓ Available · Estimated delivery: {eta} · Delivery from {charge} (free on qualifying orders).",
+      showingShops: "Showing shops for {zone}.",
+      shopFor: "Shop for {zone}",
+      notConfirmedBefore: "We couldn’t confirm this area. Choose a suggested area or",
+      contactUs: "contact us",
+      notConfirmedAfter: "before ordering.",
+    },
     sizeGuide: {
       availableSizes: "Available sizes:",
       noSizes: "Contact us for sizing",
@@ -2138,6 +2151,19 @@ export const translations = {
       soonOne: "লাইভ শপিং {when} — ১টি পণ্য — প্রস্তুত থাকুন",
       soonMany: "লাইভ শপিং {when} — {count}টি পণ্য — প্রস্তুত থাকুন",
     },
+    deliveryChecker: {
+      title: "ভালো জিনিস। ভাবার চেয়ে কাছে।",
+      intro: "ডেলিভারি পাওয়া যায় কি না আর আনুমানিক সময় জানতে আপনার এলাকা লিখুন।",
+      label: "এলাকা বা ঠিকানা",
+      placeholder: "এলাকা / ঠিকানা লিখুন",
+      submit: "পাওয়া যায় কি না দেখুন",
+      available: "✓ পাওয়া যাচ্ছে · আনুমানিক ডেলিভারি: {eta} · ডেলিভারি চার্জ {charge} থেকে (যোগ্য অর্ডারে বিনামূল্যে)।",
+      showingShops: "{zone}-এর দোকান দেখানো হচ্ছে।",
+      shopFor: "{zone}-এর জন্য কিনুন",
+      notConfirmedBefore: "এই এলাকা নিশ্চিত করা যায়নি। প্রস্তাবিত একটি এলাকা বাছুন, অথবা অর্ডারের আগে",
+      contactUs: "আমাদের সাথে যোগাযোগ করুন",
+      notConfirmedAfter: "।",
+    },
     sizeGuide: {
       availableSizes: "পাওয়া যাচ্ছে:",
       noSizes: "সাইজের জন্য আমাদের সাথে যোগাযোগ করুন",
@@ -2530,6 +2556,7 @@ export type TranslationKey =
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
   | `sizeGuide.${keyof typeof translations.en.sizeGuide}`
+  | `deliveryChecker.${keyof typeof translations.en.deliveryChecker}`
   | `liveBanner.${keyof typeof translations.en.liveBanner}`
   | `paymentStatus.${keyof typeof translations.en.paymentStatus}`
   | `footer.${keyof typeof translations.en.footer}`
