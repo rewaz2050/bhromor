@@ -882,6 +882,11 @@ export const translations = {
       pendingBodyPre: "The shop is checking the payment in its wallet",
       pendingBodyPost: ". Your order starts as soon as it is confirmed — tracking keeps updating.",
     },
+    liveBanner: {
+      now: "Live now — {title} — watch & shop",
+      soonOne: "Live shopping {when} — 1 piece — get ready",
+      soonMany: "Live shopping {when} — {count} pieces — get ready",
+    },
     consent: {
       ariaLabel: "Analytics consent",
       body: "We may use {trackers} to improve the shop (pages you view, searches, orders). The site works fine without them.",
@@ -2112,6 +2117,11 @@ export const translations = {
       pendingBodyPre: "দোকান তাদের wallet-এ পেমেন্টটি যাচাই করছে",
       pendingBodyPost: "। দোকান নিশ্চিত করলেই আপনার অর্ডার শুরু হবে — ট্র্যাকিং আপডেট হতে থাকবে।",
     },
+    liveBanner: {
+      now: "এখন লাইভ — {title} — দেখুন ও কিনুন",
+      soonOne: "লাইভ শপিং {when} — ১টি পণ্য — প্রস্তুত থাকুন",
+      soonMany: "লাইভ শপিং {when} — {count}টি পণ্য — প্রস্তুত থাকুন",
+    },
     consent: {
       ariaLabel: "অ্যানালিটিক্স সম্মতি",
       body: "আমরা দোকান উন্নত করতে {trackers} ব্যবহার করতে পারি (দেখা পেজ, সার্চ, অর্ডার)। এগুলো ছাড়াও সাইট চলবে।",
@@ -2487,6 +2497,7 @@ export type TranslationKey =
   | `newsletter.${keyof typeof translations.en.newsletter}`
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
+  | `liveBanner.${keyof typeof translations.en.liveBanner}`
   | `paymentStatus.${keyof typeof translations.en.paymentStatus}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
