@@ -115,6 +115,7 @@ describe("Homepage editorial journey", () => {
     const hero = screen.getByTestId("home-hero");
     expect(hero.querySelector(".cinematic-hero")).toBeNull();
     expect(hero).not.toHaveClass("cinematic-hero");
+    expect(hero).toHaveClass("home-app-hero");
     expect(within(hero).queryByTestId("browse-chips")).toBeNull();
     // Exactly one CTA (to the shop) and one anchor down to the shelf.
     expect(within(hero).getByRole("link", { name: /explore collection/i })).toHaveAttribute(
@@ -168,6 +169,15 @@ describe("Homepage editorial journey", () => {
     );
     // The header's "Collections" link (/#collections) lands on this row.
     expect(row).toHaveAttribute("id", "collections");
+    expect(within(row).getByTestId("category-shortcut-rail")).toBeInTheDocument();
+
+    // A cold mobile visit discovers categories before the secondary filters.
+    const hero = screen.getByTestId("home-hero");
+    const offers = screen.getByTestId("rail-offers");
+    const quickPicks = screen.getByTestId("quick-chips");
+    expect(hero.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(row.compareDocumentPosition(offers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(offers.compareDocumentPosition(quickPicks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   /* 2026-09-20 — offers sit between the category row and the shelf: every
@@ -441,13 +451,13 @@ describe("Homepage editorial journey", () => {
     );
   });
 
-  it("offers quick chips under the hero — pre-filtered shop links with honest counts (UX plan §2, R11)", async () => {
+  it("offers quick chips after categories and live promos — pre-filtered shop links with honest counts (UX plan §2, R11)", async () => {
     await renderHome();
     const { quickChips } = await import("@/lib/quick-chips");
     const expected = quickChips(PRODUCTS);
     expect(expected.length).toBeGreaterThanOrEqual(2);
     const row = screen.getByTestId("quick-chips");
-    // right under the hero, before the shelf
+    // after visual category discovery, before the product shelf
     const hero = screen.getByTestId("home-hero");
     expect(hero.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     for (const chip of expected) {

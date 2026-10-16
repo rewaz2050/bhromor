@@ -105,7 +105,8 @@ export default function ProductSearch() {
         className="header-search-trigger"
       >
         <IconSearch className="h-[1.15rem] w-[1.15rem] shrink-0" />
-        <span className="header-search-label">{t("header.searchPlaceholder")}</span>
+        <span className="header-search-label min-w-0 truncate">{t("header.searchPlaceholder")}</span>
+        <span className="header-search-mobile-label min-w-0 truncate">{t("header.search")}</span>
       </button>
       <Drawer
         open={open}

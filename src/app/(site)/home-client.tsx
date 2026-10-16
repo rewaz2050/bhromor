@@ -33,18 +33,19 @@ import { categoryShelves } from "@/lib/home-shelves";
 import type { Category, Product, Shop } from "@/lib/catalog";
 
 /**
- * Homepage (2026-09-20) — a shelf, top to bottom.
+ * Homepage (2026-10-16) — an app-like shopping feed, top to bottom.
  *
- * Compact hero (one headline, one button — no full-screen poster)
- * → recently viewed strip (only when this device has looked at pieces)
- * → category row (every category with pieces, one tap to its shop)
- * → offers (flash drop when running + every marked-down piece)
- * → EVERY category with its pieces
- * → customer stories (approved reviews, hidden when none)
- * → delivery check → service strip.
+ * Compact campaign banner
+ * → a waiting bag / recently viewed row when relevant
+ * → visual category shortcuts (one tap into a filtered shop)
+ * → active promos / markdowns
+ * → quick intent chips + local delivery check
+ * → real best-sellers and new arrivals
+ * → every category shelf + approved customer stories
+ * → full delivery check + service promises.
  *
- * The shopper who lands here sees what we sell, in which category, at what
- * price, without leaving the page — and every heading is a link into the
+ * The first scroll gives shoppers a strong image, a category to enter, then
+ * a relevant offer — while each later heading still links into the full
  * filtered shop when they want the long list.
  */
 
@@ -75,25 +76,27 @@ export default function HomeClient() {
           shelf. Guests see nothing; the read never happens without a session. */}
       <HomeOrders />
       {sections.hero && <Hero cms={settings} />}
-      {/* UX plan §2 (R11) — one tap from the first screen into a filtered shop. */}
-      {!booting && <QuickChips pool={pool} />}
-      {/* UX plan §3 (R11) — "do you come to my para?" answered on the first
-          screen, one field, only until this device knows its zone. */}
-      {!booting && <HomeDeliveryCheck compact />}
       {/* UX plan §5 (R10) — a returning shopper's bag, right under the hero. */}
       <BagWaitingBanner />
       {booting ? (
         <HomeSkeleton />
       ) : (
         <>
-          {/* Returning devices only: one compact row, nothing for a first visit. */}
+          {/* Returning shoppers resume, then the home opens with the visual
+              category shortcuts — a familiar, app-like discovery pattern. */}
           {sections.recent && <RecentlyViewedStrip pool={pool} />}
           {sections.collections && <CategoryRow pool={pool} categories={categories} />}
-          {/* UX plan §2 (R3) — social proof + freshness right after the row. */}
+          {/* Real promos / markdowns surface directly after category entry,
+              as in a commerce app's home feed. */}
+          {sections.offers && <OffersBlock pool={pool} />}
+          {/* Fast intent filters and the local delivery answer stay above the
+              remaining product shelves, without pushing discovery down. */}
+          <QuickChips pool={pool} />
+          <HomeDeliveryCheck compact />
+          {/* UX plan §2 (R3) — social proof + freshness after the live offers. */}
           {(sections.bestSellers || sections.newArrivals) && (
             <CuratedRails pool={pool} showBest={sections.bestSellers} showNew={sections.newArrivals} />
           )}
-          {sections.offers && <OffersBlock pool={pool} />}
           {/* UX plan §10 (R7) — Style Match promoted + remembered. */}
           {sections.yourStyle && <YourStyleRail pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
@@ -111,10 +114,9 @@ export default function HomeClient() {
 }
 
 /**
- * The compact hero: a short band with the CMS headline, one sentence and the
- * single CTA — plus a small portrait on wider screens. It is deliberately
- * not a screen-filling photo: the category row must be visible on the first
- * screen of a phone.
+ * The compact hero: a short, campaign-led banner with the CMS headline and
+ * one CTA. Phones get a cropped editorial image for a more visual shopping
+ * app feel; wider screens keep the small portrait beside the copy.
  */
 function Hero({ cms }: { cms: HomeSettings }) {
   const { hero } = cms;
@@ -140,7 +142,7 @@ function Hero({ cms }: { cms: HomeSettings }) {
       aria-labelledby="hero-heading"
       data-testid="home-hero"
       data-campaign={campaignCopy?.kind}
-      className="compact-hero relative isolate overflow-hidden bg-forest-950 text-ivory-50"
+      className="compact-hero home-app-hero relative isolate overflow-hidden bg-forest-950 text-ivory-50"
     >
       <div className="mx-auto flex w-full max-w-7xl items-center gap-6 px-4 py-7 sm:px-6 sm:py-9 lg:gap-10 lg:px-8">
         <div className="hero-copy min-w-0 flex-1">

@@ -52,6 +52,7 @@ beforeEach(() => {
 describe("Header product search", () => {
   it("focuses the input, previews matching products, and restores focus on Escape", async () => {
     const { trigger, input } = openSearch();
+    expect(trigger.querySelector(".header-search-mobile-label")).toHaveTextContent("Search");
     await waitFor(() => expect(input).toHaveFocus());
     expect(document.body.style.overflow).toBe("hidden");
     fireEvent.change(input, { target: { value: PRODUCTS[0].sku } });
@@ -148,7 +149,9 @@ describe("Header product search — R6", () => {
         <ProductSearch />
       </LanguageProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "পণ্য অনুসন্ধান" }));
+    const trigger = screen.getByRole("button", { name: "পণ্য অনুসন্ধান" });
+    expect(trigger.querySelector(".header-search-mobile-label")).toHaveTextContent("খুঁজুন");
+    fireEvent.click(trigger);
     fireEvent.click(screen.getByRole("button", { name: "পাঞ্জাবি" }));
     expect(screen.getByRole("searchbox")).toHaveValue("পাঞ্জাবি");
     const panjabi = PRODUCTS.find((p) => p.subCategory === "Panjabi")!;
