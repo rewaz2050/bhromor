@@ -147,7 +147,7 @@ describe("P1 #16 — saved address pre-fills", () => {
     await waitFor(() => expect(screen.getByTestId("address-prefilled")).toBeInTheDocument());
     expect((screen.getByPlaceholderText(/রাহাত আহমেদ/) as HTMLInputElement).value).toBe("Rahim Uddin");
     expect((screen.getByPlaceholderText("017XXXXXXXX") as HTMLInputElement).value).toBe("01711111111");
-    expect((screen.getByLabelText("পাড়া বা গ্রামের নাম") as HTMLInputElement).value).toBe("Boropara");
+    expect((screen.getByLabelText("Para or village name") as HTMLInputElement).value).toBe("Boropara");
     expect((screen.getByPlaceholderText(/House 12/) as HTMLInputElement).value).toBe("Beside the mosque");
   });
 

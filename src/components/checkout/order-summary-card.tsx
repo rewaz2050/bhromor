@@ -228,11 +228,11 @@ export default function OrderSummaryCard({
         </div>
         {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
           <div className="space-y-1 pl-1 text-xs text-ink-soft">
-            <div className="flex justify-between"><span>Delivery</span><span>{formatBdt(summary.fullCharge)}</span></div>
-            {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconMoon className="h-3.5 w-3.5" /> Night (9PM-6AM)</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
-            {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ Rain</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
-            {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5" /> Express</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
-            {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ Weight</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
+            <div className="flex justify-between"><span>{bn ? "ডেলিভারি" : "Delivery"}</span><span>{formatBdt(summary.fullCharge)}</span></div>
+            {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconMoon className="h-3.5 w-3.5" /> {bn ? "রাত (রাত ৯টা–সকাল ৬টা)" : "Night (9PM-6AM)"}</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
+            {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ {bn ? "বৃষ্টি" : "Rain"}</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
+            {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5" /> {bn ? "এক্সপ্রেস" : "Express"}</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
+            {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ {bn ? "ওজন" : "Weight"}</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
           </div>
         )}
         {summary.couponFree && summary.discount === 0 && (

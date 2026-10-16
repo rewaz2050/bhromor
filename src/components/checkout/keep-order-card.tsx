@@ -11,14 +11,49 @@
  *
  * The name and phone come from the order just placed, so the card asks for a
  * password and nothing else. It is skippable: the order is already in.
+ *
+ * Copy follows the storefront language. Server error text is shown as the
+ * API returns it.
  */
 
 import { useState } from "react";
 import Link from "next/link";
 import PasswordInput from "@/components/ui/password-input";
 import { IconCheck, IconUser } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export const MIN_PASSWORD = 6;
+
+const COPY = {
+  bn: {
+    tooShort: (n: number) => `পাসওয়ার্ড কমপক্ষে ${n} অক্ষরের হতে হবে।`,
+    signupFail: "অ্যাকাউন্ট তৈরি করা গেল না — পরে চেষ্টা করুন।",
+    offline: "সংযোগ পাওয়া যাচ্ছে না — পরে আবার চেষ্টা করুন।",
+    saved: (id: string) => `অর্ডার ${id} আপনার অ্যাকাউন্টে রইল — পরের বার ঠিকানা আবার লিখতে হবে না।`,
+    viewAccount: "আমার অ্যাকাউন্ট দেখুন",
+    heading: "এই অর্ডারটি আপনার অ্যাকাউন্টে রাখুন",
+    body: "অর্ডারটি হয়ে গেছে — অ্যাকাউন্ট শুধু একটা কাজের: এই অর্ডার, আর পরের বারের ঠিকানা। শুধু একটা পাসওয়ার্ড দিন, নাম ও নম্বর এই অর্ডার থেকেই।",
+    passwordLabel: "পাসওয়ার্ড",
+    placeholder: (n: number) => `পাসওয়ার্ড (কমপক্ষে ${n} অক্ষর)`,
+    saving: "সংরক্ষণ হচ্ছে…",
+    save: "সংরক্ষণ করুন",
+    login: "লগইন করুন",
+  },
+  en: {
+    tooShort: (n: number) => `The password must be at least ${n} characters.`,
+    signupFail: "Could not create the account — please try again later.",
+    offline: "No connection — please try again in a moment.",
+    saved: (id: string) => `Order ${id} is now in your account — you won't need to type the address again next time.`,
+    viewAccount: "View my account",
+    heading: "Keep this order in your account",
+    body: "Your order is placed. An account is just for this order and your next one's address. Set a password — your name and number come from this order.",
+    passwordLabel: "Password",
+    placeholder: (n: number) => `Password (at least ${n} characters)`,
+    saving: "Saving…",
+    save: "Save",
+    login: "Sign in",
+  },
+} as const;
 
 type State = "idle" | "saving" | "done" | "exists" | "error";
 
@@ -32,6 +67,8 @@ export default function KeepOrderCard({
   /** Shown back on success so the card says what it actually saved. */
   orderId: string;
 }) {
+  const { lang } = useLanguage();
+  const c = COPY[lang === "bn" ? "bn" : "en"];
   const [password, setPassword] = useState("");
   const [state, setState] = useState<State>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -40,7 +77,7 @@ export default function KeepOrderCard({
     event.preventDefault();
     if (password.length < MIN_PASSWORD) {
       setState("error");
-      setMessage(`পাসওয়ার্ড কমপক্ষে ${MIN_PASSWORD} অক্ষরের হতে হবে।`);
+      setMessage(c.tooShort(MIN_PASSWORD));
       return;
     }
     setState("saving");
@@ -59,10 +96,10 @@ export default function KeepOrderCard({
       // 409: this number already has an account — nothing was lost, the
       // order is linked to it by phone.
       setState(res.status === 409 ? "exists" : "error");
-      setMessage(data?.error ?? "অ্যাকাউন্ট তৈরি করা গেল না — পরে চেষ্টা করুন।");
+      setMessage(data?.error ?? c.signupFail);
     } catch {
       setState("error");
-      setMessage("সংযোগ পাওয়া যাচ্ছে না — পরে আবার চেষ্টা করুন।");
+      setMessage(c.offline);
     }
   };
 
@@ -76,14 +113,14 @@ export default function KeepOrderCard({
         <p className="flex items-start gap-2 text-sm font-semibold text-forest-900">
           <IconCheck className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            অর্ডার {orderId} আপনার অ্যাকাউন্টে রইল — পরের বার ঠিকানা আবার লিখতে হবে না।
+            {c.saved(orderId)}
           </span>
         </p>
         <Link
           href="/account"
           className="mt-3 inline-flex min-h-11 items-center gap-1.5 rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
         >
-          আমার অ্যাকাউন্ট দেখুন
+          {c.viewAccount}
         </Link>
       </section>
     );
@@ -100,22 +137,21 @@ export default function KeepOrderCard({
         className="flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft"
       >
         <IconUser className="h-3.5 w-3.5" />
-        এই অর্ডারটি আপনার অ্যাকাউন্টে রাখুন
+        {c.heading}
       </h2>
       <p className="mt-2 text-xs leading-6 text-ink-soft">
-        অর্ডারটি হয়ে গেছে — অ্যাকাউন্ট শুধু একটা কাজের: এই অর্ডার, আর পরের
-        বারের ঠিকানা। শুধু একটা পাসওয়ার্ড দিন, নাম ও নম্বর এই অর্ডার থেকেই।
+        {c.body}
       </p>
       <form onSubmit={submit} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <label className="flex-1">
-          <span className="sr-only">পাসওয়ার্ড</span>
+          <span className="sr-only">{c.passwordLabel}</span>
           <PasswordInput
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
               if (state !== "idle") setState("idle");
             }}
-            placeholder={`পাসওয়ার্ড (কমপক্ষে ${MIN_PASSWORD} অক্ষর)`}
+            placeholder={c.placeholder(MIN_PASSWORD)}
             autoComplete="new-password"
             minLength={MIN_PASSWORD}
             aria-invalid={state === "error"}
@@ -127,7 +163,7 @@ export default function KeepOrderCard({
           disabled={state === "saving"}
           className="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
         >
-          {state === "saving" ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+          {state === "saving" ? c.saving : c.save}
         </button>
       </form>
       {message ? (
@@ -140,7 +176,7 @@ export default function KeepOrderCard({
             <>
               {" "}
               <Link href="/account" className="font-semibold text-forest-800 underline">
-                লগইন করুন
+                {c.login}
               </Link>
             </>
           ) : null}

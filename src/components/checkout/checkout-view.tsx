@@ -48,7 +48,6 @@ import { displayedDeliveryCode, type Order } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { bnDigits } from "@/lib/arrival";
 import {
-  DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
   DELIVERY_CHARGE_PROMISE_EN,
   INSTANT_DELIVERY_TITLE,
@@ -293,7 +292,7 @@ function WalletPaySteps({
         <div className="flex items-center justify-between gap-3 rounded-xl bg-paper px-4 py-3 ring-1 ring-line">
           <div className="min-w-0">
             <p className="text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-              {brand} Personal
+              {t("checkout.walletPersonal").replace("{brand}", brand)}
             </p>
             <p className="select-all font-mono text-base font-bold tracking-wide text-ink" data-testid="wallet-number">
               {number}
@@ -334,13 +333,13 @@ function WalletPaySteps({
 
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-6 text-ink-soft">
         <li>
-          {brand} অ্যাপ → <strong className="text-ink">Send Money</strong> → উপরের নম্বরে{" "}
-          <strong className="text-ink">{formatBdt(amount)}</strong> পাঠান।
+          {brand} {t("checkout.walletStep1a")}<strong className="text-ink">Send Money</strong>{t("checkout.walletStep1b")}
+          <strong className="text-ink">{formatBdt(amount)}</strong>{t("checkout.walletStep1c")}
         </li>
         <li>
-          সফল হলে অ্যাপ/SMS-এ <strong className="text-ink">TRXID</strong> দেখাবে — সেটি নিচে লিখুন।
+          {t("checkout.walletStep2a")}<strong className="text-ink">TRXID</strong>{t("checkout.walletStep2b")}
         </li>
-        <li>দোকান নিজের wallet-এ মিলিয়ে order confirm করবে।</li>
+        <li>{t("checkout.walletStep3")}</li>
       </ol>
 
       <label className="mt-3 block">
@@ -373,8 +372,7 @@ function WalletPaySteps({
         {error && <p className="mt-1.5 text-xs text-rose-700">{error}</p>}
       </label>
       <p className="mt-2 text-[11px] leading-5 text-ink-soft">
-        দোকান verify করার আগ পর্যন্ত order “payment under verification” থাকবে —
-        রাইডার পাঠানো হবে না। ভুল হয়ে গেলে track page থেকে বাতিল করা যাবে।
+        {t("checkout.walletVerifyNote")}
       </p>
     </div>
   );
@@ -811,8 +809,18 @@ export default function CheckoutView() {
             setCouponMsg({
               ok: true,
               text: anyFree
-                ? `${firstCode} — ${chosen.length > 1 ? "প্রতিটি পার্সেলে " : ""}Free Delivery`
-                : `${firstCode} applied — ${formatBdt(total)} off${chosen.length > 1 ? ` (${chosen.length}টি দোকানের পার্সেলে)` : ""}.`,
+                ? t("checkout.couponMsgFreeLine")
+                    .replace("{code}", firstCode)
+                    .replace("{each}", chosen.length > 1 ? t("checkout.couponMsgEach") : "")
+                : t("checkout.couponMsgApplied")
+                    .replace("{code}", firstCode)
+                    .replace("{amount}", formatBdt(total))
+                    .replace(
+                      "{parcels}",
+                      chosen.length > 1
+                        ? t("checkout.couponMsgParcels").replace("{n}", String(chosen.length))
+                        : "",
+                    ),
             });
             forgetCoupon();
             return;
@@ -836,8 +844,13 @@ export default function CheckoutView() {
             setCouponMsg({
               ok: true,
               text: isFree
-                ? `${data.code} — Free Delivery ${data.description ? `· ${data.description}` : ""}`
-                : `${data.code} applied — ${formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal)))} off.${data.description ? ` ${data.description}` : ""}`,
+                ? t("checkout.couponMsgFreeSingle")
+                    .replace("{code}", data.code)
+                    .replace("{desc}", data.description ? ` · ${data.description}` : "")
+                : t("checkout.couponMsgSingleApplied")
+                    .replace("{code}", data.code)
+                    .replace("{amount}", formatBdt(Math.max(0, Math.min(data.discount ?? 0, subtotal))))
+                    .replace("{desc}", data.description ? ` ${data.description}` : ""),
             });
             // The carried code has done its job once a code is applied.
             forgetCoupon();
@@ -850,9 +863,7 @@ export default function CheckoutView() {
         setCouponCheck({
           code: null,
           discount: 0,
-          problem:
-            data?.reason ??
-            "That code is no longer valid for this order.",
+          problem: data?.reason ?? t("checkout.couponMsgInvalid"),
         });
       })();
     }, 350);
@@ -874,7 +885,7 @@ export default function CheckoutView() {
     async (source: "auto" | "manual") => {
       setBestLoading(true);
       setAutoCoupon("searching");
-      if (source === "manual") setCouponMsg({ ok: true, text: "সেরা অফার খুঁজছি…" });
+      if (source === "manual") setCouponMsg({ ok: true, text: t("checkout.couponMsgSearching") });
       try {
         const res = await fetch("/api/coupons/best", {
           method: "POST",
@@ -895,20 +906,20 @@ export default function CheckoutView() {
           setAutoCoupon("applied");
         } else if (res.ok && data?.none) {
           setAutoCoupon("none");
-          if (source === "manual") setCouponMsg({ ok: false, text: "এই মুহূর্তে কোনো প্রযোজ্য কুপন নেই।" });
+          if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgNone") });
         } else {
           setAutoCoupon("error");
-          if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+          if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgFail") });
         }
       } catch {
         setAutoCoupon("error");
-        if (source === "manual") setCouponMsg({ ok: false, text: "কুপন চেক করা যায়নি — আবার চেষ্টা করুন।" });
+        if (source === "manual") setCouponMsg({ ok: false, text: t("checkout.couponMsgFail") });
       } finally {
         setBestLoading(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- detail is captured via cartKey by the caller
-    [derivedZoneId, cartKey],
+    [derivedZoneId, cartKey, t],
   );
 
   /* Auto-apply: once per cart shape, signed-in, nothing applied, not dismissed. */
@@ -1102,7 +1113,7 @@ export default function CheckoutView() {
       // C2 — the per-parcel view the screen lists above the combined card.
       parcels: parcels.map((p) => ({
         shopId: p.group.shopId,
-        shopName: p.shop?.name ?? "দোকান",
+        shopName: p.shop?.name ?? t("checkout.shopFallback"),
         qty: p.group.qty,
         subtotal: p.group.subtotal,
         delivery: p.breakdown.totalCharge,
@@ -1229,13 +1240,13 @@ export default function CheckoutView() {
           {t("checkout.orderConfirmed")}
         </h1>
         <p className="mt-4 text-ink-soft">
-          ধন্যবাদ{form.name ? `, ${form.name.split(" ")[0]}` : ""}। আপনার ডেলিভারি প্রস্তুত করা হচ্ছে।
+          {t("checkout.receiptThanks").replace("{name}", form.name ? `, ${form.name.split(" ")[0]}` : "")}
         </p>
 
         {/* Order ID — big, selectable, one-tap copy (P0 #5) */}
         <div className="mx-auto mt-5 flex max-w-sm items-center justify-between gap-3 rounded-2xl bg-paper px-4 py-3 ring-1 ring-line">
           <div className="min-w-0 text-left">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">অর্ডার নম্বর</p>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">{t("checkout.receiptOrderNumber")}</p>
             <p className="select-all font-mono text-base font-bold text-forest-900" data-testid="receipt-order-id">
               {placed.orderId}
             </p>
@@ -1261,7 +1272,10 @@ export default function CheckoutView() {
             data-testid="receipt-orders"
           >
             <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-forest-900">
-              এক চেকআউটে {bnDigits(String(placed.orders.length))}টি অর্ডার
+              {t("checkout.receiptMultiTitle").replace(
+                "{n}",
+                lang === "bn" ? bnDigits(String(placed.orders.length)) : String(placed.orders.length),
+              )}
             </p>
             <ul className="mt-2 space-y-1.5">
               {placed.orders.map((entry) => (
@@ -1281,8 +1295,10 @@ export default function CheckoutView() {
               ))}
             </ul>
             <p className="mt-2 text-[0.68rem] leading-5 text-forest-900">
-              প্রতিটি দোকান নিজের পার্সেল আলাদাভাবে পাঠাবে — তাই{" "}
-              {bnDigits(String(placed.orders.length))}টি ডেলিভারি আসবে।
+              {t("checkout.receiptMultiNote").replace(
+                "{n}",
+                lang === "bn" ? bnDigits(String(placed.orders.length)) : String(placed.orders.length),
+              )}
             </p>
           </div>
         )}
@@ -1309,15 +1325,16 @@ export default function CheckoutView() {
             role="status"
             className="mx-auto mt-6 max-w-sm rounded-2xl border border-gold-300 bg-gold-50 p-4 text-sm font-medium text-forest-900"
           >
-            🎉 <strong>স্মার্ট কার্ড পূর্ণ!</strong> আপনি আকর্ষণীয় পুরস্কার
-            জিতেছেন — পরবর্তী অর্ডারের সাথে উপহার পৌঁছে যাবে।
+            🎉 <strong>{t("checkout.receiptCardFullTitle")}</strong>
+            {t("checkout.receiptCardFullBody")}
           </div>
         )}
         {placed.smartCardNote && !placed.cardFull && (
           <p className="mt-4 flex items-start gap-2 text-xs text-ink-soft">
             <IconGift className="mt-0.5 h-4 w-4 shrink-0 text-gold-600" />
             <span>
-              {placed.smartCardNote} — প্রতি অর্ডারে ১টি করে পড়বে।
+              {placed.smartCardNote}
+              {t("checkout.receiptCardNote")}
             </span>
           </p>
         )}
@@ -1325,7 +1342,7 @@ export default function CheckoutView() {
         <div className="mx-auto mt-6 max-w-sm rounded-2xl bg-gold-50/80 p-5 ring-1 ring-gold-300 shadow-sm text-center">
           <div className="flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-forest-900">
             <IconShield className="h-4 w-4 text-gold-600" />
-            আপনার নিরাপদ ডেলিভারি পিন (Security PIN)
+            {t("checkout.receiptPinTitle")}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 font-mono text-2xl font-bold text-forest-900">
             {deliveryCode.split("").map((digit, i) => (
@@ -1338,7 +1355,7 @@ export default function CheckoutView() {
             ))}
           </div>
           <p className="mt-2 text-[11px] text-ink-soft">
-            পার্সেল ও ক্যাশ লেনদেনের সময় এই ৪-সংখ্যার কোডটি রাইডারকে বলুন।
+            {t("checkout.receiptPinHelp")}
           </p>
         </div>
 
@@ -1347,24 +1364,22 @@ export default function CheckoutView() {
             <IconGift className="h-4 w-4" />
           </span>
           <div>
-            <strong className="block font-semibold">১০-অর্ডার রিওয়ার্ড প্রগ্রেস</strong>
-            <span className="text-ink-soft text-[11px]">
-              এই অর্ডার ডেলিভারি রিসিভ করলে আপনার লয়্যালটি কার্ডে +১ স্ট্যাম্প যোগ হবে!
-            </span>
+            <strong className="block font-semibold">{t("checkout.receiptRewardTitle")}</strong>
+            <span className="text-ink-soft text-[11px]">{t("checkout.receiptRewardBody")}</span>
           </div>
         </div>
 
         <div className="mx-auto mt-6 max-w-sm space-y-3 rounded-3xl bg-paper p-6 text-left text-sm ring-1 ring-line">
           <p className="flex items-center gap-3">
             <IconTruck className="h-5 w-5 text-forest-700" />
-            আনুমানিক সময়:{" "}
+            {t("checkout.receiptEtaLabel")}{" "}
             <strong className="text-ink">{placed.eta}</strong>
           </p>
           {placed.slotNote ? (
             <p className="flex items-center gap-3" data-testid="receipt-slot">
               <IconMoon className="h-4 w-4 shrink-0 text-gold-300" />
               <span>
-                ডেলিভারি সময়: <strong className="text-ink">{placed.slotNote}</strong>
+                {t("checkout.receiptSlotLabel")} <strong className="text-ink">{placed.slotNote}</strong>
               </span>
             </p>
           ) : null}
@@ -1382,7 +1397,7 @@ export default function CheckoutView() {
           ) : null}
           <p className="flex items-center justify-between border-t border-line pt-3 font-medium text-ink">
             {placed.payment && placed.payment !== "cod"
-              ? `Total — ${placed.payment === "bkash" ? "bKash" : "Nagad"}`
+              ? `${t("checkout.totalCod")} — ${placed.payment === "bkash" ? "bKash" : "Nagad"}`
               : `${t("checkout.totalCod")} — ${t("checkout.cashOnDelivery")}`}
             <span>{formatBdt(placed.total)}</span>
           </p>
@@ -1409,17 +1424,17 @@ export default function CheckoutView() {
                 body: wallet
                   ? t("checkout.nextVerifyWallet").replace("{wallet}", wallet)
                   : t("checkout.nextConfirmCall"),
-                when: lang === "bn" ? "কিছুক্ষণের মধ্যে" : "shortly",
+                when: t("checkout.receiptShortly"),
               },
               placed.isPickup
                 ? {
-                    title: lang === "bn" ? "পিকআপ" : "Pickup",
+                    title: t("checkout.receiptPickup"),
                     body: t("checkout.nextPickup").replace("{hub}", SUNAMGANJ_HUB),
                     when: placed.eta,
                   }
                 : placed.isCourier
                   ? {
-                      title: lang === "bn" ? "কুরিয়ার" : "Courier",
+                      title: t("checkout.receiptCourier"),
                       body: t("checkout.nextCourier").replace("{eta}", courierEta(lang)),
                       when: null,
                     }
@@ -1449,13 +1464,9 @@ export default function CheckoutView() {
             className="mx-auto mt-4 max-w-sm rounded-2xl bg-amber-50 p-4 text-left text-xs leading-6 text-amber-900 ring-1 ring-amber-200"
           >
             <strong className="block text-sm font-semibold">
-              {placed.payment === "bkash" ? "bKash" : "Nagad"} payment — under
-              verification
+              {placed.payment === "bkash" ? "bKash" : "Nagad"} {t("checkout.receiptVerifyTitle")}
             </strong>
-            আপনি টাকা পাঠিয়েছেন — দোকান নিজের wallet-এ TRXID যাচাই করে order
-            confirm করবে। Order টি track page-এ “payment under verification”
-            status-এ দেখাবে; verify হলেই prep শুরু হবে। টাকা পাঠানোর আগে ভুল
-            হলে track page থেকে বাতিল করুন।
+            {t("checkout.receiptVerifyBody")}
           </div>
         )}
 
@@ -1514,10 +1525,10 @@ export default function CheckoutView() {
     return (
       <div className="flex flex-col items-center px-6 py-20 text-center">
         <h2 className="font-display text-2xl font-medium text-forest-900">
-          Delivery zones are being set up
+          {t("checkout.zonesTitle")}
         </h2>
         <p className="mt-2 max-w-sm text-sm text-ink-soft">
-          Please check back shortly — no service area is configured yet.
+          {t("checkout.zonesBody")}
         </p>
       </div>
     );
@@ -1534,7 +1545,7 @@ export default function CheckoutView() {
     const code = form.couponCode.trim().toUpperCase();
     if (!code) return;
     setCouponCheck({ code: null, discount: 0, problem: null });
-    setCouponMsg({ ok: true, text: "Checking code…" });
+    setCouponMsg({ ok: true, text: t("checkout.couponMsgChecking") });
     setAppliedCode(code);
   };
 
@@ -1614,13 +1625,13 @@ export default function CheckoutView() {
           setShowMap(true);
         } else {
           // Never clamp a phone in Sylhet onto a Sunamganj street — say so.
-          setGeoNote("আপনার বর্তমান লোকেশন সুনামগঞ্জ সদরের বাইরে — ম্যাপে বাড়ি পিন করুন বা ঠিকানা লিখুন।");
+          setGeoNote(t("checkout.geoOutside"));
           setShowMap(true);
         }
         setGeoLoading(false);
       },
       () => {
-        setGeoNote("লোকেশন পাওয়া যায়নি — ব্রাউজারে অনুমতি দিন বা ম্যাপে পিন করুন।");
+        setGeoNote(t("checkout.geoNotFound"));
         setGeoLoading(false);
       },
       { enableHighAccuracy: false, timeout: 5000 },
@@ -1704,22 +1715,19 @@ export default function CheckoutView() {
     };
 
     const localErrors: Record<string, string> = {};
-    if (form.name.trim().length < 2)
-      localErrors.name = "আপনার পুরো নাম লিখুন (কমপক্ষে ২ অক্ষর) — Please share your full name.";
-    if (!phoneOk)
-      localErrors.phone =
-        "সঠিক মোবাইল নম্বর দিন — e.g. 017XXXXXXXX or +88017XXXXXXXX.";
-    if (effectivePara.trim().length < 2)
-      localErrors.area = "পাড়া / গ্রামের নাম লিখুন — please enter your village or area.";
+    if (form.name.trim().length < 2) localErrors.name = t("checkout.errName");
+    if (!phoneOk) localErrors.phone = t("checkout.errPhone");
+    if (effectivePara.trim().length < 2) localErrors.area = t("checkout.errArea");
     if (minOrderShortfall > 0)
-      localErrors.items = `সুনামগঞ্জ সদর এলাকার বাইরে ন্যূনতম ${courierMinLabel} টাকার অর্ডার করতে হবে — আরও ${formatBdt(minOrderShortfall)} যোগ করুন।`;
+      localErrors.items = t("checkout.minOrderHint")
+        .replace("{amount}", formatBdt(minOrderShortfall))
+        .replace("{min}", courierMinLabel);
     if (!form.isPickup && form.address.trim().length < 6)
-      localErrors.address =
-        "বাসা নম্বর, রোড, ল্যান্ডমার্ক সহ ঠিকানা লিখুন — full delivery address required.";
+      localErrors.address = t("checkout.errAddress");
     if (form.payMethod !== "cod" && form.trxid.trim().length < 6)
-      localErrors.trxid = `আগে ${formatBdt(summary.total)} ${
-        form.payMethod === "bkash" ? "bKash" : "Nagad"
-      } পাঠান, তারপর যে TRXID পেয়েছেন সেটি লিখুন।`;
+      localErrors.trxid = t("checkout.errTrxid")
+        .replace("{amount}", formatBdt(summary.total))
+        .replace("{wallet}", form.payMethod === "bkash" ? "bKash" : "Nagad");
     if (Object.keys(localErrors).length > 0) {
       fail(
         {
@@ -1893,7 +1901,9 @@ export default function CheckoutView() {
               .join(" · ")
           : undefined,
         smartCardNote: data.smartCard
-          ? `স্মার্ট কার্ড: ${data.smartCard.stamps}/${data.smartCard.target} স্ট্যাম্প`
+          ? t("checkout.smartCardStamps")
+              .replace("{stamps}", String(data.smartCard.stamps))
+              .replace("{target}", String(data.smartCard.target))
           : undefined,
         slotNote,
       });
@@ -1934,16 +1944,16 @@ export default function CheckoutView() {
   const deliveryPromise = lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN;
   // P1 #17 — outside the rider area the honest answer is days, not minutes.
   const etaLabel = form.isPickup
-    ? `Ready in ${bagPrepMinutes} min`
+    ? t("checkout.etaReady").replace("{min}", String(bagPrepMinutes))
     : isCourierZone(derivedZoneId)
       ? courierEta(lang)
       : (summary.breakdown?.eta ?? zone.etaLabel);
   const extrasBadge = [
     activeCoupon ? `${t("checkout.coupon")} ${activeCoupon.code} ✓` : null,
     giftValue.on ? t("gift.badge") : null,
-    form.tipAmount > 0 ? `Tip ৳${form.tipAmount}` : null,
-    referralCode.trim() ? `Ref ${referralCode.trim()}` : null,
-    form.note.trim() ? "Note ✓" : null,
+    form.tipAmount > 0 ? t("checkout.badgeTip").replace("{amount}", String(form.tipAmount)) : null,
+    referralCode.trim() ? t("checkout.badgeRef").replace("{code}", referralCode.trim()) : null,
+    form.note.trim() ? t("checkout.badgeNote") : null,
   ].filter((part): part is string => part !== null);
   const stickyHint =
     minOrderShortfall > 0
@@ -1951,7 +1961,9 @@ export default function CheckoutView() {
           .replace("{amount}", formatBdt(minOrderShortfall))
           .replace("{min}", courierMinLabel)
       : orderError
-        ? orderError.bn
+        ? lang === "bn"
+          ? orderError.bn
+          : orderError.en
         : `${t("checkout.delivery")} ${summary.freeDelivery ? "FREE" : formatBdt(summary.charge)} · ${etaLabel}`;
 
   const summaryCard = (compact: boolean) => (
@@ -1999,7 +2011,7 @@ export default function CheckoutView() {
                 <IconTruck className="h-4 w-4 shrink-0" /> {deliveryPromise}
               </p>
               <p className="mt-0.5 text-xs text-ivory-100/80">
-                {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
+                {t("checkout.chargeLadder")}
               </p>
             </div>
           </div>
@@ -2012,7 +2024,7 @@ export default function CheckoutView() {
           id="checkout-step-1"
           n={1}
           title={t("checkout.step1")}
-          hint="নাম, মোবাইল ও ঠিকানা — রাইডার এই তথ্যেই পৌঁছাবে।"
+          hint={t("checkout.step1Hint")}
           done={step1Done}
         >
           {/* Saved addresses + geolocate */}
@@ -2024,7 +2036,9 @@ export default function CheckoutView() {
               className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
             >
               <IconMapPin className="h-3.5 w-3.5" />
-              {geoLoading ? "লোকেশন খুঁজছি…" : "আমার লোকেশন ব্যবহার করুন"}
+              {geoLoading
+                ? t("checkout.locFinding")
+                : t("checkout.locUse")}
             </button>
             {savedAddrs.length > 0 && (
               <button
@@ -2032,7 +2046,7 @@ export default function CheckoutView() {
                 onClick={() => setShowSaved(!showSaved)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-paper px-4 py-2 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
               >
-                📚 সেভ করা ঠিকানা ({savedAddrs.length})
+                📚 {t("checkout.savedAddrsBtn")} ({savedAddrs.length})
               </button>
             )}
           </div>
@@ -2072,7 +2086,7 @@ export default function CheckoutView() {
           ) : null}
           {showSaved && savedAddrs.length > 0 && (
             <div className="mb-5 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-soft">সেভ করা ঠিকানা</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-ink-soft">{t("checkout.savedAddrsBtn")}</p>
               <div className="space-y-2">
                 {savedAddrs.map((addr) => (
                   <div key={addr.id} className="flex items-center justify-between rounded-xl bg-paper px-3 py-2.5 ring-1 ring-line">
@@ -2086,7 +2100,7 @@ export default function CheckoutView() {
                         onClick={() => handleUseSaved(addr)}
                         className="rounded-full bg-forest-800 px-3 py-1 text-xs font-semibold text-white"
                       >
-                        ব্যবহার করুন
+                        {t("checkout.useSavedBtn")}
                       </button>
                       <button
                         type="button"
@@ -2095,7 +2109,7 @@ export default function CheckoutView() {
                           setSavedAddrs(getSavedAddresses());
                           void pushAddresses();
                         }}
-                        aria-label="ঠিকানা মুছুন"
+                        aria-label={t("checkout.deleteAddrAria")}
                         className="rounded-full bg-paper px-2.5 py-1 text-xs ring-1 ring-line"
                       >
                         ✕
@@ -2110,7 +2124,7 @@ export default function CheckoutView() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                মোবাইল নম্বর / Mobile number <span className="text-rose-600">*</span>
+                {t("checkout.mobileLabel")} <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={phoneRef}
@@ -2138,7 +2152,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                আপনার নাম / Full name <span className="text-rose-600">*</span>
+                {t("checkout.nameLabel")} <span className="text-rose-600">*</span>
               </span>
               <input
                 ref={nameRef}
@@ -2149,7 +2163,7 @@ export default function CheckoutView() {
                   update("name", e.target.value);
                   clearFieldError("name");
                 }}
-                placeholder="যেমন: রাহাত আহমেদ / Rahat Ahmed"
+                placeholder={t("checkout.namePlaceholder")}
                 aria-invalid={!!fieldErrors.name}
                 aria-describedby={fieldErrors.name ? "err-name" : undefined}
                 className={inputClass("name")}
@@ -2169,23 +2183,28 @@ export default function CheckoutView() {
               {!cardCustomer ? (
                 <>
                   <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> প্রতি অর্ডারে ১টি স্ট্যাম্প — ১০টি পূর্ণ হলে আকর্ষণীয় পুরস্কার ফ্রি। স্ট্যাম্প জমাতে{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong> {t("checkout.smartCardJoin")}{" "}
                   <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
-                    ফ্রি অ্যাকাউন্ট খুলুন
-                  </Link>{" "}
-                  — কোনো ভেরিফিকেশন লাগে না, সাইন আপ করলেই সাথে সাথে লগ ইন।
+                    {t("checkout.smartCardOpenAccount")}
+                  </Link>
+                  {t("checkout.smartCardNoVerify")}
                 </>
               ) : smartCard ? (
                 <>
                   <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">স্মার্ট কার্ড:</strong> {smartCard.stamps}/{smartCard.target} স্ট্যাম্প — এই অর্ডারের পরে {smartCard.afterOrderStamps}/{smartCard.target} হবে।{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong>{" "}
+                  {t("checkout.smartCardAfter")
+                    .replace("{stamps}", String(smartCard.stamps))
+                    .replace("{after}", String(smartCard.afterOrderStamps))
+                    .split("{target}")
+                    .join(String(smartCard.target))}{" "}
                   {smartCard.revealed
-                    ? `পুরস্কার: ${smartCard.rewardTitle}`
-                    : "পুরস্কার সারপ্রাইজ — প্রথম অর্ডারের পরেই দেখা যাবে!"}
+                    ? t("checkout.smartCardRewardShown").replace("{title}", smartCard.rewardTitle)
+                    : t("checkout.smartCardRewardSurprise")}
                 </>
               ) : (
                 <>
-                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> স্মার্ট কার্ড লোড হচ্ছে…
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> {t("checkout.smartCardLoading")}
                 </>
               )}
             </div>
@@ -2195,7 +2214,7 @@ export default function CheckoutView() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                জেলা / District <span className="text-rose-600">*</span>
+                {t("checkout.districtLabel")} <span className="text-rose-600">*</span>
               </span>
               <select
                 required
@@ -2217,14 +2236,14 @@ export default function CheckoutView() {
               </select>
               {!sunamganjDistrict && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  অন্য জেলায় কুরিয়ারে পাঠানো হয় — চার্জ ৳১৫০, ন্যূনতম অর্ডার {courierMinLabel}।
+                  {t("checkout.districtCourierNote").replace("{min}", courierMinLabel)}
                 </p>
               )}
             </label>
 
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                উপজেলা / Upazila <span className="text-rose-600">*</span>
+                {t("checkout.upazilaLabel")} <span className="text-rose-600">*</span>
               </span>
               {(() => {
                 const otherUz = getUpazilasForDistrict(form.district);
@@ -2261,7 +2280,7 @@ export default function CheckoutView() {
                       className={inputClass("upazila")}
                     >
                       <option value="" disabled>
-                        — উপজেলা সিলেক্ট করুন —
+                        {t("checkout.selectUpazila")}
                       </option>
                       {otherUz.map((u) => (
                         <option key={u} value={u}>{u}</option>
@@ -2277,7 +2296,7 @@ export default function CheckoutView() {
                       update("upazilaCustom", e.target.value);
                       update("paraSelected", "");
                     }}
-                    placeholder="উপজেলার নাম লিখুন"
+                    placeholder={t("checkout.upazilaPlaceholder")}
                     className={inputClass("upazila")}
                   />
                 );
@@ -2287,7 +2306,7 @@ export default function CheckoutView() {
 
           <div className="mt-4">
             <span className="mb-2 block text-sm font-medium text-ink">
-              পাড়া / গ্রাম / Para or Village <span className="text-rose-600">*</span>
+              {t("checkout.paraLabel")} <span className="text-rose-600">*</span>
             </span>
             <input
               ref={paraRef}
@@ -2300,8 +2319,8 @@ export default function CheckoutView() {
                 update("paraSelected", PARA_CUSTOM);
                 clearFieldError("area");
               }}
-              placeholder="আপনার পাড়া / গ্রামের নাম লিখুন"
-              aria-label="পাড়া বা গ্রামের নাম"
+              placeholder={t("checkout.paraPlaceholder")}
+              aria-label={t("checkout.paraAria")}
               aria-invalid={!!fieldErrors.area}
               className={inputClass("area")}
             />
@@ -2334,14 +2353,13 @@ export default function CheckoutView() {
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-ink-soft">
-                পাড়া বা গ্রামের নাম লিখলেই ডেলিভারি চার্জ ও সময় দেখা যাবে।
+                {t("checkout.paraHint")}
               </p>
             )}
             {pinZoneId && !form.isPickup ? (
               <div className="mt-2" data-testid="pin-para-suggestions">
                 <p className="text-[11px] font-semibold text-forest-800">
-                  📌 আপনার পিন {zoneById(pinZoneId)?.name ?? zone.name}-এ পড়েছে — এক
-                  ট্যাপে বসান:
+                    {t("checkout.pinParaIntro").replace("{zone}", zoneById(pinZoneId)?.name ?? zone.name)}
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {parasForZone(pinZoneId).map((name) => (
@@ -2372,7 +2390,7 @@ export default function CheckoutView() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                বাড়ির নম্বর / House No. <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+                {t("checkout.houseNoLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
               </span>
               <input
                 value={form.houseNo}
@@ -2384,7 +2402,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                রোডের নাম / Road Name <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+                {t("checkout.roadLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
               </span>
               <input
                 list="prosanti-roads"
@@ -2407,7 +2425,7 @@ export default function CheckoutView() {
               its own field, and sent with the address the rider reads. */}
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              ল্যান্ডমার্ক / Landmark <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+              {t("checkout.landmarkLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
             </span>
             <input
               value={form.landmark}
@@ -2420,7 +2438,7 @@ export default function CheckoutView() {
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              বিস্তারিত ঠিকানা / Full address <span className="text-rose-600">*</span>
+              {t("checkout.fullAddressLabel")} <span className="text-rose-600">*</span>
             </span>
             <textarea
               ref={addressRef}
@@ -2443,8 +2461,10 @@ export default function CheckoutView() {
               <p id="err-address" className="mt-1.5 text-xs text-rose-700">{fieldErrors.address}</p>
             ) : (
               <p id="hint-full-address" className="mt-1.5 text-[11px] text-ink-soft">
-                জেলা: {form.district} · উপজেলা: {effectiveUpazila || "—"} · পাড়া:{" "}
-                {effectivePara || "—"} — এই তিনটি অটো যোগ হয়ে যাবে।
+                {t("checkout.addressAutoLine")
+                  .replace("{district}", form.district)
+                  .replace("{upazila}", effectiveUpazila || "—")
+                  .replace("{para}", effectivePara || "—")}
               </p>
             )}
           </label>
@@ -2453,15 +2473,15 @@ export default function CheckoutView() {
           <div className="mt-5">
             <div className="flex items-center justify-between gap-3">
               <span className="block text-sm font-medium text-ink">
-                <IconMapPin className="mr-1 inline h-4 w-4 align-[-3px]" /> ম্যাপে বাড়ি পিন করুন{" "}
-                <span className="font-normal text-ink-soft">(ঐচ্ছিক — রাইডার সহজে খুঁজে পাবে)</span>
+                <IconMapPin className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("checkout.pinMapLabel")}{" "}
+                <span className="font-normal text-ink-soft">{t("checkout.pinMapOptional")}</span>
               </span>
               <button
                 type="button"
                 onClick={() => setShowMap((v) => !v)}
                 className="shrink-0 rounded-full bg-paper px-3 py-1.5 text-xs font-semibold text-forest-900 ring-1 ring-line hover:bg-ivory-100"
               >
-                {showMap ? "ম্যাপ লুকান" : "ম্যাপ দেখুন"}
+                {showMap ? t("checkout.mapHide") : t("checkout.mapShow")}
               </button>
             </div>
             {showMap && (
@@ -2475,7 +2495,7 @@ export default function CheckoutView() {
             )}
             {pinPos && (
               <p className="mt-2 text-xs font-medium text-forest-700">
-                📌 Pin: {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)} · {distanceFromHubKm(pinPos).toFixed(2)} km from {SUNAMGANJ_HUB} · {findZoneByDistance(pinPos).name}
+                {t("checkout.pinLine").replace("{lat}", pinPos.lat.toFixed(5)).replace("{lng}", pinPos.lng.toFixed(5)).replace("{km}", distanceFromHubKm(pinPos).toFixed(2)).replace("{hub}", SUNAMGANJ_HUB).replace("{zone}", findZoneByDistance(pinPos).name)}
               </p>
             )}
           </div>
@@ -2489,15 +2509,15 @@ export default function CheckoutView() {
             id="checkout-step-2"
             n={2}
             title={t("checkout.step2")}
-            hint="কীভাবে ও কখন পাবেন, আর কীভাবে টাকা দেবেন।"
+            hint={t("checkout.step2Hint")}
             done={step2Done}
           >
             {/* Home delivery vs store pickup — no longer a buried checkbox */}
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Delivery method">
               {(
                 [
-                  { pickup: false, icon: <IconTruck className="h-4 w-4" />, label: "হোম ডেলিভারি", sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
-                  { pickup: true, icon: <IconStore className="h-4 w-4" />, label: "স্টোর পিকআপ", sub: `${SUNAMGANJ_HUB} · ফ্রি` },
+                  { pickup: false, icon: <IconTruck className="h-4 w-4" />, label: t("checkout.dlHome"), sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
+                  { pickup: true, icon: <IconStore className="h-4 w-4" />, label: t("checkout.dlPickup"), sub: t("checkout.dlPickupSub").replace("{hub}", SUNAMGANJ_HUB) },
                 ] as const
               ).map((opt) => {
                 const active = form.isPickup === opt.pickup;
@@ -2524,7 +2544,7 @@ export default function CheckoutView() {
             {form.isPickup ? (
               <div className="mt-4 rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
                 <p className="text-xs font-semibold text-sky-900">
-                  পিকআপ সময় — {SUNAMGANJ_HUB}, {SUNAMGANJ_UPAZILA}
+                  {t("checkout.dlPickupTime").replace("{hub}", SUNAMGANJ_HUB).replace("{upazila}", SUNAMGANJ_UPAZILA)}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {["now", "9-11", "11-1", "2-4", "4-6", "6-8"].map((slot) => (
@@ -2535,7 +2555,7 @@ export default function CheckoutView() {
                       className={`rounded-full px-3 py-1.5 text-xs ring-1 ${form.pickupSlot === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
                     >
                       {slot === "now"
-                        ? `এখনই (${bagPrepMinutes} মিনিট)`
+                        ? t("checkout.dlNowMinutes").replace("{min}", String(bagPrepMinutes))
                         : DELIVERY_SLOT_LABELS[slot as DeliverySlotKey][lang]}
                     </button>
                   ))}
@@ -2543,12 +2563,12 @@ export default function CheckoutView() {
               </div>
             ) : (
               <div className="mt-4">
-                <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery slot</span>
+                <span className="mb-2 block text-sm font-medium text-ink">{t("checkout.dlSlotTitle")}</span>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Delivery slot">
                   {[
-                    { id: "now" as TimeSlot, label: "এখনই", sub: etaLabel, icon: <IconBolt className="h-4 w-4" /> },
-                    { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: eveningSlotHint(nowMs, lang), icon: <IconMoon className="h-4 w-4" /> },
-                    { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "দিন ও সময় বাছুন", icon: <IconCalendar className="h-4 w-4" /> },
+                    { id: "now" as TimeSlot, label: t("checkout.dlNow"), sub: etaLabel, icon: <IconBolt className="h-4 w-4" /> },
+                    { id: "evening" as TimeSlot, label: t("checkout.dlEvening"), sub: eveningSlotHint(nowMs, lang), icon: <IconMoon className="h-4 w-4" /> },
+                    { id: "scheduled" as TimeSlot, label: t("checkout.dlScheduled"), sub: t("checkout.dlScheduledSub"), icon: <IconCalendar className="h-4 w-4" /> },
                   ].map((slot) => (
                     <button
                       key={slot.id}
@@ -2576,14 +2596,14 @@ export default function CheckoutView() {
                 ) : null}
                 {form.timeSlot === "evening" && (
                   <p className="mt-2 text-xs text-ink-soft" data-testid="evening-note">
-                    <IconMoon className="mr-1 inline h-4 w-4 align-[-3px]" /> দোকান ও রাইডার সন্ধ্যা ৬–৯টার মধ্যে পৌঁছে দেওয়ার জন্য প্ল্যান করবে।
+                    <IconMoon className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("checkout.dlEveningNote")}
                   </p>
                 )}
                 {form.timeSlot === "scheduled" && (
                   <div className="mt-3 space-y-3 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-ink">তারিখ / Date</span>
+                        <span className="mb-1 block text-xs font-medium text-ink">{t("checkout.dlDate")}</span>
                         <input
                           type="date"
                           value={form.deliveryDate}
@@ -2594,7 +2614,7 @@ export default function CheckoutView() {
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-ink">সময় / Time window</span>
+                        <span className="mb-1 block text-xs font-medium text-ink">{t("checkout.dlTimeWindow")}</span>
                         <select
                           value={form.deliveryWindow}
                           onChange={(e) => update("deliveryWindow", e.target.value as DeliveryWindow)}
@@ -2610,7 +2630,9 @@ export default function CheckoutView() {
                       </label>
                     </div>
                     <p className="text-[11px] text-ink-soft">
-                      শিডিউল: {form.deliveryDate} · {DELIVERY_SLOT_LABELS[form.deliveryWindow][lang]} — দোকান সেভাবে প্রস্তুত করবে।
+                      {t("checkout.dlScheduleLine")
+                        .replace("{date}", form.deliveryDate)
+                        .replace("{window}", DELIVERY_SLOT_LABELS[form.deliveryWindow][lang])}
                       {form.deliveryWindow === "express" && ` Express adds ${formatBdt(4000)}.`}
                     </p>
                   </div>
@@ -2623,36 +2645,36 @@ export default function CheckoutView() {
               <IconTruck className="mt-0.5 h-6 w-6 shrink-0 text-gold-300" />
               <div className="flex-1 text-sm leading-6">
                 <p className="font-semibold">
-                  {form.isPickup ? `Pickup — ${SUNAMGANJ_HUB}` : zone.name}
-                  {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
+                  {form.isPickup ? `${t("checkout.dlPickup")} — ${SUNAMGANJ_HUB}` : zone.name}
+                  {summary.distanceKm ? ` · ${t("checkout.distanceFromHub").replace("{km}", summary.distanceKm.toFixed(2)).replace("{hub}", SUNAMGANJ_HUB)}` : ""}
                 </p>
                 <p className="mt-1 text-ivory-100/70">
                   {summary.isOutside && !form.isPickup ? (
                     <>
-                      <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("purchase.courierTitle")} — কনফার্মেশনের পর{" "}
+                      <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("purchase.courierTitle")} — {t("checkout.sumAfterConfirm")}{" "}
                       <strong className="text-gold-300" data-testid="courier-eta">{etaLabel}</strong>{" "}
                     </>
                   ) : (
                     <>
-                      {INSTANT_DELIVERY_TITLE} — কনফার্মেশনের পর{" "}
+                      {INSTANT_DELIVERY_TITLE} — {t("checkout.sumAfterConfirm")}{" "}
                       <strong className="text-gold-300">{etaLabel}</strong>{" "}
                     </>
                   )}
-                  · ডেলিভারি চার্জ{" "}
+                  {t("checkout.sumChargeLabel")}{" "}
                   <strong data-testid="delivery-charge">
                     {summary.freeDelivery ? (
                       <span className="text-gold-300">
                         {summary.couponFree
-                          ? "FREE — Coupon"
+                          ? t("checkout.sumFreeCoupon")
                           : summary.plusFree
-                            ? "FREE — PROSANTI+"
+                            ? t("checkout.sumFreeMember")
                             : form.isPickup
-                              ? "FREE — Pickup"
+                              ? t("checkout.sumFreePickup")
                               : summary.thresholdFree === "shop"
                                 ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
                                 : summary.thresholdFree === "platform"
                                   ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
-                                  : "Free"}
+                                  : t("checkout.sumFree")}
                       </span>
                     ) : (
                       formatBdt(summary.charge)
@@ -2660,23 +2682,23 @@ export default function CheckoutView() {
                   </strong>
                   {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
                     <span className="mt-1 block text-xs text-amber-200">
-                      Delivery {formatBdt(summary.fullCharge)}
-                      {summary.breakdown.surcharge.night > 0 && ` + Night ${formatBdt(summary.breakdown.surcharge.night)}`}
-                      {summary.breakdown.surcharge.rain > 0 && ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}`}
-                      {summary.breakdown.surcharge.express > 0 && ` + Express ${formatBdt(summary.breakdown.surcharge.express)}`}
-                      {summary.breakdown.surcharge.weight > 0 && ` + Weight ${formatBdt(summary.breakdown.surcharge.weight)}`}
+                      {t("checkout.surDelivery")} {formatBdt(summary.fullCharge)}
+                      {summary.breakdown.surcharge.night > 0 && ` + ${t("checkout.surNight")} ${formatBdt(summary.breakdown.surcharge.night)}`}
+                      {summary.breakdown.surcharge.rain > 0 && ` + ${t("checkout.surRain")} ${formatBdt(summary.breakdown.surcharge.rain)}`}
+                      {summary.breakdown.surcharge.express > 0 && ` + ${t("checkout.surExpress")} ${formatBdt(summary.breakdown.surcharge.express)}`}
+                      {summary.breakdown.surcharge.weight > 0 && ` + ${t("checkout.surWeight")} ${formatBdt(summary.breakdown.surcharge.weight)}`}
                     </span>
                   )}
                   {summary.isOutside && !form.isPickup && (
                     <span className="mt-1 block text-xs text-amber-200">
-                      সুনামগঞ্জ সদরের বাইরে — কুরিয়ার ডেলিভারি, ন্যূনতম {courierMinLabel} অর্ডার।
+                      {t("checkout.sumOutsideCourier").replace("{min}", courierMinLabel)}
                     </span>
                   )}
                   {summary.isNight && !summary.freeDelivery && (
-                    <span className="mt-1 block text-xs text-gold-300"><IconMoon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
+                    <span className="mt-1 block text-xs text-gold-300"><IconMoon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> {t("checkout.surNightNote").replace("{amount}", formatBdt(NIGHT_SURCHARGE_PAISA))}</span>
                   )}
                   {summary.isRain && !summary.freeDelivery && (
-                    <span className="mt-1 block text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
+                    <span className="mt-1 block text-xs text-sky-300">🌧️ {t("checkout.surRainNote").replace("{amount}", formatBdt(RAIN_SURCHARGE_PAISA))}</span>
                   )}
                 </p>
               </div>
@@ -2706,10 +2728,10 @@ export default function CheckoutView() {
                 />
                 <span className="flex-1">
                   <span className="block text-sm font-semibold text-ink">
-                    ক্যাশ অন ডেলিভারি / {t("checkout.cashOnDelivery")}
+                    {t("checkout.cashOnDelivery")}
                   </span>
                   <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                    পার্সেল হাতে পেয়ে টাকা পরিশোধ করবেন।
+                    {t("checkout.payCodDesc")}
                   </span>
                 </span>
                 <span className="rounded-full bg-ivory-100 px-3 py-1 text-xs font-semibold text-forest-800 ring-1 ring-line">
@@ -2735,7 +2757,7 @@ export default function CheckoutView() {
                   <span className="flex-1">
                     <span className="block text-sm font-semibold text-ink">bKash</span>
                     <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                      আমাদের bKash নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                      {t("checkout.payWalletDesc").replace("{wallet}", "bKash")}
                     </span>
                   </span>
                 </label>
@@ -2759,7 +2781,7 @@ export default function CheckoutView() {
                   <span className="flex-1">
                     <span className="block text-sm font-semibold text-ink">Nagad</span>
                     <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
-                      আমাদের Nagad নম্বরে টাকা পাঠিয়ে TRXID দিন — দোকান ভেরিফাই করবে।
+                      {t("checkout.payWalletDesc").replace("{wallet}", "Nagad")}
                     </span>
                   </span>
                 </label>
@@ -2781,12 +2803,14 @@ export default function CheckoutView() {
               )}
               {wallets?.payTo === "shop" && (wallets.bkash || wallets.nagad) && (
                 <p className="text-xs leading-5 text-ink-soft" data-testid="pay-to-shop-note">
-                  এই টাকা সরাসরি {wallets.payeeName ? `${wallets.payeeName}-এর` : "দোকানের"} নিজস্ব নম্বরে যাবে।
+                  {wallets.payeeName
+                    ? t("checkout.payToShopNamed").replace("{name}", wallets.payeeName)
+                    : t("checkout.payToShopGeneric")}
                 </p>
               )}
               {wallets?.payTo === "shop" && !wallets.bkash && !wallets.nagad && cartShopKey.includes(",") && (
                 <p className="text-xs leading-5 text-ink-soft" data-testid="mixed-bag-cod-note">
-                  একাধিক দোকানের ব্যাগে শুধু ক্যাশ অন ডেলিভারি চলবে।
+                  {t("checkout.payMixedCodOnly")}
                 </p>
               )}
               {fieldErrors.payMethod && (
@@ -2821,8 +2845,8 @@ export default function CheckoutView() {
                       {activeCoupon.code}
                     </span>
                     <span className="text-xs text-forest-700">
-                      প্রয়োগ হয়েছে ✓
-                      {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? " · ফ্রি ডেলিভারি" : ""}
+                      {t("checkout.couponAppliedTag")}
+                      {summary.discount > 0 ? ` · −${formatBdt(summary.discount)}` : summary.couponFree ? t("checkout.couponFreeDeliveryTag") : ""}
                     </span>
                     {autoCoupon === "applied" && (
                       <span
@@ -2967,7 +2991,7 @@ export default function CheckoutView() {
           {/* Tip */}
           {!form.isPickup && (
             <div>
-              <p className="text-sm font-semibold text-ink">💝 রাইডারকে টিপ <span className="font-normal text-ink-soft">(ঐচ্ছিক — পুরোটা রাইডার পায়)</span></p>
+              <p className="text-sm font-semibold text-ink">{t("checkout.tipTitle")} <span className="font-normal text-ink-soft">{t("checkout.tipOptional")}</span></p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {[0, 10, 20, 30, 50].map((tip) => (
                   <button
@@ -2977,12 +3001,12 @@ export default function CheckoutView() {
                     onClick={() => update("tipAmount", tip)}
                     className={`rounded-full px-4 py-2 text-xs font-semibold ring-1 ${form.tipAmount === tip ? "bg-forest-800 text-white ring-forest-700" : "bg-paper text-ink ring-line"}`}
                   >
-                    {tip === 0 ? "টিপ নয়" : `৳${tip}`}
+                    {tip === 0 ? t("checkout.tipNone") : `৳${tip}`}
                   </button>
                 ))}
               </div>
               {form.tipAmount > 0 && (
-                <p className="mt-2 text-xs text-forest-700">ধন্যবাদ! ৳{form.tipAmount} আপনার রাইডার পাবে।</p>
+                <p className="mt-2 text-xs text-forest-700">{t("checkout.tipThanks").replace("{amount}", String(form.tipAmount))}</p>
               )}
             </div>
           )}
@@ -2990,14 +3014,14 @@ export default function CheckoutView() {
           {/* Saved-address label (optional) — tagged for one-tap reuse */}
           <div>
             <span className="mb-1.5 block text-sm font-semibold text-ink">
-              এই ঠিকানার লেবেল <span className="font-normal text-ink-soft">(ঐচ্ছিক — অর্ডারের পর সেভ হয়)</span>
+              {t("checkout.addrLabelTitle")} <span className="font-normal text-ink-soft">{t("checkout.addrLabelOptional")}</span>
             </span>
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  { id: "home", label: "বাসা / Home", icon: <IconHome className="h-3.5 w-3.5" /> },
-                  { id: "office", label: "অফিস / Office", icon: <IconBriefcase className="h-3.5 w-3.5" /> },
-                  { id: "other", label: "অন্যান্য / Other", icon: <IconMapPin className="h-3.5 w-3.5" /> },
+                  { id: "home", label: t("checkout.addrHome"), icon: <IconHome className="h-3.5 w-3.5" /> },
+                  { id: "office", label: t("checkout.addrOffice"), icon: <IconBriefcase className="h-3.5 w-3.5" /> },
+                  { id: "other", label: t("checkout.addrOther"), icon: <IconMapPin className="h-3.5 w-3.5" /> },
                 ] as const
               ).map((tag) => (
                 <button
@@ -3021,12 +3045,12 @@ export default function CheckoutView() {
 
           <label className="block">
             <span className="mb-1.5 block text-sm font-semibold text-ink">
-              অর্ডার নোট <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
+              {t("checkout.orderNoteLabel")} <span className="font-normal text-ink-soft">({t("checkout.optional")})</span>
             </span>
             <input
               value={form.note}
               onChange={(e) => update("note", e.target.value)}
-              placeholder="যেমন: ডেলিভারির আগে কল করবেন"
+              placeholder={t("checkout.orderNoteExample")}
               className="h-12 w-full rounded-2xl bg-paper px-4 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
             />
           </label>
@@ -3040,7 +3064,7 @@ export default function CheckoutView() {
             id="checkout-step-3"
             n={3}
             title={t("checkout.step3")}
-            hint="একবার চোখ বুলিয়ে নিন — তারপর এক ট্যাপে অর্ডার।"
+            hint={t("checkout.reviewHint")}
           >
             {/* The summary card on phones lives HERE, in the step; desktop keeps the aside. */}
             <div className="lg:hidden">{summaryCard(true)}</div>
@@ -3058,7 +3082,7 @@ export default function CheckoutView() {
                   every parcel is a real delivery to arrange. */}
               {tooManyShopsInBag && (
                 <p role="alert" data-testid="too-many-shops" className="rounded-2xl bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 ring-1 ring-amber-200">
-                  ব্যাগে {basketGroups.length}টি দোকানের পণ্য আছে — এক চেকআউটে সর্বোচ্চ {MULTI_SHOP_MAX}টি দোকান সম্ভব। কয়েকটি পণ্য ব্যাগ থেকে সরিয়ে আলাদা করে অর্ডার করুন।
+                  {t("checkout.bagTooMany").replace("{shops}", String(basketGroups.length)).replace("{max}", String(MULTI_SHOP_MAX))}
                 </p>
               )}
               {/* One line per shop that cannot take the order: closed for the
@@ -3129,18 +3153,18 @@ export default function CheckoutView() {
               {!form.submitting && <IconArrowRight className="h-4 w-4" />}
             </button>
             {(tooManyShopsInBag || anyShopClosed) && (
-              <p className="mt-3 text-xs text-amber-800">উপরের ব্যাগ-সমস্যাটি ঠিক করে তারপর অর্ডার করুন।</p>
+              <p className="mt-3 text-xs text-amber-800">{t("checkout.bagFixFirst")}</p>
             )}
             <p className="mt-4 text-xs leading-5 text-ink-soft">
-              অর্ডার করলে আপনি আমাদের{" "}
+              {t("checkout.legalPre")}{" "}
               <Link href="/terms" className="underline underline-offset-2">
-                শর্তাবলী
+                {t("checkout.legalTerms")}
               </Link>{" "}
-              ও{" "}
+              {t("checkout.legalAnd")}{" "}
               <Link href="/privacy" className="underline underline-offset-2">
-                প্রাইভেসি পলিসি
+                {t("checkout.legalPrivacy")}
               </Link>
-              -তে সম্মত হচ্ছেন। একবার চাপলেই যথেষ্ট — ডাবল অর্ডার হয় না।
+              {t("checkout.legalPost")}
             </p>
           </StepSection>
         </div>

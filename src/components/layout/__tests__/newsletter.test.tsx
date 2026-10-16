@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import Newsletter, { newsletterSignupUrl } from "../newsletter";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+import { translations } from "@/lib/translations";
 
 afterEach(() => {
   cleanup();
@@ -75,5 +77,29 @@ describe("Newsletter opt-in", () => {
       "/subscribe",
     ])
       expect(newsletterSignupUrl(url)).toBeNull();
+  });
+});
+
+/**
+ * UI/UX pass 2026-10-15 — this card is in the footer of every storefront
+ * page, under a fully translated footer. It used to be the one block a
+ * Bangla shopper always read in English.
+ */
+describe("Newsletter opt-in — language", () => {
+  it("reads Bangla inside the shop's language provider", () => {
+    render(
+      <LanguageProvider initialLang="bn">
+        <Newsletter />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByRole("textbox", { name: translations.bn.newsletter.emailLabel }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: translations.bn.newsletter.submit }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(translations.bn.newsletter.cadence)).toBeInTheDocument();
+    // Nothing left behind in English.
+    expect(screen.queryByRole("button", { name: "Join the list" })).toBeNull();
   });
 });

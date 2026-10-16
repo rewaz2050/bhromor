@@ -424,7 +424,14 @@ export default function ProductCard({
               (v_product_sales). No figure, no line — never an invented rank. */}
           {product.unitsSold != null && product.unitsSold > 0 && (
             <p className="mt-1 text-[0.68rem] font-medium text-ink-soft">
-              {t("product.sold").replace("{count}", String(product.unitsSold))}
+              {/* The one number rule (UX plan §1.4): this card already
+                  Bangla-ised the rating, the review count and the "only N
+                  left" line — the sales count was the last Latin digit a
+                  Bangla shopper met on it. */}
+              {t("product.sold").replace(
+                "{count}",
+                lang === "bn" ? bnDigits(String(product.unitsSold)) : String(product.unitsSold),
+              )}
             </p>
           )}
           {/* P2 #21 — the shop ticks this per product; no tick, no chip. */}

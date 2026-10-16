@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ShopApplyPage from "../page";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+
+/* The form follows the storefront language; these assertions are the Bangla copy. */
+const renderBn = () =>
+  render(
+    <LanguageProvider initialLang="bn">
+      <ShopApplyPage />
+    </LanguageProvider>,
+  );
 
 vi.mock("@/lib/use-live-zones", () => ({
   useLiveZones: () => ({
@@ -22,14 +31,14 @@ describe("Shop Apply Page", () => {
   });
 
   it("renders shop application form fields", () => {
-    render(<ShopApplyPage />);
+    renderBn();
 
     expect(screen.getByText(/দোকানদার হিসেবে যুক্ত হোন/i)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/যেমন: আরিয়ান ফ্যাশন/i)).toBeInTheDocument();
   });
 
   it("collects the login password with the application (apply = sign up)", () => {
-    render(<ShopApplyPage />);
+    renderBn();
 
     const password = screen.getByLabelText(/লগইন পাসওয়ার্ড/);
     const confirm = screen.getByLabelText(/পাসওয়ার্ড আবার লিখুন/);
@@ -44,7 +53,7 @@ describe("Shop Apply Page", () => {
   it("refuses a mismatched password pair before calling the API", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<ShopApplyPage />);
+    renderBn();
 
     fill(screen.getByPlaceholderText(/যেমন: আরিয়ান ফ্যাশন/i), "Arian Fashion");
     fill(screen.getByPlaceholderText("017XXXXXXXX"), "01712345678");
@@ -63,7 +72,7 @@ describe("Shop Apply Page", () => {
   it("will not submit until the commission/settlement terms are agreed", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<ShopApplyPage />);
+    renderBn();
 
     fill(screen.getByPlaceholderText(/যেমন: আরিয়ান ফ্যাশন/i), "Arian Fashion");
     fill(screen.getByPlaceholderText("017XXXXXXXX"), "01712345678");
@@ -85,7 +94,7 @@ describe("Shop Apply Page", () => {
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    render(<ShopApplyPage />);
+    renderBn();
 
     fill(screen.getByPlaceholderText(/যেমন: আরিয়ান ফ্যাশন/i), "Arian Fashion");
     fill(screen.getByPlaceholderText("017XXXXXXXX"), "01712345678");

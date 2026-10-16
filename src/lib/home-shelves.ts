@@ -176,6 +176,14 @@ export const categoryLabel = (category: Category, lang: "en" | "bn"): string =>
   lang === "bn" && category.nameBn ? category.nameBn : category.name;
 
 /**
+ * Stand-in mark for a category with no photo (live categories can ship an
+ * empty `image`): the first character of its label, so a tile never shows a
+ * blank box. Array.from keeps a Bangla or emoji first glyph whole.
+ */
+export const categoryInitial = (category: Category, lang: "en" | "bn"): string =>
+  Array.from(categoryLabel(category, lang).trim())[0] ?? "";
+
+/**
  * UX plan §9 (R8) — the shop directory's "peek at the shelf": each shop's
  * best pieces as thumbnails. Best sellers lead, then featured, then new,
  * then catalog order; only discoverable, in-stock pieces (a thumbnail of

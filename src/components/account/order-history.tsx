@@ -69,6 +69,7 @@ const STEP_LABEL: Record<(typeof PUBLIC_STEPS)[number]["key"], TranslationKey> =
 // here so every existing caller keeps working.
 export { isOrderActive } from "@/lib/order-activity";
 import { isOrderActive } from "@/lib/order-activity";
+import { bnDigits } from "@/lib/arrival";
 
 const when = (ms: number, lang: "en" | "bn"): string =>
   new Date(ms).toLocaleString(lang === "bn" ? "bn-BD" : "en-GB", {
@@ -260,7 +261,9 @@ export default function OrderHistory({ phone }: { phone: string }) {
                       {row.itemCount > 1 ? (
                         <span className="text-ink-soft">
                           {" "}
-                          · {lang === "bn" ? `মোট ${row.itemCount}টি` : `${row.itemCount} items`}
+                          · {lang === "bn"
+                            ? `মোট ${bnDigits(String(row.itemCount))}টি`
+                            : `${row.itemCount} items`}
                         </span>
                       ) : null}
                     </p>

@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { LiveDeliveryMap } from "../live-delivery-map";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+import type { ReactElement } from "react";
 import type { Order } from "@/lib/orders";
+
+// The copy under test is the Bangla locale; mount it explicitly.
+const renderBn = (ui: ReactElement) =>
+  render(<LanguageProvider initialLang="bn">{ui}</LanguageProvider>);
+
 
 const baseOrder: Order = {
   id: "PS-20260909-0042",
@@ -48,7 +55,7 @@ const withRider: Order = {
 
 describe("LiveDeliveryMap Component", () => {
   it("renders the map, ETA, customer area, and 4-digit security PIN", () => {
-    render(<LiveDeliveryMap order={withRider} />);
+    renderBn(<LiveDeliveryMap order={withRider} />);
 
     expect(screen.getByTestId("live-delivery-map")).toBeInTheDocument();
     expect(screen.getByText(/Kandirpar/i)).toBeInTheDocument();
@@ -63,7 +70,7 @@ describe("LiveDeliveryMap Component", () => {
   });
 
   it("never invents a rider: no name, no call button, no rating without one", () => {
-    render(<LiveDeliveryMap order={baseOrder} />);
+    renderBn(<LiveDeliveryMap order={baseOrder} />);
 
     expect(screen.getByText(/অ্যাসাইন্ড রাইডার/i)).toBeInTheDocument();
     expect(screen.getByText(/রাইডার খোঁজা হচ্ছে…/)).toBeInTheDocument();
@@ -72,7 +79,7 @@ describe("LiveDeliveryMap Component", () => {
   });
 
   it("says what a wallet order actually pays in the payment row", () => {
-    render(
+    renderBn(
       <LiveDeliveryMap order={{ ...baseOrder, payment: "bkash" }} />,
     );
     expect(screen.getByText(/bKash \(ওয়ালেট\)/)).toBeInTheDocument();
@@ -99,7 +106,7 @@ describe("LiveDeliveryMap Component", () => {
       vi.useFakeTimers();
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       const fetchMock = stubFetch();
-      render(<LiveDeliveryMap order={withRider} />);
+      renderBn(<LiveDeliveryMap order={withRider} />);
       await act(async () => {
         await Promise.resolve();
       });
@@ -126,7 +133,7 @@ describe("LiveDeliveryMap Component", () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       stubFetch();
       // ~1.2 km north-east of the rider fix.
-      render(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
+      renderBn(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
       await act(async () => {
         await Promise.resolve();
       });
@@ -142,7 +149,7 @@ describe("LiveDeliveryMap Component", () => {
     it("labels how old the rider's fix is", async () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       stubFetch(3 * 60_000);
-      render(<LiveDeliveryMap order={withRider} />);
+      renderBn(<LiveDeliveryMap order={withRider} />);
       expect(await screen.findByText(/Rider live .*\(৩ মিনিট আগে\)/)).toBeInTheDocument();
       expect(screen.queryByTestId("rider-stale")).not.toBeInTheDocument();
     });
@@ -150,7 +157,7 @@ describe("LiveDeliveryMap Component", () => {
     it("a fix older than five minutes is not shown as live: no distance claim, and the customer is told", async () => {
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       stubFetch(8 * 60_000);
-      render(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
+      renderBn(<LiveDeliveryMap order={{ ...withRider, lat: 25.0748, lng: 91.4 }} />);
       const note = await screen.findByTestId("rider-stale");
       expect(note.textContent).toContain("৮ মিনিট ধরে আসছে না");
       expect(screen.queryByTestId("rider-away")).not.toBeInTheDocument();
@@ -163,7 +170,7 @@ describe("LiveDeliveryMap Component", () => {
       let visibility: DocumentVisibilityState = "visible";
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
       const fetchMock = stubFetch();
-      render(<LiveDeliveryMap order={withRider} />);
+      renderBn(<LiveDeliveryMap order={withRider} />);
       await act(async () => {
         await Promise.resolve();
       });
@@ -188,7 +195,7 @@ describe("LiveDeliveryMap Component", () => {
       vi.useFakeTimers();
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
       const fetchMock = stubFetch();
-      render(<LiveDeliveryMap order={{ ...withRider, status: "courier-assigned" }} />);
+      renderBn(<LiveDeliveryMap order={{ ...withRider, status: "courier-assigned" }} />);
       await act(async () => {
         vi.advanceTimersByTime(45_000);
       });

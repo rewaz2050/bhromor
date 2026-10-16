@@ -15,6 +15,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import L from "@/components/i18n/l";
 import { notFound, permanentRedirect } from "next/navigation";
 import { productHref } from "@/lib/product-url";
 import { alsoBoughtProducts } from "@/lib/db/also-bought";
@@ -63,10 +64,13 @@ export default async function LegacyProductPage({ params }: PageProps) {
         data-testid="product-slug-ambiguous"
       >
         <h1 className="font-display text-2xl text-ink">
-          More than one shop sells “{slug}”
+          <L
+            en={<>More than one shop sells “{slug}”</>}
+            bn={<>“{slug}” নামে একাধিক দোকান বিক্রি করছে</>}
+          />
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
-          Which one did you mean?
+          <L en="Which one did you mean?" bn="আপনি কোনটি বোঝাতে চেয়েছেন?" />
         </p>
         <ul className="mt-6 space-y-2">
           {matches.map((product) => (

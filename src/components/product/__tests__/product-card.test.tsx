@@ -16,6 +16,11 @@ import { clearWishlistStore } from "@/lib/wishlist-store";
 import { clearSizeProfile, saveSizeProfile, suggestSize } from "@/lib/size-finder";
 import { LanguageProvider } from "@/components/i18n/language-provider";
 
+// QuickAdd mounts inside the card and reads the app router for "Buy now".
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
+
 vi.mock("@/lib/use-live-catalog", async () => {
   const { CATEGORIES, PRODUCTS } = await import("@/lib/catalog");
   return {

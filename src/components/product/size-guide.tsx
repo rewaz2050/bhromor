@@ -5,8 +5,10 @@ import Link from "next/link";
 import type { Product } from "@/lib/catalog";
 import Drawer from "@/components/ui/drawer";
 import { IconClose } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export function FitGuidance({ product }: { product: Product }) {
+  const { t } = useLanguage();
   const details = product.details.filter((d) =>
     /^(fit|size|length|includes|contents)$/i.test(d.label),
   );
@@ -16,9 +18,9 @@ export function FitGuidance({ product }: { product: Product }) {
     <div className="text-sm leading-7 text-ink-soft">
       <p className="font-display text-xl text-forest-900">{product.name}</p>
       <p className="mt-3">
-        Available sizes:{" "}
+        {t("sizeGuide.availableSizes")}{" "}
         <span className="font-medium text-forest-800">
-          {product.sizes.join(" · ") || "Contact us for sizing"}
+          {product.sizes.join(" · ") || t("sizeGuide.noSizes")}
         </span>
       </p>
       {details.length > 0 && (
@@ -34,36 +36,24 @@ export function FitGuidance({ product }: { product: Product }) {
         </dl>
       )}
       {oneSize ? (
-        <p className="mt-5">
-          One size is a product label, not a guarantee of fit. Check the listed
-          dimensions and confirm with us if you need a specific measurement.
-        </p>
+        <p className="mt-5">{t("sizeGuide.oneSizeNote")}</p>
       ) : (
         <>
           <h3 className="mt-6 text-xs font-semibold uppercase tracking-widest text-forest-900">
-            Before choosing your size
+            {t("sizeGuide.beforeTitle")}
           </h3>
           <ol className="mt-3 list-decimal space-y-3 pl-5">
-            <li>
-              Lay a similar, well-fitting garment flat without stretching it.
-            </li>
-            <li>
-              Measure across the chest, shoulder seam to seam, and from the
-              highest shoulder point to the hem.
-            </li>
-            <li>
-              Share those measurements and your preferred fit with our team
-              before ordering.
-            </li>
+            <li>{t("sizeGuide.step1")}</li>
+            <li>{t("sizeGuide.step2")}</li>
+            <li>{t("sizeGuide.step3")}</li>
           </ol>
         </>
       )}
       <p className="mt-5 border-l-2 border-gold-400 bg-ivory-100 p-4 text-xs leading-6">
-        A verified size-by-size measurement chart is not yet available for this
-        item. We don’t substitute a generic chart because fit varies by garment.
+        {t("sizeGuide.noChartNote")}
       </p>
       <Link href="/contact" className="editorial-text-link mt-4">
-        Ask us about fit →
+        {t("sizeGuide.askFit")}
       </Link>
     </div>
   );
@@ -71,10 +61,11 @@ export function FitGuidance({ product }: { product: Product }) {
 
 /** Inline disclosure inside Quick Add avoids stacking two focus-trapping dialogs. */
 export function InlineSizeGuide({ product }: { product: Product }) {
+  const { t } = useLanguage();
   return (
     <details className="mt-4 border-b border-line pb-3">
       <summary className="flex min-h-11 cursor-pointer items-center text-xs font-medium text-forest-800 underline underline-offset-4">
-        Size &amp; fit guide
+        {t("sizeGuide.inlineSummary")}
       </summary>
       <div className="pb-3 pt-2">
         <FitGuidance product={product} />
@@ -91,6 +82,7 @@ export default function SizeGuide({
   /** Bump to open the drawer (stylist chat handoff). */
   autoOpenKey?: number;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -109,23 +101,23 @@ export default function SizeGuide({
         aria-expanded={open}
         className="min-h-11 text-xs font-medium text-forest-800 underline underline-offset-4"
       >
-        Size Guide
+        {t("sizeGuide.button")}
       </button>
       <Drawer
         open={open}
         onClose={() => setOpen(false)}
-        label="Size and fit guide"
+        label={t("sizeGuide.drawerLabel")}
         side="right"
         panelClassName="!w-full !max-w-lg p-6 sm:p-8"
       >
         <div className="mb-6 flex items-center justify-between gap-3">
           <h2 className="font-display text-3xl text-forest-900">
-            A more considered fit.
+            {t("sizeGuide.heading")}
           </h2>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close size guide"
+            aria-label={t("sizeGuide.closeAria")}
             className="flex h-11 w-11 shrink-0 items-center justify-center"
           >
             <IconClose />

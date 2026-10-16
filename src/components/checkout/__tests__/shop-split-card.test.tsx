@@ -8,8 +8,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import ShopSplitCard, { type ShopParcel } from "@/components/checkout/shop-split-card";
+import { LanguageProvider } from "@/components/i18n/language-provider";
+import type { ReactElement } from "react";
 
 afterEach(cleanup);
+
+/* The card follows the storefront language; the assertions are the Bangla copy. */
+const renderBn = (ui: ReactElement) =>
+  render(<LanguageProvider initialLang="bn">{ui}</LanguageProvider>);
 
 const parcel = (over: Partial<ShopParcel> = {}): ShopParcel => ({
   shopId: "shop-a",
@@ -26,7 +32,7 @@ const parcel = (over: Partial<ShopParcel> = {}): ShopParcel => ({
 
 describe("ShopSplitCard (C2)", () => {
   it("says plainly how many orders the tap becomes", () => {
-    render(
+    renderBn(
       <ShopSplitCard
         parcels={[parcel(), parcel({ shopId: "shop-b", shopName: "রঙধনু", total: 56000 })]}
       />,
@@ -36,7 +42,7 @@ describe("ShopSplitCard (C2)", () => {
   });
 
   it("names each shop, its pieces and its own delivery", () => {
-    render(
+    renderBn(
       <ShopSplitCard
         parcels={[
           parcel(),
@@ -53,7 +59,7 @@ describe("ShopSplitCard (C2)", () => {
   });
 
   it("shows who paid for a free ride, and the money off when a code applied", () => {
-    render(
+    renderBn(
       <ShopSplitCard
         parcels={[
           parcel({ freeDelivery: true, freeBy: "shop", delivery: 0, discount: 5000, promo: 3000 }),
@@ -67,7 +73,7 @@ describe("ShopSplitCard (C2)", () => {
   });
 
   it("says where the basket's one tip and one gift wrap went", () => {
-    render(
+    renderBn(
       <ShopSplitCard
         parcels={[
           parcel({ carries: "both" }),
@@ -80,7 +86,7 @@ describe("ShopSplitCard (C2)", () => {
   });
 
   it("names a shop that is away on holiday, with the day it is back", () => {
-    render(
+    renderBn(
       <ShopSplitCard
         parcels={[
           parcel(),
@@ -96,7 +102,15 @@ describe("ShopSplitCard (C2)", () => {
   });
 
   it("says nothing at all for an ordinary one-shop bag", () => {
-    const { container } = render(<ShopSplitCard parcels={[parcel()]} />);
+    const { container } = renderBn(<ShopSplitCard parcels={[parcel()]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("ShopSplitCard — English", () => {
+  it("renders English copy by default", () => {
+    render(<ShopSplitCard parcels={[parcel({ shopId: "a", shopName: "Alpha" }), parcel({ shopId: "b", shopName: "Beta" })]} />);
+    expect(screen.getByRole("region", { name: "Orders by shop" })).toBeInTheDocument();
+    expect(screen.getByText(/2 shops · 2 orders/)).toBeInTheDocument();
   });
 });

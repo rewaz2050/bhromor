@@ -25,11 +25,29 @@ const STEPS: Record<"vendor" | "rider", { title: string; body: string }[]> = {
   ],
 };
 
+/* English copy for the shop form. The rider form stays Bangla-only (it never
+   passes `lang`), so these are used only when a page asks for "en". */
+const STEPS_EN: Record<"vendor" | "rider", { title: string; body: string }[]> = {
+  vendor: [
+    { title: "Submit your application", body: "Filling in the form creates your vendor login with the email and password you choose." },
+    { title: "Admin review", body: "Our team checks your shop details and approves — usually within one working day." },
+    { title: "Open your dashboard", body: "Sign in with the same email and password, add your products and orders start coming in." },
+  ],
+  rider: [
+    { title: "Submit your application", body: "Filling in the form creates your rider login with the email and password you choose." },
+    { title: "Admin review", body: "Our team checks your details and approves — usually within one working day." },
+    { title: "Go online", body: "Sign in with the same email and password and go online to receive trip requests." },
+  ],
+};
+
+export type FormLang = "bn" | "en";
+
 /** "What happens next" — three numbered steps above the form. */
-export function ApplySteps({ kind }: { kind: "vendor" | "rider" }) {
+export function ApplySteps({ kind, lang = "bn" }: { kind: "vendor" | "rider"; lang?: FormLang }) {
+  const steps = lang === "en" ? STEPS_EN[kind] : STEPS[kind];
   return (
-    <ol className="mt-6 grid gap-2 sm:grid-cols-3" aria-label="আবেদনের ধাপ">
-      {STEPS[kind].map((step, i) => (
+    <ol className="mt-6 grid gap-2 sm:grid-cols-3" aria-label={lang === "en" ? "Application steps" : "আবেদনের ধাপ"}>
+      {steps.map((step, i) => (
         <li
           key={step.title}
           className="flex gap-3 rounded-2xl bg-ivory-100/70 p-3.5 ring-1 ring-line sm:flex-col sm:gap-2"
@@ -38,7 +56,7 @@ export function ApplySteps({ kind }: { kind: "vendor" | "rider" }) {
             aria-hidden="true"
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-forest-800 text-xs font-bold text-ivory-50"
           >
-            {bnDigits(String(i + 1))}
+            {lang === "en" ? String(i + 1) : bnDigits(String(i + 1))}
           </span>
           <span>
             <span className="block text-sm font-semibold text-forest-900">{step.title}</span>
@@ -56,11 +74,13 @@ export function FormSection({
   title,
   hint,
   children,
+  lang = "bn",
 }: {
   step: number;
   title: string;
   hint?: string;
   children: ReactNode;
+  lang?: FormLang;
 }) {
   return (
     <fieldset className="min-w-0 border-t border-line pt-5 first:border-t-0 first:pt-0">
@@ -70,7 +90,7 @@ export function FormSection({
             aria-hidden="true"
             className="flex h-6 w-6 items-center justify-center rounded-full bg-gold-100 text-[0.7rem] font-bold text-gold-800"
           >
-            {bnDigits(String(step))}
+            {lang === "en" ? String(step) : bnDigits(String(step))}
           </span>
           {title}
         </span>
@@ -86,15 +106,19 @@ export function ZoneChips({
   zones,
   selected,
   onToggle,
+  lang = "bn",
 }: {
   zones: { id: string; name: string }[];
   selected: string[];
   onToggle: (id: string) => void;
+  lang?: FormLang;
 }) {
   if (zones.length === 0) {
     return (
       <p className="text-xs text-ink-soft sm:col-span-2">
-        এলাকার তালিকা লোড হচ্ছে… না এলে ফর্ম জমা দিন, অ্যাডমিন এলাকা ঠিক করে দেবেন।
+        {lang === "en"
+          ? "Loading the area list… if it doesn't appear, submit the form and the admin will set your areas."
+          : "এলাকার তালিকা লোড হচ্ছে… না এলে ফর্ম জমা দিন, অ্যাডমিন এলাকা ঠিক করে দেবেন।"}
       </p>
     );
   }
@@ -154,12 +178,12 @@ export function FormAlert({ message }: { message: string | null }) {
 }
 
 /** "Already applied?" — the way back to the login page for returning applicants. */
-export function AlreadyAppliedLink({ href }: { href: string }) {
+export function AlreadyAppliedLink({ href, lang = "bn" }: { href: string; lang?: FormLang }) {
   return (
     <p className="text-center text-sm text-ink">
-      আগেই আবেদন করেছেন?{" "}
+      {lang === "en" ? "Already applied?" : "আগেই আবেদন করেছেন?"}{" "}
       <Link href={href} className="font-semibold text-forest-800 underline underline-offset-2">
-        সাইন ইন করুন →
+        {lang === "en" ? "Sign in →" : "সাইন ইন করুন →"}
       </Link>
     </p>
   );

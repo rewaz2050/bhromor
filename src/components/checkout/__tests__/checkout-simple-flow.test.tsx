@@ -106,7 +106,7 @@ it("places an order through the simple form (live)", async () => {
   });
   // District + Upazila default to Sunamganj / Sunamganj Sadar; the para is
   // a free-text field (no chips since PR #28) — type a known Zone A para.
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+  fireEvent.change(screen.getByLabelText("Para or village name"), {
     target: { value: "Boropara" },
   });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
@@ -147,7 +147,7 @@ it("stays placeable when the para is one the list never knew (typed by hand)", a
   });
   // A para that is not in the Sunamganj list — the field is plain text, so
   // the order must still go through (the zone falls back to the upazila).
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), {
+  fireEvent.change(screen.getByLabelText("Para or village name"), {
     target: { value: "Notun para" },
   });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {

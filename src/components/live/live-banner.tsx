@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { IconArrowRight, IconClock } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 import { liveState, type LiveSession } from "@/lib/live";
 import { afterFirstPaint } from "@/lib/defer";
 import { usePoll } from "@/lib/use-poll";
@@ -33,6 +34,7 @@ const fmtWhen = (ms: number): string =>
   });
 
 export default function LiveBanner() {
+  const { t } = useLanguage();
   // fetchedAt is part of the state so the "starting soon" window is judged
   // against the poll's own timestamp — pure at render, fresh every 60s.
   const [data, setData] = useState<(LiveData & { fetchedAt: number }) | null>(
@@ -80,7 +82,7 @@ export default function LiveBanner() {
       >
         <span className="relative inline-flex items-center gap-2 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-white sm:text-[0.7rem]">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-          Live now — {live.title} — watch &amp; shop
+          {t("liveBanner.now").replace("{title}", live.title)}
           <IconArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </span>
       </Link>
@@ -94,9 +96,11 @@ export default function LiveBanner() {
     >
       <span className="relative inline-flex items-center gap-2 text-[0.66rem] font-[550] tracking-[0.14em] text-ivory-100/90 sm:text-[0.68rem]">
         <IconClock className="h-3 w-3 text-gold-400" />
-        Live shopping {fmtWhen(upcoming!.scheduledStart)} —{" "}
-        {upcoming!.products.length}{" "}
-        {upcoming!.products.length === 1 ? "piece" : "pieces"} — get ready
+        {upcoming!.products.length === 1
+          ? t("liveBanner.soonOne").replace("{when}", fmtWhen(upcoming!.scheduledStart))
+          : t("liveBanner.soonMany")
+              .replace("{when}", fmtWhen(upcoming!.scheduledStart))
+              .replace("{count}", String(upcoming!.products.length))}
         <IconArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>

@@ -11,11 +11,17 @@ export const btn = {
   dark: "bg-ink text-ivory-50 hover:bg-forest-900",
   light: "bg-paper text-forest-900 ring-1 ring-line hover:ring-forest-400",
   ghost: "text-forest-800 hover:bg-forest-100",
+  /* UI/UX pass 2026-10-15 — a gold pill is a gold pill: the label is ink,
+     not white. White on gold-500 measures 3.3:1, under the 4.5:1 WCAG AA
+     needs for text this small; forest-950 on the same gold is 5.4:1. */
   gold: "bg-gold-500 text-forest-950 hover:bg-gold-400",
   glass: "bg-white/10 text-ivory-50 ring-1 ring-white/25 hover:bg-white/20",
-  sm: "px-4 py-2 text-sm",
-  md: "px-6 py-3 text-sm",
-  lg: "px-8 py-4 text-base",
+  /* Every size clears 44px (UI/UX pass 2026-10-15). `sm` used to be 36px
+     tall — fine for a mouse, too small for the thumb that actually taps
+     "continue shopping" on a phone. */
+  sm: "min-h-11 px-4 py-2 text-sm",
+  md: "min-h-11 px-6 py-3 text-sm",
+  lg: "min-h-14 px-8 py-4 text-base",
 } as const;
 
 export function ButtonLink({
@@ -53,7 +59,9 @@ export function Badge({
 }) {
   const styles: Record<typeof kind, string> = {
     new: "bg-forest-800 text-ivory-50",
-    sale: "bg-gold-500 text-white",
+    /* UI/UX pass 2026-10-15 — ink on gold, not white on gold (3.3:1 →
+       5.4:1). Same rule as `btn.gold` above. */
+    sale: "bg-gold-500 text-forest-950",
     featured: "bg-ivory-50/95 text-forest-800 ring-1 ring-gold-300",
   };
   const label =
@@ -85,7 +93,7 @@ export function Price({
         {formatBdt(value)}
       </span>
       {compareAt && compareAt > value ? (
-        <span className="text-[0.82em] font-normal text-ink-soft/75 line-through decoration-1">
+        <span className="text-[0.82em] font-normal text-ink-soft line-through decoration-1">
           {formatBdt(compareAt)}
         </span>
       ) : null}

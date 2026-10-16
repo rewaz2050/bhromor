@@ -7,8 +7,10 @@ import { useMyZone } from "@/lib/use-my-zone";
 import { formatBdt } from "@/lib/format";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { IconTruck } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function DeliveryChecker() {
+  const { t, lang } = useLanguage();
   const { activeZones } = useLiveZones();
   const { zoneId: myZoneId, setZoneId } = useMyZone();
   const [area, setArea] = useState("");
@@ -32,10 +34,10 @@ export default function DeliveryChecker() {
               id="delivery-check-title"
               className="font-display text-2xl text-forest-900"
             >
-              Good things. Closer than you think.
+              {t("deliveryChecker.title")}
             </h2>
             <p className="mt-2 text-sm text-ink-soft">
-              Enter your area to check delivery availability and estimated time.
+              {t("deliveryChecker.intro")}
             </p>
           </div>
         </div>
@@ -46,7 +48,7 @@ export default function DeliveryChecker() {
           }}
         >
           <label htmlFor="delivery-area" className="sr-only">
-            Area or location
+            {t("deliveryChecker.label")}
           </label>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -58,7 +60,7 @@ export default function DeliveryChecker() {
                 setArea(e.target.value);
                 setChecked(false);
               }}
-              placeholder="Enter area / location"
+              placeholder={t("deliveryChecker.placeholder")}
               className="h-12 min-w-0 flex-1 border border-line bg-paper px-4 text-base"
             />
             <datalist id="delivery-areas">
@@ -69,17 +71,22 @@ export default function DeliveryChecker() {
                 ))}
             </datalist>
             <button className="editorial-button justify-center bg-forest-800 text-white">
-              Check availability
+              {t("deliveryChecker.submit")}
             </button>
           </div>
           <div role="status" className="mt-3 text-sm text-forest-800">
             {checked &&
               (zone ? (
                 <>
-                  {`✓ Available · Estimated delivery: ${isCourierZone(zone.id) ? courierEta("en") : zone.etaLabel} · Delivery from ${formatBdt(zone.charge)} (free on qualifying orders).`}{" "}
+                  {t("deliveryChecker.available")
+                    .replace(
+                      "{eta}",
+                      isCourierZone(zone.id) ? courierEta(lang) : zone.etaLabel,
+                    )
+                    .replace("{charge}", formatBdt(zone.charge))}{" "}
                   {myZoneId === zone.id ? (
                     <span className="font-medium">
-                      Showing shops for {zone.name}.
+                      {t("deliveryChecker.showingShops").replace("{zone}", zone.name)}
                     </span>
                   ) : (
                     <button
@@ -87,17 +94,17 @@ export default function DeliveryChecker() {
                       onClick={() => setZoneId(zone.id)}
                       className="font-semibold underline underline-offset-2 hover:text-forest-900"
                     >
-                      Shop for {zone.name}
+                      {t("deliveryChecker.shopFor").replace("{zone}", zone.name)}
                     </button>
                   )}
                 </>
               ) : (
                 <>
-                  We couldn’t confirm this area. Choose a suggested area or{" "}
+                  {t("deliveryChecker.notConfirmedBefore")}{" "}
                   <Link href="/contact" className="underline">
-                    contact us
+                    {t("deliveryChecker.contactUs")}
                   </Link>{" "}
-                  before ordering.
+                  {t("deliveryChecker.notConfirmedAfter")}
                 </>
               ))}
           </div>

@@ -263,7 +263,7 @@ function UpcomingSessionView({
   return (
     <div className="space-y-10">
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="inline-flex items-center gap-2 rounded-full bg-gold-500 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-white">
+        <span className="inline-flex items-center gap-2 rounded-full bg-gold-500 px-3.5 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-forest-950">
           <IconClock className="h-3.5 w-3.5" />
           Coming up
         </span>

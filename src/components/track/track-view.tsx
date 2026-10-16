@@ -42,6 +42,7 @@ import DeliveryProof from "./delivery-proof";
 import { courierEta, isCourierZone } from "@/lib/delivery";
 import { tidyPhoneInput } from "@/lib/phone";
 import { useLiveRefresh } from "@/lib/use-live-refresh";
+import { bnDigits } from "@/lib/arrival";
 
 /** How often an open tracker re-reads the order (see the poll below). */
 const TRACK_REFRESH_MS = 15_000;
@@ -94,6 +95,10 @@ type Result =
 
 export default function TrackView() {
   const { t, lang } = useLanguage();
+  /** The shop's one number rule (UX plan §1.4): a Bangla reader reads Bangla
+   *  digits everywhere, including the quantities on their own order. */
+  const digits = (n: number | string) =>
+    lang === "bn" ? bnDigits(String(n)) : String(n);
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
@@ -220,11 +225,10 @@ export default function TrackView() {
         className="h-fit rounded-3xl bg-paper p-7 ring-1 ring-line lg:sticky lg:top-28"
       >
         <h2 className="font-display text-2xl font-medium text-forest-900">
-          Track your order — Sunamganj Sadar
+          {t("track.lookupTitle")}
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-soft">
-          District: Sunamganj, Upazila: Sunamganj Sadar, Hub: Traffic Point.
-          No account needed — order ID + phone. PIN required for COD delivery.
+          {t("track.lookupSub")}
         </p>
         {lastOrder && lastOrder.id !== (order?.id ?? "") ? (
           <div
@@ -233,7 +237,7 @@ export default function TrackView() {
           >
             <div className="min-w-0">
               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-                আপনার শেষ অর্ডার
+                {t("track.lastOrderLabel")}
               </p>
               <p className="truncate font-mono text-sm font-bold text-forest-900">{lastOrder.id}</p>
               {lastOrder.total ? (
@@ -245,9 +249,9 @@ export default function TrackView() {
                 type="button"
                 onClick={useLastOrder}
                 disabled={checking}
-                className="rounded-full bg-forest-800 px-3.5 py-1.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
+                className="min-h-11 rounded-full bg-forest-800 px-3.5 text-xs font-semibold text-ivory-50 hover:bg-forest-700 disabled:opacity-60"
               >
-                ট্র্যাক করুন
+                {t("track.lastOrderTrack")}
               </button>
               <button
                 type="button"
@@ -255,8 +259,8 @@ export default function TrackView() {
                   clearLastOrder();
                   setLastOrder(null);
                 }}
-                aria-label="শেষ অর্ডার শর্টকাট সরান"
-                className="rounded-full px-2 py-1.5 text-xs text-ink-soft ring-1 ring-line hover:bg-paper"
+                aria-label={t("track.lastOrderDismiss")}
+                className="flex h-11 w-11 items-center justify-center rounded-full px-2 text-xs text-ink-soft ring-1 ring-line hover:bg-paper"
               >
                 ✕
               </button>
@@ -265,7 +269,7 @@ export default function TrackView() {
         ) : null}
         <label className="mt-6 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
-            Order ID
+            {t("track.orderIdLabel")}
           </span>
           <div className="relative">
             <IconBox className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
@@ -280,7 +284,7 @@ export default function TrackView() {
         </label>
         <label className="mt-4 block">
           <span className="mb-1.5 block text-sm font-medium text-ink">
-            Phone number
+            {t("track.phoneLabel")}
           </span>
           <div className="relative">
             <IconPhone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
@@ -289,7 +293,7 @@ export default function TrackView() {
               type="tel"
               inputMode="tel"
               pattern="(\+?88)?01[0-9]{9}"
-              title="A valid Bangladeshi mobile number, e.g. 017XXXXXXXX or +88017XXXXXXXX"
+              title={t("track.phoneTitle")}
               value={phone}
               onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
               autoComplete="tel"
@@ -304,11 +308,11 @@ export default function TrackView() {
           className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
         >
           <IconSearch className="h-4 w-4" />
-          {checking ? "Checking…" : "Track order"}
+          {checking ? t("track.checking") : t("track.submit")}
         </button>
         {lookupFailed && (
           <p role="alert" className="mt-3 text-center text-xs leading-5 text-rose-700">
-            Could not reach the shop — check your connection and try again.
+            {t("track.lookupFailed")}
           </p>
         )}
       </form>
@@ -321,11 +325,10 @@ export default function TrackView() {
               <IconMapPin className="h-7 w-7" />
             </span>
             <h2 className="font-display mt-6 text-2xl font-medium text-forest-900">
-              Where is my order?
+              {t("track.emptyTitle")}
             </h2>
             <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-              Enter your details to see the live timeline — confirmation,
-              preparation, courier assignment and delivery.
+              {t("track.emptyBody")}
             </p>
           </div>
         ) : !order ? (
@@ -334,10 +337,10 @@ export default function TrackView() {
               <IconSearch className="h-7 w-7" />
             </span>
             <h2 className="font-display mt-6 text-2xl font-medium text-forest-900">
-              No order found
+              {t("track.notFoundTitle")}
             </h2>
             <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-              Double-check the order ID and the phone number you ordered with.
+              {t("track.notFoundBody")}
             </p>
           </div>
         ) : (
@@ -418,9 +421,21 @@ export default function TrackView() {
                 role="note"
                 className="rounded-2xl bg-paper px-5 py-3 text-xs leading-5 text-ink-soft ring-1 ring-line"
               >
-                This order was cancelled. If that looks wrong, call/WhatsApp us on{" "}
-                <span className="font-semibold text-ink">{contactNumber}</span> with the order ID
-                and we will check it for you.
+                {/* Split on the placeholder so the number stays bold inside a
+                    sentence that reads naturally in either language. */}
+                {(() => {
+                  const [before, after = ""] =
+                    t("track.cancelledNote").split("{number}");
+                  return (
+                    <>
+                      {before}
+                      <span className="font-semibold text-ink">
+                        {contactNumber}
+                      </span>
+                      {after}
+                    </>
+                  );
+                })()}
               </p>
             )}
             <ol className="rounded-3xl bg-paper p-7 ring-1 ring-line sm:p-8">
@@ -508,7 +523,7 @@ export default function TrackView() {
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
                 <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-                  Your order
+                  {t("track.snapshotTitle")}
                 </h3>
                 <ul className="mt-4 space-y-3">
                   {order.items.map((it, i) => (
@@ -525,7 +540,8 @@ export default function TrackView() {
                           {it.name}
                         </p>
                         <p className="text-xs text-ink-soft">
-                          {it.variant} · ×{it.qty}
+                          {it.variant} ·{" "}
+                          {t("track.itemQty").replace("{qty}", digits(it.qty))}
                         </p>
                       </div>
                       <p className="text-sm font-medium text-ink">
@@ -547,35 +563,41 @@ export default function TrackView() {
                 ) : null}
                 <dl className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
                   <div className="flex justify-between text-ink-soft">
-                    <dt>Subtotal</dt>
+                    <dt>{t("track.subtotal")}</dt>
                     <dd>{formatBdt(order.subtotal)}</dd>
                   </div>
                   <div className="flex justify-between text-ink-soft">
-                    <dt>Delivery{order.isPickup ? " — Pickup" : ""}{order.isExpress ? " — Express" : ""}</dt>
+                    <dt>
+                      {order.isPickup
+                        ? t("track.deliveryPickup")
+                        : order.isExpress
+                          ? t("track.deliveryExpress")
+                          : t("track.delivery")}
+                    </dt>
                     <dd>
                       {order.isPickup
-                        ? "Free (Pickup)"
+                        ? t("track.freePickup")
                         : order.deliveryCharge === 0
                           ? order.freeDeliveryBy === "shop"
-                            ? "Free (shop offer)"
+                            ? t("track.freeShop")
                             : order.freeDeliveryBy === "platform"
-                              ? "Free (PROSANTI offer)"
-                              : "Free"
+                              ? t("track.freePlatform")
+                              : t("track.free")
                           : formatBdt(order.deliveryCharge)}
                     </dd>
                   </div>
                   {((order.surchargeNight ?? 0) > 0 || (order.surchargeRain ?? 0) > 0 || (order.surchargeDistance ?? 0) > 0 || (order.surchargeExpress ?? 0) > 0 || (order.surchargeWeight ?? 0) > 0) && (
                     <div className="text-xs text-ink-soft bg-amber-50 p-2 rounded-xl">
-                      {(order.surchargeNight ?? 0) > 0 && <div>Night: {formatBdt(order.surchargeNight ?? 0)}</div>}
-                      {(order.surchargeRain ?? 0) > 0 && <div>Rain: {formatBdt(order.surchargeRain ?? 0)}</div>}
-                      {(order.surchargeDistance ?? 0) > 0 && <div>Distance: {formatBdt(order.surchargeDistance ?? 0)}</div>}
-                      {(order.surchargeExpress ?? 0) > 0 && <div>Express: {formatBdt(order.surchargeExpress ?? 0)}</div>}
-                      {(order.surchargeWeight ?? 0) > 0 && <div>Weight: {formatBdt(order.surchargeWeight ?? 0)}</div>}
+                      {(order.surchargeNight ?? 0) > 0 && <div>{t("track.surchargeNight")}: {formatBdt(order.surchargeNight ?? 0)}</div>}
+                      {(order.surchargeRain ?? 0) > 0 && <div>{t("track.surchargeRain")}: {formatBdt(order.surchargeRain ?? 0)}</div>}
+                      {(order.surchargeDistance ?? 0) > 0 && <div>{t("track.surchargeDistance")}: {formatBdt(order.surchargeDistance ?? 0)}</div>}
+                      {(order.surchargeExpress ?? 0) > 0 && <div>{t("track.surchargeExpress")}: {formatBdt(order.surchargeExpress ?? 0)}</div>}
+                      {(order.surchargeWeight ?? 0) > 0 && <div>{t("track.surchargeWeight")}: {formatBdt(order.surchargeWeight ?? 0)}</div>}
                     </div>
                   )}
                   {(order.tipAmount ?? 0) > 0 && (
                     <div className="flex justify-between text-forest-700">
-                      <dt>💝 Tip</dt>
+                      <dt>{t("track.tip")}</dt>
                       <dd>+{formatBdt(order.tipAmount ?? 0)}</dd>
                     </div>
                   )}
@@ -586,15 +608,20 @@ export default function TrackView() {
                   )}
                   {order.coupon && (
                     <div className="flex justify-between text-emerald-700">
-                      <dt>Coupon · {order.coupon.code}</dt>
+                      <dt>{t("track.coupon")} · {order.coupon.code}</dt>
                       <dd>−{formatBdt(order.coupon.discount)}</dd>
                     </div>
                   )}
                   <div className="flex justify-between pt-1 font-semibold text-forest-900">
                     <dt>
-                      Total (
-                      {order.payment === "bkash" ? "bKash" : order.payment === "nagad" ? "Nagad" : "COD"})
-                      {order.isPickup ? " — Pickup" : ""}
+                      {t("track.total")} (
+                      {order.payment === "bkash"
+                        ? "bKash"
+                        : order.payment === "nagad"
+                          ? "Nagad"
+                          : t("track.paymentCod")}
+                      )
+                      {order.isPickup ? t("track.pickupSuffix") : ""}
                     </dt>
                     <dd>{formatBdt(order.total)}</dd>
                   </div>
@@ -602,9 +629,9 @@ export default function TrackView() {
               </div>
               <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
                 <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-ink-soft">
-                  Delivery — Sunamganj Sadar
+                  {t("track.deliveryCardTitle")}
                 </h3>
-                <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">জেলা: Sunamganj · উপজেলা: Sunamganj Sadar · Hub: Traffic Point</p>
+                <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-ink-soft">{t("track.districtLine")}</p>
                 <p className="mt-4 flex items-start gap-2.5 text-sm text-ink">
                   <IconMapPin className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.customer.area}
@@ -613,8 +640,8 @@ export default function TrackView() {
                 <p className="mt-3 flex items-start gap-2.5 text-sm text-ink">
                   <IconTruck className="mt-0.5 h-4 w-4 shrink-0 text-forest-700" />
                   {order.zoneName} · {isCourierZone(order.zoneId) && !order.isPickup ? courierEta(lang) : order.etaLabel}
-                  {isCourierZone(order.zoneId) && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">Outside Sadar · Courier</span>}
-                  {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">Pickup</span>}
+                  {isCourierZone(order.zoneId) && <span className="ml-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">{t("track.outsideSadar")}</span>}
+                  {order.isPickup && <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">{t("track.pickupBadge")}</span>}
                   {!order.isPickup && order.deliveryWindow && order.deliveryWindow !== "now" && (
                     <span className="ml-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
                       <IconClock className="mr-1 inline h-4 w-4 align-[-3px]" /> {deliverySlotSummary({ deliveryWindow: order.deliveryWindow }, lang)}
@@ -627,12 +654,12 @@ export default function TrackView() {
                       href={`https://wa.me/88${contactNumber}?text=${encodeURIComponent(`PROSANTI order ${order.id} track: ${typeof window !== "undefined" ? window.location.origin : ""}/track`)}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="rounded-full bg-[#25D366] px-3 py-1 text-xs font-semibold text-white"
+                      className="inline-flex min-h-11 items-center rounded-full bg-[#25D366] px-4 text-xs font-semibold text-white"
                     >
-                      WhatsApp Support
+                      {t("track.whatsappSupport")}
                     </a>
                   )}
-                  {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" className="rounded-full bg-paper px-3 py-1 text-xs ring-1 ring-line">View Pin on Map</a>}
+                  {order.lat && order.lng && <a href={`https://www.openstreetmap.org/?mlat=${order.lat}&mlon=${order.lng}#map=16/${order.lat}/${order.lng}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-full bg-paper px-4 text-xs ring-1 ring-line">{t("track.viewPin")}</a>}
                   {/* UX plan §7 — hand the same tracker to whoever is at home */}
                   {order.status !== "cancelled" ? (
                     <ShareTrackerButton
@@ -644,7 +671,8 @@ export default function TrackView() {
                 </div>
                 {order.customer.note && (
                   <p className="mt-3 text-xs leading-5 text-ink-soft">
-                    <strong className="text-ink">Note:</strong> {order.customer.note}
+                    <strong className="text-ink">{t("track.noteLabel")}</strong>{" "}
+                    {order.customer.note}
                   </p>
                 )}
               </div>

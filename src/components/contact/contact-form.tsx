@@ -2,12 +2,26 @@
 
 import { useState } from "react";
 import { IconCheck } from "@/components/ui/icons";
+import { useLanguage } from "@/components/i18n/language-provider";
 import {
   CONTACT_TOPICS,
   validateContact,
 } from "@/lib/engagement";
 
+/* Topic values are sent to the server as the English strings in
+   CONTACT_TOPICS (the inbox and the admin filter rely on them); only the
+   label the shopper reads is Bangla. */
+const TOPIC_LABEL_BN: Record<string, string> = {
+  "Order support": "অর্ডার সাপোর্ট",
+  Delivery: "ডেলিভারি",
+  "Product question": "পণ্য সম্পর্কে প্রশ্ন",
+  "Return / exchange": "ফেরত / বদল",
+  Feedback: "মতামত",
+  Partnership: "ব্যবসায়িক সহযোগিতা",
+};
+
 export default function ContactForm() {
+  const { t, lang } = useLanguage();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [topic, setTopic] = useState<string>(CONTACT_TOPICS[0]);
@@ -21,11 +35,16 @@ export default function ContactForm() {
     if (sending) return;
     const checked = validateContact({ name, phone, topic, message });
     if (!checked.ok) {
+      // Show the first failing field in the shopper's language. The English
+      // reasons from validateContact stay on the server contract.
       setError(
-        checked.errors.name ??
-          checked.errors.phone ??
-          checked.errors.message ??
-          "Please fix the highlighted fields.",
+        checked.errors.name
+          ? t("contactForm.errName")
+          : checked.errors.phone
+            ? t("contactForm.errPhone")
+            : checked.errors.message
+              ? t("contactForm.errMessage")
+              : t("contactForm.fixFields"),
       );
       return;
     }
@@ -42,61 +61,75 @@ export default function ContactForm() {
         error?: string;
       } | null;
       if (!res.ok) {
-        setError(data?.error ?? "Could not send — please try again.");
+        setError(data?.error ?? t("contactForm.sendFail"));
         return;
       }
       setSent(true);
     } catch {
-      setError("Could not reach the shop — check your connection.");
+      setError(t("contactForm.reachFail"));
     } finally {
       setSending(false);
     }
   };
 
   if (sent) {
+    const first = name.trim().split(/\s+/)[0] ?? "";
     return (
       <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-3xl bg-forest-50 p-8 text-center ring-1 ring-forest-100">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-forest-800 text-ivory-50">
           <IconCheck className="h-6 w-6" />
         </span>
-        <h3 className="font-display mt-5 text-xl font-medium text-forest-900">
-          Message received
+        <h3
+          lang={lang === "bn" ? "bn" : undefined}
+          className={`font-display mt-5 text-xl font-medium text-forest-900 ${lang === "bn" ? "font-bengali" : ""}`}
+        >
+          {t("contactForm.sentTitle")}
         </h3>
-        <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-          Thank you{name ? `, ${name.split(" ")[0]}` : ""}. We reply within a
-          few hours during support hours (Sat–Thu, 9am–9pm).
+        <p
+          lang={lang === "bn" ? "bn" : undefined}
+          className={`mt-2 max-w-sm text-sm leading-6 text-ink-soft ${lang === "bn" ? "font-bengali" : ""}`}
+        >
+          {t("contactForm.sentBody").replace("{name}", first ? `, ${first}` : "")}
         </p>
       </div>
     );
   }
+
+  const inputClass =
+    "h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500";
+  const labelClass = "mb-1.5 block text-sm font-medium text-ink";
 
   return (
     <form
       onSubmit={(e) => void submit(e)}
       className="rounded-3xl bg-paper p-7 ring-1 ring-line"
     >
-      <h2 className="font-display text-2xl font-medium text-forest-900">
-        Send us a message
+      <h2
+        lang={lang === "bn" ? "bn" : undefined}
+        className={`font-display text-2xl font-medium text-forest-900 ${lang === "bn" ? "font-bengali" : ""}`}
+      >
+        {t("contactForm.title")}
       </h2>
-      <p className="mt-2 text-sm leading-6 text-ink-soft">
-        Order, delivery or product questions — we read everything.
+      <p
+        lang={lang === "bn" ? "bn" : undefined}
+        className={`mt-2 text-sm leading-6 text-ink-soft ${lang === "bn" ? "font-bengali" : ""}`}
+      >
+        {t("contactForm.sub")}
       </p>
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">Name</span>
+          <span className={labelClass}>{t("contactForm.name")}</span>
           <input
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
+            placeholder={t("contactForm.namePlaceholder")}
             autoComplete="name"
-            className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+            className={inputClass}
           />
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-ink">
-            Phone
-          </span>
+          <span className={labelClass}>{t("contactForm.phone")}</span>
           <input
             required
             type="tel"
@@ -105,34 +138,32 @@ export default function ContactForm() {
             onChange={(e) => setPhone(e.target.value)}
             placeholder="017XXXXXXXX"
             autoComplete="tel"
-            className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
+            className={inputClass}
           />
         </label>
       </div>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-ink">
-          Topic
-        </span>
+        <span className={labelClass}>{t("contactForm.topic")}</span>
         <select
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           className="h-12 w-full rounded-2xl bg-ivory-50 px-4 text-sm text-ink ring-1 ring-line focus:ring-2 focus:ring-forest-500"
         >
-          {CONTACT_TOPICS.map((t) => (
-            <option key={t}>{t}</option>
+          {CONTACT_TOPICS.map((option) => (
+            <option key={option} value={option}>
+              {lang === "bn" ? (TOPIC_LABEL_BN[option] ?? option) : option}
+            </option>
           ))}
         </select>
       </label>
       <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-ink">
-          Message
-        </span>
+        <span className={labelClass}>{t("contactForm.message")}</span>
         <textarea
           required
           rows={5}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="How can we help?"
+          placeholder={t("contactForm.messagePlaceholder")}
           className="w-full rounded-2xl bg-ivory-50 px-4 py-3 text-sm ring-1 ring-line placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500"
         />
       </label>
@@ -146,7 +177,7 @@ export default function ContactForm() {
         disabled={sending}
         className="mt-6 inline-flex h-12 items-center justify-center rounded-full bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
       >
-        {sending ? "Sending…" : "Send message"}
+        {sending ? t("contactForm.sending") : t("contactForm.send")}
       </button>
     </form>
   );

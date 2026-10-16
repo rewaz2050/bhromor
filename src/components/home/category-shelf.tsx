@@ -7,7 +7,7 @@ import ProductCard from "@/components/product/product-card";
 import Reveal from "@/components/ui/reveal";
 import { IconArrowRight } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { SHELF_RAIL_FROM, categoryLabel, type CategoryShelf as Shelf } from "@/lib/home-shelves";
+import { SHELF_RAIL_FROM, categoryInitial, categoryLabel, type CategoryShelf as Shelf } from "@/lib/home-shelves";
 
 const fmt = (tpl: string, vars: Record<string, string | number>) =>
   Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), tpl);
@@ -56,7 +56,7 @@ export default function CategoryShelfBlock({
             className="group flex items-center gap-4 border-b border-line pb-5 sm:gap-6"
           >
             <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-ivory-200 ring-1 ring-line sm:h-20 sm:w-20">
-              {category.image && (
+              {category.image ? (
                 <Image
                   src={category.image}
                   alt=""
@@ -64,8 +64,16 @@ export default function CategoryShelfBlock({
                   sizes="80px"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 flex items-center justify-center bg-forest-100 font-display text-2xl text-forest-700 sm:text-3xl"
+                >
+                  {categoryInitial(category, lang)}
+                </span>
               )}
             </span>
+
             <span className="min-w-0 flex-1">
               <span className="block text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-gold-700">
                 {countLabel}

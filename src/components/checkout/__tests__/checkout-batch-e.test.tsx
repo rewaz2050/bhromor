@@ -94,7 +94,7 @@ const seedCart = (qty = 1, productIndex = 0) => {
 const fillStepOne = (phone = "01712345678") => {
   fireEvent.change(screen.getByPlaceholderText(/রাহাত আহমেদ/), { target: { value: "Test Customer" } });
   fireEvent.change(screen.getByPlaceholderText("017XXXXXXXX"), { target: { value: phone } });
-  fireEvent.change(screen.getByLabelText("পাড়া বা গ্রামের নাম"), { target: { value: "Boropara" } });
+  fireEvent.change(screen.getByLabelText("Para or village name"), { target: { value: "Boropara" } });
   fireEvent.change(screen.getByPlaceholderText(/House 12/), {
     target: { value: "House 12, College Road, Mosque-এর পাশে" },
   });
@@ -271,11 +271,22 @@ describe("P0 #6 — errors in Bangla, on the field", () => {
   });
 
   it("local validation: the empty form yields Bangla field hints, no request is sent", async () => {
-    mount();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Place Order/i })).toBeInTheDocument(),
+    // Bangla locale: the field hints follow the active language now.
+    render(
+      <LanguageProvider initialLang="bn">
+        <CartProvider>
+          <CheckoutView />
+        </CartProvider>
+      </LanguageProvider>,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Place Order/i }));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: /অর্ডার করুন/ }).length).toBeGreaterThan(0),
+    );
+    fireEvent.click(
+      screen
+        .getAllByRole("button", { name: /অর্ডার করুন/ })
+        .find((b) => b.getAttribute("type") === "submit")!,
+    );
     await waitFor(() => expect(screen.getByTestId("order-error")).toBeInTheDocument());
     expect(fetchCalls.some((c) => c.url.includes("/api/orders"))).toBe(false);
     expect(screen.getByPlaceholderText("017XXXXXXXX")).toHaveAttribute("aria-invalid", "true");
