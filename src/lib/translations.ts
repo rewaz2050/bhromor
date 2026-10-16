@@ -887,6 +887,22 @@ export const translations = {
       soonOne: "Live shopping {when} — 1 piece — get ready",
       soonMany: "Live shopping {when} — {count} pieces — get ready",
     },
+    sizeGuide: {
+      availableSizes: "Available sizes:",
+      noSizes: "Contact us for sizing",
+      oneSizeNote: "One size is a product label, not a guarantee of fit. Check the listed dimensions and confirm with us if you need a specific measurement.",
+      beforeTitle: "Before choosing your size",
+      step1: "Lay a similar, well-fitting garment flat without stretching it.",
+      step2: "Measure across the chest, shoulder seam to seam, and from the highest shoulder point to the hem.",
+      step3: "Share those measurements and your preferred fit with our team before ordering.",
+      noChartNote: "A verified size-by-size measurement chart is not yet available for this item. We don’t substitute a generic chart because fit varies by garment.",
+      askFit: "Ask us about fit →",
+      inlineSummary: "Size & fit guide",
+      button: "Size Guide",
+      drawerLabel: "Size and fit guide",
+      heading: "A more considered fit.",
+      closeAria: "Close size guide",
+    },
     consent: {
       ariaLabel: "Analytics consent",
       body: "We may use {trackers} to improve the shop (pages you view, searches, orders). The site works fine without them.",
@@ -2122,6 +2138,22 @@ export const translations = {
       soonOne: "লাইভ শপিং {when} — ১টি পণ্য — প্রস্তুত থাকুন",
       soonMany: "লাইভ শপিং {when} — {count}টি পণ্য — প্রস্তুত থাকুন",
     },
+    sizeGuide: {
+      availableSizes: "পাওয়া যাচ্ছে:",
+      noSizes: "সাইজের জন্য আমাদের সাথে যোগাযোগ করুন",
+      oneSizeNote: "ওয়ান সাইজ শুধু একটি পণ্যের লেবেল, ফিটের গ্যারান্টি নয়। তালিকাভুক্ত মাপ দেখুন, আর নির্দিষ্ট মাপ লাগলে আমাদের সাথে নিশ্চিত করুন।",
+      beforeTitle: "সাইজ বাছার আগে",
+      step1: "ভালো ফিট করে এমন একটি কাপড় টান না দিয়ে সমতলে বিছিয়ে নিন।",
+      step2: "বুকের প্রস্থ, কাঁধের সেলাই থেকে সেলাই পর্যন্ত, আর সবচেয়ে উঁচু কাঁধের বিন্দু থেকে হেম পর্যন্ত মাপুন।",
+      step3: "অর্ডারের আগে এই মাপ আর আপনার পছন্দের ফিট আমাদের টিমকে জানান।",
+      noChartNote: "এই পণ্যের সাইজ-অনুযায়ী যাচাইকৃত মাপের চার্ট এখনো নেই। ফিট পোশাক ভেদে আলাদা হয়, তাই আমরা সাধারণ চার্ট দিই না।",
+      askFit: "ফিট নিয়ে আমাদের জিজ্ঞেস করুন →",
+      inlineSummary: "সাইজ ও ফিট গাইড",
+      button: "সাইজ গাইড",
+      drawerLabel: "সাইজ ও ফিট গাইড",
+      heading: "একটু ভেবেচিন্তে ফিট।",
+      closeAria: "সাইজ গাইড বন্ধ করুন",
+    },
     consent: {
       ariaLabel: "অ্যানালিটিক্স সম্মতি",
       body: "আমরা দোকান উন্নত করতে {trackers} ব্যবহার করতে পারি (দেখা পেজ, সার্চ, অর্ডার)। এগুলো ছাড়াও সাইট চলবে।",
@@ -2497,6 +2529,7 @@ export type TranslationKey =
   | `newsletter.${keyof typeof translations.en.newsletter}`
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
+  | `sizeGuide.${keyof typeof translations.en.sizeGuide}`
   | `liveBanner.${keyof typeof translations.en.liveBanner}`
   | `paymentStatus.${keyof typeof translations.en.paymentStatus}`
   | `footer.${keyof typeof translations.en.footer}`
