@@ -871,6 +871,14 @@ export const translations = {
       nextCancelHint: "Changed your mind? Cancel free on the track page until the shop packs it.",
       phoneHint: "The rider calls this number — 11 digits, e.g. 017XXXXXXXX.",
     },
+    consent: {
+      ariaLabel: "Analytics consent",
+      body: "We may use {trackers} to improve the shop (pages you view, searches, orders). The site works fine without them.",
+      trackers: "Google Analytics and Meta Pixel",
+      accept: "Accept",
+      decline: "Decline",
+      details: "Details",
+    },
     language: {
       switchToEnglish: "Switch to English",
       switchToBengali: "Switch to Bengali",
@@ -2082,6 +2090,14 @@ export const translations = {
       nextCancelHint: "মত বদলালে? দোকান প্যাক করার আগ পর্যন্ত ট্র্যাক পেজ থেকে ফ্রি বাতিল করা যায়।",
       phoneHint: "এই নম্বরে রাইডার কল করবে — ১১ ডিজিট, যেমন 017XXXXXXXX।",
     },
+    consent: {
+      ariaLabel: "অ্যানালিটিক্স সম্মতি",
+      body: "আমরা দোকান উন্নত করতে {trackers} ব্যবহার করতে পারি (দেখা পেজ, সার্চ, অর্ডার)। এগুলো ছাড়াও সাইট চলবে।",
+      trackers: "Google Analytics ও Meta Pixel",
+      accept: "মঞ্জুর করি",
+      decline: "মঞ্জুর নই",
+      details: "বিস্তারিত",
+    },
     language: {
       switchToEnglish: "ইংরেজিতে দেখুন",
       switchToBengali: "বাংলায় দেখুন",
@@ -2448,6 +2464,7 @@ export type TranslationKey =
   | `install.${keyof typeof translations.en.install}`
   | `newsletter.${keyof typeof translations.en.newsletter}`
   | `contactForm.${keyof typeof translations.en.contactForm}`
+  | `consent.${keyof typeof translations.en.consent}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
