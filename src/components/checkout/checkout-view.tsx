@@ -2495,7 +2495,7 @@ export default function CheckoutView() {
             )}
             {pinPos && (
               <p className="mt-2 text-xs font-medium text-forest-700">
-                📌 Pin: {pinPos.lat.toFixed(5)}, {pinPos.lng.toFixed(5)} · {distanceFromHubKm(pinPos).toFixed(2)} km from {SUNAMGANJ_HUB} · {findZoneByDistance(pinPos).name}
+                {t("checkout.pinLine").replace("{lat}", pinPos.lat.toFixed(5)).replace("{lng}", pinPos.lng.toFixed(5)).replace("{km}", distanceFromHubKm(pinPos).toFixed(2)).replace("{hub}", SUNAMGANJ_HUB).replace("{zone}", findZoneByDistance(pinPos).name)}
               </p>
             )}
           </div>
@@ -2646,7 +2646,7 @@ export default function CheckoutView() {
               <div className="flex-1 text-sm leading-6">
                 <p className="font-semibold">
                   {form.isPickup ? `${t("checkout.dlPickup")} — ${SUNAMGANJ_HUB}` : zone.name}
-                  {summary.distanceKm ? ` · ${summary.distanceKm.toFixed(2)}km from ${SUNAMGANJ_HUB}` : ""}
+                  {summary.distanceKm ? ` · ${t("checkout.distanceFromHub").replace("{km}", summary.distanceKm.toFixed(2)).replace("{hub}", SUNAMGANJ_HUB)}` : ""}
                 </p>
                 <p className="mt-1 text-ivory-100/70">
                   {summary.isOutside && !form.isPickup ? (
@@ -2682,11 +2682,11 @@ export default function CheckoutView() {
                   </strong>
                   {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
                     <span className="mt-1 block text-xs text-amber-200">
-                      Delivery {formatBdt(summary.fullCharge)}
-                      {summary.breakdown.surcharge.night > 0 && ` + Night ${formatBdt(summary.breakdown.surcharge.night)}`}
-                      {summary.breakdown.surcharge.rain > 0 && ` + Rain ${formatBdt(summary.breakdown.surcharge.rain)}`}
-                      {summary.breakdown.surcharge.express > 0 && ` + Express ${formatBdt(summary.breakdown.surcharge.express)}`}
-                      {summary.breakdown.surcharge.weight > 0 && ` + Weight ${formatBdt(summary.breakdown.surcharge.weight)}`}
+                      {t("checkout.surDelivery")} {formatBdt(summary.fullCharge)}
+                      {summary.breakdown.surcharge.night > 0 && ` + ${t("checkout.surNight")} ${formatBdt(summary.breakdown.surcharge.night)}`}
+                      {summary.breakdown.surcharge.rain > 0 && ` + ${t("checkout.surRain")} ${formatBdt(summary.breakdown.surcharge.rain)}`}
+                      {summary.breakdown.surcharge.express > 0 && ` + ${t("checkout.surExpress")} ${formatBdt(summary.breakdown.surcharge.express)}`}
+                      {summary.breakdown.surcharge.weight > 0 && ` + ${t("checkout.surWeight")} ${formatBdt(summary.breakdown.surcharge.weight)}`}
                     </span>
                   )}
                   {summary.isOutside && !form.isPickup && (
@@ -2695,10 +2695,10 @@ export default function CheckoutView() {
                     </span>
                   )}
                   {summary.isNight && !summary.freeDelivery && (
-                    <span className="mt-1 block text-xs text-gold-300"><IconMoon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> Night surcharge +{formatBdt(NIGHT_SURCHARGE_PAISA)} (9PM-6AM)</span>
+                    <span className="mt-1 block text-xs text-gold-300"><IconMoon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" /> {t("checkout.surNightNote").replace("{amount}", formatBdt(NIGHT_SURCHARGE_PAISA))}</span>
                   )}
                   {summary.isRain && !summary.freeDelivery && (
-                    <span className="mt-1 block text-xs text-sky-300">🌧️ Rain surcharge +{formatBdt(RAIN_SURCHARGE_PAISA)}</span>
+                    <span className="mt-1 block text-xs text-sky-300">🌧️ {t("checkout.surRainNote").replace("{amount}", formatBdt(RAIN_SURCHARGE_PAISA))}</span>
                   )}
                 </p>
               </div>
