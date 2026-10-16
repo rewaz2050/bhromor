@@ -267,7 +267,7 @@ function WholeShelf({
   }
   return (
     <div id="shelf" className="scroll-mt-24" data-testid="whole-shelf">
-      <div className="mx-auto max-w-7xl px-4 pt-14 sm:px-6 lg:px-8 lg:pt-20">
+      <div className="home-shelf-intro mx-auto max-w-7xl px-4 pt-14 sm:px-6 lg:px-8 lg:pt-20">
         <Reveal>
           <Eyebrow>{t("home.shelfEyebrow")}</Eyebrow>
           <h2 className="mt-3 font-display text-[clamp(2.1rem,4vw,3.75rem)] font-normal leading-[1.04] tracking-[-0.035em] text-forest-900">

@@ -186,6 +186,9 @@ describe("Homepage editorial journey", () => {
   it("lists the marked-down pieces in the offers rail, biggest saving first", async () => {
     await renderHome();
     const rail = await screen.findByTestId("rail-offers");
+    expect(rail).toHaveClass("shopping-app-rail");
+    expect(rail.querySelector(".shopping-app-product-row")).toBeInTheDocument();
+    expect(within(rail).getAllByRole("article")[0].querySelector(".product-quick-add")).toBeInTheDocument();
     expect(
       within(rail).getByRole("heading", { level: 2, name: "On offer right now" }),
     ).toBeInTheDocument();
@@ -212,6 +215,8 @@ describe("Homepage editorial journey", () => {
     await renderHome();
     await screen.findByTestId("whole-shelf");
     const shelves = screen.getAllByTestId("category-shelf");
+    expect(shelves[0]).toHaveClass("home-category-shelf");
+    expect(shelves[0].querySelector(".home-category-product-grid")).toBeInTheDocument();
     const ids = shelves.map((s) => s.getAttribute("data-category"));
     expect(ids).toEqual(["men", "women", "traditional"]);
     const seen = new Set<string>();

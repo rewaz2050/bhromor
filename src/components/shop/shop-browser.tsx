@@ -707,11 +707,11 @@ export default function ShopBrowser({
       </div>
 
       {/* UX plan §3 (R4) — sticky compact bar: Filters (n) · count · Sort.
-          Stays under the condensed header while the grid scrolls, so
-          sorting or opening the filters never means scrolling back up. */}
+          Stays below the phone search shell / desktop header while the grid
+          scrolls, so filtering never means scrolling back up. */}
       <div
         data-testid="shop-sticky-bar"
-        className="sticky top-14 z-20 -mx-4 mt-4 flex items-center gap-2 border-b border-line/70 bg-ivory-50/96 px-4 py-2 pointer-fine:bg-ivory-50/85 pointer-fine:backdrop-blur sm:top-[4.1rem] sm:gap-3 lg:mx-0 lg:px-0"
+        className="sticky top-[6.75rem] z-20 -mx-4 mt-4 flex items-center gap-2 border-b border-line/70 bg-ivory-50/96 px-4 py-2 pointer-fine:bg-ivory-50/85 pointer-fine:backdrop-blur sm:top-[4.1rem] sm:gap-3 lg:mx-0 lg:px-0"
       >
         <button
           type="button"

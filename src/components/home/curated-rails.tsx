@@ -54,6 +54,7 @@ export default function CuratedRails({
           seeAllLabel={t("home.bestAll")}
           products={best}
           tone="ivory"
+          appStyle
         />
       )}
       {freshRow.length > 0 && (
@@ -67,6 +68,7 @@ export default function CuratedRails({
           seeAllLabel={t("home.newAll")}
           products={freshRow}
           tone="paper"
+          appStyle
         />
       )}
     </>

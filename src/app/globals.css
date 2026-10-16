@@ -334,6 +334,14 @@ body {
 .storefront-main section {
   scroll-margin-top: 6rem;
 }
+@media (max-width: 639px) {
+  html {
+    scroll-padding-top: 7rem;
+  }
+  .storefront-main section {
+    scroll-margin-top: 7rem;
+  }
+}
 .storefront-main button:not(:disabled),
 .drawer-panel button:not(:disabled) {
   cursor: pointer;
@@ -551,13 +559,30 @@ body {
   color: var(--color-forest-900);
 }
 
-/* Header search — one button, two looks: a round icon where the bar is
-   tight, and from xl up a field-shaped trigger with the placeholder (people
-   know what an input does; a lone magnifier is a guess). */
+/* App-like browse shell: phones get a clear search field on its own row;
+   from `sm` up the same launcher returns to the compact header action row. */
+.header-inner {
+  grid-template-areas:
+    "menu brand actions"
+    "search search search";
+}
+.header-menu-slot {
+  grid-area: menu;
+}
+.header-brand-lockup {
+  grid-area: brand;
+}
+.header-desktop-nav {
+  grid-area: nav;
+}
+.header-actions {
+  grid-area: actions;
+}
 .header-search-trigger {
   position: relative;
   isolation: isolate;
   display: inline-flex;
+  grid-area: search;
   height: 2.75rem;
   width: 2.75rem;
   flex: none;
@@ -585,7 +610,8 @@ body {
     opacity var(--motion-fast) linear,
     transform var(--motion-standard) var(--ease-refined);
 }
-.header-search-label {
+.header-search-label,
+.header-search-mobile-label {
   display: none;
 }
 @media (hover: hover) and (pointer: fine) {
@@ -599,6 +625,11 @@ body {
   }
   .header-search-trigger:active {
     transform: translateY(0) scale(0.97);
+  }
+}
+@media (min-width: 640px) {
+  .header-inner {
+    display: flex;
   }
 }
 @media (min-width: 1280px) {
@@ -633,18 +664,20 @@ body {
     transform: none;
   }
 }
-.header-search-mobile-label {
-  display: none;
-}
 @media (max-width: 639px) {
-  /* Phone header: make search read as a familiar app search field, not a
-     mystery icon, while keeping the single-row sticky header unchanged. */
+  /* This full-width launcher looks and behaves like the search bar in a
+     native shopping app; the action row above it keeps menu, language and bag. */
+  .header-inner {
+    grid-template-areas:
+      "menu brand actions"
+      "search search search";
+  }
   .header-search-trigger {
-    width: clamp(4.75rem, 22vw, 7rem);
-    height: 2.75rem;
+    width: 100%;
+    min-width: 0;
     justify-content: flex-start;
-    gap: 0.4rem;
-    padding: 0 0.6rem;
+    gap: 0.65rem;
+    padding: 0 0.95rem;
     border: 1px solid color-mix(in srgb, var(--color-line) 90%, transparent);
     background: var(--color-paper);
     color: var(--color-forest-700);
@@ -658,11 +691,12 @@ body {
     height: 1rem;
     flex: none;
   }
-  .header-search-mobile-label {
+  .header-search-label {
     display: block;
+    min-width: 0;
     overflow: hidden;
     color: var(--color-ink-soft);
-    font-size: 0.68rem;
+    font-size: 0.78rem;
     font-weight: 500;
     line-height: 1;
     text-overflow: ellipsis;
@@ -1055,6 +1089,71 @@ body {
   .product-card-actions .product-quick-add {
     min-height: 2.75rem;
     box-shadow: none;
+  }
+
+  /* Commerce rails trade a little editorial whitespace for more useful
+     product density on phones; images, prices, discounts and Quick Add stay
+     intact, while each item reads as a familiar app card. */
+  .shopping-app-rail-inner,
+  .home-category-shelf-inner {
+    padding-top: 1.75rem;
+    padding-bottom: 1.75rem;
+  }
+  .home-shelf-intro {
+    padding-top: 2.25rem;
+  }
+  .shopping-app-rail-heading {
+    margin-bottom: 1rem;
+  }
+  .shopping-app-rail-title {
+    font-size: 1.35rem;
+    line-height: 1.2;
+  }
+  .shopping-app-product-row,
+  .home-category-product-grid {
+    gap: 0.75rem;
+  }
+  .home-category-shelf-inner [role="heading"][aria-level="2"] {
+    font-size: 1.5rem;
+  }
+  .shopping-app-rail .product-card,
+  .home-category-product-grid .product-card,
+  .shopping-app-card-grid .product-card {
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-line) 84%, transparent);
+    border-radius: 1rem;
+    background: var(--color-paper);
+    box-shadow: 0 2px 12px rgb(20 41 31 / 4%);
+  }
+  .shopping-app-rail .product-card-media,
+  .home-category-product-grid .product-card-media,
+  .shopping-app-card-grid .product-card-media {
+    border-radius: 0.92rem 0.92rem 0 0;
+  }
+  .shopping-app-rail .product-card-details,
+  .home-category-product-grid .product-card-details,
+  .shopping-app-card-grid .product-card-details {
+    min-height: 0;
+    margin-top: 0;
+    border-bottom: 0;
+    padding: 0.7rem 0.7rem 0.8rem;
+  }
+  .shopping-app-rail .product-card-title,
+  .home-category-product-grid .product-card-title,
+  .shopping-app-card-grid .product-card-title {
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+  .shopping-app-rail .product-card-actions,
+  .home-category-product-grid .product-card-actions,
+  .shopping-app-card-grid .product-card-actions {
+    padding: 0 0.65rem 0.65rem;
+  }
+  .shopping-app-rail .product-quick-add,
+  .home-category-product-grid .product-quick-add,
+  .shopping-app-card-grid .product-quick-add {
+    border-radius: 999px;
+    background: var(--color-forest-800);
   }
 }
 

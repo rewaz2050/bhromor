@@ -52,6 +52,8 @@ beforeEach(() => {
 describe("Header product search", () => {
   it("focuses the input, previews matching products, and restores focus on Escape", async () => {
     const { trigger, input } = openSearch();
+    expect(trigger).toHaveClass("header-search-trigger");
+    expect(trigger.querySelector(".header-search-label")).toHaveTextContent("Panjabi, shirts, gamcha");
     expect(trigger.querySelector(".header-search-mobile-label")).toHaveTextContent("Search");
     await waitFor(() => expect(input).toHaveFocus());
     expect(document.body.style.overflow).toBe("hidden");

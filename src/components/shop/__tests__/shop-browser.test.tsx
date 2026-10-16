@@ -74,6 +74,9 @@ describe("ShopBrowser", () => {
   it("writes every filter change to the URL (replaceState), keeps foreign params, and clears back to /shop", () => {
     window.history.replaceState(null, "", "/shop?utm_source=fb");
     renderShop();
+    const stickyBar = screen.getByTestId("shop-sticky-bar");
+    expect(stickyBar).toHaveClass("top-[6.75rem]");
+    expect(stickyBar).toHaveClass("sm:top-[4.1rem]");
     // First render never rewrites the URL the server just produced.
     expect(window.location.search).toBe("?utm_source=fb");
     fireEvent.change(screen.getByLabelText(/sort products/i), { target: { value: "price-asc" } });

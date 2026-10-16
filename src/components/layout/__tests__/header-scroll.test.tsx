@@ -6,9 +6,9 @@ import { CartProvider } from "@/components/cart/cart-provider";
 
 /**
  * Scroll audit 2026-09-27 — the sticky header must be paint-only while the
- * page moves: no React render per scrolled frame, no height change, the
- * progress line driven through a ref, the announcement bar outside the
- * sticky element so it scrolls away instead of folding.
+ * page moves: no React render per scrolled frame, fixed responsive shell
+ * geometry, the progress line driven through a ref, the announcement outside
+ * the sticky element so it scrolls away instead of folding.
  */
 
 vi.mock("@/lib/use-live-catalog", async () => {
@@ -74,18 +74,21 @@ afterEach(() => {
 });
 
 describe("Header — paint-only while scrolling", () => {
-  it("keeps one bar height and puts the announcement bar outside the sticky element", () => {
+  it("keeps a fixed app-search shell height and puts the announcement outside the sticky header", () => {
     const { container } = renderHeader();
     const header = container.querySelector("header.storefront-header")!;
     expect(header).not.toBeNull();
     expect(header.className).not.toMatch(/transition-\[height\]/);
-    const bar = header.querySelector(".header-bar > div")!;
-    // A fixed height per breakpoint — the shop filter bar sticks under it
-    // at `top-14 sm:top-[4.1rem]`.
-    expect(bar.className).toMatch(/\bh-14\b/);
-    expect(bar.className).toMatch(/sm:h-\[4\.1rem\]/);
-    expect(bar.className).not.toMatch(/transition/);
-    // Nothing that folds: no grid-rows shell inside the sticky header.
+    const inner = header.querySelector<HTMLElement>("[data-testid='storefront-header-inner']")!;
+    // Phones have a fixed 56px action row + 52px search row; at sm the
+    // controls return to a single 4.1rem row. Shop filters use those offsets.
+    expect(inner.className).toMatch(/grid-rows-\[3\.5rem_3\.25rem\]/);
+    expect(inner.className).toMatch(/sm:h-\[4\.1rem\]/);
+    expect(inner.className).not.toMatch(/transition/);
+    expect(inner.querySelector(".header-menu-slot")).not.toBeNull();
+    expect(inner.querySelector(".header-actions")).not.toBeNull();
+    expect(inner.querySelector("[data-testid='search-stub']")).not.toBeNull();
+    // Nothing that folds: the CMS announcement remains outside the sticky header.
     expect(header.querySelector(".announcement-shell")).toBeNull();
   });
 

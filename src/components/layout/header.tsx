@@ -31,8 +31,9 @@ import { IconUser } from "@/components/ui/icons";
  *    away with the page (the old grid-rows fold + bar-height animation ran
  *    a layout on every frame around the 10 px threshold and shifted the
  *    whole page under the thumb);
- *  - the bar keeps ONE height per breakpoint (the shop filter bar sticks
- *    under it at the same offset), no logo/wordmark size transitions;
+ *  - the bar keeps ONE height per breakpoint: a 108px search-first shell on
+ *    phones, a 4.1rem action row from `sm` up (the shop filter bar sticks
+ *    beneath the right one), no logo/wordmark size transitions;
  *  - scroll progress is written to the gold line's transform from a
  *    requestAnimationFrame via a ref — no React state, so nothing in the
  *    header re-renders per frame; `scrolled` flips once and only toggles a
@@ -121,15 +122,20 @@ export default function Header() {
 
       <header className="storefront-header sticky top-0 z-40" data-scrolled={scrolled}>
         <div className="header-bar relative border-b border-line/50 bg-ivory-50/96 pointer-fine:bg-ivory-50/85 pointer-fine:backdrop-blur-xl pointer-fine:backdrop-saturate-150">
-          <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-3 sm:h-[4.1rem] sm:gap-4 sm:px-6 lg:px-8">
-            <MobileNav />
+          <div
+            data-testid="storefront-header-inner"
+            className="header-inner mx-auto grid max-w-7xl grid-cols-[2.75rem_minmax(0,1fr)_auto] grid-rows-[3.5rem_3.25rem] items-center gap-x-2 px-3 sm:flex sm:h-[4.1rem] sm:gap-2 sm:px-6 lg:gap-4 lg:px-8"
+          >
+            <div className="header-menu-slot shrink-0 sm:order-1">
+              <MobileNav />
+            </div>
 
             {/* Brand lockup — the Latin wordmark keeps its tracking in every
                 language (lang="en"); the text column steps aside on the
                 narrowest phones instead of colliding with the actions. */}
             <Link
               href="/"
-              className="brand-lockup group flex min-w-0 shrink items-center gap-2.5 sm:gap-3.5"
+              className="header-brand-lockup brand-lockup group flex min-w-0 shrink items-center gap-2.5 sm:order-2 sm:gap-3.5"
               aria-label="PROSANTI home"
             >
               <span className="relative flex shrink-0 items-center justify-center">
@@ -152,14 +158,18 @@ export default function Header() {
               </span>
             </Link>
 
-            {/* Desktop nav — centered between brand and actions. */}
-            <div className="hidden min-w-0 flex-1 justify-center lg:flex">
+            {/* Desktop nav — centered between brand and shopping controls. */}
+            <div className="header-desktop-nav hidden min-w-0 flex-1 justify-center lg:flex sm:order-3">
               <Suspense>
                 <NavLinks items={NAV} />
               </Suspense>
             </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+            {/* The phone search gets its own full-width row below the brand;
+                the same trigger stays in the desktop action row at sm+. */}
+            <ProductSearch />
+
+            <div className="header-actions flex shrink-0 items-center gap-1 sm:ml-auto sm:order-5 sm:gap-1.5">
               {/* UX plan §1.2 (R3) — remembered delivery area, one tap to change. */}
               <div className="hidden sm:flex">
                 <ZonePill />
@@ -167,13 +177,11 @@ export default function Header() {
               <div className="hidden sm:flex">
                 <LanguageSwitcher variant="header" />
               </div>
-              {/* Phones: one-tap language toggle — the bottom bar already
-                  carries the wishlist (P1 #8). */}
+              {/* Phones: one-tap language toggle beside the bag. */}
               <div className="flex sm:hidden">
                 <LanguageSwitcher variant="toggle" />
               </div>
               <span className="mx-1 hidden h-6 w-px bg-line/80 sm:block" aria-hidden="true" />
-              <ProductSearch />
               <div className="hidden sm:flex">
                 <WishlistButton />
               </div>
