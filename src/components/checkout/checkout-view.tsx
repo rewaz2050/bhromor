@@ -2481,7 +2481,7 @@ export default function CheckoutView() {
                 onClick={() => setShowMap((v) => !v)}
                 className="shrink-0 rounded-full bg-paper px-3 py-1.5 text-xs font-semibold text-forest-900 ring-1 ring-line hover:bg-ivory-100"
               >
-                {showMap ? "ম্যাপ লুকান" : "ম্যাপ দেখুন"}
+                {showMap ? t("checkout.mapHide") : t("checkout.mapShow")}
               </button>
             </div>
             {showMap && (
@@ -2509,15 +2509,15 @@ export default function CheckoutView() {
             id="checkout-step-2"
             n={2}
             title={t("checkout.step2")}
-            hint="কীভাবে ও কখন পাবেন, আর কীভাবে টাকা দেবেন।"
+            hint={t("checkout.step2Hint")}
             done={step2Done}
           >
             {/* Home delivery vs store pickup — no longer a buried checkbox */}
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Delivery method">
               {(
                 [
-                  { pickup: false, icon: <IconTruck className="h-4 w-4" />, label: "হোম ডেলিভারি", sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
-                  { pickup: true, icon: <IconStore className="h-4 w-4" />, label: "স্টোর পিকআপ", sub: `${SUNAMGANJ_HUB} · ফ্রি` },
+                  { pickup: false, icon: <IconTruck className="h-4 w-4" />, label: t("checkout.dlHome"), sub: summary.freeDelivery ? "FREE" : formatBdt(summary.charge) },
+                  { pickup: true, icon: <IconStore className="h-4 w-4" />, label: t("checkout.dlPickup"), sub: t("checkout.dlPickupSub").replace("{hub}", SUNAMGANJ_HUB) },
                 ] as const
               ).map((opt) => {
                 const active = form.isPickup === opt.pickup;
@@ -2544,7 +2544,7 @@ export default function CheckoutView() {
             {form.isPickup ? (
               <div className="mt-4 rounded-2xl bg-sky-50 p-4 ring-1 ring-sky-200">
                 <p className="text-xs font-semibold text-sky-900">
-                  পিকআপ সময় — {SUNAMGANJ_HUB}, {SUNAMGANJ_UPAZILA}
+                  {t("checkout.dlPickupTime").replace("{hub}", SUNAMGANJ_HUB).replace("{upazila}", SUNAMGANJ_UPAZILA)}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {["now", "9-11", "11-1", "2-4", "4-6", "6-8"].map((slot) => (
@@ -2555,7 +2555,7 @@ export default function CheckoutView() {
                       className={`rounded-full px-3 py-1.5 text-xs ring-1 ${form.pickupSlot === slot ? "bg-forest-800 text-white ring-forest-700" : "bg-paper ring-line"}`}
                     >
                       {slot === "now"
-                        ? `এখনই (${bagPrepMinutes} মিনিট)`
+                        ? t("checkout.dlNowMinutes").replace("{min}", String(bagPrepMinutes))
                         : DELIVERY_SLOT_LABELS[slot as DeliverySlotKey][lang]}
                     </button>
                   ))}
@@ -2563,12 +2563,12 @@ export default function CheckoutView() {
               </div>
             ) : (
               <div className="mt-4">
-                <span className="mb-2 block text-sm font-medium text-ink">ডেলিভারি সময় / Delivery slot</span>
+                <span className="mb-2 block text-sm font-medium text-ink">{t("checkout.dlSlotTitle")}</span>
                 <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Delivery slot">
                   {[
-                    { id: "now" as TimeSlot, label: "এখনই", sub: etaLabel, icon: <IconBolt className="h-4 w-4" /> },
-                    { id: "evening" as TimeSlot, label: "সন্ধ্যায়", sub: eveningSlotHint(nowMs, lang), icon: <IconMoon className="h-4 w-4" /> },
-                    { id: "scheduled" as TimeSlot, label: "শিডিউল", sub: "দিন ও সময় বাছুন", icon: <IconCalendar className="h-4 w-4" /> },
+                    { id: "now" as TimeSlot, label: t("checkout.dlNow"), sub: etaLabel, icon: <IconBolt className="h-4 w-4" /> },
+                    { id: "evening" as TimeSlot, label: t("checkout.dlEvening"), sub: eveningSlotHint(nowMs, lang), icon: <IconMoon className="h-4 w-4" /> },
+                    { id: "scheduled" as TimeSlot, label: t("checkout.dlScheduled"), sub: t("checkout.dlScheduledSub"), icon: <IconCalendar className="h-4 w-4" /> },
                   ].map((slot) => (
                     <button
                       key={slot.id}
