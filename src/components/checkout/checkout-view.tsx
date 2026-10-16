@@ -2596,14 +2596,14 @@ export default function CheckoutView() {
                 ) : null}
                 {form.timeSlot === "evening" && (
                   <p className="mt-2 text-xs text-ink-soft" data-testid="evening-note">
-                    <IconMoon className="mr-1 inline h-4 w-4 align-[-3px]" /> দোকান ও রাইডার সন্ধ্যা ৬–৯টার মধ্যে পৌঁছে দেওয়ার জন্য প্ল্যান করবে।
+                    <IconMoon className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("checkout.dlEveningNote")}
                   </p>
                 )}
                 {form.timeSlot === "scheduled" && (
                   <div className="mt-3 space-y-3 rounded-2xl bg-ivory-50 p-4 ring-1 ring-line">
                     <div className="grid grid-cols-2 gap-3">
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-ink">তারিখ / Date</span>
+                        <span className="mb-1 block text-xs font-medium text-ink">{t("checkout.dlDate")}</span>
                         <input
                           type="date"
                           value={form.deliveryDate}
@@ -2614,7 +2614,7 @@ export default function CheckoutView() {
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1 block text-xs font-medium text-ink">সময় / Time window</span>
+                        <span className="mb-1 block text-xs font-medium text-ink">{t("checkout.dlTimeWindow")}</span>
                         <select
                           value={form.deliveryWindow}
                           onChange={(e) => update("deliveryWindow", e.target.value as DeliveryWindow)}
@@ -2630,7 +2630,9 @@ export default function CheckoutView() {
                       </label>
                     </div>
                     <p className="text-[11px] text-ink-soft">
-                      শিডিউল: {form.deliveryDate} · {DELIVERY_SLOT_LABELS[form.deliveryWindow][lang]} — দোকান সেভাবে প্রস্তুত করবে।
+                      {t("checkout.dlScheduleLine")
+                        .replace("{date}", form.deliveryDate)
+                        .replace("{window}", DELIVERY_SLOT_LABELS[form.deliveryWindow][lang])}
                       {form.deliveryWindow === "express" && ` Express adds ${formatBdt(4000)}.`}
                     </p>
                   </div>
@@ -2649,30 +2651,30 @@ export default function CheckoutView() {
                 <p className="mt-1 text-ivory-100/70">
                   {summary.isOutside && !form.isPickup ? (
                     <>
-                      <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("purchase.courierTitle")} — কনফার্মেশনের পর{" "}
+                      <IconTruck className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("purchase.courierTitle")} — {t("checkout.sumAfterConfirm")}{" "}
                       <strong className="text-gold-300" data-testid="courier-eta">{etaLabel}</strong>{" "}
                     </>
                   ) : (
                     <>
-                      {INSTANT_DELIVERY_TITLE} — কনফার্মেশনের পর{" "}
+                      {INSTANT_DELIVERY_TITLE} — {t("checkout.sumAfterConfirm")}{" "}
                       <strong className="text-gold-300">{etaLabel}</strong>{" "}
                     </>
                   )}
-                  · ডেলিভারি চার্জ{" "}
+                  {t("checkout.sumChargeLabel")}{" "}
                   <strong data-testid="delivery-charge">
                     {summary.freeDelivery ? (
                       <span className="text-gold-300">
                         {summary.couponFree
-                          ? "FREE — Coupon"
+                          ? t("checkout.sumFreeCoupon")
                           : summary.plusFree
-                            ? "FREE — PROSANTI+"
+                            ? t("checkout.sumFreeMember")
                             : form.isPickup
-                              ? "FREE — Pickup"
+                              ? t("checkout.sumFreePickup")
                               : summary.thresholdFree === "shop"
                                 ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byShop"))
                                 : summary.thresholdFree === "platform"
                                   ? t("freeDelivery.freeLine").replace("{by}", t("freeDelivery.byPlatform"))
-                                  : "Free"}
+                                  : t("checkout.sumFree")}
                       </span>
                     ) : (
                       formatBdt(summary.charge)
@@ -2689,7 +2691,7 @@ export default function CheckoutView() {
                   )}
                   {summary.isOutside && !form.isPickup && (
                     <span className="mt-1 block text-xs text-amber-200">
-                      সুনামগঞ্জ সদরের বাইরে — কুরিয়ার ডেলিভারি, ন্যূনতম {courierMinLabel} অর্ডার।
+                      {t("checkout.sumOutsideCourier").replace("{min}", courierMinLabel)}
                     </span>
                   )}
                   {summary.isNight && !summary.freeDelivery && (
