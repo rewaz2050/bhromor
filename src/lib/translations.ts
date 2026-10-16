@@ -871,6 +871,17 @@ export const translations = {
       nextCancelHint: "Changed your mind? Cancel free on the track page until the shop packs it.",
       phoneHint: "The rider calls this number — 11 digits, e.g. 017XXXXXXXX.",
     },
+    paymentStatus: {
+      ariaLabel: "Payment status",
+      verifiedTitle: "{method} payment verified",
+      verifiedCancelled: "The shop has confirmed your payment in its wallet. The order was cancelled afterwards, so the refund comes from the shop's wallet — if you do not receive it, call the shop with the order ID.",
+      verifiedOk: "The shop has confirmed your payment in its wallet — the order continues normally from here.",
+      rejectedTitle: "{method} payment not accepted",
+      rejectedBody: "The shop could not match this payment in its wallet, so the order was cancelled. The refund comes from the shop's wallet — if you do not receive it, call the shop with the order ID.",
+      pendingTitle: "{method} payment — under verification",
+      pendingBodyPre: "The shop is checking the payment in its wallet",
+      pendingBodyPost: ". Your order starts as soon as it is confirmed — tracking keeps updating.",
+    },
     consent: {
       ariaLabel: "Analytics consent",
       body: "We may use {trackers} to improve the shop (pages you view, searches, orders). The site works fine without them.",
@@ -2090,6 +2101,17 @@ export const translations = {
       nextCancelHint: "মত বদলালে? দোকান প্যাক করার আগ পর্যন্ত ট্র্যাক পেজ থেকে ফ্রি বাতিল করা যায়।",
       phoneHint: "এই নম্বরে রাইডার কল করবে — ১১ ডিজিট, যেমন 017XXXXXXXX।",
     },
+    paymentStatus: {
+      ariaLabel: "পেমেন্টের অবস্থা",
+      verifiedTitle: "{method} পেমেন্ট যাচাই হয়েছে",
+      verifiedCancelled: "দোকান তাদের wallet-এ আপনার পেমেন্ট নিশ্চিত করেছে। এরপর অর্ডারটি বাতিল হয়েছে, তাই রিফান্ড দোকানের wallet থেকে আসবে — না পেলে অর্ডার আইডি দিয়ে দোকানে কল করুন।",
+      verifiedOk: "দোকান তাদের wallet-এ আপনার পেমেন্ট নিশ্চিত করেছে — এখন থেকে অর্ডার স্বাভাবিকভাবে এগোবে।",
+      rejectedTitle: "{method} পেমেন্ট গ্রহণ করা হয়নি",
+      rejectedBody: "দোকান তাদের wallet-এ এই পেমেন্ট মেলাতে পারেনি, তাই অর্ডারটি বাতিল হয়েছে। রিফান্ড দোকানের wallet থেকে আসবে — না পেলে অর্ডার আইডি দিয়ে দোকানে কল করুন।",
+      pendingTitle: "{method} পেমেন্ট — যাচাই চলছে",
+      pendingBodyPre: "দোকান তাদের wallet-এ পেমেন্টটি যাচাই করছে",
+      pendingBodyPost: "। দোকান নিশ্চিত করলেই আপনার অর্ডার শুরু হবে — ট্র্যাকিং আপডেট হতে থাকবে।",
+    },
     consent: {
       ariaLabel: "অ্যানালিটিক্স সম্মতি",
       body: "আমরা দোকান উন্নত করতে {trackers} ব্যবহার করতে পারি (দেখা পেজ, সার্চ, অর্ডার)। এগুলো ছাড়াও সাইট চলবে।",
@@ -2465,6 +2487,7 @@ export type TranslationKey =
   | `newsletter.${keyof typeof translations.en.newsletter}`
   | `contactForm.${keyof typeof translations.en.contactForm}`
   | `consent.${keyof typeof translations.en.consent}`
+  | `paymentStatus.${keyof typeof translations.en.paymentStatus}`
   | `footer.${keyof typeof translations.en.footer}`
   | `bottomNav.${keyof typeof translations.en.bottomNav}`
   | `freeDelivery.${keyof typeof translations.en.freeDelivery}`
