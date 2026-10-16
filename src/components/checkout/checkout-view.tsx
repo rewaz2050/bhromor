@@ -2359,8 +2359,7 @@ export default function CheckoutView() {
             {pinZoneId && !form.isPickup ? (
               <div className="mt-2" data-testid="pin-para-suggestions">
                 <p className="text-[11px] font-semibold text-forest-800">
-                  📌 আপনার পিন {zoneById(pinZoneId)?.name ?? zone.name}-এ পড়েছে — এক
-                  ট্যাপে বসান:
+                    {t("checkout.pinParaIntro").replace("{zone}", zoneById(pinZoneId)?.name ?? zone.name)}
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {parasForZone(pinZoneId).map((name) => (
@@ -2391,7 +2390,7 @@ export default function CheckoutView() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                বাড়ির নম্বর / House No. <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+                {t("checkout.houseNoLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
               </span>
               <input
                 value={form.houseNo}
@@ -2403,7 +2402,7 @@ export default function CheckoutView() {
             </label>
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                রোডের নাম / Road Name <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+                {t("checkout.roadLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
               </span>
               <input
                 list="prosanti-roads"
@@ -2426,7 +2425,7 @@ export default function CheckoutView() {
               its own field, and sent with the address the rider reads. */}
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              ল্যান্ডমার্ক / Landmark <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+              {t("checkout.landmarkLabel")} <span className="font-normal text-ink-soft">{t("checkout.optionalTag")}</span>
             </span>
             <input
               value={form.landmark}
@@ -2439,7 +2438,7 @@ export default function CheckoutView() {
 
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
-              বিস্তারিত ঠিকানা / Full address <span className="text-rose-600">*</span>
+              {t("checkout.fullAddressLabel")} <span className="text-rose-600">*</span>
             </span>
             <textarea
               ref={addressRef}
@@ -2462,8 +2461,10 @@ export default function CheckoutView() {
               <p id="err-address" className="mt-1.5 text-xs text-rose-700">{fieldErrors.address}</p>
             ) : (
               <p id="hint-full-address" className="mt-1.5 text-[11px] text-ink-soft">
-                জেলা: {form.district} · উপজেলা: {effectiveUpazila || "—"} · পাড়া:{" "}
-                {effectivePara || "—"} — এই তিনটি অটো যোগ হয়ে যাবে।
+                {t("checkout.addressAutoLine")
+                  .replace("{district}", form.district)
+                  .replace("{upazila}", effectiveUpazila || "—")
+                  .replace("{para}", effectivePara || "—")}
               </p>
             )}
           </label>
@@ -2472,8 +2473,8 @@ export default function CheckoutView() {
           <div className="mt-5">
             <div className="flex items-center justify-between gap-3">
               <span className="block text-sm font-medium text-ink">
-                <IconMapPin className="mr-1 inline h-4 w-4 align-[-3px]" /> ম্যাপে বাড়ি পিন করুন{" "}
-                <span className="font-normal text-ink-soft">(ঐচ্ছিক — রাইডার সহজে খুঁজে পাবে)</span>
+                <IconMapPin className="mr-1 inline h-4 w-4 align-[-3px]" /> {t("checkout.pinMapLabel")}{" "}
+                <span className="font-normal text-ink-soft">{t("checkout.pinMapOptional")}</span>
               </span>
               <button
                 type="button"
