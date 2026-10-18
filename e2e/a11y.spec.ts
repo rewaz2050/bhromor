@@ -15,7 +15,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
-const pinEnglish = (target: { addInitScript: (fn: () => void) => Promise<void> }) =>
+const pinEnglish = (target: { addInitScript: (fn: () => void) => Promise<unknown> }) =>
   target.addInitScript(() => window.localStorage.setItem("prosanti-lang", "en"));
 
 async function noA11yViolations(page: import("@playwright/test").Page) {
