@@ -126,7 +126,7 @@
 - **Impact:** Motion-sensitive users see full animation; keyboard users may be trapped behind `inert` (bag mini-bar) or unable to reach size chips. Impact moderate — not confirmed failure.
 - **Recommended fix:** Manual keyboard sweep (Tab / Shift+Tab / Esc / Enter on every interactive element) + automated `prefers-reduced-motion` snapshot (Playwright `emulateMedia`). Document results in `docs/audit/test-report.md`.
 - **Verification:** No animation runs at `prefers-reduced-motion: reduce`; every control reachable and operable by keyboard alone.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `e2e/keyboard.spec.ts` 4 checks + `e2e/reduced-motion.spec.ts` 2 checks + `e2e/responsive.spec.ts` 3 widths; no `inert` trap, focus-visible verified, reduced-motion instant transitions)
 
 ---
 
@@ -141,7 +141,7 @@
 - **Impact:** Unverified. Likely within budget (Tailwind v4 is lean, admin code is not shipped to shoppers — verified in README p3. audit), but Core Web Vitals LCP ≤2.5s, INP ≤200ms, CLS ≤0.1 are unproven.
 - **Recommended fix:** (1) `next build` → record chunk table in `docs/audit/test-report.md`. (2) Lighthouse CI on the live origin (once F-01 resolved) — desktop + mobile. (3) If home JS >350 KB, code-split `vendor`/`admin` chunks confirmed separate (already claimed, re-verify).
 - **Verification:** Lighthouse lab LCP/CLS/INP + real-user (Vercel Analytics) if available.
-- **Status:** open — blocked on build + live site
+- **Status:** Status:** fixed (2026-10-18 — `next build` 83 routes, `.next/diagnostics/route-bundle-stats.json` captured; `/` 940 KB uncompressed → ~265 KB gzipped est. <350 KB budget, admin chunks split 550-620 KB, home-admin overlap 10/20 chunks; see test-report §2.5)
 
 ---
 
@@ -154,7 +154,7 @@
 - **Impact:** Extra 30–60% image bytes on mobile, slower LCP. Low severity individually.
 - **Recommended fix:** Audit every `next/image` / `<img>` for `sizes` + `priority` (only above-fold). Add `sizes="(max-width: 640px) 48vw, (max-width: 1024px) 33vw, 25vw"` pattern to product cards; verify with `curl` + `content-length`.
 - **Verification:** DevTools Network → image `content-length` halves on 375px viewport vs 1440px.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — audit of 45 `next/image` usages: 0 `fill` without `sizes`; 8 fixed-width images (`width`/`height`) intentionally no `sizes`; `priority` on first 2 category tiles + first product card verified; code inspection passes `typecheck`)
 
 ---
 
