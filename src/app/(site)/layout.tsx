@@ -59,6 +59,14 @@ export const metadata: Metadata = {
     "panjabi",
     "three-piece",
   ],
+  alternates: {
+    canonical: "/",
+    languages: {
+      "en": "/",
+      "bn-BD": "/",
+      "x-default": "/",
+    },
+  },
   openGraph: {
     type: "website",
     siteName: "PROSANTI",

@@ -42,6 +42,8 @@ Fixes applied in this session:
 - `next.config.ts` — CDN cache for `/sitemap.xml`, `/robots.txt`, `/api/feed/*` (F-11)
 - `src/components/product/product-page-view.tsx` — `aggregateRating` in Product JSON-LD when reviews exist (F-17)
 - `src/lib/analytics-consent.ts` — GPC (`globalPrivacyControl`) treated as declined (F-20)
+- `src/lib/site-url.ts` — fallback `https://prosanti.store` → `https://proshanti.rahatahmed.site` (F-06)
+- `src/app/(site)/layout.tsx` — `alternates.languages` + `x-default` hreflang (F-19)
 - `capacitor.config.ts` — default `SITE_URL` → `https://proshanti.rahatahmed.site` (F-24)
 - `e2e/a11y.spec.ts` — new axe gate over 7+7 routes × 2 viewports + product + dialog (F-07)
 
@@ -85,7 +87,7 @@ Fixes applied in this session:
 | F-24 Capacitor default origin | ✅ Fixed | `capacitor.config.ts` reads `proshanti.rahatahmed.site` |
 | F-07 Dedicated a11y spec | ✅ Added | `e2e/a11y.spec.ts` — 16 cases |
 | F-01 Deployed site unreachable | ❌ Not fixed (ops) | Needs Vercel dashboard action |
-| F-06 Canonical host env | ⏳ Ops action (Vercel env) | Set `NEXT_PUBLIC_SITE_URL` |
+| F-06 Canonical host fallback | ✅ Fixed | Fallback now `proshanti.rahatahmed.site` |
 | F-02 CSP enforcement | ⏳ Deferred (needs report window) | Keep report-only; collect violations |
 | F-05 Build/lint gate | ⏳ Needs clean env run | `npm run build` must be verified |
 
