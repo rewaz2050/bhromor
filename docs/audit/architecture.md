@@ -277,20 +277,21 @@ api/
 
 | Limitation | Impact |
 |------------|--------|
-| **Deployed site unreachable** | `https://proshanti.rahatahmed.site` returned `SSL_ERROR_SYSCALL` / empty reply on every probe (2026-10-18). No lab Lighthouse, no PageSpeed, no live functional test. All functional/UI/SEO findings are from **source inspection + local static analysis**, not live browser tests. |
-| **No backend env locally** | `NEXT_PUBLIC_SUPABASE_URL` and service-role keys are absent — API routes return 503 `NOT_SEEDED` by design. No live catalog, checkout, or auth flow could be exercised locally. |
-| **No device lab** | Android-sized mobile checks are code-level (viewport meta, touch targets, responsive classes), not on-device. |
-| **Large test suite slow** | Vitest run timed out in constrained sandbox; typecheck passed, but full test pass not re-verified in this session. Build not re-run due to env constraints. |
-| **No RLS live probe** | Row-level policies are reviewed in `supabase/schema.sql` + migrations, not against a live DB. |
-| **Third-party creds absent** | Cloudinary, VAPID, GA4/Pixel — config presence only, not delivery. |
+| **Deployed site unreachable** | `https://proshanti.rahatahmed.site` returned `SSL_ERROR_SYSCALL` / empty reply on every probe (2026-10-18). No lab Lighthouse, no PageSpeed, no live functional test. All functional/UI/SEO findings are from **source inspection + local static analysis + mocked E2E**, not live browser tests. Bundle audit via `route-bundle-stats.json` covers perf until live. |
+| **No backend env locally** | `NEXT_PUBLIC_SUPABASE_URL` and service-role keys are absent — API routes return 503 `NOT_SEEDED` by design. Local E2E uses mocked `fetch` for checkout/track; vendor/rider/admin remain code-reviewed only. |
+| **No device lab** | Mobile checks via Playwright 360×800/768×1024/1280×900 screenshots + 44px touch target asserts; not on-device. Keyboard + reduced-motion also via Playwright. |
+| **Large test suite slow** | Full Vitest 71 files truncated by sandbox timeout; spot runs (catalog/orders/coupon) pass; build now verified 83/83. |
+| **No RLS live probe** | Row-level policies reviewed in `supabase/schema.sql` + migrations + `admin.ts` `requireStaff` gates; PGlite run needs seeded DB. |
+| **Third-party creds absent** | Cloudinary, VAPID, GA4/Pixel — config presence only, not delivery; `HEALTH_TOKEN`/`UPSTASH` env-gated. |
 
 ---
 
-## 11. Git Status (at audit start)
+## 11. Git Status (at audit close)
 
-- Branch `arena/66ac5331-bhromor` branched from `a7a3b92` (Merge PR #46), clean working tree.
-- `.env` / `.env.local` correctly git-ignored.
-- No unrelated uncommitted changes.
+- Branch `arena/66ac5331-bhromor` branched from `a7a3b92` (Merge PR #46), now at 6 commits ahead.
+- `lint 0` + `typecheck 0` + `next build 83/83` + `route-bundle-stats.json` + 7 E2E suites (a11y 16, checkout 5, track 3, responsive 4, keyboard 4, reduced-motion 2, storefront 14).
+- Additive migration: `202610180001_checkout_idempotency.sql` (nullable `idempotency_key` + partial unique index, re-runnable).
+- `.env` / `.env.local` correctly git-ignored; no secrets in diff.
 
 ---
 

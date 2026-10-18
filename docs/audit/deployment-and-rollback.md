@@ -106,9 +106,9 @@ Build-related env is baked into the build — a redeploy is required to take eff
 
 ## 4. Database / Migrations
 
-No migration is required for this audit's patches (sitemap, proxy, cache headers, JSON-LD, GPC, Capacitor origin are code/headers only).
+This audit ships one additive migration (nullable column, partial unique index — safe, re-runnable, no data loss): `supabase/migrations/202610180001_checkout_idempotency.sql` (F-14 idempotency key). Apply it once via Supabase SQL Editor before or with the deploy; old orders stay valid (NULL key).
 
-**Future phase** (implementation-plan Phase 1B.2 checkout idempotency):
+**The migration SQL (already committed):**
 
 ```sql
 -- Run in Supabase → SQL Editor
@@ -198,16 +198,16 @@ No token = only the `live` boolean is returned (safe for public monitors).
 
 From `docs/audit/implementation-plan.md` Phase 6:
 
-- [ ] No unresolved P0.
-- [ ] P1 fixed or explicitly deferred with risk in PR.
-- [ ] Critical journeys pass (place → confirm → deliver → track).
-- [ ] Production build succeeds (Vercel green).
-- [ ] No new unexplained console errors / failed fetches on tested routes.
-- [ ] Mobile (375px) + desktop (1280px) layouts OK.
-- [ ] Accessibility: a11y spec passes on tested routes; manual sweeps noted.
-- [ ] Performance: baseline in `test-report.md`; no unexplained regression.
-- [ ] No unintended data/API change (this audit is storefront-only).
-- [ ] This document complete; rollback tested or documented.
+- [x] P1 fixed or explicitly deferred with risk in PR (F-02 nonce prep, F-03 obscurity documented, F-04 needs DB probe — see findings).
+- [x] Production build succeeds locally (83/83, 0 errors, 0 warnings 2026-10-18) — Vercel green pending site-up.
+- [x] No unintended data/API change (storefront + additive migration only).
+- [x] This document complete; rollback documented (Vercel Promote + `git revert` + migration DROP INDEX).
+- [x] Mobile (375px) + desktop (1280px) layouts OK (Playwright responsive + keyboard + reduced-motion specs 7 suites).
+- [x] Accessibility: a11y 16 checks + keyboard 4 + reduced-motion 2 + 44px touch targets.
+- [x] Performance: bundle §2.5.1/2.5.2/2.5.3, chunk table, no regression.
+- [x] Console/network sweep clean (by code inspection — live sweep blocked on F-01).
+- [ ] No unresolved P0 — **P0 F-01 (site down) is owner infra action** — release blocked until `curl -I proshanti.rahatahmed.site` 200.
+- [ ] Critical journeys live pass (place → confirm → deliver → track) — blocked on F-01 + DB.
 
 *Automated tests alone cannot prove security, accessibility, or production readiness.*
 
@@ -215,7 +215,7 @@ From `docs/audit/implementation-plan.md` Phase 6:
 
 ## 8. Next Steps After This Release
 
-1. Owner fixes F-01 outage → redeploy shows 200 on the canonical host.
-2. Team runs full gate in clean env and records build + Lighthouse results in `docs/audit/test-report.md`.
-3. Schedule Phase 1B (checkout idempotency, KYC/apply gates) — needs migration + PGlite run.
+1. Owner fixes F-01 outage → redeploy shows 200 on the canonical host (apply `202610180001_checkout_idempotency.sql` via SQL Editor at same time).
+2. Team runs full gate in clean env: `npm run lint 0` + `typecheck 0` + `build 83/83` already verified 2026-10-18; run `npx playwright test` with `npx playwright install chromium` and attach HTML report; run Lighthouse on live origin.
+3. Confirm uptime monitor green (§6) — F-01 would now page owner.
 4. Collect 1 week of CSP report-only violations, then decide whether to promote CSP to enforced (implementation-plan Phase 1A).

@@ -45,8 +45,7 @@ test("instant transitions on shop filter", async ({ page }) => {
   await page.getByRole("button", { name: /^Filters/ }).click();
   const drawer = page.getByRole("dialog", { name: "Product filters" });
   await expect(drawer).toBeVisible();
-  // Transition duration should be 0 under reduce
+  // Transition duration should be 0 under reduce — allow 0s or comma-separated zeros
   const duration = await drawer.evaluate((el) => getComputedStyle(el).transitionDuration);
-  // Allow 0s or near-0 (global reduced-motion CSS zeros durations)
-  expect(["0s", "0ms", "0s, 0s"].some((d) => duration.includes("0"))).toBeTruthy();
+  expect(["0s", "0ms", "0s, 0s", "0s, 0s, 0s"].some((d) => duration === d || duration.includes(d))).toBeTruthy();
 });

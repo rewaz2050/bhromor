@@ -30,7 +30,7 @@ test("keyboard: Tab through header → search → category menu → checkout", a
   // Continue tabbing: header actions must be reachable
   await page.keyboard.press("Tab");
   // Search button should be somewhere in tab order
-  let focused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || document.activeElement?.textContent || "");
+  const focused = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") || document.activeElement?.textContent || "");
   expect(focused.length).toBeGreaterThan(0);
 
   // Search panel: open with Enter, close with Esc, focus restored

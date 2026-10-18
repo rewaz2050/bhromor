@@ -124,7 +124,7 @@
 | 5.3 | **hreflang** | F-19 | `src/app/(site)/layout.tsx` or per-page `generateMetadata` | Add `alternates.languages` if URL param exists; otherwise document cookie-only limitation | View-source has hreflang or documented limitation | F-19 closed/doc |
 | 5.4 | **Privacy GPC** | F-20 | `src/lib/analytics-consent.ts`, `src/app/(site)/privacy/page.tsx` | Honor `Sec-GPC: 1` as decline; ensure privacy copy lists Pixel/GA4 explicitly | GPC header → no gtag firing | F-20 closed |
 | 5.5 | **Android APK origin** | F-24 | `capacitor.config.ts` | Default `server.url` to `https://proshanti.rahatahmed.site` | APK config.json correct | F-24 closed |
-| 5.6 | **Fonts / scrollbar** | F-21, F-22 | `src/app/layout.tsx`, `src/app/globals.css` | Verify preload URL exists post-install; note scrollbar-gutter as progressive enhancement | No 404 on font preload | F-21/22 closed |
+| 5.6 | **Fonts / scrollbar** | F-21, F-22 | `src/app/layout.tsx`, `src/app/globals.css` | Verify preload URL exists post-install; note scrollbar-gutter as progressive enhancement | ✅ Verified 2026-10-18: both woff2 files exist (48KB + 58KB), `type` correct, build 83/83, no 404 | F-21/22 closed |
 
 **Dependencies:** Phases 3–4 green (no layout regressions).  
 **Effort:** S.  
@@ -138,11 +138,11 @@
 
 | # | Action | Finding | Files | Steps | Tests | Acceptance |
 |---|--------|---------|-------|-------|-------|------------|
-| 6.1 | **Full gate** | all | all | `npm run lint && npm run typecheck && npm test && npm run build` in clean env; `npx playwright test` (storefront + a11y) against preview | All pass | Green |
+| 6.1 | **Full gate** | all | all | `npm run lint && npm run typecheck && npm test && npm run build` in clean env; `npx playwright test` (storefront + a11y) against preview | ✅ `lint 0` + `typecheck 0` + `build 83/83` 2026-10-18; `vitest` spot pass (catalog/orders/coupon); Playwright 7 suites require `npx playwright install` in CI | Green (CI browser pending) |
 | 6.2 | **Critical journeys (manual)** | release criteria | `/`, `/shop`, `/product/*`, `/cart`, `/checkout`, `/track`, `/admin/orders`, `/vendor`, `/rider` | Place order (COD), confirm → deliver, track with correct phone, vendor adds product, rider accepts offer, admin settles cash | All journeys pass | Pass |
 | 6.3 | **Console/network sweep** | release criteria | browser DevTools | No unexplained console errors or failed `fetch` on tested routes | Clean | Pass |
 | 6.4 | **Mobile + desktop** | release criteria | 375×800, 768×1024, 1280×900 | Layout works at each, touch targets ≥44px, no overflow | Screenshots | Pass |
-| 6.5 | **Deployment doc** | F-25, F-26 | `docs/audit/deployment-and-rollback.md` | Write deploy steps + rollback (Vercel promote previous / `git revert`), required env checklist, health probe, uptime monitor setup | Doc complete | Done |
+| 6.5 | **Deployment doc** | F-25, F-26 | `docs/audit/deployment-and-rollback.md` | Write deploy steps + rollback (Vercel promote previous / `git revert`), required env checklist, health probe, uptime monitor setup | ✅ Complete with §6 uptime (UptimeRobot + HEALTH_TOKEN) + §3 env + §5 rollback | Done |
 | 6.6 | **Test report** | all | `docs/audit/test-report.md` | Before/after perf, test counts, before/after screenshots, untested areas, limitations, next action | Report complete | Done |
 
 **Dependencies:** Phases 0–5.  

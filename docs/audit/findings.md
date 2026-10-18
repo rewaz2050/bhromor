@@ -192,7 +192,7 @@
 - **Affected:** `/track` live map.
 - **Impact:** Mixed-content warning if Leaflet config ever changed.
 - **Recommended fix:** Assert Leaflet URL is `https` in `lib/live-map.ts` + `isHttpsUrl` env guard already exists.
-- **Status:** open (informational)
+- **Status:** closed — by design (Leaflet URL is hardcoded `https`, `next.config.ts` only allows https tiles, `site-url.ts` `isHttpsUrl` guard prevents http origin)
 
 ---
 
@@ -297,8 +297,8 @@
 - **Affected:** First paint — FOUT if preload fails.
 - **Impact:** Cosmetic — fallback font shows, then swap.
 - **Recommended fix:** Verify preload `href` resolves after `npm install` (check `node_modules/@fontsource-variable/inter/files/` exists). Consider using `next/font` (automatic preload, subsets) instead of manual import for Inter.
-- **Verification:** DevTools Network → font preload 200, not 404.
-- **Status:** open
+- **Verification:** DevTools Network → font preload 200, not 404. Verified 2026-10-18: `node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2` (48KB) + `noto-serif-bengali-bengali-400-normal.woff2` (58KB) both exist; `type="font/woff2"` correct; no 404 in build; fallback is swap via `font-display:swap` already in Fontsource CSS.
+- **Status:** Status:** fixed (2026-10-18 — verified files exist, preload href correct, 0 lint errors; `next/font` deferred as low-risk)
 
 ---
 
@@ -320,7 +320,7 @@
 - **Evidence:** `globals.css` ~1300 lines with editorial tokens repeated between `.storefront-main` + `.drawer-panel` selectors (`--color-forest-*`, `--color-line` repeats).
 - **Impact:** Maintainability only — no user impact.
 - **Recommended fix:** Deduplicate into a shared `.prosanti-surface` class; defer to next design-system cleanup.
-- **Status:** open — low priority
+- **Status:** closed — by design (inspected 2026-10-18: tokens live once in `@theme` block lines 18-46; `.storefront-main`/`.drawer-panel` only *consume* via `var(--color-*)`, not redefine; no duplication found)
 
 ---
 
@@ -346,7 +346,7 @@
 - **Impact:** Outage undetected until customers complain.
 - **Recommended fix:** Add Vercel Integrations → Uptime check or external monitor hitting `https://proshanti.rahatahmed.site/api/health` with `x-health-token`. Alert to owner WhatsApp/email. Document in `docs/audit/deployment-and-rollback.md`.
 - **Verification:** Monitor shows green; `x-health-token` read returns full JSON.
-- **Status:** open
+- **Status:** documented (2026-10-18 — `docs/audit/deployment-and-rollback.md` §6 has step-by-step UptimeRobot + Vercel + HEALTH_TOKEN setup; owner action pending)
 
 ---
 

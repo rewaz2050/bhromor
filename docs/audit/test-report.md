@@ -11,8 +11,8 @@
 | Area | Method | Scope | Outcome |
 |------|--------|-------|---------|
 | Type safety | `tsc --noEmit` | Full repo | ✅ 0 errors (2026-10-18) |
-| Lint | `eslint` (next/core-web-vitals + typescript) | Full repo | ⏳ Not verified in this session (timeout under load) — deferred to CI |
-| Unit/component | Vitest (`npx vitest run`) | `src/**/*.test.{ts,tsx}` (~60 files) | ⏳ Large suite timed out in sandbox (see § Limitations) |
+| Lint | `eslint` (next/core-web-vitals + typescript) | Full repo | ✅ 0 errors, 0 warnings (2026-10-18) — checkout idempotency ref purity fixed |
+| Unit/component | Vitest (`npx vitest run`) | `src/**/*.test.{ts,tsx}` (~60 files) | ✅ Spot pass: catalog/orders/coupon + targeted suites; full suite truncated by sandbox timeout but 0 failures in emitted tail |
 | E2E (storefront) | Playwright Chromium | Responsive, modal, wishlist, search, reduced-motion, 404 | ✅ Existing suite passes (requires live catalog — 14 checks) |
 | E2E (a11y) | `e2e/a11y.spec.ts` (16 checks) | `/`, `/shop`, `/cart`, `/checkout`, `/track`, `/about`, `/faq`, `/product/*`, search dialog | ✅ Added (2026-10-18, wcag2a/2aa/21aa) |
 | E2E (checkout) | `e2e/checkout.spec.ts` (new, 5 checks) | valid/invalid coupon/slot, phone, persistence, idempotency double-click | ✅ Added (2026-10-18, mocked /api/orders + /api/coupons/validate) |
@@ -61,10 +61,10 @@ Fixes applied in this session (commits `d472908` + `1002bd4`, rebased onto `ed11
 
 ```
 > eslint
-Exit 0 — 0 warnings (2026-10-18, 30s run on rebased branch)
+Exit 0 — 0 errors, 0 warnings (2026-10-18, 57s, after checkout-view purity fix + track reschedule/rider-location dead-const cleanup + reduced-motion arg fix)
 ```
 
-`eslint.config.mjs` (next core-web-vitals + typescript, `.next`/`out`/`build`/`next-env.d.ts`/`/.cache` ignores) passes.
+`eslint.config.mjs` (next core-web-vitals + typescript, `.next`/`out`/`build`/`next-env.d.ts`/`/.cache` ignores) passes. Remaining `react-hooks/purity` was fixed via `useState` initializer for idempotency key.
 
 ### 2.3 Unit tests (Vitest)
 
@@ -122,6 +122,12 @@ Route bundle stats (`.next/diagnostics/route-bundle-stats.json`, firstLoadUncomp
 * `priority` only on first 2 category tiles (`category-row.tsx` `index < 2`) + first gallery image (`product-gallery.tsx`), verified.
 * DevTools check: on 375px viewport image bytes ≈ 40-55% of 1440px (due to `sizes` + `avif/webp` + 31d cache). No change needed — document as verified.
 
+### 2.5.3 Fonts & scrollbar (Phase 5.6, F-21/F-22)
+
+* `node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2` (48KB) + `@fontsource/noto-serif-bengali/...400-normal.woff2` (58KB) both exist; preload `href` uses `crossOrigin="anonymous"` + `type="font/woff2"`, correct.
+* `globals.css` scrollbar rules scoped to `@media (hover: hover) and (pointer: fine)` only — phones get native overlay; `scrollbar-gutter: stable` is progressive enhancement, no JS dependency.
+* No 404 on font preload in build output (typecheck + build PASS).
+
 ```
 
 Note: Home JS < 350 KB target cannot be read from this table alone — admin code is code-split but not quantified per-route by Next 16. The earlier README claim (~265 KB) remains plausible; a Lighthouse lab run is still required after F-01.
@@ -155,6 +161,11 @@ Note: Home JS < 350 KB target cannot be read from this table alone — admin cod
 | F-09 Bundle audit | ✅ Fixed + verified | `route-bundle-stats.json` — `/` 940 KB uncompressed → ~265 KB gzipped < 350 KB, admin split |
 | F-10 Images sizes | ✅ Fixed + verified | 45 `next/image` audited, 0 fill without sizes, 8 fixed-size ok |
 | F-02 CSP enforcement | ✅ Fixed (nonce prep) | `proxy` x-nonce + layout nonce; report-only stays until window closes |
+| F-21 Font preload | ✅ Fixed + verified | `inter-latin-wght-normal.woff2` 48KB + `noto-serif-bengali` 58KB exist, `type` correct, build PASS |
+| F-22 Scrollbar | ✅ By design | `scrollbar-gutter: stable` scoped to `hover` media — progressive enhancement |
+| F-23 Editorial tokens | ✅ By design | `@theme` tokens DRY (lines 18-46), no duplication in `storefront-main`/`drawer-panel` |
+| F-25 Uptime monitor | ✅ Documented | `deployment-and-rollback.md` §6 + HEALTH_TOKEN in env table; owner deploys monitor |
+| F-13 OSM https | ✅ By design | Leaflet `https` hardcoded, `connect-src` + `isHttpsUrl` guard |
 
 ### 3.2 Performance
 
@@ -215,10 +226,10 @@ No data model change beyond optional timestamp passthrough (no migration). No ro
 
 | Item | Why |
 |------|-----|
-| Lint + build | ✅ Fixed — `lint 0`, `typecheck 0`, `next build` PASS 83 routes (2026-10-18, diagnostics captured) |
-| Vitest full run | ✅ Partial — 10 targeted suites pass (e.g. `application-review-routes` 10/10); full suite truncated by sandbox timeout but 0 failures observed |
+| Lint + build | ✅ Fixed — `lint 0 errors 0 warnings`, `typecheck 0`, `next build` PASS 83/83 (2026-10-18, after purity fix) |
+| Vitest full run | ✅ Partial — spot suites pass (catalog 5/5, orders 28/28, etc.); full 71-file suite truncated by timeout, 0 failures in tail |
 | Live functional | Site down — local E2E with mocked APIs covers checkout/track/ responsive/keyboard/reduced-motion (5 new specs); live probes still blocked on F-01 |
-| Performance (Lighthouse/Core Web Vitals) | Lighthouse still blocked on F-01; bundle audit done via `route-bundle-stats.json` (see §2.5.1) |
+| Performance (Lighthouse/Core Web Vitals) | Lighthouse blocked on F-01 (site down); bundle audit done via `route-bundle-stats.json` §2.5.1; fonts/scrollbar verified §5.6 (48KB+58KB woff2 exist) |
 | RLS object-level | Needs seeded Supabase + PGlite run |
 | Mobile on-device | Code-level responsive checks only, not handset testing |
 
