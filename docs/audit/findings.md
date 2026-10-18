@@ -87,7 +87,7 @@
 - **Impact:** A type-clean change can still break the build (missing `use client`, bad `metadata.export`, Tailwind/PostCSS syntax). Without a green local `next build`, a push to `main` risks a Vercel deploy failure — which may be the F-01 outage cause.
 - **Recommended fix:** Re-run `npm run lint && npm run typecheck && npm test && npm run build` in a clean environment (local PC or CI). Until Vercel shows a green Deployment, treat the outage as possibly build-related. Add `lint` to Vercel's `buildCommand` if not already (currently `npm run build` only).
 - **Verification:** Full gate passes locally; Vercel Deployment log shows `Build Completed`.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `npm run lint` 0 warn, `typecheck` 0, `next build` PASS; see test-report §2.5)
 
 ---
 
@@ -100,7 +100,7 @@
 - **Impact:** Duplicate-content penalty, wrong preview cards on WhatsApp/Facebook, `sitemap.xml` entries point to wrong host.
 - **Recommended fix:** Set `NEXT_PUBLIC_SITE_URL=https://proshanti.rahatahmed.site` in Vercel Environment Variables (Production) and redeploy with cache off.
 - **Verification:** `curl https://proshanti.rahatahmed.site/sitemap.xml` → entries start with `https://proshanti.rahatahmed.site/`; view-source `/` → `<link rel="canonical" href="https://proshanti.rahatahmed.site/">`.
-- **Status:** open (ops, no code)
+- **Status:** Status:** fixed (2026-10-18 — `src/lib/site-url.ts` fallback now `https://proshanti.rahatahmed.site`; Vercel env `NEXT_PUBLIC_SITE_URL` still recommended)
 
 ---
 
@@ -113,7 +113,7 @@
 - **Impact:** A11y regressions (heading hierarchy, missing alt, unlabeled icon buttons) ship undetected. Real users on screen readers/keyboard only are affected; legal risk for a customer-facing shop.
 - **Recommended fix:** Add a 1-file axe sweep (`e2e/a11y.spec.ts`) over `/`, `/shop`, `/product/[slug]`, `/cart`, `/checkout`, `/track` at 360px + 1280px; run in CI (already has Playwright). Fail only on `critical`/`serious` impacts.
 - **Verification:** `npx playwright test e2e/a11y.spec.ts` → 0 critical violations.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `e2e/a11y.spec.ts` 16 Axe cases wcag2a/2aa/21aa; requires catalog)
 
 ---
 
@@ -167,7 +167,7 @@
 - **Impact:** CDN may revalidate every request under load; feed consumers (Meta/Google) poll hourly — extra origin hits.
 - **Recommended fix:** Set `s-maxage`/`stale-while-revalidate` on those routes; confirm `publicJson` helper does so (inspect `src/lib/public-cache.ts`).
 - **Verification:** `curl -I /api/products` → `cache-control: public, s-maxage=60, stale-while-revalidate=300` (or similar).
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `next.config.ts` s-maxage 3600 on sitemap/robots/feeds + `src/lib/public-cache.ts`)
 
 ---
 
@@ -180,7 +180,7 @@
 - **Impact:** Extra 20–80ms TTFB on static pages; Upstash call on every hit (cost + latency). No correctness bug, but wasteful.
 - **Recommended fix:** Narrow matcher: exclude static editorial paths (`/about`, `/contact`, `/faq`, `/story`, `/privacy`, `/terms`, `/delivery`, `/returns`) or add an early return for `request.nextUrl.pathname` that is not under `/api`, `/admin`, `/vendor`, `/rider`, `/account`, `/checkout`, `/track`.
 - **Verification:** `curl -I /about` → no `x-ratelimit-*` headers; TTFB drops.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/proxy.ts` early-return for 7 editorial paths + _next/data/_next/image)
 
 ---
 
@@ -244,7 +244,7 @@
 - **Impact:** Missed rich-result eligibility on Google (stars in SERP), lower CTR.
 - **Recommended fix:** Add `Product` JSON-LD with `aggregateRating: { ratingValue, reviewCount }` + top-3 `Review` entries on product pages that have approved reviews. Validate with Rich Results Test.
 - **Verification:** View-source product page → `<script type="application/ld+json">` contains `aggregateRating`.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/components/product/product-page-view.tsx` aggregateRating + Review JSON-LD)
 
 ---
 
@@ -257,7 +257,7 @@
 - **Impact:** Mild — crawl inefficiency, not penalty.
 - **Recommended fix:** If `products` rows carry `updated_at` (they do in `getStorefrontCatalog`), use that per URL; fallback to `new Date()` only when absent.
 - **Verification:** `curl /sitemap.xml` → per-product `<lastmod>` varies.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/app/sitemap.ts` per-product `lastModified` from `updated_at`)
 
 ---
 
@@ -270,7 +270,7 @@
 - **Impact:** Google cannot associate language variants; Bengali users may be served English SERP snippet.
 - **Recommended fix:** Add `alternates.languages: { "en": absoluteUrl(path), "bn": absoluteUrl(path+"?lang=bn") }` or path-based, plus `x-default`. If language is cookie-only (no URL param), `hreflang` cannot be URL-targeted — consider adding `?lang=` or `/bn/` URL variant; otherwise note limitation.
 - **Verification:** View-source `/` → `<link rel="alternate" hreflang="bn" …>`.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/app/(site)/layout.tsx` `alternates.languages` en/bn-BD/x-default)
 
 ---
 
@@ -283,7 +283,7 @@
 - **Impact:** GDPR/CCPA-style consent risk if shop serves EU/US visitors; currently low (primary market Bangladesh, no ads confirmed running), but a launch with Meta ads needs consent proof.
 - **Recommended fix:** (1) Honor `Sec-GPC: 1` as decline. (2) Ensure `/privacy` lists Pixel/GA4, purpose, opt-out. (3) Analytics never fires inside admin/rider/vendor — already true (round 4).
 - **Verification:** Enable GA4 → decline consent → no `gtag` network request.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/lib/analytics-consent.ts` honors `navigator.globalPrivacyControl`; server Sec-GPC deferred)
 
 ---
 
@@ -333,7 +333,7 @@
 - **Impact:** Rider app hits wrong host (CORS/Auth mismatch) if domain not allowlisted.
 - **Recommended fix:** Set `MOBILE_SITE_URL=https://proshanti.rahatahmed.site` in Actions default (or `capacitor.config.ts` fallback).
 - **Verification:** Decompile APK's `capacitor.config.json` → `server.url` equals canonical host.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `capacitor.config.ts` fallback `https://proshanti.rahatahmed.site`)
 
 ---
 
