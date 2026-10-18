@@ -76,7 +76,7 @@ export function useShops() {
         await apiSend(
           `/api/admin/shops/${encodeURIComponent(id)}/review`,
           "POST",
-          { status, note: note ?? "" },
+          { status, note: note ?? "", confirmedPhoneCall: status === "active" },
         );
         setError(null);
         await refresh();

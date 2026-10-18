@@ -46,8 +46,12 @@ export const signCloudinaryUpload = (
   resource: "image" | "video" = "image",
 ): CloudinarySignature => {
   const timestamp = Math.floor(Date.now() / 1000);
-  const allowedFormats = resource === "image" ? "avif,jpeg,jpg,png,webp" : "mov,mp4,webm";
-  const maxFileSize = resource === "image" ? 10_000_000 : 100_000_000;
+  // Phase 1B.4 (F-16, 2026-10-18): KYC is image-only, 8 MB, strict allowlist;
+  // other surfaces keep their previous cap but also stay image+video separated.
+  const allowedFormats = resource === "image" ? "jpg,jpeg,png,webp,heic,avif" : "mov,mp4,webm";
+  const maxFileSize = resource === "image"
+    ? (folder === "prosanti/rider-kyc" ? 8_000_000 : 10_000_000)
+    : 100_000_000;
   // Cloudinary signs the params alphabetically; max_file_size must be sent
   // back with the upload or the signature will not match.
   const toSign = `allowed_formats=${allowedFormats}&folder=${folder}&max_file_size=${maxFileSize}&timestamp=${timestamp}${cloudinaryApiSecret() ?? ""}`;

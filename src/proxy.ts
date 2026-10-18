@@ -26,16 +26,35 @@ const STATIC_PROXY_SKIP = new Set([
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  // Phase 1A.2 (2026-10-18): per-request nonce for CSP — prep, not enforced yet.
+  // The storefront CSP is still report-only (next.config.ts); the nonce is
+  // exposed as `x-nonce` on request+response so layouts can add `nonce={...}`
+  // to inline scripts before enforcement flips to `Content-Security-Policy`.
+  // Staff surfaces already enforce CSP — they also receive the nonce.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  request.headers.set("x-nonce", nonce);
+
+  const withNonce = (res: Awaited<ReturnType<typeof updateSupabaseSession>>): Awaited<ReturnType<typeof updateSupabaseSession>> => {
+    res.headers.set("x-nonce", nonce);
+    return res;
+  };
+
   // Skip pure-static editorial content and Next data routes — no auth, no limit.
   if (
     STATIC_PROXY_SKIP.has(pathname) ||
     pathname.startsWith("/_next/data/")
   ) {
-    return updateSupabaseSession(request);
+    const res = await updateSupabaseSession(request);
+    return withNonce(res);
   }
   const limited = await distributedRateLimit(request);
-  if (limited) return limited;
-  return updateSupabaseSession(request);
+  if (limited) {
+    // Rate-limited responses still carry the nonce for consistency.
+    limited.headers.set("x-nonce", nonce);
+    return limited;
+  }
+  const res = await updateSupabaseSession(request);
+  return withNonce(res);
 }
 
 export const config = {

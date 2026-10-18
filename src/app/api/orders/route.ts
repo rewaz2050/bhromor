@@ -48,6 +48,15 @@ export async function POST(request: Request) {
     return apiError("Online ordering is not set up yet.", 503);
   }
 
+  // Phase 1B.2 (F-14, 2026-10-18): idempotency — client sends a UUID per checkout
+  // open as `x-idempotency-key`; a replay within the same key returns the
+  // existing order instead of placing a second. No key = no dedup (backward compat).
+  const idempotencyKey = request.headers.get("x-idempotency-key")?.trim() || null;
+  const validIdempotencyKey =
+    idempotencyKey && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idempotencyKey)
+      ? idempotencyKey
+      : null;
+
   let payload: unknown;
   try {
     payload = await request.json();
@@ -109,9 +118,51 @@ export async function POST(request: Request) {
         errors: validation.errors,
       });
     }
+    // F-14 duplicate check — after validation we know the buyer's phone, so we
+    // can ensure the existing key belongs to the same phone before reusing.
+    if (validIdempotencyKey) {
+      try {
+        const svc = getSupabaseService();
+        if (svc) {
+          const { data: dupRows } = await svc.from("orders").select("id,customer_phone").eq("idempotency_key", validIdempotencyKey).limit(10);
+          const rows = (dupRows as { id: string; customer_phone: string | null }[] | null) ?? [];
+          if (rows.length > 0) {
+            const draftPhone = validation.drafts[0]?.customer.phone ?? "";
+            const sameOwner = rows.every((r) => samePhone(r.customer_phone ?? "", draftPhone));
+            if (sameOwner) {
+              const ids = rows.map((r) => r.id);
+              const { toDomainMany } = await import("@/lib/db/orders");
+              const { data: orderRows } = await svc.from("orders").select("*").in("id", ids);
+              if (orderRows) {
+                const existingOrders = await toDomainMany(svc, orderRows as never[]);
+                const ready = existingOrders.filter((o): o is NonNullable<typeof o> => !!o);
+                if (ready.length > 0) {
+                  return apiJson({ orders: ready, order: ready[0] }, 201);
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Best-effort — fall through to placement.
+      }
+    }
+
     const orders = await placeLiveMultiOrder(validation.drafts, snapshot);
     if (!orders || orders.length === 0) {
       return apiError("Could not place the order — please try again.", 503);
+    }
+    // Stamp the idempotency key onto the newly created rows so a retry finds them.
+    if (validIdempotencyKey) {
+      try {
+        const svc = getSupabaseService();
+        if (svc) {
+          const ids = orders.map((o) => o.id);
+          await svc.from("orders").update({ idempotency_key: validIdempotencyKey } as never).in("id", ids);
+        }
+      } catch {
+        // Stamping is best-effort — the order already exists.
+      }
     }
     const order = orders[0];
     const staffDb = getSupabaseService();

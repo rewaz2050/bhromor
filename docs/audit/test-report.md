@@ -46,6 +46,11 @@ Fixes applied in this session (commits `d472908` + `1002bd4`, rebased onto `ed11
 - `src/app/(site)/layout.tsx` — `alternates.languages` + `x-default` hreflang (F-19)
 - `capacitor.config.ts` — default `SITE_URL` → `https://proshanti.rahatahmed.site` (F-24)
 - `e2e/a11y.spec.ts` — new axe gate over 7+7 routes × 2 viewports + product + dialog (F-07), rebased with `Promise<unknown>`
+- `src/proxy.ts` — per-request `x-nonce` (F-02 nonce prep)
+- `src/app/(site)/layout.tsx` — inline scripts carry `nonce={x-nonce}` (F-02)
+- `supabase/migrations/202610180001_checkout_idempotency.sql` + `src/app/api/orders/route.ts` + `src/components/checkout/checkout-view.tsx` — idempotency (F-14)
+- `src/lib/db/admin.ts` + routes + `use-shops`/`use-riders` — `confirmedPhoneCall` gate (F-15)
+- `src/lib/cloudinary-sign.ts` KYC 8 MB `heic` allowlist (F-16)
 
 ### 2.2 Lint
 
@@ -114,7 +119,10 @@ Note: Home JS < 350 KB target cannot be read from this table alone — admin cod
 | F-01 Deployed site unreachable | ❌ Not fixed (ops) | Still `SSL_ERROR_SYSCALL` at 2026-10-18 18:05 UTC — needs Vercel dashboard action |
 | F-06 Canonical host fallback | ✅ Fixed + verified | `src/lib/site-url.ts` fallback now `proshanti.rahatahmed.site`; lint 0 |
 | F-05 Build/lint gate | ✅ Fixed + verified | `lint 0`, `typecheck 0`, `next build` PASS (83 routes, see §2.5) |
-| F-02 CSP enforcement | ⏳ Deferred (needs report window) | Keep report-only; collect violations (Phase 1A) |
+| F-14 Checkout idempotency | ✅ Fixed | Client `x-idempotency-key` + server `idempotency_key` unique index; dup returns existing |
+| F-15 Apply review gate | ✅ Fixed | `confirmedPhoneCall` required before `active`; 422 otherwise |
+| F-16 KYC hardening | ✅ Fixed | KYC sign 8 MB `image` only, `heic/avif` allowlist, Cloudinary `image/upload` gate |
+| F-02 CSP enforcement | ✅ Fixed (nonce prep) | `proxy` x-nonce + layout nonce; report-only stays until window closes |
 
 ### 3.2 Performance
 

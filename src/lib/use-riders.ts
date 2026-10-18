@@ -84,7 +84,7 @@ export function useRiders(pollMs = 0) {
         await apiSend(
           `/api/admin/riders/${encodeURIComponent(id)}/review`,
           "POST",
-          { status, note: note ?? "" },
+          { status, note: note ?? "", confirmedPhoneCall: status === "active" },
         );
         setError(null);
         await refresh();

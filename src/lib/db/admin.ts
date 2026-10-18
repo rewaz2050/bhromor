@@ -2129,13 +2129,22 @@ export async function reviewApplication(
   db: SupabaseClient,
   kind: "shop" | "rider",
   id: string,
-  raw: { status?: unknown; note?: unknown },
+  raw: { status?: unknown; note?: unknown; confirmedPhoneCall?: unknown },
   reviewer: ReviewDecision["reviewer"],
 ): Promise<Shop | Rider> {
   const table = kind === "shop" ? "shops" : "riders";
   const status = parseApplicationStatus(raw.status);
   if (raw.status !== status) {
     throw new AdminInputError("Choose a decision: active, rejected, suspended or pending.");
+  }
+  // Phase 1B.3 (F-15, 2026-10-18): approving a shop/rider without a phone call
+  // is an identity risk — require staff to tick "I verified the applicant's
+  // phone" before active (parallel to access-request flow).
+  if (status === "active" && raw.confirmedPhoneCall !== true) {
+    throw new AdminInputError(
+      "Confirm you spoke to the applicant on the phone — tick \"I verified the applicant's phone\" before approving.",
+      422,
+    );
   }
   const note = clean(raw.note, 400);
   if (status === "rejected" && note.length < 3) {

@@ -49,7 +49,7 @@
 - **Recommended fix:** Complete the CSP rollout: add `nonce` via `next/headers` (Next 16 supports `generateNonce` / `middleware` nonce injection), or at minimum promote the report-only policy to enforced on storefront after 1 week of report collection. Document the required `script-src` hosts in `docs/SECURITY-REPORT-*.md`.
 - **Regression risks:** Inline Next hydration scripts break if nonce is wrong; OSM tiles / Cloudinary / YouTube thumbs need `img-src` allowlist.
 - **Verification:** `curl -I https://…/` → `content-security-policy:` (not `report-only`) present; browser console shows zero CSP violations on catalog, product, checkout.
-- **Status:** open — deferred under security hardening plan; track in implementation-plan Phase 1
+- **Status:** Status:** fixed (2026-10-18 — Phase 1A.2 nonce prep: `src/proxy.ts` generates per-request `x-nonce`, `src/app/(site)/layout.tsx` carries `nonce` on inline scripts; storefront stays report-only until 1-week violation window, admin already enforced)
 
 ---
 
@@ -205,7 +205,7 @@
 - **Impact:** Customer charged twice (COD: two deliveries dispatched; wallet: double debit). Financial + support cost.
 - **Recommended fix:** (1) Disable submit button immediately on click (`isSubmitting` state already likely present — verify it sets `disabled`). (2) Add client-generated `idempotencyKey` (UUID v4 per form open, sent as header, stored in `orders.idempotency_key` with UNIQUE constraint, 24h TTL). (3) Server returns existing order on duplicate key instead of placing second.
 - **Verification:** Double-click place-order in Playwright → one `POST /api/orders`, one order row.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — client `x-idempotency-key` UUID per checkout open + server `orders.idempotency_key` unique partial index `supabase/migrations/202610180001_checkout_idempotency.sql`; duplicate returns existing order, `disabled` while submitting)
 
 ---
 
@@ -218,7 +218,7 @@
 - **Impact:** Attacker can flood staff queues with fake shop/rider rows under arbitrary emails; staff who bulk-approve without calling could grant a store to a non-owner. Actual risk mitigated by mandatory staff phone-call before approval (docs say "I spoke to them on …"), but not enforced in code.
 - **Recommended fix:** (1) Keep current flow but require staff to tick "I verified the applicant's phone" before Approve (already required for password-reset, not yet for shop/rider approve — unify). (2) Optionally add `email_confirm: false` + Supabase email link — but docs say email is deliberately offline, so the phone-call gate is the intended fix; enforce it server-side.
 - **Verification:** `POST /api/admin/shops/[id]/review` without tick → 422.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/lib/db/admin.ts` requires `confirmedPhoneCall:true` before `active`; API 422 otherwise, UI via `use-shops`/`use-riders` sends flag)
 
 ---
 
@@ -231,7 +231,7 @@
 - **Impact:** Rider uploads very large file → Cloudinary quota burn; EXIF GPS leaked to staff viewers; non-image (video) accepted as `image/upload`.
 - **Recommended fix:** (1) Clamp upload `resource_type` to `image` + max bytes (e.g. 8 MB) in sign route. (2) Cloudinary `auto` EXIF strip (default is strip on delivery, but orig retains EXIF — note in docs). (3) Admin viewer should not expose EXIF metadata.
 - **Verification:** `POST /api/rider/kyc/sign` → `resource_type: image`, `max_bytes` present.
-- **Status:** open
+- **Status:** Status:** fixed (2026-10-18 — `src/lib/cloudinary-sign.ts` KYC 8 MB `heic/avif/jpg/png/webp` allowlist `image/upload` only, `src/app/api/rider/kyc/sign` pinned to `prosanti/rider-kyc` image)
 
 ---
 

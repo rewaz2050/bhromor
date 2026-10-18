@@ -143,15 +143,22 @@ describe("POST /api/admin/shops/[id]/review", () => {
 
   it("approving clears the old rejection note and leaves is_open to the vendor", async () => {
     state.row = { ...SHOP_ROW, status: "active", review_note: null };
-    const res = await post(shopReview, "shop-1", { status: "active" });
+    const res = await post(shopReview, "shop-1", { status: "active", confirmedPhoneCall: true });
     expect(res.status).toBe(200);
     expect(state.updates[0].patch).toMatchObject({ status: "active", review_note: null });
     expect(state.updates[0].patch).not.toHaveProperty("is_open");
   });
 
+  it("requires a phone-call confirmation before approving (F-15)", async () => {
+    const res = await post(shopReview, "shop-1", { status: "active" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toMatch(/phone/i);
+    expect(state.updates).toEqual([]);
+  });
+
   it("explains a database that has not run the migration", async () => {
     state.error = { code: "PGRST204", message: "Could not find the 'review_note' column" };
-    const res = await post(shopReview, "shop-1", { status: "active" });
+    const res = await post(shopReview, "shop-1", { status: "active", confirmedPhoneCall: true });
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toMatch(/202609260002_application_review\.sql/);
   });
@@ -172,9 +179,15 @@ describe("POST /api/admin/riders/[id]/review", () => {
     expect(body.rider.review?.note).toBe("Cash not settled");
   });
 
+  it("requires a phone-call confirmation before approving a rider (F-15)", async () => {
+    const res = await post(riderReview, "rider-1", { status: "active" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toMatch(/phone/i);
+  });
+
   it("404s when the row is gone", async () => {
     state.error = { code: "PGRST116", message: "0 rows" };
-    const res = await post(riderReview, "rider-x", { status: "active" });
+    const res = await post(riderReview, "rider-x", { status: "active", confirmedPhoneCall: true });
     expect(res.status).toBe(404);
   });
 });
