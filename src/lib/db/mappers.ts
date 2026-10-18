@@ -214,6 +214,8 @@ export const mapProduct = (bundle: ProductRowBundle): Product => {
           }
         : undefined,
     shopId: p.shop_id,
+    ...(p.created_at ? { createdAt: epoch(p.created_at) } : {}),
+    ...(p.updated_at ? { updatedAt: epoch(p.updated_at) } : {}),
   };
 };
 

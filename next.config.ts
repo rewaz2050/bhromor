@@ -106,6 +106,29 @@ const nextConfig: NextConfig = {
     return [
       { source: "/(.*)", headers: securityHeaders },
       { source: "/admin/:path*", headers: staffCspHeaders },
+      // Audit F-11 (2026-10-18): public catalog feeds + SEO routes may live on
+      // the CDN for an hour (sitemap) / hourly (feeds); the origin revalidates
+      // in background. Personal routes remain no-store.
+      {
+        source: "/sitemap.xml",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=600" },
+          { key: "CDN-Cache-Control", value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=600" },
+        ],
+      },
+      {
+        source: "/robots.txt",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=600" },
+        ],
+      },
+      {
+        source: "/api/feed/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=600" },
+          { key: "CDN-Cache-Control", value: "public, max-age=0, s-maxage=3600, stale-while-revalidate=600" },
+        ],
+      },
       ...noStoreRoutes.map((source) => ({ source, headers: noStoreHeaders })),
     ];
   },

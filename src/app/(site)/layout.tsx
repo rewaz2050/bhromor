@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 // Bengali serif, storefront-only (see root layout): the rider/vendor/admin
 // apps never render font-bengali, so they skip these ~3 weights.
 import "@fontsource/noto-serif-bengali/400.css";
@@ -59,6 +59,14 @@ export const metadata: Metadata = {
     "panjabi",
     "three-piece",
   ],
+  alternates: {
+    canonical: "/",
+    languages: {
+      "en": "/",
+      "bn-BD": "/",
+      "x-default": "/",
+    },
+  },
   openGraph: {
     type: "website",
     siteName: "PROSANTI",
@@ -86,6 +94,11 @@ export default async function SiteLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // CSP nonce (Phase 1A.2, 2026-10-18): proxy sets `x-nonce` per request; inline
+  // scripts below carry it so the future enforced CSP can be `nonce-{value}`.
+  // Until enforcement the storefront stays report-only — the attribute is
+  // harmless today and required tomorrow.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   // The device's own choice, read before the first byte is sent (fix-all
   // pass 2026-10-07): a shopper who picked English used to be served a
   // Bangla page and watch every word change when React hydrated. The
@@ -118,11 +131,13 @@ export default async function SiteLayout({
         crossOrigin="anonymous"
       />
       <script
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: LANG_BOOTSTRAP }}
       />
       {/* Search engines & Meta: who runs this storefront. Only real facts —
           address/phone join here when the shop profile actually has them. */}
       <script
+        nonce={nonce}
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: safeJsonLd(storefrontJsonLd(siteBaseUrl())),

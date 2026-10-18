@@ -20,6 +20,7 @@ export const POST = staffRoute(
     const body = ((await request.json().catch(() => null)) ?? {}) as {
       status?: unknown;
       note?: unknown;
+      confirmedPhoneCall?: unknown;
     };
     const shop = await reviewApplication(db, "shop", id, body, {
       id: user.id,

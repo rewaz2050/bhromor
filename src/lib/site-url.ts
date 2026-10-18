@@ -9,8 +9,6 @@ const normalize = (v: string | undefined): string | null => {
   if (!v) return null;
   const clean = v.trim().replace(/\/+$/, "");
   if (/^https?:\/\//.test(clean)) return clean;
-  // VERCEL_URL is commonly scheme-less (preview-*.vercel.app). Treat any
-  // hostname as https rather than silently falling back to the default.
   if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/|$)/i.test(clean)) return `https://${clean}`;
   return null;
 };
@@ -19,7 +17,7 @@ export const siteBaseUrl = (): string =>
   normalize(process.env.NEXT_PUBLIC_SITE_URL) ??
   normalize(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
   normalize(process.env.VERCEL_URL) ??
-  "https://prosanti.store";
+  "https://proshanti.rahatahmed.site";
 
 export const absoluteUrl = (path = "/"): string => {
   const base = siteBaseUrl().replace(/\/+$/, "");

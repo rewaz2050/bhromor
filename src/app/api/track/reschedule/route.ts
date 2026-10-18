@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 const WINDOWS = ["9-11", "11-1", "2-4", "4-6", "6-8", "8-10", "express"];
 // Same budget as the track lookup it mirrors: the phone is the only proof of
 // ownership, so unlimited attempts would let a caller guess it (audit L5).
-const WINDOW_MS = 60_000;
-const LIMIT = 10;
+// windowMs defaults to 60s inside gateTrackRequest — no local constant needed.
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as {

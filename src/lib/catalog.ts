@@ -83,6 +83,9 @@ export interface Product {
   /** Owning shop (marketplace slice 1). Live rows always carry it; seeds
       implicitly belong to shop #1, so rows may omit it. */
   shopId?: string;
+  /** Live row timestamps — drives sitemap lastModified. Absent on seeds / pre-migration. */
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 /**

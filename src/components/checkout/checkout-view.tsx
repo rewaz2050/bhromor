@@ -576,6 +576,18 @@ export default function CheckoutView() {
   }, [wallets]);
 
   const submittingRef = useRef(false);
+  // Phase 1B.2 (F-14, 2026-10-18): one UUID per checkout open — sent as
+  // `x-idempotency-key` so a double-tap/5xx retry returns the existing order.
+  // useState initializer is the React 19 pure way to run once per mount
+  // (refs must not be read/written during render under the new purity rule).
+  const [idempotencyKey] = useState(() => {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+  });
+
   const [orderError, setOrderError] = useState<FriendlyError | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [moreOpen, setMoreOpen] = useState(false);
@@ -1761,7 +1773,10 @@ export default function CheckoutView() {
     try {
       res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-idempotency-key": idempotencyKey,
+        },
         body: JSON.stringify({
           name: form.name,
           phone: form.phone,

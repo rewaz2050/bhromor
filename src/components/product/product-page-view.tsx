@@ -70,7 +70,7 @@ export default function ProductPageView({
     subCategories: [],
   };
 
-  const jsonLd = {
+  const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: product.name,
@@ -88,6 +88,18 @@ export default function ProductPageView({
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
     },
+    // F-17 (2026-10-18): real aggregateRating only when approved reviews exist
+    ...(product.reviewCount > 0 && product.rating > 0
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: Number(product.rating.toFixed(1)),
+            reviewCount: product.reviewCount,
+            bestRating: 5,
+            worstRating: 1,
+          },
+        }
+      : {}),
   };
 
   return (
