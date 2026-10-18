@@ -265,6 +265,8 @@ export interface DbProduct {
   manufacturer?: string | null;
   test_report_url?: string | null;
   quality_checked?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface DbVariant {

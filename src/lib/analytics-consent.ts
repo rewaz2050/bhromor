@@ -8,14 +8,29 @@
  *   "accepted"  → scripts load
  *   "declined"  → scripts never load
  *   null        → ask once (banner)
+ *
+ * Audit F-20 (2026-10-18): Global Privacy Control (GPC) is honored as an
+ * explicit decline — when the browser signals Sec-GPC: 1 / globalPrivacyControl,
+ * analytics are treated as declined even without a stored choice.
  */
 
 export const ANALYTICS_CONSENT_KEY = "prosanti.analytics-consent.v1";
 
 export type AnalyticsConsent = "accepted" | "declined";
 
+/** True when the browser advertises Global Privacy Control. */
+const hasGpcSignal = (): boolean => {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  try {
+    return (navigator as unknown as { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+  } catch {
+    return false;
+  }
+};
+
 export const readAnalyticsConsent = (): AnalyticsConsent | null => {
   if (typeof window === "undefined") return null;
+  if (hasGpcSignal()) return "declined";
   try {
     const raw = window.localStorage.getItem(ANALYTICS_CONSENT_KEY);
     return raw === "accepted" || raw === "declined" ? raw : null;

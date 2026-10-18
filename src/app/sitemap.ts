@@ -38,7 +38,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     ...products.map((product) => ({
       url: absoluteUrl(productHref(product, shops)),
-      lastModified: new Date(),
+      // F-18: per-product timestamp so Google's crawl reflects real edits
+      // rather than claiming every product changed on every build.
+      lastModified: product.updatedAt
+        ? new Date(product.updatedAt)
+        : product.createdAt
+          ? new Date(product.createdAt)
+          : new Date(),
       changeFrequency: "weekly" as const,
       priority: 0.8,
     })),

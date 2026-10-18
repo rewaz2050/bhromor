@@ -15,7 +15,10 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * with MOBILE_SITE_URL for a preview build:
  *     MOBILE_SITE_URL=https://my-preview.vercel.app npx cap sync android
  */
-const SITE_URL = process.env.MOBILE_SITE_URL ?? "https://bhromor-zeta.vercel.app";
+// Audit F-24 (2026-10-18): default to the canonical public origin, not the
+// Vercel preview host — a debug APK built without MOBILE_SITE_URL should
+// reach the domain riders actually use.
+const SITE_URL = process.env.MOBILE_SITE_URL ?? "https://proshanti.rahatahmed.site";
 
 const config: CapacitorConfig = {
   appId: "store.prosanti.rider",
