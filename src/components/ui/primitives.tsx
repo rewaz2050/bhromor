@@ -5,16 +5,16 @@ import { IconStar } from "./icons";
 /** Shared style recipes (kept small & consistent). */
 
 export const btn = {
-  base: "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50",
+  base: "tap-press inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]",
   primary:
-    "bg-forest-800 text-ivory-50 hover:bg-forest-700 active:bg-forest-900",
+    "bg-forest-800 text-ivory-50 hover:bg-forest-700 active:bg-forest-900 shadow-sm",
   dark: "bg-ink text-ivory-50 hover:bg-forest-900",
   light: "bg-paper text-forest-900 ring-1 ring-line hover:ring-forest-400",
   ghost: "text-forest-800 hover:bg-forest-100",
   /* UI/UX pass 2026-10-15 — a gold pill is a gold pill: the label is ink,
      not white. White on gold-500 measures 3.3:1, under the 4.5:1 WCAG AA
      needs for text this small; forest-950 on the same gold is 5.4:1. */
-  gold: "bg-gold-500 text-forest-950 hover:bg-gold-400",
+  gold: "bg-gold-500 text-forest-950 hover:bg-gold-400 shadow-sm",
   glass: "bg-white/10 text-ivory-50 ring-1 ring-white/25 hover:bg-white/20",
   /* Every size clears 44px (UI/UX pass 2026-10-15). `sm` used to be 36px
      tall — fine for a mouse, too small for the thumb that actually taps

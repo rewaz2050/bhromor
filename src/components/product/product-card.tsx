@@ -280,9 +280,10 @@ export default function ProductCard({
           )}
         </Link>
 
-        <button
+          <button
           type="button"
           onClick={async () => {
+            try { if (!wished) navigator.vibrate?.(18); } catch {}
             const saved = await toggle(product.id);
             setNotice(
               saved
@@ -295,7 +296,7 @@ export default function ProductCard({
           disabled={!ready || busy}
           aria-label={wished ? t("product.removeFromWishlist") : t("product.addToWishlist")}
           aria-pressed={wished}
-          className="product-heart absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-forest-900 transition-colors hover:bg-paper hover:text-gold-700"
+          className="product-heart absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-forest-900 hover:bg-paper hover:text-gold-700"
         >
           <IconHeart
             className={`h-[1.05rem] w-[1.05rem] transition-colors ${

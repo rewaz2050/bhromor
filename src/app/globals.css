@@ -87,14 +87,7 @@ html {
   }
 }
 
-body {
-  background: var(--color-ivory-50);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  overscroll-behavior-y: none;
-}
+/* body moved to token block above — keep heading rhythm here */
 
 /* Keep Bengali as its own typographic voice instead of inheriting display
    letter-spacing or synthetic English metrics in bilingual lockups. */
@@ -313,7 +306,9 @@ body {
   }
 }
 
-/* Storefront design tokens — shared rhythm without affecting admin screens. */
+/* Storefront design tokens — shared rhythm without affecting admin screens.
+   World-class 2026-10-19: expanded radius + elevation + motion + tap system
+   for an app-like Android feel — all tokens, zero new deps. */
 :root {
   --motion-fast: 160ms;
   --motion-standard: 240ms;
@@ -322,10 +317,33 @@ body {
   --ease-refined: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-app: cubic-bezier(0.32, 0.72, 0, 1);
+  --radius-card: 16px;
+  --radius-pill: 999px;
+  --radius-sheet: 20px;
   --shadow-soft: 0 4px 20px -8px rgb(20 41 31 / 12%);
   --shadow-elevated: 0 16px 48px -20px rgb(20 41 31 / 24%);
+  --shadow-card: 0 2px 16px -6px rgb(20 41 31 / 10%), 0 1px 4px rgb(20 41 31 / 6%);
+  --shadow-card-hover: 0 12px 32px -8px rgb(20 41 31 / 16%), 0 2px 8px rgb(20 41 31 / 8%);
   --shadow-header: 0 8px 32px -12px rgb(20 41 31 / 10%), 0 1px 0 rgb(20 41 31 / 6%);
   --shadow-header-scrolled: 0 12px 40px -14px rgb(20 41 31 / 18%), 0 1px 0 rgb(20 41 31 / 8%);
+  --ring-focus: 0 0 0 3px color-mix(in srgb, var(--color-gold-500) 38%, transparent);
+}
+
+/* App shell — subtle ivory paper with safe-area bottom for Android gesture nav */
+html {
+  color-scheme: light;
+}
+body {
+  background: var(--color-ivory-50);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 .storefront-main h1,
 .storefront-main h2 {
@@ -390,9 +408,59 @@ body {
 }
 .storefront-header {
   box-shadow: var(--shadow-header);
-  /* Entrance animation – runs once, feels premium without being flashy */
   animation: header-enter 640ms var(--ease-refined) both;
   transform: translateZ(0);
+}
+.storefront-header[data-scrolled="true"] .header-bar {
+  box-shadow: var(--shadow-header-scrolled);
+  border-color: color-mix(in srgb, var(--color-line) 70%, transparent);
+}
+
+/* ── Premium app primitives ────────────────────────────────────────────
+   Tap ring, press, skeleton shimmer — all compositor-friendly.
+   Respects reduced-motion. */
+.tap-press {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--motion-fast) var(--ease-refined), opacity var(--motion-fast) linear;
+}
+.tap-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.card-elevated {
+  background: var(--color-paper);
+  border: 1px solid color-mix(in srgb, var(--color-line) 55%, transparent);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--motion-standard) var(--ease-refined), transform var(--motion-standard) var(--ease-refined);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card-elevated:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--color-ivory-100) 25%, var(--color-ivory-200) 50%, var(--color-ivory-100) 75%);
+  background-size: 200% 100%;
+  border-radius: 0.5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-line);
+  margin: 0 auto;
 }
 /* Menubar (2026-09-26) — the primary nav reads as a wayfinding strip, not a
    row of buttons: quiet labels, a soft wash on hover, and the current section
@@ -721,10 +789,11 @@ body {
 }
 .product-heart {
   background: rgb(255 253 247 / 94%);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color var(--motion-fast) linear, color var(--motion-fast) linear, transform var(--motion-fast) var(--ease-app);
 }
-.product-heart:disabled {
-  opacity: 0.45;
-}
+.product-heart:active:not(:disabled) { transform: scale(0.92); }
+.product-heart:disabled { opacity: 0.45; }
 .product-quick-add {
   border-radius: 2px;
   box-shadow: var(--shadow-soft);
@@ -785,7 +854,8 @@ body {
   color: var(--color-forest-900);
   font-weight: 600;
 }
-.storefront-bottom-nav > a[aria-current="page"] .tab-icon {
+.storefront-bottom-nav > a[aria-current="page"] .tab-icon,
+.storefront-bottom-nav > button[aria-current="page"] .tab-icon {
   background: var(--color-forest-100);
   color: var(--color-forest-900);
 }
@@ -803,12 +873,12 @@ body {
   justify-content: center;
   border-radius: 999px;
   background: var(--color-gold-600);
-  padding: 0 0.25rem;
+  padding: 0 0.28rem;
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
   color: #fff;
-  box-shadow: 0 0 0 2px var(--color-ivory-50);
+  box-shadow: 0 0 0 2px var(--color-ivory-50), 0 1px 6px rgb(0 0 0 / 12%);
 }
 @media (hover: hover) and (pointer: fine) {
   .storefront-bottom-nav > a:hover .tab-icon,
@@ -819,6 +889,11 @@ body {
 .drawer-panel {
   overscroll-behavior: contain;
   box-shadow: -12px 0 64px rgb(12 25 19 / 12%);
+  border-top-left-radius: var(--radius-sheet);
+}
+.drawer-panel[data-drawer-side="right"],
+.drawer-panel[data-drawer-side="left"] {
+  border-radius: 0;
 }
 .drawer-panel[data-drawer-side="bottom"] {
   padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
