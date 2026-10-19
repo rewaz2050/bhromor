@@ -19,7 +19,7 @@ export const siteBaseUrl = (): string =>
   normalize(process.env.NEXT_PUBLIC_SITE_URL) ??
   normalize(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
   normalize(process.env.VERCEL_URL) ??
-  "https://prosanti.store";
+  "https://proshanti.rahatahmed.site";
 
 export const absoluteUrl = (path = "/"): string => {
   const base = siteBaseUrl().replace(/\/+$/, "");

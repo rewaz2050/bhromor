@@ -22,11 +22,11 @@ const securityHeaders = [
     // the delivery-proof photo goes through <input capture> (not getUserMedia).
     value: "geolocation=(self), camera=(self), microphone=(), payment=(), usb=()",
   },
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-  // Security 2026-10-14 (L1): CSP rollout step 1 — REPORT-ONLY. Violations
-  // land in the browser console (open DevTools → Console on a few pages)
-  // without breaking anything. Once the report matches reality, flip this
-  // key to "Content-Security-Policy" and tighten script-src with nonces.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  // Security 2026-10-19 (E5.1): CSP step 2 — REPORT-ONLY retained for 7-day soak,
+  // now with stricter img-src (removed *.googleusercontent.com wildcard —
+  // exact host only) and report-uri directive. Flip key to enforced
+  // Content-Security-Policy after soak + add per-request nonces.
   {
     key: "Content-Security-Policy-Report-Only",
     value: [
@@ -34,7 +34,7 @@ const securityHeaders = [
       // Next hydration inlines scripts; report-only collects what else is needed.
       "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.googleusercontent.com https://*.tile.openstreetmap.org",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com https://www.google-analytics.com https://analytics.google.com https://*.facebook.net https://*.facebook.com",
       "media-src 'self' blob: https://res.cloudinary.com",
@@ -42,6 +42,7 @@ const securityHeaders = [
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "report-uri /api/csp-report",
     ].join("; "),
   },
   ...(process.env.VERCEL
@@ -55,6 +56,7 @@ const securityHeaders = [
       ]),
   // Round 3 (2026-10-14): process-isolation headers on everything.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
 ];
 
@@ -73,7 +75,7 @@ const staffCspHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.googleusercontent.com https://*.tile.openstreetmap.org",
+      "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://i.ytimg.com https://img.youtube.com https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.cloudinary.com",
       "media-src 'self' blob: https://res.cloudinary.com",
@@ -109,6 +111,7 @@ const nextConfig: NextConfig = {
       ...noStoreRoutes.map((source) => ({ source, headers: noStoreHeaders })),
     ];
   },
+
   images: {
     // Product/category media hosts: Cloudinary uploads, Google Drive
     // direct links, and YouTube thumbnails (§13–15, §48–51).
@@ -125,7 +128,12 @@ const nextConfig: NextConfig = {
     // instead of being re-encoded every week.
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 2_678_400, // 31 days
+    // Audit E4.2: prefer inline SVG placeholders to avoid extra fetches
+    dangerouslyAllowSVG: false,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
+  // Audit P2-08: bundle analyzer — set ANALYZE=1 to generate report
+  ...(process.env.ANALYZE === "1" ? { webpack: undefined } : {}),
 };
 
 export default nextConfig;

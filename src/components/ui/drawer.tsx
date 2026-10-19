@@ -174,6 +174,11 @@ export default function Drawer({
         data-drawer-side={side}
         className={`drawer-panel ${SIDE_CLASS[side]} ${panelBg} ${panelClassName}`}
       >
+        {side === "bottom" && (
+          <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
+            <div className="sheet-handle" />
+          </div>
+        )}
         {children}
       </div>
     </div>,

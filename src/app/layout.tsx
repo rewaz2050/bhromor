@@ -12,9 +12,8 @@ import { siteBaseUrl } from "@/lib/site-url";
 
 export const metadata: Metadata = {
   // Canonical/OG/sitemap origin. NEXT_PUBLIC_SITE_URL → Vercel production
-  // domain → https://prosanti.store; the live store is served from
-  // proshanti.rahatahmed.site, so a hard-coded origin put the wrong host in
-  // every og:url and canonical tag (audit M8).
+  // domain → https://proshanti.rahatahmed.site; a hard-coded origin would put
+  // the wrong host in every og:url and canonical tag (audit M8, fixed E1.3).
   metadataBase: new URL(siteBaseUrl()),
   // Installable (add to home screen): manifest + iOS web-app hints. The
   // apple touch icon is src/app/apple-icon.png (Next links it automatically).

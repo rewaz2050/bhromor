@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { ADMIN_LOGIN_PATH, signOutAdmin } from "@/lib/admin-auth";
+import { logError } from "@/lib/logger";
 
 /** Keep an admin render failure recoverable instead of falling through to
  * Next's generic "This page couldn't load" screen. */
@@ -14,7 +15,7 @@ export default function AdminError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Admin page failed to render", error);
+    logError("Admin page failed to render", error, { route: "admin", code: error.digest });
   }, [error]);
 
   return (
