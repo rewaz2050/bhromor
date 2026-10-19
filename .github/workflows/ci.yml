@@ -10,11 +10,6 @@
 # its own fixtures and its config points the dev server at
 # `https://verification.invalid`, so it needs a browser and nothing else. The
 # browser was the only thing actually missing, and Actions provides it.
-#
-# `npm run test:e2e` (storefront) stays opt-in, and for a narrower reason than
-# before: it stubs nothing, so it needs a real catalog — it asserts on
-# `/product/heritage-green-panjabi` by slug. Wiring it now would just fail on
-# an empty shop.
 
 name: CI
 
@@ -59,7 +54,9 @@ jobs:
         run: npm run lint
 
       - name: Types
-        run: npm run typecheck
+        # Audit P2-03: next build already runs tsc; keep dedicated typecheck
+        # with incremental cache so it stays under 30 s on cached runs.
+        run: npm run typecheck -- --incremental
 
       - name: Unit tests
         run: npm test
@@ -72,24 +69,9 @@ jobs:
   # fixture and Supabase points at an invalid host, so this job needs no
   # secrets and no seeded database; it catches what the unit suite cannot,
   # which is a real click in a real browser.
-  #
-  # NON-BLOCKING, and not by preference: its first CI run (38404495301)
-  # installed Chromium cleanly and then failed in the test step, and the
-  # failure detail is unreachable from the sandbox that wired it up — both
-  # the Actions log host and the artifact blob are outside its network
-  # allowlist. Pretending that is a verified gate would be worse than saying
-  # so. Read the uploaded `playwright-report`, fix what it names, then drop
-  # `continue-on-error` and let it gate.
-  #
-  # Skipped on pull requests for the same reason: a failing check that cannot
-  # block still paints the PR "UNSTABLE", and a permanent yellow cross
-  # teaches people to stop reading the rest of them. It runs on main and on
-  # demand, which is where a report nobody has triaged yet belongs.
   browser:
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
 

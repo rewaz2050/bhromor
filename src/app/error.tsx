@@ -15,6 +15,7 @@
 
 import { useEffect } from "react";
 import ErrorState from "@/components/ui/error-state";
+import { logError } from "@/lib/logger";
 
 export default function AppError({
   error,
@@ -24,7 +25,7 @@ export default function AppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Page failed to render", error);
+    logError("Page failed to render", error, { route: typeof window !== "undefined" ? window.location.pathname : "unknown", code: error.digest });
   }, [error]);
 
   return <ErrorState error={error} onRetry={reset} />;

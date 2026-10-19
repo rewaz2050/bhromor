@@ -7,6 +7,7 @@
 
 import { useEffect } from "react";
 import ErrorState from "@/components/ui/error-state";
+import { logError } from "@/lib/logger";
 
 export default function RiderError({
   error,
@@ -16,7 +17,7 @@ export default function RiderError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Rider board failed to render", error);
+    logError("Rider board failed to render", error, { route: "/rider", code: error.digest });
   }, [error]);
 
   return (

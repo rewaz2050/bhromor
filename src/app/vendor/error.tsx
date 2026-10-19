@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import ErrorState from "@/components/ui/error-state";
+import { logError } from "@/lib/logger";
 
 export default function VendorError({
   error,
@@ -13,7 +14,7 @@ export default function VendorError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("Vendor console failed to render", error);
+    logError("Vendor console failed to render", error, { route: "/vendor", code: error.digest });
   }, [error]);
 
   return (

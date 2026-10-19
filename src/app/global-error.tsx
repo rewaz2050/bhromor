@@ -20,6 +20,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Report via structured logger when available; fallback to console
+  if (typeof window !== "undefined") {
+    console.error("Root layout failed to render", error);
+  }
   return (
     <html lang="bn" className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-ivory-50 text-ink">

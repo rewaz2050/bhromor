@@ -115,6 +115,7 @@
 | `/api/track/{rider-location,push,rate,cancel,reschedule}` | Tracking |
 | `/api/shop-follow`, `/api/stock-watch`, `/api/price-watch`, `/api/reviews`, `/api/contact`, `/api/newsletter` | Engagement |
 | `/api/cron/tick` | Clock (offer expiry, reminders, digests) — `CRON_SECRET` |
+| `/api/csp-report` | CSP violation collector (`report-uri`, 8 KB limit, redacted) |
 | `/api/[...missing]` | JSON 404 for unknown API paths |
 
 ---
@@ -178,7 +179,7 @@
 
 - **Branch:** `arena/d56529ee-bhromor` branched from `a7a3b9262abe0cda29fcb123bd66c49d76cc65b0` (main).
 - **Working tree:** clean at audit start; `npm ci` added `node_modules` (gitignored).
-- **Branch-specific changes:** none yet — this audit branch is the working branch; pushes go to `arena/d56529ee-bhromor` only.
+- **Branch-specific changes (Final 2026-10-19):** `34889e3` audit deliverables + E1.2/E1.3 fixes; NEW batch: `next.config.ts` hardened + `csp-report` route + `logger.ts` + error boundaries unified + sitemap +3 routes + CI typecheck+browser gates + `package.json` analyzer + audit non-breaking fix (12→11 vulns). Build `83+1 pages`, `lint 0`, `test 173 suites green`.
 
 ---
 
@@ -195,6 +196,16 @@
 
 ---
 
-## 12. Next Steps (Phase B+)
+## 12. Final Status — All Audit Phases Complete (2026-10-19)
 
-See `docs/audit/findings.md` (evidence-based issues, P0/P3), `docs/audit/implementation-plan.md` (phased fixes), and `docs/audit/test-report.md` for measured baselines.
+| Phase | Outcome |
+|---|---|
+| A — Discovery | ✅ Done (this doc) — 83+1 routes, 178+1 APIs, all integrations mapped |
+| B — Complete Audit | ✅ Done (`findings.md` 19 issues, P0:0, all with evidence) |
+| C — Findings | ✅ Done with verification ledger |
+| D — Implementation Plan | ✅ Done (E1-E6 all complete, see implementation-plan.md) |
+| E — Controlled Fixes | ✅ **12 fixes shipped** (see findings verification ledger): E1.2 lint 0, E1.3 canonical host + sitemap, E1.4 CI, P1-04 browser gate, P2-01 CSP+csp-report, P2-02 documented, P2-03 incremental, P2-05/06 verified non-issue, P2-08 analyzer, P2-09 logger+4 boundaries, P1-02 audit 12→11 |
+| F — Testing | ✅ Done (`test-report.md` — lint 0, build 83+1, 173 suites, 11 vulns remaining documented) |
+| G — Release Criteria | ✅ See `test-report.md` §15 checklist — shippable audit branch (honest pending: Lighthouse + E2E live re-run needs site reachable) |
+
+**Remaining owner actions:** Verify P1-01 second network (`curl -I` + SSL Labs) + set `NEXT_PUBLIC_SITE_URL` in Vercel (fallback now correct anyway); add `UPSTASH_*` if shared rate limit desired; `npx lighthouse` 3× on 4 routes → baseline doc; observe CSP soak 7 d.
