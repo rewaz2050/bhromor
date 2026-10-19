@@ -23,7 +23,6 @@ import { liveTrackChannel } from "@/lib/live-track-channel";
 
 export const dynamic = "force-dynamic";
 
-const WINDOW_MS = 60_000;
 /** 60/min: the tracker polls 6×/min, so a whole family watching on one
  *  connection still fits, and a runaway tab cannot hammer the database. */
 const LIMIT = 60;
