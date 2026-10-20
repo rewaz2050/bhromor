@@ -25,6 +25,7 @@ export default function ProductRail({
   products,
   tone = "paper",
   testId,
+  appStyle = false,
 }: {
   id: string;
   eyebrow?: string;
@@ -35,6 +36,8 @@ export default function ProductRail({
   products: Product[];
   tone?: "paper" | "ivory";
   testId?: string;
+  /** Compact, card-based mobile treatment for the homepage shopping feed. */
+  appStyle?: boolean;
 }) {
   if (products.length === 0) return null;
   const headingId = `${id}-heading`;
@@ -44,16 +47,16 @@ export default function ProductRail({
       aria-labelledby={headingId}
       data-testid={testId}
       data-list={id}
-      className={`scroll-mt-24 ${tone === "ivory" ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
+      className={`${appStyle ? "shopping-app-rail " : ""}scroll-mt-24 ${tone === "ivory" ? "bg-ivory-50" : "border-y border-line bg-paper"}`}
     >
       <ListImpression list={id} count={products.length} />
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-        <Reveal className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:mb-8">
+      <div className={`mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8 ${appStyle ? "shopping-app-rail-inner" : ""}`}>
+        <Reveal className={`mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 sm:mb-8 ${appStyle ? "shopping-app-rail-heading" : ""}`}>
           <div className="max-w-2xl">
             {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
             <h2
               id={headingId}
-              className="mt-2 font-display text-[clamp(1.85rem,3.6vw,3rem)] font-normal leading-[1.05] tracking-[-0.03em] text-forest-900"
+              className={`mt-2 font-display text-[clamp(1.85rem,3.6vw,3rem)] font-normal leading-[1.05] tracking-[-0.03em] text-forest-900 ${appStyle ? "shopping-app-rail-title" : ""}`}
             >
               <Link href={href} className="transition-colors hover:text-forest-700">
                 {title}
@@ -67,7 +70,7 @@ export default function ProductRail({
           </Link>
         </Reveal>
 
-        <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7">
+        <div className={`-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:thin] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-10 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4 lg:gap-x-7 ${appStyle ? "shopping-app-product-row" : ""}`}>
           {products.map((product, index) => (
             <Reveal
               key={product.id}

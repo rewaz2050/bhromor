@@ -84,6 +84,7 @@ export default function YourStyleRail({ pool }: { pool: Product[] }) {
       seeAllLabel={t("home.styleSeeAll")}
       products={picks}
       tone="ivory"
+      appStyle
     />
   );
 }

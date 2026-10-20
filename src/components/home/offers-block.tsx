@@ -43,6 +43,7 @@ export default function OffersBlock({ pool, limit = 8 }: { pool: Product[]; limi
         seeAllLabel={fmt(t("home.offersAll"), { count: total })}
         products={offers}
         tone="paper"
+        appStyle
       />
     </div>
   );
