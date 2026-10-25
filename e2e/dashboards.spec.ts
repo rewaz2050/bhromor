@@ -43,7 +43,7 @@ test('customer profile saves a name and refreshes the dashboard identity', async
   await page.getByTestId('account-tab-profile').click();
   await page.getByLabel('নাম', {exact:true}).fill('Updated Customer');
   await page.getByRole('button', {name:'তথ্য সেভ করুন'}).click();
-  await expect(page.getByRole('status').filter({hasText:'প্রোফাইল সেভ হয়েছে'})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText:'প্রোফাইল সেভ হয়েছে'})).toBeVisible();
   await expect(page.getByTestId('account-hero-name')).toContainText('Updated Customer');
   await expect(page.getByLabel('লগইন ফোন')).toHaveAttribute('readonly', '');
   await fits(page);
@@ -52,6 +52,8 @@ test('customer profile saves a name and refreshes the dashboard identity', async
 test('rider profile save and shared invitation acceptance work on mobile', async ({page}) => {
   let current = {...rider}; let accepted = false;
   await fixtures(page, (path, method, body) => {
+    // A missing optional scoreboard must not take down invitations/jobs.
+    if (path === '/api/rider/stats') return {};
     if (path === '/api/rider/profile' && method === 'PATCH') current = {...current, ...body};
     if (path === '/api/rider/me' || path === '/api/rider/profile') return { rider: current, email:'rider@verify.invalid' };
     if (path.endsWith('/accept')) { accepted = true; return {accepted:true}; }
@@ -102,6 +104,27 @@ test('admin distinguishes one requesting order from two invitations', async ({pa
   await expect(page.getByRole('heading',{name:'Rider dispatch board'})).toBeVisible();
   await fits(page);
 });
+
+for (const failingPath of ['/api/admin/deliveries', '/api/admin/riders']) {
+test(`admin dispatch recovers from initial ${failingPath} failure without an endless skeleton`, async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page);
+  let unavailable = true;
+  await page.route(`**${failingPath}`, route => route.fulfill(unavailable
+    ? { status: 503, json: { error: 'Dispatch temporarily unavailable' } }
+    : { json: failingPath.endsWith('/riders') ? {riders:[rider]} : { deliveries: [], awaitingOrders: [] } }));
+  await page.goto('/admin/deliveries');
+  const error = page.getByRole('alert').filter({hasText:'Dispatch temporarily unavailable'});
+  await expect(error).toBeVisible();
+  await expect(page.getByRole('status', {name:'Loading deliveries'})).toHaveCount(0);
+  unavailable = false;
+  await page.getByRole('button', {name:'Retry',exact:true}).click();
+  await expect(error).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Rider dispatch board'})).toBeVisible();
+  await fits(page);
+});
+
+}
 
 test('unauthenticated APIs deny real requests without fixture interception', async ({request}) => {
   for (const path of ['/api/account/profile','/api/rider/profile']) {

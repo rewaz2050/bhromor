@@ -1,7 +1,7 @@
 "use client";
 
 import { productHref } from "@/lib/product-url";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,8 @@ import { useSupportWhatsApp } from "@/lib/use-support-contact";
 import { waLink } from "@/lib/whatsapp-order";
 import { coverImage, type Product } from "@/lib/catalog";
 import { useLanguage } from "@/components/i18n/language-provider";
+import { categoryMenuEntries } from "@/lib/category-menu";
+import { bnDigits } from "@/lib/arrival";
 import { track } from "@/lib/analytics";
 
 /** UX plan §0 — a typed query counts once it has rested for this long. */
@@ -31,7 +33,7 @@ const QUICK_TERMS: readonly { en: string; bn: string }[] = [
 ];
 
 /** Zero-result fallback: featured pieces you can actually buy. */
-const popularNow = (products: Product[], limit = 3): Product[] => {
+const suggestedPieces = (products: Product[], limit = 3): Product[] => {
   const featured = products.filter((p) => p.inStock && p.featured);
   const rest = products.filter((p) => p.inStock && !p.featured);
   return [...featured, ...rest].slice(0, limit);
@@ -42,13 +44,21 @@ export default function ProductSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  const digits = (n: number) => lang === "bn" ? bnDigits(String(n)) : String(n);
   const router = useRouter();
-  const { products: PRODUCTS, categories: CATEGORIES, shops } =
+  const { products: PRODUCTS, categories: CATEGORIES, shops, loading, retry } =
     useLiveCatalog();
   const searching = query.trim().length > 0;
+  const catalogLoading = loading && PRODUCTS.length === 0;
+  const catalogEmpty = !catalogLoading && PRODUCTS.length === 0;
+  const categoryEntries = categoryMenuEntries(PRODUCTS, CATEGORIES, 0);
+  const quickTerms = QUICK_TERMS.filter(term => PRODUCTS.some(product => matchesProduct(product, term.en) || matchesProduct(product, term.bn)));
+  const chooseQuery = (value: string) => { setQuery(value); inputRef.current?.focus(); };
   const matches = searching
     ? PRODUCTS.filter((product) => matchesProduct(product, query))
     : [];
+  const alternatives = suggestedPieces(PRODUCTS);
   const suggestions = searching
     ? matches.slice(0, 5)
     : PRODUCTS.filter((product) => product.featured).slice(0, 3);
@@ -58,7 +68,7 @@ export default function ProductSearch() {
      remembered when it is acted on (submit, result tap), not while typing. */
   const [recent, setRecent] = useState<string[]>([]);
   const remember = (q: string) => setRecent(rememberSearch(q));
-  const noMatches = searching && matches.length === 0;
+  const noMatches = searching && !catalogLoading && !catalogEmpty && matches.length === 0;
   const supportNumber = useSupportWhatsApp(open && noMatches);
   const askHref = supportNumber
     ? waLink(supportNumber, t("header.askWhatsAppMessage").replace("{q}", query.trim()))
@@ -71,15 +81,15 @@ export default function ProductSearch() {
   const matchCount = matches.length;
   const trimmed = query.trim().toLowerCase();
   useEffect(() => {
-    if (!open || trimmed.length < 2 || trimmed === lastTracked.current) return;
+    if (!open || catalogLoading || catalogEmpty || trimmed.length < 2 || trimmed === lastTracked.current) return;
     const timer = window.setTimeout(() => {
       lastTracked.current = trimmed;
       track({ type: "search", query: trimmed, results: matchCount });
     }, SEARCH_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [open, trimmed, matchCount]);
+  }, [open, trimmed, matchCount, catalogLoading, catalogEmpty]);
   const trackSubmit = () => {
-    if (trimmed.length < 2 || trimmed === lastTracked.current) return;
+    if (catalogLoading || catalogEmpty || trimmed.length < 2 || trimmed === lastTracked.current) return;
     lastTracked.current = trimmed;
     track({ type: "search", query: trimmed, results: matchCount });
   };
@@ -128,7 +138,7 @@ export default function ProductSearch() {
             <button
               type="button"
               onClick={close}
-              aria-label="Close search"
+              aria-label={t("header.closeSearch")}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-forest-100"
             >
               <IconClose />
@@ -144,30 +154,37 @@ export default function ProductSearch() {
               close();
             }}
           >
-            <label htmlFor="header-product-search" className="sr-only">
-              Search by name, category or SKU
+            <label htmlFor={inputId} className="sr-only">
+              {t("header.searchInputLabel")}
             </label>
             <div className="flex items-center gap-2 rounded-2xl bg-paper px-3 ring-1 ring-line focus-within:ring-2 focus-within:ring-forest-500">
               <IconSearch className="h-5 w-5 shrink-0 text-ink-soft" />
               <input
                 ref={inputRef}
-                id="header-product-search"
+                id={inputId}
+                aria-describedby={`${inputId}-hint`}
+                enterKeyHint="search"
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("header.searchPlaceholder")}
                 autoComplete="off"
-                className="h-14 min-w-0 flex-1 bg-transparent text-base text-ink outline-none focus-visible:outline-none"
+                className="search-query h-14 min-w-0 flex-1 [&::-webkit-search-cancel-button]:appearance-none bg-transparent text-base text-ink outline-none focus-visible:outline-none"
               />
+              {searching && (
+                <button type="button" onClick={() => chooseQuery("")} aria-label={t("header.clearQuery")} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100">
+                  <IconClose className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="submit"
-                aria-label="View search results"
+                aria-label={t("header.viewSearchResults")}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-forest-800 text-ivory-50 hover:bg-forest-700"
               >
                 <IconArrowRight />
               </button>
             </div>
-            <p className="mt-3 text-xs text-ink-soft">{t("header.searchHint")}</p>
+            <p id={`${inputId}-hint`} className="mt-3 text-xs text-ink-soft">{t("header.searchHint")}</p>
           </form>
         </div>
         <div className="flex-1 px-5 py-6 sm:px-8">
@@ -190,7 +207,7 @@ export default function ProductSearch() {
                   <button
                     key={term}
                     type="button"
-                    onClick={() => setQuery(term)}
+                    onClick={() => chooseQuery(term)}
                     className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-paper px-4 text-sm text-forest-900 ring-1 ring-line hover:bg-forest-100"
                   >
                     <IconSearch className="h-3.5 w-3.5 shrink-0 text-ink-soft" />
@@ -200,13 +217,13 @@ export default function ProductSearch() {
               </div>
             </div>
           )}
-          {!searching && (
+          {!searching && categoryEntries.length > 0 && (
             <div className="mb-8">
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-ink-soft">
                 {t("header.exploreCollections")}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((category) => (
+                {categoryEntries.map(({ category }) => (
                   <Link
                     key={category.id}
                     href={`/shop?category=${encodeURIComponent(category.id)}`}
@@ -219,19 +236,19 @@ export default function ProductSearch() {
               </div>
             </div>
           )}
-          {!searching && (
+          {!searching && quickTerms.length > 0 && (
             <div className="mb-8">
               <h3 className="mb-3 text-xs uppercase tracking-widest text-ink-soft">
                 {t("header.findEssentials")}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {QUICK_TERMS.map((term) => {
+                {quickTerms.map((term) => {
                   const label = lang === "bn" ? term.bn : term.en;
                   return (
                     <button
                       key={term.en}
                       type="button"
-                      onClick={() => setQuery(label)}
+                      onClick={() => chooseQuery(label)}
                       className="min-h-11 border border-line px-4 text-sm hover:bg-forest-100"
                     >
                       {label}
@@ -246,13 +263,21 @@ export default function ProductSearch() {
             aria-live="polite"
             className="mb-4 break-words text-sm text-ink-soft"
           >
-            {searching
+            {catalogLoading ? t("header.catalogLoading") : catalogEmpty ? t("header.catalogEmpty") : searching
               ? (matches.length === 1 ? t("header.matchFor") : t("header.matchesFor"))
-                  .replace("{n}", String(matches.length))
+                  .replace("{n}", digits(matches.length))
                   .replace("{q}", query.trim())
               : t("header.fewFavourites")}
           </p>
-          {searching && matches.length === 0 ? (
+          {catalogLoading ? (
+            <p className="py-6 text-sm text-ink-soft">{t("header.catalogLoadingHint")}</p>
+          ) : catalogEmpty ? (
+            <div className="rounded-2xl bg-ivory-100 px-5 py-6 text-sm text-ink-soft">
+              <p>{t("header.catalogEmptyHint")}</p>
+              {retry && <button type="button" onClick={() => { inputRef.current?.focus(); void retry(); }} className="mt-4 inline-flex min-h-11 items-center rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50">{t("header.retryCatalog")}</button>}
+              <Link href="/contact" onClick={close} className="mt-3 inline-flex min-h-11 items-center text-forest-800 underline underline-offset-4">{t("track.contactSupport")}</Link>
+            </div>
+          ) : noMatches ? (
             <div className="rounded-2xl bg-ivory-100 px-5 py-8 text-center">
               <h3 className="font-display text-xl text-forest-900">
                 {t("header.noMatches")}
@@ -274,21 +299,20 @@ export default function ProductSearch() {
                     target="_blank"
                     rel="noreferrer"
                     data-testid="search-ask-whatsapp"
-                    className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#25D366] px-5 text-sm font-semibold text-white hover:brightness-95"
+                    className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50 hover:bg-forest-700"
                   >
                     {t("header.askWhatsApp")}
                   </a>
                 </div>
               ) : null}
-              {/* Demand we do not stock still deserves a next step: what
-                  people are buying right now, one tap away. */}
-              {popularNow(PRODUCTS).length > 0 ? (
+              {/* Featured/in-stock alternatives, not a claim of real sales. */}
+              {alternatives.length > 0 ? (
                 <div className="mt-6 text-left" data-testid="search-popular">
                   <h4 className="mb-2 text-xs font-semibold uppercase tracking-widest text-ink-soft">
                     {t("header.popularNow")}
                   </h4>
                   <ul className="divide-y divide-line">
-                    {popularNow(PRODUCTS).map((product) => (
+                    {alternatives.map((product) => (
                       <li key={product.id}>
                         <Link
                           href={productHref(product, shops)}
@@ -366,7 +390,7 @@ export default function ProductSearch() {
             </ul>
           )}
         </div>
-        {(!searching || matches.length > 0) && (
+        {!catalogLoading && !catalogEmpty && (!searching || matches.length > 0) && (
           <div className="sticky bottom-0 border-t border-line bg-ivory-50 px-5 py-5 sm:px-8">
             <Link
               href={shopSearchHref(query)}
@@ -379,7 +403,7 @@ export default function ProductSearch() {
               {searching
                 ? matches.length === 1
                   ? t("header.viewOneResult")
-                  : t("header.viewAllResults").replace("{n}", String(matches.length))
+                  : t("header.viewAllResults").replace("{n}", digits(matches.length))
                 : t("header.shopFullCollection")}
               <IconArrowRight className="h-4 w-4" />
             </Link>

@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import AccountView from "../account-view";
 import { __resetLiveAuthForTests } from "@/lib/customer-session";
 
@@ -54,7 +55,7 @@ afterEach(() => {
 describe("AccountView — the rebuilt dashboard", () => {
   it("greets by name, shows the PROSANTI+ chip, and defaults to the Orders tab", async () => {
     signedInRoutes();
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
 
     const hero = await screen.findByTestId("account-hero");
     expect(hero).toHaveTextContent("রহিম সাহেব");
@@ -71,7 +72,7 @@ describe("AccountView — the rebuilt dashboard", () => {
 
   it("mounts a programme only when its tab opens (Smart Card, then Refer)", async () => {
     signedInRoutes();
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     await screen.findByTestId("account-hero");
 
     fireEvent.click(screen.getByTestId("account-tab-card"));
@@ -95,7 +96,7 @@ describe("AccountView — the rebuilt dashboard", () => {
       JSON.stringify({ id: "PS-77", phone: "01712345678", placedAt: Date.now() }),
     );
     try {
-      render(<AccountView />);
+      render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
       const shortcut = await screen.findByTestId("account-hero-track");
       // The phone rides along: /track only looks the order up by itself when
       // it has both (2026-10-11). Without it the customer retyped their number.
@@ -108,7 +109,7 @@ describe("AccountView — the rebuilt dashboard", () => {
   it("guests see the auth form first, the value pitch beside it, teasers below", async () => {
     routes["/api/account/me"] = async () => jsonResponse({ customer: null }, 401);
     routes["/api/contact"] = async () => jsonResponse({ phone: "018000000000" });
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
 
     await screen.findByRole("tab", { name: "নতুন অ্যাকাউন্ট" });
     // The form leads and the pitch is a sibling, not buried under teasers.

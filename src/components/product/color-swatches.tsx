@@ -31,6 +31,7 @@ export default function ColorSwatches({
   }
   return (
     <span
+      role="img"
       data-testid="card-swatches"
       className={`inline-flex items-center gap-1 ${className}`}
       aria-label={names.join(", ")}

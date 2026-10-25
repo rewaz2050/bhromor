@@ -216,23 +216,25 @@ export default function AdminGate({
               aria-label="Open admin menu"
               aria-expanded={navOpen}
               aria-haspopup="dialog"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900 lg:hidden"
             >
               <IconMenu className="h-5 w-5" />
             </button>
-            <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
-              {adminTitleFor(pathname)}
-            </h1>
-            <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider text-emerald-800">
-              Live data
-            </span>
+            <div className="min-w-0">
+              <h1 className="font-display truncate text-lg font-medium text-forest-900 sm:text-xl">
+                {adminTitleFor(pathname)}
+              </h1>
+              <span aria-live="polite" className={`inline-flex rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${staffLive.checked && staffLive.live ? "bg-emerald-100 text-emerald-800" : "bg-ivory-200 text-ink-soft"}`}>
+                {!staffLive.checked ? "Checking session" : staffLive.live ? "Session verified" : "Session unavailable"}
+              </span>
+            </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
               aria-keyshortcuts="Meta+K Control+K"
-              className="flex h-10 items-center gap-2 rounded-full border border-line bg-paper px-3 text-sm text-ink-soft transition-colors hover:border-forest-300 hover:text-forest-900"
+              className="flex min-h-11 min-w-11 items-center gap-2 rounded-full border border-line bg-paper px-3 text-sm text-ink-soft transition-colors hover:border-forest-300 hover:text-forest-900"
             >
               <IconSearch className="h-4 w-4" />
               <span className="hidden lg:inline">Jump to…</span>
@@ -253,11 +255,11 @@ export default function AdminGate({
           <Link
             href="/admin/notifications"
             aria-label={`Notifications, ${unread} unread`}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-forest-100 hover:text-forest-900"
           >
             <IconBell className="h-5 w-5" />
             {unread > 0 && (
-              <span className="absolute right-0 top-0 flex h-[1.05rem] min-w-[1.05rem] items-center justify-center rounded-full bg-gold-500 px-1 text-[0.62rem] font-bold text-white">
+              <span className="absolute right-0 top-0 flex h-[1.05rem] min-w-[1.05rem] items-center justify-center rounded-full bg-gold-600 px-1 text-[0.62rem] font-bold text-white">
                 {unread > 9 ? "9+" : unread}
               </span>
             )}

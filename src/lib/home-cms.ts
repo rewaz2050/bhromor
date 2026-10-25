@@ -57,7 +57,7 @@ export const HOME_DEFAULTS: HomeSettings = {
     // On by default (2026-09-20): the delivery promise sits at the top of
     // every page. A published row that switched it off keeps it off.
     enabled: true,
-    text: "Cash on Delivery · Instant Delivery in 45–50 min · Easy Returns",
+    text: "Cash on Delivery · Delivery time varies by area · Easy Returns",
   },
   hero: {
     eyebrow: "PROSANTI",

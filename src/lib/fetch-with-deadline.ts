@@ -54,3 +54,35 @@ export const fetchWithDeadline = async (
     clearTimeout(timer);
   }
 };
+
+/**
+ * A bounded JSON read, including the response body. A fetch-only timeout
+ * ends at headers; a stalled body must not leave catalog consumers loading
+ * forever. The race also settles when a non-browser fetch ignores abort.
+ * Like fetchWithDeadline, this owns the request's AbortSignal.
+ */
+export const fetchJsonWithDeadline = async <T>(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs: number = FETCH_DEADLINE_MS,
+): Promise<T> => {
+  const controller = typeof AbortController === "undefined" ? null : new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const res = await fetch(input, controller ? { ...init, signal: controller.signal } : init);
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        return (await res.json()) as T;
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new FetchDeadlineError(timeoutMs));
+          controller?.abort();
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};

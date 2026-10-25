@@ -170,11 +170,11 @@ export default function StyleMatchPanel() {
         </div>
         {!profile ? (
           <p className="text-xs text-ink-soft sm:col-span-2">
-            {lang === "bn" ? "সাইজ নিশ্চিত করতে আগে একবার " : "For a confident size, run the "}
+            {lang === "bn" ? "সাইজের সাহায্য লাগলে " : "Need size help? "}
             <Link href="/shop" className="font-semibold text-forest-800 underline underline-offset-2">
-              {lang === "bn" ? "সাইজ ফাইন্ডার" : "Size Finder"}
+              {lang === "bn" ? "পণ্য বেছে সাইজ দেখুন" : "Choose a product to check your size"}
             </Link>
-            {lang === "bn" ? " চালিয়ে নিন — উত্তর আপনার এই ডিভাইসেই থাকে।" : " once — your answers stay on this device."}
+            {lang === "bn" ? " — প্রতিটি পণ্যে সাইজের গাইড পাবেন।" : " — each product has its own size guidance."}
           </p>
         ) : null}
       </form>

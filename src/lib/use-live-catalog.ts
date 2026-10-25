@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   ensureLiveCatalog,
   getCategoriesSnapshot,
   getLiveCategories,
-  getLiveProducts,
   getProductsSnapshot,
   getShopsSnapshot,
-  isCatalogSettled,
+  getCatalogStatusSnapshot,
+  retryLiveCatalog,
   subscribeLiveCatalog,
 } from "./live-catalog";
 
 /**
- * Storefront catalog. The launch catalog paints instantly (SSR-safe); when
- * the backend serves live rows the hook swaps them in once.
+ * Live-only storefront catalog. All consumers share data and readiness;
+ * a cold or failed request never substitutes launch/demo product rows.
  */
 export function useLiveCatalog() {
   const products = useSyncExternalStore(
@@ -32,28 +32,22 @@ export function useLiveCatalog() {
     getShopsSnapshot,
     getShopsSnapshot,
   );
-  const [live, setLive] = useState(() => getLiveProducts() !== null);
-  const [settled, setSettled] = useState(() => isCatalogSettled());
+  const status = useSyncExternalStore(
+    subscribeLiveCatalog,
+    getCatalogStatusSnapshot,
+    getCatalogStatusSnapshot,
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    void ensureLiveCatalog().then((isLive) => {
-      if (cancelled) return;
-      setLive(isLive && getLiveProducts() !== null);
-      setSettled(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => { void ensureLiveCatalog(); }, []);
 
   return {
     products,
     categories,
     shops,
     /** True once live rows (not seeds) are serving. */
-    live: live && getLiveProducts() !== null,
-    loading: !settled,
+    live: status === "ready",
+    loading: status === "loading",
+    retry: retryLiveCatalog,
     liveCategories: getLiveCategories(),
   };
 }

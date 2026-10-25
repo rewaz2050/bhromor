@@ -8,17 +8,34 @@
  * `auth.updateUser({ password })` needs no service key.
  */
 
-import { useId, useState, type FormEvent } from "react";
-import { passwordProblem, APPLICANT_PASSWORD_MIN } from "@/lib/applicant-password";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import {
+  passwordProblem,
+  APPLICANT_PASSWORD_MIN,
+} from "@/lib/applicant-password";
 import { bnDigits } from "@/lib/arrival";
+import { runBrowserAuthMutation } from "@/lib/rider-auth-lane";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 const fieldClass =
   "block w-full rounded-xl border border-line bg-paper px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-forest-500/40 disabled:opacity-60";
-const labelClass = "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-soft";
+const labelClass =
+  "mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-soft";
 
-export default function ChangePasswordCard({ className = "" }: { className?: string }) {
+export default function ChangePasswordCard({
+  className = "",
+}: {
+  className?: string;
+}) {
   const id = useId();
+  const ownerRef = useRef<{ active: boolean; pending: boolean } | null>(null);
+  useEffect(() => {
+    const owner = { active: true, pending: false };
+    ownerRef.current = owner;
+    return () => {
+      owner.active = false;
+    };
+  }, []);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [show, setShow] = useState(false);
@@ -28,6 +45,9 @@ export default function ChangePasswordCard({ className = "" }: { className?: str
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const owner = ownerRef.current;
+    if (!owner?.active || owner.pending) return;
+    const current = () => owner.active && ownerRef.current === owner;
     setDone(false);
     const problem = passwordProblem(password, confirm);
     if (problem) {
@@ -36,43 +56,76 @@ export default function ChangePasswordCard({ className = "" }: { className?: str
     }
     const client = getSupabaseBrowser();
     if (!client) {
-      setError("লগইন সার্ভিস এই মুহূর্তে পাওয়া যাচ্ছে না — একটু পরে আবার চেষ্টা করুন।");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    const { error: authError } = await client.auth.updateUser({ password });
-    setSaving(false);
-    if (authError) {
       setError(
-        /different from the old|same password/i.test(authError.message)
-          ? "নতুন পাসওয়ার্ড আগেরটার থেকে আলাদা হতে হবে।"
-          : "পাসওয়ার্ড বদলানো যায়নি — আবার চেষ্টা করুন।",
+        "লগইন সার্ভিস এই মুহূর্তে পাওয়া যাচ্ছে না — একটু পরে আবার চেষ্টা করুন।",
       );
       return;
     }
-    setPassword("");
-    setConfirm("");
-    setDone(true);
+    owner.pending = true;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await runBrowserAuthMutation(client, current, () =>
+        client.auth.updateUser({ password }),
+      );
+      if (!current()) return;
+      if (!result.accepted) {
+        setError("পাসওয়ার্ড পরিবর্তন নিশ্চিত করা যায়নি — আবার চেষ্টা করুন।");
+        return;
+      }
+      const { error: authError } = result.value;
+      if (authError) {
+        setError(
+          /different from the old|same password/i.test(authError.message)
+            ? "নতুন পাসওয়ার্ড আগেরটার থেকে আলাদা হতে হবে।"
+            : "পাসওয়ার্ড বদলানো যায়নি — আবার চেষ্টা করুন।",
+        );
+        return;
+      }
+      setPassword("");
+      setConfirm("");
+      setDone(true);
+    } catch {
+      if (current())
+        setError("পাসওয়ার্ড পরিবর্তন নিশ্চিত করা যায়নি — আবার চেষ্টা করুন।");
+    } finally {
+      owner.pending = false;
+      if (current()) setSaving(false);
+    }
   };
 
   return (
-    <section className={`rounded-2xl bg-paper p-5 ring-1 ring-line ${className}`}>
-      <h2 className="text-sm font-semibold text-forest-900">পাসওয়ার্ড বদলান</h2>
+    <section
+      className={`rounded-2xl bg-paper p-5 ring-1 ring-line ${className}`}
+    >
+      <h2 className="text-sm font-semibold text-forest-900">
+        পাসওয়ার্ড বদলান
+      </h2>
       <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-        আবেদনের সময় দেওয়া পাসওয়ার্ড বা সাপোর্টের দেওয়া অস্থায়ী পাসওয়ার্ড এখানে বদলে নিন।
-        ভুলে গেলে লগইন পেইজের “পাসওয়ার্ড ভুলে গেছেন?” থেকে অনুরোধ করুন — অ্যাডমিন ফোনে
-        নিশ্চিত হয়ে অনুমোদন দিলে সেখানেই নতুন পাসওয়ার্ড দিতে পারবেন (এসএমএস/ইমেইল লাগে না)।
+        আবেদনের সময় দেওয়া পাসওয়ার্ড বা সাপোর্টের দেওয়া অস্থায়ী পাসওয়ার্ড
+        এখানে বদলে নিন। ভুলে গেলে লগইন পেইজের “পাসওয়ার্ড ভুলে গেছেন?” থেকে
+        অনুরোধ করুন — অ্যাডমিন ফোনে নিশ্চিত হয়ে অনুমোদন দিলে সেখানেই নতুন
+        পাসওয়ার্ড দিতে পারবেন (এসএমএস/ইমেইল লাগে না)।
       </p>
 
-      <form onSubmit={(e) => void submit(e)} className="mt-4 grid gap-3 sm:grid-cols-2" noValidate>
+      <form
+        onSubmit={(e) => void submit(e)}
+        className="mt-4 grid gap-3 sm:grid-cols-2"
+        noValidate
+      >
         {error && (
-          <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200 sm:col-span-2">
+          <p
+            role="alert"
+            className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200 sm:col-span-2"
+          >
             {error}
           </p>
         )}
         {done && (
-          <p role="status" className="rounded-xl bg-forest-50 px-3.5 py-2.5 text-xs font-medium text-forest-900 ring-1 ring-forest-200 sm:col-span-2">
+          <p
+            role="status"
+            className="rounded-xl bg-forest-50 px-3.5 py-2.5 text-xs font-medium text-forest-900 ring-1 ring-forest-200 sm:col-span-2"
+          >
             পাসওয়ার্ড বদলে গেছে — পরের বার নতুন পাসওয়ার্ড দিয়ে সাইন ইন করুন।
           </p>
         )}

@@ -134,3 +134,15 @@ token টা ডাটাবেজে সংরক্ষণ, আর `pushStaffNo
 - `npm run lint`, `npm run typecheck`, পুরো টেস্ট স্যুট ও `next build` ক্লিন
 
 প্রথমবার Actions চালানোর পর কোনো Gradle এরর এলে সেটা আমাকে জানান — ঠিক করে দেব।
+
+
+## ৮) ২৫ অক্টোবর ২০২৬ — native acceptance readiness
+
+[যাচাইয়ের পূর্ণ evidence ও device checklist](audit/android-native-readiness-2026-10-25.md)।
+
+- Workflow-এর optional `site_url` খালি থাকলে আগে `Invalid URL` দিয়ে `cap sync` ব্যর্থ হতো। বাস্তবে reproduce করে ঠিক করা হয়েছে: empty/whitespace এখন documented default নেয়, আর nonblank preview override trim হয়। Malformed nonblank URL এখনও fail করে; production-এ silently fallback করে না।
+- বাস্তব default/preview sync, generated config, offline asset ও GPS plugin discovery PASS। Native-related **৬ files / ৬৬ tests PASS** (নতুন config regression ৭টি), full TypeScript/targeted lint/diff PASS, fresh audit zero। এগুলো physical GPS বা APK compilation-এর প্রমাণ নয়।
+- `./gradlew assembleDebug --no-daemon --stacktrace` চালানো হয়েছে; **Java না থাকায় compilation শুরুর আগেই exit 1**। এখানে SDK/adb বা connected device/emulator-ও নেই। অতএব APK/native-device acceptance এখনও **BLOCKED**, PASS নয়।
+- API 36/JDK 21-equipped host অথবা অনুমোদিত বর্তমান-branch Actions build প্রয়োজন। বর্তমান dirty source publish না করে পুরোনো remote source build করলে সেটি এই পরিবর্তনের verification হবে না। এই session থেকে commit/push/workflow dispatch হয়নি।
+- Device tests-এর আগে অনুমোদিত staging HTTPS URL, test rider/device ও test data scope নিন। Android-version অনুযায়ী background permission/settings flow ভিন্ন হতে পারে—উপরের অনুমতি-সংক্রান্ত নির্দেশনা device evidence নয়। Screen-off service notification এবং server timestamps দিয়ে বাস্তব পাঁচ-মিনিটের বেশি background tracking যাচাই করতে হবে।
+- Tracking service notification ও native order push আলাদা। Shell-এ native FCM integration নেই; শুধুমাত্র manifest notification permission দেখে native push delivery PASS বলা যাবে না।

@@ -36,7 +36,7 @@ export default function AdminDataError({
         <button
           type="button"
           onClick={() => void onRetry()}
-          className="rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-800"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-rose-700 px-3 py-1 text-xs font-semibold text-white hover:bg-rose-800"
         >
           Retry
         </button>
@@ -45,7 +45,7 @@ export default function AdminDataError({
         <button
           type="button"
           onClick={onDismiss}
-          className="text-xs underline underline-offset-2"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center text-xs underline underline-offset-2"
         >
           Dismiss
         </button>

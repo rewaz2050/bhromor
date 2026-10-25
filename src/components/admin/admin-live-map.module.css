@@ -1,0 +1,13 @@
+/* Keep Leaflet's pane/control z-indexes inside the dispatch card, below the
+   sticky admin header and its notification/menu controls. */
+.frame {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Leaflet's desktop defaults are 30px. Dispatch is also used on phones. */
+.frame :global(.leaflet-bar a) {
+  min-width: 44px;
+  min-height: 44px;
+  line-height: 44px;
+}

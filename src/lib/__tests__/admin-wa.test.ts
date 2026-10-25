@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Order } from "../orders";
 import {
   applicableWaStatuses,
@@ -115,3 +115,9 @@ describe("admin-wa — one-tap WhatsApp status updates", () => {
     ).toBeNull();
   });
 });
+
+
+// Feed/message fixtures deliberately use this configured host, independently
+// of the deployment's fallback domain or the runner's environment.
+beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://prosanti.store"); });
+afterEach(() => { vi.unstubAllEnvs(); });

@@ -126,9 +126,19 @@ describe("compressReviewPhoto (browser guards)", () => {
     const notImage = new File(["hello"], "a.txt", { type: "text/plain" });
     await expect(compressReviewPhoto(notImage)).resolves.toBeNull();
   });
-  it("returns null (not a throw) when canvas decoding fails", async () => {
+  it("returns null when object URLs are unavailable", async () => {
+    vi.stubGlobal("URL", { createObjectURL: undefined });
+    await expect(compressReviewPhoto(new File(["fake"], "a.jpg", { type: "image/jpeg" }))).resolves.toBeNull();
+  });
+  it("returns null (not a throw) when image decoding fails and releases the object URL", async () => {
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL: () => "blob:review-photo-test", revokeObjectURL: revoke });
+    vi.stubGlobal("Image", class BrokenImage {
+      onerror: (() => void) | null = null;
+      set src(value: string) { if (value) queueMicrotask(() => this.onerror?.()); }
+    });
     const file = new File(["fake"], "a.jpg", { type: "image/jpeg" });
-    // jsdom Image never fires onload → promise must reject into null.
     await expect(compressReviewPhoto(file)).resolves.toBeNull();
+    expect(revoke).toHaveBeenCalledWith("blob:review-photo-test");
   });
 });

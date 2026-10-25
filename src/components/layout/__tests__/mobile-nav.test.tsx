@@ -44,10 +44,8 @@ describe("MobileNav", () => {
       "href",
       "/shop",
     );
-    expect(screen.getByRole("link", { name: "Categories" })).toHaveAttribute(
-      "href",
-      "/#collections",
-    );
+    // No catalog has loaded: do not offer a jump to a missing shelf.
+    expect(screen.queryByRole("link", { name: "Categories" })).toBeNull();
     expect(screen.getByRole("link", { name: "Track Order" })).toBeInTheDocument();
   });
 

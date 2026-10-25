@@ -115,6 +115,7 @@ it("network failure → one-tap retry re-sends the same order", async () => {
   expect(retry).toHaveTextContent(/Try again/i);
   expect(screen.queryByTestId("order-fix-fields")).toBeNull();
   expect(orderAttempts).toBe(1);
+  await waitFor(() => expect(screen.getByTestId("order-error")).toHaveFocus());
 
   fireEvent.click(retry);
 

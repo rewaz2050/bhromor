@@ -60,3 +60,17 @@ describe("ShareRow", () => {
     Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
   });
 });
+
+
+it("distinguishes native cancellation from an actual sharing failure", async () => {
+  const share = vi.fn().mockRejectedValueOnce(new DOMException("Canceled", "AbortError")).mockRejectedValueOnce(new Error("Unavailable"));
+  Object.defineProperty(navigator, "share", { value: share, configurable: true });
+  try {
+    render(<ShareRow product={product} />);
+    fireEvent.click(await screen.findByTestId("share-native"));
+    await waitFor(() => expect(share).toHaveBeenCalledOnce());
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    fireEvent.click(screen.getByTestId("share-native"));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Use WhatsApp, Facebook or Copy link"));
+  } finally { Object.defineProperty(navigator, "share", { value: undefined, configurable: true }); }
+});

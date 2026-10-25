@@ -1,25 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, vi, afterEach, describe, expect, it } from "vitest";
 import { absoluteUrl, siteBaseUrl } from "../site-url";
 
-const original = {
-  site: process.env.NEXT_PUBLIC_SITE_URL,
-  production: process.env.VERCEL_PROJECT_PRODUCTION_URL,
-  vercel: process.env.VERCEL_URL,
-};
-
-afterEach(() => {
-  process.env.NEXT_PUBLIC_SITE_URL = original.site;
-  process.env.VERCEL_PROJECT_PRODUCTION_URL = original.production;
-  process.env.VERCEL_URL = original.vercel;
+afterEach(() => { vi.unstubAllEnvs(); });
+beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", undefined);
+  vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", undefined);
+  vi.stubEnv("VERCEL_URL", undefined);
 });
 
 describe("site-url", () => {
-  it("falls back to the stable prosanti.store domain", () => {
+  it("falls back to the existing public canonical domain", () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
     delete process.env.VERCEL_URL;
-    expect(siteBaseUrl()).toBe("https://prosanti.store");
-    expect(absoluteUrl("/shop")).toBe("https://prosanti.store/shop");
+    expect(siteBaseUrl()).toBe("https://proshanti.rahatahmed.site");
+    expect(absoluteUrl("/shop")).toBe("https://proshanti.rahatahmed.site/shop");
   });
 
   it("prefers NEXT_PUBLIC_SITE_URL and trims a trailing slash", () => {

@@ -110,3 +110,10 @@ describe("FunnelCard (B4)", () => {
     expect(screen.getByTestId("funnel-money")).toHaveTextContent("—");
   });
 });
+
+it("lets a server-confirmed missing report be rechecked after installation", () => {
+  const onRetry = vi.fn();
+  render(<FunnelCard funnel={null} missing onRetry={onRetry} />);
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(onRetry).toHaveBeenCalledOnce();
+});

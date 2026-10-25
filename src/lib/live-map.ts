@@ -29,9 +29,8 @@ export interface MapPoint {
 export const TRACK_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 export const TRACK_TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-/** Leaflet's own stylesheet, pinned and SRI-checked like the admin map's. */
-export const LEAFLET_CSS_URL = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-export const LEAFLET_CSS_INTEGRITY = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+/** Neutral local tile for network failures; never show a broken-image icon. */
+export const MAP_ERROR_TILE_URL = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><path fill="#f1eee5" d="M0 0h256v256H0z"/><path d="M0 0h256v256H0z" fill="none" stroke="#ddd7c8"/></svg>');
 
 /* ------------------------------------------------------------------ *
  * Framing

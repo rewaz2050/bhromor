@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { bnDigits } from "@/lib/arrival";
 import { useState } from "react";
 import type { Product } from "@/lib/catalog";
 import ZoomLightbox from "./zoom-lightbox";
@@ -70,11 +72,12 @@ function EmbedFacade({
   label: string;
   onPlay: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <button
       type="button"
       onClick={onPlay}
-      aria-label={`Play video: ${label}`}
+      aria-label={t("gallery.playNamedVideo").replace("{name}", label)}
       className="group relative block h-full w-full text-left"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -92,6 +95,8 @@ function EmbedFacade({
 }
 
 export default function ProductGallery({ product }: { product: Product }) {
+  const { t, lang } = useLanguage();
+  const count = (n: number) => { const value = String(n).padStart(2, "0"); return lang === "bn" ? bnDigits(value) : value; };
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState<string | null>(null);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -116,7 +121,8 @@ export default function ProductGallery({ product }: { product: Product }) {
           <button
             type="button"
             data-testid="gallery-zoom-trigger"
-            aria-label={`Zoom image: ${current.alt}`}
+            aria-label={t("gallery.zoomImage").replace("{name}", current.alt)}
+            aria-haspopup="dialog"
             onClick={() => setZoomOpen(true)}
             onMouseMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
@@ -142,7 +148,7 @@ export default function ProductGallery({ product }: { product: Product }) {
               }
             />
             <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-forest-950/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-ivory-50 transition-opacity group-hover:opacity-0">
-              <IconSearch className="h-3 w-3" /> Zoom
+              <IconSearch className="h-3 w-3" /> {t("gallery.zoom")}
             </span>
           </button>
         )}
@@ -194,10 +200,10 @@ export default function ProductGallery({ product }: { product: Product }) {
         {product.badge && (
           <span className="absolute left-4 top-4 rounded-full bg-forest-800 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-ivory-50">
             {product.badge === "new"
-              ? "New"
+              ? t("gallery.new")
               : product.badge === "sale"
-                ? "Sale"
-                : "Featured"}
+                ? t("gallery.sale")
+                : t("gallery.featured")}
           </span>
         )}
       </div>
@@ -210,18 +216,18 @@ export default function ProductGallery({ product }: { product: Product }) {
         className="mt-4 text-xs tracking-widest text-ink-soft"
         aria-live="polite"
       >
-        {String(slides.length ? index + 1 : 0).padStart(2, "0")} /{" "}
-        {String(slides.length).padStart(2, "0")}
+        {count(slides.length ? index + 1 : 0)} /{" "}
+        {count(slides.length)}
       </p>
       {slides.length > 1 && (
         <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
           {slides.map((slide, i) => {
             const label =
               slide.kind === "image"
-                ? `View image ${i + 1}: ${slide.alt}`
+                ? t("gallery.viewImage").replace("{number}", String(i + 1)).replace("{name}", slide.alt)
                 : slide.kind === "youtube"
-                  ? `Play video: ${slide.label}`
-                  : `Play video ${i + 1}`;
+                  ? t("gallery.playNamedVideo").replace("{name}", slide.label)
+                  : t("gallery.playVideo").replace("{number}", String(i + 1));
             return (
               <button
                 key={slide.key}

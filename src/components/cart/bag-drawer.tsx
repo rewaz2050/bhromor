@@ -1,6 +1,8 @@
 "use client";
 
 import { productHref } from "@/lib/product-url";
+import CatalogRecovery from "@/components/shop/catalog-recovery";
+import DeliveryEstimate from "@/components/delivery/delivery-estimate";
 import ArrivalCue from "@/components/delivery/arrival-cue";
 import CodReminder from "./cod-reminder";
 import { coverImage } from "@/lib/catalog";
@@ -17,8 +19,6 @@ import {
   DELIVERY_CHARGE_LADDER_BN,
   DELIVERY_CHARGE_PROMISE_BN,
   DELIVERY_CHARGE_PROMISE_EN,
-  DELIVERY_ETA,
-  INSTANT_DELIVERY_TITLE,
 } from "@/lib/delivery";
 import { IconBag, IconChevron, IconClose, IconSend, IconTruck } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
@@ -38,15 +38,20 @@ export default function BagDrawer() {
     bagOpen,
     closeBag,
     detail,
+    lines,
+    ready,
     itemCount,
     subtotal,
     updateQty,
     removeItem,
   } = useCart();
   /** Hook unconditionally — the bag content below is a conditional render. */
-  const { shops, products: catalogProducts } = useLiveCatalog();
+  const { shops, products: catalogProducts, loading, live } = useLiveCatalog();
   /** UX plan §5 (R11) — "পরে কিনব": line → wishlist, with a one-line confirmation. */
   const { save: saveForLater, notice: savedNotice } = useSaveForLater();
+  // A closed bag needs no recommendation/WhatsApp calculation or child tree.
+  if (!bagOpen) return null;
+  const unresolvedBag = lines.length > 0 && detail.length === 0;
   /** WhatsApp order for the whole bag (P1 #15) — one shop per cart. */
   const bagShopIds = lineShopIds(detail, shops[0]?.id ?? "");
   const bagShop =
@@ -96,9 +101,9 @@ export default function BagDrawer() {
           {t("bag.yourBag")}{" "}
           {/* UI/UX pass 2026-10-15 — the count in the heading follows the
               same digit rule as the rest of the shop (UX plan §1.4). */}
-          <span className="font-sans text-sm text-ink-soft">
+          {!unresolvedBag && <span className="font-sans text-sm text-ink-soft">
             ({lang === "bn" ? bnDigits(String(itemCount)) : itemCount})
-          </span>
+          </span>}
         </h2>
         <button
           type="button"
@@ -109,7 +114,11 @@ export default function BagDrawer() {
           <IconClose />
         </button>
       </div>
-      {detail.length === 0 ? (
+      {lines.length > 0 && detail.length === 0 && (!ready || loading) ? (
+        <p role="status" className="p-8 text-center text-sm text-ink-soft">{t("header.savedBagLoading")}</p>
+      ) : lines.length > 0 && detail.length === 0 && !live ? (
+        <div className="p-5"><CatalogRecovery savedBag onNavigate={closeBag} /></div>
+      ) : detail.length === 0 ? (
         <>
         <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
           <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ivory-100 text-gold-600 ring-1 ring-line">
@@ -136,7 +145,7 @@ export default function BagDrawer() {
           <div className="border-b border-line bg-forest-50 px-6 py-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-forest-900">
               <IconTruck className="h-4 w-4 shrink-0 text-gold-600" />
-              {INSTANT_DELIVERY_TITLE} — Sunamganj · {DELIVERY_ETA}
+              <DeliveryEstimate />
             </p>
             <p
               className="mt-2 rounded-lg bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-forest-900 ring-1 ring-gold-200"
@@ -145,7 +154,7 @@ export default function BagDrawer() {
               <IconTruck className="mr-1.5 inline h-4 w-4 align-[-3px]" />{lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             <p className="mt-1.5 text-xs text-ink-soft" role="status">
-              {DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি
+              {lang === "bn" ? `${DELIVERY_CHARGE_LADDER_BN} · স্টোর পিকআপ ফ্রি` : "Delivery varies by area · store pickup is free"}
             </p>
             <ArrivalCue className="mt-2" />
           </div>
@@ -287,7 +296,6 @@ export default function BagDrawer() {
               </strong>
             </div>
             <p className="mt-1.5 text-xs text-ink-soft">
-              {INSTANT_DELIVERY_TITLE} · {DELIVERY_ETA} —{" "}
               {lang === "bn" ? DELIVERY_CHARGE_PROMISE_BN : DELIVERY_CHARGE_PROMISE_EN}
             </p>
             {/* What to keep ready at the door — same maths as checkout. */}

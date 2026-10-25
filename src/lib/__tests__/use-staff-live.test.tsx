@@ -82,4 +82,28 @@ describe("useStaffLive", () => {
     expect(result.current.error).toBeNull();
     expect(state.calls).toBe(0);
   });
+
+it("one retry recovers every mounted consumer of the shared staff probe", async () => {
+  state.authed = true; state.probe = { staff: false, status: 0 }; state.calls = 0;
+  const { result } = renderHook(() => ({ header: useStaffLive(), inbox: useStaffLive() }));
+  await waitFor(() => expect(result.current.inbox.checked).toBe(true));
+  expect(state.calls).toBe(1);
+  state.probe = { staff: true, status: 200 };
+  act(() => result.current.inbox.retry());
+  await waitFor(() => expect(result.current.header.live).toBe(true));
+  expect(result.current.inbox.live).toBe(true);
+  expect(state.calls).toBe(2);
+});
+
+it("does not reuse the previous signed-in session's cached probe after sign-out", async () => {
+  state.authed = true; state.probe = { staff: true, status: 200 };
+  const { result, rerender } = renderHook(() => useStaffLive());
+  await waitFor(() => expect(result.current.live).toBe(true));
+  state.authed = false; rerender();
+  await waitFor(() => expect(result.current.live).toBe(false));
+  state.probe = { staff: false, status: 403 }; state.authed = true; rerender();
+  await waitFor(() => expect(result.current.error).not.toBeNull());
+  expect(result.current.live).toBe(false);
+});
+
 });

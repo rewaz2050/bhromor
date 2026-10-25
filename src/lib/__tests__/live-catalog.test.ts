@@ -3,6 +3,9 @@ import { CATEGORIES, DELIVERY_ZONES, PRODUCTS } from "../catalog";
 import {
   __resetLiveCatalog,
   ensureLiveCatalog,
+  retryLiveCatalog,
+  getCatalogStatusSnapshot,
+  subscribeLiveCatalog,
   ensureLiveZones,
   getCategoriesSnapshot,
   getProductsSnapshot,
@@ -120,5 +123,72 @@ describe("live-catalog registry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getZonesSnapshot()).toEqual([DELIVERY_ZONES[0]]);
     expect(isZonesSettled()).toBe(true);
+  });
+});
+
+
+describe("catalog recovery", () => {
+  it("notifies failure, retries once for concurrent callers, and serves recovered rows", async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeLiveCatalog(listener);
+    let resolve: (value: Response) => void = () => {};
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: "Unavailable" }, { status: 503 }))
+      .mockImplementationOnce(() => new Promise<Response>(done => { resolve = done; }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(ensureLiveCatalog()).resolves.toBe(false);
+      expect(getCatalogStatusSnapshot()).toBe("unavailable");
+      expect(listener).toHaveBeenCalled();
+      const pending = retryLiveCatalog();
+      expect(getCatalogStatusSnapshot()).toBe("loading");
+      const sameRequest = retryLiveCatalog();
+      expect(sameRequest).toBe(pending);
+      resolve(Response.json({ source: "live", products: [liveProduct], categories: CATEGORIES, shops: [] }));
+      await expect(pending).resolves.toBe(true);
+      expect(getCatalogStatusSnapshot()).toBe("ready");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await retryLiveCatalog();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(resolveCatalogProduct(liveProduct.id)).toEqual(liveProduct);
+    } finally { unsubscribe(); }
+  });
+
+  it("times out an unanswered catalog and can recover without a page reload", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce(Response.json({ source: "live", products: [liveProduct] }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const pending = ensureLiveCatalog();
+      await vi.advanceTimersByTimeAsync(12_000);
+      await expect(pending).resolves.toBe(false);
+      expect(getCatalogStatusSnapshot()).toBe("unavailable");
+      await expect(retryLiveCatalog()).resolves.toBe(true);
+      expect(getCatalogStatusSnapshot()).toBe("ready");
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+
+describe("late catalog responses", () => {
+  it("does not replace recovered rows with a timed-out request's late body", async () => {
+    vi.useFakeTimers();
+    let finishBody: (value: unknown) => void = () => {};
+    const newer = { ...liveProduct, price: liveProduct.price + 100 };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => new Promise(resolve => { finishBody = resolve; }) })
+      .mockResolvedValueOnce(Response.json({ source: "live", products: [newer] }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const initial = ensureLiveCatalog();
+      await vi.advanceTimersByTimeAsync(12_000);
+      await expect(initial).resolves.toBe(false);
+      await expect(retryLiveCatalog()).resolves.toBe(true);
+      finishBody({ source: "live", products: [liveProduct] });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(getProductsSnapshot()).toEqual([newer]);
+      expect(getCatalogStatusSnapshot()).toBe("ready");
+    } finally { vi.useRealTimers(); }
   });
 });

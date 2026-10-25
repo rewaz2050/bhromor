@@ -1,12 +1,15 @@
 vi.mock("@/components/rider/rider-push-card", () => ({ RiderPushCard: () => null }));
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import RiderPage from "../page";
 import type { RiderJob } from "@/lib/db/riders";
 import type { Order } from "@/lib/orders";
 
 const state = vi.hoisted(() => ({
+  riderId: "r1",
+  sessionRefresh: vi.fn(async () => {}),
+  statsRefresh: vi.fn(async () => {}),
   jobs: [] as unknown[],
   isOnline: false,
   /** 202609300001 — the tip wallet shown by /api/rider/stats. */
@@ -16,6 +19,7 @@ const state = vi.hoisted(() => ({
   accept: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
   pickup: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
   reject: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
+  setOnline: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
   settle: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
   updateLocation: vi.fn<(...args: unknown[]) => Promise<boolean>>(async () => true),
   jobsError: null as string | null,
@@ -35,7 +39,7 @@ vi.mock("@/lib/use-rider-incentives", () => ({
 vi.mock("@/lib/use-rider", () => ({
   useRiderSession: () => ({
     rider: {
-      id: "r1",
+      id: state.riderId,
       name: "রফিক",
       phone: "01712345678",
       vehicle: "bike",
@@ -50,7 +54,7 @@ vi.mock("@/lib/use-rider", () => ({
     status: "authed",
     error: null,
     denyReason: null,
-    refresh: vi.fn(async () => {}),
+    refresh: state.sessionRefresh,
     signIn: vi.fn(),
     signOut: vi.fn(),
   }),
@@ -64,7 +68,7 @@ vi.mock("@/lib/use-rider", () => ({
       ...state.today,
     },
     loading: false,
-    refresh: vi.fn(async () => {}),
+    refresh: state.statsRefresh,
   }),
   useRiderJobs: () => ({
     jobs: state.jobs,
@@ -79,7 +83,7 @@ vi.mock("@/lib/use-rider", () => ({
     pickup: (...args: unknown[]) => state.pickup(...args),
     reject: (...args: unknown[]) => state.reject(...args),
     deliver: (...args: unknown[]) => state.deliver(...args),
-    setOnline: vi.fn(async () => true),
+    setOnline: (...args: unknown[]) => state.setOnline(...args),
     updateLocation: (...args: unknown[]) => state.updateLocation(...args),
     settle: (...args: unknown[]) => state.settle(...args),
   }),
@@ -114,11 +118,14 @@ const job = (state: RiderJob["state"], o: Order, expiresAt = Date.now() + 60_000
 });
 
 beforeEach(() => {
+  state.riderId = "r1";
+  state.sessionRefresh.mockReset().mockResolvedValue(undefined);
+  state.statsRefresh.mockClear();
   state.jobs = [];
   state.isOnline = false;
   state.earnings = 0;
   state.today = undefined;
-  for (const f of [state.deliver, state.accept, state.pickup, state.reject, state.settle, state.updateLocation]) {
+  for (const f of [state.deliver, state.accept, state.pickup, state.reject, state.settle, state.updateLocation, state.setOnline]) {
     f.mockReset().mockResolvedValue(true);
   }
   state.jobsError = null;
@@ -129,6 +136,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("Rider Mobile Portal (/rider)", () => {
@@ -641,5 +649,306 @@ describe("Going offline with the shop's cash (vendor + rider pass 2026-10-07)", 
     render(<RiderPage />);
     fireEvent.click(screen.getByRole("button", { name: /অনলাইন/ }));
     expect(screen.queryByTestId("rider-offline-cash-nudge")).toBeNull();
+  });
+});
+
+// Actual page/modal ownership; only hooks/transports use the existing fixtures.
+function pendingSettlement() {
+  let resolve!: (value: boolean) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<boolean>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+const openSettlement = () => fireEvent.click(screen.getByRole("button", { name: /টাকা জমা দিন/ }));
+const sendSettlement = () => fireEvent.click(screen.getByRole("button", { name: "দাবি পাঠান" }));
+const closeSettlement = () => fireEvent.click(screen.getByRole("button", { name: "বাতিল" }));
+
+describe("settlement submission lifetime", () => {
+  it("keeps one pending claim through Cancel/reopen and ignores its old success", async () => {
+    state.cashInHand = 50000;
+    const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openSettlement(); sendSettlement(); closeSettlement(); openSettlement();
+    expect(screen.getByRole("button", { name: "দাবি পাঠানো হচ্ছে…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "দাবি পাঠানো হচ্ছে…" }));
+    expect(state.settle).toHaveBeenCalledOnce();
+    await act(async () => { pending.resolve(true); });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText(/দাবি Admin-এর কাছে পাঠানো হয়েছে/)).not.toBeInTheDocument();
+    expect(state.sessionRefresh).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "দাবি পাঠান" })).toBeEnabled();
+  });
+  it("late success after Cancel does not flash success or refresh the abandoned view", async () => {
+    state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openSettlement(); sendSettlement(); closeSettlement();
+    await act(async () => { pending.resolve(true); });
+    expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(screen.queryByText(/দাবি Admin-এর কাছে পাঠানো হয়েছে/)).not.toBeInTheDocument();
+  });
+  it("late refusal does not leak into the reopened fresh draft", async () => {
+    state.cashInHand = 50000; state.jobsError = "Old refusal"; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openSettlement(); fireEvent.change(screen.getByRole("combobox"), { target: { value: "bank" } });
+    fireEvent.change(screen.getByPlaceholderText(/9HXK2LM4PQ/), { target: { value: "OLD123" } }); sendSettlement(); closeSettlement(); openSettlement();
+    expect(screen.getByRole("combobox")).toHaveValue("cash");
+    await act(async () => { pending.resolve(false); });
+    expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+  });
+  it("an unexpected rejection is safe, unlocks, preserves draft and permits explicit retry", async () => {
+    state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openSettlement(); fireEvent.change(screen.getByRole("combobox"), { target: { value: "bank" } });
+    fireEvent.change(screen.getByPlaceholderText(/9HXK2LM4PQ/), { target: { value: " TRX123 " } }); sendSettlement();
+    await act(async () => { pending.reject(new Error("private transport detail")); });
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("দাবি পাঠানো যায়নি — আবার চেষ্টা করুন।");
+    expect(screen.getByPlaceholderText(/9HXK2LM4PQ/)).toHaveValue(" TRX123 ");
+    await act(async () => { sendSettlement(); });
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(state.settle).toHaveBeenNthCalledWith(2, "bank", "TRX123");
+  });
+  it.each([true, false])("unmounted completion does not refresh or publish (success=%s)", async success => {
+    state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    const { unmount } = render(<RiderPage />); openSettlement(); sendSettlement(); unmount();
+    await act(async () => { pending.resolve(success); }); expect(state.sessionRefresh).not.toHaveBeenCalled();
+  });
+  it("old rider completion cannot close the new rider's modal", async () => {
+    state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); openSettlement(); sendSettlement();
+    state.riderId = "r2"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(true); });
+    expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(state.sessionRefresh).not.toHaveBeenCalled();
+  });
+  it("duplicate clicks in one open view send only one claim", async () => {
+    state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValue(pending.promise);
+    render(<RiderPage />); openSettlement(); const button = screen.getByRole("button", { name: "দাবি পাঠান" });
+    fireEvent.click(button); fireEvent.click(button); expect(state.settle).toHaveBeenCalledOnce();
+    await act(async () => { pending.resolve(false); });
+  });
+});
+
+it("old settlement owner does not reactivate after rider A → B → A", async () => {
+  state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+  const { rerender } = render(<RiderPage />); openSettlement(); sendSettlement();
+  state.riderId = "r2"; rerender(<RiderPage />); state.riderId = "r1"; rerender(<RiderPage />);
+  await act(async () => { pending.resolve(true); });
+  expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(state.sessionRefresh).not.toHaveBeenCalled();
+});
+it("old rider completion cannot release a newer rider's pending settlement lock", async () => {
+  state.cashInHand = 50000; const first = pendingSettlement(), second = pendingSettlement();
+  state.settle.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+  const { rerender } = render(<RiderPage />); openSettlement(); sendSettlement();
+  state.riderId = "r2"; rerender(<RiderPage />); sendSettlement();
+  await act(async () => { first.resolve(true); });
+  expect(screen.getByRole("button", { name: "দাবি পাঠানো হচ্ছে…" })).toBeDisabled(); expect(state.sessionRefresh).not.toHaveBeenCalled();
+  await act(async () => { second.resolve(true); });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(state.sessionRefresh).toHaveBeenCalledOnce();
+});
+it("late unexpected rejection after reopen is consumed without changing the new form", async () => {
+  state.cashInHand = 50000; const pending = pendingSettlement(); state.settle.mockReturnValueOnce(pending.promise);
+  render(<RiderPage />); openSettlement(); sendSettlement(); closeSettlement(); openSettlement();
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "bank" } });
+  fireEvent.change(screen.getByPlaceholderText(/9HXK2LM4PQ/), { target: { value: "New draft" } });
+  await act(async () => { pending.reject(new Error("stale private error")); });
+  expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/9HXK2LM4PQ/)).toHaveValue("New draft"); expect(screen.getByRole("button", { name: "দাবি পাঠান" })).toBeEnabled();
+});
+
+
+const deliveryJobs = () => {
+  state.jobs = [job("picked_up", order({ id: "PS-PIN-A" })), job("picked_up", order({ id: "PS-PIN-B" }))];
+};
+const openDelivery = (index = 0) => fireEvent.click(screen.getAllByText(/ডেলিভারি কোড দিন/)[index]);
+const enterDeliveryCode = (value = "1234") => fireEvent.change(screen.getByPlaceholderText("• • • •"), { target: { value } });
+const sendDelivery = () => fireEvent.click(screen.getByRole("button", { name: "ডেলিভারি সম্পন্ন করুন" }));
+const closeDelivery = () => fireEvent.click(screen.getByRole("button", { name: "বাতিল" }));
+
+describe("delivery submission lifetime", () => {
+  it("deduplicates repeated delivery clicks", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); const button = screen.getByRole("button", { name: "ডেলিভারি সম্পন্ন করুন" });
+    fireEvent.click(button); fireEvent.click(button); expect(state.deliver).toHaveBeenCalledOnce();
+    await act(async () => { pending.resolve(false); });
+  });
+  it.each([true, false])("retains the same-assignment pending lock across Cancel/reopen, ignores old result (success=%s)", async success => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); closeDelivery(); openDelivery(); enterDeliveryCode("5678");
+    expect(screen.getByRole("button", { name: "ডেলিভারি হচ্ছে…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "ডেলিভারি হচ্ছে…" })); expect(state.deliver).toHaveBeenCalledOnce();
+    await act(async () => { pending.resolve(success); });
+    expect(screen.getByPlaceholderText("• • • •")).toHaveValue("5678"); expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument();
+    expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(state.statsRefresh).not.toHaveBeenCalled(); expect(screen.queryByText(/অভিনন্দন/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ডেলিভারি সম্পন্ন করুন" })).toBeEnabled();
+  });
+  it("late successful delivery after Cancel does not publish page success effects", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); closeDelivery();
+    await act(async () => { pending.resolve(true); }); expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(state.statsRefresh).not.toHaveBeenCalled(); expect(screen.queryByText(/অভিনন্দন/)).not.toBeInTheDocument();
+  });
+  it("unmounted completion cannot refresh the abandoned rider page", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    const { unmount } = render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); unmount();
+    await act(async () => { pending.resolve(true); }); expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(state.statsRefresh).not.toHaveBeenCalled();
+  });
+  it("A completion cannot close or unlock pending B", async () => {
+    deliveryJobs(); const first = pendingSettlement(), second = pendingSettlement(); state.deliver.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); closeDelivery(); openDelivery(1); enterDeliveryCode("5678"); sendDelivery();
+    await act(async () => { first.resolve(true); }); expect(screen.getByPlaceholderText("• • • •")).toHaveValue("5678"); expect(screen.getByRole("button", { name: "ডেলিভারি হচ্ছে…" })).toBeDisabled(); expect(state.sessionRefresh).not.toHaveBeenCalled();
+    await act(async () => { second.resolve(true); }); expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(state.sessionRefresh).toHaveBeenCalledOnce(); expect(state.statsRefresh).toHaveBeenCalledOnce();
+  });
+  it("A → B → A preserves A's pending lock, not its old view", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); closeDelivery(); openDelivery(1); closeDelivery(); openDelivery(); enterDeliveryCode("5678");
+    expect(screen.getByRole("button", { name: "ডেলিভারি হচ্ছে…" })).toBeDisabled(); await act(async () => { pending.resolve(true); }); expect(screen.getByPlaceholderText("• • • •")).toHaveValue("5678"); expect(state.sessionRefresh).not.toHaveBeenCalled();
+  });
+  it("removed/reintroduced assignment does not revive its original owner", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); state.jobs = []; rerender(<RiderPage />); deliveryJobs(); rerender(<RiderPage />);
+    // Existing selected ID can re-open the task, but it must have a fresh owner.
+    await act(async () => { pending.resolve(true); }); expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(state.sessionRefresh).not.toHaveBeenCalled();
+  });
+  it("rider replacement isolates a still-visible assignment ID", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); state.riderId = "r2"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(true); }); expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(state.statsRefresh).not.toHaveBeenCalled();
+  });
+  it("current unexpected rejection is safe, keeps the draft and permits explicit retry", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); await act(async () => { pending.reject(new Error("Private delivery detail")); });
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("ডেলিভারি সম্পন্ন করা যায়নি — আবার চেষ্টা করুন।"); expect(screen.getByPlaceholderText("• • • •")).toHaveValue("1234");
+    await act(async () => { sendDelivery(); }); expect(state.deliver).toHaveBeenCalledTimes(2); expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("stale unexpected rejection after reopen does not publish an error", async () => {
+    deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery(); closeDelivery(); openDelivery();
+    await act(async () => { pending.reject(new Error("Old private detail")); }); expect(within(screen.getByRole("dialog")).queryByRole("alert")).not.toBeInTheDocument(); enterDeliveryCode(); expect(screen.getByRole("button", { name: "ডেলিভারি সম্পন্ন করুন" })).toBeEnabled();
+  });
+  it("current refusal preserves the modal; explicit retry retains payload and success effects", async () => {
+    deliveryJobs(); state.jobsError = "Current refusal"; state.deliver.mockResolvedValueOnce(false);
+    render(<RiderPage />); openDelivery(); enterDeliveryCode(); await act(async () => { sendDelivery(); }); expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("Current refusal");
+    expect(state.sessionRefresh).not.toHaveBeenCalled(); await act(async () => { sendDelivery(); }); expect(state.deliver).toHaveBeenNthCalledWith(2, "asg-PS-PIN-A", "1234", null, null);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(state.sessionRefresh).toHaveBeenCalledOnce(); expect(state.statsRefresh).toHaveBeenCalledOnce(); expect(screen.getByText(/অভিনন্দন/)).toBeInTheDocument();
+  });
+});
+
+it("current successful delivery still publishes when its own refresh removes the job before returning", async () => {
+  deliveryJobs(); const pending = pendingSettlement(); state.deliver.mockReturnValueOnce(pending.promise);
+  const { rerender } = render(<RiderPage />); openDelivery(); enterDeliveryCode(); sendDelivery();
+  // useRiderJobs.deliver awaits refresh before returning true. Removal alone
+  // must not erase this still-current submission's success intent.
+  state.jobs = []; rerender(<RiderPage />); expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await act(async () => { pending.resolve(true); });
+  expect(state.sessionRefresh).toHaveBeenCalledOnce(); expect(state.statsRefresh).toHaveBeenCalledOnce(); expect(screen.getByText(/অভিনন্দন/)).toBeInTheDocument();
+});
+
+
+const taskActionCases = [
+  { kind: "accept" as const, button: "অর্ডার একসেপ্ট করুন", pending: "গ্রহণ হচ্ছে…", message: /অর্ডার একসেপ্ট হয়েছে/, jobState: "offered" as const },
+  { kind: "reject" as const, button: "বাতিল", pending: "বাতিল হচ্ছে…", message: /অফারটি বাতিল করা হয়েছে/, jobState: "offered" as const },
+  { kind: "pickup" as const, button: "পিকআপ কনফার্ম করুন", pending: "পিকআপ হচ্ছে…", message: /পিকআপ সম্পন্ন/, jobState: "accepted" as const },
+];
+const prepareTaskAction = (jobState: RiderJob["state"]) => {
+  state.isOnline = true; state.jobs = [job(jobState, order({ id: "PS-ACTION-A" }))];
+};
+describe("task action ownership", () => {
+  it.each(taskActionCases)("$kind: pending clicks are non-overlapping", async entry => {
+    prepareTaskAction(entry.jobState); const pending = pendingSettlement(); state[entry.kind].mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); const button = screen.getByRole("button", { name: entry.button }); fireEvent.click(button); fireEvent.click(button);
+    expect(state[entry.kind]).toHaveBeenCalledOnce(); expect(screen.getByRole("button", { name: entry.pending })).toBeDisabled();
+    await act(async () => { pending.resolve(true); }); expect(screen.getByText(entry.message)).toBeInTheDocument();
+  });
+  it.each(taskActionCases)("$kind: old success cannot flash into a new rider board", async entry => {
+    prepareTaskAction(entry.jobState); const pending = pendingSettlement(); state[entry.kind].mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: entry.button })); state.riderId = "r2"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(true); }); expect(screen.queryByText(entry.message)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: entry.button })).toBeEnabled();
+  });
+  it.each(taskActionCases)("$kind: old refusal cannot write an error into the new rider board", async entry => {
+    prepareTaskAction(entry.jobState); state.jobsError = "Old task refusal"; const pending = pendingSettlement(); state[entry.kind].mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: entry.button })); state.riderId = "r2"; state.jobsError = null; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(false); }); expect(screen.queryByText("Old task refusal")).not.toBeInTheDocument();
+  });
+  it.each(taskActionCases)("$kind: unexpected rejection safely unlocks and permits explicit retry", async entry => {
+    prepareTaskAction(entry.jobState); const pending = pendingSettlement(); state[entry.kind].mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: entry.button })); await act(async () => { pending.reject(new Error("Private task detail")); });
+    expect(screen.getByText("কাজের আপডেট পাঠানো যায়নি — আবার চেষ্টা করুন।")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: entry.button })).toBeEnabled(); await act(async () => { fireEvent.click(screen.getByRole("button", { name: entry.button })); });
+    expect(state[entry.kind]).toHaveBeenCalledTimes(2); expect(screen.getByText(entry.message)).toBeInTheDocument(); expect(screen.queryByText("কাজের আপডেট পাঠানো যায়নি — আবার চেষ্টা করুন।")).not.toBeInTheDocument();
+  });
+  it("accept in flight blocks reject for the same assignment", async () => {
+    prepareTaskAction("offered"); const pending = pendingSettlement(); state.accept.mockReturnValueOnce(pending.promise);
+    render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: "অর্ডার একসেপ্ট করুন" })); const reject = screen.getByRole("button", { name: "বাতিল" }); expect(reject).toBeDisabled(); fireEvent.click(reject); expect(state.reject).not.toHaveBeenCalled();
+    await act(async () => { pending.resolve(false); }); expect(screen.getByRole("button", { name: "বাতিল" })).toBeEnabled();
+  });
+  it("new rider can accept; old completion cannot unlock its pending accept", async () => {
+    prepareTaskAction("offered"); const first = pendingSettlement(), second = pendingSettlement(); state.accept.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { rerender } = render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: "অর্ডার একসেপ্ট করুন" })); state.riderId = "r2"; rerender(<RiderPage />);
+    expect(screen.getByRole("button", { name: "অর্ডার একসেপ্ট করুন" })).toBeEnabled(); fireEvent.click(screen.getByRole("button", { name: "অর্ডার একসেপ্ট করুন" }));
+    await act(async () => { first.resolve(true); }); expect(screen.getByRole("button", { name: "গ্রহণ হচ্ছে…" })).toBeDisabled(); expect(screen.queryByText(/অর্ডার একসেপ্ট হয়েছে/)).not.toBeInTheDocument();
+    await act(async () => { second.resolve(true); }); expect(screen.getByText(/অর্ডার একসেপ্ট হয়েছে/)).toBeInTheDocument();
+  });
+  it("rider A → B → A does not reactivate the old action completion", async () => {
+    prepareTaskAction("accepted"); const pending = pendingSettlement(); state.pickup.mockReturnValueOnce(pending.promise);
+    const { rerender } = render(<RiderPage />); fireEvent.click(screen.getByRole("button", { name: "পিকআপ কনফার্ম করুন" })); state.riderId = "r2"; rerender(<RiderPage />); state.riderId = "r1"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(true); }); expect(screen.queryByText(/পিকআপ সম্পন্ন/)).not.toBeInTheDocument();
+  });
+});
+
+it.each(taskActionCases)("$kind: current refusal remains visible, unlocks and can retry", async entry => {
+  prepareTaskAction(entry.jobState); state.jobsError = "Current task refusal"; state[entry.kind].mockResolvedValueOnce(false);
+  render(<RiderPage />); await act(async () => { fireEvent.click(screen.getByRole("button", { name: entry.button })); });
+  expect(screen.getByText("Current task refusal")).toBeInTheDocument(); expect(screen.queryByText(entry.message)).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: entry.button })).toBeEnabled();
+  // The real hook clears its own error on a successful request; keep that
+  // hook boundary explicit rather than attributing its state to the page.
+  state.jobsError = null;
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: entry.button })); }); expect(state[entry.kind]).toHaveBeenCalledTimes(2); expect(screen.getByText(entry.message)).toBeInTheDocument();
+});
+
+
+const availabilityButton = () => screen.getByRole("button", { name: /^(অনলাইন|অফলাইন)( — বদলাচ্ছে…)?$/ });
+const geoPosition = { coords: { latitude: 23.7, longitude: 90.4 } } as GeolocationPosition;
+const fakeOneShotGeo = () => {
+  const get = vi.fn(); vi.stubGlobal("navigator", { geolocation: { getCurrentPosition: get, watchPosition: vi.fn(() => 1), clearWatch: vi.fn() } }); return get;
+};
+describe("availability parent ownership", () => {
+  it("repeated toggle taps send only one pending availability write", async () => {
+    const pending = pendingSettlement(); state.setOnline.mockReturnValueOnce(pending.promise); render(<RiderPage />); const button = availabilityButton(); fireEvent.click(button); fireEvent.click(button);
+    expect(state.setOnline).toHaveBeenCalledOnce(); expect(availabilityButton()).toBeDisabled(); await act(async () => { pending.resolve(false); }); expect(availabilityButton()).toBeEnabled();
+  });
+  it("old online write cannot refresh or override a new rider", async () => {
+    const pending = pendingSettlement(); state.setOnline.mockReturnValueOnce(pending.promise); const { rerender } = render(<RiderPage />); fireEvent.click(availabilityButton()); state.riderId = "r2"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(true); }); expect(state.sessionRefresh).not.toHaveBeenCalled(); expect(availabilityButton()).toHaveTextContent("অফলাইন");
+  });
+  it("pending optimistic override does not paint the next rider online", async () => {
+    const read = pendingSettlement(); state.sessionRefresh.mockImplementationOnce(() => read.promise.then(() => {})); const { rerender } = render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); });
+    expect(availabilityButton()).toHaveTextContent("অনলাইন"); state.riderId = "r2"; rerender(<RiderPage />); expect(availabilityButton()).toHaveTextContent("অফলাইন");
+    await act(async () => { read.resolve(true); }); expect(availabilityButton()).toHaveTextContent("অফলাইন");
+  });
+  it("old refusal does not publish into the new rider board", async () => {
+    state.jobsError = "Old availability refusal"; const pending = pendingSettlement(); state.setOnline.mockReturnValueOnce(pending.promise); const { rerender } = render(<RiderPage />); fireEvent.click(availabilityButton()); state.jobsError = null; state.riderId = "r2"; rerender(<RiderPage />);
+    await act(async () => { pending.resolve(false); }); expect(screen.queryByText("Old availability refusal")).not.toBeInTheDocument();
+  });
+  it("cash confirmation is scoped to its rider without sending a write", () => {
+    state.isOnline = true; state.cashInHand = 50000; const { rerender } = render(<RiderPage />); fireEvent.click(availabilityButton()); expect(screen.getByTestId("rider-offline-cash-nudge")).toBeInTheDocument(); state.riderId = "r2"; rerender(<RiderPage />);
+    expect(screen.queryByTestId("rider-offline-cash-nudge")).not.toBeInTheDocument(); expect(state.setOnline).not.toHaveBeenCalled();
+  });
+  it("unexpected write rejection safely unlocks for explicit retry", async () => {
+    state.setOnline.mockRejectedValueOnce(new Error("Private write detail")); render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); });
+    expect(screen.getByText("অনলাইন অবস্থা বদলানো যায়নি — আবার চেষ্টা করুন।")).toBeInTheDocument(); expect(availabilityButton()).toBeEnabled(); await act(async () => { fireEvent.click(availabilityButton()); }); expect(state.setOnline).toHaveBeenCalledTimes(2);
+  });
+  it("unexpected session refresh rejection clears the provisional override and unlocks", async () => {
+    state.sessionRefresh.mockRejectedValueOnce(new Error("Private read detail")); render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); }); expect(availabilityButton()).toHaveTextContent("অফলাইন"); expect(availabilityButton()).toBeEnabled(); expect(screen.getByText("অনলাইন অবস্থা যাচাই করা যায়নি — আবার চেষ্টা করুন।")).toBeInTheDocument();
+  });
+  it("late one-shot GPS fix after rider replacement cannot send location", async () => {
+    const get = fakeOneShotGeo(); state.sessionRefresh.mockImplementationOnce(async () => { state.isOnline = true; }); const { rerender } = render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); }); expect(get).toHaveBeenCalled();
+    state.riderId = "r2"; rerender(<RiderPage />); await act(async () => { get.mock.calls[0][0](geoPosition); }); expect(state.updateLocation).not.toHaveBeenCalled();
+  });
+  it("late one-shot GPS fix after unmount cannot send location", async () => {
+    const get = fakeOneShotGeo(); state.sessionRefresh.mockImplementationOnce(async () => { state.isOnline = true; }); const { unmount } = render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); }); unmount();
+    await act(async () => { get.mock.calls[0][0](geoPosition); }); expect(state.updateLocation).not.toHaveBeenCalled();
+  });
+  it("new offline intent invalidates an older one-shot GPS callback", async () => {
+    const get = fakeOneShotGeo(); state.sessionRefresh.mockImplementationOnce(async () => { state.isOnline = true; }).mockImplementationOnce(async () => { state.isOnline = false; }); render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); });
+    await act(async () => { fireEvent.click(availabilityButton()); }); await act(async () => { get.mock.calls[0][0](geoPosition); }); expect(state.updateLocation).not.toHaveBeenCalled();
+  });
+  it("current acknowledged online transition keeps GPS options and coordinate payload", async () => {
+    const get = fakeOneShotGeo(); state.sessionRefresh.mockImplementationOnce(async () => { state.isOnline = true; }); render(<RiderPage />); await act(async () => { fireEvent.click(availabilityButton()); });
+    expect(state.setOnline).toHaveBeenCalledExactlyOnceWith(true); expect(get.mock.calls[0][2]).toEqual({ enableHighAccuracy: true, timeout: 8000 });
+    await act(async () => { get.mock.calls[0][0](geoPosition); }); expect(state.updateLocation).toHaveBeenCalledExactlyOnceWith(23.7, 90.4);
   });
 });

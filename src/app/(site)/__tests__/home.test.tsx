@@ -289,15 +289,15 @@ describe("Homepage editorial journey", () => {
     }
   });
 
-  it("follows hero → categories → offers → shelf → delivery check → trust", async () => {
+  it("follows hero → delivery check → categories → offers → shelf → trust", async () => {
     const { container } = await renderHome();
     await screen.findByTestId("whole-shelf");
     const selectors = [
       '[data-testid="home-hero"]',
+      '[data-testid="home-delivery-check-compact"]',
       '[data-testid="category-row"]',
       "#offers-rail",
       '[data-testid="category-shelf"]',
-      '[data-testid="home-delivery-check"]',
       '[aria-label="PROSANTI service promises"]',
     ];
     const positions = selectors.map((selector) => {
@@ -388,7 +388,7 @@ describe("Homepage editorial journey", () => {
     );
     const storiesIdx = sections.indexOf(stories);
     const deliveryIdx = sections.indexOf(
-      container.querySelector('[data-testid="home-delivery-check"]') as HTMLElement,
+      container.querySelector('[aria-label="PROSANTI service promises"]') as HTMLElement,
     );
     expect(shelfIdx).toBeLessThan(storiesIdx);
     expect(storiesIdx).toBeLessThan(deliveryIdx);

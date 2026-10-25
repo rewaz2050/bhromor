@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconClose, IconMinus, IconPlus } from "@/components/ui/icons";
+import { IconClose, IconMinus, IconPlus, IconRefresh } from "@/components/ui/icons";
+import Drawer from "@/components/ui/drawer";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { bnDigits } from "@/lib/arrival";
 import { optimizedMediaUrl } from "@/lib/media-url";
 
 const MIN = 1;
@@ -23,6 +26,7 @@ export default function ZoomLightbox({
   alt: string;
   onClose: () => void;
 }) {
+  const { t, lang } = useLanguage();
   const [view, setViewState] = useState({ scale: 1, tx: 0, ty: 0 });
   /** True while a finger/mouse is on the stage — transforms then follow
    *  the pointer instantly instead of easing. */
@@ -61,22 +65,32 @@ export default function ZoomLightbox({
     return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
   };
 
-  // Body scroll lock + focus + Escape.
+  // Modal isolation, focus trapping/restoration and Escape belong to Drawer.
+  // Use the current view ref so zooming never reinstalls listeners or steals
+  // focus from the control the shopper is using.
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeBtn.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "+" || e.key === "=") zoomAt(scale + 0.5, 0, 0);
-      if (e.key === "-") zoomAt(scale - 0.5, 0, 0);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        zoomAt(viewRef.current.scale + 0.5, 0, 0);
+      } else if (event.key === "-") {
+        event.preventDefault();
+        zoomAt(viewRef.current.scale - 0.5, 0, 0);
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        zoomAt(1, 0, 0);
+      } else if (viewRef.current.scale > 1 && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        const current = viewRef.current;
+        setView({ ...current,
+          tx: current.tx + (event.key === "ArrowLeft" ? 40 : event.key === "ArrowRight" ? -40 : 0),
+          ty: current.ty + (event.key === "ArrowUp" ? 40 : event.key === "ArrowDown" ? -40 : 0),
+        });
+      }
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose, scale, zoomAt]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomAt, setView]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -141,30 +155,32 @@ export default function ZoomLightbox({
   };
 
   const btn =
-    "flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/90 text-forest-950 shadow-md hover:bg-ivory-50";
+    "flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50/90 text-forest-950 hover:bg-ivory-50 disabled:opacity-50";
 
   return (
+    <Drawer open onClose={onClose} initialFocusRef={closeBtn} label={alt} side="center"
+      panelBg="bg-forest-950" panelClassName="!inset-0 !h-full !max-h-none !w-full !translate-x-0 !rounded-none">
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={alt}
       data-testid="zoom-lightbox"
       data-scale={scale.toFixed(2)}
-      className="fixed inset-0 z-[70] flex flex-col bg-forest-950/95 text-ivory-50"
+      className="flex h-full min-h-0 flex-col text-ivory-50"
     >
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-4 py-3">
         <p className="truncate text-xs font-medium text-ivory-100/80">{alt}</p>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => zoomAt(scale - 0.5, 0, 0)} aria-label="Zoom out" className={btn}>
+          <button type="button" onClick={() => zoomAt(scale - 0.5, 0, 0)} disabled={scale <= MIN} aria-label={t("gallery.zoomOut")} className={btn}>
             <IconMinus className="h-4 w-4" />
           </button>
           <span className="min-w-[3ch] text-center text-xs tabular-nums" aria-live="polite">
-            {Math.round(scale * 100)}%
+            {lang === "bn" ? bnDigits(String(Math.round(scale * 100))) : Math.round(scale * 100)}%
           </span>
-          <button type="button" onClick={() => zoomAt(scale + 0.5, 0, 0)} aria-label="Zoom in" className={btn}>
+          <button type="button" onClick={() => zoomAt(scale + 0.5, 0, 0)} disabled={scale >= MAX} aria-label={t("gallery.zoomIn")} className={btn}>
             <IconPlus className="h-4 w-4" />
           </button>
-          <button ref={closeBtn} type="button" onClick={onClose} aria-label="Close zoom" className={btn}>
+          <button type="button" onClick={() => zoomAt(1, 0, 0)} aria-label={t("gallery.resetZoom")} className={btn}>
+            <IconRefresh className="h-4 w-4" />
+          </button>
+          <button ref={closeBtn} type="button" onClick={onClose} aria-label={t("gallery.closeZoom")} className={btn}>
             <IconClose className="h-4 w-4" />
           </button>
         </div>
@@ -178,7 +194,7 @@ export default function ZoomLightbox({
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
-        className="relative flex-1 select-none overflow-hidden"
+        className="relative min-h-0 flex-1 select-none overflow-hidden"
         style={{ touchAction: "none", cursor: scale > 1 ? "grab" : "zoom-in" }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- transform-driven zoom needs the raw element */}
@@ -186,7 +202,7 @@ export default function ZoomLightbox({
           src={optimizedMediaUrl(src, 1600)}
           alt=""
           draggable={false}
-          className="absolute inset-0 h-full w-full object-contain will-change-transform"
+          className="absolute inset-0 h-full w-full object-contain will-change-transform motion-reduce:!transition-none"
           style={{
             transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
             transition: interacting ? "none" : "transform 120ms ease-out",
@@ -194,8 +210,9 @@ export default function ZoomLightbox({
         />
       </div>
       <p className="px-4 pb-4 pt-2 text-center text-[0.68rem] text-ivory-100/70">
-        Pinch or double-tap to zoom · drag to move · Esc to close
+        {t("gallery.zoomHelp")}
       </p>
     </div>
+    </Drawer>
   );
 }

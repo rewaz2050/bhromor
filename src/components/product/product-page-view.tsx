@@ -25,7 +25,6 @@ import RecentlyViewedRail from "@/components/product/recently-viewed-rail";
 import ProductViewTracker from "@/components/analytics/product-view-tracker";
 import ProductGallery from "@/components/product/product-gallery";
 import PurchasePanel from "@/components/product/purchase-panel";
-import StickyBuyBar from "@/components/product/sticky-buy-bar";
 import CatalogHydrator from "@/components/shop/catalog-hydrator";
 import BundleOffer from "@/components/promo/bundle-offer";
 import FlashRail from "@/components/promo/flash-rail";
@@ -98,7 +97,7 @@ export default function ProductPageView({
       {/* Breadcrumb — C5: whose shop this piece is, then the shelf it sits on. */}
       <nav
         aria-label="Breadcrumb"
-        className="flex items-center gap-1.5 text-sm text-ink-soft"
+        className="hidden flex-wrap items-center gap-1.5 text-sm text-ink-soft sm:flex"
       >
         <Link href="/" className="transition-colors hover:text-forest-700">
           Home
@@ -146,8 +145,6 @@ export default function ProductPageView({
       <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:gap-16">
         <ProductGallery product={product} />
         <PurchasePanel product={product} />
-        {/* Phones: the compact dock that appears once this panel scrolls away. */}
-        <StickyBuyBar product={product} />
       </div>
 
       {/* UX plan §4 (R11) — the AOV lever sits RIGHT under the buy panel:

@@ -64,11 +64,10 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Browser contracts — the five flows in e2e/dashboards.spec.ts (customer
-  # profile save, rider, vendor, admin). Every API call is answered by a
-  # fixture and Supabase points at an invalid host, so this job needs no
-  # secrets and no seeded database; it catches what the unit suite cannot,
-  # which is a real click in a real browser.
+  # Browser contracts: isolated dashboards first, then the entire default
+  # Playwright suite (storefront, recovery, maps, native auth locks and SDK).
+  # Authenticated responses are fixtures, not real account/RLS acceptance.
+  # No secrets or seeded database; actual clicks run in Chromium.
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -90,6 +89,12 @@ jobs:
 
       - name: Dashboards
         run: npm run test:dashboards
+
+      # Includes both auth specs; avoid running that subset twice.
+      # The default config excludes dashboards, which ran above with their
+      # own explicit invalid-host environment.
+      - name: Full browser regression
+        run: npm run test:e2e
 
       - name: Report
         if: failure()

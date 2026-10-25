@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import PasswordInput from "@/components/ui/password-input";
+import { ACCOUNT_ACCESS_COPY } from "@/lib/account-access-copy";
 import { tidyPhoneInput } from "@/lib/phone";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
@@ -66,6 +68,8 @@ export default function AccountView({
   initialCustomer?: CustomerInfo | null;
 } = {}) {
   const { t, lang } = useLanguage();
+  const c = ACCOUNT_ACCESS_COPY[lang];
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const { customer, checked, refresh, signOut } = useCustomer(initialCustomer);
   const guest = useSyncExternalStore(
     subscribeWishlist,
@@ -81,6 +85,7 @@ export default function AccountView({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
+  useEffect(() => { if (error) errorRef.current?.focus(); }, [error]);
   const [contact, setContact] = useState<string | null>(null);
   // Forgot password (P1 #15): there is no OTP/email on this site by design,
   // so the honest path is the shop's own number — fetched, never invented.
@@ -113,7 +118,7 @@ export default function AccountView({
       <>
         {heading}
         <p role="status" className="py-12 text-ink-soft">
-          সেশন চেক করা হচ্ছে…
+          {c.checking}
         </p>
       </>
     );
@@ -132,17 +137,17 @@ export default function AccountView({
         // already had an account — no cookie means "try logging in instead".
         setAuthTab("login");
         throw new Error(
-          "অ্যাকাউন্ট হয়ে থাকতে পারে — লগ ইন করে দেখুন (অথবা অন্য নম্বর দিয়ে চেষ্টা করুন)।",
+          c.possibleAccount,
         );
       }
       throw new Error(
-        "সেশন তৈরি হলো বলে মনে হচ্ছে না — ব্রাউজারে third-party/cookie block বন্ধ করে আবার চেষ্টা করুন।",
+        c.cookieError,
       );
     }
     setDone(
       signup
-        ? "অ্যাকাউন্ট খোলা হয়েছে — আপনি এখনই লগ ইন করা আছেন!"
-        : "লগ ইন সম্পন্ন — আপনি এখন আপনার অ্যাকাউন্ট ড্যাশবোর্ডে আছেন!",
+        ? c.signupDone
+        : c.loginDone,
     );
     const goTo = nextFromQuery();
     if (goTo) window.location.assign(goTo);
@@ -173,13 +178,13 @@ export default function AccountView({
         error?: string;
       };
       if (!res.ok) {
-        const message = body.error || "সমস্যা হয়েছে — আবার চেষ্টা করুন।";
+        const message = body.error || c.failed;
         maybeSwitchToLogin(message);
         throw new Error(message);
       }
       await finishAuth(authTab === "signup");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "সমস্যা হয়েছে।");
+      setError(err instanceof Error ? err.message : c.failed);
     } finally {
       setBusy(false);
     }
@@ -287,28 +292,37 @@ export default function AccountView({
     <div className="space-y-8">
       {heading}
       <div className="grid items-start gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="order-2 border border-line bg-paper p-6 sm:p-8 lg:order-1">
+        <div className="order-1 rounded-2xl border border-line bg-paper p-6 sm:p-8 lg:order-1">
           <h2 className="font-display text-3xl text-forest-900">
             {t("accountPitch.title")}
           </h2>
           <p className="mt-3 text-sm leading-7 text-ink-soft">
-            নাম, মোবাইল নম্বর আর পাসওয়ার্ড দিলেই অ্যাকাউন্ট — কোনো OTP বা
-            ইমেইল কোড লাগবে না। সাইন আপ করলেই <strong>সাথে সাথে লগ ইন</strong>{" "}
-            হয়ে যাবেন এবং স্মার্ট কার্ডে স্ট্যাম্প জমা শুরু হবে।
+            {c.intro}
           </p>
 
-          <div className="mt-6 flex gap-2" role="tablist" aria-label="অ্যাকাউন্ট">
+          <div className="mt-6 flex gap-2" role="tablist" aria-label={c.tabs}>
             {(
               [
-                ["signup", "নতুন অ্যাকাউন্ট"],
-                ["login", "লগ ইন"],
+                ["signup", c.signup],
+                ["login", c.login],
               ] as const
             ).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
                 role="tab"
+                id={`account-access-${key}`}
+                aria-controls="account-access-panel"
+                tabIndex={authTab === key ? 0 : -1}
+                disabled={busy}
                 aria-selected={authTab === key}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const next = event.key === "Home" ? "signup" : event.key === "End" ? "login" : key === "signup" ? "login" : "signup";
+                  setAuthTab(next); setError("");
+                  document.getElementById(`account-access-${next}`)?.focus();
+                }}
                 onClick={() => {
                   setAuthTab(key);
                   setError("");
@@ -324,79 +338,82 @@ export default function AccountView({
             ))}
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-            className="mt-6 space-y-4"
-          >
-            {authTab === "signup" && (
+          <div role="tabpanel" id="account-access-panel" aria-labelledby={`account-access-${authTab}`}>
+            <form
+              aria-busy={busy}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+              }}
+              className="mt-6 space-y-4"
+            >
+              {authTab === "signup" && (
+                <div>
+                  <label htmlFor="ac-name" className="text-sm text-forest-900">
+                    {c.name}
+                  </label>
+                  <input
+                    id="ac-name"
+                    required
+                    minLength={2}
+                    maxLength={80}
+                    autoComplete="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={busy}
+                    className="mt-2 h-14 w-full rounded-xl border border-line bg-ivory-50 px-4 text-base"
+                  />
+                </div>
+              )}
               <div>
-                <label htmlFor="ac-name" className="text-sm text-forest-900">
-                  আপনার নাম
+                <label htmlFor="ac-phone" className="text-sm text-forest-900">
+                  {c.phone}
                 </label>
                 <input
-                  id="ac-name"
+                  id="ac-phone"
                   required
-                  minLength={2}
-                  maxLength={80}
-                  autoComplete="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="01712345678"
+                  value={phone}
+                  onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
                   disabled={busy}
-                  className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
+                  className="mt-2 h-14 w-full rounded-xl border border-line bg-ivory-50 px-4 text-base"
                 />
               </div>
-            )}
-            <div>
-              <label htmlFor="ac-phone" className="text-sm text-forest-900">
-                মোবাইল নম্বর
-              </label>
-              <input
-                id="ac-phone"
-                required
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="01712345678"
-                value={phone}
-                onChange={(e) => setPhone(tidyPhoneInput(e.target.value))}
+              <div>
+                <label htmlFor="ac-password" className="text-sm text-forest-900">
+                  {c.password}
+                </label>
+                <PasswordInput
+                  key={authTab}
+                  wrapperClassName="mt-2"
+                  id="ac-password"
+                  toggle={{ show: c.show, hide: c.hide }}
+                  aria-describedby="account-password-hint"
+                  required
+                  minLength={authTab === "signup" ? 8 : 6}
+                  maxLength={72}
+                  autoComplete={authTab === "signup" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={busy}
+                  className="h-14 w-full rounded-xl border border-line bg-ivory-50 px-4 text-base"
+                />
+                <p id="account-password-hint" className="mt-2 text-xs leading-5 text-ink-soft">{authTab === "signup" ? c.signupHint : c.loginHint}</p>
+              </div>
+              <button
                 disabled={busy}
-                className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
-              />
-            </div>
-            <div>
-              <label htmlFor="ac-password" className="text-sm text-forest-900">
-                পাসওয়ার্ড
-              </label>
-              <input
-                id="ac-password"
-                type="password"
-                required
-                minLength={6}
-                maxLength={72}
-                autoComplete={authTab === "signup" ? "new-password" : "current-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={busy}
-                className="mt-2 h-14 w-full border border-line bg-ivory-50 px-4 text-base"
-              />
-            </div>
-            <button
-              disabled={busy}
-              className="editorial-button w-full bg-forest-800 text-white disabled:opacity-40"
-            >
-              {busy
-                ? "করা হচ্ছে…"
-                : authTab === "signup"
-                  ? "সাইন আপ করুন — সাথে সাথে লগ ইন"
-                  : "লগ ইন করুন"}
-            </button>
-          </form>
+                className="editorial-button w-full bg-forest-800 text-white disabled:opacity-40"
+              >
+                {busy ? c.busy : authTab === "signup" ? c.signupAction : c.loginAction}
+              </button>
+            </form>
+          </div>
 
           {error && (
-            <p role="alert" className="mt-4 text-sm text-red-800">
+            <p ref={errorRef} tabIndex={-1} role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-red-800">
               {error}
             </p>
           )}
@@ -408,7 +425,7 @@ export default function AccountView({
 
           {authTab === "login" ? (
             <details className="mt-4 rounded-2xl bg-ivory-50 px-4 py-3 ring-1 ring-line" data-testid="forgot-password">
-              <summary className="cursor-pointer text-sm font-semibold text-forest-900">
+              <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-forest-900">
                 {t("track.forgotTitle")}
               </summary>
               <p className="mt-2 text-xs leading-6 text-ink-soft">{t("track.forgotBody")}</p>
@@ -419,22 +436,24 @@ export default function AccountView({
                   )}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 inline-flex min-h-11 items-center rounded-full bg-[#25D366] px-4 text-sm font-semibold text-white"
+                  className="mt-3 inline-flex min-h-11 items-center rounded-full bg-forest-800 px-4 text-sm font-semibold text-white"
                 >
                   WhatsApp {contact}
                 </a>
-              ) : null}
+              ) : (
+                <Link href="/contact" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-forest-800 underline underline-offset-4">{c.support}</Link>
+              )}
             </details>
           ) : null}
         </div>
 
         {/* The honest "what is it FOR" card — real programmes only. */}
         <aside
-          className="order-1 rounded-2xl border border-gold-300 bg-gradient-to-br from-gold-50 via-paper to-ivory-100 p-6 sm:p-8 lg:order-2"
+          className="order-2 rounded-2xl border border-line bg-ivory-50 p-6 sm:p-8 lg:order-2"
           data-testid="account-pitch"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold-700">
-            {t("accountHero.signedIn") === "লগ ইন করা আছে" ? "কেন অ্যাকাউন্ট?" : "WHY AN ACCOUNT?"}
+            {c.why}
           </p>
           <ul className="mt-4 space-y-3.5">
             {(
@@ -454,14 +473,13 @@ export default function AccountView({
             ))}
           </ul>
           <p className="mt-5 border-t border-gold-200 pt-4 text-xs leading-6 text-ink-soft">
-            গেস্ট হয়ে অর্ডার করাও রইল; তবে স্মার্ট কার্ডের স্ট্যাম্প জমাতে
-            অ্যাকাউন্ট লাগবে। চলমান নিয়ম:{" "}
+            {c.guestNote}{" "}
             <Link href="/terms" className="underline">
-              শর্তাবলি
+              {c.terms}
             </Link>{" "}
             ·{" "}
             <Link href="/privacy" className="underline">
-              প্রাইভেসি
+              {c.privacy}
             </Link>
           </p>
         </aside>

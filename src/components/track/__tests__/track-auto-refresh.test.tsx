@@ -97,8 +97,11 @@ describe("TrackView — the open page re-reads the order", () => {
     expect(trackCalls).toHaveLength(1);
     expect(screen.getByText(/Confirmed — the shop is packing/i)).toBeInTheDocument();
 
+    const lookupInput = screen.getByPlaceholderText("PS-YYYYMMDD-XXXX");
+    lookupInput.focus();
     served = "out-for-delivery";
     await tick(15_000);
+    expect(lookupInput).toHaveFocus();
 
     expect(trackCalls).toHaveLength(2);
     // Same order, same proof — a re-read, not a new lookup.

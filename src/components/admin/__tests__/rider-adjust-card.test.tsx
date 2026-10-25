@@ -9,7 +9,7 @@ vi.mock("@/lib/admin-api", () => ({
 
 import { RiderAdjustCard } from "../rider-adjust-card";
 
-beforeEach(() => api.send.mockReset().mockResolvedValue({}));
+beforeEach(() => { api.send.mockReset().mockResolvedValue({}); });
 afterEach(() => vi.restoreAllMocks());
 
 const fill = (amount: string, note: string) => {

@@ -11,7 +11,7 @@
  * older than the loaded pages instead of reporting "Order not found".
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Order, OrderStatus } from "./orders";
 import { useStaffLive } from "./use-staff-live";
 import { usePoll } from "./use-poll";
@@ -70,104 +70,127 @@ const mergeById = (prev: Order[], next: Order[]): Order[] => {
 export function useOrders(options: UseOrdersOptions = {}) {
   const q = (options.q ?? "").trim();
   const shop = (options.shop ?? "").trim();
+  const queryKey = JSON.stringify([q, shop]);
   const { live, checked } = useStaffLive();
   const [liveOrders, setLiveOrders] = useState<Order[] | null>(null);
+  const [dataKey, setDataKey] = useState(queryKey);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** How many pages the user has opened, remembered per query so a new
-   *  search (or shop filter) starts from page one again (derived, not reset
-   *  in an effect). The shop rides in the key: switching shops must not keep
-   *  the other shop's extra pages. */
-  const queryKey = shop === "" ? q : `${q}\u0000${shop}`;
-  const [opened, setOpened] = useState({ q: queryKey, pages: 1 });
-  const pages = opened.q === queryKey ? opened.pages : 1;
+  // Read ownership is synchronous, unlike React's batched loading state.
+  // Opened-page count belongs to this session/query, not a saved callback.
+  const lifecycle = useRef({ live: false, key: queryKey, epoch: 0, request: 0, pages: 1, cursor: null as string | null, paging: false });
+  useEffect(() => {
+    const state = lifecycle.current;
+    state.live = live;
+    state.key = queryKey;
+    state.epoch++;
+    state.request++;
+    state.pages = 1;
+    state.cursor = null;
+    state.paging = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- discard the previous session/query snapshot
+    setLiveOrders(null);
+    setDataKey(queryKey);
+    setNextCursor(null);
+    setLoadingMore(false);
+    setSettled(false);
+    setError(null);
+    return () => { state.live = false; state.epoch++; state.request++; };
+  }, [live, queryKey]);
 
   const refresh = useCallback(async (): Promise<boolean> => {
+    const state = lifecycle.current;
+    if (!state.live || state.key !== queryKey) return false;
+    const request = ++state.request;
+    const current = () => state.live && state.key === queryKey && state.request === request;
+    // Explicit refresh supersedes an older pagination request, including its spinner.
+    state.paging = false;
+    setLoadingMore(false);
     try {
-      const page = await fetchPages(q, pages, shop);
+      const page = await fetchPages(q, state.pages, shop);
+      if (!current()) return false;
+      state.cursor = page.nextCursor;
       setLiveOrders(page.orders);
       setNextCursor(page.nextCursor);
       setError(null);
       return true;
     } catch (err) {
+      if (!current()) return false;
       setError(apiErrorMessage(err));
       return false;
+    } finally {
+      if (current()) setSettled(true);
     }
-  }, [pages, q, shop]);
+  }, [q, shop, queryKey]);
 
   const loadMore = useCallback(async (): Promise<boolean> => {
-    if (!live || !nextCursor || loadingMore) return false;
+    const state = lifecycle.current;
+    if (!state.live || state.key !== queryKey || !state.cursor || state.paging) return false;
+    const cursor = state.cursor;
+    const request = ++state.request;
+    const current = () => state.live && state.key === queryKey && state.request === request;
+    state.paging = true;
     setLoadingMore(true);
     try {
-      const data = await apiGet<OrdersPageResponse>(pageUrl(q, nextCursor, shop));
-      setOpened({ q: queryKey, pages: pages + 1 });
-      setLiveOrders((prev) => mergeById(prev ?? [], data.orders));
+      const data = await apiGet<OrdersPageResponse>(pageUrl(q, cursor, shop));
+      if (!current()) return false;
+      state.pages++;
+      state.cursor = data.nextCursor ?? null;
+      setLiveOrders(prev => mergeById(prev ?? [], data.orders));
       setNextCursor(data.nextCursor ?? null);
       setError(null);
       return true;
     } catch (err) {
+      if (!current()) return false;
       setError(apiErrorMessage(err));
       return false;
     } finally {
-      setLoadingMore(false);
+      if (current()) { state.paging = false; setLoadingMore(false); }
     }
-  }, [live, loadingMore, nextCursor, pages, q, shop, queryKey]);
+  }, [q, shop, queryKey]);
 
   useEffect(() => {
-    if (!live) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
-    void refresh();
+    if (live) void refresh();
   }, [live, refresh]);
-  // Background refresh — pauses while the tab is hidden and refreshes the
-  // moment staff look at it again (usePoll), so a forgotten tab neither
-  // burns the rate limit nor shows stale rows on return.
-  usePoll(refresh, ORDERS_POLL_MS, live);
+  // A background tick must not starve a slow older-page request. Manual refresh
+  // still supersedes it; completed pages are re-walked on subsequent polls.
+  const pollRefresh = useCallback(() => lifecycle.current.paging ? Promise.resolve(false) : refresh(), [refresh]);
+  usePoll(pollRefresh, ORDERS_POLL_MS, live);
 
   const advance = useCallback(
-    async (
-      id: string,
-      to: OrderStatus,
-      note?: string,
-    ): Promise<boolean> => {
-      if (!live) return false;
+    async (id: string, to: OrderStatus, note?: string): Promise<boolean> => {
+      const state = lifecycle.current;
+      if (!live || !state.live || state.key !== queryKey) return false;
+      const epoch = state.epoch;
+      const current = () => state.live && state.key === queryKey && state.epoch === epoch;
       try {
-        await apiSend<{ order: Order }>(
-          `/api/admin/orders/${encodeURIComponent(id)}/advance`,
-          "POST",
-          { to, note },
-        );
-        setError(null);
-        await refresh();
+        await apiSend<{ order: Order }>(`/api/admin/orders/${encodeURIComponent(id)}/advance`, "POST", { to, note });
+        if (current()) { setError(null); await refresh(); }
         return true;
       } catch (err) {
-        setError(apiErrorMessage(err));
+        if (current()) setError(apiErrorMessage(err));
         return false;
       }
     },
-    [live, refresh],
+    [live, refresh, queryKey],
   );
-
-  const cancel = useCallback(
-    (id: string): Promise<boolean> => advance(id, "cancelled"),
-    [advance],
-  );
-
+  const cancel = useCallback((id: string): Promise<boolean> => advance(id, "cancelled"), [advance]);
+  const current = live && dataKey === queryKey;
   return {
-    orders: live ? (liveOrders ?? []) : [],
+    orders: current ? (liveOrders ?? []) : [],
     advance,
     cancel,
     reset: refresh,
-    /** Live/staff mode, stored API error, and first-load state. */
     live,
-    loading: live && (!checked || liveOrders === null),
-    error,
+    loading: live && (!checked || !current || !settled),
+    error: current ? error : null,
     clearError: () => setError(null),
     refresh,
-    /** Pagination: older orders exist beyond what is loaded. */
-    hasMore: live && nextCursor !== null,
+    hasMore: current && nextCursor !== null,
     loadMore,
-    loadingMore,
+    loadingMore: current && loadingMore,
   };
 }
 
@@ -178,22 +201,41 @@ export function useOrders(options: UseOrdersOptions = {}) {
  */
 export function useOrder(orderNo: string) {
   const base = useOrders();
-  const { live, loading: listLoading, orders, refresh: refreshList } = base;
-  const fromList = orders.find((o) => o.id === orderNo);
+  const { live, loading: listLoading, orders, refresh: refreshList, advance: advanceList } = base;
+  const fromList = orders.find(o => o.id === orderNo);
   const [fetched, setFetched] = useState<Order | null>(null);
+  const [detailKey, setDetailKey] = useState(orderNo);
   const [missing, setMissing] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const lifecycle = useRef({ live: false, orderNo, request: 0 });
+  useEffect(() => {
+    const state = lifecycle.current;
+    state.live = live;
+    state.orderNo = orderNo;
+    state.request++;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- detail cache/errors belong to one session/order
+    setFetched(null);
+    setDetailKey(orderNo);
+    setMissing(false);
+    setDetailError(null);
+    return () => { state.live = false; state.request++; };
+  }, [live, orderNo]);
 
   const fetchDetail = useCallback(async (): Promise<void> => {
-    if (!live || !orderNo) return;
+    const state = lifecycle.current;
+    if (!state.live || state.orderNo !== orderNo || !orderNo) return;
+    const request = ++state.request;
+    const current = () => state.live && state.orderNo === orderNo && state.request === request;
+    setMissing(false);
+    setDetailError(null);
     try {
-      const data = await apiGet<{ order: Order }>(
-        `/api/admin/orders/${encodeURIComponent(orderNo)}`,
-      );
+      const data = await apiGet<{ order: Order }>(`/api/admin/orders/${encodeURIComponent(orderNo)}`);
+      if (!current()) return;
       setFetched(data.order);
       setMissing(false);
       setDetailError(null);
     } catch (err) {
+      if (!current()) return;
       if (err instanceof AdminApiError && err.status === 404) {
         setFetched(null);
         setMissing(true);
@@ -202,11 +244,11 @@ export function useOrder(orderNo: string) {
         setDetailError(apiErrorMessage(err));
       }
     }
-  }, [live, orderNo]);
+  }, [orderNo]);
 
   useEffect(() => {
     if (!live || listLoading || fromList) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- detail fallback fetch (same pattern as the list probe)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the scoped API read and clear its previous retry error
     void fetchDetail();
   }, [fetchDetail, fromList, live, listLoading]);
 
@@ -215,31 +257,21 @@ export function useOrder(orderNo: string) {
     if (!fromList) await fetchDetail();
     return ok;
   }, [fetchDetail, fromList, refreshList]);
-
-  const advance = useCallback(
-    async (id: string, to: OrderStatus, note?: string): Promise<boolean> => {
-      const ok = await base.advance(id, to, note);
-      if (!fromList) await fetchDetail();
-      return ok;
-    },
-    [base, fetchDetail, fromList],
-  );
-
-  const cancel = useCallback(
-    (id: string): Promise<boolean> => advance(id, "cancelled"),
-    [advance],
-  );
-
-  const order = fromList ?? (fetched?.id === orderNo ? fetched : undefined);
+  const advance = useCallback(async (id: string, to: OrderStatus, note?: string): Promise<boolean> => {
+    const ok = await advanceList(id, to, note);
+    if (!fromList) await fetchDetail();
+    return ok;
+  }, [advanceList, fetchDetail, fromList]);
+  const cancel = useCallback((id: string): Promise<boolean> => advance(id, "cancelled"), [advance]);
+  const current = live && detailKey === orderNo;
+  const order = live ? (fromList ?? (current && fetched?.id === orderNo ? fetched : undefined)) : undefined;
   return {
     ...base,
     order,
     advance,
     cancel,
     refresh,
-    error: base.error ?? detailError,
-    /** List still loading, or the fallback fetch has not answered yet. */
-    loading:
-      listLoading || (live && !fromList && !order && !missing && !detailError),
+    error: base.error ?? (current ? detailError : null),
+    loading: listLoading || (live && !fromList && !order && !(current && missing) && !(current && detailError)),
   };
 }

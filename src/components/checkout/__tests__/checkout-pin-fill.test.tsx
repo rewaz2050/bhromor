@@ -43,7 +43,7 @@ vi.mock("leaflet", () => {
   };
   return {
     map: vi.fn(() => mapInstance),
-    tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
+    tileLayer: vi.fn(() => ({ addTo() { return this; }, on() { return this; } })),
     marker: vi.fn((ll: [number, number]) => {
       state.markerLatLng = ll;
       return marker;

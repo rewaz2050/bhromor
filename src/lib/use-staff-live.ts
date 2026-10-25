@@ -21,6 +21,15 @@ import {
  */
 
 let probePromise: Promise<StaffProbe> | null = null;
+// Retrying one panel must also refresh the header and every other data hook.
+let probeVersion = 0;
+const probeListeners = new Set<() => void>();
+const subscribeProbe = (listener: () => void) => {
+  probeListeners.add(listener);
+  return () => { probeListeners.delete(listener); };
+};
+const probeSnapshot = () => probeVersion;
+const probeServerSnapshot = () => 0;
 
 const probeOnce = (): Promise<StaffProbe> => {
   if (!probePromise) {
@@ -60,10 +69,11 @@ export function useStaffLive(): StaffLiveState & { retry: () => void } {
     error: null,
     role: null,
   });
-  const [attempt, setAttempt] = useState(0);
+  const attempt = useSyncExternalStore(subscribeProbe, probeSnapshot, probeServerSnapshot);
 
   useEffect(() => {
     if (!authed) {
+      __resetStaffProbe();
       // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets probe state
       setState({ live: false, checked: true, error: null, role: null });
       return;
@@ -85,7 +95,8 @@ export function useStaffLive(): StaffLiveState & { retry: () => void } {
 
   const retry = () => {
     __resetStaffProbe();
-    setAttempt((n) => n + 1);
+    probeVersion += 1;
+    probeListeners.forEach(listener => listener());
   };
 
   return { ...state, retry };

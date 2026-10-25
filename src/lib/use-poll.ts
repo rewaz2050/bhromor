@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { logError } from "./logger";
 
 /**
  * Background refresh that respects the tab.
@@ -34,9 +35,27 @@ export function usePoll(
   useEffect(() => {
     if (!enabled || intervalMs <= 0) return;
     let timer: number | null = null;
+    // A replacement enabled/interval lifetime must not inherit an old lock.
+    let pending = false;
+    let active = true;
 
     const tick = () => {
-      void fnRef.current();
+      if (!active || pending) return;
+      pending = true;
+      try {
+        const result = fnRef.current();
+        if (result && typeof result.then === "function") {
+          void result.then(
+            () => { pending = false; },
+            error => { pending = false; logError("Background refresh failed", error); },
+          );
+        } else {
+          pending = false;
+        }
+      } catch (error) {
+        pending = false;
+        logError("Background refresh failed", error);
+      }
     };
     const start = () => {
       if (timer !== null) return;
@@ -63,6 +82,7 @@ export function usePoll(
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", onFocus);
     return () => {
+      active = false;
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onFocus);

@@ -22,10 +22,22 @@ try {
  await root.query(`create schema auth; create table auth.users(id uuid primary key default gen_random_uuid(), email text, raw_user_meta_data jsonb default '{}');
  create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;`);
  await root.query('create publication supabase_realtime'); // mirrors Supabase (007 publishes into it)
+ // Supabase grants these explicitly via default privileges. Plain PostgreSQL
+ // otherwise has only PUBLIC EXECUTE, which later hardening correctly revokes.
+ await root.query('alter default privileges in schema public grant execute on functions to anon, authenticated, service_role');
  await root.query(readFileSync(new URL('../bootstrap-fresh.sql',import.meta.url),'utf8'));
  await root.query(`grant usage on schema public,auth to authenticated;
  grant select on all tables in schema public to authenticated;`);
- console.log('PASS full fresh bootstrap with real PostgreSQL');
+ // A realistic default-grant fixture must NOT make hardened RPCs public.
+ const grants=await row(root,`select bool_and(not has_function_privilege('anon',p.oid,'EXECUTE')) anon_locked
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and p.proname in ('ps_place_order','ps_advance_order','ps_rider_accept','ps_assign_batch_to_rider')`);
+ assert.equal(grants.anon_locked,true);
+ const serviceOnly=await row(root,`select bool_and(not has_function_privilege('authenticated',p.oid,'EXECUTE')) locked
+   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='public' and p.proname in ('ps_place_order','ps_assign_batch_to_rider')`);
+ assert.equal(serviceOnly.locked,true);
+ console.log('PASS full fresh bootstrap with real PostgreSQL and hardened RPC grants');
  const uid=async email=>(await row(root,'insert into auth.users(email) values($1) returning id',[email])).id;
  const owner=await uid('shop@verify.invalid'), stranger=await uid('other-shop@verify.invalid');
  const a=await uid('a@verify.invalid'), b=await uid('b@verify.invalid');
@@ -47,7 +59,9 @@ try {
  const offers=(await root.query("select id,rider_id from delivery_assignments where order_id=$1 and state='offered'",[first.id])).rows;
  assert.equal(offers.length,2);
  await assert.rejects(cb.query('select ps_rider_accept($1)',[offers.find(o=>o.rider_id===ra).id]),/forbidden/);
- console.log('PASS shop permission gates, Confirm → Ready and two rider invitations');
+ assert.equal((await row(vendor,'select count(*)::int n from orders where id=$1',[first.id])).n,1);
+ assert.equal((await row(other,'select count(*)::int n from orders where id=$1',[first.id])).n,0);
+ console.log('PASS shop permission gates, own-shop order RLS, Confirm → Ready and two rider invitations');
  // Hold the shared order lock, queue both actual database sessions, release it.
  await root.query('begin'); await root.query('select id from orders where id=$1 for update',[first.id]);
  const result=Promise.allSettled([

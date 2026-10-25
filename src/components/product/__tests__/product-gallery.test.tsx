@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import ProductGallery from "../product-gallery";
 import { PRODUCTS } from "@/lib/catalog";
 
@@ -86,7 +87,7 @@ describe("ProductGallery zoom", () => {
     fireEvent.click(screen.getByRole("button", { name: /zoom out/i }));
     fireEvent.click(screen.getByRole("button", { name: /zoom out/i }));
     expect(box).toHaveAttribute("data-scale", "1.00");
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByTestId("zoom-lightbox")).toBeNull();
   });
 
@@ -99,5 +100,47 @@ describe("ProductGallery zoom", () => {
     expect(img.style.transform).toContain("scale(1.9)");
     fireEvent.mouseLeave(trigger);
     expect(img.style.transform).toBe("");
+  });
+});
+
+
+describe("gallery modal accessibility", () => {
+  it("keeps focus on the zoom control when scale changes and restores the opener", async () => {
+    const { container } = render(<ProductGallery product={withMedia()} />);
+    const trigger = screen.getByTestId("gallery-zoom-trigger");
+    container.inert = false; // jsdom does not provide the browser default.
+    trigger.focus();
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Close zoom" })).toHaveFocus());
+    const zoom = screen.getByRole("button", { name: "Zoom in" });
+    zoom.focus(); fireEvent.click(zoom);
+    expect(zoom).toHaveFocus();
+    expect(container.inert).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+    expect(container.inert).toBe(false);
+  });
+  it("bounds zoom, permits keyboard panning and resets the view", () => {
+    render(<ProductGallery product={withMedia()} />);
+    fireEvent.click(screen.getByTestId("gallery-zoom-trigger"));
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+    for (let i = 0; i < 12; i++) fireEvent.keyDown(window, { key: "+" });
+    expect(screen.getByTestId("zoom-lightbox")).toHaveAttribute("data-scale", "4.00");
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    const photo = screen.getByTestId("zoom-stage").querySelector("img")!;
+    expect(photo.style.transform).toContain("-40px");
+    fireEvent.click(screen.getByRole("button", { name: "Reset zoom" }));
+    expect(photo.style.transform).toContain("scale(1)");
+    expect(photo.style.transform).not.toContain("-40px");
+  });
+  it("localizes gallery navigation and zoom controls without rewriting media descriptions", () => {
+    render(<LanguageProvider initialLang="bn"><ProductGallery product={withMedia()} /></LanguageProvider>);
+    expect(screen.getByText("০১ / ০৪")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ভিডিও 2 চালান" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "বড় ছবি দেখুন: Cover photo" }));
+    expect(screen.getByRole("dialog", { name: "Cover photo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ছবি বড় করুন" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "জুম আগের মতো করুন" })).toBeInTheDocument();
   });
 });

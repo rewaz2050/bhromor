@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import AdminOnly from "@/components/admin/admin-only";
+import AdminDataError from "@/components/admin/admin-data-error";
 import { formatBdt } from "@/lib/format";
 import { computeNet, PNL_RANGES, type PnlRange } from "@/lib/money-pnl";
 import {
@@ -205,19 +206,22 @@ export default function AdminMoneyPage() {
   if (!money.ready || !summary) {
     return (
       <div className="space-y-4">
-        {money.error && (
-          <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
-            {money.error}
-          </p>
+        <AdminDataError
+          label="Money"
+          error={money.error ?? (!money.backendMissing ? "Money data could not be loaded." : null)}
+          onRetry={money.refresh}
+          onDismiss={money.error ? money.clearError : undefined}
+        />
+        {money.backendMissing && !money.error && (
+          <div className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-900 ring-1 ring-amber-200">
+            <p className="font-semibold">Rider money backend is not installed yet</p>
+            <p className="mt-2">
+              Run <code>supabase/migrations/202609300002_rider_money.sql</code> in the Supabase SQL
+              editor. Until then riders keep earning ৳0 per delivery and no payout can be filed —
+              the rest of the app is unaffected.
+            </p>
+          </div>
         )}
-        <div className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-900 ring-1 ring-amber-200">
-          <p className="font-semibold">Rider money backend is not installed yet</p>
-          <p className="mt-2">
-            Run <code>supabase/migrations/202609300002_rider_money.sql</code> in the Supabase SQL
-            editor. Until then riders keep earning ৳0 per delivery and no payout can be filed —
-            the rest of the app is unaffected.
-          </p>
-        </div>
       </div>
     );
   }
@@ -227,14 +231,7 @@ export default function AdminMoneyPage() {
 
   return (
     <div className="space-y-6">
-      {money.error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
-          {money.error}{" "}
-          <button type="button" onClick={money.clearError} className="font-semibold underline underline-offset-2">
-            Dismiss
-          </button>
-        </p>
-      )}
+      <AdminDataError label="Money" error={money.error} onRetry={money.refresh} onDismiss={money.clearError} />
 
       {!ratesConfigured && (
         <div
@@ -251,57 +248,65 @@ export default function AdminMoneyPage() {
       )}
 
       {/* Net result (N7) — what the platform actually keeps */}
-      {money.pnl ? (
-        (() => {
-          const p = money.pnl;
-          const n = computeNet(p);
-          return (
-            <section className="space-y-3" data-testid="net-pnl">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-display text-lg font-bold text-forest-900">Net result</h2>
-                <div className="inline-flex rounded-full bg-ivory-100 p-1 ring-1 ring-line" role="tablist" aria-label="Period">
-                  {PNL_RANGES.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      role="tab"
-                      aria-selected={money.range === r}
-                      onClick={() => money.setRange(r)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${money.range === r ? "bg-forest-800 text-white" : "text-ink-soft hover:text-forest-900"}`}
-                    >
-                      {RANGE_LABEL[r]}
-                    </button>
-                  ))}
+      <section className="space-y-3" aria-label="Net result">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold text-forest-900">Net result</h2>
+          <div className="inline-flex rounded-full bg-ivory-100 p-1 ring-1 ring-line" role="tablist" aria-label="Period">
+            {PNL_RANGES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={money.range === r}
+                onClick={() => money.setRange(r)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${money.range === r ? "bg-forest-800 text-white" : "text-ink-soft hover:text-forest-900"}`}
+              >
+                {RANGE_LABEL[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {money.pnlLoading ? (
+          <p role="status" className="text-sm text-ink-soft">Loading net result for this period…</p>
+        ) : money.pnl ? (
+          (() => {
+            const p = money.pnl;
+            const n = computeNet(p);
+            return (
+              <div className="space-y-3" data-testid="net-pnl">
+                <div className="divide-y divide-line rounded-2xl bg-paper ring-1 ring-line">
+                  <Line sign="+" label="Commission" value={p.commission} hint="Shop ledger, delivered orders" testId="pnl-commission" />
+                  <Line sign="+" label="Delivery & surcharge charges" value={p.deliveryIncome} hint={`${p.deliveredOrders} delivered orders`} testId="pnl-delivery" />
+                  {p.shopFundedFreeDelivery > 0 && (
+                    <Line sign="+" label="Free delivery paid back by shops" value={p.shopFundedFreeDelivery} />
+                  )}
+                  <Line sign="−" label="Rider pay (fees, COD handling, incentives)" value={n.riderCost} hint="Tips excluded — they pass straight through" testId="pnl-rider" />
+                  <Line sign="−" label="Discounts PROSANTI absorbed" value={n.platformDiscounts} hint={`${formatBdt(p.discountsGiven)} given, ${formatBdt(p.shopFundedDiscounts)} funded by shops`} testId="pnl-discounts" />
+                  <div className="flex items-baseline justify-between gap-3 bg-forest-800 px-4 py-3 text-white first:rounded-t-2xl last:rounded-b-2xl" data-testid="pnl-net">
+                    <p className="text-sm font-semibold uppercase tracking-wider">Net operating result</p>
+                    <p className="font-display text-2xl tabular-nums">{signed(n.net)}</p>
+                  </div>
                 </div>
+                <p className="text-[11px] text-ink-soft" data-testid="pnl-unit">
+                  {n.perOrder === null
+                    ? "No delivered orders in this period."
+                    : `${signed(n.perOrder)} per delivered order · delivery charges minus rider pay: ${signed(n.deliveryMarginPerOrder ?? 0)} per trip.`}{" "}
+                  Tips ({formatBdt(p.tipsCollected)} collected, {formatBdt(p.tipsToRiders)} credited to riders
+                  {n.tipsHeld !== 0 ? `, ${signed(n.tipsHeld)} not yet credited` : ""}) are the riders&apos; money and are not part of the result.
+                </p>
               </div>
-              <div className="divide-y divide-line rounded-2xl bg-paper ring-1 ring-line">
-                <Line sign="+" label="Commission" value={p.commission} hint="Shop ledger, delivered orders" testId="pnl-commission" />
-                <Line sign="+" label="Delivery & surcharge charges" value={p.deliveryIncome} hint={`${p.deliveredOrders} delivered orders`} testId="pnl-delivery" />
-                {p.shopFundedFreeDelivery > 0 && (
-                  <Line sign="+" label="Free delivery paid back by shops" value={p.shopFundedFreeDelivery} />
-                )}
-                <Line sign="−" label="Rider pay (fees, COD handling, incentives)" value={n.riderCost} hint="Tips excluded — they pass straight through" testId="pnl-rider" />
-                <Line sign="−" label="Discounts PROSANTI absorbed" value={n.platformDiscounts} hint={`${formatBdt(p.discountsGiven)} given, ${formatBdt(p.shopFundedDiscounts)} funded by shops`} testId="pnl-discounts" />
-                <div className="flex items-baseline justify-between gap-3 bg-forest-800 px-4 py-3 text-white first:rounded-t-2xl last:rounded-b-2xl" data-testid="pnl-net">
-                  <p className="text-sm font-semibold uppercase tracking-wider">Net operating result</p>
-                  <p className="font-display text-2xl tabular-nums">{signed(n.net)}</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-ink-soft" data-testid="pnl-unit">
-                {n.perOrder === null
-                  ? "No delivered orders in this period."
-                  : `${signed(n.perOrder)} per delivered order · delivery charges minus rider pay: ${signed(n.deliveryMarginPerOrder ?? 0)} per trip.`}{" "}
-                Tips ({formatBdt(p.tipsCollected)} collected, {formatBdt(p.tipsToRiders)} credited to riders
-                {n.tipsHeld !== 0 ? `, ${signed(n.tipsHeld)} not yet credited` : ""}) are the riders&apos; money and are not part of the result.
-              </p>
-            </section>
-          );
-        })()
-      ) : (
-        <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200" data-testid="pnl-missing">
-          Net result needs <code>supabase/migrations/202610010003_money_pnl.sql</code> — run it in the Supabase SQL editor.
-        </p>
-      )}
+            );
+          })()
+        ) : (
+          <div className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200" data-testid="pnl-missing">
+            <p>{money.error
+              ? "Net result could not be loaded for this period."
+              : <>Net result unavailable. If the P&amp;L migration has not been installed, run <code>supabase/migrations/202610010003_money_pnl.sql</code> in the Supabase SQL editor.</>}
+            </p>
+            <button type="button" onClick={() => void money.refresh()} className="mt-2 min-h-11 font-semibold underline underline-offset-2">Retry net result</button>
+          </div>
+        )}
+      </section>
 
       {/* Gross flows, all time */}
       <section className="space-y-3">

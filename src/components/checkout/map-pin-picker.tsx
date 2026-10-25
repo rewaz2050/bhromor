@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
+import { MAP_ERROR_TILE_URL } from "@/lib/live-map";
 import type { LeafletMouseEvent, Map as LeafletMap, Marker } from "leaflet";
 import {
   SUNAMGANJ_HUB_COORDS,
@@ -20,50 +22,28 @@ interface MapPinPickerProps {
 }
 
 export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPinPickerProps) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const callbacks = useRef({ onChange, onZoneDetected });
+  useEffect(() => { callbacks.current = { onChange, onZoneDetected }; }, [onChange, onZoneDetected]);
   const hubMarkerRef = useRef<Marker | null>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [leafletReady, setLeafletReady] = useState(false);
-
-  // Load leaflet CSS
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    link.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
-    link.crossOrigin = "";
-    document.head.appendChild(link);
-    return () => {
-      // keep css
-    };
-  }, []);
-
-  // Dynamic import leaflet (client only)
-  useEffect(() => {
-    let cancelled = false;
-    import("leaflet").then((L) => {
-      if (cancelled) return;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
-      setLeafletReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [failed, setFailed] = useState(false);
+  const [tileError, setTileError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [locationError, setLocationError] = useState<false | "unavailable" | "outside">(false);
 
   // Init map
   useEffect(() => {
-    if (!leafletReady || !mapRef.current || leafletMapRef.current) return;
+    if (!mapRef.current || leafletMapRef.current) return;
     let cancelled = false;
+    let resize: ResizeObserver | undefined;
+    let frame: number | undefined;
 
     import("leaflet").then((L) => {
       if (cancelled || !mapRef.current) return;
@@ -78,9 +58,12 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
         ],
       });
 
+      leafletMapRef.current = map;
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        errorTileUrl: MAP_ERROR_TILE_URL,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
-      }).addTo(map);
+      }).on("tileerror", () => { if (!cancelled) setTileError(true); }).addTo(map);
 
       // Hub marker
       const hubIcon = L.divIcon({
@@ -112,15 +95,19 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
 
       // Draggable customer marker
       const initial = value ?? { lat: SUNAMGANJ_HUB_COORDS.lat + 0.003, lng: SUNAMGANJ_HUB_COORDS.lng + 0.002 };
-      const marker = L.marker([initial.lat, initial.lng], { draggable: true }).addTo(map);
+      const icon = L.divIcon({
+        html: '<span style="display:block;width:28px;height:28px;border-radius:50%;background:#142c22;border:3px solid white"></span>',
+        className: "", iconSize: [28, 28], iconAnchor: [14, 14],
+      });
+      const marker = L.marker([initial.lat, initial.lng], { draggable: true, icon }).addTo(map);
       markerRef.current = marker;
 
       const updatePos = (latlng: LatLng) => {
         const d = distanceFromHubKm(latlng);
         setDistance(d);
         const zone = findZoneByDistance(latlng);
-        onZoneDetected?.(zone.id, d);
-        onChange(latlng);
+        callbacks.current.onZoneDetected?.(zone.id, d);
+        callbacks.current.onChange(latlng);
       };
 
       marker.on("dragend", () => {
@@ -141,17 +128,32 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
         // Don't auto-trigger on first load if no value - let user pick
       } else {
         const zone = findZoneByDistance(initial);
-        onZoneDetected?.(zone.id, d);
+        callbacks.current.onZoneDetected?.(zone.id, d);
       }
 
       leafletMapRef.current = map;
       setLoaded(true);
 
-      setTimeout(() => map.invalidateSize(), 200);
+      frame = requestAnimationFrame(() => { if (!cancelled) map.invalidateSize(); });
+      if (typeof ResizeObserver !== "undefined") {
+        resize = new ResizeObserver(() => { if (!cancelled) map.invalidateSize(); });
+        resize.observe(mapRef.current);
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      leafletMapRef.current?.remove();
+      leafletMapRef.current = null;
+      markerRef.current = null;
+      hubMarkerRef.current = null;
+      setLoaded(false);
+      setFailed(true);
     });
 
     return () => {
       cancelled = true;
+      resize?.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      markerRef.current = null;
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
@@ -159,7 +161,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leafletReady]);
+  }, [attempt]);
 
   // Keep the hub popup in the active language
   const hubPopup = t("mapPin.hubPopup");
@@ -180,24 +182,32 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
   }, [value]);
 
   const handleUseMyLocation = () => {
-    if (!navigator.geolocation) return;
+    setLocationError(false);
+    if (!navigator.geolocation) { setLocationError("unavailable"); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (!mounted.current) return;
         const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        // Clamp to Sunamganj bounds
-        const clamped = {
-          lat: Math.min(SUNAMGANJ_BOUNDS.north, Math.max(SUNAMGANJ_BOUNDS.south, ll.lat)),
-          lng: Math.min(SUNAMGANJ_BOUNDS.east, Math.max(SUNAMGANJ_BOUNDS.west, ll.lng)),
-        };
-        onChange(clamped);
-        if (markerRef.current) markerRef.current.setLatLng([clamped.lat, clamped.lng]);
-        if (leafletMapRef.current) leafletMapRef.current.setView([clamped.lat, clamped.lng], 15);
-        const d = distanceFromHubKm(clamped);
+        if (!Number.isFinite(ll.lat) || !Number.isFinite(ll.lng)) {
+          setLocationError("unavailable");
+          return;
+        }
+        const inside = ll.lat >= SUNAMGANJ_BOUNDS.south && ll.lat <= SUNAMGANJ_BOUNDS.north &&
+          ll.lng >= SUNAMGANJ_BOUNDS.west && ll.lng <= SUNAMGANJ_BOUNDS.east;
+        if (!inside) {
+          // Match checkout's outer GPS control: never invent a boundary pin.
+          setLocationError("outside");
+          return;
+        }
+        callbacks.current.onChange(ll);
+        if (markerRef.current) markerRef.current.setLatLng([ll.lat, ll.lng]);
+        if (leafletMapRef.current) leafletMapRef.current.setView([ll.lat, ll.lng], 15);
+        const d = distanceFromHubKm(ll);
         setDistance(d);
-        const zone = findZoneByDistance(clamped);
-        onZoneDetected?.(zone.id, d);
+        const zone = findZoneByDistance(ll);
+        callbacks.current.onZoneDetected?.(zone.id, d);
       },
-      () => {},
+      () => { if (mounted.current) setLocationError("unavailable"); },
       { enableHighAccuracy: true, timeout: 8000 },
     );
   };
@@ -211,7 +221,7 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
         <button
           type="button"
           onClick={handleUseMyLocation}
-          className="inline-flex items-center gap-1 rounded-full bg-paper px-3 py-1 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
+          className="inline-flex min-h-11 items-center gap-1 rounded-full bg-paper px-3 py-1 text-xs font-medium ring-1 ring-line hover:bg-ivory-100"
         >
           <IconMapPin className="h-3.5 w-3.5" />
           {t("mapPin.useMyLocation")}
@@ -219,16 +229,32 @@ export default function MapPinPicker({ value, onChange, onZoneDetected }: MapPin
       </div>
 
       <div
+        role="region"
+        aria-label={lang === "bn" ? "ডেলিভারি ঠিকানার ম্যাপ" : "Delivery location map"}
         ref={mapRef}
-        className="h-[320px] w-full overflow-hidden rounded-2xl ring-1 ring-line bg-ivory-100"
+        className="relative isolate h-[320px] w-full overflow-hidden rounded-2xl ring-1 ring-line bg-ivory-100"
         style={{ minHeight: 320 }}
       >
-        {!loaded && (
+        {!loaded && !failed && (
           <div className="flex h-full items-center justify-center text-sm text-ink-soft">
             {t("mapPin.loading")}
           </div>
         )}
       </div>
+
+      {(failed || tileError) && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper p-3 text-sm text-ink-soft ring-1 ring-line">
+          <p>{failed
+            ? (lang === "bn" ? "ম্যাপ লোড করা যায়নি। ঠিকানার অন্য ঘরগুলো ব্যবহার করুন অথবা আবার চেষ্টা করুন।" : "Map could not load. Use the other address fields or try again.")
+            : (lang === "bn" ? "রাস্তার বিবরণ পাওয়া যাচ্ছে না। পিন বেছে নেওয়া এখনও সম্ভব।" : "Street details are unavailable. You can still select a pin.")}</p>
+          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold ring-1 ring-line" onClick={() => { setFailed(false); setTileError(false); setLoaded(false); setAttempt(n => n + 1); }}>
+            {lang === "bn" ? "ম্যাপ আবার চেষ্টা করুন" : "Retry map"}
+          </button>
+        </div>
+      )}
+      {locationError && <p role="status" className="text-sm text-ink-soft">{locationError === "outside"
+        ? (lang === "bn" ? "আপনার লোকেশন সুনামগঞ্জ এলাকার বাইরে। ডেলিভারি ঠিকানা লিখুন অথবা ম্যাপে পিন বেছে নিন।" : "Your location is outside the Sunamganj area. Enter the delivery address or select a pin on the map.")
+        : (lang === "bn" ? "লোকেশন পাওয়া যায়নি। ম্যাপে পিন বেছে নিন অথবা ঠিকানা লিখুন।" : "Location unavailable. Select a pin or enter your address.")}</p>}
 
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full bg-forest-50 px-2.5 py-1 ring-1 ring-forest-200">

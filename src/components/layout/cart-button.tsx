@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { bnDigits } from "@/lib/arrival";
 import { useCart } from "@/components/cart/cart-provider";
 import { IconBag } from "@/components/ui/icons";
 
@@ -13,7 +15,9 @@ import { IconBag } from "@/components/ui/icons";
  * the count genuinely moves afterwards.
  */
 export default function CartButton() {
-  const { itemCount, openBag, ready } = useCart();
+  const { t, lang } = useLanguage();
+  const digits = (n: number) => lang === "bn" ? bnDigits(String(n)) : String(n);
+  const { itemCount, openBag, ready, lines, detail } = useCart();
   const [pops, setPops] = useState(0);
   const seen = useRef<number | null>(null);
 
@@ -34,7 +38,7 @@ export default function CartButton() {
       type="button"
       onClick={openBag}
       aria-haspopup="dialog"
-      aria-label={`Open bag, ${itemCount} item${itemCount === 1 ? "" : "s"}`}
+      aria-label={!ready ? t("header.bagLoading") : lines?.length > 0 && detail?.length === 0 ? t("header.bagUnresolved") : t(itemCount === 1 ? "header.bagOne" : "header.bagMany").replace("{count}", digits(itemCount))}
       className="header-icon-btn relative flex h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:text-forest-900"
     >
       {/* key per change — the CSS bag-pop replays when the shopper adds. */}
@@ -49,7 +53,7 @@ export default function CartButton() {
           key={`count-${pops}`}
           className="bag-count-feedback absolute -right-0.5 -top-0.5 flex h-[1.15rem] min-w-[1.15rem] items-center justify-center rounded-full bg-gold-600 px-1 text-[0.64rem] font-bold leading-none text-white shadow-sm ring-2 ring-ivory-50"
         >
-          {itemCount > 99 ? "99+" : itemCount}
+          {itemCount > 99 ? `${digits(99)}+` : digits(itemCount)}
         </span>
       )}
     </button>

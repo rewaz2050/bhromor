@@ -115,7 +115,7 @@ describe("LiveDeliveryMap Component", () => {
         "/api/track/rider-location?orderId=PS-20260909-0042&phone=01711111111",
       );
       await act(async () => {
-        vi.advanceTimersByTime(30_000);
+        await vi.advanceTimersByTimeAsync(30_000);
       });
       // 10 s cadence: mount + 10 + 20 + 30.
       expect(fetchMock).toHaveBeenCalledTimes(4);

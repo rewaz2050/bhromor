@@ -149,3 +149,9 @@ describe("<WishlistView> — back in stock (UX plan §8, R11)", () => {
     expect(returnedToStock(items, {})).toEqual([]);
   });
 });
+
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/navigation")>(),
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));

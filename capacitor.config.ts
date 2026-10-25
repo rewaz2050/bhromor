@@ -15,7 +15,10 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * with MOBILE_SITE_URL for a preview build:
  *     MOBILE_SITE_URL=https://my-preview.vercel.app npx cap sync android
  */
-const SITE_URL = process.env.MOBILE_SITE_URL ?? "https://bhromor-zeta.vercel.app";
+// Actions passes an empty string for the optional blank site_url input.
+// Treat blank/whitespace exactly like an omitted override, as documented.
+const SITE_URL =
+  process.env.MOBILE_SITE_URL?.trim() || "https://bhromor-zeta.vercel.app";
 
 const config: CapacitorConfig = {
   appId: "store.prosanti.rider",

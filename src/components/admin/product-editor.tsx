@@ -23,6 +23,7 @@ import {
 } from "@/lib/media";
 import { field, hint, label } from "./form-ui";
 import MediaUploader from "./media-uploader";
+import { MediaPreviewImage } from "./media-preview-image";
 import PhotoStandardHint from "./photo-standard-hint";
 import { IconCheck, IconPlus, IconTrash } from "@/components/ui/icons";
 import type { Product } from "@/lib/catalog";
@@ -803,16 +804,14 @@ export default function ProductEditor({
               <div key={`${m.src}-${i}`} className="flex items-center gap-3 rounded-xl bg-ivory-100/70 px-3 py-2.5">
                 <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-ivory-100 ring-1 ring-line">
                   {m.kind === "image" ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={optimizedMediaUrl(m.src, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <MediaPreviewImage src={optimizedMediaUrl(m.src, 200)} className="h-full w-full object-cover" />
                   ) : driveId ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={driveThumbnailUrl(driveId, 200)} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    <MediaPreviewImage src={driveThumbnailUrl(driveId, 200)} className="h-full w-full object-cover" />
                   ) : (
                     <video src={m.src} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                   )}
                   {m.kind === "video" && (
-                    <span className="absolute inset-0 flex items-center justify-center bg-forest-950/30 text-[0.6rem] font-bold text-ivory-50" aria-hidden="true">
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-forest-950/30 text-[0.6rem] font-bold text-ivory-50" aria-hidden="true">
                       ▶
                     </span>
                   )}
@@ -948,12 +947,10 @@ export default function ProductEditor({
               </label>
               {extractYoutubeId(draft.youtube) && (
                 <span className="mt-2 flex items-center gap-2.5">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <MediaPreviewImage
                     src={youtubeThumbUrl(extractYoutubeId(draft.youtube)!)}
-                    alt=""
-                    className="h-10 w-[4.5rem] rounded-lg object-cover ring-1 ring-line"
-                    loading="lazy"
+                    label="YouTube thumbnail"
+                    className="h-11 w-[4.5rem] rounded-lg object-cover ring-1 ring-line"
                   />
                   <span className="text-xs font-medium text-emerald-700">
                     Video found — it will play in the gallery.

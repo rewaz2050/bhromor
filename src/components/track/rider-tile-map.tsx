@@ -16,14 +16,15 @@
  *     it stays put and offers a "re-centre" button.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
+import { useLanguage } from "@/components/i18n/language-provider";
 import type {
   Map as LeafletMap,
   Marker as LeafletMarker,
   Polyline as LeafletPolyline,
 } from "leaflet";
 import {
-  LEAFLET_CSS_INTEGRITY,
-  LEAFLET_CSS_URL,
+  MAP_ERROR_TILE_URL,
   LIVE_MAP_CSS,
   SLIDE_MS,
   TRACK_TILE_ATTRIBUTION,
@@ -50,20 +51,13 @@ import { escapeHtml } from "@/lib/rider-map-marker";
 type LeafletModule = typeof import("leaflet");
 let leafletPromise: Promise<LeafletModule> | null = null;
 const loadLeaflet = (): Promise<LeafletModule> =>
-  (leafletPromise ??= import("leaflet"));
+  (leafletPromise ??= import("leaflet").catch(error => { leafletPromise = null; throw error; }));
 
-/** Leaflet's CSS + the pin styles, once per document. */
-let stylesInjected = false;
+/** Pin styles are local; Leaflet CSS is bundled above, not fetched from a CDN. */
 const injectMapStyles = (): void => {
-  if (stylesInjected || typeof document === "undefined") return;
-  stylesInjected = true;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = LEAFLET_CSS_URL;
-  link.integrity = LEAFLET_CSS_INTEGRITY;
-  link.crossOrigin = "";
-  document.head.appendChild(link);
+  if (typeof document === "undefined" || document.getElementById("prosanti-live-map-pins")) return;
   const style = document.createElement("style");
+  style.id = "prosanti-live-map-pins";
   style.textContent = LIVE_MAP_CSS;
   document.head.appendChild(style);
 };
@@ -77,7 +71,7 @@ export interface RiderTileMapProps {
   stale?: boolean;
   destinationLabel?: string;
   riderLabel?: string;
-  /** Reported once the tiles are up, so the placeholder can go. */
+  /** Reported once the map initializes; tiles may still be unavailable. */
   onReady?: () => void;
   /**
    * Leaflet could not load or could not build a map (offline, blocked CDN, a
@@ -96,6 +90,9 @@ export function RiderTileMap({
   onReady,
   onFailed,
 }: RiderTileMapProps) {
+  const { lang } = useLanguage();
+  const [tileError, setTileError] = useState(false);
+  const tilesRef = useRef<import("leaflet").TileLayer | null>(null);
   const holderRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const riderMarkerRef = useRef<LeafletMarker | null>(null);
@@ -135,6 +132,7 @@ export function RiderTileMap({
     if (typeof window === "undefined") return;
     injectMapStyles();
     let cancelled = false;
+    let resizeTimer: number | undefined;
     void loadLeaflet()
       .then((L) => {
         if (cancelled || !holderRef.current || mapRef.current) return;
@@ -148,7 +146,9 @@ export function RiderTileMap({
           scrollWheelZoom: false,
           attributionControl: true,
         });
-        L.tileLayer(TRACK_TILE_URL, { attribution: TRACK_TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map);
+        mapRef.current = map;
+        tilesRef.current = L.tileLayer(TRACK_TILE_URL, { attribution: TRACK_TILE_ATTRIBUTION, maxZoom: 19, errorTileUrl: MAP_ERROR_TILE_URL })
+          .on("tileerror", () => { if (!cancelled) setTileError(true); }).addTo(map);
         // Hands-off detection: from the first drag the map belongs to the customer.
         const stopFollowing = () => {
           if (followingRef.current) {
@@ -162,13 +162,15 @@ export function RiderTileMap({
         setReady(true);
         onReady?.();
         // The container is laid out after this effect; Leaflet needs a nudge.
-        window.setTimeout(() => map.invalidateSize(), 200);
+        resizeTimer = window.setTimeout(() => { if (!cancelled) map.invalidateSize(); }, 200);
       })
       .catch(() => {
         if (!cancelled) onFailed?.();
       });
     return () => {
       cancelled = true;
+      if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
+      tilesRef.current = null;
       if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
@@ -190,6 +192,7 @@ export function RiderTileMap({
     const door = asMapPoint(destination);
     if (!map || !ready) return;
     void loadLeaflet().then((L) => {
+      if (mapRef.current !== map) return;
       if (!door) {
         if (doorMarkerRef.current) {
           map.removeLayer(doorMarkerRef.current);
@@ -231,6 +234,7 @@ export function RiderTileMap({
     }
 
     void loadLeaflet().then((L) => {
+      if (mapRef.current !== map) return;
       const icon = L.divIcon({
         html: riderPinHtml(stale),
         className: "",
@@ -307,6 +311,7 @@ export function RiderTileMap({
     const a = shownRiderRef.current ?? asMapPoint(rider);
     const b = asMapPoint(destination);
     void loadLeaflet().then((L) => {
+      if (mapRef.current !== map) return;
       if (!a || !b) {
         if (lineRef.current) {
           map.removeLayer(lineRef.current);
@@ -356,11 +361,17 @@ export function RiderTileMap({
   }, [destination, rider]);
 
   return (
-    <div className="relative h-full w-full" data-testid="rider-tile-map">
+    <div className="relative isolate h-full w-full overflow-hidden" data-testid="rider-tile-map">
       <div ref={holderRef} className="h-full w-full bg-forest-950" />
       {!ready && (
         <div className="absolute inset-0 flex items-center justify-center bg-forest-950 text-xs text-ivory-100/80">
           ম্যাপ লোড হচ্ছে…
+        </div>
+      )}
+      {tileError && (
+        <div role="status" className="absolute inset-x-2 bottom-2 z-[1000] flex flex-wrap items-center justify-between gap-2 rounded-xl bg-paper p-2 text-xs text-ink ring-1 ring-line">
+          <span>{lang === "bn" ? "রাস্তার বিবরণ পাওয়া যাচ্ছে না। পিনগুলো প্রাপ্ত অবস্থান দেখায়।" : "Street details unavailable. Pins show received locations."}</span>
+          <button type="button" className="min-h-11 rounded-lg px-3 font-semibold ring-1 ring-line" onClick={() => { setTileError(false); tilesRef.current?.redraw(); }}>{lang === "bn" ? "ম্যাপ আবার চেষ্টা করুন" : "Retry map"}</button>
         </div>
       )}
       {ready && !following && (
@@ -368,7 +379,7 @@ export function RiderTileMap({
           type="button"
           onClick={recenter}
           data-testid="map-recenter"
-          className="absolute bottom-3 left-3 flex h-9 w-9 items-center justify-center rounded-full bg-paper/95 text-forest-900 shadow ring-1 ring-line transition-colors hover:bg-paper"
+          className="absolute top-3 right-3 flex h-11 w-11 items-center justify-center rounded-full bg-paper/95 text-forest-900 shadow ring-1 ring-line transition-colors hover:bg-paper"
           aria-label="ম্যাপ আবার রাইডারের উপর আনুন"
           title="রাইডারকে আবার মাঝে আনুন"
         >

@@ -3,9 +3,11 @@
  * Batch H (2026-09-18): background refresh that stops in a hidden tab and
  * refreshes the moment the operator looks again.
  */
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePoll } from "../use-poll";
+import { logError } from "../logger";
+vi.mock("../logger", () => ({ logError: vi.fn() }));
 
 let visibility: DocumentVisibilityState = "visible";
 
@@ -85,4 +87,36 @@ describe("usePoll", () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it("does not overlap an unfinished poll with focus/visibility/interval refreshes", async () => {
+  let finish = () => {};
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const fn = vi.fn(() => pending);
+  renderHook(() => usePoll(fn, 1000));
+  vi.advanceTimersByTime(1000);
+  window.dispatchEvent(new Event("focus"));
+  setVisibility("hidden"); setVisibility("visible");
+  vi.advanceTimersByTime(3000);
+  expect(fn).toHaveBeenCalledOnce();
+  await act(async () => { finish(); await pending; });
+  vi.advanceTimersByTime(1000);
+  expect(fn).toHaveBeenCalledTimes(2);
+});
+
+
+it("reports a rejected refresh and allows the next poll", async () => {
+  const fn = vi.fn().mockRejectedValueOnce(new Error("Unavailable")).mockResolvedValue(undefined);
+  renderHook(() => usePoll(fn, 1000));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(logError).toHaveBeenCalledWith("Background refresh failed", expect.any(Error));
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(fn).toHaveBeenCalledTimes(2);
+});
+it("reports a synchronous refresh exception without disabling future polls", () => {
+  const fn = vi.fn().mockImplementationOnce(() => { throw new Error("Unavailable"); }).mockReturnValue(undefined);
+  renderHook(() => usePoll(fn, 1000));
+  vi.advanceTimersByTime(2000);
+  expect(fn).toHaveBeenCalledTimes(2);
 });

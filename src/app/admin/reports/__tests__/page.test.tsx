@@ -4,6 +4,7 @@
  * no red error, no eternal "Loading…"), and staff must get the list.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EMPTY_FUNNEL } from "@/lib/funnel-events";
 import { cleanup, render, screen } from "@testing-library/react";
 
 const state = vi.hoisted(() => ({ live: false }));
@@ -28,7 +29,7 @@ import AdminReportsPage from "../page";
 beforeEach(() => {
   state.live = false;
   apiGetMock.mockReset();
-  apiGetMock.mockResolvedValue({ bestSellers: [] });
+  apiGetMock.mockImplementation(async (path: string) => path.includes("/funnel?") ? { ...EMPTY_FUNNEL } : { bestSellers: [] });
 });
 
 afterEach(() => {
@@ -57,4 +58,12 @@ describe("Reports — best sellers section (R5)", () => {
     expect(apiGetMock).toHaveBeenCalledWith("/api/admin/reports/funnel?days=7");
     expect(await screen.findByText(/No sessions recorded in the last 7 days/)).toBeVisible();
   });
+});
+
+it("does not turn a best-sellers-shaped response into a fabricated empty funnel", async () => {
+  state.live = true;
+  apiGetMock.mockResolvedValue({ bestSellers: [] });
+  render(<AdminReportsPage />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("The funnel response could not be validated. Try again.");
+  expect(screen.queryByText(/No sessions recorded/)).not.toBeInTheDocument();
 });

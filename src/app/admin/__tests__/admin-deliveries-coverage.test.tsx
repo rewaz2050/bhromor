@@ -5,13 +5,10 @@ const state = vi.hoisted(() => ({ awaiting: [] as unknown[], riders: [] as unkno
 
 vi.mock("@/lib/use-admin-deliveries", () => ({
   useAdminDeliveries: () => ({
+    riders: state.riders, ridersLoading: state.ridersLoading, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: 0 },
     deliveries: [], awaitingOrders: state.awaiting, failedDeliveries: [], resolveFailed: vi.fn(), release: vi.fn(),
     loading: false, error: null, clearError: vi.fn(), busyId: null, refresh: vi.fn(), offer: vi.fn(), cancel: vi.fn(),
   }),
-}));
-vi.mock("@/lib/use-riders", () => ({
-  RIDERS_POLL_MS: 0,
-  useRiders: () => ({ riders: state.riders, loading: state.ridersLoading, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: 0 } }),
 }));
 vi.mock("@/lib/use-orders", () => ({ useOrders: () => ({ orders: [] }) }));
 vi.mock("@/components/admin/admin-live-map", () => ({ default: () => null }));

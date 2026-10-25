@@ -9,6 +9,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRiderAvailability } from "@/lib/use-rider-availability";
+import { useRiderTaskActions } from "@/lib/use-rider-task-actions";
 import { useRiderJobs, useRiderSession, useRiderStats } from "@/lib/use-rider";
 import { formatBdt } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
@@ -26,7 +28,7 @@ import { RiderTopBar } from "@/components/rider/dashboard/top-bar";
 import { CashCard } from "@/components/rider/dashboard/cash-card";
 import { StatsStrip } from "@/components/rider/dashboard/stats-strip";
 import { TaskCard } from "@/components/rider/dashboard/task-card";
-import { PinModal } from "@/components/rider/dashboard/pin-modal";
+import { DeliveryPinDialog } from "@/components/rider/dashboard/delivery-pin-dialog";
 import { SettleModal } from "@/components/rider/dashboard/settle-modal";
 import { LocationHealth } from "@/components/rider/dashboard/location-health";
 import IncentiveProgress from "@/components/rider/dashboard/incentive-progress";
@@ -39,17 +41,23 @@ export default function RiderPage() {
   const riderJobsApi = useRiderJobs(isLive, activeRider?.id);
   const riderStats = useRiderStats(isLive);
 
-  const [onlineOverride, setOnlineOverride] = useState<boolean | null>(null);
-  const isOnline = onlineOverride ?? activeRider?.isOnline ?? false;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const availability = useRiderAvailability({
+    ownerKey: isLive && activeRider ? activeRider.id : null,
+    online: activeRider?.isOnline ?? false,
+    cashInHand: activeRider?.cashInHand ?? 0,
+    setOnline: riderJobsApi.setOnline,
+    refresh: session.refresh,
+    sendLocation: riderJobsApi.updateLocation,
+    error: riderJobsApi.error,
+    onError: setActionError,
+  });
+  const isOnline = availability.online;
   const [selectedPinTask, setSelectedPinTask] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [settle, setSettle] = useState(false);
-  // Going offline with COD cash in the pocket used to be a silent tap. The
-  // board now asks first — the money is not the rider's to carry home.
-  const [offlineCashHold, setOfflineCashHold] = useState(false);
   const flashTimer = useRef<number | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [accepting, setAccepting] = useState<string | null>(null);
+  const taskActions = useRiderTaskActions(isLive && activeRider ? activeRider.id : null);
 
   useEffect(
     () => () => {
@@ -123,69 +131,39 @@ export default function RiderPage() {
     [riderJobsApi.jobs],
   );
 
-  const toggleOnline = async (force = false) => {
-    const nextState = !isOnline;
-    // Switching OFF while holding cash: ask once, then let them decide.
-    if (!nextState && !force && offlineCashNote(cashInHand) !== null) {
-      setOfflineCashHold(true);
-      return;
-    }
-    setOfflineCashHold(false);
-    const ok = await riderJobsApi.setOnline(nextState);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
-      return;
-    }
-    setActionError(null);
-    setOnlineOverride(nextState);
-    // Server truth wins as soon as it lands: an optimistic override that
-    // lived forever used to paint "online" over a staff-side suspend/off
-    // until the next full reload (audit K).
-    await session.refresh();
-    setOnlineOverride(null);
-    if (nextState && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          void riderJobsApi.updateLocation(pos.coords.latitude, pos.coords.longitude);
-        },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000 },
-      );
-    }
-  };
 
-  const handleAccept = async (task: RiderTask) => {
-    if (accepting) return;
-    setAccepting(task.id);
-    const ok = await riderJobsApi.accept(task.id);
-    setAccepting(null);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
-      return;
-    }
-    setActionError(null);
-    showFlash("অর্ডার একসেপ্ট হয়েছে! পিকআপ কনফার্ম করুন।");
-  };
+  const handleAccept = (task: RiderTask) => taskActions.run(
+    task.id, "accept", () => riderJobsApi.accept(task.id), (ok, unexpected) => {
+      if (!ok) {
+        setActionError(unexpected ? "কাজের আপডেট পাঠানো যায়নি — আবার চেষ্টা করুন।" : riderJobsApi.error);
+        return;
+      }
+      setActionError(null);
+      showFlash("অর্ডার একসেপ্ট হয়েছে! পিকআপ কনফার্ম করুন।");
+    },
+  );
 
-  const handleReject = async (task: RiderTask) => {
-    const ok = await riderJobsApi.reject(task.id);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
-      return;
-    }
-    setActionError(null);
-    showFlash("অফারটি বাতিল করা হয়েছে।");
-  };
+  const handleReject = (task: RiderTask) => taskActions.run(
+    task.id, "reject", () => riderJobsApi.reject(task.id), (ok, unexpected) => {
+      if (!ok) {
+        setActionError(unexpected ? "কাজের আপডেট পাঠানো যায়নি — আবার চেষ্টা করুন।" : riderJobsApi.error);
+        return;
+      }
+      setActionError(null);
+      showFlash("অফারটি বাতিল করা হয়েছে।");
+    },
+  );
 
-  const handlePickup = async (task: RiderTask) => {
-    const ok = await riderJobsApi.pickup(task.id);
-    if (!ok) {
-      setActionError(riderJobsApi.error);
-      return;
-    }
-    setActionError(null);
-    showFlash(`অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`);
-  };
+  const handlePickup = (task: RiderTask) => taskActions.run(
+    task.id, "pickup", () => riderJobsApi.pickup(task.id), (ok, unexpected) => {
+      if (!ok) {
+        setActionError(unexpected ? "কাজের আপডেট পাঠানো যায়নি — আবার চেষ্টা করুন।" : riderJobsApi.error);
+        return;
+      }
+      setActionError(null);
+      showFlash(`অর্ডার #${task.order.id} পিকআপ সম্পন্ন! এখন কাস্টমারের পথে রওনা দিন।`);
+    },
+  );
 
   /** PinModal's submit: the refusal text, or null once delivered. */
   const handleDeliver = async (
@@ -196,6 +174,10 @@ export default function RiderPage() {
   ): Promise<string | null> => {
     const ok = await riderJobsApi.deliver(task.id, pin, proofUrl, noPhotoReason);
     if (!ok) return riderJobsApi.error ?? "ভুল কোড!";
+    return null;
+  };
+
+  const onDeliveryCompleted = (task: RiderTask, proofUrl: string | null) => {
     setActionError(null);
     setSelectedPinTask(null);
     showFlash(
@@ -203,21 +185,22 @@ export default function RiderPage() {
     );
     void session.refresh();
     void riderStats.refresh();
-    return null;
   };
 
   /** SettleModal's submit: the refusal text, or null once the claim was sent. */
   const handleSettleCash = async (method: string, reference: string): Promise<string | null> => {
     const ok = await riderJobsApi.settle(method, reference);
     if (!ok) return riderJobsApi.error ?? "দাবি পাঠানো যায়নি — আবার চেষ্টা করুন।";
+    return null;
+  };
+
+  const onSettlementSent = () => {
     setActionError(null);
     void session.refresh();
     setSettle(false);
     showFlash("টাকা জমার দাবি Admin-এর কাছে পাঠানো হয়েছে। Approve হলে balance কমবে।");
-    return null;
   };
 
-  const pinTask = selectedPinTask ? (tasks.find((t) => t.id === selectedPinTask) ?? null) : null;
   const activeTrips = countActiveTrips(tasks);
 
   if (!activeRider) {
@@ -231,7 +214,7 @@ export default function RiderPage() {
 
   return (
     <div className="flex-1 flex flex-col pb-12">
-      <RiderTopBar name={activeRider.name} live={riderJobsApi.live} isOnline={isOnline} onToggle={() => void toggleOnline()} />
+      <RiderTopBar name={activeRider.name} live={riderJobsApi.live} isOnline={isOnline} busy={availability.pending} onToggle={() => void availability.toggle()} />
 
       {/* Main Content Area */}
       <div className="p-4 sm:p-5 space-y-5">
@@ -295,7 +278,7 @@ export default function RiderPage() {
           </Link>
         )}
 
-        {offlineCashHold && cashNote ? (
+        {availability.confirmCash && cashNote ? (
           <div
             role="alert"
             data-testid="rider-offline-cash-nudge"
@@ -306,7 +289,7 @@ export default function RiderPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setOfflineCashHold(false);
+                  availability.dismissCash();
                   setSettle(true);
                 }}
                 className="min-h-11 rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 hover:bg-forest-700"
@@ -316,7 +299,7 @@ export default function RiderPage() {
               <button
                 type="button"
                 data-testid="rider-offline-anyway"
-                onClick={() => void toggleOnline(true)}
+                onClick={() => void availability.toggle(true)}
                 className="min-h-11 rounded-full px-4 text-xs font-semibold text-ink-soft ring-1 ring-line hover:text-ink"
               >
                 তবুও অফলাইন যাব
@@ -381,7 +364,8 @@ export default function RiderPage() {
                   now={now}
                   isOnline={isOnline}
                   cashLimitReached={isCashLimitReached}
-                  accepting={accepting}
+                  accepting={taskActions.accepting}
+                  pendingAction={taskActions.pending.get(task.id) ?? null}
                   onAccept={handleAccept}
                   onReject={handleReject}
                   onPickup={handlePickup}
@@ -401,18 +385,24 @@ export default function RiderPage() {
         </section>
       </div>
 
-      {pinTask && (
-        <PinModal
-          key={pinTask.id}
-          onSubmit={(pin, proofUrl, reason) => handleDeliver(pinTask, pin, proofUrl, reason)}
-          onClose={() => setSelectedPinTask(null)}
-          onFlash={showFlash}
-        />
-      )}
+      <DeliveryPinDialog
+        key={`delivery:${isLive}:${activeRider.id}`}
+        tasks={tasks}
+        selectedId={selectedPinTask}
+        onSubmit={handleDeliver}
+        onDelivered={onDeliveryCompleted}
+        onClose={() => setSelectedPinTask(null)}
+        onFlash={showFlash}
+      />
 
-      {settle && (
-        <SettleModal cashInHand={cashInHand} onSubmit={handleSettleCash} onClose={() => setSettle(false)} />
-      )}
+      <SettleModal
+        key={`${isLive}:${activeRider.id}`}
+        open={settle}
+        cashInHand={cashInHand}
+        onSubmit={handleSettleCash}
+        onSuccess={onSettlementSent}
+        onClose={() => setSettle(false)}
+      />
 
       {/* Footer Navigation link */}
       <footer className="mt-auto border-t border-line bg-paper p-4 text-center">

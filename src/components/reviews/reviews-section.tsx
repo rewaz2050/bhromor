@@ -32,13 +32,14 @@ function BuyerPhoto({
   alt: string;
   className?: string;
 }) {
+  const { lang } = useLanguage();
   return (
     <a
       href={src}
       target="_blank"
       rel="noreferrer"
       className="group block shrink-0"
-      aria-label={`Open buyer photo: ${alt}`}
+      aria-label={lang === "bn" ? `ক্রেতার ছবি খুলুন: ${alt}` : `Open buyer photo: ${alt}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- next/image can't take data URLs */}
       <img
@@ -58,11 +59,12 @@ function Stars({
   value: number;
   className?: string;
 }) {
+  const { lang } = useLanguage();
   return (
     <span
       className="inline-flex items-center gap-0.5"
       role="img"
-      aria-label={`${value} out of 5 stars`}
+      aria-label={lang === "bn" ? `৫-এর মধ্যে ${value} তারা` : `${value} out of 5 stars`}
     >
       {[1, 2, 3, 4, 5].map((i) => (
         <IconStar
@@ -80,6 +82,7 @@ function Stars({
 export default function ReviewsSection({ product }: { product: Product }) {
   const { reviews, submit } = usePublicReviews({ product: product.id });
   const { lang } = useLanguage();
+  const copy = (en: string, bn: string) => lang === "bn" ? bn : en;
   const [name, setName] = useState("");
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState("");
@@ -127,7 +130,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
     setPhotos((prev) => [...prev, ...added].slice(0, MAX_PHOTOS));
     setPhotoBusy(false);
     if (added.length === 0 && failed > 0) {
-      setPhotoError("Couldn't read that photo — try a JPG or PNG.");
+      setPhotoError(copy("Couldn't read that photo — try a JPG or PNG.", "ছবিটি পড়া যায়নি — JPG বা PNG দিয়ে আবার চেষ্টা করুন।"));
     } else if (files.length > room && added.length + photos.length >= MAX_PHOTOS) {
       setPhotoError(`Only the first ${MAX_PHOTOS} photos were kept.`);
     }
@@ -147,9 +150,9 @@ export default function ReviewsSection({ product }: { product: Product }) {
 
   const addReview = (e: React.FormEvent) => {
     e.preventDefault();
-    if (rating < 1) return setError("Pick a star rating first.");
+    if (rating < 1) return setError(copy("Pick a star rating first.", "আগে তারায় রেটিং দিন।"));
     if (body.trim().length < 10)
-      return setError("Tell us a little more — at least a sentence.");
+      return setError(copy("Tell us a little more — at least a sentence.", "আর একটু বলুন — অন্তত একটি বাক্য লিখুন।"));
     // Purchase proof stashed by the track page's "Review <piece>" link
     // (UX plan §4/§7, R10) → verified badge + a Smart Card stamp on approval.
     const proof = readReviewProof(product.id);
@@ -165,7 +168,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
       fit: fit ?? undefined,
     }).then(({ ok, error: submitError, stampEligible }) => {
       if (!ok) {
-        setError(submitError ?? "Could not save the review.");
+        setError(submitError ?? copy("Could not save the review.", "রিভিউ জমা দেওয়া যায়নি — আবার চেষ্টা করুন।"));
         return;
       }
       setRating(0);
@@ -193,12 +196,12 @@ export default function ReviewsSection({ product }: { product: Product }) {
               id="reviews-heading"
               className="font-display text-3xl font-medium tracking-tight text-forest-900"
             >
-              Customer reviews
+              {copy("Customer reviews", "ক্রেতাদের রিভিউ")}
             </h2>
             {count > 0 && (
               <p className="text-sm text-ink-soft">
                 <span className="font-semibold text-ink">{avg.toFixed(1)}</span>{" "}
-                average from {count} written review{count === 1 ? "" : "s"}
+                {copy(`average from ${count} written review${count === 1 ? "" : "s"}`, `${count}টি রিভিউয়ের গড়`)}
               </p>
             )}
           </div>
@@ -252,7 +255,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
           {buyerPhotos.length > 0 && (
             <div className="mt-6">
               <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">
-                Real buyer photos
+                {copy("Real buyer photos", "ক্রেতাদের ছবি")}
               </p>
               <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
                 {buyerPhotos.map((src, i) => (
@@ -265,11 +268,10 @@ export default function ReviewsSection({ product }: { product: Product }) {
           {loaded && visible.length === 0 ? (
             <div className="mt-6 rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 py-14 text-center">
               <p className="font-display text-xl text-forest-900">
-                No written reviews yet
+                {copy("No written reviews yet", "এখনো কোনো রিভিউ নেই")}
               </p>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-                Be the first to share what you think — approved reviews appear
-                here.
+                {copy("Be the first to share what you think — approved reviews appear here.", "পণ্যটি কেমন লেগেছে জানান — অনুমোদনের পর রিভিউ এখানে দেখা যাবে।")}
               </p>
             </div>
           ) : visible.length > 0 ? (
@@ -294,12 +296,12 @@ export default function ReviewsSection({ product }: { product: Product }) {
                     <div className="ml-auto flex items-center gap-2">
                       {r.featured && (
                         <span className="rounded-full bg-gold-700 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-white">
-                          Featured
+                          {copy("Featured", "বিশেষ রিভিউ")}
                         </span>
                       )}
                       {r.verified && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[0.62rem] font-bold uppercase tracking-wide text-emerald-800">
-                          <IconCheck className="h-3 w-3" /> Verified purchase
+                          <IconCheck className="h-3 w-3" /> {copy("Verified purchase", "যাচাইকৃত ক্রেতা")}
                         </span>
                       )}
                     </div>
@@ -346,7 +348,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                       data-testid="review-shop-reply"
                     >
                       <p className="text-xs font-semibold uppercase tracking-wider text-forest-800">
-                        Response from the shop
+                        {copy("Response from the shop", "দোকানের উত্তর")}
                       </p>
                       <p className="mt-1 text-sm leading-6 text-ink">{replyBody(r)}</p>
                     </div>
@@ -364,21 +366,20 @@ export default function ReviewsSection({ product }: { product: Product }) {
             className="sticky top-28 rounded-3xl bg-paper p-7 ring-1 ring-line"
           >
             <h3 className="font-display text-xl font-medium text-forest-900">
-              Write a review
+              {copy("Write a review", "আপনার রিভিউ লিখুন")}
             </h3>
             <p className="mt-1.5 text-xs leading-5 text-ink-soft">
-              Bought this from PROSANTI? Tell others about the fit, fabric and
-              feel.
+              {copy("Bought this from PROSANTI? Tell others about the fit, fabric and feel.", "পণ্যটি কিনেছেন? মাপ, কাপড় আর ব্যবহারের অভিজ্ঞতা জানান।")}
             </p>
 
             <div className="mt-5">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Your rating *
+                {copy("Your rating *", "আপনার রেটিং *")}
               </span>
               <div
                 className="flex gap-1"
                 role="radiogroup"
-                aria-label="Star rating"
+                aria-label={copy("Star rating", "তারায় রেটিং")}
               >
                 {[1, 2, 3, 4, 5].map((i) => (
                   <button
@@ -386,12 +387,12 @@ export default function ReviewsSection({ product }: { product: Product }) {
                     type="button"
                     role="radio"
                     aria-checked={rating === i}
-                    aria-label={`${i} star${i === 1 ? "" : "s"}`}
+                    aria-label={copy(`${i} star${i === 1 ? "" : "s"}`, `${i} তারা`)}
                     onClick={() => {
                       setRating(i);
                       setError(null);
                     }}
-                    className="rounded-lg p-1 transition-transform hover:scale-110"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors hover:bg-ivory-100"
                   >
                     <IconStar
                       className={`h-6 w-6 ${i <= rating ? "text-gold-500" : "text-ivory-200"}`}
@@ -405,10 +406,10 @@ export default function ReviewsSection({ product }: { product: Product }) {
                 cloth buyer has and no description answers. */}
             <div className="mt-4">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                সাইজ কেমন পেয়েছেন? / How was the size?{" "}
-                <span className="font-normal text-ink-soft">(ঐচ্ছিক)</span>
+                {copy("How was the size?", "সাইজ কেমন পেয়েছেন?")}{" "}
+                <span className="font-normal text-ink-soft">{copy("(optional)", "(ঐচ্ছিক)")}</span>
               </span>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Fit">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={copy("Fit", "মাপ")}>
                 {fitOptions(lang).map((option) => (
                   <button
                     key={option.key}
@@ -429,36 +430,36 @@ export default function ReviewsSection({ product }: { product: Product }) {
               </div>
               {fit ? (
                 <p className="mt-1.5 text-[11px] text-ink-soft">
-                  আপনার উত্তর পণ্যের পেজে দেখাবে — সাইজ নিয়ে পরের ক্রেতার সিদ্ধান্ত সহজ হবে।
+                  {copy("Your answer helps the next shopper choose their size.", "আপনার উত্তর পরের ক্রেতাকে সাইজ বেছে নিতে সাহায্য করবে।")}
                 </p>
               ) : null}
             </div>
 
             <label className="mt-4 block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Name
+                {copy("Name", "নাম")}
               </span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
+                placeholder={copy("Your name", "আপনার নাম")}
                 className="w-full rounded-xl border-0 bg-ivory-50 px-3.5 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-forest-600"
               />
             </label>
             <label className="mt-3 block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Title (optional)
+                {copy("Title (optional)", "শিরোনাম (ঐচ্ছিক)")}
               </span>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Excellent quality"
+                placeholder={copy("e.g. Excellent quality", "যেমন: কাপড়ের মান ভালো")}
                 className="w-full rounded-xl border-0 bg-ivory-50 px-3.5 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-forest-600"
               />
             </label>
             <label className="mt-3 block">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Your review *
+                {copy("Your review *", "আপনার রিভিউ *")}
               </span>
               <textarea
                 value={body}
@@ -467,19 +468,17 @@ export default function ReviewsSection({ product }: { product: Product }) {
                   if (error) setError(null);
                 }}
                 rows={4}
-                placeholder="What did you like? How was the fit?"
+                placeholder={copy("What did you like? How was the fit?", "কী ভালো লেগেছে? মাপ ঠিক ছিল?")}
                 className="w-full resize-y rounded-xl border-0 bg-ivory-50 px-3.5 py-2.5 text-sm text-ink ring-1 ring-line placeholder:text-ink-soft/50 focus:outline-none focus:ring-2 focus:ring-forest-600"
               />
             </label>
 
             <div className="mt-3">
               <span className="mb-1.5 block text-sm font-medium text-ink">
-                Your photos (optional)
+                {copy("Your photos (optional)", "আপনার ছবি (ঐচ্ছিক)")}
               </span>
               <p className="mb-2 text-[0.68rem] leading-4 text-ink-soft">
-                Up to {MAX_PHOTOS} photos of the garment on you — the best fit
-                guide there is. Photos are compressed on your phone before
-                upload.
+                {copy(`Add up to ${MAX_PHOTOS} photos to help other shoppers see the fit. Photos are compressed before upload.`, `অন্য ক্রেতাদের মাপ বুঝতে সাহায্য করতে সর্বোচ্চ ${MAX_PHOTOS}টি ছবি দিন। আপলোডের আগে ছবির আকার ছোট করা হয়।`)}
               </p>
               {photos.length < MAX_PHOTOS && (
                 <button
@@ -488,7 +487,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                   onClick={() => photoInputRef.current?.click()}
                   className="inline-flex items-center gap-1.5 rounded-full bg-ivory-100 px-4 py-2 text-xs font-semibold text-ink ring-1 ring-line transition-colors hover:bg-ivory-200 disabled:opacity-60"
                 >
-                  {photoBusy ? "Reading photo…" : "+ Add photo"}
+                  {photoBusy ? copy("Reading photo…", "ছবি প্রস্তুত হচ্ছে…") : copy("+ Add photo", "+ ছবি যোগ করুন")}
                 </button>
               )}
               <input
@@ -497,7 +496,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 className="sr-only"
-                aria-label="Add review photos"
+                aria-label={copy("Add review photos", "রিভিউয়ের ছবি যোগ করুন")}
                 onChange={(e) => void addPhotoFiles(e.target.files)}
               />
               {photos.length > 0 && (
@@ -512,7 +511,7 @@ export default function ReviewsSection({ product }: { product: Product }) {
                       />
                       <button
                         type="button"
-                        aria-label={`Remove photo ${i + 1}`}
+                        aria-label={copy(`Remove photo ${i + 1}`, `${i + 1} নম্বর ছবি সরান`)}
                         onClick={() =>
                           setPhotos((prev) => prev.filter((_, j) => j !== i))
                         }
@@ -544,12 +543,10 @@ export default function ReviewsSection({ product }: { product: Product }) {
                 role="status"
                 className="mt-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200"
               >
-                Thanks! Your review is awaiting moderation and will appear once
-                approved.
+                {copy("Thanks! Your review is awaiting moderation and will appear once approved.", "ধন্যবাদ! যাচাই ও অনুমোদনের পর আপনার রিভিউ দেখা যাবে।")}
                 {sent === "stamp" ? (
                   <span className="mt-1 block" data-testid="review-stamp-promise">
-                    Verified purchase — once approved, 1 stamp lands on your Smart
-                    Card. (অনুমোদন হলে স্মার্ট কার্ডে ১টা স্ট্যাম্প যোগ হবে।)
+                    {copy("Verified purchase — once approved, 1 stamp lands on your Smart Card.", "যাচাইকৃত ক্রয় — অনুমোদনের পর স্মার্ট কার্ডে ১টি স্ট্যাম্প যোগ হবে।")}
                   </span>
                 ) : null}
               </p>
@@ -559,11 +556,10 @@ export default function ReviewsSection({ product }: { product: Product }) {
               type="submit"
               className="mt-5 w-full rounded-full bg-forest-800 py-3 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
             >
-              Submit review
+              {copy("Submit review", "রিভিউ জমা দিন")}
             </button>
             <p className="mt-3 text-center text-[0.68rem] leading-4 text-ink-soft">
-              Reviews are checked before publishing (§30). Verified-purchase
-              badges only appear where a matching order exists.
+              {copy("Reviews are checked before publishing. A verified-purchase badge means the review matches an order.", "প্রকাশের আগে রিভিউ যাচাই করা হয়। অর্ডারের সাথে মিলে গেলেই যাচাইকৃত ক্রেতার ব্যাজ দেওয়া হয়।")}
             </p>
           </form>
         </aside>

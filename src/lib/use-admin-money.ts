@@ -7,7 +7,7 @@
  * balances.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 import type { MoneyPnl, PnlRange } from "./money-pnl";
@@ -58,17 +58,34 @@ export interface RiderPaySettingsView {
 
 export function useAdminMoney() {
   const { live, checked } = useStaffLive();
+  const [settled, setSettled] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [completedRange, setCompletedRange] = useState<PnlRange | null>(null);
+  const [pnlRange, setPnlRange] = useState<PnlRange | null>(null);
+  const [backendMissing, setBackendMissing] = useState(false);
   const [ready, setReady] = useState(false);
   const [summary, setSummary] = useState<AdminMoneySummaryView | null>(null);
   const [pending, setPending] = useState<RiderPayoutQueueRowView[]>([]);
   const [decided, setDecided] = useState<RiderPayoutQueueRowView[]>([]);
   const [settings, setSettings] = useState<RiderPaySettingsView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Net P&L window (202610010003); null pnl = migration not run yet.
+  // Net P&L window (202610010003); null can mean missing schema or an unavailable read.
   const [range, setRange] = useState<PnlRange>("30d");
   const [pnl, setPnl] = useState<MoneyPnl | null>(null);
 
+  const context = useRef({ live: false, range, request: 0 });
+  useEffect(() => {
+    const state = context.current;
+    state.live = live;
+    state.range = range;
+    return () => { state.live = false; state.request++; };
+  }, [live, range]);
+
   const refresh = useCallback(async (): Promise<boolean> => {
+    const state = context.current;
+    if (!live || !state.live || state.range !== range) return false;
+    const request = ++state.request;
+    setReading(true);
     try {
       const data = await apiGet<{
         pnl?: MoneyPnl | null;
@@ -77,8 +94,11 @@ export function useAdminMoney() {
         queue: { pending: RiderPayoutQueueRowView[]; decided: RiderPayoutQueueRowView[] } | null;
         settings: RiderPaySettingsView;
       }>(`/api/admin/money?range=${range}`);
+      if (request !== state.request) return false;
       setPnl(data.pnl ?? null);
+      setPnlRange(range);
       setReady(data.ready);
+      setBackendMissing(data.ready === false);
       setSummary(data.summary);
       setPending(data.queue?.pending ?? []);
       setDecided(data.queue?.decided ?? []);
@@ -86,15 +106,28 @@ export function useAdminMoney() {
       setError(null);
       return true;
     } catch (err) {
+      if (request !== state.request) return false;
       setError(apiErrorMessage(err));
       return false;
+    } finally {
+      if (state.live && request === state.request) {
+        setReading(false);
+        setSettled(true);
+        setCompletedRange(range);
+      }
     }
-  }, [range]);
+  }, [live, range]);
 
   useEffect(() => {
     if (!live) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- mode switch resets live state
       setSummary(null);
+      setSettled(false);
+      setReading(false);
+      setCompletedRange(null);
+      setPnlRange(null);
+      setReady(false);
+      setBackendMissing(false);
       setPending([]);
       setDecided([]);
       setSettings(null);
@@ -102,6 +135,7 @@ export function useAdminMoney() {
       setError(null);
       return;
     }
+    setError(null);
     void refresh();
   }, [live, refresh]);
 
@@ -142,10 +176,12 @@ export function useAdminMoney() {
 
   return {
     live,
-    loading: live && (!checked || settings === null),
+    loading: live && (!checked || !settled),
     ready,
+    backendMissing: live && backendMissing,
     summary,
-    pnl,
+    pnl: live && pnlRange === range ? pnl : null,
+    pnlLoading: live && (reading || completedRange !== range),
     range,
     setRange,
     pending,

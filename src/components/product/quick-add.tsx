@@ -2,7 +2,7 @@
 
 import { useProductHref } from "@/lib/use-product-href";
 import { InlineSizeGuide } from "./size-guide";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { haptic } from "@/lib/haptics";
 import Link from "next/link";
@@ -15,7 +15,8 @@ import Drawer from "@/components/ui/drawer";
 import { Price } from "@/components/ui/primitives";
 import { IconClose } from "@/components/ui/icons";
 import { useLanguage } from "@/components/i18n/language-provider";
-import { pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
+import { bnDigits } from "@/lib/arrival";
+import { availableSizes, displaySizeOrder, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
 
 export default function QuickAdd({
   product,
@@ -26,6 +27,8 @@ export default function QuickAdd({
 }) {
   const { t, lang } = useLanguage();
   const hrefFor = useProductHref();
+  const guidanceId = useId();
+  const name = lang === "bn" ? product.nameBn?.trim() || product.name : product.name;
   const [size, setSize] = useState(() => pickSelectableSize(product, null));
   const [color, setColor] = useState(product.colors[0] ?? "");
   const [qty, setQty] = useState(1);
@@ -44,7 +47,7 @@ export default function QuickAdd({
     <Drawer
       open
       onClose={onClose}
-      label={`Select options for ${product.name}`}
+      label={t("product.optionsFor").replace("{name}", name)}
       side="bottom"
       panelClassName="sm:!left-auto sm:!w-[480px] sm:!right-6 sm:!bottom-6 sm:rounded-none"
     >
@@ -54,13 +57,14 @@ export default function QuickAdd({
             {t("product.quickAddIntro")}
           </p>
           <h2 className="mt-3 font-display text-3xl text-forest-900">
-            {product.name}
+            {name}
           </h2>
         </div>
         <button
+          type="button"
           onClick={onClose}
           className="flex h-11 w-11 shrink-0 items-center justify-center"
-          aria-label={t("header.closeMenu")}
+          aria-label={t("product.closeOptions")}
         >
           <IconClose />
         </button>
@@ -74,7 +78,7 @@ export default function QuickAdd({
             {t("shopBrowser.size")}
           </legend>
           <div className="flex flex-wrap gap-x-2 gap-y-5">
-            {product.sizes.map((s) => {
+            {displaySizeOrder(product.sizes).map((s) => {
               // UX plan §4 (R10): a sold-out size is disabled here — the
               // sheet is for a quick add; the product page carries the
               // "ask the shop" path for that size.
@@ -83,6 +87,7 @@ export default function QuickAdd({
               return (
                 <button
                   key={s}
+                  type="button"
                   onClick={() => setSize(s)}
                   disabled={out}
                   aria-pressed={size === s}
@@ -124,6 +129,7 @@ export default function QuickAdd({
             {product.colors.map((c) => (
               <button
                 key={c}
+                type="button"
                 onClick={() => setColor(c)}
                 aria-pressed={color === c}
                 className={`min-h-11 border px-4 text-sm ${color === c ? "border-forest-800 bg-forest-100" : "border-line"}`}
@@ -135,9 +141,10 @@ export default function QuickAdd({
         </fieldset>
       )}
       <div className="mt-7 flex items-center justify-between">
-        <span className="text-xs uppercase tracking-widest">Quantity</span>
-        <div className="flex items-center border border-line">
+        <span className="text-xs uppercase tracking-widest">{t("product.quantity")}</span>
+        <div role="group" aria-label={t("product.quantity")} className="flex items-center border border-line">
           <button
+            type="button"
             aria-label={t("product.decreaseQuantity")}
             disabled={qty <= 1}
             onClick={() => setQty(qty - 1)}
@@ -145,8 +152,9 @@ export default function QuickAdd({
           >
             −
           </button>
-          <span aria-live="polite">{qty}</span>
+          <span aria-live="polite" className="min-w-8 text-center font-semibold">{lang === "bn" ? bnDigits(String(qty)) : qty}</span>
           <button
+            type="button"
             aria-label={t("product.increaseQuantity")}
             disabled={qty >= MAX_LINE_QTY}
             onClick={() => setQty(qty + 1)}
@@ -156,8 +164,15 @@ export default function QuickAdd({
           </button>
         </div>
       </div>
-      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+      <p id={guidanceId} role="status" className="mt-5 text-sm leading-6 text-ink-soft">
+        {!product.inStock ? t("product.soldOut")
+          : product.sizes.length > 0 && availableSizes(product).length === 0 ? t("product.sizesUnavailable")
+          : !ready ? t("product.sizeNeeded")
+          : t("product.selection").replace("{options}", [size, color].filter(Boolean).join(" · ") || name)}
+      </p>
+      <div role="group" aria-describedby={guidanceId} className="mt-4 grid gap-2 sm:grid-cols-2">
         <button
+          type="button"
           disabled={!ready}
           onClick={() => {
             setPendingBuyNow(false);
@@ -188,7 +203,7 @@ export default function QuickAdd({
                 router.push("/checkout");
               }
             }}
-            className="editorial-button w-full justify-center bg-gold-500 text-forest-950 hover:bg-gold-400 disabled:opacity-40"
+            className="editorial-button w-full justify-center border border-forest-800 bg-paper text-forest-900 hover:bg-forest-50 disabled:opacity-40"
           >
             {t("purchase.buyNow")}
           </button>
@@ -199,7 +214,7 @@ export default function QuickAdd({
         onClick={onClose}
         className="mt-3 flex min-h-11 items-center justify-center text-xs underline underline-offset-4"
       >
-        View full details
+        {t("product.fullDetails")}
       </Link>
       {conflict && (
         <ShopConflictDialog

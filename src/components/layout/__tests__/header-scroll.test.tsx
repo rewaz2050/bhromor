@@ -136,3 +136,12 @@ describe("Header — paint-only while scrolling", () => {
     expect(bar.className).toMatch(/bg-ivory-50\/96/);
   });
 });
+
+it("cancels a pending scroll frame on unmount", () => {
+  vi.stubGlobal("requestAnimationFrame", vi.fn().mockReturnValue(42));
+  const cancel = vi.fn(); vi.stubGlobal("cancelAnimationFrame", cancel);
+  const view = renderHeader();
+  act(() => scrollTo(150));
+  view.unmount();
+  expect(cancel).toHaveBeenCalledWith(42);
+});

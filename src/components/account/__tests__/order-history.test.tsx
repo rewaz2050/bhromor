@@ -216,14 +216,14 @@ describe("Account — forgot password (P1 #15)", () => {
   it("the login tab explains the reset path and links the shop's WhatsApp with the typed number", async () => {
     routes["/api/account/me"] = async () => jsonResponse({ customer: null }, 401);
     render(<AccountView />);
-    await screen.findByRole("tab", { name: "লগ ইন" });
+    await screen.findByRole("tab", { name: "Sign in" });
     // Signup tab: no forgot-password row.
     expect(screen.queryByTestId("forgot-password")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "লগ ইন" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Sign in" }));
     const details = await screen.findByTestId("forgot-password");
     expect(details.textContent).toMatch(/Forgot your password\?/);
     expect(details.textContent).toMatch(/no OTP on this site/);
-    fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), { target: { value: "01712345678" } });
+    fireEvent.change(screen.getByLabelText("Mobile number"), { target: { value: "01712345678" } });
     const wa = await screen.findByRole("link", { name: /WhatsApp 01700000000/ });
     expect(wa.getAttribute("href")).toContain("https://wa.me/8801700000000");
     expect(decodeURIComponent(wa.getAttribute("href") ?? "")).toContain("01712345678");

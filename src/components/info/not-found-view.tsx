@@ -16,7 +16,7 @@ export default function NotFoundView() {
   return (
     <>
       <div className="flex flex-col items-center px-6 py-20 text-center sm:py-28" data-testid="not-found">
-        <p className="font-display text-7xl font-medium text-forest-200">{t("info.notFoundEyebrow")}</p>
+        <p className="font-display text-7xl font-medium text-forest-600">{t("info.notFoundEyebrow")}</p>
         <h1 className="font-display mt-6 text-3xl font-medium text-forest-900">{t("info.notFoundTitle")}</h1>
         <p className="mt-3 max-w-sm text-ink-soft">{t("info.notFoundBody")}</p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">

@@ -55,12 +55,12 @@ export default function ErrorState({
       </h1>
       <p className="mt-4 text-sm leading-6 text-ink-soft">
         <span lang="en">
-          Something went wrong on our side. Your bag and your orders are safe —
-          nothing was lost. Trying again usually fixes it.
+          This page could not be displayed. Try again, or use the link below.
+          If you were placing an order, check its status before submitting again.
         </span>
         <span className="mt-2 block" lang="bn">
-          আমাদের দিক থেকে সমস্যা হয়েছে। আপনার ব্যাগ ও অর্ডার নিরাপদ আছে — কিছুই
-          হারায়নি। আবার চেষ্টা করলে সাধারণত ঠিক হয়ে যায়।
+          এই পাতাটি দেখানো যাচ্ছে না। আবার চেষ্টা করুন, অথবা নিচের লিংকটি ব্যবহার করুন।
+          অর্ডার দেওয়ার সময় এমন হলে আবার পাঠানোর আগে অর্ডারের অবস্থা দেখে নিন।
         </span>
       </p>
       {error?.digest && (

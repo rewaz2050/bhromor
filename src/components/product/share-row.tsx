@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { Product } from "@/lib/catalog";
 import { absoluteUrl } from "@/lib/site-url";
 import {
+  isShareCancellation,
   canNativeShare,
   copyToClipboard,
   facebookShareLink,
@@ -50,13 +51,13 @@ export default function ShareRow({
   const nativeShare = async () => {
     try {
       await navigator.share({ title: product.name, text, url: shareUrl(pageUrl, "native") });
-    } catch {
-      // dismissed sheet or unsupported payload — nothing to report
+    } catch (error) {
+      if (!isShareCancellation(error)) setNotice(t("purchase.shareFailed"));
     }
   };
 
   const btn =
-    "inline-flex min-h-10 items-center gap-1.5 rounded-full bg-paper px-3.5 text-xs font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400";
+    "inline-flex min-h-11 items-center gap-1.5 rounded-full bg-paper px-3.5 text-xs font-semibold text-forest-800 ring-1 ring-line transition-colors hover:text-forest-950 hover:ring-forest-400";
 
   return (
     <div className={`share-row ${className}`} data-testid="share-row">

@@ -15,21 +15,20 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  emptyShopFunnel,
-  parseShopFunnel,
-  type ShopFunnel,
-} from "../shop-funnel";
+import { parseShopFunnel, type ShopFunnel } from "../shop-funnel";
+import { isShopFunnelRpc } from "../shop-funnel-rpc-validation";
 
 export class ShopFunnelMissingError extends Error {
   constructor() {
-    super("ps_shop_funnel_report is not installed — run migration 202609280004_shop_funnel.sql");
+    super(
+      "ps_shop_funnel_report is not installed — run migration 202609280004_shop_funnel.sql",
+    );
     this.name = "ShopFunnelMissingError";
   }
 }
 
 const MISSING_PATTERN =
-  /ps_shop_funnel_report|storefront_events.*does not exist|function .* does not exist/i;
+  /could not find the function[^\n]*\bps_shop_funnel_report\b|function[^\n]*\bps_shop_funnel_report\b[^\n]*does not exist|relation[^\n]*\bstorefront_events\b[^\n]*does not exist/i;
 
 /**
  * One call to ps_shop_funnel_report(p_shop_id, p_days) for THIS shop.
@@ -40,7 +39,8 @@ export async function shopFunnelReport(
   shopId: string,
   days: 7 | 28,
 ): Promise<ShopFunnel> {
-  if (!shopId) throw new ShopFunnelMissingError();
+  if (!shopId)
+    throw new Error("A verified shop is required for the funnel report.");
   const { data, error } = await db.rpc("ps_shop_funnel_report", {
     p_shop_id: shopId,
     p_days: days,
@@ -52,19 +52,22 @@ export async function shopFunnelReport(
       code === "PGRST202" ||
       code === "42883" ||
       code === "42P01" ||
-      MISSING_PATTERN.test(message)
+      (!code && MISSING_PATTERN.test(message))
     ) {
       throw new ShopFunnelMissingError();
     }
     throw new Error(message || "funnel report failed");
   }
+  if (!isShopFunnelRpc(data, shopId, days)) {
+    throw new Error("Invalid shop funnel RPC response.");
+  }
   return parseShopFunnel(data, days);
 }
 
 /**
- * The vendor-facing read: never throws. `missing: true` means the migration
- * has not been applied (or the service role is unconfigured), which the card
- * says out loud instead of printing zeros as if the shop were empty.
+ * The vendor-facing read: never throws. `missing: true` is reserved for a
+ * missing-schema error. A null report with missing=false means unavailable,
+ * not a quiet shop. Configuration/RPC failures must never invent zero metrics.
  *
  * `shopId` is always the verified vendor session's shop — the route passes
  * `ctx.shopId`, never anything from the query string.
@@ -73,7 +76,7 @@ export async function shopFunnelFor(
   shopId: string,
   days: 7 | 28,
 ): Promise<{ report: ShopFunnel | null; missing: boolean }> {
-  if (!shopId) return { report: null, missing: true };
+  if (!shopId) return { report: null, missing: false };
   let db: SupabaseClient | null = null;
   try {
     const { getSupabaseService } = await import("../supabase-server");
@@ -81,13 +84,13 @@ export async function shopFunnelFor(
   } catch {
     db = null;
   }
-  if (!db) return { report: null, missing: true };
+  if (!db) return { report: null, missing: false };
   try {
     return { report: await shopFunnelReport(db, shopId, days), missing: false };
   } catch (err) {
-    if (err instanceof ShopFunnelMissingError) return { report: null, missing: true };
-    // A real failure is not a dead shop either: show an empty week and let the
-    // card's own copy carry the doubt.
-    return { report: emptyShopFunnel(days), missing: false };
+    if (err instanceof ShopFunnelMissingError)
+      return { report: null, missing: true };
+    // No successful read means no report. The route exposes a retryable 503.
+    return { report: null, missing: false };
   }
 }

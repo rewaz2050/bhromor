@@ -1,6 +1,6 @@
 /**
  * Admin → Reports → Funnel card (UX plan §0): prints the shop's own rates,
- * flags zero-result searches, says "run the migration" on 503, and stays
+ * flags zero-result searches, says "run the migration" on server-confirmed missing schema, and stays
  * quiet when not signed in.
  */
 
@@ -60,7 +60,7 @@ describe("FunnelCard", () => {
   });
 
   it("prints the funnel and flags zero-result searches; the toggle refetches for 28 days", async () => {
-    api.get.mockResolvedValue(report);
+    api.get.mockImplementation(async path => ({ ...report, days: path.endsWith("=28") ? 28 : 7 }));
     render(<FunnelCard live />);
     await waitFor(() => expect(screen.getByText("200")).toBeVisible());
     expect(api.get).toHaveBeenCalledWith("/api/admin/reports/funnel?days=7");
@@ -83,7 +83,7 @@ describe("FunnelCard", () => {
   });
 
   it("says which migration to run when the report is not installed (503)", async () => {
-    api.get.mockRejectedValue(new AdminApiError("Funnel report is not installed yet.", 503));
+    api.get.mockRejectedValue(new AdminApiError("Funnel report is not installed yet.", 503, true));
     render(<FunnelCard live />);
     await waitFor(() => expect(screen.getByTestId("funnel-missing")).toBeVisible());
     expect(screen.getByText(/202609260004_storefront_events\.sql/)).toBeVisible();

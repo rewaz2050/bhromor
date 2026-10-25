@@ -88,7 +88,7 @@ describe("useLiveRiderPosition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toContain(`orderId=${ORDER}`);
     await act(async () => {
-      vi.advanceTimersByTime(LIVE_POLL_MS * 2);
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS * 2);
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });

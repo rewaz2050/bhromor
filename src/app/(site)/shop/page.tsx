@@ -87,7 +87,7 @@ export default async function ShopPage({
       {/* P2.1 — the rows this page rendered seed the client registry, so the
           bag/search/quick-add resolve products without a second fetch. */}
       <CatalogHydrator products={products} categories={categories} shops={shops} zones={zones} />
-      <ShopHeroHeader categories={categories} />
+      <ShopHeroHeader categories={categories.filter((category) => products.some((product) => product.category === category.id))} />
       {/* Renders nothing unless a drop window is actually open. */}
       <FlashRail limit={4} />
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">

@@ -6,6 +6,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
+  live: false, checked: true, error: null as string | null,
   applications: { shops: 0, riders: 0, resets: 0, total: 0 },
 }));
 
@@ -31,7 +32,7 @@ vi.mock("@/lib/use-notifications", () => ({
   useNotifications: () => ({ unread: 0, notifications: [], markRead: vi.fn(), markAllRead: vi.fn() }),
 }));
 vi.mock("@/lib/use-staff-live", () => ({
-  useStaffLive: () => ({ live: false, checked: true, error: null, retry: () => {} }),
+  useStaffLive: () => ({ live: state.live, checked: state.checked, error: state.error, retry: () => {} }),
 }));
 vi.mock("@/lib/use-now", () => ({ useNow: () => Date.now() }));
 vi.mock("@/lib/use-applications-pending", () => ({
@@ -42,6 +43,7 @@ import AdminGate from "../admin-gate";
 
 afterEach(() => {
   cleanup();
+  state.live = false; state.checked = true; state.error = null;
   state.applications = { shops: 0, riders: 0, resets: 0, total: 0 };
 });
 
@@ -75,4 +77,18 @@ describe("AdminGate — application badges", () => {
     expect(access).toHaveTextContent(/4$/);
     expect(screen.getAllByLabelText("4 requests waiting").length).toBeGreaterThan(0);
   });
+});
+
+
+it.each([
+  [false, false, "Checking session"],
+  [true, true, "Session verified"],
+  [true, false, "Session unavailable"],
+])("reports the actual staff probe state (checked=%s, live=%s)", (checked, live, label) => {
+  state.checked = checked; state.live = live;
+  render(<AdminGate><p>content</p></AdminGate>);
+  expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.queryByText("Live data")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open admin menu" })).toHaveClass("h-11", "w-11");
+  expect(screen.getByRole("link", { name: /Notifications,/ })).toHaveClass("h-11", "w-11");
 });

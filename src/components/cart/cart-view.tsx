@@ -4,6 +4,7 @@ import { productHref } from "@/lib/product-url";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "./cart-provider";
+import CatalogRecovery from "@/components/shop/catalog-recovery";
 import BagShopHeader from "./bag-shop-header";
 import { formatBdt } from "@/lib/format";
 import {
@@ -40,12 +41,12 @@ import { bnDigits } from "@/lib/arrival";
 
 export default function CartView() {
   const { t, lang } = useLanguage();
-  const { detail, updateQty, removeItem, subtotal, ready } = useCart();
+  const { detail, updateQty, removeItem, subtotal, ready, lines } = useCart();
   /** UX plan §5 (R11) — "পরে কিনব": line → wishlist instead of the bin. */
   const { save: saveForLater, notice: savedNotice } = useSaveForLater();
   const offer = useBagOffer(detail);
   /** Hook BEFORE the empty early-return — hook order must not change. */
-  const { shops } = useLiveCatalog();
+  const { shops, products: catalogProducts, loading, live } = useLiveCatalog();
   const itemCount = detail.reduce((n, l) => n + l.qty, 0);
   /** The one number rule (UX plan §1.4) — a Bangla reader reads Bangla
    *  digits, here too. */
@@ -75,11 +76,14 @@ export default function CartView() {
 
   // Returning devices get their recent pieces under the empty state — a
   // quiet way back in, never shown to a first visit (nothing viewed → null).
-  const { products: catalogProducts } = useLiveCatalog();
 
   // Stored lines + catalog still in flight → skeleton, not "empty" (P0 #7).
-  if (!ready) {
+  if (!ready || (lines.length > 0 && empty && loading)) {
     return <BagSkeleton />;
+  }
+
+  if (lines.length > 0 && empty && !live) {
+    return <div className="mx-auto max-w-xl px-4 py-10"><CatalogRecovery savedBag /></div>;
   }
 
   if (empty) {

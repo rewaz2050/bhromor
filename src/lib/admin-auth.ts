@@ -11,6 +11,7 @@
 
 "use client";
 
+import { runBrowserAuthMutation } from "./rider-auth-lane";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -158,15 +159,18 @@ export const staffProbeError = (probe: StaffProbe): string => {
  * Returns the live authed state; clears stale flags on failure.
  */
 export const refreshStaffSession = async (): Promise<boolean> => {
+  const revision = staffAuthRevision;
   getAdminAuthed();
   // Visitors without the staff flag cannot hold a staff JWT — skip the auth
   // library download entirely and let the cookie-less probe answer 401.
   const client = authed ? await browserClient() : null;
-  const token = await client
-    ?.auth.getSession()
+  const token = await client?.auth
+    .getSession()
     .then((r) => r.data.session?.access_token)
     .catch(() => undefined);
+  if (staffAuthRevision !== revision) return false;
   const { staff } = await probeStaffSession(token);
+  if (staffAuthRevision !== revision) return false;
   authed = staff;
   if (!staff && typeof window !== "undefined") {
     window.localStorage.removeItem(ADMIN_SESSION_KEY);
@@ -175,41 +179,79 @@ export const refreshStaffSession = async (): Promise<boolean> => {
   return staff;
 };
 
-/** Staff sign-in: Supabase Auth + role verification. Never falls back. */
+let staffAuthRevision = 0;
+let staffSigningIn = 0;
+
+/** Staff SDK login AND role verification share the mutation lane. */
 export const signInStaff = async (
   email: string,
   password: string,
 ): Promise<{ ok: boolean; error?: string }> => {
-  const client = await browserClient();
-  if (!client) return { ok: false, error: "Staff sign-in is not configured." };
-  const { data, error } = await client.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
-  if (error) return { ok: false, error: mapSupabaseAuthError(error.message) };
-  // Flush cookies, then probe with the access token so the server does not
-  // depend on middleware having already copied the session.
-  await client.auth.getSession().catch(() => undefined);
-  const probe = await probeStaffSession(data.session?.access_token);
-  if (!probe.staff) {
-    await client.auth.signOut().catch(() => undefined);
-    return { ok: false, error: staffProbeError(probe) };
+  const revision = ++staffAuthRevision;
+  staffSigningIn++;
+  const stale = {
+    ok: false,
+    error: "Sign-in is no longer current — please try again.",
+  };
+  try {
+    const client = await browserClient();
+    if (!client)
+      return { ok: false, error: "Staff sign-in is not configured." };
+    const result = await runBrowserAuthMutation(
+      client,
+      () => staffAuthRevision === revision,
+      async (current) => {
+        const { data, error } = await client.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (!current()) return stale;
+        if (error)
+          return { ok: false, error: mapSupabaseAuthError(error.message) };
+        await client.auth.getSession().catch(() => undefined);
+        if (!current()) return stale;
+        const probe = await probeStaffSession(data.session?.access_token);
+        if (!current()) return stale;
+        if (!probe.staff) {
+          await client.auth.signOut().catch(() => undefined);
+          return { ok: false, error: staffProbeError(probe) };
+        }
+        if (typeof window !== "undefined")
+          window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
+        authed = true;
+        mode = "live";
+        notify();
+        return { ok: true };
+      },
+    );
+    return result.accepted ? result.value : stale;
+  } catch {
+    return {
+      ok: false,
+      error: "Staff sign-in could not be verified — please try again.",
+    };
+  } finally {
+    staffSigningIn--;
   }
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
-  }
-  authed = true;
-  mode = "live";
-  notify();
-  return { ok: true };
 };
 
 export const signOutAdmin = (): void => {
   // Best-effort server sign-out; the local flag clears regardless. Only a
   // browser that actually held a staff session needs the auth library.
-  if (authed) {
+  const needsSdkLogout = authed || staffSigningIn > 0;
+  staffAuthRevision++;
+  if (needsSdkLogout) {
     void browserClient()
-      .then((client) => client?.auth.signOut())
+      .then((client) =>
+        client
+          ? runBrowserAuthMutation(
+              client,
+              () => true,
+              () => client.auth.signOut(),
+              true,
+            )
+          : undefined,
+      )
       .catch(() => undefined);
   }
   if (typeof window !== "undefined") {

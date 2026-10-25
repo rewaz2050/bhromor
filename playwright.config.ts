@@ -25,7 +25,15 @@ export default defineConfig({
     : {
         command: "npm run dev -- --hostname 0.0.0.0 --port 3100",
         url: "http://localhost:3100",
-        reuseExistingServer: !process.env.CI,
+        // Reusing a normal preview can silently disable configured-backend
+        // views and invalidate admin recovery fixtures. Opt in to an external,
+        // correctly configured server explicitly with E2E_BASE_URL instead.
+        reuseExistingServer: false,
         timeout: 120_000,
+        env: {
+          NEXT_PUBLIC_SUPABASE_URL: "https://verification.invalid",
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "verification-only",
+          SUPABASE_SERVICE_ROLE_KEY: "",
+        },
       },
 });

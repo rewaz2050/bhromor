@@ -1,10 +1,103 @@
-import {
-  test,
-  expect,
-  type BrowserContext,
-  type Page,
-} from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { build } from "esbuild";
+import path from "node:path";
+import {
+  PRODUCTS,
+  CATEGORIES,
+  DELIVERY_ZONES,
+  type Shop,
+} from "../src/lib/catalog";
+
+// Browser-only catalog: no seeded backend, manufactured production inventory
+// or order writes. SSR product routes are deliberately not fabricated here.
+const shop: Shop = {
+  id: "storefront-qa",
+  slug: "storefront-qa",
+  name: "QA shop",
+  phone: "01700000000",
+  zoneIds: DELIVERY_ZONES.map((zone) => zone.id),
+  prepMinutes: 15,
+  commissionPct: 15,
+  status: "active",
+  isOpen: true,
+  ratingAvg: 0,
+  ratingCount: 0,
+};
+const products = PRODUCTS.map((product) => ({ ...product, shopId: shop.id }));
+async function catalogFixture(target: Page | BrowserContext) {
+  await target.route("**/api/products", (route) =>
+    route.fulfill({
+      json: {
+        source: "live",
+        products,
+        categories: CATEGORIES,
+        shops: [shop],
+      },
+    }),
+  );
+  await target.route("**/api/zones", (route) =>
+    route.fulfill({ json: { zones: DELIVERY_ZONES } }),
+  );
+  await target.route("**/api/orders", (route) =>
+    route.fulfill({ status: 503, json: { error: "QA never places an order" } }),
+  );
+}
+
+// The real ShopBrowser receives SSR props. Exercise non-empty filtering in
+// an explicit component harness rather than pretending page.route seeds SSR.
+async function shopComponentFixture(page: Page) {
+  const result = await build({
+    entryPoints: [path.resolve("e2e/fixtures/storefront-shop/app.tsx")],
+    bundle: true,
+    write: false,
+    jsx: "automatic",
+    define: { "process.env.NODE_ENV": '"production"' },
+    alias: {
+      "@": path.resolve("src"),
+      "next/image": path.resolve("e2e/fixtures/gallery/image.tsx"),
+    },
+    plugins: [
+      {
+        name: "shop-router-boundary",
+        setup(build) {
+          build.onResolve({ filter: /^next\/(link|navigation)$/ }, (args) => ({
+            path: args.path,
+            namespace: "qa",
+          }));
+          build.onLoad({ filter: /.*/, namespace: "qa" }, (args) => ({
+            contents:
+              args.path === "next/link"
+                ? 'import {createElement} from "react"; export default function Link({href,prefetch,replace,scroll,...props}) {return createElement("a",{...props,href});}'
+                : "export const usePathname=()=>window.location.pathname; export const useRouter=()=>({push:()=>{},replace:()=>{}});",
+            loader: "js",
+            resolveDir: process.cwd(),
+          }));
+        },
+      },
+    ],
+  });
+  await page.goto("/");
+  const sheets = await page
+    .locator('link[rel="stylesheet"]')
+    .evaluateAll((links) =>
+      links.map((link) => (link as HTMLLinkElement).href),
+    );
+  const bodyClass = (await page.locator("body").getAttribute("class")) ?? "";
+  await page.route("**/__storefront_shop_qa.js", (route) =>
+    route.fulfill({
+      contentType: "application/javascript",
+      body: result.outputFiles[0].text,
+    }),
+  );
+  await page.route("**/__storefront_shop_qa.html*", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><html lang="en"><head><title>Shop component fixture</title>${sheets.map((href) => `<link rel="stylesheet" href="${href}">`).join("")}</head><body class="${bodyClass}"><div id="shop-qa"></div><script src="/__storefront_shop_qa.js"></script></body></html>`,
+    }),
+  );
+  await page.goto("/__storefront_shop_qa.html");
+}
 
 /** The storefront remembers the shopper's language under this key. */
 const pinEnglish = (target: Page | BrowserContext) =>
@@ -28,6 +121,11 @@ async function noOverflow(page: Page) {
   ).toBeLessThanOrEqual(1);
 }
 async function accessible(page: Page) {
+  // Materialize off-screen content-visibility blocks before Axe samples
+  // backgrounds; otherwise Chromium may report ivory text on the page body.
+  await page.addStyleTag({
+    content: ".below-fold-block { content-visibility: visible !important; }",
+  });
   const { violations } = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();
@@ -47,6 +145,7 @@ async function accessible(page: Page) {
 // same localStorage key LanguageProvider and the pre-paint bootstrap read.
 test.beforeEach(async ({ page }) => {
   await pinEnglish(page);
+  await catalogFixture(page);
 });
 
 for (const width of [320, 390, 768, 1024, 1440]) {
@@ -56,7 +155,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    for (const route of ["/", "/shop", "/product/heritage-green-panjabi"]) {
+    for (const route of ["/", "/shop", "/delivery"]) {
       await page.goto(route);
       await settled(page);
       await noOverflow(page);
@@ -92,11 +191,16 @@ test("mobile quick add → bag → checkout retains selected options", async ({
     hasTouch: true,
   });
   await pinEnglish(context);
+  await catalogFixture(context);
   const page = await context.newPage();
-  await page.goto("/shop");
+  await page.goto("/");
   await settled(page);
   await page
-    .getByRole("button", { name: "Quick add Heritage Green Panjabi to cart" })
+    .getByTestId("whole-shelf")
+    .getByRole("button", {
+      name: "Quick add Heritage Green Panjabi to cart",
+      exact: true,
+    })
     .click();
   const options = page.getByRole("dialog", {
     name: "Select options for Heritage Green Panjabi",
@@ -127,18 +231,28 @@ test("mobile quick add → bag → checkout retains selected options", async ({
   await expect(page.getByLabel(/Full name/)).toBeVisible();
   await page.getByLabel(/Full name/).fill("Browser QA");
   await page.getByLabel(/Mobile number/).fill("01712345678");
-  // Simple form: district + upazila default to Sunamganj / Sunamganj Sadar —
-  // paras are direct tappable chips; address = house no (+ optional road).
-  const boropara = page.getByRole("button", { name: "Boropara" });
-  await boropara.click();
-  await expect(boropara).toHaveAttribute("aria-pressed", "true");
-  await page.getByLabel(/House No/).fill("12/A");
+  // Current checkout uses an editable para combobox, not the retired chips.
+  const area = page.getByRole("combobox", {
+    name: "Para or village name",
+    exact: true,
+  });
+  await area.fill("Boropara");
+  await expect(area).toHaveValue("Boropara");
+  await page
+    .locator("details")
+    .filter({ hasText: "Add house, road or landmark (optional)" })
+    .locator("summary")
+    .click();
+  await page.getByLabel(/House no\./i).fill("12/A");
   await expect(
-    page.getByRole("button", { name: "Place Order", exact: true }),
+    page
+      .locator("main form")
+      .first()
+      .getByRole("button", { name: /^Place Order/ }),
   ).toBeEnabled();
   await noOverflow(page);
   await accessible(page);
-  // Do not submit an order: this suite is safe to run against a configured preview.
+  // Do not submit. Even accidental order requests are intercepted above.
   await context.close();
 });
 
@@ -182,12 +296,11 @@ test("search dialog traps focus, closes with Escape and restores focus", async (
   );
 });
 
-test("wishlist persists after reload; mobile filters apply and clear", async ({
+test("component fixture: wishlist persists after reload; non-empty shop filters apply and clear", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/shop?mood=festive");
-  await settled(page);
+  await shopComponentFixture(page);
   const heart = page
     .getByRole("button", { name: "Add to wishlist", exact: true })
     .first();
@@ -205,7 +318,7 @@ test("wishlist persists after reload; mobile filters apply and clear", async ({
     page.getByRole("heading", { name: "No products found" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Clear all filters" }).click();
-  await expect(page.locator("article")).toHaveCount(7);
+  await expect(page.locator("article")).toHaveCount(products.length);
 });
 
 test("reduced motion disables entrance and feedback animations", async ({
@@ -228,23 +341,15 @@ test("reduced motion disables entrance and feedback animations", async ({
       .evaluate((el) => getComputedStyle(el).animationName),
   ).toBe("none");
   await page.keyboard.press("Escape");
-  await page
-    .getByRole("heading", { name: "Featured." })
-    .scrollIntoViewIfNeeded();
-  await expect(
-    page.getByRole("heading", { name: "Featured." }),
-  ).toBeVisible();
+  const shelf = page.getByTestId("whole-shelf");
+  await shelf.scrollIntoViewIfNeeded();
+  await expect(shelf).toBeVisible();
 });
 
-for (const route of [
-  "/",
-  "/shop",
-  "/product/heritage-green-panjabi",
-  "/account",
-  "/wishlist",
-]) {
+for (const route of ["/", "/shop", "/delivery", "/account", "/wishlist"]) {
   test(`accessibility scan ${route}`, async ({ page }) => {
-    await page.goto(route);
+    const response = await page.goto(route);
+    expect(response?.status()).toBe(200);
     await settled(page);
     await accessible(page);
   });
@@ -256,7 +361,10 @@ for (const route of [
  * renders exactly the same heading, which is why this went unnoticed for so
  * long. Assert on the status code.
  */
-test("unknown URLs answer HTTP 404, not a soft 200", async ({ request, page }) => {
+test("unknown URLs answer HTTP 404, not a soft 200", async ({
+  request,
+  page,
+}) => {
   for (const path of [
     "/this-page-does-not-exist",
     "/product/no-such-piece",
@@ -279,4 +387,13 @@ test("unknown API paths answer a JSON 404", async ({ request }) => {
   const res = await request.get("/api/definitely-not-an-endpoint");
   expect(res.status()).toBe(404);
   expect(await res.json()).toEqual({ error: "No such endpoint." });
+});
+
+// A browser API fixture cannot seed an SSR lookup. Verify the actual server
+// response instead of accidentally labelling an accessible 404 as a PDP scan.
+test("unseeded server does not fabricate a product from the browser-only catalog", async ({
+  request,
+}) => {
+  const response = await request.get("/product/heritage-green-panjabi");
+  expect(response.status()).toBe(404);
 });

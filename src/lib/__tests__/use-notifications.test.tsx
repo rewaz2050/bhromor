@@ -29,10 +29,11 @@ interface Row {
 const state = vi.hoisted(() => ({
   notifications: [] as Row[],
   polls: 0,
+  staff: { live: true, checked: true, error: null as string | null, retry: vi.fn() },
 }));
 
 vi.mock("../use-staff-live", () => ({
-  useStaffLive: () => ({ live: true, checked: true, error: null, retry: () => {} }),
+  useStaffLive: () => state.staff,
 }));
 
 vi.mock("../admin-api", () => ({
@@ -67,6 +68,8 @@ const row = (id: string, over: Partial<Row> = {}): Row => ({
 beforeEach(() => {
   state.notifications = [];
   state.polls = 0;
+  Object.assign(state.staff, { live: true, checked: true, error: null });
+  state.staff.retry.mockClear();
   requestPermission.mockClear();
   showPanelNotice.mockClear();
   audioContexts.length = 0;
@@ -145,4 +148,15 @@ describe("useNotifications alerts", () => {
     expect(audioContexts).toHaveLength(1);
     expect(audioContexts[0].resume).toHaveBeenCalled();
   });
+});
+
+
+it("exposes the owning session probe and retry without fetching an unavailable inbox", () => {
+  Object.assign(state.staff, { live: false, checked: true, error: "Session unavailable" });
+  const { result } = renderHook(() => useNotifications());
+  expect(result.current.checked).toBe(true);
+  expect(result.current.connectionError).toBe("Session unavailable");
+  act(() => result.current.retryConnection());
+  expect(state.staff.retry).toHaveBeenCalledOnce();
+  expect(state.polls).toBe(0);
 });

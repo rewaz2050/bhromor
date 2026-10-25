@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAdminDeliveries } from "@/lib/use-admin-deliveries";
-import { RIDERS_POLL_MS, useRiders } from "@/lib/use-riders";
 import { useOrders } from "@/lib/use-orders";
 import { formatBdt } from "@/lib/format";
 import { cashToCollect, paymentSummary } from "@/lib/payment-labels";
@@ -34,6 +33,9 @@ export default function AdminDeliveriesPage() {
     resolveFailed,
     release,
     loading,
+    riders,
+    dispatch,
+    ridersLoading,
     error,
     clearError,
     busyId,
@@ -41,7 +43,6 @@ export default function AdminDeliveriesPage() {
     cancel,
     refresh,
   } = useAdminDeliveries();
-  const { riders, dispatch, loading: ridersLoading } = useRiders(RIDERS_POLL_MS);
   const { orders } = useOrders();
   // Cancel / release need a written reason (shown in the order history). Asked in an
   // inline dialog, not window.prompt — which silently did nothing on a too-short answer.
@@ -120,7 +121,10 @@ export default function AdminDeliveriesPage() {
       {error && (
         <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
           {error}{" "}
-          <button type="button" onClick={clearError} className="underline underline-offset-2">
+          <button type="button" onClick={() => { void refresh(); }} className="min-h-11 px-2 font-semibold underline underline-offset-2">
+            Retry
+          </button>{" "}
+          <button type="button" onClick={clearError} className="min-h-11 px-2 underline underline-offset-2">
             Dismiss
           </button>
         </p>

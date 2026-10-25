@@ -144,15 +144,6 @@ export default function AdminOrdersPage() {
       );
   }, [orders, filter, query, shopId]);
 
-  if (loading) {
-    return (
-      <div className="space-y-6" role="status" aria-label="Loading orders">
-        <div className="h-10 w-full max-w-xs animate-pulse rounded-full bg-paper ring-1 ring-line" />
-        <div className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
-      </div>
-    );
-  }
-
   const newOrdersCount = orders.filter((o) => o.status === "pending").length;
   const actionCount = orders.filter((o) => ACTION_STATUSES.includes(o.status)).length;
 
@@ -283,7 +274,9 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Table */}
-      {visible.length === 0 && !hasMore ? (
+      {loading ? (
+        <div role="status" aria-label="Loading orders" className="h-40 animate-pulse rounded-2xl bg-paper ring-1 ring-line" />
+      ) : visible.length === 0 && !hasMore ? (
         <div className="rounded-2xl bg-paper py-20 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">No orders found</p>
           <p className="mt-1 text-sm text-ink-soft">

@@ -33,6 +33,7 @@ import KeepOrderCard from "@/components/checkout/keep-order-card";
 import { composeFullAddress } from "@/lib/address-compose";
 import NotifyOptIn from "@/components/track/notify-opt-in";
 import { haptic } from "@/lib/haptics";
+import CatalogRecovery from "@/components/shop/catalog-recovery";
 import BagSkeleton from "@/components/cart/bag-skeleton";
 import { useLiveZones } from "@/lib/use-live-zones";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
@@ -221,7 +222,7 @@ const isSadarUpazila = (upazila: string) =>
 const scrollTo = (el: Element | null | undefined, block: ScrollLogicalPosition = "center") => {
   if (!el) return;
   if (typeof (el as HTMLElement).scrollIntoView === "function") {
-    (el as HTMLElement).scrollIntoView({ behavior: "smooth", block });
+    (el as HTMLElement).scrollIntoView({ behavior: typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block });
   }
 };
 
@@ -411,11 +412,11 @@ const applySavedAddress = (f: FormState, addr: SavedAddress): FormState => {
 
 export default function CheckoutView() {
   const { t, lang } = useLanguage();
-  const { detail, subtotal, clear, ready } = useCart();
+  const { detail, subtotal, clear, ready, lines } = useCart();
   /** Wall clock for the slot chips — a store, so render stays pure. */
   const nowMs = useNow(60_000);
   const { activeZones: zoneList } = useLiveZones();
-  const { shops } = useLiveCatalog();
+  const { shops, live: catalogLive, loading: catalogLoading } = useLiveCatalog();
   // The OWNER's numbers, read-only and public — never the staff hook
   // (a customer is not signed in to the dashboard). Defaults while loading.
   const { settings } = usePublicSettings();
@@ -1497,8 +1498,12 @@ export default function CheckoutView() {
   }
 
   // P0 #7 — stored lines are still waiting for the catalog: never say "empty".
-  if (!ready) {
+  if (!ready || (lines.length > 0 && empty && catalogLoading)) {
     return <BagSkeleton label={t("checkout.bagLoading")} />;
+  }
+
+  if (lines.length > 0 && empty && !catalogLive) {
+    return <div className="mx-auto max-w-xl py-8"><CatalogRecovery savedBag /></div>;
   }
 
   if (empty) {
@@ -1646,6 +1651,7 @@ export default function CheckoutView() {
           ? step2Ref.current
           : reviewRef.current;
     scrollTo(el, "start");
+    el?.querySelector<HTMLElement>("h2[tabindex]")?.focus({ preventScroll: true });
   };
 
   /** Take the shopper to the first field that needs attention (P0 #6). */
@@ -1688,7 +1694,7 @@ export default function CheckoutView() {
       case "items":
         return scrollTo(reviewRef.current, "start");
       default:
-        return scrollTo(errorRef.current);
+        return focusAndScroll(errorRef.current);
     }
   };
 
@@ -1986,6 +1992,7 @@ export default function CheckoutView() {
   return (
     <div className="grid gap-12 lg:grid-cols-[1fr_400px]">
       <form
+        aria-busy={form.submitting}
         onSubmit={(e) => {
           e.preventDefault();
           placeOrder();
@@ -2001,7 +2008,7 @@ export default function CheckoutView() {
         />
 
         {/* One delivery promise — the same sentence the bag showed */}
-        <div className="rounded-2xl bg-gradient-to-r from-forest-800 to-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
+        <div className="rounded-2xl bg-forest-900 p-4 text-ivory-50 ring-1 ring-forest-700">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold-400 text-forest-900">
               <IconTruck className="h-4 w-4" />
@@ -2174,42 +2181,6 @@ export default function CheckoutView() {
             </label>
           </div>
 
-          {/* Smart Card — account-gated stamps (signup needs no verification) */}
-          {cardChecked && (
-            <div
-              className="mt-3 rounded-2xl border border-gold-300 bg-gold-50/70 px-4 py-3 text-xs leading-6 text-ink-soft sm:text-sm"
-              data-testid="smart-card-strip"
-            >
-              {!cardCustomer ? (
-                <>
-                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong> {t("checkout.smartCardJoin")}{" "}
-                  <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
-                    {t("checkout.smartCardOpenAccount")}
-                  </Link>
-                  {t("checkout.smartCardNoVerify")}
-                </>
-              ) : smartCard ? (
-                <>
-                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
-                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong>{" "}
-                  {t("checkout.smartCardAfter")
-                    .replace("{stamps}", String(smartCard.stamps))
-                    .replace("{after}", String(smartCard.afterOrderStamps))
-                    .split("{target}")
-                    .join(String(smartCard.target))}{" "}
-                  {smartCard.revealed
-                    ? t("checkout.smartCardRewardShown").replace("{title}", smartCard.rewardTitle)
-                    : t("checkout.smartCardRewardSurprise")}
-                </>
-              ) : (
-                <>
-                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> {t("checkout.smartCardLoading")}
-                </>
-              )}
-            </div>
-          )}
-
           {/* District / Upazila / Para — the simple address ladder */}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
@@ -2322,6 +2293,7 @@ export default function CheckoutView() {
               placeholder={t("checkout.paraPlaceholder")}
               aria-label={t("checkout.paraAria")}
               aria-invalid={!!fieldErrors.area}
+              aria-describedby={fieldErrors.area ? "err-area" : undefined}
               className={inputClass("area")}
             />
             {/* UX plan §6 (R11) — searchable: every para the zone table knows
@@ -2332,7 +2304,7 @@ export default function CheckoutView() {
               ))}
             </datalist>
             {fieldErrors.area ? (
-              <p className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
+              <p id="err-area" className="mt-1.5 text-xs text-rose-700">{fieldErrors.area}</p>
             ) : effectivePara.trim() && !form.isPickup ? (
               /* UX plan §6 (R11) — the charge and the clock RIGHT where the
                  area was chosen, not two steps later. Same numbers as the
@@ -2386,6 +2358,10 @@ export default function CheckoutView() {
             ) : null}
           </div>
 
+          <details className="mt-4 rounded-xl border border-line p-4">
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-forest-800">
+              {lang === "bn" ? "বাড়ি, রোড বা ল্যান্ডমার্ক যোগ করুন (ঐচ্ছিক)" : "Add house, road or landmark (optional)"}
+            </summary>
           {/* House / Road structured fields */}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block">
@@ -2436,6 +2412,8 @@ export default function CheckoutView() {
             />
           </label>
 
+          </details>
+
           <label className="mt-4 block">
             <span className="mb-1.5 block text-sm font-medium text-ink">
               {t("checkout.fullAddressLabel")} <span className="text-rose-600">*</span>
@@ -2450,7 +2428,7 @@ export default function CheckoutView() {
                 update("address", e.target.value);
                 clearFieldError("address");
               }}
-              placeholder="বাসা নম্বর, রোড, ল্যান্ডমার্ক, ফ্লোর — যেমন: House 12, College Road, 2nd floor, Mosque-এর পাশে"
+              placeholder={t("checkout.fullAddressPlaceholder")}
               aria-invalid={!!fieldErrors.address}
               aria-describedby={fieldErrors.address ? "err-address" : "hint-full-address"}
               className={`w-full rounded-2xl bg-paper px-4 py-3 text-sm text-ink ring-1 placeholder:text-ink-soft/50 focus:ring-2 focus:ring-forest-500 ${
@@ -2820,6 +2798,43 @@ export default function CheckoutView() {
           </StepSection>
         </div>
 
+          {/* Smart Card — account-gated stamps (signup needs no verification) */}
+          {cardChecked && (
+            <div
+              className="mt-3 rounded-2xl border border-gold-300 bg-gold-50/70 px-4 py-3 text-xs leading-6 text-ink-soft sm:text-sm"
+              data-testid="smart-card-strip"
+            >
+              {!cardCustomer ? (
+                <>
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong> {t("checkout.smartCardJoin")}{" "}
+                  <Link href="/account?next=/checkout" className="font-semibold text-forest-800 underline underline-offset-2">
+                    {t("checkout.smartCardOpenAccount")}
+                  </Link>
+                  {t("checkout.smartCardNoVerify")}
+                </>
+              ) : smartCard ? (
+                <>
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" />{" "}
+                  <strong className="text-forest-900">{t("checkout.smartCardLabel")}</strong>{" "}
+                  {t("checkout.smartCardAfter")
+                    .replace("{stamps}", String(smartCard.stamps))
+                    .replace("{after}", String(smartCard.afterOrderStamps))
+                    .split("{target}")
+                    .join(String(smartCard.target))}{" "}
+                  {smartCard.revealed
+                    ? t("checkout.smartCardRewardShown").replace("{title}", smartCard.rewardTitle)
+                    : t("checkout.smartCardRewardSurprise")}
+                </>
+              ) : (
+                <>
+                  <IconGift className="mr-1 inline h-4 w-4 align-[-3px] text-gold-600" /> {t("checkout.smartCardLoading")}
+                </>
+              )}
+            </div>
+          )}
+
+
         {/* ---------------------------------------------------------- */}
         {/* আরও অপশন — gift · referral · tip · coupon · label · note     */}
         {/* ---------------------------------------------------------- */}
@@ -3126,8 +3141,9 @@ export default function CheckoutView() {
               <CheckoutAssurance />
             </div>
 
-            <div className="mt-6" ref={errorRef}>
+            <div className="mt-6">
               <OrderErrorBanner
+                bannerRef={errorRef}
                 error={orderError}
                 title={t("checkout.errorTitle")}
                 fixLabel={t("checkout.fixFields")}

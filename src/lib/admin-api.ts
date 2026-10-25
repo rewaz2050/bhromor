@@ -85,18 +85,22 @@ const bearerHeaders = async (
 
 export class AdminApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** Server-confirmed availability metadata; never inferred from status. */
+  missing: boolean;
+  constructor(message: string, status: number, missing = false) {
     super(message);
     this.status = status;
+    this.missing = missing;
   }
 }
 
-const readError = async (res: Response): Promise<string> => {
+const readError = async (res: Response): Promise<AdminApiError> => {
+  const fallback = "Something went wrong — please try again.";
   try {
-    const data = (await res.json()) as { error?: string };
-    return data.error || "Something went wrong — please try again.";
+    const data = (await res.json()) as { error?: string; missing?: unknown } | null;
+    return new AdminApiError(data?.error || fallback, res.status, data?.missing === true);
   } catch {
-    return "Something went wrong — please try again.";
+    return new AdminApiError(fallback, res.status);
   }
 };
 
@@ -115,7 +119,7 @@ export const apiGet = async <T>(path: string): Promise<T> => {
     await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
-  if (!res.ok) throw new AdminApiError(await readError(res), res.status);
+  if (!res.ok) throw await readError(res);
   return (await res.json()) as T;
 };
 
@@ -139,7 +143,7 @@ export const apiSend = async <T>(
     await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
-  if (!res.ok) throw new AdminApiError(await readError(res), res.status);
+  if (!res.ok) throw await readError(res);
   return (await res.json()) as T;
 };
 
@@ -161,7 +165,7 @@ export const apiDownload = async (
     await signOutAdminLazy();
     throw new AdminApiError("Session expired — please sign in again.", 401);
   }
-  if (!res.ok) throw new AdminApiError(await readError(res), res.status);
+  if (!res.ok) throw await readError(res);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "export.csv";
   return {

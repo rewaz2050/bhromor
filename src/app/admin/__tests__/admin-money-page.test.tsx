@@ -11,9 +11,13 @@ const state = vi.hoisted(() => ({
   live: true,
   loading: false,
   ready: true,
+  backendMissing: false,
+  pnlLoading: false,
   summary: null as unknown,
   pnl: null as unknown,
   range: "30d",
+  error: null as string | null,
+  refresh: vi.fn(async () => true),
   setRange: vi.fn(),
   pending: [] as unknown[],
   decided: [] as unknown[],
@@ -34,6 +38,8 @@ vi.mock("@/lib/use-admin-money", () => ({
     live: state.live,
     loading: state.loading,
     ready: state.ready,
+    backendMissing: state.backendMissing,
+    pnlLoading: state.pnlLoading,
     summary: state.summary,
     pnl: state.pnl,
     range: state.range,
@@ -41,9 +47,9 @@ vi.mock("@/lib/use-admin-money", () => ({
     pending: state.pending,
     decided: state.decided,
     settings: state.settings,
-    error: null,
+    error: state.error,
     clearError: vi.fn(),
-    refresh: vi.fn(async () => true),
+    refresh: state.refresh,
     decide: state.decide,
     saveSettings: state.saveSettings,
   }),
@@ -72,8 +78,12 @@ const summary = {
 
 beforeEach(() => {
   state.live = true;
+  state.error = null;
+  state.refresh.mockClear();
   state.loading = false;
   state.ready = true;
+  state.backendMissing = false;
+  state.pnlLoading = false;
   state.summary = summary;
   state.pnl = null;
   state.range = "30d";
@@ -96,6 +106,7 @@ describe("admin money page", () => {
 
   it("names the migration when the backend update has not run", () => {
     state.ready = false;
+    state.backendMissing = true;
     state.summary = null;
     render(<AdminMoneyPage />);
     expect(screen.getByText(/Rider money backend is not installed yet/)).toBeInTheDocument();
@@ -215,4 +226,35 @@ describe("admin money page", () => {
       expect(state.setRange).toHaveBeenCalledWith("today");
     });
   });
+});
+
+it("O11: network failure is recoverable and not evidence of missing migrations", () => {
+  state.ready = false; state.summary = null; state.error = "Network offline";
+  render(<AdminMoneyPage />);
+  expect(screen.getByRole("alert")).toHaveTextContent("Network offline");
+  expect(screen.queryByText(/Rider money backend is not installed yet/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
+});
+it("O11: an unknown first-read state keeps Retry available after error dismissal", () => {
+  state.ready = false; state.summary = null;
+  render(<AdminMoneyPage />);
+  expect(screen.queryByText(/Rider money backend is not installed yet/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
+});
+it("O12: period tabs stay available while P&L loads or fails without showing old totals", () => {
+  state.pnl = null; state.pnlLoading = true; state.range = "7d";
+  const { rerender } = render(<AdminMoneyPage />);
+  expect(screen.getByRole("tablist", { name: "Period" })).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Loading net result");
+  expect(screen.queryByTestId("pnl-commission")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("pnl-missing")).not.toBeInTheDocument();
+  state.pnlLoading = false; state.error = "New range offline";
+  rerender(<AdminMoneyPage />);
+  expect(screen.getByRole("tablist", { name: "Period" })).toBeInTheDocument();
+  expect(screen.getByTestId("pnl-missing")).toHaveTextContent("could not be loaded for this period");
+  expect(screen.queryByText(/202610010003_money_pnl.sql/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry net result" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
 });

@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import AccountView from "../account-view";
 import {
   __resetLiveAuthForTests,
@@ -49,7 +50,7 @@ describe("AccountView — live session flip (no reload needed)", () => {
       return jsonResponse({ customer });
     };
 
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     await screen.findByRole("tab", { name: "লগ ইন" });
     fireEvent.click(screen.getByRole("tab", { name: "লগ ইন" }));
     fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {
@@ -76,7 +77,7 @@ describe("AccountView — live session flip (no reload needed)", () => {
       return jsonResponse({ customer }, 201);
     };
 
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     await screen.findByLabelText("আপনার নাম");
     fireEvent.change(screen.getByLabelText("আপনার নাম"), {
       target: { value: "করিম মিয়া" },
@@ -108,7 +109,7 @@ describe("AccountView — live session flip (no reload needed)", () => {
         409,
       );
 
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     await screen.findByLabelText("আপনার নাম");
     fireEvent.change(screen.getByLabelText("আপনার নাম"), {
       target: { value: "রহিম" },
@@ -139,7 +140,7 @@ describe("AccountView — live session flip (no reload needed)", () => {
     routes["/api/account/login"] = async () =>
       jsonResponse({ error: "নম্বর বা পাসওয়ার্ড মিলছে না।" }, 401);
 
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     await screen.findByRole("tab", { name: "লগ ইন" });
     fireEvent.click(screen.getByRole("tab", { name: "লগ ইন" }));
     fireEvent.change(screen.getByLabelText("মোবাইল নম্বর"), {

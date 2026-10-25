@@ -86,14 +86,8 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
     return pathname === path || pathname.startsWith(`${path}/`);
   };
   const closeMenu = () => setOpen(false);
-  const reveal = (i: number) =>
-    ({
-      animation: open ? `storefront-reveal 420ms cubic-bezier(0.22,1,0.36,1) both` : undefined,
-      animationDelay: open ? `${60 + i * 30}ms` : undefined,
-    }) as React.CSSProperties;
-
   const sectionTitle =
-    "px-3 pb-2 text-[0.64rem] font-semibold uppercase tracking-[0.18em] text-ink-soft";
+    "px-3 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft";
 
   return (
     <>
@@ -125,7 +119,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
       <Drawer
         open={open}
         onClose={closeMenu}
-        label="Menu"
+        label={t("header.menu")}
         side="left"
         className="lg:hidden"
         panelClassName="!w-[88%] max-w-[360px] !bg-ivory-50"
@@ -148,7 +142,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
               type="button"
               onClick={closeMenu}
               aria-label={t("header.closeMenu")}
-              className="header-icon-btn flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-50 hover:text-forest-900"
+              className="header-icon-btn flex h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:bg-forest-50 hover:text-forest-900"
             >
               <IconClose className="h-5 w-5" />
             </button>
@@ -157,15 +151,15 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
           <div className="flex-1 px-3 pb-6 pt-3">
             {/* Language first: the one control a shopper who cannot read the
                 current language needs before anything else. */}
-            <div className="flex items-center gap-3 px-1" style={reveal(0)}>
-              <span className="shrink-0 text-[0.64rem] font-semibold uppercase tracking-[0.18em] text-ink-soft">
+            <div className="flex items-center gap-3 px-1">
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.18em] text-ink-soft">
                 {t("mobileDrawer.language")}
               </span>
               <LanguageSwitcher variant="drawer" className="!w-auto flex-1" />
             </div>
 
             {/* Quick actions — the three things people open the menu for. */}
-            <div className="mt-4 grid grid-cols-3 gap-2" style={reveal(1)}>
+            <div className="mt-4 grid grid-cols-3 gap-2">
               <Link href="/account" onClick={closeMenu} className="drawer-tile">
                 <IconUser className="h-5 w-5 text-forest-700" />
                 {t("mobileDrawer.account")}
@@ -187,13 +181,13 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
             {/* UX plan §8 — the stamp count follows the customer into the menu */}
             <StampLine onNavigate={closeMenu} className="mt-3" />
 
-            <nav aria-label="Primary mobile" className="mt-6">
+            <nav aria-label={t("mobileDrawer.primaryLabel")} className="mt-6">
               <p className={sectionTitle}>{t("mobileDrawer.discover")}</p>
               <ul className="flex flex-col gap-0.5">
-                {PRIMARY.map((item, i) => {
+                {PRIMARY.map((item) => {
                   const active = isCurrent(item.href);
                   return (
-                    <li key={item.href} style={reveal(2 + i)}>
+                    <li key={item.href}>
                       <Link
                         href={item.href}
                         onClick={closeMenu}
@@ -206,7 +200,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
                           {"offer" in item && item.offer ? (
                             <span
                               aria-hidden="true"
-                              className="inline-flex h-1.5 w-1.5 rounded-full bg-gold-500 shadow-[0_0_6px_var(--color-gold-400)]"
+                              className="inline-flex h-1.5 w-1.5 rounded-full bg-gold-500"
                             />
                           ) : null}
                         </span>
@@ -221,7 +215,7 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
             {/* Every category with pieces, straight into the filtered shop.
                 The heading is the jump to the home shelf (`/#collections`)
                 — the same destination the desktop entry falls back to. */}
-            <nav aria-label="Categories" className="mt-6">
+            {categoryEntries.length > 0 && <nav aria-label={t("nav.categories")} className="mt-6">
               <Link
                 href="/#collections"
                 onClick={closeMenu}
@@ -232,12 +226,12 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
               </Link>
               {categoryEntries.length > 0 && (
                 <ul className="flex flex-col gap-0.5">
-                  {categoryEntries.map(({ category, count, href }, i) => {
+                  {categoryEntries.map(({ category, count, href }) => {
                     const name = categoryLabel(category, lang);
                     const countLabel =
                       count === 1 ? t("home.piece") : fmt(t("home.pieces"), { count });
                     return (
-                      <li key={category.id} style={reveal(6 + i)}>
+                      <li key={category.id}>
                         <Link href={href} onClick={closeMenu} className="drawer-row">
                           <span className="relative block h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-ivory-200 ring-1 ring-line">
                             {category.image && (
@@ -270,13 +264,13 @@ export default function MobileNav({ bottom = false }: { bottom?: boolean }) {
                   })}
                 </ul>
               )}
-            </nav>
+            </nav>}
 
-            <nav aria-label="Secondary mobile" className="mt-6">
+            <nav aria-label={t("mobileDrawer.help")} className="mt-6">
               <p className={sectionTitle}>{t("mobileDrawer.help")}</p>
               <ul className="flex flex-col">
-                {HELP.map((item, i) => (
-                  <li key={item.href} style={reveal(10 + i)}>
+                {HELP.map((item) => (
+                  <li key={item.href}>
                     <Link
                       href={item.href}
                       onClick={closeMenu}

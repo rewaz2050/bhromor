@@ -1,4 +1,4 @@
-import { fetchWithDeadline } from "./fetch-with-deadline";
+import { fetchJsonWithDeadline } from "./fetch-with-deadline";
 /**
  * Live catalog registry — the bridge between sync UI code and the async
  * backend. NOTHING paints until the database answers: the demo launch
@@ -41,6 +41,9 @@ export const getLiveCategories = (): Category[] | null => liveCategories;
 export const getLiveZones = (): DeliveryZone[] | null => liveZones;
 export const getLiveShops = (): Shop[] | null => liveShops;
 export const isCatalogSettled = (): boolean => catalogSettled;
+/** Primitive snapshot: subscribers share one readiness update, not per-card state. */
+export const getCatalogStatusSnapshot = (): "loading" | "ready" | "unavailable" =>
+  !catalogSettled ? "loading" : liveProducts !== null ? "ready" : "unavailable";
 export const isZonesSettled = (): boolean => zonesSettled;
 
 /**
@@ -117,14 +120,12 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
     try {
       // Default cache mode: the route answers `public, s-maxage=60` (P1.1),
       // so a back/forward navigation or a second tab reuses the CDN copy.
-      const res = await fetch("/api/products");
-      if (!res.ok) return false;
-      const data = (await res.json()) as {
+      const data = await fetchJsonWithDeadline<{
         source?: string;
         products?: Product[];
         categories?: Category[];
         shops?: Shop[];
-      };
+      }>("/api/products");
       if (
         data.source === "live" &&
         Array.isArray(data.products) &&
@@ -135,7 +136,6 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
           ? data.categories
           : [];
         liveShops = Array.isArray(data.shops) ? data.shops : [];
-        notify();
         return true;
       }
       return false;
@@ -143,9 +143,19 @@ export const ensureLiveCatalog = (): Promise<boolean> => {
       return false;
     } finally {
       catalogSettled = true;
+      notify();
     }
   })();
   return catalogPromise;
+};
+
+/** Explicit recovery only: no automatic retry loop or parallel duplicate reads. */
+export const retryLiveCatalog = (): Promise<boolean> => {
+  if (liveProducts !== null || !catalogSettled) return ensureLiveCatalog();
+  catalogPromise = null;
+  catalogSettled = false;
+  notify();
+  return ensureLiveCatalog();
 };
 
 /** Fetch-once live zones for checkout + the delivery checker. */
@@ -153,11 +163,7 @@ export const ensureLiveZones = (): Promise<boolean> => {
   if (zonesPromise) return zonesPromise;
   zonesPromise = (async () => {
     try {
-      const res = await fetchWithDeadline("/api/zones");
-      if (!res.ok) return false;
-      const data = (await res.json()) as {
-        zones?: DeliveryZone[];
-      };
+      const data = await fetchJsonWithDeadline<{ zones?: DeliveryZone[] }>("/api/zones");
       if (Array.isArray(data.zones) && data.zones.length > 0) {
         liveZones = data.zones;
         notify();

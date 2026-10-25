@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { fetchJsonWithDeadline } from "./fetch-with-deadline";
 import {
   sanitizeSettings,
   SETTINGS_DEFAULTS,
@@ -23,10 +24,8 @@ let publicInflight: Promise<AdminSettings> | null = null;
 const fetchPublicSettings = (): Promise<AdminSettings> => {
   if (publicCache) return Promise.resolve(publicCache);
   if (!publicInflight) {
-    publicInflight = fetch("/api/settings", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`settings ${res.status}`);
-        const data = (await res.json()) as { settings: AdminSettings };
+    publicInflight = fetchJsonWithDeadline<{ settings: AdminSettings }>("/api/settings", { cache: "no-store" })
+      .then((data) => {
         publicCache = sanitizeSettings(data.settings);
         return publicCache;
       })
@@ -63,3 +62,6 @@ export function usePublicSettings() {
   }, []);
   return { settings, loading };
 }
+
+/** Test-only reset; failed reads never populate the successful-response cache. */
+export const __resetPublicSettingsForTests = () => { publicCache = null; publicInflight = null; };
