@@ -119,3 +119,7 @@ Changed: `capacitor.config.ts`, seven new config tests, native docs/report. Exis
 Workspace logs: `/home/user/native-{empty-url-before,sync-default,sync-preview,sync-default-final,build-attempt,focused-tests,lint,types,audit}.log`.
 
 Related: [Android setup](../android-app.md), [full browser regression](full-browser-regression-2026-10-25.md).
+
+## Subsequent authorized cloud-build attempt
+
+The user subsequently authorized current-branch publishing and debug APK build with the existing target URL. Implementation commit **d94f656** was pushed only to `arena/bcb37d54-bhromor`; fresh full lint/types passed. The Actions dispatch request returned **403 Resource not accessible by integration**; the branch's dispatch-run query returned zero. **No APK build/artifact or device PASS**. Connection Actions permission repair or manual branch-selected workflow execution is required. See [cloud attempt evidence](android-cloud-build-attempt-2026-10-25.md) for exact scope, commands and safe manual instructions. No merge/deployment/production account/order/payment action was performed.

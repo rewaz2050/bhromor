@@ -146,3 +146,8 @@ token টা ডাটাবেজে সংরক্ষণ, আর `pushStaffNo
 - API 36/JDK 21-equipped host অথবা অনুমোদিত বর্তমান-branch Actions build প্রয়োজন। বর্তমান dirty source publish না করে পুরোনো remote source build করলে সেটি এই পরিবর্তনের verification হবে না। এই session থেকে commit/push/workflow dispatch হয়নি।
 - Device tests-এর আগে অনুমোদিত staging HTTPS URL, test rider/device ও test data scope নিন। Android-version অনুযায়ী background permission/settings flow ভিন্ন হতে পারে—উপরের অনুমতি-সংক্রান্ত নির্দেশনা device evidence নয়। Screen-off service notification এবং server timestamps দিয়ে বাস্তব পাঁচ-মিনিটের বেশি background tracking যাচাই করতে হবে।
 - Tracking service notification ও native order push আলাদা। Shell-এ native FCM integration নেই; শুধুমাত্র manifest notification permission দেখে native push delivery PASS বলা যাবে না।
+
+
+### অনুমোদিত cloud-build প্রচেষ্টার ফল
+
+[২৫ অক্টোবর cloud-build evidence](audit/android-cloud-build-attempt-2026-10-25.md): ব্যবহারকারীর স্পষ্ট অনুমতিতে implementation commit **d94f656** বর্তমান `arena/bcb37d54-bhromor` branch-এ push হয়েছে। কিন্তু Actions dispatch-এ **403 Resource not accessible by integration**; কোনো build run/APK artifact তৈরি হয়নি। GitHub connection-এর Actions permission ঠিক করে reconnect করুন, অথবা Actions-এ **এই branch** নির্বাচন করে `site_url=https://bhromor-zeta.vercel.app` দিয়ে manual run করুন। Main-এর পুরোনো source-এর build-কে এই পরিবর্তনের verification ধরবেন না। Run URL শেয়ার করা যায়; token/password নয়। Merge/deploy বা production operation-এর অনুমতি দেওয়া হয়নি এবং সেগুলো চালানো হয়নি।
