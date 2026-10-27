@@ -755,6 +755,8 @@ Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabas
 
 After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
 
+`/api/health` now carries one flag per file (`financeBoundaryReady`, `delegatedStaffReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`) and `nextSteps` names the exact file an operator must run, in order. Eight of the ten are probed from the live database; `202610250002` (a trigger) and `202610250004` (policies plus rewritten guards) cannot be seen through PostgREST, so a half-applied rollout shows them only in `check-migrations-all.sql` rows 95 and 97a–97k — both files also fail closed inside their own transaction unless the probed prerequisites (`202610250001`, `202610250003`) ran first.
+
 Behaviour changes to expect:
 
 - The counter screen no longer shows the customer's PIN. Staff type the code the customer reads out; five wrong tries lock handover for 15 minutes.
@@ -764,12 +766,27 @@ Behaviour changes to expect:
 
 ### Old tracking / receipt links (owner decision before publishing)
 
-Server-built `/track?...&t=…` links are HMAC capabilities with **no expiry**. Removing a field from an API cannot recall a link already copied into WhatsApp, a browser or a screenshot, so this is a policy choice, not a code switch:
+Server-built `/track?...&t=…` links are HMAC capabilities. **Nothing changes on a default deploy**: with no extra variables the app mints and accepts the same timeless 24-hex token as before, so every receipt already in a chat keeps working. Revoking links is a policy choice; expiry is now a switch. `src/lib/track-token.ts` (server-only) implements both:
 
-1. **Rotate `TRACK_TOKEN_SECRET`** (Vercel → Environment Variables → new random value → redeploy). Every link minted before the change stops proving ownership. Manual order-number + phone lookup keeps working for status. New checkout receipts mint fresh working links.
-2. **Keep the tokens.** Every link already delivered stays valid indefinitely.
+| Variable | Effect | Default |
+|---|---|---|
+| `TRACK_TOKEN_TTL_HOURS` | `> 0` → new links are version-2 tokens stamped with their issue time and refused after that many hours. Unset / `0` / junk → unchanged v1 links. | unset (no expiry) |
+| `TRACK_TOKEN_REVOKE_LEGACY` | `1` → v1 tokens are refused outright; only fresh v2 links work. | unset (v1 accepted) |
+| `TRACK_TOKEN_SECRET` rotation | Nuclear option: every v1 **and** v2 link dies at once. | rotate only with a support plan |
 
-What rotation costs: a customer whose *only* copy of the receipt is an old `t` link loses the PIN display, and the PIN is deliberately unreadable by staff and by manual lookup. Rotate only together with a support plan (see the PIN-recovery note below), and write the choice into the ops log.
+Rollout order (each step is reversible by removing the variable and redeploying):
+
+1. **Set `TRACK_TOKEN_TTL_HOURS`** (e.g. `720` for 30 days) and redeploy. New receipts, push links and WhatsApp drafts get expiring tokens; every old link still opens because v1 stays accepted. Nothing breaks for customers mid-order.
+2. **Wait longer than the longest order/return window**, then set `TRACK_TOKEN_REVOKE_LEGACY=1` if old links must stop working. From that point a link older than the TTL — or any v1 link — only grants order-number + phone lookup (status, no PIN).
+3. **Rotate `TRACK_TOKEN_SECRET`** only as an incident response; it invalidates every link, including v2 ones that have not expired.
+
+Notes for whoever operates this:
+
+- A v2 token cannot be extended by editing the link: its timestamp is inside the MAC. Tokens dated more than 5 minutes in the future (clock drift between instances) are refused.
+- If `TRACK_TOKEN_TTL_HOURS` is removed later, existing v2 tokens keep the lifetime they were minted under; they do not silently become timeless.
+- Manual order-number + phone lookup keeps working in every mode for status; it never shows the PIN.
+- Removing a field from an API cannot recall a link already copied into WhatsApp, a browser or a screenshot — only the TTL/rotation switches above shorten or kill it.
+- What rotation costs: a customer whose *only* copy of the receipt is an old `t` link loses the PIN display, and the PIN is deliberately unreadable by staff and by manual lookup. Rotate only together with a support plan (see the PIN-recovery note below), and write the choice into the ops log.
 
 ### Known gap — a customer who loses their receipt cannot recover the PIN
 

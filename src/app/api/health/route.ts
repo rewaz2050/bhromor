@@ -149,6 +149,15 @@ export async function GET(request?: Request) {
   // 202610010002 — admin chooses who verifies each shop's wallet payments.
   paymentVerifierReady: false,
   reviewFitReady: false,
+  // 2026-10-25 → 26 permission work. Each flag names the file to run.
+  financeBoundaryReady: false,
+  delegatedStaffReady: false,
+  riderWalletPrivacyReady: false,
+  riderControlsReady: false,
+  staffRoleReady: false,
+  orderPinReady: false,
+  shopScopedFulfilmentReady: false,
+  financeSelfDealingReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

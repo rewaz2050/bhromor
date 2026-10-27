@@ -67,6 +67,16 @@ E2E_BASE_URL=http://localhost:3000 npm run test:e2e
 
 An environment with a separately installed Chromium may set `CHROMIUM_EXECUTABLE_PATH`. The configuration otherwise uses Playwright's standard browser. HTML report, screenshots and failure traces are under `.cache/playwright-*` and intentionally excluded from Git.
 
+**Serve a production build for the isolated dashboard contracts.** The staff surfaces (`/admin/*`, `/vendor/*`, `/rider/*`) enforce a Content-Security-Policy whose `script-src` deliberately omits `unsafe-eval`, while React in development mode uses `eval()` for debugging call stacks. Under `next dev` the staff pages therefore log *“eval() is not supported in this environment”* and do not hydrate, so every interactive contract times out even though the routes answer 200. Build once, then start the same server the tests target:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://verification.invalid NEXT_PUBLIC_SUPABASE_ANON_KEY=verification-only SUPABASE_SERVICE_ROLE_KEY= npm run build
+NEXT_PUBLIC_SUPABASE_URL=https://verification.invalid NEXT_PUBLIC_SUPABASE_ANON_KEY=verification-only SUPABASE_SERVICE_ROLE_KEY= npx next start --hostname 0.0.0.0 --port 3100
+E2E_BASE_URL=http://127.0.0.1:3100 npm run test:dashboards
+```
+
+Measured on 2026-10-27: same spec file, 12/12 in 11.9 s against the production build, 6 failures in 2.6 min against `next dev` (only the storefront contracts passed there).
+
 ## Limits
 - Automated accessibility checks do not establish complete WCAG conformance or replace screen-reader/manual usability testing.
 - Chromium responsive/touch emulation is not physical iOS Safari or Android-device testing. Firefox, WebKit, real devices and slow-network testing remain unverified.

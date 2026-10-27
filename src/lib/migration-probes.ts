@@ -67,6 +67,31 @@ export const columnReady = async (
   }
 };
 
+/**
+ * Is the RPC installed? PostgREST answers PGRST202 / 42883 when it is not.
+ * Any other error still proves the function exists (it ran and refused), so
+ * this only has to recognise "not found". Callers pass harmless arguments
+ * that fail closed inside the function — never a write.
+ */
+export const rpcReady = async (
+  db: SupabaseClient,
+  fn: string,
+  args: Record<string, unknown> = {},
+): Promise<boolean> => {
+  try {
+    const { error } = await db.rpc(fn, args);
+    if (!error) return true;
+    const code = typeof error.code === "string" ? error.code : "";
+    const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+    if (code === "PGRST202" || code === "42883") return false;
+    if (message.includes("could not find the function")) return false;
+    if (message.includes("does not exist")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export type RoundProbeKey =
   | "passwordResetReady"
   | "applicationReviewReady"
@@ -80,7 +105,23 @@ export type RoundProbeKey =
   | "riderPayoutsReady"
   | "riderFixesReady"
   | "paymentVerifierReady"
-  | "reviewFitReady";
+  | "reviewFitReady"
+  // 2026-10-25 → 27 permission work. Probed on the object each file adds, so a
+  // half-applied rollout is visible before deploying. Two files can't be seen
+  // from PostgREST: 202610250002 adds a trigger and 202610250004 only adds
+  // restrictive policies / rewritten guards (PostgREST does not expose trigger
+  // functions, and policies never appear in a REST response). Those two are
+  // checked by supabase/check-migrations-all.sql rows 95 and 97a–97k, and each
+  // of them fails closed inside its own transaction if the probed prerequisites
+  // (202610250001, 202610250003) are missing.
+  | "financeBoundaryReady"
+  | "delegatedStaffReady"
+  | "riderWalletPrivacyReady"
+  | "riderControlsReady"
+  | "staffRoleReady"
+  | "orderPinReady"
+  | "shopScopedFulfilmentReady"
+  | "financeSelfDealingReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -101,6 +142,14 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   riderFixesReady: "202610010001_rider_fixes_phase_a.sql",
   paymentVerifierReady: "202610010002_payment_verifier.sql",
   reviewFitReady: "202610060001_review_fit.sql",
+  financeBoundaryReady: "202610250001_finance_permission_boundary.sql",
+  delegatedStaffReady: "202610250003_vendor_staff_permissions.sql",
+  riderWalletPrivacyReady: "202610250005_rider_wallet_column_privacy.sql",
+  riderControlsReady: "202610250006_rider_controls_and_ledger_retention.sql",
+  staffRoleReady: "202610250007_atomic_staff_roles.sql",
+  orderPinReady: "202610260001_order_pin_privacy_and_pickup.sql",
+  shopScopedFulfilmentReady: "202610260002_scoped_shop_fulfilment.sql",
+  financeSelfDealingReady: "202610260003_finance_self_dealing_boundary.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -118,6 +167,14 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "riderFixesReady",
   "paymentVerifierReady",
   "reviewFitReady",
+  "financeBoundaryReady",
+  "delegatedStaffReady",
+  "riderWalletPrivacyReady",
+  "riderControlsReady",
+  "staffRoleReady",
+  "orderPinReady",
+  "shopScopedFulfilmentReady",
+  "financeSelfDealingReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -148,6 +205,22 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale Admin → Shops e 'Who verifies bKash/Nagad payments' save 503 dibe ar shop ar staff duijon-i agei moto payment verify korte parbe (platform-only / shop-only niyom kaj korbe na)",
   reviewFitReady:
     "na chalale review form e 'ছোট / ঠিক / বড়' fit tap dekhabe na ar product page e 'Will it fit me?' bar asbei na (review niteo thakbe — fit chara)",
+  financeBoundaryReady:
+    "na chalale Manager platform finance/payout/adjustment korte parbe — ei boundary chara least-privilege model chalabe na",
+  delegatedStaffReady:
+    "na chalale shop Owner tar staff-ke catalog/inventory/cashier/cancellation grant dite parbe na (staff default Confirm/Preparing/Ready-i thakbe)",
+  riderWalletPrivacyReady:
+    "na chalale Manager direct SQL theke onno rider-er wallet balance porte parbe (actor-bound projection chara)",
+  riderControlsReady:
+    "na chalale rider suspend/relink audit chara hobe ar financial history rewrite/muche fela theke jabe",
+  staffRoleReady:
+    "na chalale staff role change atomic hobe na — last Super Admin-o chole jete pare",
+  orderPinReady:
+    "na chalale stored PIN app role theke lukano thakbe na ar counter handover PIN verify chara hobe (purono counter screen refresh korte hobe)",
+  shopScopedFulfilmentReady:
+    "na chalale je staff platform rank + nijer dokan dutoi dhoren, tar dokan theke Confirm/Preparing/Ready 503 dibe (migration na chalale purono platform entry-i lagbe)",
+  financeSelfDealingReady:
+    "na chalale ekjon Admin nijer Rider/dokan-er taka nijei approve/settle korte parbe",
 };
 
 /** All of them, in parallel — one round trip each. */
@@ -171,6 +244,14 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     deliveryFailedColumn,
     paymentVerifierColumn,
     reviewFitColumn,
+    financeBoundaryRpc,
+    vendorPermissionsColumn,
+    walletReadRpc,
+    riderControlAudit,
+    staffRoleAudit,
+    orderPinTable,
+    vendorAdvanceRpc,
+    selfFinanceRpc,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -190,6 +271,16 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     columnReady(db, "orders", "delivery_failed_at"),
     columnReady(db, "shops", "payment_verifier"),
     columnReady(db, "reviews", "fit"),
+    // 2026-10-25 → 27 permission work. Each probe names the artefact the
+    // migration adds; argument-null calls fail closed inside the function.
+    rpcReady(db, "ps_can_manage_finance"),
+    columnReady(db, "vendor_users", "permissions"),
+    rpcReady(db, "ps_read_riders"),
+    tableReady(db, "rider_control_audit"),
+    tableReady(db, "staff_role_audit"),
+    tableReady(db, "order_operations"),
+    rpcReady(db, "ps_vendor_advance_order", { p_order_id: null, p_to: null, p_note: null }),
+    rpcReady(db, "ps_guard_self_finance", { p_rider_id: null }),
   ]);
 
   return {
@@ -219,6 +310,14 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // it (the review insert retries without the column); the fit bar just
     // never has data to show.
     reviewFitReady: reviewFitColumn,
+    financeBoundaryReady: financeBoundaryRpc,
+    delegatedStaffReady: vendorPermissionsColumn,
+    riderWalletPrivacyReady: walletReadRpc,
+    riderControlsReady: riderControlAudit.ready,
+    staffRoleReady: staffRoleAudit.ready,
+    orderPinReady: orderPinTable.ready,
+    shopScopedFulfilmentReady: vendorAdvanceRpc,
+    financeSelfDealingReady: selfFinanceRpc,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,

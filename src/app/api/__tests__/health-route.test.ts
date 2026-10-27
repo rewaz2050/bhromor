@@ -29,6 +29,8 @@ const state = vi.hoisted(() => ({
    * PostgREST does when the migration has not run.
    */
   missing: new Set<string>(),
+  /** RPCs PostgREST should answer PGRST202 for (the permission-batch probes). */
+  missingFns: new Set<string>(),
 }));
 
 vi.mock("@/lib/cron", () => ({
@@ -93,19 +95,35 @@ const table = (name?: string) => {
   return chain;
 };
 
-vi.mock("@/lib/supabase-server", () => ({
-  getSupabaseServer: async () => ({ from: table }),
-  getSupabaseService: () => ({
-    from: (name: string) => table(name),
-    rpc: async (fn: string) => {
-      if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
-      if (fn === "ps_checkout_health") {
-        return state.repair ?? { data: null, error: { code: "PGRST202", message: "not found" } };
-      }
-      return { data: null, error: { code: "PGRST202" } };
-    },
-  }),
-}));
+vi.mock("@/lib/supabase-server", () => {
+  const permissionFns = new Set([
+    "ps_can_manage_finance",
+    "ps_read_riders",
+    "ps_vendor_advance_order",
+    "ps_guard_self_finance",
+  ]);
+  return {
+    getSupabaseServer: async () => ({ from: table }),
+    getSupabaseService: () => ({
+      from: (name: string) => table(name),
+      rpc: async (fn: string) => {
+        if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
+        if (fn === "ps_checkout_health") {
+          return state.repair ?? { data: null, error: { code: "PGRST202", message: "not found" } };
+        }
+        // The 2026-10-25 → 27 permission probes: installed unless the test says
+        // otherwise. A present function answers with data (or an authorization
+        // error); either way the route only needs "not PGRST202".
+        if (permissionFns.has(fn)) {
+          return state.missingFns.has(fn)
+            ? { data: null, error: { code: "PGRST202", message: `Could not find the function public.${fn}` } }
+            : { data: true, error: null };
+        }
+        return { data: null, error: { code: "PGRST202" } };
+      },
+    }),
+  };
+});
 
 import { GET } from "@/app/api/health/route";
 
@@ -123,6 +141,7 @@ beforeEach(() => {
   state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
   state.waOutbox = { ready: true, count: 0 };
   state.missing = new Set();
+  state.missingFns = new Set();
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -579,5 +598,91 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.checks.realtimeOffers).toBe(false);
     expect(body.nextSteps).toHaveLength(1);
     expect(body.nextSteps[0]).toContain("202609250007_realtime_offers.sql");
+  });
+});
+
+/**
+ * The permission batch (2026-10-25 → 27) ships ten migrations. A half-applied
+ * rollout must name the file to run instead of leaving staff to guess why a
+ * button answers 503.
+ */
+describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
+  const ROUND = [
+    "financeBoundaryReady",
+    "delegatedStaffReady",
+    "riderWalletPrivacyReady",
+    "riderControlsReady",
+    "staffRoleReady",
+    "orderPinReady",
+    "shopScopedFulfilmentReady",
+    "financeSelfDealingReady",
+  ] as const;
+
+  it("reports every probed permission file as applied", async () => {
+    const body = (await (await GET()).json()) as Health;
+    for (const key of ROUND) expect(body.checks[key], key).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("2026102"))).toBe(false);
+  });
+
+  it("does not let the permission flags gate `live`", async () => {
+    // `live` answers "can a customer place an order", so an unapplied
+    // permission file must show up as a next step, never as an outage.
+    state.repair = {
+      data: {
+        version: "202609160003",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+      },
+    };
+    state.missingFns = new Set(["ps_can_manage_finance", "ps_read_riders", "ps_vendor_advance_order", "ps_guard_self_finance"]);
+    state.missing = new Set(["order_operations", "staff_role_audit", "rider_control_audit"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.live).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("2026102"))).toBe(true);
+  });
+
+  it("names the finance-boundary file when its RPC is not installed", async () => {
+    state.missingFns = new Set(["ps_can_manage_finance"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.financeBoundaryReady).toBe(false);
+    expect(body.checks.shopScopedFulfilmentReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202610250001_finance_permission_boundary.sql")),
+    ).toBe(true);
+  });
+
+  it("names the PIN/privacy file when the operational order view is missing", async () => {
+    state.missing = new Set(["order_operations"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.orderPinReady).toBe(false);
+    expect(body.nextSteps.some((s) => s.includes("202610260001_order_pin_privacy_and_pickup.sql"))).toBe(
+      true,
+    );
+  });
+
+  it("names the staff-grant file when vendor_users.permissions is missing", async () => {
+    state.missing = new Set(["vendor_users.permissions"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.delegatedStaffReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250003_vendor_staff_permissions.sql"))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the ten files in rollout order in nextSteps", async () => {
+    state.missingFns = new Set(["ps_can_manage_finance", "ps_guard_self_finance"]);
+    state.missing = new Set(["order_operations", "staff_role_audit"]);
+    const body = (await (await GET()).json()) as Health;
+    const named = body.nextSteps.filter((s) => s.includes("2026102"));
+    expect(named[0]).toContain("202610250001_finance_permission_boundary.sql");
+    expect(named.at(-1)).toContain("202610260003_finance_self_dealing_boundary.sql");
+    expect(named.length).toBe(4);
   });
 });
