@@ -70,7 +70,10 @@ jobs:
   # No secrets or seeded database; actual clicks run in Chromium.
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The two Playwright passes take 15–20 min on a normal runner (measured:
+    # 15m23s pass, 20m16s hard timeout on the same specs). 30 leaves room for
+    # `next dev` compile jitter; the suite itself is unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
