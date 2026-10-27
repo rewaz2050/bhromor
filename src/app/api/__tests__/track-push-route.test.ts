@@ -11,6 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { trackTokenFor } from "@/lib/track-token";
 
 vi.mock("server-only", () => ({}));
 
@@ -83,7 +84,10 @@ const post = (body: unknown) =>
   new Request("http://x/api/track/push", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...(body as Record<string, unknown>),
+      t: trackTokenFor(String((body as Record<string, unknown>)?.id ?? ""), String((body as Record<string, unknown>)?.phone ?? "")),
+    }),
   });
 
 const subscription = {

@@ -7,7 +7,7 @@
  * closes the door to THIS shop.
  */
 import { vendorRoute, routeId } from "../../_lib";
-import { revokeVendorStaff } from "@/lib/db/vendor-staff";
+import { updateVendorStaffPermissions, revokeVendorStaff } from "@/lib/db/vendor-staff";
 import { apiJson } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -24,3 +24,8 @@ export const DELETE = vendorRoute(
   },
   { limit: 10 },
 );
+
+export const PATCH = vendorRoute("staff-permissions", async (ctx, request, context) => {
+  const staff = await updateVendorStaffPermissions(ctx.db, ctx.shopId, ctx.role, await routeId(context), await request.json().catch(() => null));
+  return apiJson({ staff });
+}, { limit: 20, ownerOnly: true });

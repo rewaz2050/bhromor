@@ -2,6 +2,8 @@
 
 import { routeId, vendorRoute } from "../../../_lib";
 
+import { vendorCan } from "@/lib/vendor-permissions";
+import { apiError } from "@/lib/api-response";
 import { advanceVendorOrder } from "@/lib/db/vendor";
 
 import { apiJson } from "@/lib/api-response";
@@ -20,6 +22,7 @@ export const POST = vendorRoute(
       to?: string;
     } | null;
     const to = (body?.to ?? "").trim().slice(0, 32);
+    if (to === "cancelled" && !vendorCan(ctx, "cancellation")) return apiError("The shop owner has not delegated cancellation.", 403);
     const order = await advanceVendorOrder(
       ctx.db,
       ctx.shopId,

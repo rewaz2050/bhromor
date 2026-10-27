@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown> }));
+const state = vi.hoisted(() => ({ role: "admin", hook: {} as Record<string, unknown> }));
+vi.mock("@/lib/use-staff-role",()=>({useStaffRole:()=>({checked:true,live:true,canManage:state.role==="admin"||state.role==="super_admin"})}));
 vi.mock("@/lib/use-dispatch-settings", () => ({ useDispatchSettings: () => state.hook }));
 vi.mock("@/components/admin/failed-proof-card", () => ({ default: () => null }));
 
@@ -13,7 +14,7 @@ const base = (over: Record<string, unknown> = {}) => ({
   save: vi.fn(async () => true), clearError: vi.fn(), ...over,
 });
 
-afterEach(cleanup);
+afterEach(()=>{cleanup();state.role="admin";});
 
 describe("<DispatchRulesPage>", () => {
   it("shows the saved values, cash in taka", () => {
@@ -64,4 +65,10 @@ describe("<DispatchRulesPage>", () => {
     expect(screen.getByText(/sign in করুন/)).toBeInTheDocument();
     expect(screen.queryByTestId("dispatch-form")).toBeNull();
   });
+});
+
+it("Manager cannot edit dispatch risk rules",()=>{
+ state.role="manager";state.hook=base();render(<DispatchRulesPage/>);
+ expect(screen.queryByTestId("dispatch-form")).not.toBeInTheDocument();
+ expect(screen.queryByRole("button",{name:"Save rules"})).not.toBeInTheDocument();
 });

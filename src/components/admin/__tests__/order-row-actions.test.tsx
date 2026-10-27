@@ -28,6 +28,12 @@ afterEach(() => {
 });
 
 describe("OrderRowActions", () => {
+  it("shows shop ownership instead of routine Confirm/Ready for marketplace orders", () => {
+    render(<OrderRowActions order={o({ shopId: "shop-1" })} advance={vi.fn()} cancel={vi.fn()} />);
+    expect(screen.getByText("Shop confirms and prepares this order.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirm order/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Ready/ })).toBeNull();
+  });
   it("pending: Confirm + Cancel, Confirm advances without a prompt", async () => {
     const advance = vi.fn(async () => true);
     const cancel = vi.fn(async () => true);
@@ -67,18 +73,11 @@ describe("OrderRowActions", () => {
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("a ready counter pickup offers 'Handed to customer' with a confirm and the hand-over note", async () => {
+  it("a ready counter pickup links to verification, never performs an unchecked handover", () => {
     const advance = vi.fn(async () => true);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<OrderRowActions order={o({ status: "ready-for-pickup", isPickup: true })} advance={advance} cancel={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /Handed to customer/ }));
-    await waitFor(() =>
-      expect(advance).toHaveBeenCalledWith(
-        "PS-20260918-0007",
-        "delivered",
-        expect.stringMatching(/Traffic Point/),
-      ),
-    );
+    expect(screen.getByRole("link",{name:"Verify pickup PIN"})).toHaveAttribute("href","/admin/orders/PS-20260918-0007");
+    expect(advance).not.toHaveBeenCalled();
   });
 
   it("delivered: a dash, nothing to press", () => {

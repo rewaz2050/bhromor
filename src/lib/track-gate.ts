@@ -5,9 +5,10 @@
  *   • order number (guessable) + the phone it was placed with, AND/OR
  *   • a signed `t` token from a link the server built (push/WA/receipt).
  *
- * A valid token IS full proof — links hand it out only after some other
- * proof (placement, push subscription, staff action) — so token callers get
- * the relaxed budget. The manual id+phone path keeps working but under the
+ * A valid token IS capability proof, so token callers get the relaxed budget.
+ * Manual lookup may show status, but must not return PINs or mint tokens;
+ * push enrollment separately requires tokenOk. Never put a customer capability
+ * into a rider response or a legacy phone-only push subscription. The manual id+phone path keeps working but under the
  * strict, durable (cross-instance) limit, because order numbers are
  * guessable and phones are often public.
  */

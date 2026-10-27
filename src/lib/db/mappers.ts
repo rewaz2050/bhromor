@@ -1,3 +1,4 @@
+import { vendorPermissions } from "../vendor-permissions";
 /**
  * Database → domain mappers. The UI already speaks `Product` / `Order` /
  * `DeliveryZone` / `Coupon` (src/lib/*); these pure functions translate
@@ -322,6 +323,7 @@ export const mapVendorStaff = (
   const role: VendorStaffRole = row.role === "owner" ? "owner" : "staff";
   return {
     userId: row.user_id,
+    permissions: vendorPermissions(row.permissions),
     name: (row.display_name ?? "").trim() || (role === "owner" ? "Shop owner" : "Shop staff"),
     handle: staffHandle(loginEmail),
     loginEmail: loginEmail ?? "",
@@ -368,8 +370,9 @@ export const mapRider = (row: DbRider): Rider => ({
   kyc: normalizeKyc(row.kyc),
   kycSubmittedAt: row.kyc_submitted_at ? Date.parse(row.kyc_submitted_at) : undefined,
   licenceExpiresOn: row.licence_expires_on ? String(row.licence_expires_on).slice(0, 10) : undefined,
-  // 202609300001 — pre-migration rows read as an empty wallet, never undefined.
-  earningsBalance: Number(row.earnings_balance ?? 0),
+  // SQL NULL is an intentional privacy redaction, not an empty wallet.
+  // Legacy rows with no column retain their historical zero default.
+  ...(row.earnings_balance === null ? {} : { earningsBalance: Number(row.earnings_balance ?? 0) }),
 });
 
 export interface OrderRowBundle {

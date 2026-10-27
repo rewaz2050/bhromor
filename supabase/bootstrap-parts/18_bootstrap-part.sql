@@ -1,4 +1,4 @@
--- PART 18/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 18/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: money audit trail (202610010006) ====
 -- Money audit trail (2026-10-01, audit item T).
 --
@@ -655,4 +655,3 @@ grant execute on function ps_admin_rider_overview(uuid) to authenticated, servic
 notify pgrst, 'reload schema';
 
 commit;
-

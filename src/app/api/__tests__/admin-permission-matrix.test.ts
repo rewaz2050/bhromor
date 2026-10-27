@@ -2,11 +2,9 @@
  * The admin permission matrix (audit 2026-10-09).
  *
  * `staffRoute` gates by role only when a route asks for it — `opts.roles`.
- * Everything else is open to any of manager / admin / super_admin, and RLS
- * cannot help: `ps_is_admin()` counts all three as staff, so the database
- * gives a manager the same reach as a super_admin. The route list below is
- * therefore the ONLY place that distinction lives, and nothing else in the
- * repo would notice if a `roles:` line was dropped in a refactor.
+ * Operational reads remain staff-wide. Finance approval/reporting also have
+ * independent SQL RPC/RLS boundaries (20261025); this scan protects the API
+ * layer against accidentally removing a role option during refactoring.
  *
  * Two layers of protection:
  *   1. a static scan that fails if any listed handler loses its gate;
@@ -109,14 +107,25 @@ const gatedVerbs = (file: string): string[] => {
 
 /** Money and access: what a manager must never reach. */
 const MUST_BE_ADMIN_ONLY: [file: string, verb: string, why: string][] = [
+  ["rider-disputes/[id]/route.ts", "POST", "decides financial disputes"],
+  ["orders/[id]/payment/route.ts", "POST", "verifies platform payments"],
+  ["dispatch-settings/route.ts", "PATCH", "changes cash cap and failed-delivery pay"],
   // --- money out / balances -------------------------------------------
+  ["riders/route.ts", "POST", "creates/edits rider identity and lifecycle"],
   ["riders/[id]/settle/route.ts", "POST", "hands a rider their cash"],
   ["riders/[id]/settle-claim/route.ts", "POST", "settles a rider's claim"],
   ["riders/[id]/adjust/route.ts", "POST", "edits a rider's balance"],
   ["payouts/route.ts", "POST", "pays a payout request"],
   ["money/route.ts", "POST", "writes rider pay settings"],
   ["money/route.ts", "PATCH", "writes rider pay settings"],
+  ["reports/best-sellers/route.ts", "GET", "reads revenue ranking"],
+  ["reports/funnel/route.ts", "GET", "reads sales/AOV analytics"],
   ["money/export/route.ts", "GET", "downloads the books"],
+  ["money/route.ts", "GET", "reads platform financial reports"],
+  ["money/audit/route.ts", "GET", "reads financial audit history"],
+  ["money/daily/route.ts", "GET", "reads reconciliation"],
+  ["payouts/route.ts", "GET", "reads payout queue and balances"],
+  ["riders/[id]/overview/route.ts", "GET", "reads full rider financial dossier"],
   // --- where customer money goes --------------------------------------
   ["settings/route.ts", "PATCH", "holds the shop's bKash/Nagad numbers"],
   // --- who gets a login ------------------------------------------------
@@ -150,9 +159,9 @@ describe("admin permission matrix — money and access are admin-only", () => {
     const files = routeFiles(ADMIN_ROOT);
     expect(files.length).toBeGreaterThan(60);
     expect(gatedVerbs("settings/route.ts")).toEqual(["PATCH"]);
-    // Reads stay open on purpose: a manager runs the queue and must see money.
+    // Operational settings remain readable; financial payout reports do not.
     expect(gatedVerbs("settings/route.ts")).not.toContain("GET");
-    expect(gatedVerbs("payouts/route.ts")).not.toContain("GET");
+    expect(gatedVerbs("payouts/route.ts")).toContain("GET");
   });
 });
 

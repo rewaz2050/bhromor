@@ -15,14 +15,22 @@ const state = vi.hoisted(() => ({
   pushed: [] as Record<string, unknown>[],
   fail: null as Error | null,
   announceFails: false,
+  staffRole: "admin",
 }));
 
 vi.mock("@/lib/rider-auth", () => ({ RiderAuthError: class extends Error {}, requireRider: async () => state.ctx }));
-vi.mock("@/lib/staff-auth", () => ({
-  StaffAuthError: class extends Error {},
-  requireStaff: async () => ({ user: { id: "staff-1" }, role: "admin", db: { who: "staff-db" } }),
-  requireStaffRole: async () => ({ user: { id: "staff-1" }, role: "admin", db: { who: "staff-db" } }),
-}));
+vi.mock("@/lib/staff-auth", () => {
+  class StaffAuthError extends Error { status = 403; }
+  const staff = () => ({ user: { id: "staff-1" }, role: state.staffRole, db: { who: "staff-db" } });
+  return {
+    StaffAuthError,
+    requireStaff: async () => staff(),
+    requireStaffRole: async (...roles: string[]) => {
+      if (!roles.includes(state.staffRole)) throw new StaffAuthError("Forbidden");
+      return staff();
+    },
+  };
+});
 vi.mock("@/lib/supabase-server", () => ({ getSupabaseService: () => ({ who: "service" }) }));
 vi.mock("@/lib/db/engagement", () => ({ notifyStaff: async (_db: unknown, n: Record<string, unknown>) => { state.staffNotices.push(n); } }));
 vi.mock("@/lib/rider-push", () => ({ pushRiderAnnouncement: async (_s: unknown, input: Record<string, unknown>) => { state.pushed.push(input); return 1; } }));
@@ -62,6 +70,7 @@ const post = (body: unknown) => new Request("http://localhost/x", { method: "POS
 const ctx = (id = ID) => ({ params: Promise.resolve({ id }) });
 
 beforeEach(() => {
+  state.staffRole = "admin";
   state.ctx = { rider: { id: "r1", name: "Rafiq" }, service: { who: "service" }, db: { who: "rider-db" }, user: { id: "u1" }, email: "r@x.test" };
   for (const k of ["raised", "resolved", "adjusted", "staffNotices", "announced", "pushed"] as const) (state[k] as unknown[]).length = 0;
   state.fail = null;
@@ -87,6 +96,14 @@ describe("POST /api/rider/disputes", () => {
 });
 
 describe("POST /api/admin/rider-disputes/:id", () => {
+  it("denies a manager before resolving, adjusting or notifying", async () => {
+    state.staffRole = "manager";
+    expect((await resolve(post({ decision: "approve", amountTaka: 40, note: "Fee missed" }), ctx())).status).toBe(403);
+    expect(state.resolved).toHaveLength(0);
+    expect(state.adjusted).toHaveLength(0);
+    expect(state.announced).toHaveLength(0);
+    expect(state.pushed).toHaveLength(0);
+  });
   it("decides on the STAFF client and tells the rider (inbox + push) what happened to their money", async () => {
     const res = await resolve(post({ decision: "approve", amountTaka: 40, note: "Fee missed" }), ctx());
     expect(res.status).toBe(200);

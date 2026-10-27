@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSyncExternalStore } from "react";
+import { canReadAdminFinance, isAdminFinancePath } from "@/lib/admin-finance-access";
 import LogoMark from "@/components/logo-mark";
 import Drawer from "@/components/ui/drawer";
 import { useNotifications } from "@/lib/use-notifications";
@@ -275,7 +276,13 @@ export default function AdminGate({
               />
             </div>
           ) : null}
-          {children}
+          {isAdminFinancePath(pathname) && !(staffLive.checked && staffLive.live && canReadAdminFinance(staffLive.role)) ? (
+            <section className="rounded-xl bg-paper p-5 ring-1 ring-line" role="status">
+              <h1 className="text-lg font-semibold">Admin access required</h1>
+              <p className="mt-2 text-sm text-ink/70">Financial reports and full rider financial dossiers are available to Admin and Super Admin only.</p>
+              <p className="mt-3 text-sm"><Link href="/admin/riders" className="underline">Rider operations</Link> · <Link href="/admin/riders/scorecard" className="underline">Operational scorecard / COD risk</Link></p>
+            </section>
+          ) : children}
         </main>
       </div>
     </div>

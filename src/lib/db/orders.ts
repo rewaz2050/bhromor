@@ -854,7 +854,7 @@ const RIDER_VISIBLE_STATUSES = new Set(["courier-assigned", "out-for-delivery", 
 export const toDomainMany = async (
   db: SupabaseClient,
   orders: readonly DbOrder[],
-  opts?: { slim?: boolean },
+  opts?: { slim?: boolean; customerView?: boolean },
 ): Promise<(Order | null)[]> => {
   if (orders.length === 0) return [];
   // Slim feeds (rider jobs, dispatch board — both poll every 15 s) need
@@ -1020,11 +1020,10 @@ export const toDomainMany = async (
       products,
     });
     if (!domain) return null;
-    if (order.delivery_code) domain.deliveryCode = order.delivery_code;
-    // Security 2026-10-14 (H3): precompute the signed /track token so every
-    // link builder (push, WA, receipts) can hand it out without touching the
-    // HMAC key. Empty when there is no phone to sign.
-    domain.trackToken = trackTokenFor(domain.id, order.customer_phone ?? "");
+    if (opts?.customerView && order.delivery_code) domain.deliveryCode = order.delivery_code;
+    // Only the service-backed checkout/tracking customer projection may mint
+    // a PIN capability. Operational mapping never supplies this option.
+    if (opts?.customerView) domain.trackToken = trackTokenFor(domain.id, order.customer_phone ?? "");
 
     if (!order.is_return) {
       const c = latestChild.get(order.id);
@@ -1061,7 +1060,8 @@ export const toDomainMany = async (
 export const toDomain = async (
   db: SupabaseClient,
   order: DbOrder,
-): Promise<Order | null> => (await toDomainMany(db, [order]))[0] ?? null;
+  opts?: { customerView?: boolean },
+): Promise<Order | null> => (await toDomainMany(db, [order], opts))[0] ?? null;
 
 const findLiveOrderById = async (
   db: SupabaseClient,
@@ -1072,7 +1072,7 @@ const findLiveOrderById = async (
   if (error || !data) return null;
   const order = data as DbOrder;
   if (normalizePhone(order.customer_phone) !== normalizePhone(phone)) return null;
-  return toDomain(db, order);
+  return toDomain(db, order, { customerView: true });
 };
 
 /**
@@ -1099,5 +1099,5 @@ export async function findLiveOrder(
   ) {
     return null;
   }
-  return toDomain(db, order);
+  return toDomain(db, order, { customerView: true });
 }

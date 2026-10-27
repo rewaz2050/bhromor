@@ -11,11 +11,18 @@ vi.mock("server-only", () => ({}));
 const state = vi.hoisted(() => ({
   user: { id: "u-1", email: "shop@example.com" } as { id: string; email: string } | null,
   rows: {} as Record<string, unknown>,
+  rpcError: null as { code: string; message: string } | null,
 }));
 
 vi.mock("../supabase-server", () => ({
   getSupabaseServer: async () => ({
     auth: { getUser: async () => ({ data: { user: state.user }, error: null }) },
+    rpc: (name: string) => {
+      if (name !== "ps_read_riders") throw new Error("Unexpected RPC");
+      const builder = { eq: () => builder, single: async () => state.rpcError ? { data: null, error: state.rpcError } : state.rows.riders
+        ? { data: state.rows.riders, error: null } : { data: null, error: { message: "0 rows" } } };
+      return builder;
+    },
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       for (const op of ["select", "eq"]) builder[op] = () => builder;
@@ -51,6 +58,7 @@ const riderRow = (status: string) => ({
 beforeEach(() => {
   state.user = { id: "u-1", email: "shop@example.com" };
   state.rows = {};
+  state.rpcError = null;
 });
 
 describe("requireVendor after apply = sign up", () => {
@@ -159,4 +167,9 @@ describe("requireRider after apply = sign up", () => {
     expect(ctx.rider.kyc).toEqual({ nid_front: "https://res.cloudinary.com/demo/image/upload/v1/a.jpg" });
     expect(ctx.rider.kycSubmittedAt).toBeUndefined();
   });
+});
+
+it("fails closed with retryable 503, not no-rider denial, when guarded projection is not installed", async () => {
+  state.rpcError = { code: "PGRST202", message: "ps_read_riders missing" };
+  await expect(requireRider()).rejects.toMatchObject({ status: 503 });
 });

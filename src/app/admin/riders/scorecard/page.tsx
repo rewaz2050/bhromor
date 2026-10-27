@@ -8,6 +8,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import AdminOnly from "@/components/admin/admin-only";
 import { formatBdt } from "@/lib/format";
 import { AUTO_SUSPEND, type Grade } from "@/lib/rider-quality";
 import { useRiderScorecards } from "@/lib/use-rider-scorecards";
@@ -96,6 +97,7 @@ export default function RiderScorecardsPage() {
                 <li>{AUTO_SUSPEND.minRatings}+ রেটিং-এ গড় {AUTO_SUSPEND.ratingBelow}-এর নিচে</li>
               </ul>
             </div>
+            <AdminOnly note="Only Admin or Super Admin may change the auto-suspend policy.">
             <button
               type="button"
               role="switch"
@@ -110,6 +112,7 @@ export default function RiderScorecardsPage() {
             >
               {autoSuspend ? "চালু — বন্ধ করুন" : "বন্ধ — চালু করুন"}
             </button>
+            </AdminOnly>
           </div>
           {atRisk > 0 && (
             <p data-testid="at-risk" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-900 ring-1 ring-rose-200">

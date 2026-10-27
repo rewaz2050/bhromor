@@ -6,12 +6,10 @@
  *   DELETE — { endpoint } → forget this device
  *
  * Public by necessity (shoppers are guests — there is no session to gate on),
- * so it repeats the tracker's own ownership proof: the request must carry an
- * order number AND that order's phone number. Consequence worth stating: the
- * only way to subscribe is to already be able to open someone's tracker,
- * which is exactly the number + id the shopper typed at checkout. A leaked
- * endpoint alone cannot subscribe anything, and DELETE only ever removes the
- * exact endpoint the caller's browser already holds.
+ * so enrollment requires the order number, its matching phone AND the signed
+ * capability supplied by the confirmation link. Operational actors know order
+ * contacts; those contacts alone must not enroll them as customer devices.
+ * DELETE only ever removes the exact endpoint the browser already holds.
  *
  * The track page proves the order exists; this route never reveals whether
  * the pair matched (404 wording is the tracker's own).
@@ -163,6 +161,11 @@ export async function POST(request: Request) {
         "No order found — double-check the order ID and the phone number you ordered with.",
         404,
       );
+    }
+    // Push devices receive customer links. Contact knowledge alone must not
+    // enroll an operational actor's browser under the customer's phone.
+    if (!gate.tokenOk) {
+      return apiError("Open the tracking link from your order confirmation to turn on notifications.", 403);
     }
     const saved = await saveCustomerPushSubscription(db, {
       endpoint: body.endpoint,

@@ -84,7 +84,7 @@ const fakeDb = (): SupabaseClient =>
       const call: Call = { table, filters: [] };
       state.calls.push(call);
       switch (table) {
-        case "orders":
+        case "order_operations":
           return chain(call, state.orders);
         case "delivery_zones":
           return chain(call, [
@@ -108,7 +108,7 @@ describe("listOrders pagination", () => {
   it("asks for limit+1 rows and hands back a cursor when an older page exists", async () => {
     state.orders = [1, 2, 3, 4, 5].map(orderRow);
     const page = await listOrders(fakeDb(), { limit: 3 });
-    const ordersCall = state.calls.find((c) => c.table === "orders");
+    const ordersCall = state.calls.find((c) => c.table === "order_operations");
     expect(ordersCall?.limit).toBe(4);
     expect(page.orders.map((o) => o.id)).toEqual([
       "PS-20260916-0001",
@@ -136,7 +136,7 @@ describe("listOrders pagination", () => {
       id: "00000000-0000-4000-8000-000000000003",
     });
     await listOrders(fakeDb(), { limit: 3, cursor });
-    const ordersCall = state.calls.find((c) => c.table === "orders");
+    const ordersCall = state.calls.find((c) => c.table === "order_operations");
     expect(ordersCall?.filters).toContain(
       'or:created_at.lt."2026-09-16T10:00:03.000Z",and(created_at.eq."2026-09-16T10:00:03.000Z",id.lt.00000000-0000-4000-8000-000000000003)',
     );
@@ -172,7 +172,7 @@ describe("listOrders pagination", () => {
   it("clamps the page size and quotes the search pattern", async () => {
     state.orders = [];
     await listOrders(fakeDb(), { limit: 99999, q: 'rah"at,%_x' });
-    const ordersCall = state.calls.find((c) => c.table === "orders");
+    const ordersCall = state.calls.find((c) => c.table === "order_operations");
     expect(ordersCall?.limit).toBe(501);
     expect(ordersCall?.filters[0]).toBe(
       'or:order_no.ilike."%rahat,x%",customer_name.ilike."%rahat,x%",customer_phone.ilike."%rahat,x%"',

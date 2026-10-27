@@ -135,3 +135,80 @@ test('unauthenticated APIs deny real requests without fixture interception', asy
     const res=await request.get(path); expect([401,403]).toContain(res.status());
   }
 });
+
+// Least-privilege contracts: API fixtures are explicit; no real accounts or money.
+test('Manager direct finance navigation never mounts financial data requests', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page,path=>path==='/api/admin/me'?{staff:true,role:'manager',email:'manager@verify.invalid'}:undefined);
+  const financialRequests:string[]=[];
+  page.on('request',request=>{
+    const path=new URL(request.url()).pathname;
+    if(/^\/api\/admin\/(money|payouts|reports)(\/|$)/.test(path)||path.endsWith('/overview'))financialRequests.push(path);
+  });
+  await page.setViewportSize({width:390,height:844});
+  for(const path of ['/admin/money','/admin/payouts','/admin/payments','/admin/reports','/admin/riders/11111111-1111-4111-8111-111111111111']) {
+    await page.goto(path);
+    await expect(page.getByRole('heading',{name:'Admin access required'})).toBeVisible();
+    await fits(page);
+  }
+  expect(financialRequests).toEqual([]);
+});
+test('Manager rider board keeps operations but not lifecycle controls', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page,path=>path==='/api/admin/me'?{staff:true,role:'manager',email:'manager@verify.invalid'}:undefined);
+  await page.goto('/admin/riders');
+  await expect(page.getByText('Verification Rider',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'New rider',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Edit',exact:true})).toHaveCount(0);
+  await fits(page);
+});
+test('Admin rider board retains authorized intake and edit controls', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page);
+  await page.goto('/admin/riders');
+  await expect(page.getByRole('button',{name:'New rider',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
+});
+
+test('Traffic Point handover takes customer PIN input, never displays the expected code', async ({page}) => {
+  let status = 'ready-for-pickup';
+  let submitted: Record<string, unknown> | null = null;
+  await fixtures(page, (path, method, body) => {
+    if (path === '/api/admin/me') return {staff:true,role:'manager',email:'manager@verify.invalid'};
+    const pickup = {...order,status,isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+    if (path.endsWith('/advance') && method === 'POST') {
+      submitted=body;status='delivered';return {order:{...pickup,status}};
+    }
+  });
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`/admin/orders/${order.id}`);
+  const verify=page.getByRole('button',{name:'Verify PIN & hand over'});
+  await expect(verify).toBeDisabled();
+  await expect(page.getByText('PIN verified at handover — never displayed')).toBeVisible();
+  await page.getByLabel('Customer PIN / কাস্টমারের PIN').fill('4821');
+  await verify.click();
+  await expect.poll(()=>submitted).toMatchObject({to:'delivered',pickupCode:'4821'});
+  expect(submitted).not.toHaveProperty('note');
+  expect(submitted).not.toHaveProperty('fulfilmentOverride');
+  await expect(verify).toHaveCount(0);
+  await fits(page);
+});
+
+test('customer tracking keeps receipt proof; manual lookup shows status without a PIN', async ({page}) => {
+  const lookups: string[]=[];
+  await fixtures(page);
+  await page.route('**/api/track?*',async route=>{
+    const url=new URL(route.request().url());lookups.push(url.href);
+    const signed=url.searchParams.get('t')==='receipt-proof';
+    await route.fulfill({json:{order:{...order,status:'out-for-delivery',...(signed?{deliveryCode:'4821',trackToken:'receipt-proof'}:{})}}});
+  });
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`/track?id=${order.id}&phone=${order.customer.phone}`);
+  await expect(page.getByText(/Order ID and phone alone do not reveal it|শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না/)).toBeVisible();
+  await page.goto(`/track?id=${order.id}&phone=${order.customer.phone}&t=receipt-proof`);
+  await expect(page.getByText(/Order ID and phone alone do not reveal it|শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না/)).toHaveCount(0);
+  await expect.poll(()=>lookups.some(url=>new URL(url).searchParams.get('t')==='receipt-proof')).toBe(true);
+  await fits(page);
+});

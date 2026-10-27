@@ -8,6 +8,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { vendorCan } from "@/lib/vendor-permissions";
 import { useSearchParams } from "next/navigation";
 import { useVendor } from "@/components/vendor/vendor-shell";
 import {
@@ -199,7 +200,7 @@ function Queue() {
                       href={`/vendor/orders/${encodeURIComponent(o.id)}`}
                       className="rounded-full bg-amber-100 px-3.5 py-1.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-200"
                     >
-                      Verify payment
+                      {me && vendorCan(me, "cashier") ? "Verify payment" : "Payment check pending"}
                     </Link>
                   )}
                   {action?.kind === "wait" && (

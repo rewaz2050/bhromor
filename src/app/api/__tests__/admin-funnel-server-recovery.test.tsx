@@ -6,10 +6,18 @@ const state = vi.hoisted(() => ({
   auth: vi.fn(),
   allowed: true,
 }));
-vi.mock("@/lib/staff-auth", async (original) => ({
-  ...(await original<typeof import("@/lib/staff-auth")>()),
-  requireStaff: state.auth,
-}));
+vi.mock("@/lib/staff-auth", async (original) => {
+  const actual = await original<typeof import("@/lib/staff-auth")>();
+  return {
+    ...actual,
+    requireStaff: state.auth,
+    requireStaffRole: async (...roles: string[]) => {
+      const staff = await state.auth();
+      if (!roles.includes(staff.role)) throw new actual.StaffAuthError("Admin access required", 403);
+      return staff;
+    },
+  };
+});
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: () => ({ allowed: state.allowed, retryAfterSec: 30 }),
 }));
@@ -64,7 +72,7 @@ beforeEach(() => {
   state.rpc.mockResolvedValue({ data: raw, error: null });
   state.auth.mockResolvedValue({
     user: { id: "staff-user" },
-    role: "manager",
+    role: "admin",
     db: { rpc: state.rpc },
   });
 });
@@ -201,3 +209,9 @@ it.each(["malformed success", "operational failure"])(
     expect(await screen.findByText(/No sessions recorded/)).toBeInTheDocument();
   },
 );
+
+it("rejects Manager revenue/AOV report before calling the reporting RPC", async () => {
+  state.auth.mockResolvedValue({ user: { id: "manager" }, role: "manager", db: { rpc: state.rpc } });
+  expect((await GET(request())).status).toBe(403);
+  expect(state.rpc).not.toHaveBeenCalled();
+});

@@ -5,7 +5,8 @@
  * on the way", "delivered — thank you") cancels less and reviews more. Every
  * message is prefilled (wa.me deep link, no API, no token) and honest: only
  * facts the order actually carries — id, total, payment state, rider name,
- * PIN, ETA and the customer's own track link.
+ * ETA and a status-only track link. Never copy the PIN or customer token,
+ * even if an old cached Order happens to contain either.
  *
  * The link only exists when the phone is a plausible BD mobile — a chat
  * button to nowhere is worse than none (same rule as the storefront).
@@ -38,10 +39,10 @@ const paymentLabel = (order: Order): string =>
 
 const trackLink = (order: Order): string =>
   absoluteUrl(
-    trackHrefWithToken(order.id, order.customer.phone, order.trackToken),
+    trackHrefWithToken(order.id, order.customer.phone),
   );
 
-const pinOf = (order: Order): string => order.deliveryCode ?? "";
+
 
 /** Which status updates make sense for this order right now. */
 export const applicableWaStatuses = (order: Order): WaStatusKind[] => {
@@ -67,10 +68,9 @@ export const statusWaMessage = (order: Order, kind: WaStatusKind): string => {
   const name = order.customer.name.trim();
   const total = formatBdt(order.total);
   const track = trackLink(order);
-  const pin = pinOf(order);
   const pay = paymentLabel(order);
   const prepaid = order.payment !== "cod";
-  const pinLine = pin ? ` দরজায় ৪-ডিজিট PIN ${pin} দেখান।` : "";
+  const pinLine = " পার্সেল হাতে পেলে নিজের কনফার্মেশনের PIN রাইডারকে বলবেন।";
   const payLine = prepaid
     ? `পেমেন্ট (${pay}) নেওয়া হয়েছে।`
     : `দরজায় ${total} (${pay}) পরিশোধ করবেন।`;
@@ -86,7 +86,7 @@ export const statusWaMessage = (order: Order, kind: WaStatusKind): string => {
     case "readyPickup":
       return [
         `${name}, আপনার অর্ডার ${order.id} প্রস্তুত — ${SUNAMGANJ_HUB} থেকে সংগ্রহ করুন।`,
-        `মোট ${total} (${pay})।${pin ? ` সংগ্রহের সময় PIN ${pin} বলুন।` : ""}`,
+        `মোট ${total} (${pay})। সংগ্রহের সময় নিজের কনফার্মেশনের PIN বলুন।`,
       ].join(" ");
     case "onTheWay": {
       const rider = order.rider?.name?.trim();

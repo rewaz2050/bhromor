@@ -131,6 +131,21 @@ describe("recordPayout — remittance (202610020013)", () => {
     const { db } = payoutDb({ earned: -50000, paid: 0, insertError: { message: "remittance exceeds what the shop owes" } });
     await expect(recordPayout(db, "u", { shopId: "s1", amountTaka: 100, method: "bkash", direction: "remit" })).rejects.toMatchObject({ status: 422 });
   });
+
+  it("refuses to record a payout for the recorder's own shop (202610260003)", async () => {
+    const { db } = payoutDb({
+      earned: 80000,
+      paid: 0,
+      insertError: { message: "forbidden: cannot record a payout for your own shop" },
+    });
+    await expect(
+      recordPayout(db, "owner-admin", { shopId: "s1", amountTaka: 100, method: "bkash" }),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining("another finance Admin"),
+    });
+  });
+
 });
 
 describe("shapeShopSettlement", () => {

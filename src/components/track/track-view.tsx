@@ -10,6 +10,7 @@ import {
   publicPhase,
   publicStepDone,
   type Order,
+  normalizePhone,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { clockTime } from "@/components/admin/order-ui";
@@ -111,6 +112,8 @@ export default function TrackView() {
   /** "আপনার শেষ অর্ডার" — remembered by the receipt on this device (P0 #5). */
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null);
   const autoLookedUp = useRef(false);
+  // Proof stays bound to its exact order+phone, never to editable form state.
+  const receiptProof = useRef<{ id: string; phone: string; token: string } | null>(null);
   // The shop's real WhatsApp number (ops settings) — the support button
   // renders only when it is configured, never a placeholder.
   const [contactNumber, setContactNumber] = useState<string | null>(null);
@@ -140,9 +143,17 @@ export default function TrackView() {
         setLookupFailed(false);
       }
       try {
-        const res = await fetch(
-          `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
-        );
+        const saved = readLastOrder();
+        const proof = receiptProof.current;
+        const samePair = (candidate: { id: string; phone: string }) =>
+          candidate.id.trim().toUpperCase() === id &&
+          normalizePhone(candidate.phone) === normalizePhone(ph);
+        const token = proof && samePair(proof)
+          ? proof.token
+          : saved && samePair(saved) ? saved.trackToken : undefined;
+        const query = new URLSearchParams({ id, phone: ph });
+        if (token) query.set("t", token);
+        const res = await fetch(`/api/track?${query}`);
         const data = (await res.json().catch(() => null)) as {
           order?: Order;
         } | null;
@@ -211,6 +222,8 @@ export default function TrackView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- URL → form prefill, once
     setOrderId(paramId.toUpperCase());
     if (paramPhone) {
+      const token = params.get("t")?.trim().slice(0, 64);
+      if (token) receiptProof.current = { id: paramId, phone: paramPhone, token };
       setPhone(paramPhone);
       void lookup(paramId, paramPhone);
     }

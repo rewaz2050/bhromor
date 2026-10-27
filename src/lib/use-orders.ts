@@ -160,13 +160,13 @@ export function useOrders(options: UseOrdersOptions = {}) {
   usePoll(pollRefresh, ORDERS_POLL_MS, live);
 
   const advance = useCallback(
-    async (id: string, to: OrderStatus, note?: string): Promise<boolean> => {
+    async (id: string, to: OrderStatus, note?: string, fulfilmentOverride?: boolean, pickupCode?: string): Promise<boolean> => {
       const state = lifecycle.current;
       if (!live || !state.live || state.key !== queryKey) return false;
       const epoch = state.epoch;
       const current = () => state.live && state.key === queryKey && state.epoch === epoch;
       try {
-        await apiSend<{ order: Order }>(`/api/admin/orders/${encodeURIComponent(id)}/advance`, "POST", { to, note });
+        await apiSend<{ order: Order }>(`/api/admin/orders/${encodeURIComponent(id)}/advance`, "POST", { to, note, ...(fulfilmentOverride ? { fulfilmentOverride: true } : {}), ...(pickupCode ? { pickupCode } : {}) });
         if (current()) { setError(null); await refresh(); }
         return true;
       } catch (err) {
@@ -257,8 +257,10 @@ export function useOrder(orderNo: string) {
     if (!fromList) await fetchDetail();
     return ok;
   }, [fetchDetail, fromList, refreshList]);
-  const advance = useCallback(async (id: string, to: OrderStatus, note?: string): Promise<boolean> => {
-    const ok = await advanceList(id, to, note);
+  const advance = useCallback(async (id: string, to: OrderStatus, note?: string, fulfilmentOverride?: boolean, pickupCode?: string): Promise<boolean> => {
+    const ok = pickupCode === undefined
+      ? await advanceList(id, to, note, fulfilmentOverride)
+      : await advanceList(id, to, note, fulfilmentOverride, pickupCode);
     if (!fromList) await fetchDetail();
     return ok;
   }, [advanceList, fetchDetail, fromList]);

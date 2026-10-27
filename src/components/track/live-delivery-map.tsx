@@ -285,7 +285,8 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-center gap-2">
+            {order.deliveryCode ? (
+              <div className="mt-3 flex items-center justify-center gap-2">
               {deliveryCode.split("").map((digit, index) => (
                 <span
                   key={index}
@@ -294,11 +295,20 @@ export function LiveDeliveryMap({ order }: LiveDeliveryMapProps) {
                   {digit}
                 </span>
               ))}
-            </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-ink-soft">
+                {lang === "bn"
+                  ? "PIN দেখতে অর্ডার কনফার্মেশনের ট্র্যাকিং লিংক খুলুন, অথবা এই ডিভাইসে সংরক্ষিত শেষ অর্ডার ব্যবহার করুন। শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না।"
+                  : "Open the tracking link from your order confirmation, or use the last order saved on this device, to see your PIN. Order ID and phone alone do not reveal it."}
+              </p>
+            )}
 
-            <p className="mt-2.5 text-center text-[11px] font-medium text-emerald-700">
-              {t("checkout.liveNoSmsTrust")}
-            </p>
+            {order.deliveryCode ? (
+              <p className="mt-2.5 text-center text-[11px] font-medium text-emerald-700">
+                {t("checkout.liveNoSmsTrust")}
+              </p>
+            ) : null}
           </div>
 
           {/* Assigned Rider Info */}

@@ -513,6 +513,13 @@ export const decideRiderPayout = async (
   });
   if (error) {
     const message = (error.message ?? "").toLowerCase();
+    // 202610260003: the approver cannot decide their own payout.
+    if (message.includes("cannot decide your own money")) {
+      throw new AdminInputError(
+        "This payout belongs to your own Rider account — another finance Admin must decide it.",
+        403,
+      );
+    }
     if (message.includes("forbidden")) throw new AdminInputError("Not allowed.", 403);
     if (message.includes("not found")) throw new AdminInputError("That payout request no longer exists.", 404);
     if (message.includes("already")) {

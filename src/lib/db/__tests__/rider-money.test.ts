@@ -380,6 +380,15 @@ describe("admin money", () => {
     expect(updated).toEqual({ decided_by_email: "owner@prosanti.test" });
   });
 
+  it("refuses a decision on the approver's own Rider account (202610260003)", async () => {
+    const svc = client({
+      rpc: () => ({ data: null, error: { message: "forbidden: cannot decide your own money" } }),
+    });
+    await expect(
+      decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
+    ).rejects.toMatchObject({ status: 403, message: expect.stringContaining("your own Rider") });
+  });
+
   it("refuses a second decision with a 409", async () => {
     const svc = client({
       rpc: () => ({ data: null, error: { message: "payout already paid" } }),

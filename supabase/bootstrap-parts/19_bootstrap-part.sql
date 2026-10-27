@@ -1,4 +1,4 @@
--- PART 19/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 19/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: dispatch rules as settings (202610020003) ====
 -- ============================================================================
 -- J (2026-10-02) — DISPATCH RULES AS SETTINGS: cash cap, offer window, attempts.
@@ -838,4 +838,3 @@ create index if not exists idx_delivery_ratings_created on delivery_ratings (cre
 notify pgrst, 'reload schema';
 
 commit;
-

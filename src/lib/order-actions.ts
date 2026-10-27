@@ -8,6 +8,7 @@
  */
 
 import { ACTION_LABEL, type Order, type OrderStatus } from "./orders";
+import { isShopFulfilment } from "./shop-fulfilment";
 import { paymentSummary } from "./payment-labels";
 
 export type ActorRole = "staff" | "vendor";
@@ -38,7 +39,7 @@ export type PrimaryAction =
 
 type ActionOrder = Pick<
   Order,
-  "id" | "status" | "payment" | "paymentStatus" | "isPickup" | "isReturn"
+  "id" | "status" | "payment" | "paymentStatus" | "isPickup" | "isReturn" | "shopId"
 >;
 
 export const PICKUP_HANDOVER_LABEL = "Handed to customer";
@@ -59,6 +60,10 @@ export const primaryAction = (
     return role === "staff"
       ? { kind: "wait", reason: "Return leg — decide it on the order page." }
       : { kind: "wait", reason: "Return leg — handled by PROSANTI staff." };
+  }
+  if (role === "staff" && isShopFulfilment(order, "confirmed")
+      && ["pending", "confirmed", "preparing"].includes(order.status)) {
+    return { kind: "wait", reason: "Shop confirms and prepares this order." };
   }
   const pay = paymentSummary(order);
 

@@ -77,7 +77,7 @@ export interface VendorShopPatch {
 
 /**
  * Whitelist a vendor shop PATCH. Owners may edit profile-ish fields;
- * staff may only flip the open sign + prep time. Platform-owned fields
+ * staff grants do not include settings. Platform-owned fields
  * (status/commission/zones/slug) never pass — the DB trigger guards them
  * too, but the API shouldn't even try.
  */
@@ -94,15 +94,7 @@ export const vendorShopPatch = (
       (patch as Record<string, unknown>)[key] = v;
     }
   };
-  if (role === "staff") {
-    // B6: booking a holiday is the OWNER's call — it stops the shop's own
-    // sales for days, which is not a thing to leave to a staff login.
-    const allowed = new Set(["is_open", "isOpen", "prep_minutes", "prepMinutes"]);
-    const extra = Object.keys(body).filter((k) => !allowed.has(k));
-    if (extra.length > 0) {
-      throw new AdminInputError("Only the shop owner can edit that.", 403);
-    }
-  }
+  if (role !== "owner") throw new AdminInputError("Only the shop owner can edit shop settings.", 403);
   take("name", body.name === undefined ? undefined : clean(body.name, 80));
   take("tagline", body.tagline === undefined ? undefined : clean(body.tagline, 200));
   take(
@@ -199,7 +191,7 @@ export async function listVendorOrders(
   status?: string,
 ): Promise<Order[]> {
   let query = db
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false })
@@ -218,7 +210,7 @@ export async function getVendorOrderDetail(
   orderNo: string,
 ): Promise<Order> {
   const { data, error } = await db
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .eq("shop_id", shopId)
     .eq("order_no", orderNo.trim().toUpperCase())
@@ -281,14 +273,18 @@ export async function advanceVendorOrder(
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const orderId = (data as { id: string }).id;
-  let { error: rpcError } = await db.rpc("ps_advance_order", {
+  // Shop-lane wrapper, never the platform entry point. That entry treats an
+  // Admin/Super Admin/Manager as platform staff and can block (or demand an
+  // emergency reason for) their independent own-shop membership.
+  let { error: rpcError } = await db.rpc("ps_vendor_advance_order", {
     p_order_id: orderId,
     p_to: to,
     p_note: null,
   });
   if (rpcError && isPreTwoTapRefusal(rpcError, to)) {
-    // Database predates 202609170001 — same two-step fallback as staff.
-    rpcError = await legacyTwoStepReady(db, orderId, null);
+    // Database predates 202609170001 — same two-step fallback as staff, but
+    // still through the shop-scoped wrapper.
+    rpcError = await legacyTwoStepReady(db, orderId, null, "ps_vendor_advance_order");
   }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
@@ -305,7 +301,7 @@ export async function advanceVendorOrder(
     // its SQLSTATE and named to the vendor as a repair, not a bare generic.
     const gap = orderFlowSchemaGap(rpcError);
     console.error(
-      "[vendor] ps_advance_order failed",
+      "[vendor] ps_vendor_advance_order failed",
       JSON.stringify({
         orderNo,
         to,
@@ -315,8 +311,17 @@ export async function advanceVendorOrder(
       }),
     );
     if (gap) {
+      // Name the new migration only when the shop-lane RPC itself is absent.
+      // A different missing column/function must not be misdiagnosed as this
+      // migration being unapplied.
+      const missingShopLane =
+        rpcError.code === "PGRST202" ||
+        rpcError.code === "42883" ||
+        /ps_vendor_advance_order.*does not exist/i.test(rpcError.message ?? "");
       throw new AdminInputError(
-        "The database refused this change — the order was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
+        missingShopLane
+          ? "The database refused this change — the order was NOT updated. Apply supabase/migrations/202610260002_scoped_shop_fulfilment.sql, then retry."
+          : "The database refused this change — the order was NOT updated. Ask PROSANTI staff to apply the pending order repair.",
         503,
       );
     }

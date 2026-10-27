@@ -1,4 +1,4 @@
--- PART 7/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 7/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- MIGRATION 25/25 — bKash/Nagad wallet payments, no merchant account (P1 #8)  (source: supabase/migrations/202609140004_wallet_payments.sql)
 -- ===========================================================================
@@ -611,5 +611,3 @@ create trigger trg_live_sessions_touch
   for each row execute function ps_touch_updated();
 
 commit;
-
-

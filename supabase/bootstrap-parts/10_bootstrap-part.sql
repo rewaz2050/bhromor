@@ -1,4 +1,4 @@
--- PART 10/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 10/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Admin repair: order status updates, payment verify, rider guard (202609160003) ====
 -- ============================================================================
 -- Checkout repair 3 (2026-09-16): NO order status could be changed, no
@@ -772,5 +772,3 @@ create index if not exists idx_wa_outbox_order
   on public.wa_outbox (order_no, created_at desc);
 alter table public.wa_outbox enable row level security;
 commit;
-
-

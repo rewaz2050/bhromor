@@ -1,4 +1,4 @@
--- PART 22/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 22/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: weekly streak bonus (202610020017) ====
 -- ============================================================================
 -- Weekly STREAK bonus (2026-10-03) — OFF until staff set weeks and an amount.
@@ -392,3 +392,367 @@ notify pgrst, 'reload schema';
 
 commit;
 
+-- ===== MIRROR: supabase/migrations/202610140002_rpc_grant_hardening.sql =====
+-- ============================================================================
+-- RPC grant hardening 2 (2026-10-14, round 3): the anon key keeps EXECUTE on
+-- nothing it does not need.
+-- ============================================================================
+-- Found while re-sweeping after the 2026-10-14 audit fixes. Supabase grants
+-- EXECUTE on every new function to PUBLIC by default, so functions created
+-- after security repair 4 (202609160004) drifted back open. Through
+-- /rest/v1/rpc/... the PUBLIC anon key — which ships in every page — could
+-- still call, among others:
+--
+--   ps_place_multi_order        place multi-shop orders with attacker totals
+--   ps_purge_customer_sessions  wipe customer sessions
+--   ps_rate_limit_hit           poison other people's rate-limit buckets
+--   ps_auto_dispatch_ready_order / ps_broadcast_order / ps_next_eligible_rider
+--                               churn the dispatch board
+--   ps_award_incentives / ps_award_order_bonuses / ps_register_rider_referral
+--                               mint rider money & referrals
+--   ps_expire_shop_vacation / ps_block_expired_licence_online
+--                               flip shop/rider state
+--   ps_offer_order / ps_rider_accept / ps_rider_reject
+--                               manipulate delivery offers
+--
+-- Rule applied here (idempotent, safe to re-run):
+--   1. ANON + PUBLIC lose EXECUTE on EVERYTHING except a small allowlist of
+--      read-only helpers and RLS policy functions (those run as the querying
+--      role and must stay callable by anon).
+--   2. A service-only group additionally loses EXECUTE from `authenticated`
+--      (every call site in the codebase reaches them through the service-role
+--      client; staff/rider session RPCs are the ones granted to
+--      `authenticated` in their own migrations and keep those grants).
+--   3. Trigger functions keep `authenticated` (customer review inserts fire
+--      review triggers as the inserting customer) but lose anon like all.
+--
+-- Nothing here changes a feature: anon never legitimately called any RPC
+-- (verified by grep over src/ — the browser makes zero `.rpc(` calls).
+-- ============================================================================
+
+begin;
+
+-- ----------------------------------------------------------------------------
+-- 1+2. Grant sweep by NAME (no signature guessing). Re-runnable.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  fn record;
+  service_only text[] := array[
+    'ps_place_order', 'ps_place_multi_order', 'ps_use_coupon',
+    'ps_book_delivery_slot', 'ps_return_action', 'ps_create_return_request',
+    'ps_assign_batch_to_rider', 'ps_credit_referrer', 'ps_expire_stale_offers',
+    'ps_shop_rating_recompute',                                  -- from repair 4
+    'ps_rate_limit_hit', 'ps_purge_customer_sessions',
+    'ps_auto_dispatch_ready_order', 'ps_broadcast_order',
+    'ps_next_eligible_rider', 'ps_dispatch_extras_audit',
+    'ps_expire_shop_vacation', 'ps_block_expired_licence_online',
+    'ps_award_incentives', 'ps_award_order_bonuses',
+    'ps_register_rider_referral', 'ps_rider_referral_code',
+    'ps_offer_order', 'ps_set_order_delivery_code'
+    -- NOT here (user sessions call them; blanket step keeps only anon out):
+    --   ps_rider_accept/ps_rider_reject (rider session), ps_advance_order,
+    --   ps_verify_payment, ps_cancel_assignment, ps_admin_*, ps_rider_*,
+    --   ps_funnel_report (staff session), ps_write_shop_ledger (triggers on
+    --   admin status changes run as the authenticated updater).
+  ];
+  anon_keep text[] := array[
+    -- RLS policy helpers (policies run as the querying role):
+    'ps_is_admin', 'ps_rider_id', 'ps_vendor_shop', 'ps_vendor_role',
+    'ps_actor_email', 'ps_public_customer',
+    -- pure read helpers used in defaults/policies/UI probes:
+    'ps_setting_int', 'ps_haversine_km', 'ps_multi_order_max_shops',
+    'ps_vacation_max_days', 'ps_shop_on_vacation', 'ps_offer_ttl_seconds',
+    'ps_rider_cash_cap', 'ps_rider_load_limit', 'ps_shop_wallet_defaults',
+    'ps_shop_takes_wallet', 'ps_dynamic_eta', 'ps_return_eligible',
+    'ps_warranty_eligible', 'ps_failed_delivery_fee', 'ps_checkout_health',
+    'ps_track_rider_load', 'ps_rider_on_shift', 'ps_ledger_net_collected',
+    'ps_orders_renet_collected', 'ps_shop_wallet_collected',
+    'ps_shop_balance_totals', 'ps_rider_scorecards_raw',
+    'ps_incentive_settings_audit', 'ps_audit_shop_commission'
+  ];
+begin
+  -- (2) service-only: no role but service_role/owner may execute.
+  for fn in
+    select p.oid::regprocedure as sig
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = any (service_only)
+      and p.prorettype <> 'trigger'::regtype
+  loop
+    execute format('revoke all on function public.%s from public, anon, authenticated', fn.sig);
+    execute format('grant execute on function public.%s to service_role', fn.sig);
+  end loop;
+
+  -- (1) everything else: anon loses EXECUTE unless on the keep list.
+  for fn in
+    select p.oid::regprocedure as sig
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname like 'ps\_%'
+      and p.proname <> all (anon_keep)
+      and p.proname <> all (service_only)   -- already handled above
+  loop
+    execute format('revoke execute on function public.%s from public, anon', fn.sig);
+  end loop;
+end $$;
+
+commit;
+
+-- ===== MIRROR: supabase/migrations/202610250001_finance_permission_boundary.sql =====
+-- Finance approval is NOT ordinary operational staff access.
+-- Keep ps_is_admin() unchanged for dispatch/reads. Enforce the narrower
+-- boundary in actual RPC bodies and direct table writes, not only Next APIs.
+-- Apply after the existing migrations; repeat-safe and transactional.
+begin;
+
+create or replace function public.ps_can_manage_finance()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.admin_users
+    where id = auth.uid() and role in ('admin', 'super_admin')
+  );
+$$;
+revoke all on function public.ps_can_manage_finance() from public, anon;
+grant execute on function public.ps_can_manage_finance() to authenticated, service_role;
+
+-- Preserve the installed accounting implementation (including fixes), changing
+-- ONLY its explicit entry guard. Fail closed on an unexpected/missing body;
+-- do not silently report a partially protected migration as successful.
+do $$
+declare
+  signature text;
+  fn regprocedure;
+  definition text;
+  old_guard text := 'if not (select ps_is_admin()) then';
+  new_guard text := 'if not (select public.ps_can_manage_finance()) then';
+begin
+  foreach signature in array array[
+    'public.ps_admin_settle_rider(uuid,text,text,boolean)',
+    'public.ps_admin_reject_settle(uuid,text)',
+    'public.ps_admin_decide_rider_payout(uuid,text,text,text)',
+    'public.ps_admin_adjust_rider(uuid,bigint,text)',
+    'public.ps_admin_resolve_dispute(uuid,text,bigint,text)'
+  ] loop
+    fn := to_regprocedure(signature);
+    if fn is null then
+      raise exception 'Finance permission prerequisite missing: %', signature;
+    end if;
+    definition := pg_get_functiondef(fn);
+    if position(old_guard in definition) > 0 then
+      definition := replace(definition, old_guard, new_guard);
+      execute definition;
+    elsif position(new_guard in definition) = 0 then
+      raise exception 'Unexpected finance RPC guard: %', signature;
+    end if;
+    execute format('revoke all on function %s from public, anon', fn);
+    execute format('grant execute on function %s to authenticated, service_role', fn);
+  end loop;
+end $$;
+
+-- Platform wallet verification is financial authority. The existing shop
+-- verifier branch and per-shop receiver policy remain intact.
+do $$
+declare definition text;
+begin
+  definition := pg_get_functiondef('public.ps_verify_payment(uuid,text,text)'::regprocedure);
+  if position('v_is_admin := (select ps_is_admin());' in definition) > 0 then
+    execute replace(definition, 'v_is_admin := (select ps_is_admin());',
+      'v_is_admin := (select public.ps_can_manage_finance());');
+  elsif position('v_is_admin := (select public.ps_can_manage_finance());' in definition) = 0 then
+    raise exception 'Unexpected payment verifier guard';
+  end if;
+end $$;
+
+-- Restrictive write policies intersect existing permissive policies; an old
+-- "admin all" policy can no longer let managers write these tables directly.
+-- Existing SELECT/own-rider/own-shop policies and definer accounting triggers
+-- remain unchanged. Tables with no permissive write policy remain RPC-only.
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'shop_ledger', 'shop_payouts', 'rider_settlements',
+    'rider_settle_claims', 'rider_payout_requests', 'rider_earnings', 'rider_disputes'
+  ] loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('drop policy if exists finance_insert_boundary on public.%I', table_name);
+    execute format('create policy finance_insert_boundary on public.%I as restrictive for insert to authenticated with check (public.ps_can_manage_finance())', table_name);
+    execute format('drop policy if exists finance_update_boundary on public.%I', table_name);
+    execute format('create policy finance_update_boundary on public.%I as restrictive for update to authenticated using (public.ps_can_manage_finance()) with check (public.ps_can_manage_finance())', table_name);
+    execute format('drop policy if exists finance_delete_boundary on public.%I', table_name);
+    execute format('create policy finance_delete_boundary on public.%I as restrictive for delete to authenticated using (public.ps_can_manage_finance())', table_name);
+  end loop;
+end $$;
+
+-- Parent deletion must not cascade-delete financial history for an operator.
+-- Existing permissive policies are retained, but manager deletes are narrowed.
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array['riders', 'shops', 'orders'] loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('drop policy if exists finance_parent_delete_boundary on public.%I', table_name);
+    execute format('create policy finance_parent_delete_boundary on public.%I as restrictive for delete to authenticated using (public.ps_can_manage_finance())', table_name);
+  end loop;
+end $$;
+
+-- Guard existing balance columns from direct authenticated table updates.
+-- INVOKER is essential: genuine SECURITY DEFINER delivery/accounting routines
+-- run as their trusted owner, and must still post automatic COD/earnings.
+create or replace function public.ps_guard_direct_rider_finance()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if current_user = 'authenticated' and not public.ps_can_manage_finance()
+     and ((tg_op = 'INSERT' and (coalesce(new.cash_in_hand, 0) <> 0 or coalesce(new.earnings_balance, 0) <> 0))
+       or (tg_op = 'UPDATE' and (new.cash_in_hand is distinct from old.cash_in_hand
+         or new.earnings_balance is distinct from old.earnings_balance))) then
+    raise exception 'forbidden: finance permission required';
+  end if;
+  return new;
+end $$;
+revoke all on function public.ps_guard_direct_rider_finance() from public, anon, authenticated;
+drop trigger if exists trg_direct_rider_finance on public.riders;
+create trigger trg_direct_rider_finance before insert or update on public.riders
+for each row execute function public.ps_guard_direct_rider_finance();
+
+-- Commission/payment routing is platform-owned, not a manager or shop edit.
+-- JSON comparison tolerates optional columns on rolling-upgrade databases.
+create or replace function public.ps_guard_direct_shop_finance()
+returns trigger language plpgsql security invoker set search_path = public as $$
+declare field text;
+begin
+  if current_user = 'authenticated' and not public.ps_can_manage_finance() then
+    if tg_op = 'INSERT' then
+      raise exception 'forbidden: finance permission required to create shops';
+    end if;
+    foreach field in array array['commission_pct', 'settlement_model', 'payment_verifier', 'wallet_bkash', 'wallet_nagad'] loop
+      if (to_jsonb(new) -> field) is distinct from (to_jsonb(old) -> field) then
+        raise exception 'forbidden: finance permission required';
+      end if;
+    end loop;
+  end if;
+  return new;
+end $$;
+revoke all on function public.ps_guard_direct_shop_finance() from public, anon, authenticated;
+drop trigger if exists trg_direct_shop_finance on public.shops;
+create trigger trg_direct_shop_finance before insert or update on public.shops
+for each row execute function public.ps_guard_direct_shop_finance();
+
+-- Protect rider pay/risk settings and the ops wallet destination record.
+-- Other settings retain their existing policies. USING + WITH CHECK prevents
+-- renaming an ordinary key into a protected key (or a protected key out).
+create or replace function public.ps_finance_setting_allowed(p_key text)
+returns boolean language sql stable security invoker set search_path = public as $$
+  select public.ps_can_manage_finance() or not (
+    p_key = 'ops' or p_key like 'rider\_%' escape '\'
+    or p_key in ('offer_ttl_seconds', 'delivery_max_attempts')
+  );
+$$;
+revoke all on function public.ps_finance_setting_allowed(text) from public, anon;
+grant execute on function public.ps_finance_setting_allowed(text) to authenticated, service_role;
+alter table public.site_settings enable row level security;
+drop policy if exists finance_settings_insert on public.site_settings;
+create policy finance_settings_insert on public.site_settings as restrictive
+for insert to authenticated with check (public.ps_finance_setting_allowed(key));
+drop policy if exists finance_settings_update on public.site_settings;
+create policy finance_settings_update on public.site_settings as restrictive
+for update to authenticated using (public.ps_finance_setting_allowed(key)) with check (public.ps_finance_setting_allowed(key));
+drop policy if exists finance_settings_delete on public.site_settings;
+create policy finance_settings_delete on public.site_settings as restrictive
+for delete to authenticated using (public.ps_finance_setting_allowed(key));
+
+-- Direct orders table access must not bypass payment verification or rewrite
+-- totals. Existing SECURITY DEFINER placement/cancellation/refund routines
+-- retain their actor validation and authoritative accounting behavior.
+create or replace function public.ps_guard_direct_order_finance()
+returns trigger language plpgsql security invoker set search_path = public as $$
+declare field text;
+begin
+  if current_user = 'authenticated' and not public.ps_can_manage_finance() then
+    if tg_op = 'INSERT' then
+      raise exception 'forbidden: orders must use the placement workflow';
+    end if;
+    foreach field in array array['subtotal', 'total', 'delivery_charge', 'discount', 'tip_amount', 'surcharge_total', 'payment', 'payment_status', 'payment_verified_at', 'payment_verified_by'] loop
+      if (to_jsonb(new) -> field) is distinct from (to_jsonb(old) -> field) then
+        raise exception 'forbidden: finance permission required';
+      end if;
+    end loop;
+  end if;
+  return new;
+end $$;
+revoke all on function public.ps_guard_direct_order_finance() from public, anon, authenticated;
+drop trigger if exists trg_direct_order_finance on public.orders;
+create trigger trg_direct_order_finance before insert or update on public.orders
+for each row execute function public.ps_guard_direct_order_finance();
+
+notify pgrst, 'reload schema';
+commit;
+
+-- ===== MIRROR: supabase/migrations/202610250002_shop_first_fulfilment.sql =====
+-- Shop-first normal fulfilment; platform staff are not routine shop operators.
+-- Keep return decisions, dispatch, cancellation and Traffic Point handover intact.
+begin;
+
+do $$
+declare
+  definition text;
+  marker text := '-- Shop-first fulfilment boundary (202610250002)';
+  anchor text := '  if not v_is_admin then';
+  guard text := $guard$  -- Shop-first fulfilment boundary (202610250002)
+  if v_is_admin and v_order.shop_id is not null
+     and not coalesce(v_order.is_return, false)
+     and p_to in ('confirmed', 'preparing', 'ready-for-pickup') then
+    if not public.ps_can_manage_finance() then
+      raise exception 'forbidden: shop fulfilment belongs to the shop';
+    end if;
+    if char_length(btrim(coalesce(p_note, ''))) < 10
+       or char_length(btrim(coalesce(p_note, ''))) > 300 then
+      raise exception 'shop fulfilment override reason required (10-300 characters)';
+    end if;
+    p_note := '[Shop fulfilment override] ' || btrim(p_note);
+  end if;
+
+$guard$;
+begin
+  if to_regprocedure('public.ps_can_manage_finance()') is null then
+    raise exception 'Install finance permission boundary before shop-first fulfilment';
+  end if;
+  definition := pg_get_functiondef('public.ps_advance_order(uuid,ps_order_status,text)'::regprocedure);
+  if position(marker in definition) = 0 then
+    if position(anchor in definition) = 0 then
+      raise exception 'Unexpected ps_advance_order authorization guard';
+    end if;
+    -- Preserve the installed state/payment/rider/stock/accounting machine.
+    execute replace(definition, anchor, guard || anchor);
+  end if;
+end $$;
+revoke all on function public.ps_advance_order(uuid,ps_order_status,text) from public, anon;
+grant execute on function public.ps_advance_order(uuid,ps_order_status,text) to authenticated, service_role;
+
+-- A direct REST table UPDATE must not bypass actor checks, payment gating,
+-- rider PIN/COD custody, or the reason-required override. INVOKER is vital:
+-- trusted definer workflow functions retain their own authorization checks.
+create or replace function public.ps_guard_direct_order_workflow()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if current_user = 'authenticated' and (
+       new.status is distinct from old.status
+       or new.shop_id is distinct from old.shop_id
+       or new.is_return is distinct from old.is_return
+       or new.is_pickup is distinct from old.is_pickup
+     ) then
+    raise exception 'forbidden: order status and routing changes must use the workflow';
+  end if;
+  return new;
+end $$;
+revoke all on function public.ps_guard_direct_order_workflow() from public, anon, authenticated;
+drop trigger if exists trg_direct_order_workflow on public.orders;
+create trigger trg_direct_order_workflow before update on public.orders
+for each row execute function public.ps_guard_direct_order_workflow();
+
+notify pgrst, 'reload schema';
+commit;

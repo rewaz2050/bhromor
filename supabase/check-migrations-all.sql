@@ -165,7 +165,44 @@ with checklist(step, label, source_file, kind, obj) as (values
   -- GPS jump flags (2026-10-03).
   ('92',  'GPS jump flags', '202610020019_gps_jump_flags.sql', 'table', 'rider_gps_flags'),
   -- Failed-delivery proof (2026-10-03).
-  ('93',  'Failed-delivery proof', '202610020020_failed_delivery_proof.sql', 'table', 'delivery_failed_proofs')
+  ('93',  'Failed-delivery proof', '202610020020_failed_delivery_proof.sql', 'table', 'delivery_failed_proofs'),
+  ('94', 'Finance approval permission boundary', '202610250001_finance_permission_boundary.sql', 'function', 'ps_can_manage_finance'),
+  ('94b', 'Direct order finance guard', '202610250001_finance_permission_boundary.sql', 'function', 'ps_guard_direct_order_finance'),
+  ('95', 'Shop-first fulfilment workflow', '202610250002_shop_first_fulfilment.sql', 'function', 'ps_guard_direct_order_workflow'),
+  ('96', 'Owner-controlled vendor staff grants', '202610250003_vendor_staff_permissions.sql', 'column', 'vendor_users.permissions'),
+  ('96b', 'Immutable vendor permission history', '202610250003_vendor_staff_permissions.sql', 'table', 'vendor_permission_audit'),
+  ('96c', 'Stock-only vendor workflow', '202610250003_vendor_staff_permissions.sql', 'function', 'ps_vendor_set_available_stock'),
+  ('97a', 'Report RPC: ps_admin_money_summary', '202610250004_finance_reporting_access.sql', 'function_src', 'ps_admin_money_summary|ps_can_manage_finance'),
+  ('97b', 'Report RPC: ps_admin_money_pnl', '202610250004_finance_reporting_access.sql', 'function_src', 'ps_admin_money_pnl|ps_can_manage_finance'),
+  ('97c', 'Report RPC: ps_admin_money_daily', '202610250004_finance_reporting_access.sql', 'function_src', 'ps_admin_money_daily|ps_can_manage_finance'),
+  ('97d', 'Report RPC: ps_admin_rider_overview', '202610250004_finance_reporting_access.sql', 'function_src', 'ps_admin_rider_overview|ps_can_manage_finance'),
+  ('97e', 'Restricted money read: shop_ledger', '202610250004_finance_reporting_access.sql', 'policy_src', 'shop_ledger|finance_report_read_boundary'),
+  ('97f', 'Restricted money read: shop_payouts', '202610250004_finance_reporting_access.sql', 'policy_src', 'shop_payouts|finance_report_read_boundary'),
+  ('97g', 'Restricted money read: rider_earnings', '202610250004_finance_reporting_access.sql', 'policy_src', 'rider_earnings|finance_report_read_boundary'),
+  ('97h', 'Restricted money read: rider_payout_requests', '202610250004_finance_reporting_access.sql', 'policy_src', 'rider_payout_requests|finance_report_read_boundary'),
+  ('97i', 'Restricted money read: rider_settlements', '202610250004_finance_reporting_access.sql', 'policy_src', 'rider_settlements|finance_report_read_boundary'),
+  ('97j', 'Restricted money read: rider_settle_claims', '202610250004_finance_reporting_access.sql', 'policy_src', 'rider_settle_claims|finance_report_read_boundary'),
+  ('97k', 'Restricted money read: money_audit_log', '202610250004_finance_reporting_access.sql', 'policy_src', 'money_audit_log|finance_report_read_boundary'),
+  ('98a', 'Actor-bound rider wallet projection', '202610250005_rider_wallet_column_privacy.sql', 'function', 'ps_read_riders'),
+  ('98b', 'No direct authenticated rider wallet SELECT', '202610250005_rider_wallet_column_privacy.sql', 'column_select_denied', 'riders.earnings_balance'),
+  ('99a', 'Rider lifecycle controls', '202610250006_rider_controls_and_ledger_retention.sql', 'function', 'ps_guard_rider_controls'),
+  ('99b', 'Rider control audit', '202610250006_rider_controls_and_ledger_retention.sql', 'table', 'rider_control_audit'),
+  ('99c', 'Ledger retention', '202610250006_rider_controls_and_ledger_retention.sql', 'function', 'ps_financial_history_no_delete'),
+  ('99d', 'Guarded shop re-netting', '202610250006_rider_controls_and_ledger_retention.sql', 'function', 'ps_guard_shop_ledger_rewrite'),
+  ('100a', 'Atomic staff role change', '202610250007_atomic_staff_roles.sql', 'function', 'ps_change_staff_role'),
+  ('100b', 'Permanent role-change audit', '202610250007_atomic_staff_roles.sql', 'table', 'staff_role_audit'),
+  ('101a', 'PIN-safe operational order view', '202610260001_order_pin_privacy_and_pickup.sql', 'table', 'order_operations'),
+  ('101b', 'Verified counter handover', '202610260001_order_pin_privacy_and_pickup.sql', 'function', 'ps_collect_pickup_order'),
+  ('101c', 'No direct authenticated PIN SELECT', '202610260001_order_pin_privacy_and_pickup.sql', 'column_select_denied', 'orders.delivery_code'),
+  ('102a', 'Own-shop fulfilment entry', '202610260002_scoped_shop_fulfilment.sql', 'function', 'ps_vendor_advance_order'),
+  ('102b', 'Private scoped order machine', '202610260002_scoped_shop_fulfilment.sql', 'function', 'ps_advance_order_scoped'),
+  ('103a', 'Same-actor finance helper', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_self_finance'),
+  ('103b', 'Self-decided payout guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_decide_rider_payout|Self-dealing boundary (202610260003)'),
+  ('103c', 'Self cash-settlement guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_settle_rider|Self-dealing boundary (202610260003)'),
+  ('103d', 'Self claim-decision guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_reject_settle|Self-dealing boundary (202610260003)'),
+  ('103e', 'Self wallet-credit guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_adjust_rider|Self-dealing boundary (202610260003)'),
+  ('103f', 'Self dispute-decision guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_resolve_dispute|Self-dealing boundary (202610260003)'),
+  ('103g', 'Own-shop payout recording guard', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_shop_payout_self_dealing')
 ),
 res as (
   select source_file as file, label,
@@ -185,11 +222,13 @@ res as (
          )
          -- function_src: obj = 'name|marker-in-body' — detects RE-created
          -- versions of a function (plain existence can't).
+         when 'column_select_denied' then exists (select 1 from pg_attribute a where a.attrelid=to_regclass('public.'||split_part(obj,'.',1)) and a.attname=split_part(obj,'.',2) and a.attnum>0 and not a.attisdropped and not has_column_privilege('authenticated',a.attrelid,a.attnum,'SELECT'))
+         when 'policy_src' then exists (select 1 from pg_policy p join pg_class t on t.oid=p.polrelid join pg_namespace n on n.oid=t.relnamespace where n.nspname='public' and t.relname=split_part(obj,'|',1) and p.polname=split_part(obj,'|',2) and not p.polpermissive and pg_get_expr(p.polqual,p.polrelid) ilike '%ps_can_manage_finance%')
          when 'function_src' then exists (
            select 1 from pg_proc p
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public'
-             and p.proname = split_part(obj, '|', 1)
+             and p.proname in (split_part(obj, '|', 1), case when split_part(obj,'|',1)='ps_advance_order' then 'ps_advance_order_internal' end)
              and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
          -- function_locked: true when the function is absent (nothing to
@@ -205,7 +244,7 @@ res as (
            select 1 from pg_proc p
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public'
-             and p.proname = split_part(obj, '|', 1)
+             and p.proname in (split_part(obj, '|', 1), case when split_part(obj,'|',1)='ps_advance_order' then 'ps_advance_order_internal' end)
              and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
          -- constraint_absent: obj = 'table.constraint' — true when the table

@@ -33,5 +33,5 @@ export const POST = vendorRoute(
     revalidateCatalogCaches();
     return apiJson({ product }, 201);
   },
-  { limit: 20 },
+  { limit: 20, permission: "catalog" },
 );

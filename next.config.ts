@@ -105,7 +105,7 @@ const noStoreRoutes = [
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  allowedDevOrigins: ["*.e2b.app"],
+  allowedDevOrigins: ["*.e2b.app", "localhost", "127.0.0.1"],
   poweredByHeader: false,
   async headers() {
     return [

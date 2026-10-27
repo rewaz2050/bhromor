@@ -23,5 +23,5 @@ export const POST = vendorRoute(
     const category = await createVendorProductCategory(ctx.db, ctx.shopId, body);
     return apiJson({ category }, 201);
   },
-  { limit: 20 },
+  { limit: 20, permission: "catalog" },
 );

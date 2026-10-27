@@ -59,14 +59,47 @@ with checks(file, label, kind, obj) as (values
   ('202610020017_streak_bonus.sql', 'Weekly streak bonus', 'function_src', 'ps_award_order_bonuses|streak'),
   ('202610020018_vendor_push.sql', 'Vendor web push', 'table', 'vendor_push_subscriptions'),
   ('202610020019_gps_jump_flags.sql', 'GPS jump flags', 'table', 'rider_gps_flags'),
-  ('202610020020_failed_delivery_proof.sql', 'Failed-delivery proof', 'table', 'delivery_failed_proofs')
+  ('202610020020_failed_delivery_proof.sql', 'Failed-delivery proof', 'table', 'delivery_failed_proofs'),
+  ('202610250004_finance_reporting_access.sql', 'Report RPC: ps_admin_money_summary', 'function_src', 'ps_admin_money_summary|ps_can_manage_finance'),
+  ('202610250004_finance_reporting_access.sql', 'Report RPC: ps_admin_money_pnl', 'function_src', 'ps_admin_money_pnl|ps_can_manage_finance'),
+  ('202610250004_finance_reporting_access.sql', 'Report RPC: ps_admin_money_daily', 'function_src', 'ps_admin_money_daily|ps_can_manage_finance'),
+  ('202610250004_finance_reporting_access.sql', 'Report RPC: ps_admin_rider_overview', 'function_src', 'ps_admin_rider_overview|ps_can_manage_finance'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: shop_ledger', 'policy_src', 'shop_ledger|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: shop_payouts', 'policy_src', 'shop_payouts|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: rider_earnings', 'policy_src', 'rider_earnings|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: rider_payout_requests', 'policy_src', 'rider_payout_requests|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: rider_settlements', 'policy_src', 'rider_settlements|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: rider_settle_claims', 'policy_src', 'rider_settle_claims|finance_report_read_boundary'),
+  ('202610250004_finance_reporting_access.sql', 'Restricted money read: money_audit_log', 'policy_src', 'money_audit_log|finance_report_read_boundary'),
+  ('202610250005_rider_wallet_column_privacy.sql', 'Actor-bound rider wallet projection', 'function', 'ps_read_riders'),
+  ('202610250005_rider_wallet_column_privacy.sql', 'No direct authenticated rider wallet SELECT', 'column_select_denied', 'riders.earnings_balance'),
+  ('202610250006_rider_controls_and_ledger_retention.sql', 'Rider lifecycle controls', 'function', 'ps_guard_rider_controls'),
+  ('202610250006_rider_controls_and_ledger_retention.sql', 'Rider control audit', 'table', 'rider_control_audit'),
+  ('202610250006_rider_controls_and_ledger_retention.sql', 'Ledger retention', 'function', 'ps_financial_history_no_delete'),
+  ('202610250006_rider_controls_and_ledger_retention.sql', 'Guarded shop re-netting', 'function', 'ps_guard_shop_ledger_rewrite'),
+  ('202610250007_atomic_staff_roles.sql', 'Atomic staff role change', 'function', 'ps_change_staff_role'),
+  ('202610250007_atomic_staff_roles.sql', 'Permanent role-change audit', 'table', 'staff_role_audit'),
+  ('202610260001_order_pin_privacy_and_pickup.sql', 'PIN-safe operational order view', 'table', 'order_operations'),
+  ('202610260001_order_pin_privacy_and_pickup.sql', 'Verified counter handover', 'function', 'ps_collect_pickup_order'),
+  ('202610260001_order_pin_privacy_and_pickup.sql', 'No direct authenticated PIN SELECT', 'column_select_denied', 'orders.delivery_code'),
+  ('202610260002_scoped_shop_fulfilment.sql', 'Own-shop fulfilment entry', 'function', 'ps_vendor_advance_order'),
+  ('202610260002_scoped_shop_fulfilment.sql', 'Private scoped order machine', 'function', 'ps_advance_order_scoped'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Same-actor finance helper', 'function', 'ps_guard_self_finance'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Self-decided payout guard', 'function_src', 'ps_admin_decide_rider_payout|Self-dealing boundary (202610260003)'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Self cash-settlement guard', 'function_src', 'ps_admin_settle_rider|Self-dealing boundary (202610260003)'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Self claim-decision guard', 'function_src', 'ps_admin_reject_settle|Self-dealing boundary (202610260003)'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Self wallet-credit guard', 'function_src', 'ps_admin_adjust_rider|Self-dealing boundary (202610260003)'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Self dispute-decision guard', 'function_src', 'ps_admin_resolve_dispute|Self-dealing boundary (202610260003)'),
+  ('202610260003_finance_self_dealing_boundary.sql', 'Own-shop payout recording guard', 'function', 'ps_guard_shop_payout_self_dealing')
 ),
 res as (
   select file, label, obj,
     case kind
       when 'table' then exists (select 1 from information_schema.tables t where t.table_schema='public' and t.table_name=obj)
       when 'function' then exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=obj)
-      when 'function_src' then exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      when 'column_select_denied' then exists (select 1 from pg_attribute a where a.attrelid=to_regclass('public.'||split_part(obj,'.',1)) and a.attname=split_part(obj,'.',2) and a.attnum>0 and not a.attisdropped and not has_column_privilege('authenticated',a.attrelid,a.attnum,'SELECT'))
+         when 'policy_src' then exists (select 1 from pg_policy p join pg_class t on t.oid=p.polrelid join pg_namespace n on n.oid=t.relnamespace where n.nspname='public' and t.relname=split_part(obj,'|',1) and p.polname=split_part(obj,'|',2) and not p.polpermissive and pg_get_expr(p.polqual,p.polrelid) ilike '%ps_can_manage_finance%')
+         when 'function_src' then exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                                        where n.nspname='public' and p.proname=split_part(obj,'|',1) and p.prosrc ilike '%'||split_part(obj,'|',2)||'%')
       when 'column' then exists (select 1 from information_schema.columns c where c.table_schema='public' and c.table_name=split_part(obj,'.',1) and c.column_name=split_part(obj,'.',2))
       else false

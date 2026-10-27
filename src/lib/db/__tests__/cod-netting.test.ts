@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { settleRiderCashByAdmin } from "../riders";
+import { rejectSettleClaimByAdmin, settleRiderCashByAdmin } from "../riders";
 
 const rpcClient = (result: { error: { code?: string; message: string } | null }) => {
   const calls: { fn: string; params: Record<string, unknown> }[] = [];
@@ -46,6 +46,17 @@ describe("settleRiderCashByAdmin — netting (audit K)", () => {
       status: 503,
       message: expect.stringContaining("202610010004_cod_netting.sql"),
     });
+  });
+
+  it("a self-settlement or self-claim decision needs a peer Admin (202610260003)", async () => {
+    const selfSettle = rpcClient({ error: { message: "forbidden: cannot decide your own money" } });
+    await expect(
+      settleRiderCashByAdmin(selfSettle.client as never, "r1", "cash", "", true),
+    ).rejects.toMatchObject({ status: 403, message: expect.stringContaining("another finance Admin") });
+    const selfClaim = rpcClient({ error: { message: "forbidden: cannot decide your own money" } });
+    await expect(
+      rejectSettleClaimByAdmin(selfClaim.client as never, "r1", "not received"),
+    ).rejects.toMatchObject({ status: 403, message: expect.stringContaining("another finance Admin") });
   });
 
   it("still maps real refusals (forbidden / nothing to settle)", async () => {

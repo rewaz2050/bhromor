@@ -10,8 +10,8 @@
  *         them with `ps_setting_int`.
  *
  * The payout QUEUE reads RLS-closed tables, so it uses the service client
- * (`staffRoute` has already verified the caller is staff). The two RPCs
- * (summary, decide) gate on `ps_is_admin()` = `auth.uid()`, so they run on the
+ * (`staffRoute` has already verified Admin/Super Admin). The two RPCs
+ * (summary, decide) gate on `ps_can_manage_finance()` using `auth.uid()`, so they run on the
  * staff member's own JWT client — the service key has no uid and would be
  * refused with "forbidden" every time.
  */
@@ -38,7 +38,7 @@ export const GET = staffRoute("money-read", async ({ db }, request) => {
   if (!service) return apiError("Service role is not configured.", 503);
   const range = parsePnlRange(new URL(request.url).searchParams.get("range"));
   const [summary, queue, settings, pnl] = await Promise.all([
-    // The RPC checks ps_is_admin() → needs the staff JWT, not the service key.
+    // The RPC checks ps_can_manage_finance() → needs the actor JWT.
     getAdminMoneySummary(db),
     listRiderPayoutQueue(service),
     readRiderPaySettings(db),
@@ -57,7 +57,7 @@ export const GET = staffRoute("money-read", async ({ db }, request) => {
     queue,
     settings,
   });
-});
+}, { roles: ADMIN_ONLY });
 
 export const POST = staffRoute(
   "money-payout-decide",

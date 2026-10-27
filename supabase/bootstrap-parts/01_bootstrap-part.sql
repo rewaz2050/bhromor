@@ -1,4 +1,4 @@
--- PART 1/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 1/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ============================================================================
 -- PROSANTI — FRESH PROJECT BOOTSTRAP (single paste)
 -- Generated from schema.sql + the in-order migrations through
@@ -802,4 +802,3 @@ create trigger trg_orders_release_on_cancel
   for each row execute function ps_release_on_cancel();
 
 commit;
-

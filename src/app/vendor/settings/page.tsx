@@ -2,8 +2,8 @@
 
 /**
  * Vendor shop settings (marketplace slice 3): profile fields, prep time,
- * and the open/closed sign. Owners edit everything here; staff only the
- * sign + prep. Platform fields (commission/zones) are read-only.
+ * and the open/closed sign. Owners edit settings; staff retain personal
+ * password controls only. Platform fields (commission/zones) are read-only.
  */
 
 import { useState } from "react";
@@ -54,7 +54,7 @@ export default function VendorSettingsPage() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return;
+    if (saving || isStaff) return;
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -84,7 +84,7 @@ export default function VendorSettingsPage() {
   };
 
   const flipOpen = async () => {
-    if (saving) return;
+    if (saving || isStaff) return;
     setSaved(false);
     setSaving(true);
     setError(null);
@@ -102,7 +102,7 @@ export default function VendorSettingsPage() {
     <div className="max-w-2xl">
       <PageHeader
         title="দোকানের প্রোফাইল"
-        sub={isStaff ? "Staff হিসেবে দোকান খোলা/বন্ধ ও প্রস্তুতির সময় বদলাতে পারবেন।" : "Customer ও Rider যেন সহজে আপনার দোকান খুঁজে পায়—তথ্য সঠিক রাখুন।"}
+        sub={isStaff ? "Staff হিসেবে অর্ডার প্রস্তুত করুন। দোকানের সেটিংস Owner পরিবর্তন করেন; নিজের পাসওয়ার্ড নিচে পরিবর্তন করতে পারবেন।" : "Customer ও Rider যেন সহজে আপনার দোকান খুঁজে পায়—তথ্য সঠিক রাখুন।"}
       />
 
       <section className="mb-4 rounded-2xl border border-line bg-paper p-5">
@@ -135,7 +135,7 @@ export default function VendorSettingsPage() {
         <button
           type="button"
           onClick={flipOpen}
-          disabled={saving}
+          disabled={saving || isStaff}
           className={`rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-60 ${
             current.isOpen
               ? "bg-paper text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50"
@@ -150,6 +150,7 @@ export default function VendorSettingsPage() {
         onSubmit={save}
         className="space-y-4 rounded-2xl bg-paper p-6 ring-1 ring-line"
       >
+        <fieldset disabled={isStaff} className="space-y-4">
         <fieldset disabled={isStaff || saving} className="space-y-4 disabled:opacity-60">
           <label className="block">
             <span className={label}>দোকানের নাম *</span>
@@ -248,7 +249,7 @@ export default function VendorSettingsPage() {
             <input
               type="number"
               required
-              disabled={saving}
+              disabled={saving || isStaff}
               min={0}
               max={240}
               className={field}
@@ -277,11 +278,12 @@ export default function VendorSettingsPage() {
 
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || isStaff}
           className="rounded-xl bg-forest-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60"
         >
           {saving ? "সেভ হচ্ছে…" : "পরিবর্তন সেভ করুন"}
         </button>
+      </fieldset>
       </form>
 
       {/* Free delivery (2026-09-26): the shop's own opt-in threshold. Owner
@@ -305,6 +307,7 @@ export default function VendorSettingsPage() {
           onCreate={roster.create}
           onRevoke={roster.revoke}
           onResetPassword={roster.resetPassword}
+          onSetPermissions={roster.setPermissions}
         />
       )}
       {!isStaff && roster.error && (

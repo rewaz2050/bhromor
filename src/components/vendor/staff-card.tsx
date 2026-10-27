@@ -19,6 +19,8 @@
  * and the copy are testable without a network.
  */
 
+import StaffPermissions from "./staff-permissions";
+import type { VendorPermission } from "@/lib/vendor-permissions";
 import { useState } from "react";
 import {
   VENDOR_STAFF_MAX,
@@ -34,8 +36,10 @@ export default function StaffCard({
   onCreate,
   onRevoke,
   onResetPassword,
+  onSetPermissions,
 }: {
   staff: VendorStaffMember[];
+  onSetPermissions?: (id: string, permissions: VendorPermission[]) => Promise<void>;
   onCreate: (input: {
     name: string;
     login: string;
@@ -120,7 +124,7 @@ export default function StaffCard({
       {/* What a staff login actually may do, said plainly: the counter's work
           is theirs, the shop's identity is not. */}
       <p className="mt-2 text-[0.68rem] leading-5 text-ink-soft">
-        A staff login can work the orders, edit products and run promos. It cannot change the
+        A staff login confirms, prepares and marks orders Ready by default. Catalog/pricing, stock, cashier and cancellation need your explicit delegation. It cannot change the
         shop&apos;s profile, book a holiday, or open another login — those stay with you. It can
         never become an owner.
       </p>
@@ -182,6 +186,7 @@ export default function StaffCard({
                 )}
               </span>
             )}
+            {member.role === "staff" && onSetPermissions && <StaffPermissions key={`${member.userId}:${(member.permissions ?? []).join(",")}`} member={member} onSave={onSetPermissions} />}
           </li>
         ))}
         {staff.length === 0 && (

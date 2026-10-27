@@ -36,7 +36,7 @@ export const staffRoute = (
       staff =
         opts.roles && opts.roles.length > 0
           ? await requireStaffRole(...opts.roles)
-          : await requireStaff();
+          : await requireStaff({ freshRole: true });
     } catch (err) {
       if (err instanceof StaffAuthError) {
         return apiError(err.message, err.status);

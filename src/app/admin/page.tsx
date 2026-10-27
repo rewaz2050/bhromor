@@ -1,5 +1,6 @@
 "use client";
 
+import { useStaffRole } from "@/lib/use-staff-role";
 import { useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -40,6 +41,7 @@ import {
 export default function AdminDashboard() {
   const { orders, loading: ordersLoading, error: ordersError, clearError: clearOrdersError, reset: reloadOrders } = useOrders();
   const applications = useApplicationsPending();
+  const { canManage } = useStaffRole();
 
   const agg = useMemo(() => aggregateOrders(orders), [orders]);
   const perf = useMemo(() => deliveryStats(orders), [orders]);
@@ -92,8 +94,8 @@ export default function AdminDashboard() {
   const actionCount = agg.byStatus.pending + agg.byStatus.confirmed + agg.byStatus.preparing;
   const cards = [
     {
-      label: "Today's sales",
-      value: formatBdt(agg.todaySales),
+      label: canManage ? "Today's sales" : "Today's orders",
+      value: canManage ? formatBdt(agg.todaySales) : String(agg.todayOrders),
       note: `${agg.todayOrders} order${agg.todayOrders === 1 ? "" : "s"} today`,
       icon: IconShield,
       urgent: false,

@@ -79,7 +79,7 @@ res as (
            select 1 from pg_proc p
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public'
-             and p.proname = split_part(obj, '|', 1)
+             and p.proname in (split_part(obj, '|', 1), case when split_part(obj,'|',1)='ps_advance_order' then 'ps_advance_order_internal' end)
              and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
          -- function_locked: true when the function is absent (nothing to
@@ -95,7 +95,7 @@ res as (
            select 1 from pg_proc p
            join pg_namespace n on n.oid = p.pronamespace
            where n.nspname = 'public'
-             and p.proname = split_part(obj, '|', 1)
+             and p.proname in (split_part(obj, '|', 1), case when split_part(obj,'|',1)='ps_advance_order' then 'ps_advance_order_internal' end)
              and p.prosrc ilike '%' || split_part(obj, '|', 2) || '%'
          )
          -- constraint_absent: obj = 'table.constraint' — true when the table

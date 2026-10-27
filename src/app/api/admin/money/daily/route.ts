@@ -4,10 +4,12 @@ import { apiJson } from "@/lib/api-response";
 import { parseDay } from "@/lib/money-daily";
 import { staffRoute } from "../../_lib";
 
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("money-daily", async ({ db }, request) => {
   const day = parseDay(new URL(request.url).searchParams.get("date"));
   const report = await getAdminMoneyDaily(db, day);
   return apiJson({ ready: report !== null, day, report });
-});
+}, { roles: ADMIN_ONLY });

@@ -1,3 +1,4 @@
+import { readRiderRow } from "./rider-read";
 /**
  * Staff data-access layer (blueprint §32–33, §56–58, §71–74).
  *
@@ -8,6 +9,7 @@
  */
 
 import "server-only";
+import { isShopFulfilment, validOverrideReason } from "../shop-fulfilment";
 import { oneShopTotals, shopBalanceTotals } from "./shop-balances";
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
@@ -36,7 +38,6 @@ import {
 } from "./mappers";
 import { parseShopFreeDeliveryMin } from "../free-delivery";
 import { asciiDigits, isPlausibleBdPhone, normalizeBdPhone } from "../phone";
-import { trackTokenFor } from "../track-token";
 import { toDomain } from "./orders";
 import { getSupabaseService } from "../supabase-server";
 import { forgetStaffRole, type StaffRole } from "../staff-auth";
@@ -152,7 +153,7 @@ export async function listOrders(
     Math.min(ORDER_PAGE_MAX, cleanInt(filters.limit, 100)),
   );
   let query = db
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -278,8 +279,7 @@ export async function listOrders(
         : undefined,
       products,
     });
-    // Security 2026-10-14 (H3): signed /track token for staff-built links.
-    domain.trackToken = trackTokenFor(domain.id, order.customer_phone ?? "");
+    // Operational actors must not receive customer PIN capabilities.
     return domain;
   });
   return { orders, nextCursor };
@@ -290,7 +290,7 @@ export async function getOrderDetail(
   orderNo: string,
 ): Promise<Order> {
   const { data, error } = await db
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
@@ -313,14 +313,51 @@ export async function advanceOrderAsStaff(
   orderNo: string,
   to: OrderStatus,
   note?: string,
+  policy?: { role: StaffRole; fulfilmentOverride?: boolean; pickupCode?: string },
 ): Promise<Order> {
   const { data, error } = await db
     .from("orders")
-    .select("id")
+    .select("id, shop_id, is_return, is_pickup")
     .eq("order_no", orderNo.trim().toUpperCase())
     .single();
   if (error || !data) throw new AdminInputError("Order not found.", 404);
-  const orderId = (data as { id: string }).id;
+  const row = data as { id: string; shop_id?: string | null; is_return?: boolean; is_pickup?: boolean };
+  const orderId = row.id;
+  if (row.is_pickup && to === "delivered") {
+    if (!/^[0-9]{4}$/.test(policy?.pickupCode ?? "")) {
+      throw new AdminInputError("Enter the customer's 4-digit pickup PIN.", 422);
+    }
+    const result = await db.rpc("ps_collect_pickup_order", { p_order_id: orderId, p_code: policy!.pickupCode });
+    if (result.error) {
+      const msg = result.error.message.toLowerCase();
+      if (msg.includes("forbidden")) throw new AdminInputError("Staff role required.", 403);
+      if (msg.includes("payment not verified")) throw new AdminInputError("Verify the wallet payment before handover.", 422);
+      if (msg.includes("rider delivery in progress")) throw new AdminInputError("A rider holds this parcel; resolve custody before counter handover.", 409);
+      if (msg.includes("not ready") || msg.includes("not a counter")) throw new AdminInputError("This order is not ready for counter handover.", 409);
+      // No old machine-walking fallback, and do not misdiagnose an unrelated
+      // database failure as a missing migration. Do not log the submitted PIN.
+      if (["PGRST202", "42883"].includes(result.error.code)) {
+        throw new AdminInputError("Pickup verification unavailable. Install 202610260001_order_pin_privacy_and_pickup.sql before retrying.", 503);
+      }
+      throw new AdminInputError("Pickup verification failed; the handover transaction was not completed. Please retry.", 503);
+    }
+    const outcome = result.data as { ok?: boolean; error?: string } | null;
+    if (outcome?.ok !== true) {
+      if (outcome?.ok === false && outcome.error === "locked") throw new AdminInputError("Too many incorrect PINs. Wait 15 minutes before retrying.", 429);
+      if (outcome?.ok === false && outcome.error === "code_mismatch") throw new AdminInputError("Pickup PIN does not match. Ask the customer to check their confirmation.", 422);
+      throw new AdminInputError("Could not confirm pickup verification. Refresh the order before retrying.", 503);
+    }
+    return getOrderDetail(db, orderNo);
+  }
+
+  if (isShopFulfilment({ shopId: row.shop_id, isReturn: row.is_return }, to)) {
+    if (policy?.role !== "admin" && policy?.role !== "super_admin") {
+      throw new AdminInputError("Shop fulfilment belongs to the shop. Only Admin/Super Admin may override it.", 403);
+    }
+    if (!policy.fulfilmentOverride || !validOverrideReason(note ?? "")) {
+      throw new AdminInputError("Use the emergency shop fulfilment override with a reason (10–300 characters).", 422);
+    }
+  }
   const cleanNote = note?.trim().slice(0, 300) ?? null;
   let { error: rpcError } = await db.rpc("ps_advance_order", {
     p_order_id: orderId,
@@ -333,16 +370,13 @@ export async function advanceOrderAsStaff(
     // works; /api/health names the migration to paste.
     rpcError = await legacyTwoStepReady(db, orderId, cleanNote);
   }
-  if (rpcError && isCounterHandoverRefusal(rpcError, to)) {
-    // Counter pickup handed over at the shop (2026-09-18): the status machine
-    // only knows the rider path, so walk it — the customer already has the
-    // parcel, and no rider was ever involved.
-    rpcError = await counterHandover(db, orderId, rpcError.message, cleanNote);
-  }
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
     if (msg.includes("forbidden")) {
       throw new AdminInputError("Staff role required.", 403);
+    }
+    if (msg.includes("shop fulfilment override reason")) {
+      throw new AdminInputError("Give an emergency override reason (10–300 characters).", 422);
     }
     if (msg.includes("payment not verified")) {
       throw new AdminInputError(
@@ -373,77 +407,6 @@ export async function advanceOrderAsStaff(
 
 const TWO_TAP_FILE = "supabase/migrations/202609170001_two_tap_order_flow.sql";
 
-/** Rider-path states between "ready" and "delivered", in machine order. */
-const RIDER_PATH: readonly OrderStatus[] = [
-  "ready-for-pickup",
-  "courier-assigned",
-  "out-for-delivery",
-  "delivered",
-];
-
-/**
- * "Handed to customer" on a counter pickup asks for `delivered` from one of
- * the rider states; ps_advance_order answers exactly
- * `illegal transition <rider state> -> delivered`. Nothing else matches.
- */
-export const isCounterHandoverRefusal = (
-  rpcError: { message?: string | null },
-  to: string,
-): boolean => {
-  if (to !== "delivered") return false;
-  const m = /illegal transition ([a-z-]+) -> delivered/i.exec(rpcError.message ?? "");
-  return m !== null && RIDER_PATH.slice(0, -1).includes(m[1] as OrderStatus);
-};
-
-/**
- * Walk ready-for-pickup → courier-assigned → out-for-delivery → delivered
- * as separate RPCs — ONLY for a counter pickup (`is_pickup`), checked here
- * against the row so a home-delivery order can never be "delivered" from the
- * list by mistake. Any live rider offer for the order is withdrawn first
- * (auto-dispatch may have offered it before this guard existed). Returns the
- * error of whichever step failed, null on success.
- */
-export async function counterHandover(
-  db: SupabaseClient,
-  orderId: string,
-  refusal: string,
-  note: string | null,
-): Promise<PostgrestError | null> {
-  // The original refusal, re-thrown unchanged when this is not a pickup.
-  const keep = { message: refusal, code: "P0001", details: "", hint: "", name: "PostgrestError" } as PostgrestError;
-  const { data } = await db
-    .from("orders")
-    .select("is_pickup")
-    .eq("id", orderId)
-    .single();
-  if (!(data as { is_pickup?: boolean } | null)?.is_pickup) return keep;
-  const from = /illegal transition ([a-z-]+) ->/i.exec(refusal)?.[1] as OrderStatus | undefined;
-  const start = from ? RIDER_PATH.indexOf(from) : -1;
-  if (start < 0) return keep;
-
-  const live = await db
-    .from("delivery_assignments")
-    .select("id")
-    .eq("order_id", orderId)
-    .in("state", ["offered", "accepted"]);
-  for (const row of (live.data ?? []) as { id: string }[]) {
-    const cancelled = await db.rpc("ps_cancel_assignment", { p_assignment_id: row.id });
-    if (cancelled.error) return cancelled.error;
-  }
-
-  const steps = RIDER_PATH.slice(start + 1);
-  for (const [i, step] of steps.entries()) {
-    const last = i === steps.length - 1;
-    const res = await db.rpc("ps_advance_order", {
-      p_order_id: orderId,
-      p_to: step,
-      p_note: last ? note : null,
-    });
-    if (res.error) return res.error;
-  }
-  return null;
-}
-
 /**
  * Two-tap flow (2026-09-17): "Ready — request riders" moves confirmed →
  * ready-for-pickup in one RPC once 202609170001 is applied. Before that the
@@ -467,17 +430,18 @@ export async function legacyTwoStepReady(
   db: SupabaseClient,
   orderId: string,
   note: string | null,
+  rpc = "ps_advance_order",
 ): Promise<PostgrestError | null> {
   console.warn(
     `[orders] ps_advance_order refused confirmed -> ready-for-pickup; falling back to two steps — run ${TWO_TAP_FILE}`,
   );
-  const step1 = await db.rpc("ps_advance_order", {
+  const step1 = await db.rpc(rpc, {
     p_order_id: orderId,
     p_to: "preparing",
     p_note: null,
   });
   if (step1.error) return step1.error;
-  const step2 = await db.rpc("ps_advance_order", {
+  const step2 = await db.rpc(rpc, {
     p_order_id: orderId,
     p_to: "ready-for-pickup",
     p_note: note,
@@ -2156,7 +2120,7 @@ export async function reviewApplication(
     .from(table)
     .update(patch)
     .eq("id", id)
-    .select("*")
+    .select(kind === "shop" ? "*" : "id")
     .single();
   if (error) {
     if (isMissingColumn(error)) {
@@ -2168,7 +2132,7 @@ export async function reviewApplication(
     throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
   }
   if (!data) throw new AdminInputError(kind === "shop" ? "Shop not found." : "Rider not found.", 404);
-  return kind === "shop" ? mapShop(data as DbShop) : mapRider(data as DbRider);
+  return kind === "shop" ? mapShop(data as DbShop) : mapRider(await readRiderRow(db, data.id));
 }
 
 /** Postgres 42703 (undefined column) / PostgREST PGRST204 — column missing. */
@@ -2612,6 +2576,12 @@ export async function recordPayout(
     if (msg.includes("must be positive")) {
       throw new AdminInputError("Enter a payout amount above ৳0.");
     }
+    if (msg.includes("cannot record a payout for your own shop")) {
+      throw new AdminInputError(
+        "You own this shop, so another finance Admin must record its payout.",
+        403,
+      );
+    }
     throw new Error("payout insert failed");
   }
   const row = data as DbShopPayout;
@@ -2632,8 +2602,7 @@ export async function recordPayout(
 /** All riders, newest-heavy queue first (pending, then the rest). */
 export async function listRidersFull(db: SupabaseClient): Promise<Rider[]> {
   const { data, error } = await db
-    .from("riders")
-    .select("*")
+    .rpc("ps_read_riders")
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw new Error("riders list failed");
@@ -2716,10 +2685,10 @@ export async function upsertRider(
       .from("riders")
       .update(patch)
       .eq("id", id)
-      .select("*")
+      .select("id")
       .single();
     if (error || !data) throw new AdminInputError("Rider not found.", 404);
-    return mapRider(data as DbRider);
+    return mapRider(await readRiderRow(db, data.id));
   }
 
   const { data, error } = await db
@@ -2733,7 +2702,7 @@ export async function upsertRider(
       status: "pending",
       is_online: false,
     })
-    .select("*")
+    .select("id")
     .single();
   if (error) {
     if (error.code === "23505") {
@@ -2742,7 +2711,7 @@ export async function upsertRider(
     throw new Error("rider insert failed");
   }
   if (!data) throw new Error("rider insert failed");
-  return mapRider(data as DbRider);
+  return mapRider(await readRiderRow(db, data.id));
 }
 
 /* ------------------------------------------------------------------ */
@@ -2875,6 +2844,25 @@ export async function listStaff(): Promise<StaffMember[]> {
   });
 }
 
+/** SQL rechecks current actor/target roles and records the change atomically. */
+const changeStaffRoleAtomically = async (
+  service: ServiceDb, actorId: string, targetId: string, role: StaffRole | null,
+): Promise<{ id: string; role: StaffRole; created_at: string }> => {
+  const { data, error } = await service.rpc("ps_change_staff_role", {
+    p_actor_id: actorId, p_target_id: targetId, p_role: role,
+  });
+  if (error) {
+    const message = error.message ?? "";
+    if (/forbidden/i.test(message)) throw new AdminInputError("The current staff role does not permit this access change.", 403);
+    if (/not staff/i.test(message)) throw new AdminInputError("That account is not staff.", 404);
+    throw new AdminInputError("Staff access changes are unavailable. Verify the atomic staff-role migration and retry.", 503);
+  }
+  if (!data || typeof data !== "object" || typeof data.id !== "string") {
+    throw new AdminInputError("Staff access change could not be confirmed.", 503);
+  }
+  return data as { id: string; role: StaffRole; created_at: string };
+};
+
 const countSuperAdmins = async (service: ServiceDb): Promise<number> => {
   const { data, error } = await service
     .from("admin_users")
@@ -2928,12 +2916,7 @@ export async function grantStaffRole(
       );
     }
   }
-  const { data, error } = await service
-    .from("admin_users")
-    .upsert({ id: target.id, role }, { onConflict: "id" })
-    .select("id,role,created_at")
-    .single();
-  if (error || !data) throw new Error("staff grant failed");
+  const data = await changeStaffRoleAtomically(service, actor.id, target.id, role);
   // P2.6 — the gate memoises roles for a minute; a changed role must apply
   // on the very next request.
   forgetStaffRole(target.id);
@@ -2993,8 +2976,7 @@ export async function revokeStaffRole(
       );
     }
   }
-  const { error } = await service.from("admin_users").delete().eq("id", target.id);
-  if (error) throw new Error("staff revoke failed");
+  await changeStaffRoleAtomically(service, actor.id, target.id, null);
   forgetStaffRole(target.id);
   return { email };
 }

@@ -31,12 +31,16 @@ const order = (
 });
 
 const state = vi.hoisted(() => ({
+  role: "admin" as string | null,
   loading: true,
   orders: [] as Order[],
   reviews: [] as { id: string; status: string; productId: string }[],
   applications: { shops: 0, riders: 0, resets: 0, total: 0 },
 }));
 
+vi.mock("@/lib/use-staff-role", () => ({
+  useStaffRole: () => ({ canManage: state.role === "admin" || state.role === "super_admin" }),
+}));
 vi.mock("@/lib/use-orders", () => ({
   useOrders: () => ({
     orders: state.orders,
@@ -79,6 +83,7 @@ vi.mock("@/lib/use-applications-pending", () => ({
 
 afterEach(() => {
   cleanup();
+  state.role = "admin";
   state.loading = true;
   state.orders = [];
   state.reviews = [];
@@ -188,4 +193,11 @@ describe("admin dashboard — today's work", () => {
       "/admin/reviews",
     );
   });
+});
+
+it.each(["manager", null])("shows operational order count instead of sales aggregate for %s", (role) => {
+  state.loading = false; state.role = role;
+  render(<AdminDashboard />);
+  expect(screen.getByText("Today's orders")).toBeInTheDocument();
+  expect(screen.queryByText("Today's sales")).not.toBeInTheDocument();
 });

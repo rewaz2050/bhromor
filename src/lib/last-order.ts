@@ -74,6 +74,7 @@ export const clearLastOrder = (): void => {
 
 /** `/track?id=PS-…&phone=017…[&t=…]` — the receipt's "track" link, prefilled.
  *  The optional signed token (H3) lets the tracker skip its strict
- *  rate-limit path; without one the link still works. */
+ *  rate-limit path and show the customer's PIN; without one, status lookup
+ *  still works, but neither the PIN nor a fresh capability is returned. */
 export const trackHref = (id: string, phone: string, token?: string | null): string =>
   trackHrefWithToken(id, phone, token);

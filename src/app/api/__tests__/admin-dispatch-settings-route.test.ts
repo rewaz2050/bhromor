@@ -10,11 +10,17 @@ const state = vi.hoisted(() => ({
   upsertFails: false,
 }));
 
-vi.mock("@/lib/staff-auth", () => ({
-  StaffAuthError: class StaffAuthError extends Error {},
-  requireStaff: async () => state.ctx,
-  requireStaffRole: async () => state.ctx,
-}));
+vi.mock("@/lib/staff-auth", () => {
+  class StaffAuthError extends Error { status = 403; }
+  return {
+    StaffAuthError,
+    requireStaff: async () => state.ctx,
+    requireStaffRole: async (...roles: string[]) => {
+      if (!roles.includes(String(state.ctx.role))) throw new StaffAuthError("Forbidden");
+      return state.ctx;
+    },
+  };
+});
 
 const STAFF_DB = {
   from: () => ({
@@ -47,6 +53,11 @@ beforeEach(() => {
 });
 
 describe("/api/admin/dispatch-settings", () => {
+  it("denies manager financial/risk settings writes before any database mutation", async () => {
+    state.ctx.role = "manager";
+    expect((await patch({ cashCap: 100000 })).status).toBe(403);
+    expect(state.upserts).toHaveLength(0);
+  });
   it("GET answers the old defaults when nothing is stored, or the table is missing", async () => {
     const get = GET as unknown as (r: Request) => Promise<Response>;
     expect((await (await get(new Request("http://localhost/x"))).json()).settings).toEqual({ cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: 0 });

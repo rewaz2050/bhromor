@@ -95,7 +95,7 @@ parts.forEach((p, i) => {
   const n = String(i + 1).padStart(2, "0");
   const head = `-- PART ${i + 1}/${parts.length} of ${SRC} — run the parts IN ORDER, top to bottom.\n`;
   const name = `${n}_bootstrap-part.sql`;
-  writeFileSync(join(OUT, name), head + p + "\n");
+  writeFileSync(join(OUT, name), head + p.replace(/\n+$/, "") + "\n");
   const size = (head.length + p.length + 1).toFixed(0);
   console.log(`✓ ${OUT}/${name}  (${Math.round(size / 1024)} KB)`);
 });

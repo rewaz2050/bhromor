@@ -81,7 +81,8 @@ describe("admin-wa — one-tap WhatsApp status updates", () => {
     );
     expect(text).toContain("রাইডার কামাল");
     expect(text).toContain("৳1,560 (COD)");
-    expect(text).toContain("PIN 4821");
+    expect(text).not.toContain("4821");
+    expect(text).not.toContain("&t=");
   });
 
   it("prepaid orders say payment is taken — the rider collects nothing", () => {

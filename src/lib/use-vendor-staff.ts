@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import type { VendorPermission } from "./vendor-permissions";
 import type { VendorStaffMember } from "./vendor-staff";
 
 const call = async (url: string, init?: RequestInit): Promise<Record<string, unknown>> => {
@@ -90,5 +91,10 @@ export function useVendorStaff(enabled: boolean) {
     return String(body.password ?? "");
   }, []);
 
-  return { staff, loading, error, create, revoke, resetPassword, refresh };
+  const setPermissions = useCallback(async (userId: string, permissions: VendorPermission[]) => {
+    const body = await call(`/api/vendor/staff/${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify({ permissions }) });
+    const updated = body.staff as VendorStaffMember;
+    setStaff((prev) => prev.map((member) => member.userId === userId ? updated : member));
+  }, []);
+  return { staff, loading, error, create, revoke, resetPassword, refresh, setPermissions };
 }

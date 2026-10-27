@@ -734,6 +734,55 @@ direct file-picker upload, add the four Cloudinary variables from
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the
   footer form when set — for teams that outgrow the table.
 
+## Permission rollout — shop / rider / admin least privilege (2026-10-25 → 27)
+
+Ten migrations implement the approved six-role model. Apply them **in this order**, after every migration listed above (each file is repeat-safe):
+
+| # | File | What it locks |
+|---|---|---|
+| 1 | `202610250001_finance_permission_boundary.sql` | Finance approvals/payouts/adjustments need Admin/Super Admin, not ordinary Manager |
+| 2 | `202610250002_shop_first_fulfilment.sql` | Normal Confirm/Preparing/Ready belong to the owning shop; Admin override needs a reason |
+| 3 | `202610250003_vendor_staff_permissions.sql` | owner → staff grants (catalog / inventory / cashier / cancellation), audited |
+| 4 | `202610250004_finance_reporting_access.sql` | Money reports and ledger reads stop leaking to Manager/Staff |
+| 5 | `202610250005_rider_wallet_column_privacy.sql` | Rider wallet balance is an actor-bound projection, not a readable column |
+| 6 | `202610250006_rider_controls_and_ledger_retention.sql` | Rider lifecycle changes audited; financial history cannot be edited/deleted |
+| 7 | `202610250007_atomic_staff_roles.sql` | Staff role changes are atomic, last-Super-Admin protected and audited |
+| 8 | `202610260001_order_pin_privacy_and_pickup.sql` | Stored PIN unreadable by every app role; Traffic Point handover needs the customer's PIN |
+| 9 | `202610260002_scoped_shop_fulfilment.sql` | A staff member who also owns a shop fulfils that shop through a shop-scoped entry |
+| 10 | `202610260003_finance_self_dealing_boundary.sql` | Nobody approves/settles their own Rider or Shop money |
+
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all ten.
+
+After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
+
+Behaviour changes to expect:
+
+- The counter screen no longer shows the customer's PIN. Staff type the code the customer reads out; five wrong tries lock handover for 15 minutes.
+- Old staff/vendor browser tabs must be refreshed once — there is intentionally no legacy fallback.
+- A staff member who is also a shop Owner sees the shop's own Confirm/Ready buttons; a Manager who holds no shop still cannot operate shop fulfilment.
+- A payout to a Rider/Shop account the approver personally owns is refused: a second finance Admin must decide it.
+
+### Old tracking / receipt links (owner decision before publishing)
+
+Server-built `/track?...&t=…` links are HMAC capabilities with **no expiry**. Removing a field from an API cannot recall a link already copied into WhatsApp, a browser or a screenshot, so this is a policy choice, not a code switch:
+
+1. **Rotate `TRACK_TOKEN_SECRET`** (Vercel → Environment Variables → new random value → redeploy). Every link minted before the change stops proving ownership. Manual order-number + phone lookup keeps working for status. New checkout receipts mint fresh working links.
+2. **Keep the tokens.** Every link already delivered stays valid indefinitely.
+
+What rotation costs: a customer whose *only* copy of the receipt is an old `t` link loses the PIN display, and the PIN is deliberately unreadable by staff and by manual lookup. Rotate only together with a support plan (see the PIN-recovery note below), and write the choice into the ops log.
+
+### Known gap — a customer who loses their receipt cannot recover the PIN
+
+Today the 4-digit PIN is shown on the checkout receipt (and while the saved receipt proofs stay in that browser). Manual lookup hides it, staff screens never display it, and there is no re-issue endpoint — so a customer who placed a **counter pickup** and lost the receipt on another device cannot show a PIN, and staff cannot complete handover.
+
+This is a product decision, not an oversight of the migration:
+
+1. **Ownership proof before re-issue** (strongest): SMS/WhatsApp OTP to the order's phone, then the server mints a fresh receipt link / shows the PIN. Needs a paid gateway (SMS) or the Cloud API (WhatsApp) — neither is configured.
+2. **Signed-in customer account re-issue**: show the PIN in the account's order history when the account phone matches the order phone. Cheap, but signup is OTP-free, so "claim the phone number" becomes enough to read a future order's PIN at that phone — a real pickup-fraud vector.
+3. **Staff-assisted reset** (Admin only, audited): rotate the code and read the new one to a caller after identity checks. Reintroduces the social-engineering risk the staff-side PIN removal was meant to close.
+
+Do **not** ship 2 or 3 without the owner choosing; instead, until then, keep counter pickups to customers who have the receipt on their device, and prefer home delivery for phone-only customers.
+
 ## Troubleshooting
 
 | Symptom | Cause → fix |

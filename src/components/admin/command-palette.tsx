@@ -23,6 +23,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useStaffRole } from "@/lib/use-staff-role";
+import { isAdminFinancePath } from "@/lib/admin-finance-access";
 import { useRouter } from "next/navigation";
 import Drawer from "@/components/ui/drawer";
 import { IconSearch } from "@/components/ui/icons";
@@ -55,12 +57,13 @@ function PaletteBody({
   inputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const router = useRouter();
+  const { canManage } = useStaffRole();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
 
   const results = useMemo<AdminNavEntry[]>(() => {
     const q = query.trim();
-    if (q) return searchAdminNav(q).map((hit) => hit.item);
+    if (q) return searchAdminNav(q).map((hit) => hit.item).filter((item) => canManage || !isAdminFinancePath(item.href));
     // Recents first, then the rest of the sidebar in its own order.
     const recent = recents
       .map((href) => ADMIN_NAV_ITEMS.find((item) => item.href === href))
@@ -68,8 +71,8 @@ function PaletteBody({
     const rest = ADMIN_NAV_ITEMS.filter(
       (item) => !recent.some((seen) => seen.href === item.href),
     );
-    return [...recent, ...rest];
-  }, [query, recents]);
+    return [...recent, ...rest].filter((item) => canManage || !isAdminFinancePath(item.href));
+  }, [query, recents, canManage]);
 
   // Guard against an index left over from a longer result list.
   const activeIndex =

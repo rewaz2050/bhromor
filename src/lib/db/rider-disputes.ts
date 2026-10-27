@@ -114,6 +114,10 @@ const adminMessage = (error: { message?: string; code?: string }): AdminInputErr
   if (isMissingDbObject(error)) {
     return new AdminInputError("Disputes aren't switched on yet — run migration 202610020007 in the Supabase SQL Editor.", 503);
   }
+  // 202610260003: decisions about your own Rider account need a peer.
+  if (m.includes("cannot decide your own money")) {
+    return new AdminInputError("This belongs to your own Rider account — another finance Admin must decide it.", 403);
+  }
   if (m.includes("forbidden")) return new AdminInputError("Staff only.", 403);
   if (m.includes("dispute not found") || m.includes("rider not found")) return new AdminInputError("Not found.", 404);
   if (m.includes("already")) return new AdminInputError("This dispute was already decided.", 409);

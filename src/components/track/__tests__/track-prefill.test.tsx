@@ -106,6 +106,44 @@ describe("TrackView — receipt prefill", () => {
   });
 });
 
+describe("TrackView — receipt capability stays with its order", () => {
+  it("forwards the signed receipt URL token on the initial lookup", async () => {
+    visit(`?id=${order.id}&phone=01711111111&t=receipt-proof`);
+    mount();
+    await waitFor(() => expect(fetchCalls.some(u => u.startsWith("/api/track?"))).toBe(true));
+    expect(new URL(fetchCalls.find(u => u.startsWith("/api/track?"))!, "http://localhost").searchParams.get("t")).toBe("receipt-proof");
+  });
+
+  it("recovers matching device receipt proof from a status-only notification", async () => {
+    window.localStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ id: order.id, phone: "01711111111", placedAt: Date.now(), trackToken: "saved-proof" }));
+    visit(`?id=${order.id}&phone=01711111111`);
+    mount();
+    await waitFor(() => expect(fetchCalls.some(u => u.startsWith("/api/track?"))).toBe(true));
+    expect(new URL(fetchCalls.find(u => u.startsWith("/api/track?"))!, "http://localhost").searchParams.get("t")).toBe("saved-proof");
+  });
+
+  it("does not attach a saved receipt capability to another order", async () => {
+    window.localStorage.setItem(LAST_ORDER_KEY, JSON.stringify({ id: "PS-OTHER", phone: "01711111111", placedAt: Date.now(), trackToken: "saved-proof" }));
+    visit(`?id=${order.id}&phone=01711111111`);
+    mount();
+    await waitFor(() => expect(fetchCalls.some(u => u.startsWith("/api/track?"))).toBe(true));
+    expect(new URL(fetchCalls.find(u => u.startsWith("/api/track?"))!, "http://localhost").searchParams.has("t")).toBe(false);
+  });
+
+  it.each(["id", "phone"])("does not reuse URL proof after editing %s", async field => {
+    visit(`?id=${order.id}&phone=01711111111&t=receipt-proof`);
+    mount();
+    await screen.findByTestId("track-slot");
+    fireEvent.change(screen.getByPlaceholderText(field === "id" ? "PS-YYYYMMDD-XXXX" : "017XXXXXXXX"), {
+      target: { value: field === "id" ? "PS-OTHER" : "01811111111" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: translations.en.track.submit }));
+    await waitFor(() => expect(fetchCalls.filter(u => u.startsWith("/api/track?")).length).toBe(2));
+    const calls = fetchCalls.filter(u => u.startsWith("/api/track?"));
+    expect(new URL(calls[1], "http://localhost").searchParams.has("t")).toBe(false);
+  });
+});
+
 describe("TrackView — last-order shortcut", () => {
   it("offers the order the receipt remembered and tracks it in one tap", async () => {
     window.localStorage.setItem(

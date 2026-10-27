@@ -17,4 +17,4 @@ export const dynamic = "force-dynamic";
 export const GET = staffRoute("reports-best-sellers", async ({ db }) => {
   const bestSellersRows = await bestSellers(db, { limit: 10 });
   return apiJson({ bestSellers: bestSellersRows });
-});
+}, { roles: ["admin", "super_admin"] });

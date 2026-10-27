@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
 export const GET = vendorRoute("promos", async (ctx) => {
   const board = await promoBoard(ctx.db, ctx.shopId);
   return apiJson(board);
-});
+}, { ownerOnly: true });
 
 export const POST = vendorRoute(
   "promo-create",
@@ -40,7 +40,7 @@ export const POST = vendorRoute(
     });
     return apiJson({ promo }, 201);
   },
-  { limit: 20 },
+  { limit: 20, ownerOnly: true },
 );
 
 export const PATCH = vendorRoute(
@@ -55,5 +55,5 @@ export const PATCH = vendorRoute(
     });
     return apiJson({ promo });
   },
-  { limit: 40 },
+  { limit: 40, ownerOnly: true },
 );

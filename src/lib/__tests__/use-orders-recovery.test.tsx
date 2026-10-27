@@ -201,3 +201,18 @@ it("O04: a current missing order can be retried successfully", async () => {
   expect(result.current.order?.id).toBe("A");
   expect(result.current.loading).toBe(false);
 });
+
+it("passes emergency intent only for an explicit shop override through the detail hook", async () => {
+  api.get.mockResolvedValue(page("PS-OVERRIDE"));
+  api.send.mockResolvedValue({});
+  const { result } = renderHook(() => useOrder("PS-OVERRIDE"));
+  await waitFor(() => expect(result.current.order?.id).toBe("PS-OVERRIDE"));
+  await act(async () => { await result.current.advance("PS-OVERRIDE", "confirmed", "Verified emergency shop request", true); });
+  expect(api.send).toHaveBeenLastCalledWith("/api/admin/orders/PS-OVERRIDE/advance", "POST", {
+    to: "confirmed", note: "Verified emergency shop request", fulfilmentOverride: true,
+  });
+  await act(async () => { await result.current.advance("PS-OVERRIDE", "cancelled", "Customer requested cancellation"); });
+  expect(api.send).toHaveBeenLastCalledWith("/api/admin/orders/PS-OVERRIDE/advance", "POST", {
+    to: "cancelled", note: "Customer requested cancellation",
+  });
+});

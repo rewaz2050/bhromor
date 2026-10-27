@@ -342,10 +342,9 @@ describe("customer push — milestones", () => {
     expect(payloads[5].title).toBe("অর্ডার বাতিল হয়েছে");
     for (const p of payloads) {
       expect(p.body).toContain("PS-20260924-0007");
-      // Security 2026-10-14 (H3): the tracker link now carries the signed
-      // token (24 hex chars) after the id+phone pair.
+      // Status-only link: legacy subscriptions must not receive PIN proof.
       expect(p.href).toMatch(
-        /^\/track\?id=PS-20260924-0007&phone=01712345678&t=[0-9a-f]{24}$/,
+        /^\/track\?id=PS-20260924-0007&phone=01712345678$/,
       );
     }
     expect(sendCalls[0].ttl).toBe(3600);

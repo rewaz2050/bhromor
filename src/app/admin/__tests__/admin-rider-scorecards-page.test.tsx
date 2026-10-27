@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeScorecards, rankScorecards } from "@/lib/rider-quality";
 
-const state = vi.hoisted(() => ({ hook: {} as Record<string, unknown>, setPolicy: vi.fn() }));
+const state = vi.hoisted(() => ({ role: "admin", hook: {} as Record<string, unknown>, setPolicy: vi.fn() }));
+vi.mock("@/lib/use-staff-role",()=>({useStaffRole:()=>({checked:true,live:true,canManage:state.role==="admin"||state.role==="super_admin"})}));
 vi.mock("@/lib/use-rider-scorecards", () => ({ useRiderScorecards: () => state.hook }));
 
 import RiderScorecardsPage from "../riders/scorecard/page";
@@ -19,6 +20,7 @@ const riders = rankScorecards(
 );
 
 beforeEach(() => {
+  state.role="admin";
   state.setPolicy.mockReset().mockResolvedValue(true);
   state.hook = { live: true, checked: true, riders, ready: true, autoSuspend: false, loaded: true, error: null, refresh: vi.fn(), setPolicy: state.setPolicy };
 });
@@ -69,4 +71,10 @@ describe("/admin/riders/scorecard", () => {
     expect(screen.getByTestId("scorecards-missing")).toHaveTextContent("202610020006");
     expect(screen.queryByTestId("auto-suspend-card")).toBeNull();
   });
+});
+
+it("Manager reads operational scorecards without the policy switch",()=>{
+ state.role="manager";render(<RiderScorecardsPage/>);
+ expect(screen.getAllByTestId("scorecard-row")).toHaveLength(3);
+ expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 });

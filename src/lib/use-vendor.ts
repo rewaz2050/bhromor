@@ -16,6 +16,7 @@ import { isSupabaseConfigured } from "./env";
 import { usePoll } from "./use-poll";
 import { useScopedRead } from "./use-scoped-read";
 import { INVALID_FUNNEL_RESPONSE, isShopFunnel } from "./funnel-report-validation";
+import type { VendorPermission } from "./vendor-permissions";
 import type { Category, Product, Shop } from "./catalog";
 import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
@@ -98,6 +99,7 @@ export const vendorErrorMessage = (err: unknown): string =>
 export interface VendorMe {
   email: string;
   role: "owner" | "staff";
+  permissions?: VendorPermission[];
   shop: Shop;
 }
 

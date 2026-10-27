@@ -38,4 +38,4 @@ export const GET = vendorRoute("funnel", async (ctx, request) => {
     );
   }
   return apiJson(report);
-});
+}, { ownerOnly: true });

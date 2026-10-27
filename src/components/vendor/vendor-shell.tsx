@@ -16,6 +16,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { vendorPathAllowed } from "@/lib/vendor-permissions";
 import LogoMark from "@/components/logo-mark";
 import { useVendorSession, useVendorThreads, type VendorMe } from "@/lib/use-vendor";
 
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/vendor", label: "Dashboard" },
   { href: "/vendor/orders", label: "Orders" },
   { href: "/vendor/products", label: "Products" },
+  { href: "/vendor/inventory", label: "Inventory" },
   { href: "/vendor/earnings", label: "Earnings" },
   { href: "/vendor/reviews", label: "Reviews" },
   { href: "/vendor/messages", label: "Messages" },
@@ -151,7 +153,7 @@ export default function VendorShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
-            {NAV.map((item) => {
+            {NAV.filter((item) => me && vendorPathAllowed(me, item.href)).map((item) => {
               const active =
                 item.href === "/vendor"
                   ? pathname === "/vendor"
@@ -184,7 +186,7 @@ export default function VendorShell({ children }: { children: ReactNode }) {
             })}
           </nav>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-6 print:max-w-none print:p-0">{children}</main>
+        <main className="mx-auto max-w-5xl px-4 py-6 print:max-w-none print:p-0">{me && !vendorPathAllowed(me, pathname) ? <p role="status">The shop owner has not delegated access to this page.</p> : me?.role === "staff" && pathname === "/vendor" ? <div><h1 className="text-xl font-semibold">Order fulfilment</h1><p className="mt-2 text-sm text-ink-soft">Confirm incoming orders, prepare parcels and mark them Ready. Extra duties require the owner’s delegation.</p><Link href="/vendor/orders" className="mt-4 inline-flex min-h-11 items-center underline">Open orders</Link></div> : children}</main>
       </div>
     </VendorCtx.Provider>
   );
