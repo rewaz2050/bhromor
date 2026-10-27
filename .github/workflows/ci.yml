@@ -90,14 +90,53 @@ jobs:
       - name: Browsers
         run: npx playwright install --with-deps chromium
 
+      # Both passes also write a machine-readable report so a failure names
+      # the exact spec in the check annotation (the raw job log is not always
+      # reachable from every client).
       - name: Dashboards
         run: npm run test:dashboards
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .cache/pw-dashboards.json
 
       # Includes both auth specs; avoid running that subset twice.
       # The default config excludes dashboards, which ran above with their
       # own explicit invalid-host environment.
       - name: Full browser regression
         run: npm run test:e2e
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .cache/pw-e2e.json
+
+      # Annotate the exact spec (the raw job log is not reachable from every
+      # client). Playwright's JSON shape is suites → specs → tests → results.
+      - name: Name the failing browser tests
+        if: failure()
+        run: |
+          node - <<'JS'
+          const fs = require("node:fs");
+          let found = 0;
+          const walk = (suites, trail) => {
+            for (const suite of suites || []) {
+              const path = [...trail, suite.title].filter(Boolean);
+              for (const spec of suite.specs || []) {
+                for (const test of spec.tests || []) {
+                  const bad = (test.results || []).filter((r) => r.status !== "passed" && r.status !== "skipped");
+                  if (!bad.length) continue;
+                  found += 1;
+                  const detail = bad[0].error && bad[0].error.message ? bad[0].error.message : bad[0].status;
+                  const first = String(detail).split("\n")[0].slice(0, 350);
+                  const where = `${spec.file || suite.file || "(spec)"}:${spec.line || 1}`;
+                  console.log(`::error file=${where}::${[...path, spec.title].join(" > ")} — ${first}`);
+                }
+              }
+              walk(suite.suites, path);
+            }
+          };
+          for (const file of [".cache/pw-dashboards.json", ".cache/pw-e2e.json"]) {
+            if (!fs.existsSync(file)) continue;
+            walk(JSON.parse(fs.readFileSync(file, "utf8")).suites, []);
+          }
+          if (!found) console.log("::error::Playwright reported a failure but the JSON report named no test");
+          JS
 
       - name: Report
         if: failure()

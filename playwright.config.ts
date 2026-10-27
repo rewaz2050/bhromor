@@ -14,6 +14,9 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["html", { open: "never", outputFolder: ".cache/playwright-report" }],
+    // CI sets PLAYWRIGHT_JSON_OUTPUT_NAME so the job can annotate the exact
+    // failing spec; the HTML report stays for the uploaded artifact.
+    ...(process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ? ([["json"]] as [string][]) : []),
   ],
   outputDir: ".cache/playwright-results",
   use: {
