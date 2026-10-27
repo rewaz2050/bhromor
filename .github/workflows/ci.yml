@@ -119,11 +119,16 @@ jobs:
               const path = [...trail, suite.title].filter(Boolean);
               for (const spec of suite.specs || []) {
                 for (const test of spec.tests || []) {
+                  // "unexpected" = still failing after retries; a retried-away
+                  // flake is "flaky" and must not be annotated as a failure.
+                  if (test.status !== "unexpected") continue;
                   const bad = (test.results || []).filter((r) => r.status !== "passed" && r.status !== "skipped");
                   if (!bad.length) continue;
                   found += 1;
-                  const detail = bad[0].error && bad[0].error.message ? bad[0].error.message : bad[0].status;
-                  const first = String(detail).split("\n")[0].slice(0, 350);
+                  const detail = bad.at(-1).error && bad.at(-1).error.message ? bad.at(-1).error.message : bad.at(-1).status;
+                  // The first lines of an expect() diff usually carry the axe
+                  // rule id and the failing selector, which is the whole point.
+                  const first = String(detail).split("\n").slice(0, 14).join(" ⏎ ").slice(0, 1500);
                   const where = `${spec.file || suite.file || "(spec)"}:${spec.line || 1}`;
                   console.log(`::error file=${where}::${[...path, spec.title].join(" > ")} — ${first}`);
                 }
