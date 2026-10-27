@@ -5,6 +5,10 @@ export default defineConfig({
   testIgnore: "dashboards.spec.ts",
   fullyParallel: false,
   workers: 1,
+  // One retry on CI only. The suite is a single worker against `next dev`, so a
+  // page that compiles slowly under runner load can miss a 12 s expectation
+  // once; the retry re-runs just that test. Local runs stay strict (0 retries).
+  retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
   expect: { timeout: 12_000 },
   reporter: [
