@@ -348,6 +348,37 @@ try {
    if(file==='check-migrations-all.sql') assert.equal(scoped.length,0);
    else assert(scoped.length===1 && scoped[0].status.startsWith('OK'));
  }
+
+ // /api/health names the permission migration to run. That only works if each
+ // probe's exact RPC shape resolves the way PostgREST calls it (named args)
+ // and the probe itself cannot write. Anonymous/service callers hit the guard
+ // first, so a null-argument probe fails closed instead of touching a row.
+ const healthProbe = await connect(); await healthProbe.query('set role service_role');
+ assert.equal((await row(healthProbe,'select public.ps_can_manage_finance() as ok')).ok,false);
+ assert.equal((await row(healthProbe,'select count(*)::int n from public.ps_read_riders()')).n,0);
+ await assert.rejects(
+   healthProbe.query('select public.ps_vendor_advance_order(p_order_id => null, p_to => null, p_note => null)'),
+   /forbidden: shop fulfilment targets only/);
+ assert.equal((await healthProbe.query('select public.ps_guard_self_finance(p_rider_id => null)')).rows.length,1);
+ for (const obj of ['public.rider_control_audit','public.staff_role_audit','public.order_operations']) {
+   assert.equal((await row(healthProbe,`select to_regclass('${obj}') is not null present`)).present,true,obj);
+ }
+ // pg_attribute, not information_schema: the latter only lists columns the
+ // current role holds a privilege on, so a service-role caller could see zero.
+ assert.equal((await row(healthProbe,`select count(*)::int n from pg_attribute
+   where attrelid='public.vendor_users'::regclass and attname='permissions' and attnum>0 and not attisdropped`)).n,1);
+ const before=(await row(root,'select (select count(*) from rider_control_audit)::int a,(select count(*) from staff_role_audit)::int b'));
+ await healthProbe.query('select public.ps_can_manage_finance()');
+ await healthProbe.query('select count(*) from public.ps_read_riders()');
+ await assert.rejects(healthProbe.query('select public.ps_vendor_advance_order(p_order_id => null, p_to => null, p_note => null)'),/forbidden/);
+ await healthProbe.query('select public.ps_guard_self_finance(p_rider_id => null)');
+ const after=(await row(root,'select (select count(*) from rider_control_audit)::int a,(select count(*) from staff_role_audit)::int b'));
+ assert.deepEqual(after,before);
+ assert.equal((await row(root,`select has_function_privilege('service_role','public.ps_can_manage_finance()','execute')
+   and has_function_privilege('service_role','public.ps_read_riders()','execute')
+   and has_function_privilege('service_role','public.ps_vendor_advance_order(uuid,ps_order_status,text)','execute')
+   and has_function_privilege('service_role','public.ps_guard_self_finance(uuid)','execute') as ok`)).ok,true);
+ console.log('PASS real PostgreSQL: every /api/health permission probe resolves with its exact named arguments, fails closed and writes nothing');
  console.log('PASS real PostgreSQL: legacy outbox capabilities removed, stale writers sanitized, payment mutation PIN masked, repeat-safe upgrade and migration checks');
 
 } finally {

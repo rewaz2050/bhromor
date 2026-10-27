@@ -6,10 +6,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   ROUND_MIGRATIONS,
   ROUND_MIGRATION_ORDER,
   ROUND_MIGRATION_WHY,
+  rpcReady,
   type RoundProbeKey,
 } from "../migration-probes";
 
@@ -103,5 +105,73 @@ describe("health migration probes", () => {
       expect(assignment, key).toMatch(/^\w+Ready: \w+(\.ready)?,$/);
       expect(src, key).toContain(artefact.split(".")[0]);
     }
+  });
+});
+
+/**
+ * rpcReady is the difference between "this migration has not run" and "the
+ * function ran and refused". Getting it backwards would either hide a missing
+ * migration or invent one, so pin the four answers PostgREST can give.
+ */
+describe("rpcReady", () => {
+  const client = (reply: unknown) =>
+    ({ rpc: async () => reply }) as unknown as SupabaseClient;
+
+  it("is true when the probe call succeeds", async () => {
+    expect(await rpcReady(client({ data: null, error: null }), "ps_can_manage_finance")).toBe(true);
+  });
+
+  it("is false only when PostgREST says the function is absent", async () => {
+    expect(await rpcReady(client({ data: null, error: { code: "PGRST202" } }), "x")).toBe(false);
+    expect(await rpcReady(client({ data: null, error: { code: "42883" } }), "x")).toBe(false);
+    expect(
+      await rpcReady(
+        client({ data: null, error: { message: "Could not find the function public.x in the schema cache" } }),
+        "x",
+      ),
+    ).toBe(false);
+    expect(
+      await rpcReady(client({ data: null, error: { message: 'function public.x() does not exist' } }), "x"),
+    ).toBe(false);
+  });
+
+  it("treats an authorization or guard refusal as proof the function exists", async () => {
+    expect(
+      await rpcReady(client({ data: null, error: { code: "42501", message: "permission denied for function" } }), "x"),
+    ).toBe(true);
+    expect(
+      await rpcReady(client({ data: null, error: { code: "P0001", message: "forbidden: shop fulfilment targets only" } }), "x"),
+    ).toBe(true);
+  });
+
+  it("is false when the request itself throws (network, DNS, bad env)", async () => {
+    const broken = {
+      rpc: async () => {
+        throw new Error("fetch failed");
+      },
+    } as unknown as SupabaseClient;
+    expect(await rpcReady(broken, "x")).toBe(false);
+  });
+
+  it("passes the named arguments PostgREST needs to resolve the overload", async () => {
+    const calls: Array<{ fn: string; args: unknown }> = [];
+    const recording = {
+      rpc: async (fn: string, args: unknown) => {
+        calls.push({ fn, args });
+        return { data: null, error: null };
+      },
+    } as unknown as SupabaseClient;
+    await rpcReady(recording, "ps_vendor_advance_order", { p_order_id: null, p_to: null, p_note: null });
+    expect(calls[0]).toEqual({
+      fn: "ps_vendor_advance_order",
+      args: { p_order_id: null, p_to: null, p_note: null },
+    });
+
+    // Those names must be the ones the migrations declare, otherwise the probe
+    // answers PGRST202 forever and a healthy database looks un-migrated.
+    const orderSql = readFileSync(join(MIGRATIONS, "202610260002_scoped_shop_fulfilment.sql"), "utf8");
+    for (const arg of ["p_order_id", "p_to", "p_note"]) expect(orderSql).toContain(arg);
+    const selfSql = readFileSync(join(MIGRATIONS, "202610260003_finance_self_dealing_boundary.sql"), "utf8");
+    expect(selfSql).toContain("p_rider_id uuid");
   });
 });
