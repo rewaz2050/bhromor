@@ -736,7 +736,7 @@ direct file-picker upload, add the four Cloudinary variables from
 
 ## Permission rollout — shop / rider / admin least privilege (2026-10-25 → 27)
 
-Ten migrations implement the approved six-role model. Apply them **in this order**, after every migration listed above (each file is repeat-safe):
+Eleven migrations: the ten that implement the approved six-role model, plus the rollout-probe RPC that makes all ten visible from `/api/health`. Apply them **in this order**, after every migration listed above (each file is repeat-safe):
 
 | # | File | What it locks |
 |---|---|---|
@@ -750,12 +750,15 @@ Ten migrations implement the approved six-role model. Apply them **in this order
 | 8 | `202610260001_order_pin_privacy_and_pickup.sql` | Stored PIN unreadable by every app role; Traffic Point handover needs the customer's PIN |
 | 9 | `202610260002_scoped_shop_fulfilment.sql` | A staff member who also owns a shop fulfils that shop through a shop-scoped entry |
 | 10 | `202610260003_finance_self_dealing_boundary.sql` | Nobody approves/settles their own Rider or Shop money |
+| 11 | `202610270001_health_probe_rpc.sql` | `ps_health_probes()`: one service-role catalog call that reports all ten files — including the trigger- and policy-only ones PostgREST cannot see |
 
-Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all ten.
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all eleven.
 
 After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
 
-`/api/health` now carries one flag per file (`financeBoundaryReady`, `delegatedStaffReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`) and `nextSteps` names the exact file an operator must run, in order. Eight of the ten are probed from the live database; `202610250002` (a trigger) and `202610250004` (policies plus rewritten guards) cannot be seen through PostgREST, so a half-applied rollout shows them only in `check-migrations-all.sql` rows 95 and 97a–97k — both files also fail closed inside their own transaction unless the probed prerequisites (`202610250001`, `202610250003`) ran first.
+`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady` — and `nextSteps` names the exact file an operator must run, in order.
+
+Two of the ten files cannot be observed through PostgREST at all: `202610250002` adds a trigger and `202610250004` only adds restrictive policies and rewritten guards. `202610270001` closes that gap: `ps_health_probes()` answers all ten from the catalogs (functions, triggers, policies, column privileges) in one call, is executable by `service_role` only, never writes, and answers `false` instead of raising on a half-applied database. Until it is installed those two flags stay `false` and the first next step is the probe file itself; the fallback also keeps `supabase/check-migrations-all.sql` rows 95 and 97a–97k as the manual check.
 
 Behaviour changes to expect:
 

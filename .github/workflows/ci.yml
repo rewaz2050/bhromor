@@ -64,6 +64,69 @@ jobs:
       - name: Build
         run: npm run build
 
+  # The SQL suites were only ever run by hand (2026-10-27). They need no
+  # secrets: PGlite is an npm dependency, and the PostgreSQL suite boots a
+  # disposable database of its own.
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Money: finance boundary, self-dealing, wallet privacy, ledger
+      # retention against embedded PostgreSQL.
+      - name: Money and permission SQL
+        run: npm run test:money
+
+      - name: Dispatch SQL
+        run: npm run test:dispatch
+
+  # The full bootstrap + workflow suite needs a real server (databases, roles,
+  # publications). Plain PostgreSQL is enough; the auth service is stubbed by
+  # the test itself.
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Full bootstrap and workflow SQL
+        env:
+          PG_VERIFY_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run test:workflow:postgres
+
   # Browser contracts: isolated dashboards first, then the entire default
   # Playwright suite (storefront, recovery, maps, native auth locks and SDK).
   # Authenticated responses are fixtures, not real account/RLS acceptance.

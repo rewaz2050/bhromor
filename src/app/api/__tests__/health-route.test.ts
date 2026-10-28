@@ -31,6 +31,8 @@ const state = vi.hoisted(() => ({
   missing: new Set<string>(),
   /** RPCs PostgREST should answer PGRST202 for (the permission-batch probes). */
   missingFns: new Set<string>(),
+  /** 202610270001's answer: null = the probe RPC itself is not installed. */
+  healthProbes: null as Record<string, boolean> | null,
 }));
 
 vi.mock("@/lib/cron", () => ({
@@ -114,6 +116,11 @@ vi.mock("@/lib/supabase-server", () => {
         // The 2026-10-25 → 27 permission probes: installed unless the test says
         // otherwise. A present function answers with data (or an authorization
         // error); either way the route only needs "not PGRST202".
+        if (fn === "ps_health_probes") {
+          return state.healthProbes
+            ? { data: state.healthProbes, error: null }
+            : { data: null, error: { code: "PGRST202", message: "Could not find the function public.ps_health_probes" } };
+        }
         if (permissionFns.has(fn)) {
           return state.missingFns.has(fn)
             ? { data: null, error: { code: "PGRST202", message: `Could not find the function public.${fn}` } }
@@ -134,7 +141,21 @@ type Health = {
   nextSteps: string[];
 };
 
+const ALL_PERMISSION_FILES = {
+  financeBoundary: true,
+  shopFirstFulfilment: true,
+  delegatedStaff: true,
+  financeReporting: true,
+  riderWalletPrivacy: true,
+  riderControlsRetention: true,
+  staffRoles: true,
+  orderPinPrivacy: true,
+  shopScopedFulfilment: true,
+  financeSelfDealing: true,
+};
+
 beforeEach(() => {
+  state.healthProbes = { ...ALL_PERMISSION_FILES };
   state.repair = null;
   state.staff = true;
   state.push = { configured: true, tableReady: true, count: 1 };
@@ -608,8 +629,11 @@ describe("GET /api/health — checkout repair awareness", () => {
  */
 describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
   const ROUND = [
+    "permissionProbeReady",
     "financeBoundaryReady",
+    "shopFirstFulfilmentReady",
     "delegatedStaffReady",
+    "financeReportingReady",
     "riderWalletPrivacyReady",
     "riderControlsReady",
     "staffRoleReady",
@@ -640,6 +664,7 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
         place_order_rpc: true,
       },
     };
+    state.healthProbes = null; // exercise the direct-probe fallback
     state.missingFns = new Set(["ps_can_manage_finance", "ps_read_riders", "ps_vendor_advance_order", "ps_guard_self_finance"]);
     state.missing = new Set(["order_operations", "staff_role_audit", "rider_control_audit"]);
     const body = (await (await GET()).json()) as Health;
@@ -647,7 +672,34 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
     expect(body.nextSteps.some((s) => s.includes("2026102"))).toBe(true);
   });
 
+  it("trusts the probe RPC over the direct probes when they disagree", async () => {
+    // A trigger-only / policy-only file is invisible to PostgREST: the direct
+    // probes cannot see 202610250002 or 202610250004, so the RPC decides.
+    state.healthProbes = { ...ALL_PERMISSION_FILES, shopFirstFulfilment: false, financeReporting: false };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.shopFirstFulfilmentReady).toBe(false);
+    expect(body.checks.financeReportingReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250002_shop_first_fulfilment.sql"))).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250004_finance_reporting_access.sql"))).toBe(true);
+  });
+
+  it("falls back to the eight direct probes when the probe RPC is not installed", async () => {
+    state.healthProbes = null;
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.permissionProbeReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.checks.orderPinReady).toBe(true);
+    // The two files PostgREST cannot observe must not be claimed as applied.
+    expect(body.checks.shopFirstFulfilmentReady).toBe(false);
+    expect(body.checks.financeReportingReady).toBe(false);
+    // …and the first thing to run is the probe, which then reveals them.
+    const permissionSteps = body.nextSteps.filter((s) => s.includes("2026102"));
+    expect(permissionSteps[0]).toContain("202610270001_health_probe_rpc.sql");
+  });
+
   it("names the finance-boundary file when its RPC is not installed", async () => {
+    state.healthProbes = null;
     state.missingFns = new Set(["ps_can_manage_finance"]);
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.financeBoundaryReady).toBe(false);
@@ -658,6 +710,7 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
   });
 
   it("names the PIN/privacy file when the operational order view is missing", async () => {
+    state.healthProbes = null;
     state.missing = new Set(["order_operations"]);
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.orderPinReady).toBe(false);
@@ -667,6 +720,7 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
   });
 
   it("names the staff-grant file when vendor_users.permissions is missing", async () => {
+    state.healthProbes = null;
     state.missing = new Set(["vendor_users.permissions"]);
     const body = (await (await GET()).json()) as Health;
     expect(body.checks.delegatedStaffReady).toBe(false);
@@ -677,12 +731,16 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
   });
 
   it("keeps the ten files in rollout order in nextSteps", async () => {
+    state.healthProbes = null;
     state.missingFns = new Set(["ps_can_manage_finance", "ps_guard_self_finance"]);
     state.missing = new Set(["order_operations", "staff_role_audit"]);
     const body = (await (await GET()).json()) as Health;
     const named = body.nextSteps.filter((s) => s.includes("2026102"));
-    expect(named[0]).toContain("202610250001_finance_permission_boundary.sql");
+    // Without the probe RPC the two trigger/policy files cannot be confirmed,
+    // so the probe file comes first and both are listed after it.
+    expect(named[0]).toContain("202610270001_health_probe_rpc.sql");
+    expect(named[1]).toContain("202610250001_finance_permission_boundary.sql");
     expect(named.at(-1)).toContain("202610260003_finance_self_dealing_boundary.sql");
-    expect(named.length).toBe(4);
+    expect(named.length).toBe(7);
   });
 });

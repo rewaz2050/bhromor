@@ -90,7 +90,8 @@ with checks(file, label, kind, obj) as (values
   ('202610260003_finance_self_dealing_boundary.sql', 'Self claim-decision guard', 'function_src', 'ps_admin_reject_settle|Self-dealing boundary (202610260003)'),
   ('202610260003_finance_self_dealing_boundary.sql', 'Self wallet-credit guard', 'function_src', 'ps_admin_adjust_rider|Self-dealing boundary (202610260003)'),
   ('202610260003_finance_self_dealing_boundary.sql', 'Self dispute-decision guard', 'function_src', 'ps_admin_resolve_dispute|Self-dealing boundary (202610260003)'),
-  ('202610260003_finance_self_dealing_boundary.sql', 'Own-shop payout recording guard', 'function', 'ps_guard_shop_payout_self_dealing')
+  ('202610260003_finance_self_dealing_boundary.sql', 'Own-shop payout recording guard', 'function', 'ps_guard_shop_payout_self_dealing'),
+  ('202610270001_health_probe_rpc.sql', 'Rollout probe RPC', 'function', 'ps_health_probes')
 ),
 res as (
   select file, label, obj,

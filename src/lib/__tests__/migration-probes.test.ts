@@ -3,7 +3,7 @@
  * if the names are real, each file is probed, and the ten 2026-10-25 → 27
  * permission files are covered by either a REST probe or the SQL checklist.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -16,6 +16,7 @@ import {
 } from "../migration-probes";
 
 const MIGRATIONS = join(process.cwd(), "supabase/migrations");
+const PROBE_RPC = "202610270001_health_probe_rpc.sql";
 const PERMISSION_FILES = [
   "202610250001_finance_permission_boundary.sql",
   "202610250002_shop_first_fulfilment.sql",
@@ -63,21 +64,21 @@ describe("health migration probes", () => {
     const files = order.map((k) => ROUND_MIGRATIONS[k]);
     // Chronological, strictly increasing: a later file may rely on an earlier one.
     expect(files).toEqual([...files].sort());
-    const probed = new Set(files);
-    const unprobed = PERMISSION_FILES.filter((f) => !probed.has(f));
-    if (unprobed.length > 0) {
-      // Only the two files PostgREST cannot observe may be missing, and the SQL
-      // checklist must still name them (rows 95 and 97a–97k).
-      expect(unprobed.sort()).toEqual([
-        "202610250002_shop_first_fulfilment.sql",
-        "202610250004_finance_reporting_access.sql",
-      ]);
-      const checklist = readFileSync(
-        join(process.cwd(), "supabase/check-migrations-all.sql"),
-        "utf8",
-      );
-      for (const file of unprobed) expect(checklist).toContain(file);
-    }
+    // Every one of the ten files now has its own flag; the two PostgREST
+    // cannot see are answered by the 202610270001 probe RPC.
+    expect(files).toEqual(PERMISSION_FILES);
+    expect(ROUND_MIGRATIONS.permissionProbeReady).toBe(PROBE_RPC);
+  });
+
+  it("keeps the probe RPC first in the batch, ahead of the files it reveals", () => {
+    const order = ROUND_MIGRATION_ORDER;
+    expect(order.indexOf("permissionProbeReady")).toBeGreaterThan(-1);
+    expect(order.indexOf("permissionProbeReady")).toBeLessThan(
+      order.indexOf("shopFirstFulfilmentReady"),
+    );
+    expect(order.indexOf("permissionProbeReady")).toBeLessThan(
+      order.indexOf("financeReportingReady"),
+    );
   });
 
   it("maps each permission probe onto the artefact its migration adds", () => {
@@ -173,5 +174,121 @@ describe("rpcReady", () => {
     for (const arg of ["p_order_id", "p_to", "p_note"]) expect(orderSql).toContain(arg);
     const selfSql = readFileSync(join(MIGRATIONS, "202610260003_finance_self_dealing_boundary.sql"), "utf8");
     expect(selfSql).toContain("p_rider_id uuid");
+  });
+});
+
+/**
+ * The two files PostgREST cannot see are answered by 202610270001. Its jsonb
+ * keys are the contract between the migration and this module: a rename on
+ * either side would silently freeze those flags at false.
+ */
+describe("permission probe RPC contract", () => {
+  const migration = readFileSync(join(MIGRATIONS, PROBE_RPC), "utf8");
+  const MAP: Array<[string, RoundProbeKey]> = [
+    ["financeBoundary", "financeBoundaryReady"],
+    ["shopFirstFulfilment", "shopFirstFulfilmentReady"],
+    ["delegatedStaff", "delegatedStaffReady"],
+    ["financeReporting", "financeReportingReady"],
+    ["riderWalletPrivacy", "riderWalletPrivacyReady"],
+    ["riderControlsRetention", "riderControlsReady"],
+    ["staffRoles", "staffRoleReady"],
+    ["orderPinPrivacy", "orderPinReady"],
+    ["shopScopedFulfilment", "shopScopedFulfilmentReady"],
+    ["financeSelfDealing", "financeSelfDealingReady"],
+  ];
+
+  it("returns exactly the keys this module reads", () => {
+    const returned = new Set(
+      [...migration.matchAll(/^\s*'([a-zA-Z]+)',$/gm)].map((m) => m[1]),
+    );
+    expect([...returned].sort()).toEqual(MAP.map(([json]) => json).sort());
+  });
+
+  it("maps every returned key onto a distinct probe flag", () => {
+    const flags = new Set(MAP.map(([, key]) => key));
+    expect(flags.size).toBe(MAP.length);
+    for (const [, key] of MAP) expect(ROUND_MIGRATIONS[key]).toMatch(/^2026102/);
+  });
+
+  it("only answers booleans and never writes", () => {
+    // Every branch is a catalog predicate. Only real statements count — the
+    // comments legitimately mention the "direct-UPDATE trigger".
+    expect(migration).not.toMatch(/^\s*(insert|update|delete|truncate|alter)\b/im);
+    expect(migration).toMatch(/security definer/);
+    expect(migration).toMatch(/revoke all on function public\.ps_health_probes\(\) from public, anon, authenticated/);
+    expect(migration).toMatch(/grant execute on function public\.ps_health_probes\(\) to service_role/);
+  });
+
+  it("is listed in both SQL checklist files", () => {
+    for (const file of ["supabase/check-migrations-all.sql", "supabase/check-migrations-from-0928.sql"]) {
+      expect(readFileSync(join(process.cwd(), file), "utf8")).toContain(PROBE_RPC);
+    }
+  });
+
+  it("is mirrored into the fresh bootstrap", () => {
+    expect(readFileSync(join(process.cwd(), "supabase/bootstrap-fresh.sql"), "utf8")).toContain(
+      "create or replace function public.ps_health_probes()",
+    );
+    const parts = readdirSync(join(process.cwd(), "supabase/bootstrap-parts"));
+    expect(parts.length).toBe(24);
+    expect(parts.some((f) => readFileSync(join(process.cwd(), "supabase/bootstrap-parts", f), "utf8").includes("ps_health_probes"))).toBe(true);
+  });
+});
+
+/**
+ * supabase/bootstrap-fresh.sql is the "one paste" install path and mirrors the
+ * migrations by hand. A block that drifts from its migration file is the
+ * sneakiest kind of bug: a fresh database then behaves differently from an
+ * upgraded one, so every permission file is compared byte-for-byte (modulo
+ * whitespace) against the section that claims to mirror it.
+ */
+describe("bootstrap mirrors the permission batch", () => {
+  const bootstrap = readFileSync(join(process.cwd(), "supabase/bootstrap-fresh.sql"), "utf8");
+  const lines = bootstrap.split("\n");
+  const BOUNDARY = /^-- ={4,} (MIRROR:|Feature:|Fix:|Misc:)/;
+  const MIRROR = /^-- ===== MIRROR: supabase\/migrations\/(\S+) =====$/;
+  // (202610260001) — 12 digits: 2026 + MMDD + 4-digit sequence.
+  const FEATURE = /^-- ==== Feature: .* \((2026\d{8})\) ====$/;
+  const normalised = (text: string) => text.replace(/\s+/g, " ").trim();
+
+  /** exact-title lookup: MIRROR names the file, Feature names its prefix */
+  const sectionFor = (file: string): string | null => {
+    const at = lines.findIndex((line) => {
+      const mirror = line.match(MIRROR);
+      if (mirror) return mirror[1] === file;
+      const feature = line.match(FEATURE);
+      return Boolean(feature) && file.startsWith(feature![1]);
+    });
+    if (at === -1) return null;
+    const next = lines.findIndex((line, i) => i > at && BOUNDARY.test(line));
+    return lines.slice(at + 1, next === -1 ? lines.length : next).join("\n");
+  };
+
+  it.each(PERMISSION_FILES.concat(PROBE_RPC))("%s is mirrored exactly", (file) => {
+    const section = sectionFor(file);
+    expect(section, `${file} has no bootstrap section`).not.toBeNull();
+    const migration = readFileSync(join(MIGRATIONS, file), "utf8");
+    expect(normalised(section as string)).toBe(normalised(migration));
+  });
+
+  it("keeps the 202610250002 repeat-safety guard in both copies", () => {
+    // Without it, re-applying the file after 202610260001/002 throws
+    // "Unexpected ps_advance_order authorization guard".
+    const marker = "p.proname in ('ps_advance_order_internal', 'ps_advance_order_scoped')";
+    for (const text of [
+      readFileSync(join(MIGRATIONS, "202610250002_shop_first_fulfilment.sql"), "utf8"),
+      bootstrap,
+    ]) {
+      expect(normalised(text)).toContain(normalised(marker));
+    }
+  });
+
+  it("splits into paste-size parts that carry the new section", () => {
+    const parts = readdirSync(join(process.cwd(), "supabase/bootstrap-parts"));
+    expect(parts.length).toBe(24);
+    const last = parts.sort().at(-1) as string;
+    expect(readFileSync(join(process.cwd(), "supabase/bootstrap-parts", last), "utf8")).toContain(
+      "create or replace function public.ps_health_probes()",
+    );
   });
 });

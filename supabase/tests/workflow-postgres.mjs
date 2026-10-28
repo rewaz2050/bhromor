@@ -378,6 +378,33 @@ try {
    and has_function_privilege('service_role','public.ps_read_riders()','execute')
    and has_function_privilege('service_role','public.ps_vendor_advance_order(uuid,ps_order_status,text)','execute')
    and has_function_privilege('service_role','public.ps_guard_self_finance(uuid)','execute') as ok`)).ok,true);
+
+ // 202610270001 — one catalog call answers all ten files, including the two
+ // PostgREST cannot see (a trigger and restrictive policies). Only the service
+ // role may call it, and it must never write.
+ const probes=await row(healthProbe,'select public.ps_health_probes() as r');
+ assert.equal(Object.keys(probes.r).length,10);
+ assert.equal(Object.values(probes.r).every(v=>v===true),true,JSON.stringify(probes.r));
+ assert.equal((await row(healthProbe,`select not has_function_privilege('anon','public.ps_health_probes()','execute') anon,
+   not has_function_privilege('authenticated','public.ps_health_probes()','execute') auth`)).anon,true);
+ assert.equal((await row(healthProbe,`select not has_function_privilege('authenticated','public.ps_health_probes()','execute') auth`)).auth,true);
+ assert.equal(probes.r.shopFirstFulfilment,true);
+ assert.equal(probes.r.financeReporting,true);
+ // Repeat safety: after 202610260001/002 moved the fulfilment guard into the
+ // internal/scoped machine, re-running 202610250002 must be a no-op rather
+ // than an "unexpected guard" exception.
+ const shopFirst=readFileSync(new URL('../migrations/202610250002_shop_first_fulfilment.sql',import.meta.url),'utf8');
+ await root.query(shopFirst);
+ assert.equal((await row(root,'select public.ps_health_probes() as r')).r.shopFirstFulfilment,true);
+ // A half-applied database answers false instead of raising.
+ await root.query('drop trigger trg_direct_order_workflow on orders');
+ const half=await row(root,'select public.ps_health_probes() as r');
+ assert.equal(half.r.shopFirstFulfilment,false);
+ assert.equal(half.r.financeBoundary,true);
+ // …and the file that restores it can be re-run on its own.
+ await root.query(shopFirst);
+ assert.equal((await row(root,'select public.ps_health_probes() as r')).r.shopFirstFulfilment,true);
+ console.log('PASS real PostgreSQL: the rollout probe RPC answers all ten files, is service-role only, never writes, fails soft and 202610250002 replays after the batch');
  console.log('PASS real PostgreSQL: every /api/health permission probe resolves with its exact named arguments, fails closed and writes nothing');
  console.log('PASS real PostgreSQL: legacy outbox capabilities removed, stale writers sanitized, payment mutation PIN masked, repeat-safe upgrade and migration checks');
 

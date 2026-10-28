@@ -27,7 +27,18 @@ begin
     raise exception 'Install finance permission boundary before shop-first fulfilment';
   end if;
   definition := pg_get_functiondef('public.ps_advance_order(uuid,ps_order_status,text)'::regprocedure);
-  if position(marker in definition) = 0 then
+  -- Repeat safety: 202610260001/002 later move this guard into the internal and
+  -- scoped machine, and ps_advance_order becomes a thin wrapper that no longer
+  -- carries the marker. Re-running this file then must be a no-op — not an
+  -- "unexpected guard" exception that would make the documented order-dependent
+  -- replay fail after the whole batch has been applied once.
+  if position(marker in definition) = 0
+     and not exists (
+       select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public'
+         and p.proname in ('ps_advance_order_internal', 'ps_advance_order_scoped')
+         and position(marker in p.prosrc) > 0
+     ) then
     if position(anchor in definition) = 0 then
       raise exception 'Unexpected ps_advance_order authorization guard';
     end if;

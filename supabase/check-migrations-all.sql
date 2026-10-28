@@ -202,7 +202,8 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('103d', 'Self claim-decision guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_reject_settle|Self-dealing boundary (202610260003)'),
   ('103e', 'Self wallet-credit guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_adjust_rider|Self-dealing boundary (202610260003)'),
   ('103f', 'Self dispute-decision guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_resolve_dispute|Self-dealing boundary (202610260003)'),
-  ('103g', 'Own-shop payout recording guard', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_shop_payout_self_dealing')
+  ('103g', 'Own-shop payout recording guard', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_shop_payout_self_dealing'),
+  ('104', 'Rollout probe RPC (health sees triggers/policies)', '202610270001_health_probe_rpc.sql', 'function', 'ps_health_probes')
 ),
 res as (
   select source_file as file, label,
