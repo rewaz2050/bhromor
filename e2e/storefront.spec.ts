@@ -121,6 +121,19 @@ async function noOverflow(page: Page) {
   ).toBeLessThanOrEqual(1);
 }
 async function accessible(page: Page) {
+  // Accessibility is judged on the SETTLED page, not mid-fade. Entrance
+  // animations run opacity 0 → 1, and axe blends partially transparent text
+  // with its background: sampled at 0.8 opacity, `ink-soft` (#5b645d, 5.8:1 on
+  // ivory) reads as #767d76 (4.01:1) and fails WCAG AA. That is what made
+  // /account, /wishlist and /delivery fail on CI while passing locally — the
+  // faster runner caught the 300 ms fade in progress. Reduced motion is a real
+  // supported state here (the site honours it everywhere), so scan that one and
+  // stop animations outright; a colour that is genuinely too light still fails.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addStyleTag({
+    content:
+      "*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important}",
+  });
   // Materialize off-screen content-visibility blocks before Axe samples
   // backgrounds; otherwise Chromium may report ivory text on the page body.
   await page.addStyleTag({
