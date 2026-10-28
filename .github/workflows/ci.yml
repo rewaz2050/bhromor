@@ -84,12 +84,20 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       # Money: finance boundary, self-dealing, wallet privacy, ledger
-      # retention against embedded PostgreSQL.
+      # retention against embedded PostgreSQL. The PASS tally is published as a
+      # check annotation so the run carries its own evidence — the raw job log
+      # is not reachable from every client.
       - name: Money and permission SQL
-        run: npm run test:money
+        run: |
+          set -o pipefail
+          npm run test:money 2>&1 | tee /tmp/money.log
+          echo "::notice title=Money SQL groups::$(grep -c '^PASS' /tmp/money.log) PASS groups"
 
       - name: Dispatch SQL
-        run: npm run test:dispatch
+        run: |
+          set -o pipefail
+          npm run test:dispatch 2>&1 | tee /tmp/dispatch.log
+          echo "::notice title=Dispatch SQL groups::$(grep -c '^PASS' /tmp/dispatch.log) PASS groups"
 
   # The full bootstrap + workflow suite needs a real server (databases, roles,
   # publications). Plain PostgreSQL is enough; the auth service is stubbed by
@@ -125,7 +133,10 @@ jobs:
       - name: Full bootstrap and workflow SQL
         env:
           PG_VERIFY_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-        run: npm run test:workflow:postgres
+        run: |
+          set -o pipefail
+          npm run test:workflow:postgres 2>&1 | tee /tmp/pg.log
+          echo "::notice title=PostgreSQL workflow groups::$(grep -c '^PASS' /tmp/pg.log) PASS groups"
 
   # Browser contracts: isolated dashboards first, then the entire default
   # Playwright suite (storefront, recovery, maps, native auth locks and SDK).
