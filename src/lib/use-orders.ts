@@ -177,10 +177,38 @@ export function useOrders(options: UseOrdersOptions = {}) {
     [live, refresh, queryKey],
   );
   const cancel = useCallback((id: string): Promise<boolean> => advance(id, "cancelled"), [advance]);
+  // The audited exception for a counter pickup whose receipt is gone. Separate
+  // from `advance` on purpose: the normal handover must never quietly become an
+  // override, so only the explicit panel sends this pair of fields.
+  const overridePickup = useCallback(
+    async (id: string, reason: string): Promise<boolean> => {
+      const state = lifecycle.current;
+      if (!live || !state.live || state.key !== queryKey) return false;
+      const epoch = state.epoch;
+      const current = () => state.live && state.key === queryKey && state.epoch === epoch;
+      try {
+        await apiSend<{ order: Order }>(`/api/admin/orders/${encodeURIComponent(id)}/advance`, "POST", {
+          to: "delivered",
+          note: reason,
+          pickupOverride: true,
+        });
+        if (current()) {
+          setError(null);
+          await refresh();
+        }
+        return true;
+      } catch (err) {
+        if (current()) setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [live, refresh, queryKey],
+  );
   const current = live && dataKey === queryKey;
   return {
     orders: current ? (liveOrders ?? []) : [],
     advance,
+    overridePickup,
     cancel,
     reset: refresh,
     live,
@@ -201,6 +229,7 @@ export function useOrders(options: UseOrdersOptions = {}) {
  */
 export function useOrder(orderNo: string) {
   const base = useOrders();
+  const { overridePickup: overridePickupList } = base;
   const { live, loading: listLoading, orders, refresh: refreshList, advance: advanceList } = base;
   const fromList = orders.find(o => o.id === orderNo);
   const [fetched, setFetched] = useState<Order | null>(null);
@@ -265,12 +294,21 @@ export function useOrder(orderNo: string) {
     return ok;
   }, [advanceList, fetchDetail, fromList]);
   const cancel = useCallback((id: string): Promise<boolean> => advance(id, "cancelled"), [advance]);
+  const overridePickup = useCallback(
+    async (id: string, reason: string): Promise<boolean> => {
+      const ok = await overridePickupList(id, reason);
+      if (!fromList) await fetchDetail();
+      return ok;
+    },
+    [overridePickupList, fetchDetail, fromList],
+  );
   const current = live && detailKey === orderNo;
   const order = live ? (fromList ?? (current && fetched?.id === orderNo ? fetched : undefined)) : undefined;
   return {
     ...base,
     order,
     advance,
+    overridePickup,
     cancel,
     refresh,
     error: base.error ?? (current ? detailError : null),

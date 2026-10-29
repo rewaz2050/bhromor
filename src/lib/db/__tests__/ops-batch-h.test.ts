@@ -199,6 +199,89 @@ describe("counter pickup hand-over", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Counter handover without the receipt (audited exception)           */
+/* ------------------------------------------------------------------ */
+
+describe("counter pickup override", () => {
+  const reason = "Customer at the counter; confirmed the bKash TrxID and national ID";
+  const scripted = (result: { data?: unknown; error?: unknown } = { data: { ok: true }, error: null }) => {
+    const rpc = vi.fn(async () => result);
+    const db = { from: () => query([{ id: "order-uuid", is_pickup: true }]), rpc } as never;
+    return { db, rpc };
+  };
+
+  it("is closed to manager even with a reason", async () => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "manager", pickupOverride: true }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "too short", "   ninechars "])("needs a substantive reason (%j)", async (bad) => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", bad, { role: "admin", pickupOverride: true }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("sends the trimmed reason and never a PIN", async () => {
+    const { db, rpc } = scripted();
+    await advanceOrderAsStaff(db, "PS-1", "delivered", `  ${reason}  `, {
+      role: "super_admin",
+      pickupOverride: true,
+    }).catch(() => undefined);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("ps_admin_override_pickup", {
+      p_order_id: "order-uuid",
+      p_reason: reason,
+    });
+  });
+
+  it.each([
+    ["forbidden", 403],
+    ["payment not verified", 422],
+    ["rider delivery in progress", 409],
+    ["pickup not ready", 409],
+    ["not a counter pickup", 409],
+  ] as const)("maps %s to %i", async (message, status) => {
+    const { db } = scripted({ error: { code: "P0001", message } });
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin", pickupOverride: true }),
+    ).rejects.toMatchObject({ status });
+  });
+
+  it("names the migration when the override RPC is not installed", async () => {
+    const { db } = scripted({ error: { code: "PGRST202", message: "function not found" } });
+    const error = await advanceOrderAsStaff(db, "PS-1", "delivered", reason, {
+      role: "admin",
+      pickupOverride: true,
+    }).catch((e) => e);
+    expect(error.status).toBe(503);
+    expect(error.message).toMatch(/202610290001/);
+  });
+
+  it.each([null, {}, { ok: "true" }, { ok: false }])(
+    "fails closed on a malformed override outcome %j",
+    async (data) => {
+      const { db, rpc } = scripted({ data });
+      await expect(
+        advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin", pickupOverride: true }),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(rpc).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("still demands the PIN when the flag is absent", async () => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* Awaiting-dispatch board                                             */
 /* ------------------------------------------------------------------ */
 

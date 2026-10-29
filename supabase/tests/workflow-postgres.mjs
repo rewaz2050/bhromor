@@ -327,6 +327,49 @@ try {
  await manager.query('select ps_collect_pickup_order($1,$2)',[atomic.id,atomic.delivery_code]);
  assert.equal((await row(root,'select state from delivery_assignments where id=$1',[invitation.id])).state,'cancelled');
  console.log('PASS real PostgreSQL: forced final-step failure rolls back every state, history and invitation withdrawal; successful retry closes offered invitation');
+ // Counter handover without the receipt. The PIN stays the only normal path;
+ // Admin/Super Admin get one audited exception, and nobody else gets any.
+ const pickupOrder=async(payment='cod')=>{const o=await order(payment);await root.query('update orders set is_pickup=true where id=$1',[o.id]);await ready(o);return o;};
+ const noReceipt=await pickupOrder();
+ const overrideReason='Customer at Traffic Point; matched national ID and the bKash transaction';
+ await assert.rejects(manager.query('select ps_admin_override_pickup($1,$2)',[noReceipt.id,overrideReason]),/forbidden/);
+ await assert.rejects(vendor.query('select ps_admin_override_pickup($1,$2)',[noReceipt.id,overrideReason]),/forbidden/);
+ await assert.rejects(ca.query('select ps_admin_override_pickup($1,$2)',[noReceipt.id,overrideReason]),/forbidden/);
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[noReceipt.id,'lost it']),/reason required/);
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[noReceipt.id,'x'.repeat(301)]),/reason required/);
+ assert.equal((await row(root,'select status from orders where id=$1',[noReceipt.id])).status,'ready-for-pickup');
+ const walletHeld=await pickupOrder('bkash');
+ await root.query("update orders set payment_status='pending_verification' where id=$1",[walletHeld.id]);
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[walletHeld.id,overrideReason]),/payment not verified/);
+ const withRider=await pickupOrder();
+ await root.query("insert into delivery_assignments(order_id,rider_id,state) values($1,$2,'accepted')",[withRider.id,ra]);
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[withRider.id,overrideReason]),/rider delivery in progress/);
+ const notPickup=await order();
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[notPickup.id,overrideReason]),/not a counter pickup/);
+ const notReady=await order();await root.query('update orders set is_pickup=true where id=$1',[notReady.id]);
+ await assert.rejects(staff.query('select ps_admin_override_pickup($1,$2)',[notReady.id,overrideReason]),/pickup not ready/);
+ assert.deepEqual((await row(staff,'select ps_admin_override_pickup($1,$2) result',[noReceipt.id,overrideReason])).result,{ok:true});
+ assert.equal((await row(root,'select status from orders where id=$1',[noReceipt.id])).status,'delivered');
+ const delivered=(await root.query("select note,changed_by from order_status_history where order_id=$1 and status='delivered'",[noReceipt.id])).rows;
+ assert.equal(delivered.length,1);
+ assert.equal(delivered[0].changed_by,staffId);
+ assert(delivered[0].note.startsWith('[Pickup override — PIN not verified] '));
+ assert(!delivered[0].note.includes(noReceipt.delivery_code));
+ assert.deepEqual((await row(superStaff,'select ps_admin_override_pickup($1,$2) result',[noReceipt.id,overrideReason])).result,{ok:true});
+ assert.equal((await row(root,"select count(*)::int n from order_status_history where order_id=$1 and status='delivered'",[noReceipt.id])).n,1);
+ assert.equal((await row(root,'select count(*)::int n from shop_ledger where order_id=$1',[noReceipt.id])).n,1);
+ await root.query(readFileSync(new URL('../migrations/202610290001_pickup_handover_override.sql',import.meta.url),'utf8'));
+ assert.equal((await row(root,"select to_regprocedure('public.ps_admin_override_pickup(uuid,text)') is not null ok")).ok,true);
+ assert.equal((await row(root,"select has_function_privilege('anon','public.ps_admin_override_pickup(uuid,text)','EXECUTE') allowed")).allowed,false);
+ for(const file of ['check-migrations-all.sql','check-migrations-from-0928.sql']) {
+   const checks=(await root.query(readFileSync(new URL('../'+file,import.meta.url),'utf8'))).rows;
+   const found=checks.filter(r=>r.migration==='202610290001_pickup_handover_override.sql');
+   // The "all" file only prints what is missing; the from-0928 file prints every
+   // row it knows, so an applied file shows up as OK.
+   if(file==='check-migrations-all.sql') assert.equal(found.length,0);
+   else assert(found.length===1 && found[0].status.startsWith('OK'));
+ }
+ console.log('PASS real PostgreSQL: PIN stays the only normal handover; a reasoned Admin/Super Admin override closes one delivery with actor+reason in history and no PIN, while Manager/Owner/Rider, unpaid, rider-held and non-pickup orders are refused; migration repeat-safe and recognized');
  await root.query('alter table wa_outbox disable trigger trg_outbox_capability');
  const draft=await row(root,"insert into wa_outbox(order_no,phone,kind,message) values('PIN-FIXTURE','01711111111','confirmed',$1) returning id",['Track /track?id=PIN-FIXTURE&phone=01711111111&t='+'a'.repeat(24)]);
  await root.query(readFileSync(new URL('../migrations/202610260001_order_pin_privacy_and_pickup.sql',import.meta.url),'utf8'));

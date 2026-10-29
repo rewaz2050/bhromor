@@ -17,6 +17,8 @@ import {
 
 const MIGRATIONS = join(process.cwd(), "supabase/migrations");
 const PROBE_RPC = "202610270001_health_probe_rpc.sql";
+/** Rollout files that are not permission boundaries, so carry no flag. */
+const OVERRIDE_FILES = ["202610290001_pickup_handover_override.sql"];
 const PERMISSION_FILES = [
   "202610250001_finance_permission_boundary.sql",
   "202610250002_shop_first_fulfilment.sql",
@@ -264,7 +266,7 @@ describe("bootstrap mirrors the permission batch", () => {
     return lines.slice(at + 1, next === -1 ? lines.length : next).join("\n");
   };
 
-  it.each(PERMISSION_FILES.concat(PROBE_RPC))("%s is mirrored exactly", (file) => {
+  it.each(PERMISSION_FILES.concat(PROBE_RPC, OVERRIDE_FILES))("%s is mirrored exactly", (file) => {
     const section = sectionFor(file);
     expect(section, `${file} has no bootstrap section`).not.toBeNull();
     const migration = readFileSync(join(MIGRATIONS, file), "utf8");

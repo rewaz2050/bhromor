@@ -313,7 +313,13 @@ export async function advanceOrderAsStaff(
   orderNo: string,
   to: OrderStatus,
   note?: string,
-  policy?: { role: StaffRole; fulfilmentOverride?: boolean; pickupCode?: string },
+  policy?: {
+    role: StaffRole;
+    fulfilmentOverride?: boolean;
+    pickupCode?: string;
+    /** Admin/Super Admin only: close a pickup whose receipt is gone, with a reason. */
+    pickupOverride?: boolean;
+  },
 ): Promise<Order> {
   const { data, error } = await db
     .from("orders")
@@ -323,6 +329,37 @@ export async function advanceOrderAsStaff(
   if (error || !data) throw new AdminInputError("Order not found.", 404);
   const row = data as { id: string; shop_id?: string | null; is_return?: boolean; is_pickup?: boolean };
   const orderId = row.id;
+  if (row.is_pickup && to === "delivered" && policy?.pickupOverride) {
+    // The PIN path above is the only normal handover; this is the audited
+    // exception for a customer who no longer has the confirmation. The stored
+    // code is never read, re-issued or shown — the warehouse never gets a
+    // second way to learn it. SQL enforces the same rules; these mirror them
+    // so the screen can explain a refusal.
+    if (policy.role !== "admin" && policy.role !== "super_admin") {
+      throw new AdminInputError("Only Admin or Super Admin can override a counter handover.", 403);
+    }
+    const reason = (note ?? "").trim();
+    if (reason.length < 10 || reason.length > 300) {
+      throw new AdminInputError("Give a 10–300 character reason for the override.", 422);
+    }
+    const override = await db.rpc("ps_admin_override_pickup", { p_order_id: orderId, p_reason: reason });
+    if (override.error) {
+      const msg = override.error.message.toLowerCase();
+      if (msg.includes("forbidden")) throw new AdminInputError("Only Admin or Super Admin can override a counter handover.", 403);
+      if (msg.includes("reason required")) throw new AdminInputError("Give a 10–300 character reason for the override.", 422);
+      if (msg.includes("payment not verified")) throw new AdminInputError("Verify the wallet payment before handover.", 422);
+      if (msg.includes("rider delivery in progress")) throw new AdminInputError("A rider holds this parcel; resolve custody before counter handover.", 409);
+      if (msg.includes("not ready") || msg.includes("not a counter")) throw new AdminInputError("This order is not ready for counter handover.", 409);
+      if (["PGRST202", "42883"].includes(override.error.code)) {
+        throw new AdminInputError("Pickup override unavailable. Install 202610290001_pickup_handover_override.sql before retrying.", 503);
+      }
+      throw new AdminInputError("Pickup override failed; the handover transaction was not completed. Please retry.", 503);
+    }
+    if ((override.data as { ok?: boolean } | null)?.ok !== true) {
+      throw new AdminInputError("Could not confirm the pickup override. Refresh the order before retrying.", 503);
+    }
+    return getOrderDetail(db, orderNo);
+  }
   if (row.is_pickup && to === "delivered") {
     if (!/^[0-9]{4}$/.test(policy?.pickupCode ?? "")) {
       throw new AdminInputError("Enter the customer's 4-digit pickup PIN.", 422);

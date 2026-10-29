@@ -196,6 +196,48 @@ test('Traffic Point handover takes customer PIN input, never displays the expect
   await fits(page);
 });
 
+test('Admin closes a receipt-less pickup only with a recorded reason', async ({page}) => {
+  let status = 'ready-for-pickup';
+  let submitted: Record<string, unknown> | null = null;
+  await fixtures(page, (path, method, body) => {
+    if (path === '/api/admin/me') return {staff:true,role:'admin',email:'admin@verify.invalid'};
+    const pickup = {...order,status,isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+    if (path.endsWith('/advance') && method === 'POST') {
+      submitted=body;status='delivered';return {order:{...pickup,status}};
+    }
+  });
+  await page.goto(`/admin/orders/${order.id}`);
+  // The PIN box stays the primary action; the exception is folded away.
+  await expect(page.getByRole('button',{name:'Verify PIN & hand over'})).toBeVisible();
+  const disclosure = page.getByText('Customer lost the confirmation? / রশিদ হারিয়ে গেছে?');
+  await expect(page.getByLabel('Reason / কারণ')).toBeHidden();
+  await disclosure.click();
+  await expect(page.getByLabel('Reason / কারণ')).toBeVisible();
+  const submit = page.getByRole('button',{name:'Hand over with recorded reason'});
+  await expect(submit).toBeDisabled();
+  const reason = 'Customer at Traffic Point; matched national ID and bKash TrxID';
+  await page.getByLabel('Reason / কারণ').fill(reason);
+  page.on('dialog', (dialog) => void dialog.accept());
+  await submit.click();
+  await expect.poll(()=>submitted).toMatchObject({to:'delivered',pickupOverride:true,note:reason});
+  expect(submitted).not.toHaveProperty('pickupCode');
+  await fits(page);
+});
+
+test('Manager never sees the pickup override', async ({page}) => {
+  await fixtures(page, (path) => {
+    if (path === '/api/admin/me') return {staff:true,role:'manager',email:'manager@verify.invalid'};
+    const pickup = {...order,status:'ready-for-pickup',isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+  });
+  await page.goto(`/admin/orders/${order.id}`);
+  await expect(page.getByRole('button',{name:'Verify PIN & hand over'})).toBeVisible();
+  await expect(page.getByText('Customer lost the confirmation? / রশিদ হারিয়ে গেছে?')).toHaveCount(0);
+});
+
 test('customer tracking keeps receipt proof; manual lookup shows status without a PIN', async ({page}) => {
   const lookups: string[]=[];
   await fixtures(page);

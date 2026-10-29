@@ -34,7 +34,7 @@ describe("pickup location decision", () => {
 
   it("keeps the staff handover copy on the hub and never renders the stored PIN", () => {
     const verify = vi.fn(async () => true);
-    render(<PickupHandover verify={verify} />);
+    render(<PickupHandover verify={verify} override={vi.fn(async () => true)} />);
     expect(screen.getByText(/Pickup at Traffic Point/)).toBeTruthy();
     expect(screen.getByText(/সুনামগঞ্জ সদর থেকে সংগ্রহ/)).toBeTruthy();
     expect(screen.queryByDisplayValue("4821")).toBeNull();

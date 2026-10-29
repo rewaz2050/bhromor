@@ -751,8 +751,9 @@ Eleven migrations: the ten that implement the approved six-role model, plus the 
 | 9 | `202610260002_scoped_shop_fulfilment.sql` | A staff member who also owns a shop fulfils that shop through a shop-scoped entry |
 | 10 | `202610260003_finance_self_dealing_boundary.sql` | Nobody approves/settles their own Rider or Shop money |
 | 11 | `202610270001_health_probe_rpc.sql` | `ps_health_probes()`: one service-role catalog call that reports all ten files — including the trigger- and policy-only ones PostgREST cannot see |
+| 12 | `202610290001_pickup_handover_override.sql` | `ps_admin_override_pickup()`: the audited Admin/Super Admin exception that closes a counter pickup when the customer no longer has the PIN — reason mandatory, actor and reason written into the order timeline, PIN never re-issued or shown |
 
-Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all eleven.
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all twelve.
 
 After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
 
@@ -766,6 +767,7 @@ Behaviour changes to expect:
 - Old staff/vendor browser tabs must be refreshed once — there is intentionally no legacy fallback.
 - A staff member who is also a shop Owner sees the shop's own Confirm/Ready buttons; a Manager who holds no shop still cannot operate shop fulfilment.
 - A payout to a Rider/Shop account the approver personally owns is refused: a second finance Admin must decide it.
+- A counter pickup whose customer lost the receipt is closed from the order screen with **“Customer lost the confirmation?” → reason (10–300 characters)**. Admin/Super Admin only; the timeline records `[Pickup override — PIN not verified] <reason>` with the actor. Managers, shop owners and riders cannot use it, and no PIN is ever re-issued or displayed. Until `202610290001` is applied the order screen answers "Pickup override unavailable" and names the file.
 
 ### Old tracking / receipt links (owner decision before publishing)
 
@@ -791,17 +793,24 @@ Notes for whoever operates this:
 - Removing a field from an API cannot recall a link already copied into WhatsApp, a browser or a screenshot — only the TTL/rotation switches above shorten or kill it.
 - What rotation costs: a customer whose *only* copy of the receipt is an old `t` link loses the PIN display, and the PIN is deliberately unreadable by staff and by manual lookup. Rotate only together with a support plan (see the PIN-recovery note below), and write the choice into the ops log.
 
-### Known gap — a customer who loses their receipt cannot recover the PIN
+### PIN recovery — decided: an audited counter override, never a re-issued PIN
 
-Today the 4-digit PIN is shown on the checkout receipt (and while the saved receipt proofs stay in that browser). Manual lookup hides it, staff screens never display it, and there is no re-issue endpoint — so a customer who placed a **counter pickup** and lost the receipt on another device cannot show a PIN, and staff cannot complete handover.
+The 4-digit PIN is shown on the checkout receipt, from a saved receipt on that device, and on the tracker when the customer opens the link from their confirmation. Manual lookup hides it, staff screens never display it, and there is no re-issue endpoint.
 
-This is a product decision, not an oversight of the migration:
+A customer who lost the receipt on another device used to be stuck: `ps_advance_order` refuses to close a pickup without the PIN and `ps_collect_pickup_order` needs the four digits, so *nobody* — not even an Admin — could hand the parcel over. `202610290001_pickup_handover_override.sql` closes that dead end the way the approved model describes Admin exceptions:
 
-1. **Ownership proof before re-issue** (strongest): SMS/WhatsApp OTP to the order's phone, then the server mints a fresh receipt link / shows the PIN. Needs a paid gateway (SMS) or the Cloud API (WhatsApp) — neither is configured.
-2. **Signed-in customer account re-issue**: show the PIN in the account's order history when the account phone matches the order phone. Cheap, but signup is OTP-free, so "claim the phone number" becomes enough to read a future order's PIN at that phone — a real pickup-fraud vector.
-3. **Staff-assisted reset** (Admin only, audited): rotate the code and read the new one to a caller after identity checks. Reintroduces the social-engineering risk the staff-side PIN removal was meant to close.
+- **Admin/Super Admin only.** Manager, shop owner and rider are refused by SQL, not just by the UI.
+- **A reason is mandatory** (10–300 characters) and lands in `order_status_history` as `[Pickup override — PIN not verified] <reason>`, with `changed_by` set to the actor.
+- **No PIN is re-issued, rotated or shown.** The stored code is never read by this path, so the warehouse still has no way to learn it.
+- **Same machine, same accounting.** It calls `ps_advance_order_internal` exactly like the verified handover, so stock, COD custody, wallet and ledger semantics are unchanged; it still refuses unpaid wallet orders, rider-held parcels and non-pickup orders, and it is idempotent under concurrency.
 
-Do **not** ship 2 or 3 without the owner choosing; instead, until then, keep counter pickups to customers who have the receipt on their device, and prefer home delivery for phone-only customers.
+The alternatives stay on the table, and the owner can replace the override with either by dropping the RPC:
+
+1. **OTP before re-issue** (strongest): SMS/WhatsApp to the order's phone. Needs a paid gateway — none is configured.
+2. **Signed-in account re-issue**: cheap, but signup is OTP-free, so "claim the phone number" would be enough to read a future order's PIN — a real pickup-fraud vector. Not implemented, on purpose.
+3. **Staff-assisted reset that reads the new PIN out** (old behaviour): reintroduces exactly the social-engineering risk the staff-side PIN removal closed. Not implemented.
+
+Operational rule: use the override with the customer standing at the counter, and write what you checked (ID, TrxID, call-back) in the reason — that text is the audit.
 
 ## Troubleshooting
 

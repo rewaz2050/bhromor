@@ -49,7 +49,7 @@ export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   // Served from the loaded list, or fetched by order number when the order
   // is older than the loaded pages (the list is paginated).
-  const { order, loading, error, clearError, advance, cancel, refresh } =
+  const { order, loading, error, clearError, advance, overridePickup, cancel, refresh } =
     useOrder(params.id);
   // Hooks first, before any early return below.
   const [returnBusy, setReturnBusy] = useState<
@@ -253,7 +253,10 @@ export default function AdminOrderDetailPage() {
           </>
         )}
         {pickupHandover && (
-          <PickupHandover verify={(code) => advance(order.id, "delivered", undefined, false, code)} />
+          <PickupHandover
+            verify={(code) => advance(order.id, "delivered", undefined, false, code)}
+            override={(reason) => overridePickup(order.id, reason)}
+          />
         )}
         {!order.isReturn && riderOwned && !pickupHandover && (
           <p className="text-sm text-ink-soft">

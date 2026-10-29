@@ -203,7 +203,9 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('103e', 'Self wallet-credit guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_adjust_rider|Self-dealing boundary (202610260003)'),
   ('103f', 'Self dispute-decision guard', '202610260003_finance_self_dealing_boundary.sql', 'function_src', 'ps_admin_resolve_dispute|Self-dealing boundary (202610260003)'),
   ('103g', 'Own-shop payout recording guard', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_shop_payout_self_dealing'),
-  ('104', 'Rollout probe RPC (health sees triggers/policies)', '202610270001_health_probe_rpc.sql', 'function', 'ps_health_probes')
+  ('104', 'Rollout probe RPC (health sees triggers/policies)', '202610270001_health_probe_rpc.sql', 'function', 'ps_health_probes'),
+  ('105a', 'Audited counter-pickup override', '202610290001_pickup_handover_override.sql', 'function', 'ps_admin_override_pickup'),
+  ('105b', 'Override records its reason', '202610290001_pickup_handover_override.sql', 'function_src', 'ps_admin_override_pickup|Pickup override — PIN not verified')
 ),
 res as (
   select source_file as file, label,
