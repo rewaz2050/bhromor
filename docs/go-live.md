@@ -753,11 +753,11 @@ Eleven migrations: the ten that implement the approved six-role model, plus the 
 | 11 | `202610270001_health_probe_rpc.sql` | `ps_health_probes()`: one service-role catalog call that reports all ten files — including the trigger- and policy-only ones PostgREST cannot see |
 | 12 | `202610290001_pickup_handover_override.sql` | `ps_admin_override_pickup()`: the audited Admin/Super Admin exception that closes a counter pickup when the customer no longer has the PIN — reason mandatory, actor and reason written into the order timeline, PIN never re-issued or shown |
 
-Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all twelve.
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all twelve. `202610290001` requires `202610270001` and refuses to install without it (`Install 202610270001_health_probe_rpc.sql before the pickup handover override`), so the order in the table above is not optional.
 
 After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
 
-`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady` — and `nextSteps` names the exact file an operator must run, in order.
+`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`, `pickupOverrideReady` — and `nextSteps` names the exact file an operator must run, in order. `202610290001` extends the probe instead of copying it: `ps_health_probes()` keeps `202610270001`'s body as `ps_health_probes_base()` and adds the `pickupHandoverOverride` key, so a database that has the batch but not the override says so in one line.
 
 Two of the ten files cannot be observed through PostgREST at all: `202610250002` adds a trigger and `202610250004` only adds restrictive policies and rewritten guards. `202610270001` closes that gap: `ps_health_probes()` answers all ten from the catalogs (functions, triggers, policies, column privileges) in one call, is executable by `service_role` only, never writes, and answers `false` instead of raising on a half-applied database. Until it is installed those two flags stay `false` and the first next step is the probe file itself; the fallback also keeps `supabase/check-migrations-all.sql` rows 95 and 97a–97k as the manual check.
 
@@ -811,6 +811,56 @@ The alternatives stay on the table, and the owner can replace the override with 
 3. **Staff-assisted reset that reads the new PIN out** (old behaviour): reintroduces exactly the social-engineering risk the staff-side PIN removal closed. Not implemented.
 
 Operational rule: use the override with the customer standing at the counter, and write what you checked (ID, TrxID, call-back) in the reason — that text is the audit.
+
+## The three decisions that are still yours (runbook)
+
+Each of these is built and tested; none of them changes behaviour until you set
+it. Nothing here needs a code change — only an environment variable, a setting,
+or a policy call. Do them in this order.
+
+### A. Old tracking / receipt links (`TRACK_TOKEN_TTL_HOURS`, `TRACK_TOKEN_REVOKE_LEGACY`)
+
+Today every link ever sent still works, forever. The token can carry a signed
+expiry and v1 tokens can be refused; both are off by default so no receipt
+breaks.
+
+| Step | Action | Effect | Cost if you get it wrong |
+|---|---|---|---|
+| A1 | Set `TRACK_TOKEN_TTL_HOURS=720` (30 days) and deploy | **new** links expire 30 days after issue; the lifetime is signed *into* the token, so changing the value later cannot revive an expired one | a customer whose only receipt is older than the window loses the PIN display; staff cannot look it up |
+| A2 | Wait one full order cycle with A1 in place, watch support | — | — |
+| A3 | Only then set `TRACK_TOKEN_REVOKE_LEGACY=1` | timeless v1 links stop proving ownership; order number + phone still shows **status** (never the PIN) | an old receipt link degrades from "shows PIN" to "shows status" |
+| A4 | Rotate `TRACK_TOKEN_SECRET` | **all** links die at once | nuclear option — only with a support plan |
+
+Recommended: A1 now, A3 after a month of quiet support, A4 only on suspicion of
+leak. Record the choice in the ops log; there is no migration to undo, just
+unset the variable.
+
+### B. Four-eyes on finance (not built — deliberately)
+
+The same-person case is closed (`202610260003`): nobody decides their own Rider
+or Shop money. What is **not** closed is two different people agreeing to break
+a rule — a second Admin approving a related party, or two Staff colluding.
+
+There are three options; the product currently implements only the first.
+
+1. **Status quo (implemented).** Every finance decision records actor + email in
+   `money_audit_log` / `rider_control_audit`. Detection is after the fact, by
+   reading the audit.
+2. **Threshold quorum (would need a migration).** For amounts above ৳X, a second
+   distinct Admin must confirm. Safe to build, but it blocks a single-Admin
+   operation — decide who the second approver is *before* switching it on.
+3. **Conflict-of-interest declaration (would need a migration).** The approver
+   ticks "no personal interest" and that attestation is stored. Cheap, auditable,
+   and easy to lie in — it documents intent, it does not enforce.
+
+Do not switch on 2 or 3 without choosing who the fallback approver is; an
+unattended queue of unpayable riders is worse than the risk it closes.
+
+### C. Hosted acceptance
+
+Run `docs/hosted-acceptance-run-sheet.md` end to end on a staging project. It is
+the only check that exercises real Supabase auth, realtime and REST together.
+No code ships differently whether or not it has been run — but "verified" does.
 
 ## Troubleshooting
 

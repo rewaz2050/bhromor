@@ -97,6 +97,7 @@ describe("health migration probes", () => {
       ["orderPinReady", "order_operations"],
       ["shopScopedFulfilmentReady", "ps_vendor_advance_order"],
       ["financeSelfDealingReady", "ps_guard_self_finance"],
+      ["pickupOverrideReady", "ps_admin_override_pickup"],
     ];
     for (const [key, artefact] of expected) {
       expect(ROUND_MIGRATIONS[key].startsWith("2026102"), key).toBe(true);

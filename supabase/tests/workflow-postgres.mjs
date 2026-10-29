@@ -420,14 +420,21 @@ try {
  assert.equal((await row(root,`select has_function_privilege('service_role','public.ps_can_manage_finance()','execute')
    and has_function_privilege('service_role','public.ps_read_riders()','execute')
    and has_function_privilege('service_role','public.ps_vendor_advance_order(uuid,ps_order_status,text)','execute')
-   and has_function_privilege('service_role','public.ps_guard_self_finance(uuid)','execute') as ok`)).ok,true);
+   and has_function_privilege('service_role','public.ps_guard_self_finance(uuid)','execute')
+   and has_function_privilege('service_role','public.ps_admin_override_pickup(uuid,text)','execute') as ok`)).ok,true);
 
  // 202610270001 — one catalog call answers all ten files, including the two
  // PostgREST cannot see (a trigger and restrictive policies). Only the service
  // role may call it, and it must never write.
  const probes=await row(healthProbe,'select public.ps_health_probes() as r');
- assert.equal(Object.keys(probes.r).length,10);
+ // Ten permission files plus 202610290001's pickup override (the wrapper keeps
+ // 202610270001's body as ps_health_probes_base and adds one key).
+ assert.equal(Object.keys(probes.r).length,11);
  assert.equal(Object.values(probes.r).every(v=>v===true),true,JSON.stringify(probes.r));
+ assert.equal(probes.r.pickupHandoverOverride,true);
+ // The renamed base keeps its old ACL: never a browser key, still the service role.
+ assert.equal((await row(healthProbe,`select not has_function_privilege('anon','public.ps_health_probes_base()','execute')
+   and not has_function_privilege('authenticated','public.ps_health_probes_base()','execute') as denied`)).denied,true);
  assert.equal((await row(healthProbe,`select not has_function_privilege('anon','public.ps_health_probes()','execute') anon,
    not has_function_privilege('authenticated','public.ps_health_probes()','execute') auth`)).anon,true);
  assert.equal((await row(healthProbe,`select not has_function_privilege('authenticated','public.ps_health_probes()','execute') auth`)).auth,true);

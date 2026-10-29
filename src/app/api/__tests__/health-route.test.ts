@@ -103,6 +103,7 @@ vi.mock("@/lib/supabase-server", () => {
     "ps_read_riders",
     "ps_vendor_advance_order",
     "ps_guard_self_finance",
+    "ps_admin_override_pickup",
   ]);
   return {
     getSupabaseServer: async () => ({ from: table }),
@@ -152,6 +153,7 @@ const ALL_PERMISSION_FILES = {
   orderPinPrivacy: true,
   shopScopedFulfilment: true,
   financeSelfDealing: true,
+  pickupHandoverOverride: true,
 };
 
 beforeEach(() => {
@@ -640,6 +642,7 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
     "orderPinReady",
     "shopScopedFulfilmentReady",
     "financeSelfDealingReady",
+    "pickupOverrideReady",
   ] as const;
 
   it("reports every probed permission file as applied", async () => {

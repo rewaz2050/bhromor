@@ -122,7 +122,9 @@ export type RoundProbeKey =
   | "staffRoleReady"
   | "orderPinReady"
   | "shopScopedFulfilmentReady"
-  | "financeSelfDealingReady";
+  | "financeSelfDealingReady"
+  // 202610290001 — the audited counter-pickup override (Admin/Super Admin).
+  | "pickupOverrideReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -154,6 +156,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   orderPinReady: "202610260001_order_pin_privacy_and_pickup.sql",
   shopScopedFulfilmentReady: "202610260002_scoped_shop_fulfilment.sql",
   financeSelfDealingReady: "202610260003_finance_self_dealing_boundary.sql",
+  pickupOverrideReady: "202610290001_pickup_handover_override.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -182,6 +185,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "orderPinReady",
   "shopScopedFulfilmentReady",
   "financeSelfDealingReady",
+  "pickupOverrideReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -234,6 +238,8 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale je staff platform rank + nijer dokan dutoi dhoren, tar dokan theke Confirm/Preparing/Ready 503 dibe (migration na chalale purono platform entry-i lagbe)",
   financeSelfDealingReady:
     "na chalale ekjon Admin nijer Rider/dokan-er taka nijei approve/settle korte parbe",
+  pickupOverrideReady:
+    "na chalale jini receipt hariye felechen (onno device) tader counter pickup kono bhabei bondho kora jabe na — Admin/Super Admin-er reason-soho override RPC chara parcel ta keu-i dite parbe na",
 };
 
 /**
@@ -252,6 +258,7 @@ const RPC_PROBE_MAP: Record<string, RoundProbeKey> = {
   orderPinPrivacy: "orderPinReady",
   shopScopedFulfilment: "shopScopedFulfilmentReady",
   financeSelfDealing: "financeSelfDealingReady",
+  pickupHandoverOverride: "pickupOverrideReady",
 };
 
 /** Parse the probe RPC's jsonb. Returns null when it is absent or unusable. */
@@ -296,6 +303,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     orderPinTable,
     vendorAdvanceRpc,
     selfFinanceRpc,
+    pickupOverrideRpc,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -325,6 +333,7 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     tableReady(db, "order_operations"),
     rpcReady(db, "ps_vendor_advance_order", { p_order_id: null, p_to: null, p_note: null }),
     rpcReady(db, "ps_guard_self_finance", { p_rider_id: null }),
+    rpcReady(db, "ps_admin_override_pickup", { p_order_id: null, p_reason: null }),
   ]);
 
   // One extra round trip, only when the probe RPC exists. Without it the two
@@ -377,6 +386,9 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     orderPinReady: orderPinTable.ready,
     shopScopedFulfilmentReady: vendorAdvanceRpc,
     financeSelfDealingReady: selfFinanceRpc,
+    // PostgREST sees the function; only the probe RPC also confirms the marker
+    // inside it, so this direct probe is the fallback for older databases.
+    pickupOverrideReady: pickupOverrideRpc,
     permissionProbeReady: authoritative !== null,
     counts: {
       password_reset_requests: passwordReset.count,

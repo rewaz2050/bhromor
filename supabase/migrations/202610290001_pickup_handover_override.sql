@@ -81,5 +81,35 @@ end $$;
 revoke all on function public.ps_admin_override_pickup(uuid, text) from public, anon;
 grant execute on function public.ps_admin_override_pickup(uuid, text) to authenticated, service_role;
 
+-- /api/health must be able to say whether THIS file landed. ps_health_probes()
+-- (202610270001) already answers the ten permission files from the catalogs, so
+-- keep it as the base and add one key instead of copying its body: a later
+-- permission file added to the batch then only touches its own key.
+do $$
+begin
+  if to_regprocedure('public.ps_health_probes()') is null then
+    raise exception 'Install 202610270001_health_probe_rpc.sql before the pickup handover override';
+  end if;
+  if to_regprocedure('public.ps_health_probes_base()') is null then
+    alter function public.ps_health_probes() rename to ps_health_probes_base;
+  end if;
+end $$;
+revoke all on function public.ps_health_probes_base() from public, anon, authenticated;
+
+create or replace function public.ps_health_probes()
+returns jsonb language sql stable security definer set search_path = public as $fn$
+  select public.ps_health_probes_base() || jsonb_build_object(
+    -- 202610290001 — audited Admin/Super Admin counter-pickup override.
+    'pickupHandoverOverride',
+      to_regprocedure('public.ps_admin_override_pickup(uuid,text)') is not null
+      and (select count(*) from pg_proc f
+           where f.pronamespace = 'public'::regnamespace
+             and f.proname = 'ps_admin_override_pickup'
+             and f.prosrc like '%Pickup override — PIN not verified%') = 1
+  );
+$fn$;
+revoke all on function public.ps_health_probes() from public, anon, authenticated;
+grant execute on function public.ps_health_probes() to service_role;
+
 notify pgrst, 'reload schema';
 commit;
