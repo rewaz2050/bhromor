@@ -54,8 +54,15 @@ const withRider: Order = {
 };
 
 describe("LiveDeliveryMap Component", () => {
+  it.each(["bn", "en"] as const)("explains restricted PIN access in %s without inventing a code", lang => {
+    render(<LanguageProvider initialLang={lang}><LiveDeliveryMap order={baseOrder} /></LanguageProvider>);
+    expect(screen.getByText(lang === "bn" ? /শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না/ : /Order ID and phone alone do not reveal it/)).toBeInTheDocument();
+    expect(screen.queryByText("🔒 Verified without SMS — proof against fake deliveries")).not.toBeInTheDocument();
+    expect(screen.queryByText(/এসএমএস ছাড়াই শতভাগ/)).not.toBeInTheDocument();
+  });
+
   it("renders the map, ETA, customer area, and 4-digit security PIN", () => {
-    renderBn(<LiveDeliveryMap order={withRider} />);
+    renderBn(<LiveDeliveryMap order={{ ...withRider, deliveryCode: "4321" }} />);
 
     expect(screen.getByTestId("live-delivery-map")).toBeInTheDocument();
     expect(screen.getByText(/Kandirpar/i)).toBeInTheDocument();
@@ -115,7 +122,7 @@ describe("LiveDeliveryMap Component", () => {
         "/api/track/rider-location?orderId=PS-20260909-0042&phone=01711111111",
       );
       await act(async () => {
-        vi.advanceTimersByTime(30_000);
+        await vi.advanceTimersByTimeAsync(30_000);
       });
       // 10 s cadence: mount + 10 + 20 + 30.
       expect(fetchMock).toHaveBeenCalledTimes(4);

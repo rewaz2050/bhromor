@@ -1,5 +1,6 @@
 "use client";
 
+import DeliveryEstimate from "@/components/delivery/delivery-estimate";
 import Link from "next/link";
 import LogoMark from "@/components/logo-mark";
 import Newsletter, { newsletterSignupUrl } from "./newsletter";
@@ -12,7 +13,7 @@ import {
 import { useLanguage } from "@/components/i18n/language-provider";
 
 export default function Footer() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const signupUrl = newsletterSignupUrl(process.env.NEWSLETTER_SIGNUP_URL);
 
   const SHOP_LINKS = [
@@ -22,8 +23,8 @@ export default function Footer() {
     { label: t("footer.traditional"), href: "/shop?category=traditional" },
     { label: t("footer.newArrivals"), href: "/shop?filter=new" },
     // P2 #19 + #20 — discovery paths that own their route.
-    { label: "স্টাইল ম্যাচ (Style Match)", href: "/style" },
-    { label: "সিজনাল ড্রপ (Campaign)", href: "/campaign" },
+    { label: lang === "bn" ? "স্টাইল ম্যাচ" : "Style Match", href: "/style" },
+    { label: lang === "bn" ? "ক্যাম্পেইন" : "Campaigns", href: "/campaign" },
   ];
   const HELP_LINKS = [
     { label: t("footer.yourAccount"), href: "/account" },
@@ -37,9 +38,9 @@ export default function Footer() {
     { label: t("footer.ourStory"), href: "/story" },
     { label: t("footer.about"), href: "/about" },
     { label: t("footer.visualJournal"), href: "/shop#journal" },
-    { label: "দোকানদার রেজিস্ট্রেশন (Sell with us)", href: "/shops/apply" },
-    { label: "রাইডার রেজিস্ট্রেশন (Become a Rider)", href: "/rider/apply" },
-    { label: "রাইডার পোর্টাল (Rider App)", href: "/rider" },
+    { label: t("mobileDrawer.sellWithUs"), href: "/shops/apply" },
+    { label: t("mobileDrawer.becomeRider"), href: "/rider/apply" },
+    { label: lang === "bn" ? "রাইডার পোর্টাল" : "Rider portal", href: "/rider" },
     { label: t("footer.privacy"), href: "/privacy" },
     { label: t("footer.terms"), href: "/terms" },
   ];
@@ -76,7 +77,7 @@ export default function Footer() {
             {
               icon: <IconTruck className="h-5 w-5 text-gold-300" />,
               title: t("footer.instantTitle"),
-              text: t("footer.instantText"),
+              text: <DeliveryEstimate />,
             },
             {
               icon: <IconMapPin className="h-5 w-5 text-gold-300" />,

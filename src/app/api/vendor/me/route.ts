@@ -12,6 +12,6 @@ export const dynamic = "force-dynamic";
 export const GET = vendorRoute("me", async (ctx) => {
   const shop = await getVendorShop(ctx.db, ctx.shopId);
   return apiJson(
-    { email: ctx.user.email ?? "", role: ctx.role, shop: withoutReview(shop) },
+    { email: ctx.user.email ?? "", role: ctx.role, permissions: ctx.permissions ?? [], shop: withoutReview(shop) },
   );
 });

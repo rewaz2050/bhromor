@@ -22,5 +22,5 @@ export const PATCH = staffRoute(
     const settings = await writeDispatchSettings(db, body?.settings ?? body ?? {});
     return apiJson({ settings });
   },
-  { limit: 20 },
+  { limit: 20, roles: ["admin", "super_admin"] },
 );

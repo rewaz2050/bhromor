@@ -43,7 +43,8 @@ const FILTERS: { id: InboxFilter; label: string }[] = [
 
 /** §35 notifications — live attention summary + readable inbox. */
 export default function AdminNotificationsPage() {
-  const { notifs, read, readAll, reset, loading, error } = useNotifications();
+  const { notifs, read, readAll, reset, loading, error, checked, connectionError, retryConnection } = useNotifications();
+  const inboxError = connectionError || error;
   const { orders } = useOrders();
   const { products } = useCatalog();
   const { settings } = useSettings();
@@ -134,7 +135,7 @@ export default function AdminNotificationsPage() {
         <h2 className="font-display text-lg font-medium text-forest-900">
           Inbox
           {counts.unread > 0 && (
-            <span className="ml-3 rounded-full bg-gold-500 px-2.5 py-1 text-[0.7rem] font-bold text-white align-middle">
+            <span className="ml-3 rounded-full bg-gold-600 px-2.5 py-1 text-[0.7rem] font-bold text-white align-middle">
               {counts.unread} unread
             </span>
           )}
@@ -144,7 +145,7 @@ export default function AdminNotificationsPage() {
             type="button"
             onClick={() => void readAll()}
             disabled={counts.unread === 0}
-            className="inline-flex items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-forest-800 px-5 py-2 text-xs font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-50"
           >
             <IconCheck className="h-3.5 w-3.5" /> Mark all read
           </button>
@@ -158,7 +159,7 @@ export default function AdminNotificationsPage() {
             type="button"
             onClick={() => setFilter(f.id)}
             aria-pressed={filter === f.id}
-            className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium transition-colors ${
+            className={`inline-flex min-h-11 items-center gap-2 rounded-full px-3.5 py-1.5 text-[0.8rem] font-medium transition-colors ${
               filter === f.id
                 ? "bg-forest-800 text-ivory-50"
                 : "bg-paper text-ink-soft ring-1 ring-line hover:text-forest-800"
@@ -176,10 +177,16 @@ export default function AdminNotificationsPage() {
         ))}
       </div>
 
-      <AdminDataError label="Inbox" error={error} onRetry={reset} />
+      <AdminDataError label="Inbox" error={inboxError} onRetry={connectionError ? retryConnection : reset} />
+      {inboxError && visibleCount > 0 && <p role="status" className="text-sm text-ink-soft">These notices may not reflect the latest updates. Retry to verify your inbox.</p>}
 
-      {loading ? (
-        <div className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
+      {inboxError && visibleCount === 0 ? (
+        <div className="rounded-2xl bg-paper p-6 ring-1 ring-line">
+          <p className="font-display text-lg text-forest-900">Inbox could not be verified</p>
+          <p className="mt-1 text-sm text-ink-soft">Retry above to check your notices. Your current filter is kept.</p>
+        </div>
+      ) : checked === false || (loading && !inboxError) ? (
+        <div role="status" className="rounded-2xl bg-paper py-16 text-center ring-1 ring-line">
           <p className="font-display text-lg text-forest-900">Loading your inbox…</p>
         </div>
       ) : visibleCount === 0 ? (
@@ -219,7 +226,7 @@ export default function AdminNotificationsPage() {
                   <span className="mt-0.5 block text-sm leading-6 text-ink-soft">
                     {n.body}
                   </span>
-                  <span className="mt-1 block text-xs text-ink-soft/70">
+                  <span className="mt-1 block text-xs text-ink-soft">
                     {agoLabel(n.at, now)}
                   </span>
                 </span>
@@ -242,7 +249,7 @@ export default function AdminNotificationsPage() {
                       <button
                         type="button"
                         onClick={() => void read(n.id)}
-                        className="ml-2 shrink-0 self-center rounded-full px-2.5 py-1 text-[0.7rem] font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100"
+                        className="ml-2 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center self-center rounded-full px-2.5 py-1 text-[0.7rem] font-semibold text-forest-800 ring-1 ring-line hover:bg-ivory-100"
                       >
                         Mark read
                       </button>

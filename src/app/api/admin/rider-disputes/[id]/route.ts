@@ -33,5 +33,5 @@ export const POST = staffRoute(
     }
     return apiJson({ dispute });
   },
-  { limit: 30 },
+  { limit: 30, roles: ["admin", "super_admin"] },
 );

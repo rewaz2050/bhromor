@@ -4,6 +4,7 @@
  */
 
 
+import { vendorCan, type VendorPermission } from "@/lib/vendor-permissions";
 import { NextResponse } from "next/server";
 import { requireVendor, VendorAuthError, type VendorContext } from "@/lib/vendor-auth";
 import { AdminInputError } from "@/lib/db/admin";
@@ -20,7 +21,7 @@ export type VendorHandler = (
 export const vendorRoute = (
   name: string,
   handler: VendorHandler,
-  opts: { limit?: number; windowMs?: number; maxBodyBytes?: number } = {},
+  opts: { limit?: number; windowMs?: number; maxBodyBytes?: number; ownerOnly?: boolean; permission?: VendorPermission } = {},
 ) => {
   const limit = opts.limit ?? 60;
   const windowMs = opts.windowMs ?? 60_000;
@@ -45,6 +46,8 @@ export const vendorRoute = (
       }
       return apiError("Vendor check failed.", 503);
     }
+    if (opts.ownerOnly && vendor.role !== "owner") return apiError("Only the shop owner can do that.", 403);
+    if (opts.permission && !vendorCan(vendor, opts.permission)) return apiError("The shop owner has not delegated this permission.", 403);
     const bucket = checkRateLimit(`vendor:${name}:${vendor.user.id}`, limit, windowMs);
     if (!bucket.allowed) {
       const res = apiError("Too many requests — slow down a moment.", 429);

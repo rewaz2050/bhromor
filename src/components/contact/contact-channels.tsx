@@ -21,12 +21,13 @@ const pretty = (digits: string): string => `${digits.slice(0, 3)}-${digits.slice
 
 export default function ContactChannels({
   initial = null,
+  showLocation = true,
 }: {
   /** What the server already read; when present, no request is made. */
   initial?: ContactInfo | null;
+  showLocation?: boolean;
 }) {
   const [info, setInfo] = useState<ContactInfo | null>(initial);
-  const [failed, setFailed] = useState(false);
 
   // The page handed us the answer — asking again would only risk showing a
   // stale second copy of it.
@@ -39,12 +40,9 @@ export default function ContactChannels({
       .then((d: ContactInfo | null) => {
         if (!cancelled) {
           if (d) setInfo(d);
-          else setFailed(true);
         }
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -64,9 +62,9 @@ export default function ContactChannels({
           lines: [
             pretty(whatsapp),
             whatsapp === phone ? (
-              <L en="Same number · fastest reply" bn="একই নম্বর · দ্রুততম উত্তর" />
+              <L en="Same number as our phone line" bn="আমাদের ফোনের একই নম্বর" />
             ) : (
-              <L en="Fastest for order support" bn="অর্ডার নিয়ে সবচেয়ে দ্রুত জবাব" />
+              <L en="Message about your order" bn="অর্ডার নিয়ে বার্তা পাঠান" />
             ),
           ],
           href: `https://wa.me/88${whatsapp}`,
@@ -89,7 +87,7 @@ export default function ContactChannels({
           title: <L en="Email" bn="ইমেইল" />,
           lines: [
             email,
-            <L key="sla" en="Replies within a few hours" bn="কয়েক ঘণ্টার মধ্যে জবাব" />,
+            <L key="sla" en="Send your question by email" bn="আপনার প্রশ্ন ইমেইলে পাঠান" />,
           ],
           href: `mailto:${email}`,
         }
@@ -112,7 +110,7 @@ export default function ContactChannels({
               target={channel.href.startsWith("http") ? "_blank" : undefined}
               rel={channel.href.startsWith("http") ? "noreferrer" : undefined}
               data-testid={`contact-${channel.key}`}
-              className={`group rounded-3xl p-6 ring-1 transition-shadow hover:shadow-lg ${
+              className={`group min-w-0 rounded-2xl p-5 ring-1 transition-colors hover:ring-forest-400 ${
                 channel.key === "whatsapp"
                   ? "bg-forest-50 ring-forest-200"
                   : "bg-paper ring-line"
@@ -124,7 +122,7 @@ export default function ContactChannels({
               {channel.lines.map((line, i) => (
                 <p
                   key={i}
-                  className="mt-1.5 text-sm text-ink-soft group-hover:text-forest-700"
+                  className="mt-1.5 break-words text-sm text-ink-soft group-hover:text-forest-700"
                 >
                   {line}
                 </p>
@@ -133,8 +131,6 @@ export default function ContactChannels({
           ))}
         </div>
       ) : (
-        !failed &&
-        !settled && (
           <div className="rounded-3xl bg-paper p-6 ring-1 ring-line">
             <h2 className="font-display text-lg font-medium text-forest-900">
               <L
@@ -144,14 +140,24 @@ export default function ContactChannels({
             </h2>
             <p className="mt-1.5 text-sm leading-6 text-ink-soft">
               <L
-                en="The shop’s phone, WhatsApp and email appear here the moment they are set up — messages on the right always reach the team."
-                bn="দোকানের ফোন, WhatsApp ও ইমেইল সেটআপ হওয়ার সাথে সাথেই এখানে দেখা যাবে — ডান পাশের বার্তা সবসময় আমাদের টিমের কাছে পৌঁছায়।"
+                en="No direct contact details are available here right now. Send a message using the form; it will confirm if your message was received."
+                bn="এখানে এখন সরাসরি যোগাযোগের তথ্য পাওয়া যাচ্ছে না। ফর্মে বার্তা পাঠান; বার্তা পৌঁছালে নিশ্চিতকরণ দেখাবে।"
               />
             </p>
           </div>
-        )
       )}
 
+      {showLocation && <ContactLocation info={info} />}
+    </div>
+  );
+}
+
+
+/** Kept after the message form on the contact page, especially on phones. */
+export function ContactLocation({ info }: { info: ContactInfo | null }) {
+  const phone = info?.phone ?? null;
+  const email = info?.email ?? null;
+  return (
       <div className="flex flex-col justify-between gap-8 rounded-3xl bg-forest-900 p-8 text-ivory-100">
         <div>
           <h2 className="font-display text-2xl font-medium">
@@ -186,13 +192,12 @@ export default function ContactChannels({
             </p>
           )}
         </div>
-        <p className="text-xs leading-5 text-ivory-100/50">
+        <p className="text-xs leading-5 text-ivory-100/70">
           <L
             en="Registered brand: PROSANTI · prosanti.store. Privacy and policy documents are linked in the footer."
             bn="নিবন্ধিত ব্র্যান্ড: PROSANTI · prosanti.store। গোপনীয়তা ও নীতিমালা ফুটারে পাবেন।"
           />
         </p>
       </div>
-    </div>
   );
 }

@@ -24,4 +24,4 @@ export const GET = staffRoute("reports-funnel", async ({ db }, request) => {
     }
     throw error;
   }
-});
+}, { roles: ["admin", "super_admin"] });

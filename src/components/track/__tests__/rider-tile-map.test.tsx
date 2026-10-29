@@ -6,7 +6,7 @@
  * leaving a blank rectangle.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RiderTileMap } from "../rider-tile-map";
 
 const hub = { lat: 25.0703, lng: 91.4067 };
@@ -23,6 +23,8 @@ const state = vi.hoisted(() => ({
   setViewCalls: [] as [number, number][],
   fitBoundsCalls: [] as number[],
   mapFails: false,
+  tileError: undefined as (() => void) | undefined,
+  redraw: vi.fn(),
 }));
 
 const marker = () => ({
@@ -59,7 +61,7 @@ vi.mock("leaflet", () => {
       if (state.mapFails) throw new Error("no canvas here");
       return mapInstance;
     }),
-    tileLayer: vi.fn(() => ({ addTo: vi.fn() })),
+    tileLayer: vi.fn(() => ({ addTo() { return this; }, on(_event: string, callback: () => void) { state.tileError = callback; return this; }, redraw: state.redraw })),
     divIcon: vi.fn((o: Record<string, unknown>) => ({ options: o })),
     marker: vi.fn((latlng: [number, number]) => {
       state.markerCalls.push(latlng);
@@ -98,6 +100,7 @@ beforeEach(() => {
   state.setViewCalls = [];
   state.fitBoundsCalls = [];
   state.mapFails = false;
+  state.tileError = undefined; state.redraw.mockClear();
 });
 
 afterEach(() => {
@@ -197,4 +200,16 @@ describe("RiderTileMap", () => {
     await flush();
     expect(screen.queryByText("ম্যাপ লোড হচ্ছে…")).not.toBeInTheDocument();
   });
+});
+
+it("retains pins and allows a tile retry without loading a CDN stylesheet", async () => {
+  render(<RiderTileMap destination={door} rider={hub} />);
+  await flush();
+  expect(document.querySelector('link[href*="unpkg.com/leaflet"]')).toBeNull();
+  act(() => state.tileError?.());
+  expect(screen.getByRole("status")).toHaveTextContent("Street details unavailable");
+  expect(state.markerCalls).toHaveLength(2);
+  fireEvent.click(screen.getByRole("button", { name: "Retry map" }));
+  expect(state.redraw).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });

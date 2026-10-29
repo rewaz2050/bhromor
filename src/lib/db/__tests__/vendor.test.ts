@@ -55,19 +55,9 @@ describe("vendorShopPatch (slice 3)", () => {
     });
   });
 
-  it("restricts staff to the sign + prep time", () => {
-    expect(vendorShopPatch({ is_open: false }, "staff")).toEqual({
-      is_open: false,
-    });
-    expect(vendorShopPatch({ prep_minutes: 20 }, "staff")).toEqual({
-      prep_minutes: 20,
-    });
-    try {
-      vendorShopPatch({ is_open: true, name: "sneaky" }, "staff");
-      expect.unreachable("staff rename should be forbidden");
-    } catch (err) {
-      expect(err).toBeInstanceOf(AdminInputError);
-      expect((err as AdminInputError).status).toBe(403);
+  it("shop settings, including open sign and prep time, remain owner-only", () => {
+    for (const patch of [{ is_open: false }, { prep_minutes: 20 }, { name: "Other name" }]) {
+      expect(() => vendorShopPatch(patch,"staff")).toThrow(/Only the shop owner/);
     }
   });
 

@@ -29,6 +29,10 @@ const state = vi.hoisted(() => ({
    * PostgREST does when the migration has not run.
    */
   missing: new Set<string>(),
+  /** RPCs PostgREST should answer PGRST202 for (the permission-batch probes). */
+  missingFns: new Set<string>(),
+  /** 202610270001's answer: null = the probe RPC itself is not installed. */
+  healthProbes: null as Record<string, boolean> | null,
 }));
 
 vi.mock("@/lib/cron", () => ({
@@ -93,19 +97,42 @@ const table = (name?: string) => {
   return chain;
 };
 
-vi.mock("@/lib/supabase-server", () => ({
-  getSupabaseServer: async () => ({ from: table }),
-  getSupabaseService: () => ({
-    from: (name: string) => table(name),
-    rpc: async (fn: string) => {
-      if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
-      if (fn === "ps_checkout_health") {
-        return state.repair ?? { data: null, error: { code: "PGRST202", message: "not found" } };
-      }
-      return { data: null, error: { code: "PGRST202" } };
-    },
-  }),
-}));
+vi.mock("@/lib/supabase-server", () => {
+  const permissionFns = new Set([
+    "ps_can_manage_finance",
+    "ps_read_riders",
+    "ps_vendor_advance_order",
+    "ps_guard_self_finance",
+    "ps_admin_override_pickup",
+    "ps_finance_quorum_check",
+  ]);
+  return {
+    getSupabaseServer: async () => ({ from: table }),
+    getSupabaseService: () => ({
+      from: (name: string) => table(name),
+      rpc: async (fn: string) => {
+        if (fn === "ps_place_order") return { data: null, error: { code: "P0001", message: "empty order" } };
+        if (fn === "ps_checkout_health") {
+          return state.repair ?? { data: null, error: { code: "PGRST202", message: "not found" } };
+        }
+        // The 2026-10-25 → 27 permission probes: installed unless the test says
+        // otherwise. A present function answers with data (or an authorization
+        // error); either way the route only needs "not PGRST202".
+        if (fn === "ps_health_probes") {
+          return state.healthProbes
+            ? { data: state.healthProbes, error: null }
+            : { data: null, error: { code: "PGRST202", message: "Could not find the function public.ps_health_probes" } };
+        }
+        if (permissionFns.has(fn)) {
+          return state.missingFns.has(fn)
+            ? { data: null, error: { code: "PGRST202", message: `Could not find the function public.${fn}` } }
+            : { data: true, error: null };
+        }
+        return { data: null, error: { code: "PGRST202" } };
+      },
+    }),
+  };
+});
 
 import { GET } from "@/app/api/health/route";
 
@@ -116,13 +143,29 @@ type Health = {
   nextSteps: string[];
 };
 
+const ALL_PERMISSION_FILES = {
+  financeBoundary: true,
+  shopFirstFulfilment: true,
+  delegatedStaff: true,
+  financeReporting: true,
+  riderWalletPrivacy: true,
+  riderControlsRetention: true,
+  staffRoles: true,
+  orderPinPrivacy: true,
+  shopScopedFulfilment: true,
+  financeSelfDealing: true,
+  pickupHandoverOverride: true,
+};
+
 beforeEach(() => {
+  state.healthProbes = { ...ALL_PERMISSION_FILES };
   state.repair = null;
   state.staff = true;
   state.push = { configured: true, tableReady: true, count: 1 };
   state.cron = { configured: true, marksReady: true, lastRunAt: "2026-09-24T04:00:00.000Z" };
   state.waOutbox = { ready: true, count: 0 };
   state.missing = new Set();
+  state.missingFns = new Set();
   delete process.env.HEALTH_TOKEN;
 });
 
@@ -579,5 +622,130 @@ describe("GET /api/health — checkout repair awareness", () => {
     expect(body.checks.realtimeOffers).toBe(false);
     expect(body.nextSteps).toHaveLength(1);
     expect(body.nextSteps[0]).toContain("202609250007_realtime_offers.sql");
+  });
+});
+
+/**
+ * The permission batch (2026-10-25 → 27) ships ten migrations. A half-applied
+ * rollout must name the file to run instead of leaving staff to guess why a
+ * button answers 503.
+ */
+describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
+  const ROUND = [
+    "permissionProbeReady",
+    "financeBoundaryReady",
+    "shopFirstFulfilmentReady",
+    "delegatedStaffReady",
+    "financeReportingReady",
+    "riderWalletPrivacyReady",
+    "riderControlsReady",
+    "staffRoleReady",
+    "orderPinReady",
+    "shopScopedFulfilmentReady",
+    "financeSelfDealingReady",
+    "pickupOverrideReady",
+    "financeQuorumReady",
+  ] as const;
+
+  it("reports every probed permission file as applied", async () => {
+    const body = (await (await GET()).json()) as Health;
+    for (const key of ROUND) expect(body.checks[key], key).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("2026102"))).toBe(false);
+  });
+
+  it("does not let the permission flags gate `live`", async () => {
+    // `live` answers "can a customer place an order", so an unapplied
+    // permission file must show up as a next step, never as an outage.
+    state.repair = {
+      data: {
+        version: "202609160003",
+        gift_wrap_nullable: true,
+        totals_guard_current: true,
+        insert_guard_current: true,
+        status_update_ok: true,
+        payment_verify_ok: true,
+        rider_guard_ok: true,
+        payment_methods_widened: true,
+        place_order_rpc: true,
+      },
+    };
+    state.healthProbes = null; // exercise the direct-probe fallback
+    state.missingFns = new Set(["ps_can_manage_finance", "ps_read_riders", "ps_vendor_advance_order", "ps_guard_self_finance"]);
+    state.missing = new Set(["order_operations", "staff_role_audit", "rider_control_audit"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.live).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("2026102"))).toBe(true);
+  });
+
+  it("trusts the probe RPC over the direct probes when they disagree", async () => {
+    // A trigger-only / policy-only file is invisible to PostgREST: the direct
+    // probes cannot see 202610250002 or 202610250004, so the RPC decides.
+    state.healthProbes = { ...ALL_PERMISSION_FILES, shopFirstFulfilment: false, financeReporting: false };
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.shopFirstFulfilmentReady).toBe(false);
+    expect(body.checks.financeReportingReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250002_shop_first_fulfilment.sql"))).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250004_finance_reporting_access.sql"))).toBe(true);
+  });
+
+  it("falls back to the eight direct probes when the probe RPC is not installed", async () => {
+    state.healthProbes = null;
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.permissionProbeReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.checks.orderPinReady).toBe(true);
+    // The two files PostgREST cannot observe must not be claimed as applied.
+    expect(body.checks.shopFirstFulfilmentReady).toBe(false);
+    expect(body.checks.financeReportingReady).toBe(false);
+    // …and the first thing to run is the probe, which then reveals them.
+    const permissionSteps = body.nextSteps.filter((s) => s.includes("2026102"));
+    expect(permissionSteps[0]).toContain("202610270001_health_probe_rpc.sql");
+  });
+
+  it("names the finance-boundary file when its RPC is not installed", async () => {
+    state.healthProbes = null;
+    state.missingFns = new Set(["ps_can_manage_finance"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.financeBoundaryReady).toBe(false);
+    expect(body.checks.shopScopedFulfilmentReady).toBe(true);
+    expect(
+      body.nextSteps.some((s) => s.includes("202610250001_finance_permission_boundary.sql")),
+    ).toBe(true);
+  });
+
+  it("names the PIN/privacy file when the operational order view is missing", async () => {
+    state.healthProbes = null;
+    state.missing = new Set(["order_operations"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.orderPinReady).toBe(false);
+    expect(body.nextSteps.some((s) => s.includes("202610260001_order_pin_privacy_and_pickup.sql"))).toBe(
+      true,
+    );
+  });
+
+  it("names the staff-grant file when vendor_users.permissions is missing", async () => {
+    state.healthProbes = null;
+    state.missing = new Set(["vendor_users.permissions"]);
+    const body = (await (await GET()).json()) as Health;
+    expect(body.checks.delegatedStaffReady).toBe(false);
+    expect(body.checks.financeBoundaryReady).toBe(true);
+    expect(body.nextSteps.some((s) => s.includes("202610250003_vendor_staff_permissions.sql"))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the ten files in rollout order in nextSteps", async () => {
+    state.healthProbes = null;
+    state.missingFns = new Set(["ps_can_manage_finance", "ps_guard_self_finance"]);
+    state.missing = new Set(["order_operations", "staff_role_audit"]);
+    const body = (await (await GET()).json()) as Health;
+    const named = body.nextSteps.filter((s) => s.includes("2026102"));
+    // Without the probe RPC the two trigger/policy files cannot be confirmed,
+    // so the probe file comes first and both are listed after it.
+    expect(named[0]).toContain("202610270001_health_probe_rpc.sql");
+    expect(named[1]).toContain("202610250001_finance_permission_boundary.sql");
+    expect(named.at(-1)).toContain("202610260003_finance_self_dealing_boundary.sql");
+    expect(named.length).toBe(7);
   });
 });

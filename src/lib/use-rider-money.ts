@@ -8,7 +8,7 @@
  * balance after the money has moved.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { riderFetch } from "./use-rider";
 
 export type RiderMoneyKind =
@@ -73,22 +73,38 @@ export function useRiderEarnings(enabled: boolean) {
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
+  const lifecycle = useRef({ enabled: false, request: 0 });
+  useEffect(() => {
+    const state = lifecycle.current;
+    state.enabled = enabled;
+    return () => { state.enabled = false; state.request++; };
+  }, [enabled]);
+
   const refresh = useCallback(async (): Promise<void> => {
-    if (!enabled) return;
+    const state = lifecycle.current;
+    if (!enabled || !state.enabled) return;
+    const request = ++state.request;
     try {
       const snapshot = await riderFetch<RiderMoneySnapshot>("/api/rider/earnings");
+      if (request !== state.request) return;
       setData(snapshot);
       setError(null);
     } catch (err) {
+      if (request !== state.request) return;
       setError(err instanceof Error ? err.message : "Could not load your earnings.");
     } finally {
-      setLoading(false);
+      if (request === state.request) setLoading(false);
     }
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
+    if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear prior session's financial snapshot
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     void refresh();
   }, [enabled, refresh]);

@@ -20,6 +20,7 @@ export function TaskCard({
   isOnline,
   cashLimitReached,
   accepting,
+  pendingAction = null,
   onAccept,
   onReject,
   onPickup,
@@ -34,6 +35,8 @@ export function TaskCard({
   cashLimitReached: boolean;
   /** Id of the task whose accept call is in flight, if any. */
   accepting: string | null;
+  /** Pending accept/reject/pickup for this task; other mutations are separate. */
+  pendingAction?: "accept" | "reject" | "pickup" | null;
   onAccept: (task: RiderTask) => void;
   onReject: (task: RiderTask) => void;
   onPickup: (task: RiderTask) => void;
@@ -194,14 +197,15 @@ export function TaskCard({
             <button
               type="button"
               onClick={() => onReject(task)}
-              className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              disabled={pendingAction !== null || accepting === task.id}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              বাতিল
+              {pendingAction === "reject" ? "বাতিল হচ্ছে…" : "বাতিল"}
             </button>
             <button
               type="button"
               onClick={() => onAccept(task)}
-              disabled={!isOnline || left === 0 || cashLimitReached || accepting !== null}
+              disabled={!isOnline || left === 0 || cashLimitReached || accepting !== null || pendingAction !== null}
               className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gold-600 text-xs font-semibold text-forest-950 hover:bg-gold-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {accepting === task.id ? "গ্রহণ হচ্ছে…" : "অর্ডার একসেপ্ট করুন"}
@@ -211,9 +215,10 @@ export function TaskCard({
           <button
             type="button"
             onClick={() => onPickup(task)}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
+            disabled={pendingAction !== null}
+            className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            পিকআপ কনফার্ম করুন
+            {pendingAction === "pickup" ? "পিকআপ হচ্ছে…" : "পিকআপ কনফার্ম করুন"}
           </button>
         ) : (
           <button

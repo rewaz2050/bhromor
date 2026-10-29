@@ -7,9 +7,11 @@
 
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
+import { runRiderAuthMutation } from "./rider-auth-lane";
 import { usePoll } from "./use-poll";
+import { useScopedRead } from "./use-scoped-read";
 import type { Rider } from "./catalog";
 import type { RiderJob, RiderSettlement, SettleClaim } from "./db/riders";
 
@@ -93,64 +95,267 @@ export const riderErrorMessage = (err: unknown): string =>
  * show what to do next instead of bouncing between /rider and /rider/login.
  */
 export const useRiderSession = () => {
-  const [rider, setRider] = useState<Rider | null>(null);
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<
-    "checking" | "authed" | "guest"
-  >("checking");
-  const [error, setError] = useState<string | null>(null);
-  const [denyReason, setDenyReason] = useState<RiderDenyReason | null>(null);
+  const [session, setSession] = useState<{
+    rider: Rider | null;
+    email: string;
+    status: "checking" | "authed" | "guest";
+    error: string | null;
+    denyReason: RiderDenyReason | null;
+  }>({
+    rider: null,
+    email: "",
+    status: "checking",
+    error: null,
+    denyReason: null,
+  });
+  const { rider, email, status, error, denyReason } = session;
+  const ownerRef = useRef<{
+    active: boolean;
+    revision: number;
+    authRevision: number;
+    identity: string | null;
+    signingIn: boolean;
+    signingOut: Promise<void> | null;
+  } | null>(null);
+  useEffect(() => {
+    const owner = {
+      active: true,
+      revision: 0,
+      authRevision: 0,
+      identity: null as string | null,
+      signingIn: false,
+      signingOut: null as Promise<void> | null,
+    };
+    ownerRef.current = owner;
+    return () => {
+      owner.active = false;
+    };
+  }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
-    setStatus((prev) => (prev === "authed" ? prev : "checking"));
-    setError(null);
-    setDenyReason(null);
+    const owner = ownerRef.current;
+    if (!owner?.active || owner.signingOut) return;
+    // Latest-started probe owns publication; physical HTTP requests are not cancelled.
+    const revision = ++owner.revision;
+    const current = () =>
+      owner.active && ownerRef.current === owner && owner.revision === revision;
+    setSession((previous) =>
+      current()
+        ? {
+            ...previous,
+            status: previous.status === "authed" ? "authed" : "checking",
+            error: null,
+            denyReason: null,
+          }
+        : previous,
+    );
     try {
       const data = await riderFetch<{ rider: Rider; email: string }>(
         "/api/rider/me",
       );
-      setRider(data.rider);
-      setEmail(data.email);
-      setStatus("authed");
+      if (current()) owner.identity = data.rider.id;
+      if (current())
+        setSession((previous) =>
+          current()
+            ? {
+                rider: data.rider,
+                email: data.email,
+                status: "authed",
+                error: null,
+                denyReason: null,
+              }
+            : previous,
+        );
     } catch (err) {
-      setRider(null);
-      setEmail("");
-      setStatus("guest");
-      if (err instanceof RiderApiError && err.status === 403) {
-        setError(err.message);
-        setDenyReason(err.reason ?? "none");
-      }
+      const denied = err instanceof RiderApiError && err.status === 403;
+      if (current()) owner.identity = null;
+      if (current())
+        setSession((previous) =>
+          current()
+            ? {
+                rider: null,
+                email: "",
+                status: "guest",
+                error: denied ? err.message : null,
+                denyReason: denied ? (err.reason ?? "none") : null,
+              }
+            : previous,
+        );
     }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
     void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const client = getSupabaseBrowser();
+    const owner = ownerRef.current;
+    if (!owner || !client?.auth.onAuthStateChange) return;
+    let live = true;
+    let eventGeneration = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((event) => {
+      if (
+        !live ||
+        !owner.active ||
+        ownerRef.current !== owner ||
+        event === "INITIAL_SESSION"
+      )
+        return;
+      if (
+        event !== "SIGNED_IN" &&
+        event !== "SIGNED_OUT" &&
+        event !== "TOKEN_REFRESHED" &&
+        event !== "USER_UPDATED"
+      )
+        return;
+      if (owner.signingOut && event !== "SIGNED_OUT") return;
+      const revision = ++owner.revision;
+      const generation = ++eventGeneration;
+      if (timer !== null) clearTimeout(timer);
+      if (event !== "TOKEN_REFRESHED") {
+        // A pending participating login is independently guarded by the SDK lane.
+        if (!owner.signingIn) owner.authRevision++;
+        owner.identity = null;
+        setSession((previous) =>
+          live && owner.active && eventGeneration === generation
+            ? {
+                rider: null,
+                email: "",
+                status: event === "SIGNED_OUT" ? "guest" : "checking",
+                error: null,
+                denyReason: null,
+              }
+            : previous,
+        );
+      }
+      if (event !== "SIGNED_OUT") {
+        // Never await SDK/API work inside Supabase's auth callback lock.
+        timer = setTimeout(() => {
+          if (
+            live &&
+            owner.active &&
+            ownerRef.current === owner &&
+            owner.revision === revision &&
+            !owner.signingOut
+          )
+            void refresh();
+        }, 0);
+      }
+    });
+    return () => {
+      live = false;
+      if (timer !== null) clearTimeout(timer);
+      subscription.unsubscribe();
+    };
   }, [refresh]);
 
   const signIn = useCallback(
     async (loginEmail: string, password: string): Promise<string | null> => {
+      const owner = ownerRef.current;
+      const abandoned = "Sign-in is no longer current — please try again.";
+      if (!owner?.active) return abandoned;
+      if (owner.signingIn || owner.signingOut) {
+        return "A sign-in or sign-out is already in progress.";
+      }
       const client = getSupabaseBrowser();
       if (!client) return "Rider sign-in needs Supabase to be configured.";
-      const { error: authError } = await client.auth.signInWithPassword({
-        email: loginEmail.trim(),
-        password,
-      });
-      if (authError) return "Email or password did not match.";
-      await refresh();
-      return null;
+      owner.signingIn = true;
+      const authRevision = ++owner.authRevision;
+      const current = () =>
+        owner.active &&
+        ownerRef.current === owner &&
+        owner.authRevision === authRevision &&
+        !owner.signingOut;
+      try {
+        const result = await runRiderAuthMutation(client, current, () =>
+          client.auth.signInWithPassword({
+            email: loginEmail.trim(),
+            password,
+          }),
+        );
+        if (!current() || !result.accepted) return abandoned;
+        const { error: authError } = result.value;
+        if (authError) return "Email or password did not match.";
+        await refresh();
+        // null retains its existing meaning: SDK accepted and probe settled,
+        // not an independent rider-eligibility or remote-session certificate.
+        return current() ? null : abandoned;
+      } catch {
+        return current()
+          ? "Sign-in could not be verified — please try again."
+          : abandoned;
+      } finally {
+        owner.signingIn = false;
+      }
     },
     [refresh],
   );
 
   const signOut = useCallback(async (): Promise<void> => {
-    await getSupabaseBrowser()?.auth.signOut().catch(() => undefined);
-    setRider(null);
-    setEmail("");
-    setStatus("guest");
-    setError(null);
-    setDenyReason(null);
+    const owner = ownerRef.current;
+    if (!owner?.active) return;
+    if (owner.signingOut) return owner.signingOut;
+    // Invalidate outstanding reads before waiting for remote sign-out. Reads
+    // during this wait must not probe credentials which are being removed.
+    const revision = ++owner.revision;
+    owner.authRevision++;
+    const current = () =>
+      owner.active && ownerRef.current === owner && owner.revision === revision;
+    const pending = Promise.resolve().then(async () => {
+      try {
+        const client = getSupabaseBrowser();
+        if (client)
+          await runRiderAuthMutation(
+            client,
+            () => true,
+            () => client.auth.signOut(),
+            true,
+          ).catch(() => undefined);
+      } finally {
+        owner.signingOut = null;
+        if (current()) owner.identity = null;
+        if (current())
+          setSession((previous) =>
+            current()
+              ? {
+                  rider: null,
+                  email: "",
+                  status: "guest",
+                  error: null,
+                  denyReason: null,
+                }
+              : previous,
+          );
+      }
+    });
+    owner.signingOut = pending;
+    await pending;
   }, []);
+
+  const shiftToken = useMemo(
+    () => ({ id: status === "authed" ? rider?.id : null }),
+    [status, rider?.id],
+  );
+  const shiftRef = useRef<{
+    token: typeof shiftToken;
+    active: boolean;
+    pending: boolean;
+  } | null>(null);
+  useEffect(() => {
+    const owner = {
+      token: shiftToken,
+      active: Boolean(shiftToken.id),
+      pending: false,
+    };
+    shiftRef.current = owner;
+    return () => {
+      owner.active = false;
+    };
+  }, [shiftToken]);
 
   /** P2 #22 — save the rider's own shift; auto-dispatch honours it. */
   const setAvailability = useCallback(
@@ -159,15 +364,38 @@ export const useRiderSession = () => {
       toHour: number | null;
       days: number[];
     }): Promise<string | null> => {
+      const owner = shiftRef.current;
+      const sessionOwner = ownerRef.current;
+      const authRevision = sessionOwner?.authRevision;
+      const abandoned =
+        "শিফটের অবস্থা নিশ্চিত করা যায়নি — প্রোফাইল আবার খুলুন।";
+      const current = () =>
+        owner !== null &&
+        owner.active &&
+        shiftRef.current === owner &&
+        owner.token === shiftToken &&
+        sessionOwner !== null &&
+        sessionOwner.active &&
+        ownerRef.current === sessionOwner &&
+        !sessionOwner.signingOut &&
+        !sessionOwner.signingIn &&
+        sessionOwner.authRevision === authRevision &&
+        sessionOwner.identity === shiftToken.id;
+      if (!current() || !owner) return abandoned;
+      if (owner.pending) return "শিফট সেভ হচ্ছে — একটু অপেক্ষা করুন।";
+      owner.pending = true;
       try {
         await riderFetch("/api/rider/availability", "PATCH", payload);
+        if (!current()) return abandoned;
         await refresh();
-        return null;
+        return current() ? null : abandoned;
       } catch (err) {
-        return riderErrorMessage(err);
+        return current() ? riderErrorMessage(err) : abandoned;
+      } finally {
+        owner.pending = false;
       }
     },
-    [refresh],
+    [refresh, shiftToken],
   );
 
   return {
@@ -183,30 +411,80 @@ export const useRiderSession = () => {
   };
 };
 
-export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
-  const [jobs, setJobs] = useState<RiderJob[]>([]);
-  const [settlements, setSettlements] = useState<RiderSettlement[]>([]);
-  const [pendingClaim, setPendingClaim] = useState<SettleClaim | null>(null);
-  const [recentClaims, setRecentClaims] = useState<SettleClaim[]>([]);
-  const [claimsReady, setClaimsReady] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [live, setLive] = useState(false);
+interface RiderJobsToken {
+  enabled: boolean;
+  riderId: string | null | undefined;
+}
+interface RiderJobsView {
+  token: RiderJobsToken;
+  jobs: RiderJob[];
+  settlements: RiderSettlement[];
+  pendingClaim: SettleClaim | null;
+  recentClaims: SettleClaim[];
+  claimsReady: boolean;
+  loading: boolean;
+  error: string | null;
+  live: boolean;
+}
+interface RiderJobsOwner {
+  token: RiderJobsToken;
+  active: boolean;
+  inflight: Promise<boolean> | null;
+}
+const emptyRiderJobs = (token: RiderJobsToken): RiderJobsView => ({
+  token,
+  jobs: [],
+  settlements: [],
+  pendingClaim: null,
+  recentClaims: [],
+  claimsReady: true,
+  loading: false,
+  error: null,
+  live: false,
+});
 
-  // One in-flight read at a time: a poll tick that lands while an accept →
-  // refresh is running would otherwise race it and paint the older answer.
-  const inflight = useRef<Promise<boolean> | null>(null);
+export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
+  const token = useMemo(() => ({ enabled, riderId }), [enabled, riderId]);
+  const ownerRef = useRef<RiderJobsOwner | null>(null);
+  const [snapshot, setSnapshot] = useState(() => emptyRiderJobs(token));
+  useEffect(() => {
+    const owner: RiderJobsOwner = { token, active: enabled, inflight: null };
+    ownerRef.current = owner;
+    return () => {
+      owner.active = false;
+    };
+  }, [token, enabled]);
+  const current = useCallback(
+    (owner: RiderJobsOwner | null): owner is RiderJobsOwner =>
+      owner !== null &&
+      owner.active &&
+      owner.token === token &&
+      ownerRef.current === owner,
+    [token],
+  );
+  const publish = useCallback(
+    (owner: RiderJobsOwner, patch: Partial<Omit<RiderJobsView, "token">>) => {
+      if (!current(owner)) return;
+      setSnapshot((previous) =>
+        current(owner)
+          ? {
+              ...(previous.token === token ? previous : emptyRiderJobs(token)),
+              ...patch,
+            }
+          : previous,
+      );
+    },
+    [current, token],
+  );
 
   const refresh = useCallback(async (): Promise<boolean> => {
-    if (!enabled) return false;
-    if (inflight.current) return inflight.current;
+    const owner = ownerRef.current;
+    if (!current(owner)) return false;
+    if (owner.inflight) return owner.inflight;
     const run = (async () => {
-      setLoading(true);
-      setError(null);
+      publish(owner, { loading: true, error: null });
       try {
-        // Jobs are the dashboard; settlements are a side panel. A failures
-        // in one must not blank the other (2026-09-25: a pending database
-        // migration answered 503 for settlements and hid every live job).
+        // Partial side-panel failure must not hide the job feed.
         const [jobsResult, settleResult] = await Promise.allSettled([
           riderFetch<{ jobs: RiderJob[] }>("/api/rider/jobs"),
           riderFetch<{
@@ -216,42 +494,38 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
             recentClaims?: SettleClaim[];
           }>("/api/rider/settlements"),
         ]);
-        if (jobsResult.status === "fulfilled") {
-          setJobs(jobsResult.value.jobs);
-        } else {
-          setError(riderErrorMessage(jobsResult.reason));
-        }
+        if (!current(owner)) return false;
+        const patch: Partial<Omit<RiderJobsView, "token">> = {};
+        if (jobsResult.status === "fulfilled")
+          patch.jobs = jobsResult.value.jobs;
+        else patch.error = riderErrorMessage(jobsResult.reason);
         if (settleResult.status === "fulfilled") {
-          setSettlements(settleResult.value.settlements);
-          setPendingClaim(settleResult.value.pendingClaim ?? null);
-          setRecentClaims(settleResult.value.recentClaims ?? []);
-          setClaimsReady(settleResult.value.claimsReady ?? true);
-        } else {
-          // Keep the last settlements on screen; never block the job feed.
-          setClaimsReady(false);
-        }
+          patch.settlements = settleResult.value.settlements;
+          patch.pendingClaim = settleResult.value.pendingClaim ?? null;
+          patch.recentClaims = settleResult.value.recentClaims ?? [];
+          patch.claimsReady = settleResult.value.claimsReady ?? true;
+        } else patch.claimsReady = false;
+        publish(owner, patch);
         return jobsResult.status === "fulfilled";
       } finally {
-        setLoading(false);
-        inflight.current = null;
+        // This lock belongs only to this owner, never the next rider's read.
+        owner.inflight = null;
+        publish(owner, { loading: false });
       }
     })();
-    inflight.current = run;
+    owner.inflight = run;
     return run;
-  }, [enabled]);
+  }, [current, publish]);
 
   useEffect(() => {
-    if (!enabled) return;
-    void refresh();
+    if (enabled) void refresh();
   }, [enabled, refresh]);
-  // Instant offers over Realtime: refresh the moment this rider's
-  // assignment rows change. RLS ("assignments rider read own") limits the
-  // channel to their rows; the filter additionally scopes socket traffic.
-  // No socket (unpublished table, flaky net, signed out) → poll backup.
   useEffect(() => {
-    if (!enabled || !riderId) return;
+    const owner = ownerRef.current;
+    if (!current(owner) || !riderId) return;
     const client = getSupabaseBrowser();
     if (!client) return;
+    let channelActive = true;
     const channel = client
       .channel(`rider-jobs:${riderId}`)
       .on(
@@ -263,107 +537,140 @@ export const useRiderJobs = (enabled: boolean, riderId?: string | null) => {
           filter: `rider_id=eq.${riderId}`,
         },
         () => {
-          void refresh();
+          if (channelActive && current(owner)) void refresh();
         },
       )
       .subscribe((status) => {
-        setLive(status === "SUBSCRIBED");
+        if (channelActive) publish(owner, { live: status === "SUBSCRIBED" });
       });
     return () => {
-      setLive(false);
+      channelActive = false;
+      publish(owner, { live: false });
       void client.removeChannel(channel);
     };
-  }, [enabled, riderId, refresh]);
-  // Background feed refresh — before this the rider had to reload the page
-  // to see a new offer (or an offer that had expired under them).
-  usePoll(refresh, live ? RIDER_JOBS_POLL_BACKUP_MS : RIDER_JOBS_POLL_MS, enabled);
+  }, [current, publish, riderId, refresh]);
+  const view =
+    enabled && snapshot.token === token ? snapshot : emptyRiderJobs(token);
+  usePoll(
+    refresh,
+    view.live ? RIDER_JOBS_POLL_BACKUP_MS : RIDER_JOBS_POLL_MS,
+    enabled,
+  );
 
-  const run = async (
-    path: string,
-    body?: unknown,
-  ): Promise<boolean> => {
-    try {
-      await riderFetch<unknown>(path, "POST", body);
-      await refresh();
-      return true;
-    } catch (err) {
-      // Another rider may have won. Remove stale offers, then retain the
-      // conflict message (refresh normally clears errors).
-      if (err instanceof RiderApiError && err.status === 409) await refresh();
-      setError(riderErrorMessage(err));
-      return false;
-    }
-  };
-
+  const run = useCallback(
+    async (path: string, body?: unknown): Promise<boolean> => {
+      const owner = ownerRef.current;
+      if (!current(owner)) return false;
+      try {
+        await riderFetch<unknown>(path, "POST", body);
+        if (!current(owner)) return false;
+        await refresh();
+        return current(owner);
+      } catch (err) {
+        if (!current(owner)) return false;
+        // Retain current conflict policy: refresh stale offers before the error.
+        if (err instanceof RiderApiError && err.status === 409) await refresh();
+        publish(owner, { error: riderErrorMessage(err) });
+        return false;
+      }
+    },
+    [current, publish, refresh],
+  );
   const accept = useCallback(
-    (id: string) => run(`/api/rider/assignments/${encodeURIComponent(id)}/accept`),
-    // refresh is stable for a given enabled state
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled],
+    (id: string) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/accept`),
+    [run],
   );
   const pickup = useCallback(
-    (id: string) => run(`/api/rider/assignments/${encodeURIComponent(id)}/pickup`),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled],
+    (id: string) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/pickup`),
+    [run],
   );
   const reject = useCallback(
-    (id: string) => run(`/api/rider/assignments/${encodeURIComponent(id)}/reject`),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled],
+    (id: string) =>
+      run(`/api/rider/assignments/${encodeURIComponent(id)}/reject`),
+    [run],
   );
   const deliver = useCallback(
-    (id: string, code: string, proofUrl?: string | null, noPhotoReason?: string | null) =>
+    (
+      id: string,
+      code: string,
+      proofUrl?: string | null,
+      noPhotoReason?: string | null,
+    ) =>
       run(`/api/rider/assignments/${encodeURIComponent(id)}/deliver`, {
         code,
         proofUrl,
         ...(noPhotoReason ? { noPhotoReason } : {}),
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled],
+    [run],
   );
   const setOnline = useCallback(
     async (isOnline: boolean): Promise<boolean> => {
+      const owner = ownerRef.current;
+      if (!current(owner)) return false;
       try {
         await riderFetch("/api/rider/online", "PATCH", { isOnline });
-        setError(null);
+        if (!current(owner)) return false;
+        publish(owner, { error: null });
         return true;
       } catch (err) {
-        setError(riderErrorMessage(err));
+        publish(owner, { error: riderErrorMessage(err) });
         return false;
       }
     },
-    [],
+    [current, publish],
   );
   const updateLocation = useCallback(
     async (lat: number, lng: number): Promise<boolean> => {
+      const owner = ownerRef.current;
+      if (!current(owner)) return false;
       try {
         await riderFetch("/api/rider/location", "PATCH", { lat, lng });
-        setError(null);
+        if (!current(owner)) return false;
+        publish(owner, { error: null });
         return true;
       } catch {
-        // silent fail for location
         return false;
-      }
+      } // Location failure remains silent.
     },
-    [],
+    [current, publish],
   );
   const settle = useCallback(
     async (method: string, reference: string): Promise<boolean> => {
+      const owner = ownerRef.current;
+      if (!current(owner)) return false;
       try {
         await riderFetch("/api/rider/settle", "POST", { method, reference });
-        setError(null);
+        if (!current(owner)) return false;
+        publish(owner, { error: null });
         await refresh();
-        return true;
+        return current(owner);
       } catch (err) {
-        setError(riderErrorMessage(err));
+        publish(owner, { error: riderErrorMessage(err) });
         return false;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enabled],
+    [current, publish, refresh],
   );
-
-  return { jobs, settlements, pendingClaim, recentClaims, claimsReady, loading, live, error, refresh, accept, pickup, reject, deliver, setOnline, updateLocation, settle };
+  return {
+    jobs: view.jobs,
+    settlements: view.settlements,
+    pendingClaim: view.pendingClaim,
+    recentClaims: view.recentClaims,
+    claimsReady: view.claimsReady,
+    loading: view.loading,
+    live: view.live,
+    error: view.error,
+    refresh,
+    accept,
+    pickup,
+    reject,
+    deliver,
+    setOnline,
+    updateLocation,
+    settle,
+  };
 };
 
 export interface RiderStatsView {
@@ -385,29 +692,18 @@ export interface RiderStatsView {
  * the 15 s job poll — these numbers do not change that fast); `refresh`
  * re-reads after a delivery or a settle, when the numbers actually move.
  */
+const readRiderStats = async (path: string): Promise<RiderStatsView> => {
+  const { stats } = await riderFetch<{ stats: RiderStatsView }>(path);
+  // Preserve the existing last-verified-data rule for malformed responses.
+  if (!stats || ![stats.totalDeliveries, stats.weekDeliveries, stats.ratingAvg, stats.ratingCount].every(Number.isFinite)) {
+    throw new Error("Invalid rider scoreboard");
+  }
+  return stats;
+};
+const silentStatsError = () => "Scoreboard unavailable";
+
 export const useRiderStats = (enabled: boolean) => {
-  const [stats, setStats] = useState<RiderStatsView | null>(null);
-  const [loading, setLoading] = useState(enabled);
-
-  const refresh = useCallback(async (): Promise<void> => {
-    if (!enabled) return;
-    try {
-      const data = await riderFetch<{ stats: RiderStatsView }>("/api/rider/stats");
-      setStats(data.stats);
-    } catch {
-      // The scoreboard is decoration on top of real work — never an error
-      // banner; the last known numbers stay on screen.
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial probe
-    setLoading(true);
-    void refresh();
-  }, [enabled, refresh]);
-
-  return { stats, loading, refresh };
+  const resource = useScopedRead("/api/rider/stats", enabled, readRiderStats, silentStatsError);
+  // Decoration only: a failed read never adds a job-board error banner.
+  return { stats: resource.data, loading: resource.loading, refresh: resource.reload };
 };

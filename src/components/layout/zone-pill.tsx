@@ -32,7 +32,7 @@ export default function ZonePill({
   const dark = tone === "dark";
   return (
     <span
-      className={`relative inline-flex min-h-9 max-w-full items-center rounded-full ${
+      className={`relative inline-flex min-h-11 max-w-full items-center rounded-full ${
         dark
           ? "bg-ivory-50/10 text-ivory-50 ring-1 ring-ivory-50/30 hover:bg-ivory-50/16"
           : "bg-paper text-forest-900 ring-1 ring-line hover:bg-ivory-100"
@@ -48,7 +48,7 @@ export default function ZonePill({
         onChange={(e) => setZoneId(e.target.value || null)}
         aria-label={zone ? t("deliveryLine.change") : t("deliveryLine.choose")}
         title={zone ? t("deliveryLine.change") : t("deliveryLine.choose")}
-        className={`h-9 max-w-[12rem] cursor-pointer appearance-none truncate bg-transparent pl-7 pr-7 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 ${
+        className={`h-11 max-w-[12rem] cursor-pointer appearance-none truncate bg-transparent pl-7 pr-7 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-forest-500 ${
           dark ? "text-ivory-50" : "text-forest-900"
         }`}
       >

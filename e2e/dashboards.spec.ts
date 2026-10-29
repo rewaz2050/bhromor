@@ -43,7 +43,7 @@ test('customer profile saves a name and refreshes the dashboard identity', async
   await page.getByTestId('account-tab-profile').click();
   await page.getByLabel('নাম', {exact:true}).fill('Updated Customer');
   await page.getByRole('button', {name:'তথ্য সেভ করুন'}).click();
-  await expect(page.getByRole('status').filter({hasText:'প্রোফাইল সেভ হয়েছে'})).toBeVisible();
+  await expect(page.getByRole('status').filter({hasText:'প্রোফাইল সেভ হয়েছে'})).toBeVisible();
   await expect(page.getByTestId('account-hero-name')).toContainText('Updated Customer');
   await expect(page.getByLabel('লগইন ফোন')).toHaveAttribute('readonly', '');
   await fits(page);
@@ -52,6 +52,8 @@ test('customer profile saves a name and refreshes the dashboard identity', async
 test('rider profile save and shared invitation acceptance work on mobile', async ({page}) => {
   let current = {...rider}; let accepted = false;
   await fixtures(page, (path, method, body) => {
+    // A missing optional scoreboard must not take down invitations/jobs.
+    if (path === '/api/rider/stats') return {};
     if (path === '/api/rider/profile' && method === 'PATCH') current = {...current, ...body};
     if (path === '/api/rider/me' || path === '/api/rider/profile') return { rider: current, email:'rider@verify.invalid' };
     if (path.endsWith('/accept')) { accepted = true; return {accepted:true}; }
@@ -103,6 +105,27 @@ test('admin distinguishes one requesting order from two invitations', async ({pa
   await fits(page);
 });
 
+for (const failingPath of ['/api/admin/deliveries', '/api/admin/riders']) {
+test(`admin dispatch recovers from initial ${failingPath} failure without an endless skeleton`, async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page);
+  let unavailable = true;
+  await page.route(`**${failingPath}`, route => route.fulfill(unavailable
+    ? { status: 503, json: { error: 'Dispatch temporarily unavailable' } }
+    : { json: failingPath.endsWith('/riders') ? {riders:[rider]} : { deliveries: [], awaitingOrders: [] } }));
+  await page.goto('/admin/deliveries');
+  const error = page.getByRole('alert').filter({hasText:'Dispatch temporarily unavailable'});
+  await expect(error).toBeVisible();
+  await expect(page.getByRole('status', {name:'Loading deliveries'})).toHaveCount(0);
+  unavailable = false;
+  await page.getByRole('button', {name:'Retry',exact:true}).click();
+  await expect(error).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Rider dispatch board'})).toBeVisible();
+  await fits(page);
+});
+
+}
+
 test('unauthenticated APIs deny real requests without fixture interception', async ({request}) => {
   for (const path of ['/api/account/profile','/api/rider/profile']) {
     const res=await request.patch(path,{data:{name:'Someone',phone:'01711111114',vehicle:'bike'}});
@@ -111,4 +134,123 @@ test('unauthenticated APIs deny real requests without fixture interception', asy
   for (const path of ['/api/vendor/shop','/api/admin/deliveries']) {
     const res=await request.get(path); expect([401,403]).toContain(res.status());
   }
+});
+
+// Least-privilege contracts: API fixtures are explicit; no real accounts or money.
+test('Manager direct finance navigation never mounts financial data requests', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page,path=>path==='/api/admin/me'?{staff:true,role:'manager',email:'manager@verify.invalid'}:undefined);
+  const financialRequests:string[]=[];
+  page.on('request',request=>{
+    const path=new URL(request.url()).pathname;
+    if(/^\/api\/admin\/(money|payouts|reports)(\/|$)/.test(path)||path.endsWith('/overview'))financialRequests.push(path);
+  });
+  await page.setViewportSize({width:390,height:844});
+  for(const path of ['/admin/money','/admin/payouts','/admin/payments','/admin/reports','/admin/riders/11111111-1111-4111-8111-111111111111']) {
+    await page.goto(path);
+    await expect(page.getByRole('heading',{name:'Admin access required'})).toBeVisible();
+    await fits(page);
+  }
+  expect(financialRequests).toEqual([]);
+});
+test('Manager rider board keeps operations but not lifecycle controls', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page,path=>path==='/api/admin/me'?{staff:true,role:'manager',email:'manager@verify.invalid'}:undefined);
+  await page.goto('/admin/riders');
+  await expect(page.getByText('Verification Rider',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'New rider',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Edit',exact:true})).toHaveCount(0);
+  await fits(page);
+});
+test('Admin rider board retains authorized intake and edit controls', async ({page}) => {
+  await page.addInitScript(()=>localStorage.setItem('prosanti.admin.session.v1','1'));
+  await fixtures(page);
+  await page.goto('/admin/riders');
+  await expect(page.getByRole('button',{name:'New rider',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Edit',exact:true})).toBeVisible();
+});
+
+test('Traffic Point handover takes customer PIN input, never displays the expected code', async ({page}) => {
+  let status = 'ready-for-pickup';
+  let submitted: Record<string, unknown> | null = null;
+  await fixtures(page, (path, method, body) => {
+    if (path === '/api/admin/me') return {staff:true,role:'manager',email:'manager@verify.invalid'};
+    const pickup = {...order,status,isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+    if (path.endsWith('/advance') && method === 'POST') {
+      submitted=body;status='delivered';return {order:{...pickup,status}};
+    }
+  });
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`/admin/orders/${order.id}`);
+  const verify=page.getByRole('button',{name:'Verify PIN & hand over'});
+  await expect(verify).toBeDisabled();
+  await expect(page.getByText('PIN verified at handover — never displayed')).toBeVisible();
+  await page.getByLabel('Customer PIN / কাস্টমারের PIN').fill('4821');
+  await verify.click();
+  await expect.poll(()=>submitted).toMatchObject({to:'delivered',pickupCode:'4821'});
+  expect(submitted).not.toHaveProperty('note');
+  expect(submitted).not.toHaveProperty('fulfilmentOverride');
+  await expect(verify).toHaveCount(0);
+  await fits(page);
+});
+
+test('Admin closes a receipt-less pickup only with a recorded reason', async ({page}) => {
+  let status = 'ready-for-pickup';
+  let submitted: Record<string, unknown> | null = null;
+  await fixtures(page, (path, method, body) => {
+    if (path === '/api/admin/me') return {staff:true,role:'admin',email:'admin@verify.invalid'};
+    const pickup = {...order,status,isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+    if (path.endsWith('/advance') && method === 'POST') {
+      submitted=body;status='delivered';return {order:{...pickup,status}};
+    }
+  });
+  await page.goto(`/admin/orders/${order.id}`);
+  // The PIN box stays the primary action; the exception is folded away.
+  await expect(page.getByRole('button',{name:'Verify PIN & hand over'})).toBeVisible();
+  const disclosure = page.getByText('Customer lost the confirmation? / রশিদ হারিয়ে গেছে?');
+  await expect(page.getByLabel('Reason / কারণ')).toBeHidden();
+  await disclosure.click();
+  await expect(page.getByLabel('Reason / কারণ')).toBeVisible();
+  const submit = page.getByRole('button',{name:'Hand over with recorded reason'});
+  await expect(submit).toBeDisabled();
+  const reason = 'Customer at Traffic Point; matched national ID and bKash TrxID';
+  await page.getByLabel('Reason / কারণ').fill(reason);
+  page.on('dialog', (dialog) => void dialog.accept());
+  await submit.click();
+  await expect.poll(()=>submitted).toMatchObject({to:'delivered',pickupOverride:true,note:reason});
+  expect(submitted).not.toHaveProperty('pickupCode');
+  await fits(page);
+});
+
+test('Manager never sees the pickup override', async ({page}) => {
+  await fixtures(page, (path) => {
+    if (path === '/api/admin/me') return {staff:true,role:'manager',email:'manager@verify.invalid'};
+    const pickup = {...order,status:'ready-for-pickup',isPickup:true};
+    if (path === '/api/admin/orders') return {orders:[pickup]};
+    if (path === `/api/admin/orders/${order.id}`) return {order:pickup};
+  });
+  await page.goto(`/admin/orders/${order.id}`);
+  await expect(page.getByRole('button',{name:'Verify PIN & hand over'})).toBeVisible();
+  await expect(page.getByText('Customer lost the confirmation? / রশিদ হারিয়ে গেছে?')).toHaveCount(0);
+});
+
+test('customer tracking keeps receipt proof; manual lookup shows status without a PIN', async ({page}) => {
+  const lookups: string[]=[];
+  await fixtures(page);
+  await page.route('**/api/track?*',async route=>{
+    const url=new URL(route.request().url());lookups.push(url.href);
+    const signed=url.searchParams.get('t')==='receipt-proof';
+    await route.fulfill({json:{order:{...order,status:'out-for-delivery',...(signed?{deliveryCode:'4821',trackToken:'receipt-proof'}:{})}}});
+  });
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`/track?id=${order.id}&phone=${order.customer.phone}`);
+  await expect(page.getByText(/Order ID and phone alone do not reveal it|শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না/)).toBeVisible();
+  await page.goto(`/track?id=${order.id}&phone=${order.customer.phone}&t=receipt-proof`);
+  await expect(page.getByText(/Order ID and phone alone do not reveal it|শুধু অর্ডার ID ও ফোন দিয়ে PIN দেখা যাবে না/)).toHaveCount(0);
+  await expect.poll(()=>lookups.some(url=>new URL(url).searchParams.get('t')==='receipt-proof')).toBe(true);
+  await fits(page);
 });

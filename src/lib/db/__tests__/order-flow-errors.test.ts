@@ -241,6 +241,45 @@ describe("two-tap flow fallback (database predates 202609170001)", () => {
       "preparing",
       "ready-for-pickup",
     ]);
+    expect(calls.map((c) => c.fn)).toEqual([
+      "ps_vendor_advance_order",
+      "ps_vendor_advance_order",
+      "ps_vendor_advance_order",
+    ]);
+  });
+
+  it("vendor: uses the own-shop wrapper, never the platform entry point", async () => {
+    const { db, calls } = scriptedDb([{ error: null }]);
+    await advanceVendorOrder(db, "shop-1", "PS-1", "confirmed").catch(() => undefined);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].fn).toBe("ps_vendor_advance_order");
+  });
+
+  it("vendor: a missing shop-scoped RPC is an honest 503 naming the migration", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db } = scriptedDb([
+      { error: { code: "PGRST202", message: "function ps_vendor_advance_order does not exist" } },
+    ]);
+    await expect(
+      advanceVendorOrder(db, "shop-1", "PS-1", "confirmed"),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("202610260002_scoped_shop_fulfilment.sql"),
+    });
+    expect(String(log.mock.calls[0][1])).toContain("PGRST202");
+  });
+
+  it("vendor: an unrelated schema gap stays generic, never a false migration diagnosis", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { db } = scriptedDb([
+      { error: { code: "42703", message: 'column "unexpected_column" does not exist' } },
+    ]);
+    await expect(
+      advanceVendorOrder(db, "shop-1", "PS-1", "confirmed"),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: expect.not.stringContaining("202610260002_scoped_shop_fulfilment.sql"),
+    });
   });
 });
 

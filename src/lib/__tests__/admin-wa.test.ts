@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Order } from "../orders";
 import {
   applicableWaStatuses,
@@ -81,7 +81,8 @@ describe("admin-wa — one-tap WhatsApp status updates", () => {
     );
     expect(text).toContain("রাইডার কামাল");
     expect(text).toContain("৳1,560 (COD)");
-    expect(text).toContain("PIN 4821");
+    expect(text).not.toContain("4821");
+    expect(text).not.toContain("&t=");
   });
 
   it("prepaid orders say payment is taken — the rider collects nothing", () => {
@@ -115,3 +116,9 @@ describe("admin-wa — one-tap WhatsApp status updates", () => {
     ).toBeNull();
   });
 });
+
+
+// Feed/message fixtures deliberately use this configured host, independently
+// of the deployment's fallback domain or the runner's environment.
+beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://prosanti.store"); });
+afterEach(() => { vi.unstubAllEnvs(); });

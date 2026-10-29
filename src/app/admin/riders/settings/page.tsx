@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useDispatchSettings } from "@/lib/use-dispatch-settings";
+import AdminOnly from "@/components/admin/admin-only";
 import FailedProofCard from "@/components/admin/failed-proof-card";
 import {
   DISPATCH_BOUNDS,
@@ -89,6 +90,7 @@ export default function DispatchRulesPage() {
       )}
 
       {live && (
+        <AdminOnly note="Dispatch risk settings can only be changed by Admin or Super Admin.">
         <form onSubmit={submit} className="space-y-4 rounded-2xl bg-paper p-5 ring-1 ring-line" data-testid="dispatch-form">
           <label className="block text-xs font-semibold uppercase tracking-wider text-ink-soft">
             Rider cash limit (৳)
@@ -205,6 +207,7 @@ export default function DispatchRulesPage() {
             </button>
           </div>
         </form>
+        </AdminOnly>
       )}
 
       {live && <FailedProofCard />}

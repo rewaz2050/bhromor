@@ -15,14 +15,11 @@ const state = vi.hoisted(() => ({
 
 vi.mock("@/lib/use-admin-deliveries", () => ({
   useAdminDeliveries: () => ({
+    riders: [], ridersLoading: false, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: state.fee },
     deliveries: state.deliveries, awaitingOrders: [], failedDeliveries: state.failed,
     resolveFailed: state.resolveFailed, release: state.release,
     loading: false, error: null, clearError: vi.fn(), busyId: null, refresh: vi.fn(), offer: vi.fn(), cancel: vi.fn(),
   }),
-}));
-vi.mock("@/lib/use-riders", () => ({
-  RIDERS_POLL_MS: 0,
-  useRiders: () => ({ riders: [], loading: false, dispatch: { cashCap: 500000, offerTtl: 90, maxAttempts: 2, loadLimit: 2, failedFee: state.fee } }),
 }));
 vi.mock("@/lib/use-orders", () => ({ useOrders: () => ({ orders: [] }) }));
 vi.mock("@/components/admin/admin-live-map", () => ({ default: () => null }));

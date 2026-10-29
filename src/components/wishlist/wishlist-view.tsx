@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import CatalogRecovery from "@/components/shop/catalog-recovery";
+import { bnDigits } from "@/lib/arrival";
 import InfoRail from "@/components/info/info-rail";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useWishlist } from "@/lib/use-wishlist";
 import { useLiveCatalog } from "@/lib/use-live-catalog";
 import ProductCard, { GRID_CARD_SIZES } from "@/components/product/product-card";
@@ -35,22 +38,67 @@ export const parseSharedIds = (search: string): string[] => {
 export const wishlistShareHref = (origin: string, ids: readonly string[]): string =>
   `${origin}/wishlist?ids=${encodeURIComponent(ids.slice(0, SHARED_IDS_MAX).join(","))}`;
 
-const noop = () => () => {};
-const readSearch = () => (typeof window === "undefined" ? "" : window.location.search);
+function WishlistLoading() {
+  const { t } = useLanguage();
+  return <p role="status" className="rounded-2xl border border-line bg-paper p-8 text-sm leading-6 text-ink-soft">{t("wishlist.loadingList")}</p>;
+}
+
+function WishlistRoute() {
+  const params = useSearchParams();
+  const search = params?.toString() ?? "";
+  // Navigation between shared links and the personal list must not retain
+  // the previous route's success/error state or back-in-stock comparison.
+  return <WishlistContent key={search} search={search} />;
+}
 
 /** §29 wishlist — grid of saved products with an elegant empty state (§96). */
 export default function WishlistView() {
-  const { t } = useLanguage();
+  return <Suspense fallback={<WishlistLoading />}><WishlistRoute /></Suspense>;
+}
+
+function WishlistContent({ search }: { search: string }) {
+  const { t, lang } = useLanguage();
+  const digits = (n: number) => lang === "bn" ? bnDigits(String(n)) : String(n);
   const { ids, clear, ready, busy, error, synced, retry, toggle } = useWishlist();
-  const { products } = useLiveCatalog();
-  const search = useSyncExternalStore(noop, readSearch, () => "");
+  const { products, loading: catalogLoading, live: catalogLive } = useLiveCatalog();
   const sharedIds = parseSharedIds(search);
   const shared = sharedIds.length > 0;
   const source = shared ? sharedIds : ids;
   // UX plan §8 — sold-out pieces sit at the end; the order is otherwise the
   // order things were saved in.
   const saved = inStockFirst(products.filter((p) => source.includes(p.id)));
-  const [savedShared, setSavedShared] = useState(false);
+  const savedShared = saved.length > 0 && saved.every((product) => ids.includes(product.id));
+  const [savingShared, setSavingShared] = useState(false);
+  const savingLock = useRef(false);
+  const [actionError, setActionError] = useState("");
+  const saveShared = async () => {
+    if (!ready || busy || savingLock.current || savedShared) return;
+    savingLock.current = true;
+    setSavingShared(true);
+    setActionError("");
+    try {
+      // Account mutations have a single-write lock. Parallel toggles return
+      // false for later items; never report them as successfully saved.
+      for (const product of saved.filter((product) => !ids.includes(product.id))) {
+        if (!(await toggle(product.id))) {
+          setActionError(t("wishlist.saveIncomplete"));
+          return;
+        }
+      }
+    } catch {
+      setActionError(t("wishlist.saveIncomplete"));
+    } finally {
+      savingLock.current = false;
+      setSavingShared(false);
+    }
+  };
+  const clearAll = async () => {
+    if (!window.confirm(t("wishlist.confirmClear"))) return;
+    setActionError("");
+    try {
+      if (!(await clear())) setActionError(t("wishlist.clearFailed"));
+    } catch { setActionError(t("wishlist.clearFailed")); }
+  };
   /* UX plan §8 (R11) — "back in stock": what this device last saw sold out
      and finds on the shelf now. Decided once per visit (after the list is
      real), then today's state is remembered for the next visit. */
@@ -73,7 +121,7 @@ export default function WishlistView() {
         role={error ? "alert" : "status"}
       >
         <p className="text-sm text-ink-soft">
-          {error || t("wishlist.loading")}
+          {error ? t("wishlist.syncFailed") : t("wishlist.loading")}
         </p>
         {error && (
           <button
@@ -86,6 +134,17 @@ export default function WishlistView() {
         )}
       </div>
     );
+  if (source.length > 0 && saved.length === 0) {
+    if (catalogLoading) return <p role="status" className="rounded-2xl border border-line bg-paper p-8 text-sm leading-6 text-ink-soft">{t("wishlist.loadingProducts")}</p>;
+    if (products.length === 0 && !catalogLive) return <CatalogRecovery description={t(shared ? "wishlist.sharedCatalogUnavailable" : "wishlist.catalogUnavailable")} />;
+    return (
+      <section className="rounded-2xl border border-line bg-paper p-6 text-center sm:p-8">
+        <h2 className="font-display text-2xl text-forest-900">{t("wishlist.itemsUnavailable")}</h2>
+        <p role="status" className="mx-auto mt-3 max-w-md text-sm leading-6 text-ink-soft">{t(shared ? "wishlist.sharedItemsUnavailable" : "wishlist.savedItemsUnavailable")}</p>
+        <Link href="/shop" className="mt-5 inline-flex min-h-11 items-center rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50">{t("wishlist.exploreCollection")}</Link>
+      </section>
+    );
+  }
   if (saved.length === 0) {
     return (
       <>
@@ -137,17 +196,14 @@ export default function WishlistView() {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={busy || savedShared}
+              disabled={!ready || busy || savingShared || savedShared}
               data-testid="save-shared"
-              onClick={() => {
-                void Promise.all(saved.filter((p) => !ids.includes(p.id)).map((p) => toggle(p.id))).then(() =>
-                  setSavedShared(true),
-                );
-              }}
+              onClick={() => void saveShared()}
+              aria-busy={savingShared}
               className="inline-flex min-h-11 items-center gap-2 rounded-full bg-forest-800 px-5 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-60"
             >
               <IconHeart className="h-4 w-4" />
-              {savedShared ? t("wishlist.savedShared") : t("wishlist.saveShared")}
+              {savedShared ? t("wishlist.savedShared") : savingShared ? t("wishlist.savingShared") : t("wishlist.saveShared")}
             </button>
             <Link href="/wishlist" className="editorial-text-link">
               {t("wishlist.viewMine")}
@@ -162,9 +218,17 @@ export default function WishlistView() {
           </Link>
         </p>
       )}
+      {shared && !ready && (
+        <div role={error ? "alert" : "status"} className="rounded-2xl border border-line bg-paper p-4 text-sm leading-6 text-ink-soft">
+          <p>{t(error ? "wishlist.syncFailed" : "wishlist.loading")}</p>
+          {error && <button type="button" disabled={busy} onClick={() => void retry?.()} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-forest-800 px-5 font-semibold text-ivory-50">{t("wishlist.retrySync")}</button>}
+        </div>
+      )}
+      {actionError && <p role="alert" className="rounded-2xl border border-line bg-paper p-4 text-sm leading-6 text-ink">{actionError}</p>}
+      {source.length > saved.length && <p role="status" className="text-sm leading-6 text-ink-soft">{t("wishlist.missingItems").replace("{count}", digits(source.length - saved.length))}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink-soft">
-          {saved.length} {saved.length === 1 ? t("wishlist.savedProduct") : t("wishlist.savedProducts")}
+          {digits(saved.length)} {saved.length === 1 ? t("wishlist.savedProduct") : t("wishlist.savedProducts")}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {/* UX plan §8 — "ei gulo dekho": the list as a link, a gift hint. */}
@@ -179,9 +243,7 @@ export default function WishlistView() {
             <button
               type="button"
               disabled={busy}
-              onClick={() => {
-                if (window.confirm(t("wishlist.confirmClear"))) clear();
-              }}
+              onClick={() => void clearAll()}
               className="inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-xs font-semibold text-ink-soft ring-1 ring-line transition-colors hover:text-rose-700 hover:ring-rose-300"
             >
               <IconTrash className="h-3.5 w-3.5" /> {t("wishlist.clearAll")}

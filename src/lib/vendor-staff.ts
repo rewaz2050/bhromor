@@ -16,6 +16,8 @@
  * Pure: no clock, no database, no network.
  */
 
+import type { VendorPermission } from "./vendor-permissions";
+
 import {
   describeLoginEmail,
   loginHandleFor,
@@ -38,6 +40,7 @@ export interface VendorStaffMember {
   /** What the account is actually stored under (synthetic for phone logins). */
   loginEmail: string;
   role: VendorStaffRole;
+  permissions?: VendorPermission[];
   /** When the login was opened (ms), when the row knows it. */
   addedAt?: number;
   /** True for the row of the person looking at the screen. */

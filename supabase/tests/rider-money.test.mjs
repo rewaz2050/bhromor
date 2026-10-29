@@ -16,6 +16,16 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import { verifyMixedRoleFulfilment } from './mixed-role-fulfilment.mjs';
+import { verifyFinanceSelfDealing } from './finance-self-dealing.mjs';
+import { verifyOrderPinPrivacy } from './order-pin-privacy.mjs';
+import { verifyAtomicStaffRoles } from './atomic-staff-roles.mjs';
+import { verifyRiderControlsLedger } from './rider-controls-ledger.mjs';
+import { verifyRiderWalletPrivacy } from './rider-wallet-privacy.mjs';
+import { verifyFinanceReporting } from './finance-reporting-permissions.mjs';
+import { verifyFinancePermissions } from './finance-permissions.mjs';
+import { verifyShopFirstPermissions } from './shop-first-permissions.mjs';
+import { verifyVendorDelegation } from './vendor-delegation-permissions.mjs';
 
 const db = new PGlite();
 await db.exec(`
@@ -1558,6 +1568,16 @@ end $$`);
   await db.query(`delete from orders where id = $1`, [fpOrder]);
   assert.equal(Number(await scalar(`select count(*) from delivery_failed_proofs where order_id = $1`, [fpOrder])), 0, 'proofs go with their order');
   console.log('PASS: failed-delivery proof — photo or note required, staff-only read (RLS), no user writes, removed with the order');
+  await verifyFinancePermissions({ db, as, uuid, scalar, rows });
+  await verifyShopFirstPermissions({ db, as, uuid, scalar, rows });
+  await verifyVendorDelegation({ db, as, uuid, scalar, rows });
+  await verifyFinanceReporting({ db, as, uuid, scalar, rows });
+  await verifyRiderWalletPrivacy({ db, as, uuid, scalar, rows });
+  await verifyRiderControlsLedger({ db, as, uuid, scalar, rows });
+  await verifyAtomicStaffRoles({ db, as, uuid, scalar, rows });
+  await verifyOrderPinPrivacy({ db, as, uuid, scalar, rows });
+  await verifyMixedRoleFulfilment({ db, as, uuid, scalar, rows });
+  await verifyFinanceSelfDealing({ db, as, uuid, scalar, rows });
 } finally {
   await db.close();
 }

@@ -83,7 +83,8 @@ describe("Buy box — size nudge (P1 #10)", () => {
     renderPanel();
     const ctas = await screen.findAllByRole("button", { name: "Select a size" });
     // Main CTA + sticky bar CTA — both are tappable (not disabled) so the tap can teach.
-    expect(ctas.length).toBeGreaterThanOrEqual(2);
+    expect(ctas).toHaveLength(1);
+    expect(screen.getByTestId("purchase-dock")).toHaveAttribute("aria-hidden", "true");
     for (const cta of ctas) expect(cta).not.toBeDisabled();
     fireEvent.click(ctas[0]);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
@@ -106,7 +107,7 @@ describe("Buy box — size nudge (P1 #10)", () => {
     expect(chosen).toHaveLength(1);
     expect(chosen[0].textContent?.trim()).toBe(product.sizes[1]);
     const adds = screen.getAllByRole("button", { name: "Add to Bag" });
-    expect(adds.length).toBeGreaterThanOrEqual(2);
+    expect(adds).toHaveLength(1);
     fireEvent.click(adds[0]);
     await waitFor(() => expect(screen.getByLabelText("Items in bag")).toHaveTextContent("1"));
   });

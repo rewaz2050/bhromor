@@ -11,7 +11,7 @@
  * instead of a blank form that would bounce forever.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LogoMark from "@/components/logo-mark";
@@ -22,7 +22,7 @@ import ForgotPasswordPanel from "@/components/auth/forgot-password-panel";
 import { loginIdentifierToEmail } from "@/lib/phone-login";
 
 const inputClass =
-  "w-full rounded-xl bg-white px-3.5 py-2.5 text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
+  "min-h-12 w-full rounded-xl bg-white px-3.5 py-2.5 text-base sm:text-sm text-ink ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-600";
 const primaryClass =
   "inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-forest-800 px-4 py-3 text-sm font-semibold text-white hover:bg-forest-900 disabled:opacity-60";
 const secondaryClass =
@@ -42,6 +42,14 @@ export default function VendorLoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<"identifier" | "password" | null>(null);
+  const identifierRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!formError) return;
+    (invalid === "identifier" ? identifierRef.current : invalid === "password" ? passwordRef.current : errorRef.current)?.focus();
+  }, [formError, invalid]);
 
   useEffect(() => {
     if (status === "authed") router.replace("/vendor");
@@ -49,25 +57,32 @@ export default function VendorLoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (busy) return;
+    setInvalid(null);
     setFormError(null);
     // Round 4 — e-mail OR mobile number; a number becomes the synthetic
     // login address the application was created with (no SMS involved).
     const loginEmail = loginIdentifierToEmail(email);
     if (!loginEmail) {
+      setInvalid("identifier");
+      identifierRef.current?.focus();
       setFormError("Enter a valid email address or 11-digit mobile number.");
       return;
     }
     if (password.length < 6) {
+      setInvalid("password");
+      passwordRef.current?.focus();
       setFormError("Password needs at least 6 characters.");
       return;
     }
     setBusy(true);
-    const problem = await signIn(loginEmail, password);
-    setBusy(false);
-    if (problem) {
-      setFormError(
-        `${problem} Use the email (or mobile number) and password from your shop application.`,
-      );
+    try {
+      const problem = await signIn(loginEmail, password);
+      if (problem) setFormError(`${problem} Use the email (or mobile number) and password from your shop application.`);
+    } catch {
+      setFormError("Could not sign in. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -86,7 +101,7 @@ export default function VendorLoginPage() {
       </div>
 
       {status === "checking" ? (
-        <div className="mt-8 h-64 animate-pulse rounded-2xl bg-line/60" aria-label="Loading" />
+        <div className="mt-8 h-64 animate-pulse rounded-2xl bg-line/60" role="status" aria-label="Loading" />
       ) : denied ? (
         <section
           aria-labelledby="vendor-status-heading"
@@ -165,38 +180,47 @@ export default function VendorLoginPage() {
         </section>
       ) : (
         <form
+          aria-busy={busy}
           onSubmit={submit}
           className="mt-8 space-y-4 rounded-2xl bg-paper p-6 ring-1 ring-line"
         >
           <h2 className="font-display text-lg text-forest-900">Sign in</h2>
           {formError && (
-            <p role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
+            <p id="vendor-signin-error" ref={errorRef} tabIndex={-1} role="alert" className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 ring-1 ring-rose-200">
               {formError}
             </p>
           )}
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
               Email or mobile number
             </span>
             <input
+              ref={identifierRef}
+              aria-invalid={invalid === "identifier"}
+              aria-describedby={invalid === "identifier" ? "vendor-signin-error" : undefined}
+              disabled={busy}
               type="text"
               autoComplete="username"
               inputMode="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setInvalid(null); setFormError(null); }}
               className={inputClass}
               placeholder="you@yourshop.com or 017XXXXXXXX"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-soft">
+            <span className="mb-1.5 block text-sm font-medium text-ink">
               Password
             </span>
             <PasswordInput
+              ref={passwordRef}
+              aria-invalid={invalid === "password"}
+              aria-describedby={invalid === "password" ? "vendor-signin-error" : undefined}
+              disabled={busy}
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); setInvalid(null); setFormError(null); }}
               className={inputClass}
               placeholder="••••••••"
             />

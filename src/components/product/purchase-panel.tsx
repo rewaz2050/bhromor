@@ -1,5 +1,6 @@
 "use client";
 
+import DeliveryEstimate from "@/components/delivery/delivery-estimate";
 import SizeGuide from "./size-guide";
 import ShareRow from "./share-row";
 import ArrivalCue from "@/components/delivery/arrival-cue";
@@ -19,7 +20,7 @@ import type { Product } from "@/lib/catalog";
 import { formatBdt } from "@/lib/format";
 import { MAX_LINE_QTY } from "@/lib/cart";
 import { waLink, productWaMessage, sizeAskMessage } from "@/lib/whatsapp-order";
-import { availableSizes, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
+import { displaySizeOrder, availableSizes, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "@/lib/size-stock";
 import { useCart } from "@/components/cart/cart-provider";
 import ShopConflictDialog from "@/components/cart/shop-conflict-dialog";
 import FreeDeliveryPill from "@/components/shop/free-delivery-pill";
@@ -31,7 +32,6 @@ import {
   productShopId,
   shopById,
 } from "@/lib/shop-utils";
-import { DELIVERY_ETA, INSTANT_DELIVERY_TITLE } from "@/lib/delivery";
 import { Price } from "@/components/ui/primitives";
 import {
   IconCheck,
@@ -51,6 +51,7 @@ import { haptic } from "@/lib/haptics";
 
 export default function PurchasePanel({ product }: { product: Product }) {
   const { t, lang } = useLanguage();
+  const displaySizes = displaySizeOrder(product.sizes);
   const { openBag } = useCart();
   const { products, shops } = useLiveCatalog();
   const { add, conflict, confirmConflict, dismissConflict } = useGuardedAdd("pdp");
@@ -233,10 +234,10 @@ export default function PurchasePanel({ product }: { product: Product }) {
         {product.category} · {product.subCategory}
       </p>
       <h1 className="font-display mt-2 text-3xl font-medium leading-tight tracking-tight text-forest-900 sm:text-4xl">
-        {product.name}
+        {lang === "bn" && product.nameBn ? product.nameBn : product.name}
         {product.nameBn && (
           <span className="font-bengali mt-1 block text-base font-normal text-ink-soft">
-            {product.nameBn}
+            {lang === "bn" ? product.name : product.nameBn}
           </span>
         )}
       </h1>
@@ -413,7 +414,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           role="group"
           aria-label={t("purchase.size")}
         >
-          {product.sizes.map((s) => {
+          {displaySizes.map((s) => {
             const verdict = suggestion.scores.find((x) => x.size === s);
             const avail = sizeAvailability(product, s);
             const out = avail.state === "out";
@@ -603,7 +604,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
         ref={ctaRef}
         className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center"
       >
-        <div className="qty-stepper qty-stepper--tall h-14 justify-between px-1 sm:w-36">
+        <div role="group" aria-label={t("product.quantity")} className="qty-stepper qty-stepper--tall h-14 justify-between px-1 sm:w-36">
           <button
             type="button"
             onClick={() => setQty((n) => Math.max(1, n - 1))}
@@ -630,7 +631,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           onClick={handleAdd}
           aria-disabled={ctaDisabled || undefined}
           aria-describedby={needsSize ? "purchase-size" : undefined}
-          className={`tap-press h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 shadow-[0_8px_24px_-14px_rgb(20_41_31_/_70%)] transition-all hover:-translate-y-px hover:bg-forest-700 hover:shadow-[0_12px_28px_-14px_rgb(20_41_31_/_80%)] disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none ${
+          className={`h-14 flex-1 rounded-sm bg-forest-800 px-8 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700 disabled:opacity-40 ${
             needsSize && !hardStop ? "opacity-70" : ""
           }`}
           disabled={hardStop}
@@ -641,7 +642,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
           type="button"
           onClick={handleBuyNow}
           aria-disabled={ctaDisabled || undefined}
-          className={`h-14 flex-1 rounded-sm bg-gold-500 px-8 text-sm font-semibold text-forest-950 transition-all hover:-translate-y-px hover:bg-gold-400 disabled:translate-y-0 disabled:opacity-40 ${
+          className={`h-14 flex-1 rounded-sm border border-forest-800 bg-paper px-8 text-sm font-semibold text-forest-900 transition-colors hover:bg-forest-50 disabled:opacity-40 ${
             needsSize && !hardStop ? "opacity-70" : ""
           }`}
           disabled={hardStop}
@@ -747,12 +748,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         <TrustPill
           icon={IconTruck}
-          title={INSTANT_DELIVERY_TITLE}
-          text={`${
-            lang === "bn"
-              ? `সুনামগঞ্জ সদরে ${DELIVERY_ETA}-এ পৌঁছায়`
-              : `Arrives in ${DELIVERY_ETA} inside Sunamganj Sadar`
-          } · ${t("purchase.courierText")}`}
+          title={lang === "bn" ? "ডেলিভারির সময়" : "Delivery estimate"}
+          text={<DeliveryEstimate />}
         />
         <TrustPill
           icon={IconMapPin}
@@ -770,6 +767,8 @@ export default function PurchasePanel({ product }: { product: Product }) {
       <div
         className="sticky-buy-bar border-t border-line bg-paper/97 px-4 py-3"
         data-visible={stickyVisible}
+        data-testid="purchase-dock"
+        aria-hidden={!stickyVisible}
         inert={!stickyVisible}
       >
         <div className="mx-auto max-w-3xl">
@@ -783,7 +782,7 @@ export default function PurchasePanel({ product }: { product: Product }) {
               <span className="shrink-0 text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-ink-soft">
                 {t("purchase.size")}
               </span>
-              {product.sizes.map((s) => {
+              {displaySizes.map((s) => {
                 const out = sizeAvailability(product, s).state === "out";
                 return (
                   <button
@@ -812,11 +811,11 @@ export default function PurchasePanel({ product }: { product: Product }) {
                 {size && hasSizes ? ` · ${size}` : ""}
               </p>
               <p className="truncate font-display text-base leading-tight text-forest-900">
-                {product.name}
+                {lang === "bn" && product.nameBn ? product.nameBn : product.name}
               </p>
             </div>
             <p className="shrink-0 text-sm font-semibold text-ink">
-              {formatBdt(product.price)}
+              {formatBdt(flash.was === null ? product.price : flash.price)}
             </p>
             <button
               type="button"
@@ -852,7 +851,7 @@ function TrustPill({
 }: {
   icon: (p: { className?: string }) => React.ReactNode;
   title: string;
-  text: string;
+  text: React.ReactNode;
 }) {
   return (
     <div className="assurance-pill rounded-md bg-paper p-4 ring-1 ring-line">

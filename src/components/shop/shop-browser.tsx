@@ -3,6 +3,8 @@
 import { PRODUCT_LINK_SELECTOR } from "@/lib/product-url";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { bnDigits } from "@/lib/arrival";
 import { usePathname } from "next/navigation";
 import ListImpression from "@/components/analytics/list-impression";
 import {
@@ -109,6 +111,14 @@ export default function ShopBrowser({
   initialInStock?: boolean;
 }) {
   const { t, lang } = useLanguage();
+  const digits = (n: number) => lang === "bn" ? bnDigits(String(n)) : String(n);
+  const categoryName = (id: string) => {
+    const item = categories.find(c => c.id === id);
+    return lang === "bn" && item?.nameBn ? item.nameBn : item?.name ?? id;
+  };
+  const moodName = (id: string) => lang === "bn"
+    ? id === "everyday" ? "প্রতিদিনের" : id === "festive" ? "উৎসবের" : "চিরচেনা"
+    : MOODS.find(item => item.id === id)?.name ?? id;
   const [category, setCategoryState] = useState<CategoryFilter>(initialCategory);
   const [subCategory, setSubCategory] = useState<string>(initialSub);
   /* A garment type belongs to one category — changing the category always
@@ -456,7 +466,7 @@ export default function ShopBrowser({
               onClick={() => setMood(mood === edit.id ? "" : edit.id)}
               className={`min-h-11 border px-3 text-xs ${mood === edit.id ? "border-forest-800 bg-forest-800 text-white" : "border-line text-ink-soft"}`}
             >
-              {edit.name}
+              {moodName(edit.id)}
             </button>
           ))}
         </div>
@@ -464,12 +474,12 @@ export default function ShopBrowser({
       {/* Categories */}
       <Fieldset title={t("shopBrowser.categories")}>
         <div className="space-y-1">
-          {(["all", ...categories.map((c) => c.id)] as CategoryFilter[]).map(
+          {(["all", ...categories.filter((c) => c.active !== false).map((c) => c.id)] as CategoryFilter[]).map(
             (id) => {
               const label =
                 id === "all"
                   ? t("shopBrowser.allProducts")
-                  : (categories.find((c) => c.id === id)?.name ?? id);
+                  : categoryName(id);
               const count =
                 id === "all"
                   ? zonedProducts.length
@@ -477,7 +487,7 @@ export default function ShopBrowser({
               return (
                 <label
                   key={id}
-                  className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-2 text-sm transition-colors hover:bg-ivory-100"
+                  className="flex min-h-11 cursor-pointer items-center justify-between rounded-lg px-2 py-2 text-sm transition-colors hover:bg-ivory-100"
                 >
                   <span className="flex items-center gap-2.5">
                     <input
@@ -511,7 +521,7 @@ export default function ShopBrowser({
           {PRICE_BANDS.map((band) => (
             <label
               key={band.key}
-              className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-ink-soft transition-colors hover:bg-ivory-100"
+              className="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-ink-soft transition-colors hover:bg-ivory-100"
             >
               <input
                 type="radio"
@@ -604,7 +614,7 @@ export default function ShopBrowser({
       ? [
           {
             key: "mood",
-            label: `${t("shopBrowser.style")}: ${MOODS.find((m) => m.id === mood)?.name}`,
+            label: `${t("shopBrowser.style")}: ${moodName(mood)}`,
             remove: () => setMood(""),
           },
         ]
@@ -613,7 +623,7 @@ export default function ShopBrowser({
       ? [
           {
             key: "category",
-            label: categories.find((c) => c.id === category)?.name ?? category,
+            label: categoryName(category),
             remove: () => setCategory("all"),
           },
         ]
@@ -723,12 +733,12 @@ export default function ShopBrowser({
           {t("shopBrowser.filters")}
           {activeFilterCount > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gold-700 px-1.5 text-[0.65rem] font-bold text-white">
-              {activeFilterCount}
+              {digits(activeFilterCount)}
             </span>
           )}
         </button>
         <span aria-hidden="true" className="min-w-0 flex-1 truncate text-xs text-ink-soft sm:text-sm">
-          {visible.length} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
+          {digits(visible.length)} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
         </span>
         <label className="flex min-w-0 items-center gap-2 text-sm text-ink-soft">
           <span className="hidden sm:inline">{t("shopBrowser.sort")}</span>
@@ -807,7 +817,7 @@ export default function ShopBrowser({
             type="button"
             aria-pressed={subCategory === ""}
             onClick={() => setSubCategory("")}
-            className={`inline-flex min-h-10 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-colors ${
+            className={`inline-flex min-h-11 shrink-0 items-center rounded-full px-3.5 text-xs font-medium transition-colors ${
               subCategory === ""
                 ? "bg-forest-100 text-forest-900 ring-1 ring-forest-300"
                 : "bg-ivory-100 text-ink-soft hover:text-forest-900"
@@ -855,9 +865,9 @@ export default function ShopBrowser({
         role="status"
         aria-live="polite"
       >
-        {visible.length} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
+        {digits(visible.length)} {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
         {category !== "all" &&
-          ` ${t("shopBrowser.in")} ${categories.find((c) => c.id === category)?.name ?? ""}`}
+          ` ${t("shopBrowser.in")} ${categoryName(category)}`}
         {category !== "all" && subCategory && ` · ${subCategory}`}
         {onlyNew && ` · ${t("shopBrowser.newArrivals")}`}
         {onlySale && ` · ${t("shopBrowser.onOffer")}`}
@@ -870,7 +880,7 @@ export default function ShopBrowser({
 
       {hasActiveFilters && (
         <div
-          aria-label="Active filters"
+          aria-label={t("shopBrowser.activeFilters")}
           role="group"
           className="mt-4 flex flex-wrap items-center gap-2"
         >
@@ -879,7 +889,7 @@ export default function ShopBrowser({
               key={filter.key}
               type="button"
               onClick={filter.remove}
-              aria-label={`Remove ${filter.label} filter`}
+              aria-label={t("shopBrowser.removeFilter").replace("{label}", filter.label)}
               className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-full bg-forest-100 px-4 py-2 text-xs font-medium text-forest-900 transition-colors hover:bg-forest-200"
             >
               <span className="truncate">{filter.label}</span>
@@ -948,16 +958,18 @@ export default function ShopBrowser({
                 <IconBox className="h-6 w-6" />
               </span>
               <h2 className="font-display mt-5 text-2xl font-medium text-ink">
-                {scopedZone && products.length > 0 && zonedProducts.length === 0
+                {products.length === 0 ? t("header.catalogEmpty") : scopedZone && zonedProducts.length === 0
                   ? t("shopBrowser.noShopsZone")
                   : t("shopBrowser.noProductsFound")}
               </h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
-                {scopedZone && products.length > 0 && zonedProducts.length === 0
+                {products.length === 0 ? t("header.catalogEmptyHint") : scopedZone && zonedProducts.length === 0
                   ? t("shopBrowser.noShopsZoneHint")
                   : t("shopBrowser.tryAnother")}
               </p>
-              {scopedZone && products.length > 0 && zonedProducts.length === 0 ? (
+              {products.length === 0 ? (
+                <Link href="/contact" className="mt-6 inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-medium text-forest-800 underline underline-offset-4">{t("track.contactSupport")}</Link>
+              ) : scopedZone && zonedProducts.length === 0 ? (
                 <button
                   type="button"
                   onClick={() => setZoneId(null)}
@@ -988,7 +1000,7 @@ export default function ShopBrowser({
       <Drawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        label="Product filters"
+        label={t("shopBrowser.dialogLabel")}
         side="bottom"
         className="lg:hidden"
       >
@@ -1000,11 +1012,14 @@ export default function ShopBrowser({
             type="button"
             onClick={() => setDrawerOpen(false)}
             aria-label={t("shopBrowser.closeFilters")}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-ink-soft hover:bg-forest-100"
           >
             <IconClose />
           </button>
         </div>
+        <p role="status" className="mb-5 text-sm text-ink-soft">
+          {t("shopBrowser.filterMatches").replace("{n}", digits(visible.length))}
+        </p>
         {renderFilters("drawer")}
         <div className="sticky -bottom-6 -mx-6 mt-8 flex gap-3 border-t border-line bg-ivory-50 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
           <button
@@ -1022,7 +1037,7 @@ export default function ShopBrowser({
             onClick={() => setDrawerOpen(false)}
             className="h-12 flex-1 rounded-full bg-forest-800 text-sm font-semibold text-ivory-50 transition-colors hover:bg-forest-700"
           >
-            {t("shopBrowser.show")} {visible.length}{" "}
+            {t("shopBrowser.show")} {digits(visible.length)}{" "}
             {visible.length === 1 ? t("shopBrowser.product") : t("shopBrowser.products")}
           </button>
         </div>

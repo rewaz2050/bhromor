@@ -23,6 +23,16 @@ const o = (over: Partial<Order>): Order =>
   }) as Order;
 
 describe("primaryAction", () => {
+  it("normal marketplace fulfilment belongs to the shop, not platform staff", () => {
+    for (const status of ["pending", "confirmed", "preparing"] as const) {
+      const order = o({ shopId: "shop-1", status });
+      expect(primaryAction(order, "staff")).toMatchObject({ kind: "wait", reason: "Shop confirms and prepares this order." });
+      expect(primaryAction(order, "vendor")).toMatchObject({ kind: "action", to: status === "pending" ? "confirmed" : "ready-for-pickup" });
+    }
+  });
+  it("shop-first policy does not alter Traffic Point handover", () => {
+    expect(primaryAction(o({ shopId: "shop-1", status: "ready-for-pickup", isPickup: true }), "staff")).toMatchObject({ kind: "action", to: "delivered" });
+  });
   it("pending → Confirm for staff and vendor alike", () => {
     expect(primaryAction(o({ status: "pending" }), "staff")).toMatchObject({ kind: "action", to: "confirmed" });
     expect(primaryAction(o({ status: "pending" }), "vendor")).toMatchObject({ kind: "action", to: "confirmed" });

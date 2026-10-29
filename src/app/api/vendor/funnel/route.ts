@@ -14,7 +14,7 @@
  * empty.
  */
 
-import { apiJson } from "@/lib/api-response";
+import { apiError, apiJson } from "@/lib/api-response";
 import { shopFunnelFor } from "@/lib/db/vendor-funnel";
 import { vendorRoute } from "../_lib";
 
@@ -25,8 +25,17 @@ const parseDays = (raw: string | null): 7 | 28 => (raw === "28" ? 28 : 7);
 export const GET = vendorRoute("funnel", async (ctx, request) => {
   const days = parseDays(new URL(request.url).searchParams.get("days"));
   const { report, missing } = await shopFunnelFor(ctx.shopId, days);
-  if (missing || !report) {
-    return apiJson({ error: "The funnel report is not installed yet.", missing: true }, 503);
+  if (missing) {
+    return apiJson(
+      { error: "The funnel report is not installed yet.", missing: true },
+      503,
+    );
+  }
+  if (!report) {
+    return apiError(
+      "The funnel report is temporarily unavailable. Try again.",
+      503,
+    );
   }
   return apiJson(report);
-});
+}, { ownerOnly: true });

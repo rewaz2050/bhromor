@@ -65,11 +65,13 @@ export default function Header() {
     // Scrollable distance, measured when the page changes size (not per
     // frame — reading scrollHeight in a scroll handler can force a layout).
     let docH = 0;
+    let frame: number | null = null;
     const measure = () => {
       docH = document.documentElement.scrollHeight - window.innerHeight;
     };
 
     const update = () => {
+      frame = null;
       ticking.current = false;
       const y = window.scrollY;
       const next = y > 10;
@@ -89,7 +91,7 @@ export default function Header() {
     const onScroll = () => {
       if (!ticking.current) {
         ticking.current = true;
-        requestAnimationFrame(update);
+        frame = requestAnimationFrame(update);
       }
     };
     const onResize = () => {
@@ -110,6 +112,8 @@ export default function Header() {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
       grow?.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      ticking.current = false;
     };
   }, []);
 
@@ -133,10 +137,6 @@ export default function Header() {
               aria-label="PROSANTI home"
             >
               <span className="relative flex shrink-0 items-center justify-center">
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-forest-50 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-70"
-                />
                 <LogoMark className="h-8 w-auto shrink-0 sm:h-[2.1rem]" />
               </span>
               <span className="hidden min-w-0 flex-col leading-none min-[360px]:flex">

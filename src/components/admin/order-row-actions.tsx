@@ -43,7 +43,9 @@ export function OrderRowActions({ order, advance, cancel }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {action?.kind === "action" && (
+      {action?.kind === "action" && order.isPickup && action.to === "delivered" ? (
+        <Link href={`/admin/orders/${order.id}`} className="inline-flex min-h-9 items-center rounded-full bg-forest-800 px-3.5 text-xs font-semibold text-ivory-50">Verify pickup PIN</Link>
+      ) : action?.kind === "action" && (
         <button
           type="button"
           disabled={busy !== null}

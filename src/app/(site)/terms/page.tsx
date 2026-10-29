@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PageContents from "@/components/info/page-contents";
 import InfoRail from "@/components/info/info-rail";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -25,6 +26,16 @@ export default function TermsPage() {
         <L en="Last updated: September 2026" bn="সর্বশেষ হালনাগাদ: সেপ্টেম্বর ২০২৬" />
       </p>
 
+      <PageContents items={[
+        { id: "orders-pricing", en: "Orders & pricing", bn: "অর্ডার ও দাম" },
+        { id: "delivery", en: "Delivery", bn: "ডেলিভারি" },
+        { id: "payment", en: "Payment", bn: "পেমেন্ট" },
+        { id: "returns-accountability", en: "Returns & accountability", bn: "ফেরত ও দায়বদ্ধতা" },
+        { id: "content-conduct", en: "Content & conduct", bn: "কনটেন্ট ও আচরণ" },
+        { id: "limits-of-liability", en: "Limits of liability", bn: "দায়ের সীমা" },
+        { id: "changes-contact", en: "Changes & contact", bn: "পরিবর্তন ও যোগাযোগ" },
+      ]} />
+
       <div className="prose-prosanti mt-8">
         <p>
           <L
@@ -33,7 +44,7 @@ export default function TermsPage() {
           />
         </p>
 
-        <h2><L en="Orders & pricing" bn="অর্ডার ও দাম" /></h2>
+        <h2 id="orders-pricing" className="scroll-mt-28"><L en="Orders & pricing" bn="অর্ডার ও দাম" /></h2>
         <ul>
           <li>
             <L
@@ -61,7 +72,7 @@ export default function TermsPage() {
           </li>
         </ul>
 
-        <h2><L en="Delivery" bn="ডেলিভারি" /></h2>
+        <h2 id="delivery" className="scroll-mt-28"><L en="Delivery" bn="ডেলিভারি" /></h2>
         <ul>
           <li>
             <L
@@ -77,7 +88,7 @@ export default function TermsPage() {
           </li>
         </ul>
 
-        <h2><L en="Payment" bn="পেমেন্ট" /></h2>
+        <h2 id="payment" className="scroll-mt-28"><L en="Payment" bn="পেমেন্ট" /></h2>
         <p>
           <L
             en="Cash on Delivery is the primary method at launch: pay the rider the exact total on delivery. Future online payment methods will be governed by the applicable gateway terms."
@@ -85,7 +96,7 @@ export default function TermsPage() {
           />
         </p>
 
-        <h2><L en="Returns & accountability" bn="ফেরত ও দায়বদ্ধতা" /></h2>
+        <h2 id="returns-accountability" className="scroll-mt-28"><L en="Returns & accountability" bn="ফেরত ও দায়বদ্ধতা" /></h2>
         <p>
           <L
             en="Returns and exchanges follow the"
@@ -98,7 +109,7 @@ export default function TermsPage() {
           />
         </p>
 
-        <h2><L en="Content & conduct" bn="কনটেন্ট ও আচরণ" /></h2>
+        <h2 id="content-conduct" className="scroll-mt-28"><L en="Content & conduct" bn="কনটেন্ট ও আচরণ" /></h2>
         <ul>
           <li>
             <L
@@ -114,7 +125,7 @@ export default function TermsPage() {
           </li>
         </ul>
 
-        <h2><L en="Limits of liability" bn="দায়ের সীমা" /></h2>
+        <h2 id="limits-of-liability" className="scroll-mt-28"><L en="Limits of liability" bn="দায়ের সীমা" /></h2>
         <p>
           <L
             en="Our liability is limited to the value of the products ordered. To the extent permitted by law, we are not liable for indirect losses arising from use of the site or delays outside our reasonable control."
@@ -122,7 +133,7 @@ export default function TermsPage() {
           />
         </p>
 
-        <h2><L en="Changes & contact" bn="পরিবর্তন ও যোগাযোগ" /></h2>
+        <h2 id="changes-contact" className="scroll-mt-28"><L en="Changes & contact" bn="পরিবর্তন ও যোগাযোগ" /></h2>
         <p>
           <L
             en="We may update these terms; the latest version is always on this page. Questions? See the"

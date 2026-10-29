@@ -67,7 +67,7 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-import { forgetStaffRole, requireStaff, StaffAuthError } from "../staff-auth";
+import { forgetStaffRole, requireStaff, requireStaffRole, StaffAuthError } from "../staff-auth";
 
 beforeEach(() => {
   state.role = "admin";
@@ -132,4 +132,15 @@ describe("requireStaff role memo", () => {
     await expect(requireStaff()).resolves.toMatchObject({ role: "admin" });
     expect(state.roleReads).toBe(2);
   });
+});
+
+it("privileged gates re-read current role even when another instance has a positive memo", async () => {
+  await requireStaff(); state.role = "manager";
+  await expect(requireStaffRole("admin", "super_admin")).rejects.toMatchObject({status:403});
+  expect(state.roleReads).toBe(2);
+});
+it("fresh operational route checks deny revocation immediately and evict the old memo", async () => {
+  await requireStaff(); state.role = null;
+  await expect(requireStaff({freshRole:true})).rejects.toMatchObject({status:403});
+  await expect(requireStaff()).rejects.toMatchObject({status:403});
 });

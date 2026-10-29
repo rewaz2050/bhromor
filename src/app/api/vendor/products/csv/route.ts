@@ -25,7 +25,7 @@ export const GET = vendorRoute("product-csv-export", async ({ db, shopId }, requ
       "Cache-Control": "no-store",
     },
   });
-});
+}, { permission: "catalog" });
 
 const jsonField = <T,>(
   value: string | undefined,
@@ -195,5 +195,5 @@ export const POST = vendorRoute(
   },
   // UTF-8 Bangla can use up to 3 bytes per CSV character; keep this cap
   // just above the 1 MB character limit while bounding the request stream.
-  { limit: 5, maxBodyBytes: 3_100_000 },
+  { limit: 5, maxBodyBytes: 3_100_000, permission: "catalog" },
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { uploadDeliveryProof } from "@/lib/rider-delivery-actions";
 import { IconShield } from "@/components/ui/icons";
@@ -15,10 +15,13 @@ export function PinModal({
   onSubmit,
   onClose,
   onFlash,
+  busy = false,
 }: {
   onSubmit: (pin: string, proofUrl: string | null, noPhotoReason: string | null) => Promise<string | null>;
   onClose: () => void;
   onFlash: (message: string) => void;
+  /** Assignment transport lock owned by the persistent delivery dialog. */
+  busy?: boolean;
 }) {
   const [enteredPin, setEnteredPin] = useState("");
   const [pinError, setPinError] = useState("");
@@ -27,11 +30,44 @@ export function PinModal({
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
 
+  const uploadOwner = useRef({ active: false, ticket: 0, pending: false });
+  useEffect(() => {
+    const state = uploadOwner.current;
+    state.active = true;
+    return () => { state.active = false; state.ticket++; };
+  }, []);
+
+  const close = () => {
+    uploadOwner.current.active = false;
+    uploadOwner.current.ticket++;
+    onClose();
+  };
+
   const upload = async (file: File) => {
+    const state = uploadOwner.current;
+    if (!state.active || busy) return;
+    const ticket = ++state.ticket;
+    const current = () => state.active && state.ticket === ticket;
+    state.pending = true;
     setProofUploading(true);
     setPinError("");
-    const result = await uploadDeliveryProof(file);
-    setProofUploading(false);
+    let result: Awaited<ReturnType<typeof uploadDeliveryProof>>;
+    try {
+      result = await uploadDeliveryProof(file);
+    } catch {
+      if (current()) {
+        setNoPhotoOpen(true);
+        setPinError("ছবি আপলোড হয়নি — আবার চেষ্টা করুন অথবা নিচে কারণ লিখুন।");
+      }
+      return;
+    } finally {
+      // Only the newest selection owns this view's upload lock.
+      if (current()) {
+        state.pending = false;
+        setProofUploading(false);
+      }
+    }
+    if (!current()) return;
     if (result.ok) {
       setProofUrl(result.url);
       onFlash("📸 Proof photo uploaded!");
@@ -42,8 +78,9 @@ export function PinModal({
   };
 
   const submit = async () => {
+    if (!uploadOwner.current.active || uploadOwner.current.pending || busy) return;
     const error = await onSubmit(enteredPin.trim(), proofUrl, proofUrl ? null : noPhotoReason.trim() || null);
-    if (error !== null) setPinError(error);
+    if (uploadOwner.current.active && error !== null) setPinError(error);
   };
 
   return (
@@ -90,6 +127,7 @@ export function PinModal({
           <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">📸 Delivery Proof Photo</p>
           <input
             type="file"
+            disabled={busy}
             accept="image/*"
             capture="environment"
             onChange={(e) => {
@@ -144,18 +182,18 @@ export function PinModal({
         <div className="flex gap-2.5 pt-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             className="h-12 flex-1 rounded-full border border-line bg-paper text-xs font-semibold text-ink-soft hover:bg-ivory-100"
           >
             বাতিল
           </button>
           <button
             type="button"
-            disabled={enteredPin.length !== 4}
+            disabled={enteredPin.length !== 4 || proofUploading || busy}
             onClick={() => void submit()}
             className="h-12 flex-1 rounded-full bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
           >
-            ডেলিভারি সম্পন্ন করুন
+            {busy ? "ডেলিভারি হচ্ছে…" : "ডেলিভারি সম্পন্ন করুন"}
           </button>
         </div>
       </div>

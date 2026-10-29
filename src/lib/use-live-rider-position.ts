@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { usePoll } from "./use-poll";
 import { LIVE_FIX_EVENT } from "./live-fix-event";
+import { asMapPoint } from "./live-map";
 
 /** Poll while relying on HTTP alone. */
 export const LIVE_POLL_MS = 10_000;
@@ -37,12 +38,7 @@ export interface LiveRiderFix {
 
 /** A real coordinate pair, or null. Never `0,0` in the Gulf of Guinea. */
 export const asFix = (raw: unknown): { lat: number; lng: number } | null => {
-  const p = raw as { lat?: unknown; lng?: unknown } | null;
-  const lat = typeof p?.lat === "number" ? p.lat : NaN;
-  const lng = typeof p?.lng === "number" ? p.lng : NaN;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { lat, lng };
+  return asMapPoint(raw as { lat?: number; lng?: number } | null);
 };
 
 interface FixMessage {
@@ -59,26 +55,43 @@ export function useLiveRiderPosition(opts: {
 }): { rider: LiveRiderFix | null; live: boolean } {
   const { orderId, phone, enabled } = opts;
   const trackToken = opts.trackToken ?? "";
+  const key = JSON.stringify([orderId, phone, trackToken]);
+  const [dataKey, setDataKey] = useState(key);
   const [rider, setRider] = useState<LiveRiderFix | null>(null);
   const [live, setLive] = useState(false);
   // Learned from the first HTTP answer — the channel name is derived from the
   // order number + the stored phone, which only the server may compute.
   const [channel, setChannel] = useState<string | null>(null);
-  // Epoch of the newest fix on screen, so a late message cannot rewind the pin.
-  const newestAt = useRef<number>(0);
+  const owner = useRef({ active: false, key, epoch: 0, newestAt: 0 });
+  useEffect(() => {
+    const state = owner.current;
+    state.active = enabled && !!orderId;
+    state.key = key;
+    state.epoch++;
+    state.newestAt = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fixes/channels belong to one tracking identity and enabled lifetime
+    setDataKey(key);
+    setRider(null);
+    setChannel(null);
+    setLive(false);
+    return () => { state.active = false; state.epoch++; };
+  }, [enabled, orderId, key]);
 
   const accept = useCallback(
-    (fix: { lat: number; lng: number }, updatedAt: string, atMs: number) => {
-      if (atMs < newestAt.current) return;
-      newestAt.current = atMs;
+    (fix: { lat: number; lng: number }, updatedAt: string, atMs: number, epoch: number) => {
+      const state = owner.current;
+      if (!state.active || state.key !== key || state.epoch !== epoch || !Number.isFinite(atMs) || atMs < state.newestAt) return;
+      state.newestAt = atMs;
       setRider({ lat: fix.lat, lng: fix.lng, updatedAt, seenAt: Date.now() });
     },
-    [],
+    [key],
   );
 
   /* ---------------- HTTP read ---------------- */
   const fetchRiderPos = useCallback(async () => {
-    if (!enabled || !orderId) return;
+    const state = owner.current;
+    if (!enabled || !orderId || !state.active || state.key !== key) return;
+    const epoch = state.epoch;
     try {
       const res = await fetch(
         `/api/track/rider-location?orderId=${encodeURIComponent(orderId)}&phone=${encodeURIComponent(phone)}` +
@@ -90,19 +103,20 @@ export function useLiveRiderPosition(opts: {
         updatedAt?: string | null;
         liveChannel?: string | null;
       } | null;
+      if (!state.active || state.key !== key || state.epoch !== epoch) return;
       // The channel is offered even on a 404 ("no fix yet"), so the tracker
       // is already listening when the rider's first fix lands.
-      if (data?.liveChannel) setChannel((prev) => prev ?? data.liveChannel!);
+      if (data?.liveChannel) setChannel(data.liveChannel);
       if (!res.ok) return;
       const fix = asFix(data);
       if (!fix) return;
       const updatedAt = data?.updatedAt || new Date().toISOString();
       const at = Date.parse(updatedAt);
-      accept(fix, updatedAt, Number.isFinite(at) ? at : Date.now());
+      accept(fix, updatedAt, Number.isFinite(at) ? at : Date.now(), epoch);
     } catch {
       /* offline — the next tick or a broadcast will catch up */
     }
-  }, [enabled, orderId, phone, trackToken, accept]);
+  }, [enabled, orderId, phone, trackToken, key, accept]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch-on-mount; setState lands after the await
@@ -111,7 +125,8 @@ export function useLiveRiderPosition(opts: {
 
   /* ---------------- Realtime broadcast ---------------- */
   useEffect(() => {
-    if (!enabled || !orderId || !channel) return;
+    if (!enabled || !orderId || !channel || dataKey !== key) return;
+    const epoch = owner.current.epoch;
     const client = getSupabaseBrowser();
     if (!client) return;
     let cancelled = false;
@@ -121,10 +136,12 @@ export function useLiveRiderPosition(opts: {
         "broadcast",
         { event: LIVE_FIX_EVENT },
         (msg: FixMessage) => {
+          if (cancelled) return;
           const fix = asFix(msg?.payload);
           if (!fix) return;
           const at = typeof msg?.payload?.at === "number" ? msg.payload.at : Date.now();
-          accept(fix, new Date(at).toISOString(), at);
+          if (!Number.isFinite(at) || !Number.isFinite(new Date(at).getTime())) return;
+          accept(fix, new Date(at).toISOString(), at, epoch);
         },
       )
       .subscribe((status: string) => {
@@ -135,9 +152,10 @@ export function useLiveRiderPosition(opts: {
       setLive(false);
       void client.removeChannel(subscription);
     };
-  }, [enabled, orderId, channel, accept]);
+  }, [enabled, orderId, channel, dataKey, key, accept]);
 
   usePoll(fetchRiderPos, live ? BACKUP_POLL_MS : LIVE_POLL_MS, enabled && !!orderId);
 
-  return { rider, live };
+  const current = enabled && !!orderId && dataKey === key;
+  return { rider: current ? rider : null, live: current && live };
 }

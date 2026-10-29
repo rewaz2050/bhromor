@@ -11,15 +11,22 @@ const state = vi.hoisted(() => ({
   live: true,
   loading: false,
   ready: true,
+  backendMissing: false,
+  pnlLoading: false,
   summary: null as unknown,
   pnl: null as unknown,
   range: "30d",
+  error: null as string | null,
+  refresh: vi.fn(async () => true),
   setRange: vi.fn(),
   pending: [] as unknown[],
   decided: [] as unknown[],
   settings: { baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 },
   decide: vi.fn(async () => true),
   saveSettings: vi.fn(async () => true),
+  quorumPaisa: 0,
+  confirm: vi.fn(async () => true),
+  saveQuorum: vi.fn(async () => true),
 }));
 
 // The page's admin-only controls are gated on the staff role (permission
@@ -34,6 +41,8 @@ vi.mock("@/lib/use-admin-money", () => ({
     live: state.live,
     loading: state.loading,
     ready: state.ready,
+    backendMissing: state.backendMissing,
+    pnlLoading: state.pnlLoading,
     summary: state.summary,
     pnl: state.pnl,
     range: state.range,
@@ -41,11 +50,14 @@ vi.mock("@/lib/use-admin-money", () => ({
     pending: state.pending,
     decided: state.decided,
     settings: state.settings,
-    error: null,
+    error: state.error,
     clearError: vi.fn(),
-    refresh: vi.fn(async () => true),
+    refresh: state.refresh,
     decide: state.decide,
     saveSettings: state.saveSettings,
+    quorumPaisa: state.quorumPaisa,
+    confirm: state.confirm,
+    saveQuorum: state.saveQuorum,
   }),
 }));
 
@@ -72,8 +84,12 @@ const summary = {
 
 beforeEach(() => {
   state.live = true;
+  state.error = null;
+  state.refresh.mockClear();
   state.loading = false;
   state.ready = true;
+  state.backendMissing = false;
+  state.pnlLoading = false;
   state.summary = summary;
   state.pnl = null;
   state.range = "30d";
@@ -83,6 +99,9 @@ beforeEach(() => {
   state.settings = { baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 };
   state.decide = vi.fn(async () => true);
   state.saveSettings = vi.fn(async () => true);
+  state.quorumPaisa = 0;
+  state.confirm = vi.fn(async () => true);
+  state.saveQuorum = vi.fn(async () => true);
 });
 
 afterEach(() => cleanup());
@@ -96,6 +115,7 @@ describe("admin money page", () => {
 
   it("names the migration when the backend update has not run", () => {
     state.ready = false;
+    state.backendMissing = true;
     state.summary = null;
     render(<AdminMoneyPage />);
     expect(screen.getByText(/Rider money backend is not installed yet/)).toBeInTheDocument();
@@ -214,5 +234,91 @@ describe("admin money page", () => {
       fireEvent.click(screen.getByRole("tab", { name: "Today" }));
       expect(state.setRange).toHaveBeenCalledWith("today");
     });
+  });
+});
+
+it("O11: network failure is recoverable and not evidence of missing migrations", () => {
+  state.ready = false; state.summary = null; state.error = "Network offline";
+  render(<AdminMoneyPage />);
+  expect(screen.getByRole("alert")).toHaveTextContent("Network offline");
+  expect(screen.queryByText(/Rider money backend is not installed yet/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
+});
+it("O11: an unknown first-read state keeps Retry available after error dismissal", () => {
+  state.ready = false; state.summary = null;
+  render(<AdminMoneyPage />);
+  expect(screen.queryByText(/Rider money backend is not installed yet/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
+});
+it("O12: period tabs stay available while P&L loads or fails without showing old totals", () => {
+  state.pnl = null; state.pnlLoading = true; state.range = "7d";
+  const { rerender } = render(<AdminMoneyPage />);
+  expect(screen.getByRole("tablist", { name: "Period" })).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Loading net result");
+  expect(screen.queryByTestId("pnl-commission")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("pnl-missing")).not.toBeInTheDocument();
+  state.pnlLoading = false; state.error = "New range offline";
+  rerender(<AdminMoneyPage />);
+  expect(screen.getByRole("tablist", { name: "Period" })).toBeInTheDocument();
+  expect(screen.getByTestId("pnl-missing")).toHaveTextContent("could not be loaded for this period");
+  expect(screen.queryByText(/202610010003_money_pnl.sql/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Retry net result" }));
+  expect(state.refresh).toHaveBeenCalledOnce();
+});
+
+describe("admin money page — four-eyes finance (202610290002)", () => {
+  it("says the rule is off by default and offers the limit editor", () => {
+    render(<AdminMoneyPage />);
+    expect(screen.getByTestId("quorum-state")).toHaveTextContent(/Off/);
+    expect(screen.getByLabelText("Two-Admin threshold in taka")).toHaveValue(0);
+    expect(screen.queryByRole("button", { name: /Confirm as 2nd Admin/ })).not.toBeInTheDocument();
+  });
+
+  it("saves the limit in paisa and still shows no per-row control until it loads", async () => {
+    render(<AdminMoneyPage />);
+    fireEvent.change(screen.getByLabelText("Two-Admin threshold in taka"), { target: { value: "5000" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save rule/ }));
+    await waitFor(() => expect(state.saveQuorum).toHaveBeenCalledWith(500000));
+  });
+
+  it("shows the fresh threshold and lets a second Admin confirm a large payout", async () => {
+    state.quorumPaisa = 500000;
+    state.pending = [
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        riderId: "r1",
+        riderName: "Karim",
+        riderPhone: "01700000000",
+        amount: 800000,
+        account: "01700000000",
+        requestedAt: "2026-10-28T10:00:00.000Z",
+        ageHours: 3,
+        flagged: false,
+      },
+      {
+        id: "22222222-2222-2222-2222-222222222222",
+        riderId: "r2",
+        riderName: "Rahim",
+        riderPhone: "01700000001",
+        amount: 100000,
+        account: "01700000001",
+        requestedAt: "2026-10-28T10:00:00.000Z",
+        ageHours: 3,
+        flagged: false,
+      },
+    ];
+    render(<AdminMoneyPage />);
+    expect(screen.getByTestId("quorum-state")).toHaveTextContent(/two Admins/);
+    // Only the payout at or above the limit gets the second-Admin control.
+    const confirmButtons = screen.getAllByRole("button", { name: /Confirm as 2nd Admin/ });
+    expect(confirmButtons).toHaveLength(1);
+    fireEvent.click(confirmButtons[0]);
+    await waitFor(() => expect(state.confirm).toHaveBeenCalledWith({
+      kind: "rider_payout",
+      ref: "11111111-1111-1111-1111-111111111111",
+      amount: 800000,
+    }));
   });
 });

@@ -51,3 +51,10 @@ export const pickSelectableSize = (product: Product, preferred: string | null | 
 /** "২টি বাকি" / "2 left" — only for the low band. */
 export const sizeLeftLabel = (available: number, lang: "en" | "bn"): string =>
   lang === "bn" ? `${bnDigits(String(available))}টি বাকি` : `${available} left`;
+
+/** Presentation order only; selection defaults retain their catalogue order. */
+export const displaySizeOrder = (sizes: readonly string[]): string[] => {
+  const order = ["XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+  const rank = (size: string) => { const index = order.indexOf(size); return index < 0 ? order.length : index; };
+  return [...sizes].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+};

@@ -67,5 +67,5 @@ export const POST = vendorRoute(
     }
     return apiJson({ ok: true, action, order });
   },
-  { limit: 30 },
+  { limit: 30, permission: "cashier" },
 );

@@ -16,10 +16,10 @@ export default function ShopHeroHeader({
   return (
     <section className="overflow-hidden border-b border-line bg-ivory-100">
       <div className="mx-auto grid max-w-7xl md:grid-cols-[1fr_280px] lg:grid-cols-[1fr_360px]">
-        <div className="px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+        <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-9">
           <nav
             aria-label="Breadcrumb"
-            className="mb-7 flex items-center gap-3 text-[0.6rem] uppercase tracking-[0.18em] text-ink-soft"
+            className="mb-4 flex items-center gap-3 text-[0.6rem] uppercase tracking-[0.18em] text-ink-soft"
           >
             <Link href="/" className="hover:text-forest-800">
               {t("shop.breadcrumbHome")}
@@ -28,7 +28,7 @@ export default function ShopHeroHeader({
             <span aria-current="page">{t("shop.breadcrumbCollection")}</span>
           </nav>
           <Eyebrow>{t("shop.eyebrow")}</Eyebrow>
-          <h1 className="mt-4 font-display text-4xl font-normal tracking-tight text-forest-900 sm:text-5xl lg:text-6xl">
+          <h1 className="mt-4 font-display text-3xl font-medium tracking-tight text-forest-900 sm:text-4xl">
             {t("shop.title1")}{" "}
             <span className="italic text-gold-600">{t("shop.title2")}</span>
           </h1>

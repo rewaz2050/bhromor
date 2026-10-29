@@ -11,10 +11,11 @@
  * guest screen and here.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
+import { runRiderAuthMutation } from "@/lib/rider-auth-lane";
 import { useRiderSession } from "@/lib/use-rider";
 import { IconTruck } from "@/components/ui/icons";
 import PasswordInput from "@/components/ui/password-input";
@@ -55,10 +56,25 @@ export default function RiderLoginPage() {
   // re-check every 30 s while visible and send them in the moment staff approves.
   usePoll(refresh, PENDING_RECHECK_MS, status === "guest" && denyReason === "pending");
 
+  const submitOwnerRef = useRef<{ active: boolean; pending: boolean } | null>(null);
+  useEffect(() => {
+    const owner = { active: true, pending: false };
+    submitOwnerRef.current = owner;
+    return () => { owner.active = false; };
+  }, []);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<"identifier" | "password" | null>(null);
+  const identifierRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (!formError) return;
+    (invalid === "identifier" ? identifierRef.current : invalid === "password" ? passwordRef.current : errorRef.current)?.focus();
+  }, [formError, invalid]);
 
   useEffect(() => {
     if (status === "authed") router.replace("/rider");
@@ -66,16 +82,24 @@ export default function RiderLoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const owner = submitOwnerRef.current;
+    if (!owner?.active || owner.pending) return;
+    const current = () => owner.active && submitOwnerRef.current === owner;
+    setInvalid(null);
     setFormError(null);
 
     // Round 4 — e-mail OR mobile number; a number becomes the synthetic
     // login address the application was created with (no SMS involved).
     const cleanEmail = loginIdentifierToEmail(email);
     if (!cleanEmail) {
+      setInvalid("identifier");
+      identifierRef.current?.focus();
       setFormError("সঠিক ইমেইল অ্যাড্রেস বা ১১-সংখ্যার মোবাইল নম্বর লিখুন।");
       return;
     }
     if (password.length < 6) {
+      setInvalid("password");
+      passwordRef.current?.focus();
       setFormError("পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।");
       return;
     }
@@ -83,36 +107,37 @@ export default function RiderLoginPage() {
     if (!supabase) {
       // Never bounce the rider into the guest loop — say what is missing.
       setFormError(
-        "সার্ভারে লগইন সিস্টেম এখনো কনফিগার হয়নি (Supabase key নেই)। একটু পরে আবার চেষ্টা করুন।",
+        "লগইন সেবা এখন পাওয়া যাচ্ছে না। একটু পরে আবার চেষ্টা করুন।",
       );
       return;
     }
 
+    owner.pending = true;
     setBusy(true);
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+      const result = await runRiderAuthMutation(supabase, current, () => supabase.auth.signInWithPassword({ email: cleanEmail, password }));
+      if (!current() || !result.accepted) return;
+      const { error: signInError } = result.value;
       if (signInError) {
         setFormError(supabaseSignInError(signInError));
         return;
       }
       // The probe decides: active → /rider, pending → the status card below.
       await refresh();
-    } catch (err: unknown) {
-      setFormError(
-        err instanceof Error ? err.message : "লগইন করা যায়নি। সঠিক তথ্য দিয়ে চেষ্টা করুন।",
-      );
+    } catch {
+      // A thrown transport/probe error is not an SDK credential refusal, nor
+      // proof that authentication was rolled back. Keep its details private.
+      if (current()) setFormError("লগইন যাচাই করা যায়নি — আবার চেষ্টা করুন।");
     } finally {
-      setBusy(false);
+      owner.pending = false;
+      if (current()) setBusy(false);
     }
   };
 
   const denied = status === "guest" && error !== null;
 
   return (
-    <div className="flex-1 flex flex-col justify-center p-6 sm:p-8">
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-10 sm:px-6">
       <div className="text-center">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-forest-800 text-gold-300 ring-2 ring-gold-400/30">
           <IconTruck className="h-7 w-7" />
@@ -133,7 +158,7 @@ export default function RiderLoginPage() {
       ) : denied ? (
         <section
           aria-labelledby="rider-status-heading"
-          className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
+          className="mt-8 space-y-4 rounded-2xl border border-line bg-paper p-5 sm:p-6"
         >
           <p className="text-[11px] font-semibold uppercase tracking-wider text-forest-700">
             {denyReason === "pending"
@@ -204,12 +229,13 @@ export default function RiderLoginPage() {
         </section>
       ) : (
         <form
+          aria-busy={busy}
           onSubmit={handleSubmit}
-          className="mt-8 space-y-4 rounded-3xl border border-line bg-paper p-6 shadow-sm"
+          className="mt-8 space-y-4 rounded-2xl border border-line bg-paper p-5 sm:p-6"
         >
           <h2 className="font-display text-base font-bold text-forest-900">সাইন ইন (Login)</h2>
           {formError && (
-            <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
+            <p id="rider-signin-error" ref={errorRef} tabIndex={-1} role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
               {formError}
             </p>
           )}
@@ -219,12 +245,16 @@ export default function RiderLoginPage() {
               ইমেইল অ্যাড্রেস বা মোবাইল নম্বর
             </label>
             <input
+              ref={identifierRef}
+              aria-invalid={invalid === "identifier"}
+              aria-describedby={invalid === "identifier" ? "rider-signin-error" : undefined}
+              disabled={busy}
               id="rider-login-email"
               type="text"
               autoComplete="username"
               inputMode="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setInvalid(null); setFormError(null); }}
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
               placeholder="017XXXXXXXX অথবা rider@example.com"
             />
@@ -234,10 +264,14 @@ export default function RiderLoginPage() {
               পাসওয়ার্ড
             </label>
             <PasswordInput
+              ref={passwordRef}
+              aria-invalid={invalid === "password"}
+              aria-describedby={invalid === "password" ? "rider-signin-error" : undefined}
+              disabled={busy}
               id="rider-login-password"
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); setInvalid(null); setFormError(null); }}
               className="h-12 w-full rounded-2xl border border-line bg-ivory-50 px-4 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-forest-800"
               placeholder="••••••••"
               toggle={{ show: "দেখুন", hide: "লুকান" }}

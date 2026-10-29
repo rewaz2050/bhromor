@@ -554,7 +554,7 @@ export async function listRiderJobs(
 
   const orderIds = [...new Set(rows.map((a) => a.order_id))];
   const { data: orderRows, error: orderError } = await service
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .in("id", orderIds);
   if (orderError) throw new Error("rider jobs order read failed");
@@ -621,7 +621,7 @@ export async function listDispatchJobs(
   const orderIds = [...new Set(rows.map((a) => a.order_id))];
   const riderIds = [...new Set(rows.map((a) => a.rider_id))];
   const [orderResult, riderResult] = await Promise.all([
-    service.from("orders").select("*").in("id", orderIds),
+    service.from("order_operations").select("*").in("id", orderIds),
     service.from("riders").select("id,name,phone").in("id", riderIds),
   ]);
   if (orderResult.error) throw new Error("dispatch board order read failed");
@@ -781,6 +781,12 @@ export async function settleRiderCashByAdmin(
       503,
     );
   }
+  if (error && (error.message ?? "").toLowerCase().includes("cannot decide your own money")) {
+    throw new AdminInputError(
+      "This cash belongs to your own Rider account — another finance Admin must settle it.",
+      403,
+    );
+  }
   if (error) throw dispatchRpcError(error.message);
 }
 
@@ -794,6 +800,12 @@ export async function rejectSettleClaimByAdmin(
     p_rider_id: riderId,
     p_note: note?.trim() ? note.trim().slice(0, 300) : null,
   });
+  if (error && (error.message ?? "").toLowerCase().includes("cannot decide your own money")) {
+    throw new AdminInputError(
+      "This claim belongs to your own Rider account — another finance Admin must decide it.",
+      403,
+    );
+  }
   if (error) throw dispatchRpcError(error.message);
 }
 
@@ -811,7 +823,7 @@ export async function listAwaitingDispatchOrders(
   service: SupabaseClient,
 ): Promise<Order[]> {
   const { data: orderRows, error } = await service
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .in("status", ["ready-for-pickup", "courier-assigned", "out-for-delivery"])
     .order("created_at", { ascending: false })
@@ -1293,7 +1305,7 @@ export async function listFailedDeliveries(
   service: SupabaseClient,
 ): Promise<FailedDelivery[]> {
   const { data: orderRows, error } = await service
-    .from("orders")
+    .from("order_operations")
     .select("*")
     .not("delivery_failed_at", "is", null)
     .not("status", "in", "(delivered,cancelled)")

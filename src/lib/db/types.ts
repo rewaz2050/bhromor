@@ -199,6 +199,7 @@ export interface DbShop {
 }
 
 export interface DbVendorUser {
+  permissions?: string[];
   user_id: string;
   shop_id: string;
   role: "owner" | "staff";

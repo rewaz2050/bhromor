@@ -7,6 +7,8 @@
  */
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { useLanguage } from "@/components/i18n/language-provider";
+import { bnDigits } from "@/lib/arrival";
 import { IconArrowRight, IconCheck, IconChevron } from "@/components/ui/icons";
 import type { FriendlyError } from "@/lib/checkout-errors";
 
@@ -27,10 +29,12 @@ export function CheckoutProgress({
   stepOf: string;
   onJump: (step: 1 | 2 | 3) => void;
 }) {
+  const { t, lang } = useLanguage();
+  const digits = (n: number) => lang === "bn" ? bnDigits(String(n)) : String(n);
   return (
-    <nav aria-label="Checkout progress" className="mb-8" data-testid="checkout-progress">
+    <nav aria-label={t("checkout.progressLabel")} className="mb-8" data-testid="checkout-progress">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-        {stepOf.replace("{n}", String(current))}
+        {stepOf.replace("{n}", digits(current))}
       </p>
       <ol className="mt-2 grid grid-cols-3 gap-2">
         {labels.map((label, i) => {
@@ -43,7 +47,7 @@ export function CheckoutProgress({
                 type="button"
                 onClick={() => onJump(n)}
                 aria-current={active ? "step" : undefined}
-                className={`flex w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs font-semibold ring-1 transition-colors ${
+                className={`flex min-h-11 w-full items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-xs font-semibold ring-1 transition-colors ${
                   active
                     ? "bg-forest-800 text-ivory-50 ring-forest-700"
                     : done
@@ -60,7 +64,7 @@ export function CheckoutProgress({
                         : "bg-ivory-100 text-ink-soft ring-1 ring-line"
                   }`}
                 >
-                  {done ? <IconCheck className="h-3.5 w-3.5 stroke-[3]" /> : n}
+                  {done ? <IconCheck className="h-3.5 w-3.5 stroke-[3]" /> : digits(n)}
                 </span>
                 <span className="truncate">{label}</span>
               </button>
@@ -114,7 +118,7 @@ export function StepSection({
           {done ? <IconCheck className="h-4 w-4 stroke-[3]" /> : n}
         </span>
         <div className="min-w-0">
-          <h2 id={`${id}-heading`} className="font-display text-xl font-medium text-forest-900">
+          <h2 tabIndex={-1} id={`${id}-heading`} className="font-display text-xl font-medium text-forest-900">
             {title}
           </h2>
           {hint ? <p className="mt-1 text-sm text-ink-soft">{hint}</p> : null}
@@ -201,6 +205,7 @@ export function OrderErrorBanner({
       ref={bannerRef}
       role="alert"
       aria-live="assertive"
+      tabIndex={-1}
       data-testid="order-error"
       className="scroll-mt-28 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-6 text-rose-900"
     >

@@ -1,6 +1,6 @@
 /** Show / hide password toggle (apply = sign up, 2026-09-26). */
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import PasswordInput from "../password-input";
 
 describe("PasswordInput", () => {
@@ -32,4 +32,19 @@ describe("PasswordInput", () => {
     );
     expect(screen.getByRole("button", { name: "Show" })).toHaveAttribute("type", "button");
   });
+  it("associates its toggle with the input and respects disabled state", () => {
+    render(<PasswordInput id="disabled-password" disabled aria-label="Secret" />);
+    const toggle = screen.getByRole("button", { name: "Show" });
+    expect(toggle).toHaveAttribute("aria-controls", "disabled-password");
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(screen.getByLabelText("Secret")).toHaveAttribute("type", "password");
+  });
+
+  it("passes a ref through to the actual input", () => {
+    const ref = vi.fn();
+    render(<PasswordInput ref={ref} aria-label="Secret" />);
+    expect(ref).toHaveBeenCalledWith(screen.getByLabelText("Secret"));
+  });
+
 });

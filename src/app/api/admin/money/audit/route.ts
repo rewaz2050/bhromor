@@ -4,6 +4,8 @@ import { apiJson } from "@/lib/api-response";
 import { parseAuditEvent, parseAuditLimit } from "@/lib/money-audit";
 import { staffRoute } from "../../_lib";
 
+const ADMIN_ONLY = ["admin", "super_admin"] as const;
+
 export const dynamic = "force-dynamic";
 
 export const GET = staffRoute("money-audit", async ({ db }, request) => {
@@ -14,4 +16,4 @@ export const GET = staffRoute("money-audit", async ({ db }, request) => {
     limit: parseAuditLimit(url.searchParams.get("limit")),
   });
   return apiJson({ ready: entries !== null, event, entries: entries ?? [] });
-});
+}, { roles: ADMIN_ONLY });

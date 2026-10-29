@@ -1,4 +1,4 @@
--- PART 12/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 12/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: dispatch withdraw/resume + settle claims + PIN lockout + health (202609250003…006) ====
 -- P0 audit fixes (2026-09-25): superseded riders resume instantly after manual
 -- expiry, rider self-settle becomes a staff-approved claim, the delivery PIN
@@ -867,4 +867,3 @@ create table if not exists delivery_ratings (
 alter table delivery_ratings enable row level security;
 
 commit;
-

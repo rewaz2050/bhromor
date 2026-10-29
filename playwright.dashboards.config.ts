@@ -9,7 +9,8 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL ? undefined : {
     command: 'npm run dev -- --hostname 0.0.0.0 --port 3100',
     url: 'http://localhost:3100',
-    reuseExistingServer: !process.env.CI,
+    // Never silently reuse a preview with different baked-in public env.
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       NEXT_PUBLIC_SUPABASE_URL: 'https://verification.invalid',

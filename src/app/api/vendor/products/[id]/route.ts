@@ -31,5 +31,5 @@ export const PATCH = vendorRoute(
     revalidateCatalogCaches();
     return apiJson({ product });
   },
-  { limit: 30 },
+  { limit: 30, permission: "catalog" },
 );

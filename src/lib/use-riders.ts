@@ -5,7 +5,7 @@
  * Riders never appear on the storefront.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Rider } from "./catalog";
 import type { SettleClaim } from "./db/riders";
 import { useStaffLive } from "./use-staff-live";
@@ -24,21 +24,37 @@ export function useRiders(pollMs = 0) {
   const [liveRiders, setLiveRiders] = useState<Rider[] | null>(null);
   const [settleClaims, setSettleClaims] = useState<SettleClaim[]>([]);
   const [dispatch, setDispatch] = useState<DispatchSettings>(DISPATCH_DEFAULTS);
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Invalidate reads on sign-out/unmount; only the newest request may commit.
+  const lifecycle = useRef({ live: false, request: 0 });
+  useEffect(() => {
+    const state = lifecycle.current;
+    state.live = live;
+    return () => { state.live = false; state.request++; };
+  }, [live]);
+
   const refresh = useCallback(async (): Promise<boolean> => {
+    const state = lifecycle.current;
+    if (!state.live) return false;
+    const request = ++state.request;
     try {
       const data = await apiGet<{ riders: Rider[]; settleClaims?: SettleClaim[]; dispatch?: unknown }>(
         "/api/admin/riders",
       );
+      if (request !== state.request) return false;
       setLiveRiders(data.riders);
       setSettleClaims(data.settleClaims ?? []);
       setDispatch(sanitizeDispatchSettings(data.dispatch));
       setError(null);
       return true;
     } catch (err) {
+      if (request !== state.request) return false;
       setError(apiErrorMessage(err));
       return false;
+    } finally {
+      if (request === state.request) setSettled(true);
     }
   }, []);
 
@@ -46,7 +62,9 @@ export function useRiders(pollMs = 0) {
     if (!live) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- session change resets live state
       setLiveRiders(null);
+      setSettled(false);
       setSettleClaims([]);
+      setDispatch(DISPATCH_DEFAULTS);
       setError(null);
       return;
     }
@@ -208,7 +226,7 @@ export function useRiders(pollMs = 0) {
     resetRiderPassword,
     reset: refresh,
     live,
-    loading: live && (!checked || liveRiders === null),
+    loading: live && (!checked || !settled),
     error,
     clearError: () => setError(null),
   };

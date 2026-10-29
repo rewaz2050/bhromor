@@ -6,12 +6,14 @@ export function RiderTopBar({
   live,
   isOnline,
   onToggle,
+  busy = false,
 }: {
   name: string;
   /** Realtime socket is connected (offers arrive instantly), else 15 s polling. */
   live: boolean;
   isOnline: boolean;
   onToggle: () => void;
+  busy?: boolean;
 }) {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-forest-900 px-5 py-4 text-ivory-50 shadow-sm">
@@ -42,7 +44,9 @@ export function RiderTopBar({
       <button
         type="button"
         onClick={onToggle}
-        className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+        disabled={busy}
+        aria-busy={busy}
+        className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
           isOnline
             ? "bg-emerald-500 text-forest-950 shadow-sm ring-2 ring-emerald-300"
             : "bg-forest-800 text-ivory-100/60 ring-1 ring-line"
@@ -53,7 +57,7 @@ export function RiderTopBar({
             isOnline ? "bg-forest-950 animate-pulse" : "bg-gray-400"
           }`}
         />
-        {isOnline ? "অনলাইন" : "অফলাইন"}
+        {isOnline ? "অনলাইন" : "অফলাইন"}{busy ? " — বদলাচ্ছে…" : ""}
       </button>
     </header>
   );

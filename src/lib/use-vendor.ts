@@ -10,9 +10,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { runBrowserAuthMutation } from "./rider-auth-lane";
 import { getSupabaseBrowser } from "./supabase-browser";
 import { isSupabaseConfigured } from "./env";
 import { usePoll } from "./use-poll";
+import { useScopedRead } from "./use-scoped-read";
+import { INVALID_FUNNEL_RESPONSE, isShopFunnel } from "./funnel-report-validation";
+import type { VendorPermission } from "./vendor-permissions";
 import type { Category, Product, Shop } from "./catalog";
 import type { Order } from "./orders";
 import type { VendorEarnings } from "./db/vendor";
@@ -24,10 +28,13 @@ export type VendorDenyReason = "none" | "pending" | "suspended" | "rejected";
 export class VendorApiError extends Error {
   status: number;
   reason?: VendorDenyReason;
-  constructor(message: string, status: number, reason?: VendorDenyReason) {
+  /** Explicit server metadata, not inferred from an HTTP 503. */
+  missing: boolean;
+  constructor(message: string, status: number, reason?: VendorDenyReason, missing = false) {
     super(message);
     this.status = status;
     this.reason = reason;
+    this.missing = missing;
   }
 }
 
@@ -35,14 +42,14 @@ const FALLBACK = "Something went wrong — please try again.";
 
 const readError = async (
   res: Response,
-): Promise<{ message: string; reason?: VendorDenyReason }> => {
+): Promise<{ message: string; reason?: VendorDenyReason; missing?: boolean }> => {
   try {
-    const data = (await res.json()) as { error?: string; reason?: string };
+    const data = (await res.json()) as { error?: string; reason?: string; missing?: unknown };
     const reason =
       data.reason === "pending" || data.reason === "suspended" || data.reason === "rejected" || data.reason === "none"
         ? data.reason
         : undefined;
-    return { message: data.error || FALLBACK, reason };
+    return { message: data.error || FALLBACK, reason, missing: data.missing === true };
   } catch {
     return { message: FALLBACK };
   }
@@ -56,8 +63,8 @@ export const vendorGet = async <T,>(path: string): Promise<T> => {
     throw new VendorApiError("Could not reach the server.", 0);
   }
   if (!res.ok) {
-    const { message, reason } = await readError(res);
-    throw new VendorApiError(message, res.status, reason);
+    const { message, reason, missing } = await readError(res);
+    throw new VendorApiError(message, res.status, reason, missing);
   }
   return (await res.json()) as T;
 };
@@ -78,8 +85,8 @@ export const vendorSend = async <T,>(
     throw new VendorApiError("Could not reach the server.", 0);
   }
   if (!res.ok) {
-    const { message, reason } = await readError(res);
-    throw new VendorApiError(message, res.status, reason);
+    const { message, reason, missing } = await readError(res);
+    throw new VendorApiError(message, res.status, reason, missing);
   }
   return (await res.json()) as T;
 };
@@ -92,6 +99,7 @@ export const vendorErrorMessage = (err: unknown): string =>
 export interface VendorMe {
   email: string;
   role: "owner" | "staff";
+  permissions?: VendorPermission[];
   shop: Shop;
 }
 
@@ -146,10 +154,9 @@ export const useVendorSession = () => {
     async (email: string, password: string): Promise<string | null> => {
       const client = getSupabaseBrowser();
       if (!client) return "Vendor sign-in needs Supabase to be configured.";
-      const { error: authError } = await client.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const result = await runBrowserAuthMutation(client, () => true, () => client.auth.signInWithPassword({ email: email.trim(), password }));
+      if (!result.accepted) return "Sign-in is no longer current — please try again.";
+      const { error: authError } = result.value;
       if (authError) return "Email or password did not match.";
       await refresh();
       return null;
@@ -158,7 +165,8 @@ export const useVendorSession = () => {
   );
 
   const signOut = useCallback(async (): Promise<void> => {
-    await getSupabaseBrowser()?.auth.signOut().catch(() => undefined);
+    const client = getSupabaseBrowser();
+    if (client) await runBrowserAuthMutation(client, () => true, () => client.auth.signOut(), true).catch(() => undefined);
     setMe(null);
     setStatus("guest");
     setError(null);
@@ -189,44 +197,9 @@ const useVendorResource = <T,>(
   /** Re-read in place — keeps the current rows on screen (after an action). */
   reload: () => void;
 } => {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(enabled && path !== null);
-  const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
-
-  useEffect(() => {
-    if (!enabled || !path) return;
-    let cancelled = false;
-    vendorGet<T>(path)
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
-        setError(null);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(vendorErrorMessage(err));
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [path, enabled, nonce]);
-
-  const refresh = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    setNonce((n) => n + 1);
-  }, []);
-  // Background ticks re-read WITHOUT flipping `loading` — the queue must not
-  // blink into a skeleton every 20 s while the shop is looking at it. A
-  // failed silent tick keeps the last good rows (the next tick retries).
-  const silentRefresh = useCallback(() => {
-    setNonce((n) => n + 1);
-  }, []);
-  usePoll(silentRefresh, pollMs, enabled && path !== null && pollMs > 0);
-  return { data, loading, error, refresh, reload: silentRefresh };
+  const resource = useScopedRead<T>(path, enabled, vendorGet, vendorErrorMessage);
+  usePoll(resource.reload, pollMs, enabled && path !== null && pollMs > 0);
+  return resource;
 };
 
 /** POST /api/vendor/orders/[orderNo]/advance — the shop's status move. */
@@ -517,49 +490,47 @@ export const useVendorPromos = (enabled: boolean) => {
 import type { ShopFunnel } from "@/lib/shop-funnel";
 export type { ShopFunnel };
 
-/**
- * The shop's own funnel (B4). Unlike the other resources this one keeps the
- * HTTP status, because 503 does NOT mean "empty shop" — it means migration
- * 202609280004 has not been run, and the card has to say exactly that.
- */
-export const useVendorFunnel = (enabled: boolean, days: 7 | 28 = 7) => {
-  const path = `/api/vendor/funnel?days=${days}`;
-  const [funnel, setFunnel] = useState<ShopFunnel | null>(null);
-  const [loading, setLoading] = useState(enabled);
-  const [status, setStatus] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
-
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    vendorGet<ShopFunnel>(path)
-      .then((d) => {
-        if (cancelled) return;
-        setFunnel(d);
-        setStatus(200);
-        setError(null);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setFunnel(null);
-        setStatus(err instanceof VendorApiError ? err.status : null);
-        setError(vendorErrorMessage(err));
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
+/** Keep response metadata inside the same scoped snapshot as the report.
+ * A generic 503 (proxy/service outage) is not evidence of missing schema. */
+interface VendorFunnelRead {
+  funnel: ShopFunnel | null;
+  status: number | null;
+  missing: boolean;
+  error: string | null;
+}
+const readVendorFunnel = async (key: string): Promise<VendorFunnelRead> => {
+  const days = key === "28" ? 28 : 7;
+  try {
+    const data = await vendorGet<unknown>(`/api/vendor/funnel?days=${days}`);
+    if (!isShopFunnel(data, days)) {
+      return { funnel: null, status: 200, missing: false, error: INVALID_FUNNEL_RESPONSE };
+    }
+    return { funnel: data, status: 200, missing: false, error: null };
+  } catch (error) {
+    return {
+      funnel: null,
+      status: error instanceof VendorApiError ? error.status : null,
+      missing: error instanceof VendorApiError && error.status === 503 && error.missing,
+      error: vendorErrorMessage(error),
     };
-  }, [path, enabled, nonce]);
+  }
+};
 
-  const refresh = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    setNonce((n) => n + 1);
-  }, []);
-
-  return { funnel, loading, error, status, missing: status === 503, refresh };
+export const useVendorFunnel = (enabled: boolean, days: 7 | 28 = 7) => {
+  const resource = useScopedRead(String(days), enabled, readVendorFunnel, vendorErrorMessage);
+  const result = resource.data;
+  // Preserve this hook's fire-and-forget retry contract; the scoped read's
+  // boolean represents transport completion, not report availability.
+  const { refresh: refreshRead } = resource;
+  const refresh = useCallback(() => { void refreshRead(); }, [refreshRead]);
+  return {
+    funnel: result?.funnel ?? null,
+    loading: resource.loading,
+    error: resource.loading ? null : (resource.error ?? result?.error ?? null),
+    status: resource.loading ? null : (result?.status ?? null),
+    missing: !resource.loading && (result?.missing ?? false),
+    refresh,
+  };
 };
 
 /* ------------------------------------------------------------------ */

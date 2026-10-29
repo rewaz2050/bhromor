@@ -99,6 +99,11 @@ export default function FunnelCard({
             card fills in. Until then there is nothing to show — not an empty shop, just no
             measurements.
           </p>
+          {onRetry && (
+            <button type="button" onClick={onRetry} className="mt-2 min-h-11 text-sm font-semibold underline underline-offset-2">
+              Try again
+            </button>
+          )}
         </div>
       ) : error && !funnel ? (
         <div className="mt-3 rounded-xl bg-ivory-100 p-4 ring-1 ring-line">
@@ -107,7 +112,7 @@ export default function FunnelCard({
             <button
               type="button"
               onClick={onRetry}
-              className="mt-2 text-sm font-semibold underline underline-offset-2"
+              className="mt-2 min-h-11 text-sm font-semibold underline underline-offset-2"
             >
               Try again
             </button>

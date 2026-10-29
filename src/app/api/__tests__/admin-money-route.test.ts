@@ -24,6 +24,9 @@ const state = vi.hoisted(() => ({
   pnlFails: false,
   decideClients: null as null | { staffDb: unknown; service: unknown },
   settingsWrites: [] as unknown[],
+  quorumReads: 0,
+  confirmations: [] as unknown[],
+  quorumWrites: [] as unknown[],
   summary: { riderPayable: 14000 } as unknown,
   queue: { pending: [], decided: [] } as unknown,
 }));
@@ -57,6 +60,19 @@ vi.mock("@/lib/db/rider-money", async (importOriginal) => {
     },
     listRiderPayoutQueue: async () => state.queue,
     readRiderPaySettings: async () => ({ baseFee: 4000, codHandlingFee: 1000, minPayout: 1000 }),
+    readFinanceQuorum: async () => {
+      state.quorumReads += 1;
+      return 500000;
+    },
+    confirmFinanceDecision: async (_db: unknown, input: unknown) => {
+      state.confirmations.push(input);
+    },
+    writeFinanceQuorum: async (_db: unknown, raw: unknown) => {
+      const paisa = Math.floor(Number(raw));
+      if (!Number.isFinite(paisa) || paisa < 0) throw new AdminInputError("bad threshold", 422);
+      state.quorumWrites.push(paisa);
+      return paisa;
+    },
     writeRiderPaySettings: async (_db: unknown, raw: unknown) => {
       const body = (raw as { settings?: unknown })?.settings ?? raw;
       const { settings, error } = orig.parseRiderPaySettings(body);
@@ -94,6 +110,9 @@ beforeEach(() => {
   state.pnlFails = false;
   state.decideClients = null;
   state.settingsWrites = [];
+  state.quorumReads = 0;
+  state.confirmations = [];
+  state.quorumWrites = [];
   state.summary = { riderPayable: 14000 };
   state.queue = { pending: [], decided: [] };
 });
@@ -111,6 +130,12 @@ describe("GET /api/admin/money", () => {
     await call("GET")(request());
     expect(state.summaryClient).toBe(STAFF_DB);
     expect(state.summaryClient).not.toBe(SERVICE_CLIENT);
+  });
+
+  it("reports the four-eyes threshold so the page can explain the rule", async () => {
+    const body = (await (await call("GET")(request())).json()) as { quorumPaisa: number };
+    expect(body.quorumPaisa).toBe(500000);
+    expect(state.quorumReads).toBe(1);
   });
 
   it("says not-ready when the migration has not run", async () => {
@@ -208,5 +233,50 @@ describe("PATCH /api/admin/money", () => {
     );
     expect(res.status).toBe(422);
     expect(state.settingsWrites).toHaveLength(0);
+  });
+});
+
+describe("POST /api/admin/money — four-eyes finance (202610290002)", () => {
+  it("records a second-Admin confirmation for a payout", async () => {
+    const res = await call("POST")(
+      request({ action: "confirm", kind: "rider_payout", ref: "11111111-1111-1111-1111-111111111111", amount: 800000 }, "POST"),
+    );
+    expect(res.status).toBe(200);
+    expect(state.confirmations).toEqual([
+      { kind: "rider_payout", ref: "11111111-1111-1111-1111-111111111111", amount: 800000 },
+    ]);
+  });
+
+  it("refuses an unknown kind, a non-uuid reference or a negative amount", async () => {
+    for (const body of [
+      { action: "confirm", kind: "shop_payout", ref: "11111111-1111-1111-1111-111111111111", amount: 1 },
+      { action: "confirm", kind: "rider_payout", ref: "p1", amount: 1 },
+      { action: "confirm", kind: "rider_payout", ref: "11111111-1111-1111-1111-111111111111", amount: -1 },
+    ]) {
+      const res = await call("POST")(request(body, "POST"));
+      expect(res.status).toBe(422);
+    }
+    expect(state.confirmations).toEqual([]);
+    expect(state.decisions).toEqual([]);
+  });
+
+  it("leaves the ordinary decision path untouched when no action is set", async () => {
+    const res = await call("POST")(
+      request({ payoutId: "11111111-1111-1111-1111-111111111111", decision: "rejected", note: "no cash moved" }, "POST"),
+    );
+    expect(res.status).toBe(200);
+    expect(state.decisions).toHaveLength(1);
+    expect(state.confirmations).toEqual([]);
+  });
+});
+
+describe("PATCH /api/admin/money — four-eyes threshold", () => {
+  it("saves the threshold in paisa instead of touching the pay rates", async () => {
+    const res = await call("PATCH")(request({ financeQuorumPaisa: 500000 }, "PATCH"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { quorumPaisa: number };
+    expect(body.quorumPaisa).toBe(500000);
+    expect(state.quorumWrites).toEqual([500000]);
+    expect(state.settingsWrites).toEqual([]);
   });
 });

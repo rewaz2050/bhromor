@@ -8,7 +8,8 @@
  * proves ownership outright and gets the relaxed budget; the manual
  * id+phone path runs under a strict durable limit plus a separate
  * failed-lookup budget, because order numbers are guessable and phones
- * are often public knowledge.
+ * are often public knowledge. Manual lookup returns status but never the
+ * handoff PIN or a signed capability; use the confirmation link for those.
  */
 
 import { findLiveOrder } from "@/lib/db/orders";
@@ -63,7 +64,19 @@ export async function GET(request: Request) {
         404,
       );
     }
-    return apiJson({ order });
+    // Order numbers and contact phones are known to operational actors.
+    // They may look up status, but must not bootstrap customer PIN proof.
+    const view = { ...order };
+    if (!gate.tokenOk) {
+      delete view.deliveryCode;
+      delete view.trackToken;
+      delete view.paymentRef;
+      delete view.deliveryProofUrl;
+      // Match the rider boundary: contact knowledge must not recover a
+      // private payment reference, proof photo or staff/customer notes.
+      view.timeline = order.timeline.map(({ status, at }) => ({ status, at }));
+    }
+    return apiJson({ order: view });
   } catch {
     return apiError("Tracking is temporarily unavailable.", 503);
   }

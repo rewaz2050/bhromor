@@ -1,8 +1,9 @@
 /**
  * POST /api/admin/orders/[orderNo]/payment { action: "verified" |
- * "rejected", note? } — the shop's decision on a bKash/Nagad payment (P1 #8).
+ * "rejected", note? } — authorized platform approval of a bKash/Nagad payment (P1 #8).
  *
- * The shop checks the TRXID against its own wallet and then:
+ * An Admin/Super Admin checks the TRXID against the configured recipient's
+ * records, subject to the existing per-shop payment-verifier policy, then:
  *   - 'verified'  → payment_status='verified'; the order may now start
  *                   fulfilment (ps_advance_order un-gates the statuses);
  *   - 'rejected'  → payment_status='rejected' + the order is cancelled,
@@ -73,4 +74,5 @@ export const POST = staffRoute(
     }
     return apiJson({ ok: true, action, order });
   },
+  { roles: ["admin", "super_admin"] },
 );

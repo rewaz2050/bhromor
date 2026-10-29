@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { AdminInputError, advanceOrderAsStaff, counterHandover, isCounterHandoverRefusal } from "../admin";
+import { AdminInputError, advanceOrderAsStaff } from "../admin";
 import { verifyPaymentAsVendor } from "../vendor";
 import {
   listAwaitingDispatchOrders,
@@ -160,74 +160,124 @@ describe("resolveOrderRowIds", () => {
 /* ------------------------------------------------------------------ */
 
 describe("counter pickup hand-over", () => {
-  const REFUSAL = { code: "P0001", message: "illegal transition ready-for-pickup -> delivered" };
-
-  it("recognises only a rider-state → delivered refusal", () => {
-    expect(isCounterHandoverRefusal(REFUSAL, "delivered")).toBe(true);
-    expect(isCounterHandoverRefusal({ message: "illegal transition out-for-delivery -> delivered" }, "delivered")).toBe(true);
-    expect(isCounterHandoverRefusal({ message: "illegal transition confirmed -> delivered" }, "delivered")).toBe(false);
-    expect(isCounterHandoverRefusal(REFUSAL, "ready-for-pickup")).toBe(false);
-    expect(isCounterHandoverRefusal({ message: "payment not verified" }, "delivered")).toBe(false);
+  const scripted = (result: { data?: unknown; error?: unknown } = { data: { ok: true }, error: null }) => {
+    const rpc = vi.fn(async () => result);
+    const db = { from: () => query([{ id: "order-uuid", is_pickup: true }]), rpc } as never;
+    return { db, rpc };
+  };
+  it("requires a customer PIN before making any RPC", async () => {
+    const { db, rpc } = scripted();
+    await expect(advanceOrderAsStaff(db,"PS-1","delivered")).rejects.toMatchObject({status:422});
+    expect(rpc).not.toHaveBeenCalled();
   });
+  it("uses only the atomic verification RPC, not the old state walking fallback", async () => {
+    const { db, rpc } = scripted();
+    await advanceOrderAsStaff(db,"PS-1","delivered",undefined,{role:"manager",pickupCode:"4821"}).catch(() => undefined);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("ps_collect_pickup_order",{p_order_id:"order-uuid",p_code:"4821"});
+  });
+  it.each([["code_mismatch",422],["locked",429]] as const)("maps %s without advancing", async (error,status) => {
+    const { db, rpc } = scripted({data:{ok:false,error}});
+    await expect(advanceOrderAsStaff(db,"PS-1","delivered",undefined,{role:"admin",pickupCode:"4821"})).rejects.toMatchObject({status});
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it.each([null, {}, { ok: "true" }, { ok: false, error: "unknown" }])("fails closed on malformed verification outcome %j", async data => {
+    const { db, rpc } = scripted({ data });
+    await expect(advanceOrderAsStaff(db,"PS-1","delivered",undefined,{role:"manager",pickupCode:"4821"})).rejects.toMatchObject({status:503});
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+  it("does not label an unrelated transactional failure as a missing migration", async () => {
+    const { db } = scripted({error:{code:"XX000",message:"fixture atomic failure"}});
+    const error = await advanceOrderAsStaff(db,"PS-1","delivered",undefined,{role:"admin",pickupCode:"4821"}).catch(e => e);
+    expect(error.status).toBe(503);
+    expect(error.message).not.toMatch(/Install|4821/);
+  });
+  it("fails closed when the pickup schema is missing", async () => {
+    const { db, rpc } = scripted({error:{code:"PGRST202",message:"function not found"}});
+    await expect(advanceOrderAsStaff(db,"PS-1","delivered",undefined,{role:"admin",pickupCode:"4821"})).rejects.toMatchObject({status:503});
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});
 
-  /** Scripted RPC double with an orders row + live assignments table. */
-  const scripted = (opts: { isPickup: boolean; live?: { id: string }[]; failAt?: string }) => {
-    const calls: { fn: string; args: Record<string, unknown> }[] = [];
-    const db = {
-      from: (table: string) =>
-        table === "orders"
-          ? query([{ id: "order-uuid", is_pickup: opts.isPickup }])
-          : query(opts.live ?? []),
-      rpc: async (fn: string, args: Record<string, unknown>) => {
-        calls.push({ fn, args });
-        if (fn === "ps_advance_order" && calls.length === 1) return { error: REFUSAL };
-        if (fn === "ps_advance_order" && args.p_to === opts.failAt) {
-          return { error: { code: "P0001", message: "forbidden" } };
-        }
-        return { data: null, error: null };
-      },
-    } as never;
-    return { db, calls };
+/* ------------------------------------------------------------------ */
+/* Counter handover without the receipt (audited exception)           */
+/* ------------------------------------------------------------------ */
+
+describe("counter pickup override", () => {
+  const reason = "Customer at the counter; confirmed the bKash TrxID and national ID";
+  const scripted = (result: { data?: unknown; error?: unknown } = { data: { ok: true }, error: null }) => {
+    const rpc = vi.fn(async () => result);
+    const db = { from: () => query([{ id: "order-uuid", is_pickup: true }]), rpc } as never;
+    return { db, rpc };
   };
 
-  it("walks courier-assigned → out-for-delivery → delivered for a pickup row, note on the last step", async () => {
-    const { db, calls } = scripted({ isPickup: true });
-    await advanceOrderAsStaff(db, "PS-1", "delivered", "Collected at counter").catch(() => undefined);
-    expect(calls.map((c) => [c.fn, c.args.p_to ?? c.args.p_assignment_id])).toEqual([
-      ["ps_advance_order", "delivered"],
-      ["ps_advance_order", "courier-assigned"],
-      ["ps_advance_order", "out-for-delivery"],
-      ["ps_advance_order", "delivered"],
-    ]);
-    expect(calls[1].args.p_note).toBeNull();
-    expect(calls[3].args.p_note).toBe("Collected at counter");
+  it("is closed to manager even with a reason", async () => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "manager", pickupOverride: true }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("withdraws a live rider offer before closing the pickup", async () => {
-    const { db, calls } = scripted({ isPickup: true, live: [{ id: "asg-1" }] });
-    await advanceOrderAsStaff(db, "PS-1", "delivered").catch(() => undefined);
-    expect(calls[1]).toMatchObject({ fn: "ps_cancel_assignment", args: { p_assignment_id: "asg-1" } });
-    expect(calls.filter((c) => c.fn === "ps_advance_order")).toHaveLength(4);
+  it.each(["", "too short", "   ninechars "])("needs a substantive reason (%j)", async (bad) => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", bad, { role: "admin", pickupOverride: true }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("NEVER walks a home-delivery order: the original refusal comes back as the usual 422", async () => {
-    const { db, calls } = scripted({ isPickup: false });
-    await expect(advanceOrderAsStaff(db, "PS-1", "delivered")).rejects.toMatchObject({
-      status: 422,
-      message: expect.stringMatching(/not allowed/i),
+  it("sends the trimmed reason and never a PIN", async () => {
+    const { db, rpc } = scripted();
+    await advanceOrderAsStaff(db, "PS-1", "delivered", `  ${reason}  `, {
+      role: "super_admin",
+      pickupOverride: true,
+    }).catch(() => undefined);
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("ps_admin_override_pickup", {
+      p_order_id: "order-uuid",
+      p_reason: reason,
     });
-    expect(calls).toHaveLength(1);
   });
 
-  it("reports a failure mid-walk instead of a silent half-move", async () => {
-    const { db } = scripted({ isPickup: true, failAt: "out-for-delivery" });
-    await expect(advanceOrderAsStaff(db, "PS-1", "delivered")).rejects.toMatchObject({ status: 403 });
+  it.each([
+    ["forbidden", 403],
+    ["payment not verified", 422],
+    ["rider delivery in progress", 409],
+    ["pickup not ready", 409],
+    ["not a counter pickup", 409],
+  ] as const)("maps %s to %i", async (message, status) => {
+    const { db } = scripted({ error: { code: "P0001", message } });
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin", pickupOverride: true }),
+    ).rejects.toMatchObject({ status });
   });
 
-  it("counterHandover itself returns the refusal untouched for a non-pickup", async () => {
-    const { db } = scripted({ isPickup: false });
-    const err = await counterHandover(db, "order-uuid", REFUSAL.message, null);
-    expect(err).toMatchObject({ message: REFUSAL.message, code: "P0001" });
+  it("names the migration when the override RPC is not installed", async () => {
+    const { db } = scripted({ error: { code: "PGRST202", message: "function not found" } });
+    const error = await advanceOrderAsStaff(db, "PS-1", "delivered", reason, {
+      role: "admin",
+      pickupOverride: true,
+    }).catch((e) => e);
+    expect(error.status).toBe(503);
+    expect(error.message).toMatch(/202610290001/);
+  });
+
+  it.each([null, {}, { ok: "true" }, { ok: false }])(
+    "fails closed on a malformed override outcome %j",
+    async (data) => {
+      const { db, rpc } = scripted({ data });
+      await expect(
+        advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin", pickupOverride: true }),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(rpc).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("still demands the PIN when the flag is absent", async () => {
+    const { db, rpc } = scripted();
+    await expect(
+      advanceOrderAsStaff(db, "PS-1", "delivered", reason, { role: "admin" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
 
@@ -249,7 +299,7 @@ describe("listAwaitingDispatchOrders", () => {
     const service = {
       from: (table: string) => {
         seen.push(table);
-        return query(tables[table] ?? []);
+        return query(tables[table === "order_operations" ? "orders" : table] ?? []);
       },
     } as never;
     // toDomainMany needs the full bundle reads the double cannot serve; the
@@ -286,7 +336,7 @@ describe("job feeds carry Order.id (order number), not the row uuid", () => {
   };
   // listRiderJobs expires stale offers first (service-only RPC).
   const rpc = vi.fn(async () => ({ error: null }));
-  const service = { from: (table: string) => query(tables[table] ?? []), rpc } as never;
+  const service = { from: (table: string) => query(tables[table === "order_operations" ? "orders" : table] ?? []), rpc } as never;
   const domainStub = async (_db: unknown, rows: readonly unknown[]) =>
     rows.map((r) => ({ id: (r as { order_no: string }).order_no }) as never);
 
@@ -361,7 +411,7 @@ describe("job feeds carry Order.id (order number), not the row uuid", () => {
         ),
     );
     const offeredTables = offered as Record<string, unknown[]>;
-    const offeredService = { from: (t: string) => query(offeredTables[t] ?? []), rpc } as never;
+    const offeredService = { from: (t: string) => query(offeredTables[t === "order_operations" ? "orders" : t] ?? []), rpc } as never;
     const [job] = await listRiderJobs(offeredService, RIDER_UUID);
     expect(job.liveChannel).toBeNull();
   });

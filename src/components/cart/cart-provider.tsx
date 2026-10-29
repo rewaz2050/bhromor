@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -67,7 +66,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [bagOpen, setBagOpen] = useState(false);
   const openBag = useCallback(() => setBagOpen(true), []);
   const closeBag = useCallback(() => setBagOpen(false), []);
-  const hydrated = useRef(false);
   const [storageRead, setStorageRead] = useState(false);
   const [catalogSettled, setCatalogSettled] = useState(() => isCatalogSettled());
 
@@ -77,7 +75,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage hydration must happen post-mount
     setLines(readStorage());
-    hydrated.current = true;
     setStorageRead(true);
   }, []);
 
@@ -95,13 +92,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hydrated.current) return; // never clobber storage before first read
+    // Wait for the render containing the stored lines, not just the read
+    // effect. A ref flips too early: StrictMode replay can otherwise read
+    // back the initial empty write and erase a returning shopper's bag.
+    if (!storageRead) return;
     try {
       window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(lines));
     } catch {
       /* storage unavailable — cart stays in memory */
     }
-  }, [lines]);
+  }, [lines, storageRead]);
 
   // Keep tabs in step: two open tabs used to overwrite each other's cart,
   // and the badge in one tab never noticed a checkout in the other.

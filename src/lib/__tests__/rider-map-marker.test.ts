@@ -62,3 +62,13 @@ describe("markup", () => {
     expect(riderPopupHtml(rider(), live)).toContain("Last location 1 min ago");
   });
 });
+
+
+it("uses dark initials on bright online pins without changing their status colors", () => {
+  for (const currentLoad of [0, 1]) {
+    const style = riderMarkerStyle(rider({ currentLoad }), NOW);
+    expect(riderMarkerHtml("Karim", style)).toContain(`background:${style.color};color:#142c22;`);
+    expect(riderMarkerHtml("Karim", { ...style, stale: true })).toContain("background:white;color:#142c22;");
+  }
+  expect(riderMarkerHtml("Karim", riderMarkerStyle(rider({ isOnline: false }), NOW))).toContain("background:#6b7280;color:white;");
+});

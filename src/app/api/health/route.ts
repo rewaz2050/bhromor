@@ -149,6 +149,24 @@ export async function GET(request?: Request) {
   // 202610010002 — admin chooses who verifies each shop's wallet payments.
   paymentVerifierReady: false,
   reviewFitReady: false,
+  // 2026-10-25 → 27 permission work. Each flag names the file to run.
+  // shopFirstFulfilmentReady / financeReportingReady are answered by the
+  // 202610270001 probe RPC (a trigger and policies are invisible to PostgREST).
+  permissionProbeReady: false,
+  financeBoundaryReady: false,
+  shopFirstFulfilmentReady: false,
+  delegatedStaffReady: false,
+  financeReportingReady: false,
+  riderWalletPrivacyReady: false,
+  riderControlsReady: false,
+  staffRoleReady: false,
+  orderPinReady: false,
+  shopScopedFulfilmentReady: false,
+  financeSelfDealingReady: false,
+  // 202610290001 — the audited counter-pickup override.
+  pickupOverrideReady: false,
+  // 202610290002 — four-eyes finance (installed but off by default).
+  financeQuorumReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

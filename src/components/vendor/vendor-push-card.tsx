@@ -13,31 +13,68 @@ export function VendorPushCard({ enabled }: { enabled: boolean }) {
 
   if (push.phase === "loading" || push.phase === "off-server") return null;
 
+  if (push.phase === "error") {
+    return (
+      <section
+        aria-label="Notification status"
+        className="space-y-2 rounded-2xl bg-paper p-4 ring-1 ring-line"
+      >
+        <p role="alert" className="text-sm text-rose-800">
+          {push.error}
+        </p>
+        <button
+          type="button"
+          onClick={() => void push.retry()}
+          disabled={push.busy}
+          className="min-h-11 rounded-lg px-3 text-sm font-semibold text-forest-900 underline underline-offset-2 disabled:opacity-50"
+        >
+          Try again
+        </button>
+      </section>
+    );
+  }
+
   if (push.phase === "on") {
     return (
       <div
         data-testid="vendor-push-on"
-        className="mt-3 flex items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 ring-1 ring-emerald-200"
+        className="mt-3 flex items-center justify-between gap-2 flex-wrap rounded-2xl bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 ring-1 ring-emerald-200"
       >
-        <span className="font-semibold">🔔 New orders buzz this phone even when the panel is closed.</span>
+        <span className="font-semibold">
+          🔔 New orders buzz this phone even when the panel is closed.
+        </span>
         <button
           type="button"
           onClick={() => void push.disable()}
           disabled={push.busy}
-          className="shrink-0 text-emerald-800 underline underline-offset-2 disabled:opacity-50"
+          className="min-h-11 shrink-0 px-2 text-emerald-800 underline underline-offset-2 disabled:opacity-50"
         >
           Turn off
         </button>
+        {push.error && (
+          <p
+            role="alert"
+            className="w-full text-xs font-semibold text-rose-800"
+          >
+            {push.error}
+          </p>
+        )}
       </div>
     );
   }
 
   return (
-    <section data-testid="vendor-push-card" className="mt-3 space-y-2 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300">
-      <p className="text-sm font-bold text-forest-950">🔔 Don’t miss an order</p>
+    <section
+      data-testid="vendor-push-card"
+      className="mt-3 space-y-2 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300"
+    >
+      <p className="text-sm font-bold text-forest-950">
+        🔔 Don’t miss an order
+      </p>
       <p className="text-xs text-ink-soft">
-        Turn on notifications and this phone buzzes for every new order — even with the panel closed or the phone in
-        your pocket. (You also get a reminder here when you owe PROSANTI money.)
+        Turn on notifications and this phone buzzes for every new order — even
+        with the panel closed or the phone in your pocket. (You also get a
+        reminder here when you owe PROSANTI money.)
       </p>
       {push.phase === "blocked" && (
         <p role="note" className="text-xs font-semibold text-rose-800">
@@ -46,7 +83,9 @@ export function VendorPushCard({ enabled }: { enabled: boolean }) {
       )}
       {push.phase === "denied" && (
         <div role="note" className="space-y-1 text-xs text-rose-800">
-          <p className="font-semibold">Notifications are blocked. To turn them on:</p>
+          <p className="font-semibold">
+            Notifications are blocked. To turn them on:
+          </p>
           <ol className="list-decimal space-y-0.5 pl-4">
             {push.steps.map((step) => (
               <li key={step}>{step}</li>

@@ -1,0 +1,153 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+export async function verifyVendorDelegation({ db, as, uuid, scalar, rows }) {
+  // Match production base columns omitted by the compact money fixture.
+  // Deliberately broad permissive policies below test intersection, not an
+  // accidental lack of grants. Actual permission migration/RPC bodies follow.
+  await db.exec(`
+    alter table shops add column if not exists status text default 'active';
+    alter table vendor_users add column if not exists role text not null default 'owner';
+    create table products(id uuid primary key default gen_random_uuid(),shop_id uuid references shops(id),name text default 'Product',price bigint default 10000,featured boolean default false,is_new boolean default false,in_stock boolean default true,low_stock boolean default false,updated_at timestamptz);
+    create table product_variants(id uuid primary key default gen_random_uuid(),product_id uuid references products(id),price bigint default 10000,stock int not null default 10,reserved int not null default 0,available int generated always as (stock-reserved) stored,active boolean default true,color text default '',size text default '',check(stock>=reserved and reserved>=0));
+    create table product_media(id uuid primary key default gen_random_uuid(),product_id uuid references products(id),url text);
+    create table categories(id text primary key);
+    create table shop_product_categories(shop_id uuid,category_id text);
+    create table coupons(id uuid primary key default gen_random_uuid(),shop_id uuid,code text);
+    grant select,insert,update,delete on vendor_users,products,product_variants,product_media,categories,shop_product_categories,coupons to authenticated;
+  `);
+  for (const table of ['vendor_users','products','product_variants','product_media','categories','shop_product_categories','coupons']) {
+    await db.exec(`alter table ${table} enable row level security; create policy delegation_test_legacy on ${table} for all to authenticated using(true) with check(true)`);
+  }
+  await db.exec(`create policy delegation_legacy_shop on shops for all using(id=ps_vendor_shop()) with check(id=ps_vendor_shop());
+    create policy delegation_legacy_ledger on shop_ledger for select using(shop_id=ps_vendor_shop());
+    create policy delegation_legacy_payouts on shop_payouts for select using(shop_id=ps_vendor_shop());`);
+  const sql=readFileSync(new URL('../migrations/202610250003_vendor_staff_permissions.sql',import.meta.url),'utf8');
+  await db.exec(sql); await db.exec(sql);
+  console.log('PASS: vendor delegation migration applies twice against legacy broad permissive policies');
+  const root=async()=>{await db.exec('reset role');await as(null);};
+  const acting=async(id)=>{await root();await as(id);await db.exec('set role authenticated');};
+  const owner=await uuid(), staff=await uuid(), outsider=await uuid(), manager=await uuid(), admin=await uuid();
+  const shop=await scalar("insert into shops(name) values('Delegation shop') returning id");
+  const otherShop=await scalar("insert into shops(name) values('Other business') returning id");
+  await db.query("insert into vendor_users(user_id,shop_id,role) values($1,$2,'owner'),($3,$2,'staff'),($4,$5,'owner')",[owner,shop,staff,outsider,otherShop]);
+  await db.query("insert into admin_users(id,role) values($1,'manager')",[manager]);
+  await db.query("insert into admin_users(id,role) values($1,'admin')",[admin]);
+  const product=await scalar('insert into products(shop_id) values($1) returning id',[shop]);
+  const variant=await scalar('insert into product_variants(product_id,stock,reserved) values($1,10,3) returning id',[product]);
+  const otherProduct=await scalar('insert into products(shop_id) values($1) returning id',[otherShop]);
+  const otherVariant=await scalar('insert into product_variants(product_id) values($1) returning id',[otherProduct]);
+  const newOrder=async()=>{await root();return scalar("insert into orders(shop_id,status,payment,payment_status) values($1,'pending','bkash','pending_verification') returning id",[shop]);};
+  const grant=async(permissions)=>{await acting(owner);await db.query('update vendor_users set permissions=$1 where user_id=$2',[permissions,staff]);};
+  try {
+    await acting(staff);
+    assert.deepEqual(await scalar('select permissions from vendor_users where user_id=$1',[staff]),[]);
+    assert.equal(await scalar("select ps_vendor_has_permission($1,'fulfilment')",[shop]),true);
+    for(const cap of ['catalog','inventory','cashier','cancellation','unknown']) assert.equal(await scalar('select ps_vendor_has_permission($1,$2)',[shop,cap]),false);
+    assert.equal((await rows("update products set price=1 where id=$1 returning id",[product])).length,0);
+    assert.equal((await rows('update vendor_users set permissions=ARRAY[\'catalog\'] where user_id=$1 returning user_id',[staff])).length,0);
+    assert.equal((await rows("update vendor_users set role='owner' where user_id=$1 returning user_id",[staff])).length,0);
+    await assert.rejects(db.query('select ps_vendor_set_available_stock($1,$2,20)',[product,variant]),/forbidden/);
+    const first=await newOrder();
+    await acting(staff);
+    await db.query("select ps_advance_order($1,'confirmed',null)",[first]);
+    await assert.rejects(db.query("select ps_advance_order($1,'cancelled',null)",[first]),/cancellation permission/);
+    await assert.rejects(db.query("select ps_verify_payment($1,'verified',null)",[first]),/cashier permission/);
+    await root(); await db.query("update orders set payment_status='verified' where id=$1",[first]);
+    await acting(staff); await db.query("select ps_advance_order($1,'ready-for-pickup',null)",[first]);
+    console.log('PASS: default staff confirms/readies only; no self-escalation, price/stock/cashier/cancellation authority');
+
+    await grant(['inventory']); await acting(staff);
+    await db.query('select ps_vendor_set_available_stock($1,$2,20)',[product,variant]);
+    assert.equal(Number(await scalar('select reserved from product_variants where id=$1',[variant])),3);
+    assert.equal(Number(await scalar('select stock from product_variants where id=$1',[variant])),23);
+    assert.equal(Number(await scalar('select available from product_variants where id=$1',[variant])),20);
+    await assert.rejects(db.query('update product_variants set price=1 where id=$1',[variant]),/catalog permission/);
+    await assert.rejects(db.query('update product_variants set reserved=0 where id=$1',[variant]),/reservation/);
+    await assert.rejects(db.query('update products set price=1 where id=$1',[product]),/catalog permission/);
+    await assert.rejects(db.query('select ps_vendor_set_available_stock($1,$2,20)',[otherProduct,otherVariant]),/forbidden/);
+    await assert.rejects(db.query('select ps_vendor_set_available_stock($1,$2,20)',[product,otherVariant]),/not found/);
+    await assert.rejects(db.query('select ps_vendor_set_available_stock($1,$2,-1)',[product,variant]),/invalid/);
+    await grant([]); await acting(staff);
+    await assert.rejects(db.query('select ps_vendor_set_available_stock($1,$2,20)',[product,variant]),/forbidden/);
+    console.log('PASS: inventory-only grant adjusts available stock, preserves reservations/prices, scopes variants and revokes immediately');
+
+    await grant(['catalog']); await acting(staff);
+    await db.query('update products set price=12000 where id=$1',[product]);
+    await db.query('update product_variants set price=12000 where id=$1',[variant]);
+    await assert.rejects(db.query('update products set featured=true where id=$1',[product]),/curation/);
+    await assert.rejects(db.query('update products set shop_id=$1 where id=$2',[otherShop,product]),/ownership/);
+    await assert.rejects(db.query('update product_variants set reserved=0 where id=$1',[variant]),/reservation/);
+    await assert.rejects(db.query("insert into coupons(shop_id,code) values($1,'UNAUTHORIZED')",[shop]),/row.level security/i);
+    assert.equal((await rows("update shops set name='Staff cannot edit shop' where id=$1 returning id",[shop])).length,0);
+    await assert.rejects(db.query('delete from product_variants where id=$1',[variant]),/reserved variant/);
+    await assert.rejects(db.query('update product_variants set stock=0 where id=$1',[variant]),/below reservations/);
+    console.log('PASS: explicitly delegated catalog/prices work; curation, reservations, promos and shop control stay protected');
+
+    await grant(['cashier']);
+    const paidOrder=await newOrder();
+    await acting(staff); await db.query("select ps_verify_payment($1,'verified',null)",[paidOrder]);
+    await root(); await db.query("update shops set payment_verifier='platform' where id=$1",[shop]);
+    const platformOnly=await newOrder(); await acting(staff);
+    await assert.rejects(db.query("select ps_verify_payment($1,'verified',null)",[platformOnly]),/reserved for the platform/);
+    await root(); await db.query("update shops set payment_verifier='both' where id=$1",[shop]);
+    const rejected=await newOrder(); await acting(staff);
+    await db.query("select ps_verify_payment($1,'rejected','Wallet receipt not found')",[rejected]);
+    await root();
+    assert.equal(await scalar('select status from orders where id=$1',[rejected]),'cancelled');
+    assert.equal(await scalar('select payment_status from orders where id=$1',[rejected]),'rejected');
+    const cancelled=await newOrder();
+    await acting(staff); await assert.rejects(db.query("select ps_advance_order($1,'cancelled',null)",[cancelled]),/cancellation/);
+    await root(); await db.query('insert into shop_ledger(shop_id,order_id,payable) values($1,$2,1000)',[shop,paidOrder]);
+    await db.query("insert into shop_payouts(shop_id,amount,method) values($1,100,'bank')",[shop]);
+    await acting(staff);
+    assert.equal((await rows('select * from shop_payouts where shop_id=$1',[shop])).length,0);
+    assert.equal((await rows('select * from shop_ledger where shop_id=$1',[shop])).length,0);
+    assert.equal((await rows('select * from ps_shop_balance_totals($1)',[shop])).length,0);
+    assert.equal((await rows('select * from vendor_permission_audit')).length,0);
+    console.log('PASS: cashier decisions preserve payment rejection/cancellation semantics; no general cancel or finance/team access');
+    await grant(['cancellation']); await acting(staff);
+    await db.query("select ps_advance_order($1,'cancelled',null)",[cancelled]);
+    const unverified=await newOrder(); await acting(staff);
+    await assert.rejects(db.query("select ps_verify_payment($1,'verified',null)",[unverified]),/cashier/);
+    await grant([]); await acting(staff);
+    const noCancel=await newOrder(); await acting(staff);
+    await assert.rejects(db.query("select ps_advance_order($1,'cancelled',null)",[noCancel]),/cancellation/);
+    await acting(owner);
+    assert(Number(await scalar('select count(*) from shop_ledger where shop_id=$1',[shop]))>0);
+    assert.equal(Number(await scalar('select count(*) from shop_payouts where shop_id=$1',[shop])),1);
+    await assert.rejects(db.query("insert into shop_payouts(shop_id,amount,method) values($1,100,'bank')",[shop]),/row.level security/i);
+    const audit=await rows('select * from vendor_permission_audit where user_id=$1 order by created_at',[staff]);
+    assert(audit.length>=6); assert(audit.every((row)=>row.actor_id===owner));
+    await assert.rejects(db.query('delete from vendor_permission_audit'),/permission denied/);
+    await assert.rejects(db.query("update vendor_users set permissions=ARRAY['owner'] where user_id=$1",[staff]),/check constraint/);
+    assert.equal((await rows("update vendor_users set permissions=ARRAY['catalog'] where user_id=$1 returning user_id",[outsider])).length,0);
+    await acting(manager);
+    assert.equal((await rows("update vendor_users set permissions=ARRAY['catalog'] where user_id=$1 returning user_id",[staff])).length,0);
+    await acting(owner);
+    const temporary=await uuid();
+    await db.query("insert into vendor_users(user_id,shop_id,role,permissions) values($1,$2,'staff',ARRAY['inventory'])",[temporary,shop]);
+    await db.query('delete from vendor_users where user_id=$1',[temporary]);
+    const removed=await rows('select before_permissions,after_permissions,actor_id from vendor_permission_audit where user_id=$1',[temporary]);
+    assert.equal(removed.length,2);
+    assert(removed.some((row)=>row.before_permissions.includes('inventory') && row.after_permissions.length===0 && row.actor_id===owner));
+    console.log('PASS: cancellation grants/revocation and owner finance remain functional; delegation audit is actor-bound and cannot be deleted');
+    const override=await newOrder(); await acting(manager);
+    await assert.rejects(db.query("select ps_advance_order($1,'confirmed','Verified emergency request')",[override]),/forbidden/);
+    await acting(admin);
+    await assert.rejects(db.query("select ps_advance_order($1,'confirmed',null)",[override]),/override reason/);
+    await db.query("select ps_advance_order($1,'confirmed','Verified emergency request')",[override]);
+    await db.query("select ps_verify_payment($1,'verified','Platform wallet receipt checked')",[override]);
+    await root();
+    assert.equal(await scalar('select payment_status from orders where id=$1',[override]),'verified');
+    const tagged=await rows("select * from order_status_history where order_id=$1 and note like '[Shop fulfilment override]%'",[override]);
+    assert.equal(tagged[0].changed_by,admin);
+    console.log('PASS: vendor delegation preserves the earlier Manager denial and reasoned Admin override/payment boundaries');
+    await root(); await db.query("update shops set status='suspended' where id=$1",[shop]);
+    await acting(staff);
+    await assert.rejects(db.query("select ps_advance_order($1,'confirmed',null)",[noCancel]),/active shop membership/);
+    await db.exec('set role anon');
+    await assert.rejects(db.query("select ps_vendor_has_permission($1,'catalog')",[shop]),/permission denied/);
+    console.log('PASS: suspended shops and anonymous callers cannot use vendor delegation workflows');
+  } finally { await root(); }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatBdt } from "@/lib/format";
 import { IconShield } from "@/components/ui/icons";
 
@@ -10,27 +10,77 @@ import { IconShield } from "@/components/ui/icons";
  * or null once the claim was sent. (The refusal is shown INSIDE the dialog —
  * it used to land on the page banner, hidden behind the overlay.)
  */
-export function SettleModal({
-  cashInHand,
-  onSubmit,
-  onClose,
-}: {
+interface SettleModalProps {
   cashInHand: number;
   onSubmit: (method: string, reference: string) => Promise<string | null>;
   onClose: () => void;
-}) {
+  /** Keep the owner mounted while hidden so pending claims stay locked. */
+  open?: boolean;
+  onSuccess?: () => void;
+}
+
+export function SettleModal({ open = true, onSubmit, onClose, onSuccess, ...props }: SettleModalProps) {
+  const owner = useRef({ active: false, open, generation: 0, pending: false });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const state = owner.current;
+    state.active = true;
+    return () => { state.active = false; state.generation++; };
+  }, []);
+  useEffect(() => {
+    owner.current.open = open;
+    owner.current.generation++;
+  }, [open]);
+
+  const close = () => {
+    owner.current.open = false;
+    owner.current.generation++;
+    onClose();
+  };
+  const submit = async (method: string, reference: string): Promise<string | null> => {
+    const state = owner.current;
+    if (!state.active || !state.open || state.pending) return null;
+    const generation = state.generation;
+    const current = () => state.active && state.open && state.generation === generation;
+    state.pending = true;
+    setBusy(true);
+    let refusal: string | null;
+    try {
+      refusal = await onSubmit(method, reference);
+    } catch {
+      refusal = "দাবি পাঠানো যায়নি — আবার চেষ্টা করুন।";
+    } finally {
+      // Closing the view does not cancel a financial claim already in flight.
+      state.pending = false;
+      if (state.active) setBusy(false);
+    }
+    if (!current()) return null;
+    if (refusal === null) onSuccess?.();
+    return refusal;
+  };
+
+  return open ? <SettlementForm {...props} busy={busy} onSubmit={submit} onClose={close} /> : null;
+}
+
+function SettlementForm({ cashInHand, onSubmit, onClose, busy }: Pick<SettleModalProps, "cashInHand" | "onSubmit" | "onClose"> & { busy: boolean }) {
+  const active = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const [settleMethod, setSettleMethod] = useState("cash");
   const [settleRef, setSettleRef] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
+    if (busy || !active.current) return;
     if (settleMethod !== "cash" && settleRef.trim().length < 3) {
       setError("bKash/bank-এর জন্য reference/TRXID দিন।");
       return;
     }
     setError(null);
     const refusal = await onSubmit(settleMethod, settleRef.trim());
-    if (refusal !== null) setError(refusal);
+    if (active.current && refusal !== null) setError(refusal);
   };
 
   return (
@@ -94,9 +144,10 @@ export function SettleModal({
           <button
             type="button"
             onClick={() => void submit()}
+            disabled={busy}
             className="h-12 flex-1 rounded-full bg-forest-800 text-xs font-semibold text-ivory-50 hover:bg-forest-900"
           >
-            দাবি পাঠান
+            {busy ? "দাবি পাঠানো হচ্ছে…" : "দাবি পাঠান"}
           </button>
         </div>
       </div>

@@ -67,6 +67,31 @@ export const columnReady = async (
   }
 };
 
+/**
+ * Is the RPC installed? PostgREST answers PGRST202 / 42883 when it is not.
+ * Any other error still proves the function exists (it ran and refused), so
+ * this only has to recognise "not found". Callers pass harmless arguments
+ * that fail closed inside the function — never a write.
+ */
+export const rpcReady = async (
+  db: SupabaseClient,
+  fn: string,
+  args: Record<string, unknown> = {},
+): Promise<boolean> => {
+  try {
+    const { error } = await db.rpc(fn, args);
+    if (!error) return true;
+    const code = typeof error.code === "string" ? error.code : "";
+    const message = typeof error.message === "string" ? error.message.toLowerCase() : "";
+    if (code === "PGRST202" || code === "42883") return false;
+    if (message.includes("could not find the function")) return false;
+    if (message.includes("does not exist")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export type RoundProbeKey =
   | "passwordResetReady"
   | "applicationReviewReady"
@@ -80,7 +105,28 @@ export type RoundProbeKey =
   | "riderPayoutsReady"
   | "riderFixesReady"
   | "paymentVerifierReady"
-  | "reviewFitReady";
+  | "reviewFitReady"
+  // 2026-10-25 → 27 permission work. Nine of the ten files are probed on an
+  // object PostgREST can see. 202610250002 (trigger) and 202610250004
+  // (policies) are not observable that way, so 202610270001 installs
+  // ps_health_probes() — one catalog call that answers all ten, including
+  // triggers, policies and column privileges. When that RPC is missing the two
+  // RPC-only flags stay false and their next step names the probe file first.
+  | "permissionProbeReady"
+  | "financeBoundaryReady"
+  | "shopFirstFulfilmentReady"
+  | "delegatedStaffReady"
+  | "financeReportingReady"
+  | "riderWalletPrivacyReady"
+  | "riderControlsReady"
+  | "staffRoleReady"
+  | "orderPinReady"
+  | "shopScopedFulfilmentReady"
+  | "financeSelfDealingReady"
+  // 202610290001 — the audited counter-pickup override (Admin/Super Admin).
+  | "pickupOverrideReady"
+  // 202610290002 — four-eyes finance (off until a threshold is set).
+  | "financeQuorumReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -101,6 +147,19 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   riderFixesReady: "202610010001_rider_fixes_phase_a.sql",
   paymentVerifierReady: "202610010002_payment_verifier.sql",
   reviewFitReady: "202610060001_review_fit.sql",
+  permissionProbeReady: "202610270001_health_probe_rpc.sql",
+  financeBoundaryReady: "202610250001_finance_permission_boundary.sql",
+  shopFirstFulfilmentReady: "202610250002_shop_first_fulfilment.sql",
+  delegatedStaffReady: "202610250003_vendor_staff_permissions.sql",
+  financeReportingReady: "202610250004_finance_reporting_access.sql",
+  riderWalletPrivacyReady: "202610250005_rider_wallet_column_privacy.sql",
+  riderControlsReady: "202610250006_rider_controls_and_ledger_retention.sql",
+  staffRoleReady: "202610250007_atomic_staff_roles.sql",
+  orderPinReady: "202610260001_order_pin_privacy_and_pickup.sql",
+  shopScopedFulfilmentReady: "202610260002_scoped_shop_fulfilment.sql",
+  financeSelfDealingReady: "202610260003_finance_self_dealing_boundary.sql",
+  pickupOverrideReady: "202610290001_pickup_handover_override.sql",
+  financeQuorumReady: "202610290002_finance_quorum.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -118,6 +177,19 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "riderFixesReady",
   "paymentVerifierReady",
   "reviewFitReady",
+  "permissionProbeReady",
+  "financeBoundaryReady",
+  "shopFirstFulfilmentReady",
+  "delegatedStaffReady",
+  "financeReportingReady",
+  "riderWalletPrivacyReady",
+  "riderControlsReady",
+  "staffRoleReady",
+  "orderPinReady",
+  "shopScopedFulfilmentReady",
+  "financeSelfDealingReady",
+  "pickupOverrideReady",
+  "financeQuorumReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -148,6 +220,64 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale Admin → Shops e 'Who verifies bKash/Nagad payments' save 503 dibe ar shop ar staff duijon-i agei moto payment verify korte parbe (platform-only / shop-only niyom kaj korbe na)",
   reviewFitReady:
     "na chalale review form e 'ছোট / ঠিক / বড়' fit tap dekhabe na ar product page e 'Will it fit me?' bar asbei na (review niteo thakbe — fit chara)",
+  permissionProbeReady:
+    "na chalale /api/health permission batch er 10 tar bodle 8 ta file dekhte parbe — trigger/policy duita (202610250002, 202610250004) SQL checklist chara dhora porbe na",
+  financeBoundaryReady:
+    "na chalale Manager platform finance/payout/adjustment korte parbe — ei boundary chara least-privilege model chalabe na",
+  shopFirstFulfilmentReady:
+    "na chalale Admin platform theke shop-er order Confirm/Preparing/Ready korte parbe reason chara, ar direct REST UPDATE diye workflow bypass kora jabe (trigger/policy — 202610270001 probe RPC chara ei file-er obostha dekhai jay na)",
+  delegatedStaffReady:
+    "na chalale shop Owner tar staff-ke catalog/inventory/cashier/cancellation grant dite parbe na (staff default Confirm/Preparing/Ready-i thakbe)",
+  financeReportingReady:
+    "na chalale Manager platform money report/ledger read korte parbe (report RPC + restrictive read policy chara; eta-o 202610270001 probe RPC diye dekha jay)",
+  riderWalletPrivacyReady:
+    "na chalale Manager direct SQL theke onno rider-er wallet balance porte parbe (actor-bound projection chara)",
+  riderControlsReady:
+    "na chalale rider suspend/relink audit chara hobe ar financial history rewrite/muche fela theke jabe",
+  staffRoleReady:
+    "na chalale staff role change atomic hobe na — last Super Admin-o chole jete pare",
+  orderPinReady:
+    "na chalale stored PIN app role theke lukano thakbe na ar counter handover PIN verify chara hobe (purono counter screen refresh korte hobe)",
+  shopScopedFulfilmentReady:
+    "na chalale je staff platform rank + nijer dokan dutoi dhoren, tar dokan theke Confirm/Preparing/Ready 503 dibe (migration na chalale purono platform entry-i lagbe)",
+  financeSelfDealingReady:
+    "na chalale ekjon Admin nijer Rider/dokan-er taka nijei approve/settle korte parbe",
+  pickupOverrideReady:
+    "na chalale jini receipt hariye felechen (onno device) tader counter pickup kono bhabei bondho kora jabe na — Admin/Super Admin-er reason-soho override RPC chara parcel ta keu-i dite parbe na",
+  financeQuorumReady:
+    "na chalale boro onker payout/settle/adjust ekjon Admin eka nirdharito threshold-er upore korte parben — duijon Admin-er four-eyes confirmation bondho thakbe (default e threshold 0, tai kichu bondho hoy na)",
+};
+
+/**
+ * 202610270001 answers all ten permission files (including the two PostgREST
+ * cannot see) from one catalog call. Keys are the jsonb names the migration
+ * returns; a missing/failed call simply yields no overrides.
+ */
+const RPC_PROBE_MAP: Record<string, RoundProbeKey> = {
+  financeBoundary: "financeBoundaryReady",
+  shopFirstFulfilment: "shopFirstFulfilmentReady",
+  delegatedStaff: "delegatedStaffReady",
+  financeReporting: "financeReportingReady",
+  riderWalletPrivacy: "riderWalletPrivacyReady",
+  riderControlsRetention: "riderControlsReady",
+  staffRoles: "staffRoleReady",
+  orderPinPrivacy: "orderPinReady",
+  shopScopedFulfilment: "shopScopedFulfilmentReady",
+  financeSelfDealing: "financeSelfDealingReady",
+  pickupHandoverOverride: "pickupOverrideReady",
+};
+
+/** Parse the probe RPC's jsonb. Returns null when it is absent or unusable. */
+export const permissionProbeFlags = (
+  data: unknown,
+): Partial<Record<RoundProbeKey, boolean>> | null => {
+  if (!data || typeof data !== "object") return null;
+  const flags: Partial<Record<RoundProbeKey, boolean>> = {};
+  for (const [jsonKey, probeKey] of Object.entries(RPC_PROBE_MAP)) {
+    const value = (data as Record<string, unknown>)[jsonKey];
+    if (typeof value === "boolean") flags[probeKey] = value;
+  }
+  return Object.keys(flags).length > 0 ? flags : null;
 };
 
 /** All of them, in parallel — one round trip each. */
@@ -171,6 +301,17 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     deliveryFailedColumn,
     paymentVerifierColumn,
     reviewFitColumn,
+    financeBoundaryRpc,
+    vendorPermissionsColumn,
+    walletReadRpc,
+    riderControlAudit,
+    staffRoleAudit,
+    orderPinTable,
+    vendorAdvanceRpc,
+    selfFinanceRpc,
+    pickupOverrideRpc,
+    quorumCheckRpc,
+    quorumConfirmations,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -190,9 +331,33 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     columnReady(db, "orders", "delivery_failed_at"),
     columnReady(db, "shops", "payment_verifier"),
     columnReady(db, "reviews", "fit"),
+    // 2026-10-25 → 27 permission work. Each probe names the artefact the
+    // migration adds; argument-null calls fail closed inside the function.
+    rpcReady(db, "ps_can_manage_finance"),
+    columnReady(db, "vendor_users", "permissions"),
+    rpcReady(db, "ps_read_riders"),
+    tableReady(db, "rider_control_audit"),
+    tableReady(db, "staff_role_audit"),
+    tableReady(db, "order_operations"),
+    rpcReady(db, "ps_vendor_advance_order", { p_order_id: null, p_to: null, p_note: null }),
+    rpcReady(db, "ps_guard_self_finance", { p_rider_id: null }),
+    rpcReady(db, "ps_admin_override_pickup", { p_order_id: null, p_reason: null }),
+    rpcReady(db, "ps_finance_quorum_check", { p_kind: null, p_ref: null, p_amount: null }),
+    tableReady(db, "finance_quorum_confirmations"),
   ]);
 
-  return {
+  // One extra round trip, only when the probe RPC exists. Without it the two
+  // trigger/policy-only flags stay false and their next step names it first.
+  const authoritative = await (async () => {
+    try {
+      const r = await db.rpc("ps_health_probes");
+      return r.error ? null : permissionProbeFlags(r.data);
+    } catch {
+      return null;
+    }
+  })();
+
+  const result: RoundProbes = {
     passwordResetReady: passwordReset.ready,
     applicationReviewReady: shopReviewNote && riderKyc,
     freeDeliveryReady: shopFreeDeliveryMin && orderFreeDeliveryBy,
@@ -219,6 +384,25 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // it (the review insert retries without the column); the fit bar just
     // never has data to show.
     reviewFitReady: reviewFitColumn,
+    financeBoundaryReady: financeBoundaryRpc,
+    // PostgREST cannot see these two (a trigger and restrictive policies); the
+    // 202610270001 RPC overrides them a few lines below when it exists.
+    shopFirstFulfilmentReady: false,
+    delegatedStaffReady: vendorPermissionsColumn,
+    financeReportingReady: false,
+    riderWalletPrivacyReady: walletReadRpc,
+    riderControlsReady: riderControlAudit.ready,
+    staffRoleReady: staffRoleAudit.ready,
+    orderPinReady: orderPinTable.ready,
+    shopScopedFulfilmentReady: vendorAdvanceRpc,
+    financeSelfDealingReady: selfFinanceRpc,
+    // PostgREST sees the function; only the probe RPC also confirms the marker
+    // inside it, so this direct probe is the fallback for older databases.
+    pickupOverrideReady: pickupOverrideRpc,
+    // 202610290002 — the function alone proves the wiring is installed; the
+    // table is what makes the confirmations durable.
+    financeQuorumReady: quorumCheckRpc && quorumConfirmations.ready,
+    permissionProbeReady: authoritative !== null,
     counts: {
       password_reset_requests: passwordReset.count,
       storefront_events: storefrontEvents.count,
@@ -229,4 +413,12 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
       rider_payout_requests: riderPayoutsTable.count,
     },
   };
+  // The RPC sees triggers, policies and column privileges, so it wins whenever
+  // it answers; direct probes stay as the fallback for older databases.
+  if (authoritative) {
+    for (const key of Object.keys(authoritative) as RoundProbeKey[]) {
+      result[key] = authoritative[key] as boolean;
+    }
+  }
+  return result;
 };

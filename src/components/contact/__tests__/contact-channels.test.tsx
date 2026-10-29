@@ -58,4 +58,17 @@ describe("<ContactChannels>", () => {
     await waitFor(() => expect(screen.getByText(/Use the message form/)).toBeTruthy());
     expect(screen.queryByTestId("contact-whatsapp")).toBeNull();
   });
+  it("keeps a useful fallback when the server has no configured channels", () => {
+    render(<ContactChannels initial={{ phone: null, whatsapp: null, email: null }} />);
+    expect(screen.getByRole("heading", { name: "Use the message form" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: /017/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the message-form guidance after a failed contact request", async () => {
+    serve({}, 503);
+    render(<ContactChannels />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Use the message form" })).toBeVisible());
+    expect(screen.queryByTestId("contact-call")).not.toBeInTheDocument();
+  });
+
 });

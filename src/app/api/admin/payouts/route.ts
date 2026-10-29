@@ -27,7 +27,7 @@ export const GET = staffRoute("payouts", async ({ db }, request) => {
     listPayoutLines(db, shopId),
   ]);
   return apiJson({ balances, ledger, payouts });
-});
+}, { roles: ADMIN_ONLY });
 
 export const POST = staffRoute(
   "payout-record",

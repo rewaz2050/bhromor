@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import InfoRail from "@/components/info/info-rail";
-import ContactChannels from "@/components/contact/contact-channels";
+import ContactChannels, { ContactLocation } from "@/components/contact/contact-channels";
 import ContactForm from "@/components/contact/contact-form";
 import { Eyebrow } from "@/components/ui/primitives";
 import L from "@/components/i18n/l";
@@ -19,7 +19,7 @@ export default async function ContactPage() {
   return (
     <>
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-      <Eyebrow><L en="We reply, quickly" bn="জবাব দিই, তাড়াতাড়ি" /></Eyebrow>
+      <Eyebrow><L en="Customer support" bn="ক্রেতা সাপোর্ট" /></Eyebrow>
       <h1 className="font-display mt-3 text-4xl font-medium tracking-tight text-forest-900 sm:text-5xl">
         <L en="Contact" bn="যোগাযোগ" />
       </h1>
@@ -31,8 +31,11 @@ export default async function ContactPage() {
       </p>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-[1fr_1.2fr]">
-        <ContactChannels initial={contact} />
+        <ContactChannels initial={contact} showLocation={false} />
         <ContactForm />
+      </div>
+      <div className="mt-8">
+        <ContactLocation info={contact} />
       </div>
     </div>
     {/* UX plan §11 (R8) — leave with product in view, not a dead end. */}

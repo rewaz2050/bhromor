@@ -99,7 +99,7 @@ export default function OrderNowBanner({ order }: { order: Order }) {
   // The PIN is shown exactly when it is about to be asked for: OUR rider on
   // the way. A third-party courier never sees the PIN, pickup hands over at
   // the counter, and a return parcel goes the other way.
-  const showPin = stage === "out" && !order.isPickup && !order.isReturn && !courier;
+  const showPin = !!order.deliveryCode && stage === "out" && !order.isPickup && !order.isReturn && !courier;
   const pin = displayedDeliveryCode(order.deliveryCode);
 
   return (

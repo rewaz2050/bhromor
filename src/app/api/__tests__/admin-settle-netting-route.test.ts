@@ -29,7 +29,7 @@ const post = (body: unknown) =>
     { params: Promise.resolve({ id: ID }) },
   );
 
-beforeEach(() => settle.mockClear());
+beforeEach(() => { settle.mockClear(); });
 
 describe("admin settle route — netting", () => {
   it("defaults to a plain settle with the staff client", async () => {

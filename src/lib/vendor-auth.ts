@@ -9,6 +9,7 @@
  */
 
 import "server-only";
+import { vendorPermissions, type VendorPermission } from "./vendor-permissions";
 
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { getSupabaseServer } from "./supabase-server";
@@ -19,6 +20,7 @@ export interface VendorContext {
   user: User;
   shopId: string;
   role: VendorRole;
+  permissions?: VendorPermission[];
   /** RLS-bound client: vendor reads/writes flow through shop policies. */
   db: SupabaseClient;
 }
@@ -51,9 +53,10 @@ export async function requireVendor(): Promise<VendorContext> {
   }
   const { data: link, error: linkError } = await db
     .from("vendor_users")
-    .select("shop_id,role")
+    .select("shop_id,role,permissions")
     .eq("user_id", data.user.id)
     .single();
+  if (linkError && ["42703", "PGRST204"].includes(linkError.code ?? "")) throw new Error("Vendor permission migration is not installed.");
   if (linkError || !link) {
     throw new VendorAuthError("This account has no vendor access.", 403, "none");
   }
@@ -86,6 +89,7 @@ export async function requireVendor(): Promise<VendorContext> {
     user: data.user,
     shopId,
     role: (link as { role: VendorRole }).role,
+    permissions: vendorPermissions((link as { permissions?: unknown }).permissions),
     db,
   };
 }

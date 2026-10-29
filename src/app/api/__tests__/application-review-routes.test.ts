@@ -17,6 +17,10 @@ const state = vi.hoisted(() => ({
 vi.mock("../admin/_lib", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../admin/_lib")>();
   const db = {
+    rpc: (name: string) => {
+      if (name !== "ps_read_riders") throw new Error("Unexpected projection RPC");
+      return { eq: () => ({ single: async () => ({data:state.row,error:state.error}) }) };
+    },
     from: (table: string) => ({
       update: (patch: Record<string, unknown>) => ({
         eq: (_col: string, id: string) => {

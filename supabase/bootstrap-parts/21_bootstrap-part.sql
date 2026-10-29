@@ -1,4 +1,4 @@
--- PART 21/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 21/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: shop-own-wallet settlement (202610020013) ====
 -- ============================================================================
 -- SHOP-OWN-WALLET settlement model (2026-10-02). OFF for every shop until staff
@@ -611,4 +611,3 @@ end $$;
 notify pgrst, 'reload schema';
 
 commit;
-

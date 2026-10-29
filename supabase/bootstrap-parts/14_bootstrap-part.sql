@@ -1,4 +1,4 @@
--- PART 14/22 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
+-- PART 14/24 of supabase/bootstrap-fresh.sql — run the parts IN ORDER, top to bottom.
 -- ==== Feature: vendor promos (202609280003) ====
 -- ============================================================================
 -- B3 (2026-09-28): the shop's own promo codes.
@@ -806,4 +806,3 @@ update public.shops
 commit;
 
 do $$ begin raise notice 'SHOP VACATION OK'; end $$;
-

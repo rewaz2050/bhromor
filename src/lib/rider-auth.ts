@@ -67,10 +67,12 @@ export async function requireRider(
   }
 
   const { data: row, error: rowError } = await server
-    .from("riders")
-    .select("*")
+    .rpc("ps_read_riders")
     .eq("user_id", data.user.id)
     .single();
+  if (rowError?.code && rowError.code !== "PGRST116") {
+    throw new RiderAuthError("Rider access could not be verified. Check the rider wallet privacy migration and retry.", 503);
+  }
   if (rowError || !row) {
     throw new RiderAuthError("This account has no rider access.", 403, "none");
   }

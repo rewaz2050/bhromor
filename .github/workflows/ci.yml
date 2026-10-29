@@ -64,14 +64,90 @@ jobs:
       - name: Build
         run: npm run build
 
-  # Browser contracts — the five flows in e2e/dashboards.spec.ts (customer
-  # profile save, rider, vendor, admin). Every API call is answered by a
-  # fixture and Supabase points at an invalid host, so this job needs no
-  # secrets and no seeded database; it catches what the unit suite cannot,
-  # which is a real click in a real browser.
-  browser:
+  # The SQL suites were only ever run by hand (2026-10-27). They need no
+  # secrets: PGlite is an npm dependency, and the PostgreSQL suite boots a
+  # disposable database of its own.
+  sql:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Money: finance boundary, self-dealing, wallet privacy, ledger
+      # retention against embedded PostgreSQL. The PASS tally is published as a
+      # check annotation so the run carries its own evidence — the raw job log
+      # is not reachable from every client.
+      - name: Money and permission SQL
+        run: |
+          set -o pipefail
+          npm run test:money 2>&1 | tee /tmp/money.log
+          echo "::notice title=Money SQL groups::$(grep -c '^PASS' /tmp/money.log) PASS groups"
+
+      - name: Dispatch SQL
+        run: |
+          set -o pipefail
+          npm run test:dispatch 2>&1 | tee /tmp/dispatch.log
+          echo "::notice title=Dispatch SQL groups::$(grep -c '^PASS' /tmp/dispatch.log) PASS groups"
+
+  # The full bootstrap + workflow suite needs a real server (databases, roles,
+  # publications). Plain PostgreSQL is enough; the auth service is stubbed by
+  # the test itself.
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Full bootstrap and workflow SQL
+        env:
+          PG_VERIFY_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: |
+          set -o pipefail
+          npm run test:workflow:postgres 2>&1 | tee /tmp/pg.log
+          echo "::notice title=PostgreSQL workflow groups::$(grep -c '^PASS' /tmp/pg.log) PASS groups"
+
+  # Browser contracts: isolated dashboards first, then the entire default
+  # Playwright suite (storefront, recovery, maps, native auth locks and SDK).
+  # Authenticated responses are fixtures, not real account/RLS acceptance.
+  # No secrets or seeded database; actual clicks run in Chromium.
+  browser:
+    runs-on: ubuntu-latest
+    # The two Playwright passes take 15–20 min on a normal runner (measured:
+    # 15m23s pass, 20m16s hard timeout on the same specs). 30 leaves room for
+    # `next dev` compile jitter; the suite itself is unchanged.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -88,8 +164,58 @@ jobs:
       - name: Browsers
         run: npx playwright install --with-deps chromium
 
+      # Both passes also write a machine-readable report so a failure names
+      # the exact spec in the check annotation (the raw job log is not always
+      # reachable from every client).
       - name: Dashboards
         run: npm run test:dashboards
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .cache/pw-dashboards.json
+
+      # Includes both auth specs; avoid running that subset twice.
+      # The default config excludes dashboards, which ran above with their
+      # own explicit invalid-host environment.
+      - name: Full browser regression
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: .cache/pw-e2e.json
+
+      # Annotate the exact spec (the raw job log is not reachable from every
+      # client). Playwright's JSON shape is suites → specs → tests → results.
+      - name: Name the failing browser tests
+        if: failure()
+        run: |
+          node - <<'JS'
+          const fs = require("node:fs");
+          let found = 0;
+          const walk = (suites, trail) => {
+            for (const suite of suites || []) {
+              const path = [...trail, suite.title].filter(Boolean);
+              for (const spec of suite.specs || []) {
+                for (const test of spec.tests || []) {
+                  // "unexpected" = still failing after retries; a retried-away
+                  // flake is "flaky" and must not be annotated as a failure.
+                  if (test.status !== "unexpected") continue;
+                  const bad = (test.results || []).filter((r) => r.status !== "passed" && r.status !== "skipped");
+                  if (!bad.length) continue;
+                  found += 1;
+                  const detail = bad.at(-1).error && bad.at(-1).error.message ? bad.at(-1).error.message : bad.at(-1).status;
+                  // The first lines of an expect() diff usually carry the axe
+                  // rule id and the failing selector, which is the whole point.
+                  const first = String(detail).split("\n").slice(0, 14).join(" ⏎ ").slice(0, 1500);
+                  const where = `${spec.file || suite.file || "(spec)"}:${spec.line || 1}`;
+                  console.log(`::error file=${where}::${[...path, spec.title].join(" > ")} — ${first}`);
+                }
+              }
+              walk(suite.suites, path);
+            }
+          };
+          for (const file of [".cache/pw-dashboards.json", ".cache/pw-e2e.json"]) {
+            if (!fs.existsSync(file)) continue;
+            walk(JSON.parse(fs.readFileSync(file, "utf8")).suites, []);
+          }
+          if (!found) console.log("::error::Playwright reported a failure but the JSON report named no test");
+          JS
 
       - name: Report
         if: failure()

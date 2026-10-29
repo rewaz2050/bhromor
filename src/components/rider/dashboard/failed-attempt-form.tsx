@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { fetchFailedProofConfig, reportFailedAttempt, uploadDeliveryProof } from "@/lib/rider-delivery-actions";
+import { useEffect, useRef, useState } from "react";
+import {
+  fetchFailedProofConfig,
+  reportFailedAttempt,
+  uploadDeliveryProof,
+} from "@/lib/rider-delivery-actions";
 
 /**
  * "Customer unreachable?" — only offered after pickup. A server refusal is
@@ -9,14 +13,21 @@ import { fetchFailedProofConfig, reportFailedAttempt, uploadDeliveryProof } from
  * When staff switch on the failed-attempt photo (off by default) the form also takes a photo of
  * the door / gate / address — or, if "required" and none can be taken, a written reason.
  */
-export function FailedAttemptForm({
+interface FailedAttemptFormProps {
+  assignmentId: string;
+  /** Called with the message once the current form's attempt is on record. */
+  onRecorded: (message: string) => void;
+}
+
+export function FailedAttemptForm(props: FailedAttemptFormProps) {
+  // Assignment-specific drafts/proof must never be reused for another task.
+  return <AssignmentFailedAttemptForm key={props.assignmentId} {...props} />;
+}
+
+function AssignmentFailedAttemptForm({
   assignmentId,
   onRecorded,
-}: {
-  assignmentId: string;
-  /** Called with the message to flash once the attempt is on record. */
-  onRecorded: (message: string) => void;
-}) {
+}: FailedAttemptFormProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,24 +38,91 @@ export function FailedAttemptForm({
   const [noPhotoOpen, setNoPhotoOpen] = useState(false);
   const [noPhotoReason, setNoPhotoReason] = useState("");
 
-  const toggle = () => {
+  const owner = useRef({
+    active: false,
+    open: false,
+    generation: 0,
+    upload: 0,
+    submit: 0,
+    config: 0,
+    uploading: false,
+    busy: false,
+  });
+  useEffect(() => {
+    const state = owner.current;
+    state.active = true;
+    return () => {
+      state.active = false;
+      state.generation++;
+    };
+  }, []);
+
+  const setFormOpen = (next: boolean) => {
+    const state = owner.current;
+    state.open = next;
+    state.generation++;
+    state.uploading = false;
+    // Closing a form does not cancel an already-started report.
+    setOpen(next);
+    setUploading(false);
+    setBusy(state.busy);
     setError(null);
-    const opening = !open;
-    setOpen(opening);
+  };
+
+  const toggle = () => {
+    const state = owner.current;
+    if (!state.active) return;
+    const opening = !state.open;
+    setFormOpen(opening);
     if (opening) {
-      // Asked each time it opens, so a staff change applies at once. Failure = "no photo asked".
-      void fetchFailedProofConfig().then((c) => {
-        const next = c.uploads ? c.mode : 0;
-        setMode((m) => (m === next ? m : next));
-      });
+      const generation = state.generation;
+      const config = ++state.config;
+      const current = () =>
+        state.active &&
+        state.open &&
+        state.generation === generation &&
+        state.config === config;
+      // Preserve the existing no-photo fallback when settings cannot be read.
+      void (async () => {
+        try {
+          const c = await fetchFailedProofConfig();
+          if (current()) setMode(c.uploads ? c.mode : 0);
+        } catch {
+          if (current()) setMode(0);
+        }
+      })();
     }
   };
 
   const upload = async (file: File) => {
+    const state = owner.current;
+    if (!state.active || !state.open) return;
+    const generation = state.generation;
+    const request = ++state.upload;
+    const current = () =>
+      state.active &&
+      state.open &&
+      state.generation === generation &&
+      state.upload === request;
+    state.uploading = true;
     setUploading(true);
     setError(null);
-    const result = await uploadDeliveryProof(file);
-    setUploading(false);
+    let result: Awaited<ReturnType<typeof uploadDeliveryProof>>;
+    try {
+      result = await uploadDeliveryProof(file);
+    } catch {
+      if (current()) {
+        setNoPhotoOpen(true);
+        setError("Photo upload failed — please try again.");
+      }
+      return;
+    } finally {
+      if (current()) {
+        state.uploading = false;
+        setUploading(false);
+      }
+    }
+    if (!current()) return;
     if (result.ok) setPhotoUrl(result.url);
     else {
       setNoPhotoOpen(true);
@@ -53,19 +131,38 @@ export function FailedAttemptForm({
   };
 
   const submit = async () => {
-    if (busy || uploading) return;
+    const state = owner.current;
+    if (!state.active || !state.open || state.busy || state.uploading) return;
+    const generation = state.generation;
+    const request = ++state.submit;
+    const ownsLock = () => state.active && state.submit === request;
+    const current = () =>
+      state.active && state.open && state.generation === generation;
+    state.busy = true;
     setBusy(true);
     setError(null);
-    const result = await reportFailedAttempt(assignmentId, reason, {
-      proofUrl: photoUrl,
-      noPhotoReason: photoUrl ? null : noPhotoReason.trim() || null,
-    });
-    setBusy(false);
+    let result: Awaited<ReturnType<typeof reportFailedAttempt>>;
+    try {
+      result = await reportFailedAttempt(assignmentId, reason, {
+        proofUrl: photoUrl,
+        noPhotoReason: photoUrl ? null : noPhotoReason.trim() || null,
+      });
+    } catch {
+      if (current()) setError("Failed — try again.");
+      return;
+    } finally {
+      // Transport ownership survives close/reopen; view ownership does not.
+      if (ownsLock()) {
+        state.busy = false;
+        setBusy(false);
+      }
+    }
+    if (!current()) return;
     if (!result.ok) {
       setError(result.message);
       return;
     }
-    setOpen(false);
+    setFormOpen(false);
     setReason("");
     setPhotoUrl(null);
     setNoPhotoOpen(false);
@@ -99,7 +196,8 @@ export function FailedAttemptForm({
           {mode > 0 && (
             <div data-testid="failed-proof" className="space-y-1">
               <p className="text-[11px] font-semibold text-ink-soft">
-                📸 দরজা/গেট/ঠিকানার ছবি {mode === 2 ? "(বাধ্যতামূলক)" : "(ঐচ্ছিক)"}
+                📸 দরজা/গেট/ঠিকানার ছবি{" "}
+                {mode === 2 ? "(বাধ্যতামূলক)" : "(ঐচ্ছিক)"}
               </p>
               <input
                 type="file"
@@ -112,10 +210,23 @@ export function FailedAttemptForm({
                 }}
                 className="w-full rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-line"
               />
-              {uploading && <p className="text-[11px] text-amber-700">আপলোড হচ্ছে…</p>}
-              {photoUrl && <p data-testid="failed-proof-ok" className="text-[11px] font-semibold text-emerald-800">✓ ছবি আপলোড হয়েছে</p>}
+              {uploading && (
+                <p className="text-[11px] text-amber-700">আপলোড হচ্ছে…</p>
+              )}
+              {photoUrl && (
+                <p
+                  data-testid="failed-proof-ok"
+                  className="text-[11px] font-semibold text-emerald-800"
+                >
+                  ✓ ছবি আপলোড হয়েছে
+                </p>
+              )}
               {mode === 2 && !photoUrl && !noPhotoOpen && (
-                <button type="button" onClick={() => setNoPhotoOpen(true)} className="text-[11px] font-semibold text-ink-soft underline">
+                <button
+                  type="button"
+                  onClick={() => setNoPhotoOpen(true)}
+                  className="text-[11px] font-semibold text-ink-soft underline"
+                >
                   ছবি তুলতে পারছি না
                 </button>
               )}
@@ -148,8 +259,7 @@ export function FailedAttemptForm({
             <button
               type="button"
               onClick={() => {
-                setOpen(false);
-                setError(null);
+                setFormOpen(false);
               }}
               className="text-xs text-ink-soft"
             >

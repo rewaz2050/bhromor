@@ -4,7 +4,7 @@ import { riderOrderView } from "../rider-order";
 
 const order = {
   id: "PS-1", customer: { name: "Customer", phone: "01712345678", area: "Town", address: "House 2", note: "Private note" },
-  deliveryCode: "1234", paymentRef: "PRIVATE", lat: 24, lng: 91,
+  deliveryCode: "1234", trackToken: "customer-proof", paymentRef: "PRIVATE", lat: 24, lng: 91,
   timeline: [{ note: "Private staff note" }],
   deliveryProofUrl: "https://example.com/proof.jpg",
 } as Order;
@@ -19,6 +19,7 @@ describe("rider job privacy", () => {
     expect(view.lat).toBeUndefined();
     expect(view.lng).toBeUndefined();
     expect(view.deliveryCode).toBeUndefined();
+    expect(view.trackToken).toBeUndefined();
     expect(view.paymentRef).toBeUndefined();
     expect(view.timeline).toEqual([]);
   });
@@ -27,6 +28,7 @@ describe("rider job privacy", () => {
     expect(view.customer.phone).toBe("01712345678");
     expect(view.lat).toBe(24);
     expect(view.deliveryCode).toBeUndefined();
+    expect(view.trackToken).toBeUndefined();
     expect(view.paymentRef).toBeUndefined();
     expect(view.deliveryProofUrl).toBeUndefined();
     expect(order.deliveryCode).toBe("1234");

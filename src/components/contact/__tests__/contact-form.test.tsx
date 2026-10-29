@@ -100,3 +100,32 @@ describe("ContactForm — language", () => {
     expect(options[3].value).toBe("Return / exchange");
   });
 });
+
+describe("ContactForm — accessible recovery", () => {
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+  it("marks each invalid field, describes the error and focuses the first", () => {
+    render(<ContactForm />);
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    const name = screen.getByRole("textbox", { name: "Name" });
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(name).toHaveAccessibleDescription("Tell us your name.");
+    expect(screen.getByRole("textbox", { name: "Phone" })).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(name, { target: { value: "Rahim" } });
+    expect(name).toHaveAttribute("aria-invalid", "false");
+    expect(name).not.toHaveAttribute("aria-describedby");
+  });
+
+  it.each([503, 429, 200])("retains the draft and permits retry for an unconfirmed response (%s)", async status => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Backend detail" }), { status })));
+    const { container } = render(<ContactForm />);
+    fireEvent.submit(fill(container));
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(status === 429 ? "Too many attempts" : "Could not send");
+    expect(error).not.toHaveTextContent("Backend detail");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("আমার অর্ডারের তথ্য জানতে চাই, দয়া করে জানাবেন।");
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  });
+});

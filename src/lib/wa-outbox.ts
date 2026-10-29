@@ -31,7 +31,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { customerPushMessage, type CustomerEventKind } from "./notify-messages";
 import { absoluteUrl } from "./site-url";
-import { trackTokenFor } from "./track-token";
 import { isPlausibleBdPhone, normalizeBdPhone } from "./phone";
 import { waLink } from "./whatsapp-order";
 import type { Language } from "./translations";
@@ -69,8 +68,7 @@ export const waDraftText = (input: {
     phone: input.phone,
     total: input.total ?? null,
     lang: input.lang,
-    // Security 2026-10-14 (H3): the WhatsApp link carries the signed token.
-    trackToken: trackTokenFor(input.orderNo, input.phone ?? ""),
+    // Staff-readable drafts carry status links, never customer PIN proof.
   });
   const track = absoluteUrl(message.href);
   const label = (input.lang ?? "bn") === "en" ? "Track it" : "ট্র্যাক করুন";

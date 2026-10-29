@@ -10,7 +10,6 @@ import {
   PUBLIC_STEPS,
   STATUS_META,
   canCancel,
-  displayedDeliveryCode,
   flowIndex,
   nextActions,
   normalizePhone,
@@ -21,18 +20,21 @@ import {
 import { formatBdt } from "@/lib/format";
 import { deliverySlotLabel, deliverySlotSummary } from "@/lib/delivery-slots";
 import { paymentSummary } from "@/lib/payment-labels";
-import { PICKUP_HANDOVER_LABEL, PICKUP_HANDOVER_NOTE } from "@/lib/order-actions";
 import {
   DOT,
   StatusBadge,
   clockTime,
   friendlyWhen,
 } from "@/components/admin/order-ui";
-import { IconArrowRight, IconClock, IconShield } from "@/components/ui/icons";
+import { IconArrowRight, IconClock } from "@/components/ui/icons";
 import WarrantyClaimsCard from "@/components/admin/warranty-claims-card";
 import OrderWhatsAppStatus from "@/components/admin/order-whatsapp-status";
 import WaDraftPanel from "@/components/admin/wa-draft-panel";
+import AdminOnly from "@/components/admin/admin-only";
 import PaymentCard from "@/components/admin/payment-card";
+import ShopFulfilmentOverride from "@/components/admin/shop-fulfilment-override";
+import { isShopFulfilment } from "@/lib/shop-fulfilment";
+import PickupHandover from "@/components/admin/pickup-handover";
 import FailedProofPanel from "@/components/admin/failed-proof-panel";
 
 const RETURN_STATUS_LABEL: Record<string, string> = {
@@ -47,7 +49,7 @@ export default function AdminOrderDetailPage() {
   const params = useParams<{ id: string }>();
   // Served from the loaded list, or fetched by order number when the order
   // is older than the loaded pages (the list is paginated).
-  const { order, loading, error, clearError, advance, cancel, refresh } =
+  const { order, loading, error, clearError, advance, overridePickup, cancel, refresh } =
     useOrder(params.id);
   // Hooks first, before any early return below.
   const [returnBusy, setReturnBusy] = useState<
@@ -130,7 +132,7 @@ export default function AdminOrderDetailPage() {
   // "Start preparing") sits behind an "Advanced" disclosure. Rider states
   // (courier-assigned → out-for-delivery → delivered) belong to the rider
   // app — the admin sees who has it, not a button.
-  const steps = nextActions(order.status);
+  const steps = nextActions(order.status).filter((to) => !isShopFulfilment(order, to));
   const [primary, ...secondary] = steps;
   const riderOwned =
     order.status === "ready-for-pickup" ||
@@ -141,7 +143,7 @@ export default function AdminOrderDetailPage() {
   const isCancelled = order.status === "cancelled";
   const phase = publicPhase(order.status);
   const pay = paymentSummary(order);
-  // A counter pickup never meets a rider: once it is ready, the shop closes
+  // A counter pickup never meets a rider: once it is ready, platform staff closes
   // it when the customer collects (the server walks the rider states).
   const pickupHandover = riderOwned && order.isPickup && !order.isReturn;
 
@@ -184,6 +186,11 @@ export default function AdminOrderDetailPage() {
           Placed {friendlyWhen(order.createdAt)}
         </span>
       </div>
+
+      {isShopFulfilment(order, "confirmed") && ["pending", "confirmed", "preparing"].includes(order.status) && (
+        <p className="rounded-xl bg-paper px-4 py-3 text-sm text-ink-soft ring-1 ring-line">Shop confirms and prepares this order. Normal fulfilment actions are in the shop dashboard.</p>
+      )}
+      <ShopFulfilmentOverride order={order} onOverride={(to, reason) => advance(order.id, to, reason, true)} />
 
       {/* Actions — only legal transitions are offered (§34) + free print invoice.
           Return orders move only through the return actions below — approving
@@ -246,26 +253,10 @@ export default function AdminOrderDetailPage() {
           </>
         )}
         {pickupHandover && (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                if (!window.confirm(`Customer collected order ${order.id} at Traffic Point?`)) return;
-                doAdvance("delivered", PICKUP_HANDOVER_NOTE);
-              }}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
-            >
-              {PICKUP_HANDOVER_LABEL}
-              <IconArrowRight className="h-4 w-4" />
-            </button>
-            <p className="text-sm text-ink-soft">
-              Counter pickup — no rider. Check the customer&apos;s PIN{" "}
-              <span className="font-mono font-semibold text-forest-900">
-                {displayedDeliveryCode(order.deliveryCode)}
-              </span>{" "}
-              and hand the parcel over.
-            </p>
-          </>
+          <PickupHandover
+            verify={(code) => advance(order.id, "delivered", undefined, false, code)}
+            override={(reason) => overridePickup(order.id, reason)}
+          />
         )}
         {!order.isReturn && riderOwned && !pickupHandover && (
           <p className="text-sm text-ink-soft">
@@ -413,9 +404,7 @@ export default function AdminOrderDetailPage() {
               <h3 className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-ink-soft">
                 Customer & delivery
               </h3>
-              <span className="flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold font-mono text-emerald-800">
-                <IconShield className="h-3 w-3" /> PIN: {displayedDeliveryCode(order.deliveryCode)}
-              </span>
+              <span className="text-xs text-ink-soft">PIN verified at handover — never displayed</span>
             </div>
             <dl className="mt-4 space-y-3 text-sm">
               <div>
@@ -609,7 +598,7 @@ export default function AdminOrderDetailPage() {
                 </div>
               )}
               {/* P1 #8: bKash/Nagad wallet payment — verify or reject */}
-              <PaymentCard
+              <AdminOnly note="Payment decisions require Admin or Super Admin; shop verification follows the recipient policy."><PaymentCard
                 orderNo={order.id}
                 payment={order.payment}
                 paymentRef={order.paymentRef}
@@ -620,7 +609,7 @@ export default function AdminOrderDetailPage() {
                 orderStatus={order.status}
                 verifier={order.paymentVerifier}
                 onDecided={refresh}
-              />
+              /></AdminOnly>
             </dl>
           </section>
 

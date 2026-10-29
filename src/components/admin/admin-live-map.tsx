@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import "leaflet/dist/leaflet.css";
+import styles from "./admin-live-map.module.css";
 import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
 import { SUNAMGANJ_HUB_COORDS } from "@/lib/sunamganj";
 import type { Rider } from "@/lib/catalog";
@@ -21,34 +23,16 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<LeafletMap | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [leafletReady, setLeafletReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [tileError, setTileError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // Redraw once a minute so a pin whose phone went quiet turns "stale" without a refresh.
   const now = useNow(60_000);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    link.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
-    link.crossOrigin = "";
-    document.head.appendChild(link);
-  }, []);
-
-  useEffect(() => {
-    import("leaflet").then((L) => {
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
-      setLeafletReady(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!leafletReady || !mapRef.current || leafletMapRef.current) return;
     let cancelled = false;
+    let resize: ResizeObserver | undefined;
+    let frame: number | undefined;
     import("leaflet").then((L) => {
       if (cancelled || !mapRef.current) return;
       const map = L.map(mapRef.current, {
@@ -57,8 +41,13 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
         minZoom: 11,
         maxZoom: 18,
       });
+      leafletMapRef.current = map;
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '&copy; OSM',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        // A failed request must not leave the browser's broken-image icon.
+        errorTileUrl: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><path fill="#f1eee5" d="M0 0h256v256H0z"/><path d="M0 0h256v256H0z" fill="none" stroke="#ddd7c8"/></svg>'),
+      }).on("tileerror", () => {
+        if (!cancelled) setTileError(true);
       }).addTo(map);
 
       // Hub
@@ -72,25 +61,37 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
         .addTo(map)
         .bindPopup("Traffic Point Hub");
 
-      leafletMapRef.current = map;
       setLoaded(true);
-      setTimeout(() => map.invalidateSize(), 200);
+      frame = requestAnimationFrame(() => { if (!cancelled) map.invalidateSize(); });
+      if (typeof ResizeObserver !== "undefined") {
+        resize = new ResizeObserver(() => { if (!cancelled) map.invalidateSize(); });
+        resize.observe(mapRef.current);
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      leafletMapRef.current?.remove();
+      leafletMapRef.current = null;
+      setLoaded(false);
+      setFailed(true);
     });
     return () => {
       cancelled = true;
+      resize?.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
       if (leafletMapRef.current) {
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
       }
     };
-  }, [leafletReady]);
+  }, [attempt]);
 
   // Update markers when riders/orders change
   useEffect(() => {
-    if (!leafletReady || !leafletMapRef.current) return;
+    const map = leafletMapRef.current;
+    if (!loaded || !map) return;
+    let cancelled = false;
     import("leaflet").then((L) => {
-      const map = leafletMapRef.current;
-      if (!map) return;
+      if (cancelled || leafletMapRef.current !== map) return;
       // Clear previous rider/order markers and lines; the hub marker (tagged
       // by its icon className) and the tile layer stay.
       map.eachLayer((layer) => {
@@ -128,7 +129,7 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
             : "#3b82f6"
           : "#ef4444";
         const icon = L.divIcon({
-          html: `<div style="background:${stateColor};color:white;border-radius:6px;padding:2px 6px;font-size:10px;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.3)">#${o.id.slice(-4)}</div>`,
+          html: `<div style="background:${stateColor};color:white;border-radius:6px;padding:2px 6px;font-size:10px;font-weight:bold;box-shadow:0 2px 6px rgba(0,0,0,0.3)">#${escapeHtml(o.id.slice(-4))}</div>`,
           className: "",
           iconSize: [60, 20],
           iconAnchor: [30, 10],
@@ -156,8 +157,9 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
           ).addTo(map);
         }
       });
-    });
-  }, [riders, orders, deliveries, leafletReady, now]);
+    }).catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [riders, orders, deliveries, loaded, attempt, now]);
 
   const onlineRiders = riders.filter((r) => r.isOnline).length;
   const ridersWithPin = riders.filter((r) => r.lat && r.lng).length;
@@ -177,8 +179,17 @@ export default function AdminLiveMap({ riders, orders, deliveries }: AdminLiveMa
         <span className="rounded-full bg-amber-50 px-2.5 py-1 ring-1 ring-amber-200">📦 Orders with pin: {ordersWithPin}/{orders.length}</span>
         <span className="rounded-full bg-forest-50 px-2.5 py-1 ring-1 ring-forest-200">H = Traffic Point Hub</span>
       </div>
-      <div ref={mapRef} className="h-[420px] w-full rounded-2xl ring-1 ring-line bg-ivory-100">
-        {!loaded && <div className="flex h-full items-center justify-center text-sm text-ink-soft">Loading live dispatch map...</div>}
+      {(failed || tileError) && (
+        <div className="rounded-xl border border-line bg-ivory-100 p-3 text-sm text-ink">
+          <p role="status">{failed ? "The dispatch map could not load. Your dispatch lists are still available below." : "The map background could not load completely. Pins may be visible without street details."}</p>
+          <button type="button" className="mt-2 inline-flex min-h-11 items-center rounded-full border border-line bg-paper px-4 font-semibold text-forest-900" onClick={() => {
+            setLoaded(false); setFailed(false); setTileError(false); setAttempt(value => value + 1);
+          }}>Retry map</button>
+        </div>
+      )}
+      <div className={`${styles.frame} relative isolate overflow-hidden rounded-2xl bg-ivory-100 ring-1 ring-line`}>
+        <div ref={mapRef} role="region" aria-label="Live dispatch map" className="h-[420px] w-full" />
+        {!loaded && !failed && <div role="status" className="pointer-events-none absolute inset-0 z-[1000] flex items-center justify-center bg-ivory-100 text-sm text-ink-soft">Loading live dispatch map...</div>}
       </div>
       <p className="text-[11px] text-ink-soft">OSM free. Rider green=free, amber=busy, gray=offline. Order colors: blue=offered/accepted, amber=picked, green=delivered. Lines show hub→order or rider→order.</p>
     </div>

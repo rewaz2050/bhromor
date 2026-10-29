@@ -11,6 +11,7 @@
  * that writes the same remembered zone every other surface reads.
  */
 
+import { bnDigits } from "@/lib/arrival";
 import { useLanguage } from "@/components/i18n/language-provider";
 import { IconChevron, IconMapPin } from "@/components/ui/icons";
 import type { Shop } from "@/lib/catalog";
@@ -42,7 +43,7 @@ export default function DeliveryLine({
         onChange={(e) => setZoneId(e.target.value || null)}
         aria-label={zone ? t("deliveryLine.change") : t("deliveryLine.choose")}
         data-testid="delivery-line-zone"
-        className="h-9 max-w-[11rem] appearance-none rounded-full bg-paper pl-3 pr-7 text-xs font-semibold text-forest-900 ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-500"
+        className="h-11 max-w-[11rem] appearance-none rounded-full bg-paper pl-3 pr-7 text-xs font-semibold text-forest-900 ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-forest-500"
       >
         <option value="">{t("deliveryLine.choose")}</option>
         {activeZones.map((z) => (
@@ -67,6 +68,7 @@ export default function DeliveryLine({
   } else {
     const parts = [
       t("deliveryLine.toZone").replace("{zone}", zone.name).replace("{charge}", money(zone.charge)),
+      lang === "bn" ? bnDigits(zone.etaLabel) : zone.etaLabel,
       t("deliveryLine.cod"),
     ];
     if (target !== null) parts.push(t("deliveryLine.freeOver").replace("{amount}", money(target)));

@@ -51,8 +51,11 @@ const securityHeaders = [
         { key: "X-Frame-Options", value: "SAMEORIGIN" },
       ]
     : [
-        // Non-Vercel hosts: at least keep the clickjacking guard (L1).
-        { key: "X-Frame-Options", value: "SAMEORIGIN" },
+        // Non-Vercel hosts: keep the clickjacking guard (L1). Only the
+        // explicitly opted-in local Arena dev preview may be embedded.
+        ...(process.env.NODE_ENV === "development" && process.env.ARENA_PREVIEW === "1"
+          ? []
+          : [{ key: "X-Frame-Options", value: "SAMEORIGIN" }]),
       ]),
   // Round 3 (2026-10-14): process-isolation headers on everything.
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
@@ -102,7 +105,7 @@ const noStoreRoutes = [
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  allowedDevOrigins: ["*.e2b.app"],
+  allowedDevOrigins: ["*.e2b.app", "localhost", "127.0.0.1"],
   poweredByHeader: false,
   async headers() {
     return [

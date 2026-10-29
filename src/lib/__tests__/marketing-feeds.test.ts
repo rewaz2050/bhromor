@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Product, Shop } from "../catalog";
 import {
   META_FEED_HEADER,
@@ -132,3 +132,9 @@ describe("marketing feeds — Google Merchant / Meta catalog", () => {
     expect(site).toMatchObject({ name: "PROSANTI", url: ORIGIN });
   });
 });
+
+
+// Feed/message fixtures deliberately use this configured host, independently
+// of the deployment's fallback domain or the runner's environment.
+beforeEach(() => { vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://prosanti.store"); });
+afterEach(() => { vi.unstubAllEnvs(); });

@@ -227,6 +227,7 @@ function RiderCard({
           suspendEffect="Future dispatch offers stop immediately."
         />
         </AdminOnly>
+        <AdminOnly>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -234,6 +235,7 @@ function RiderCard({
         >
           {open ? "Close" : "Edit"}
         </button>
+          </AdminOnly>
       </div>
 
       {/* Round 4 — documents to check BEFORE approving; always visible while the application is open. */}
@@ -481,6 +483,7 @@ export default function AdminRidersPage() {
           >
             Announcements
           </Link>
+          <AdminOnly>
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
@@ -489,6 +492,7 @@ export default function AdminRidersPage() {
             <IconPlus className="h-4 w-4" />
             {creating ? "Cancel" : "New rider"}
           </button>
+          </AdminOnly>
         </div>
       </div>
 

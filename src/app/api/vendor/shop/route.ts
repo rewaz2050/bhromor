@@ -24,5 +24,5 @@ export const PATCH = vendorRoute(
     revalidateCatalogCaches(CACHE_TAG_SHOPS);
     return apiJson({ shop: withoutReview(shop) });
   },
-  { limit: 20 },
+  { limit: 20, ownerOnly: true },
 );

@@ -114,8 +114,9 @@ describe("vendorShopPatch — the holiday (B6)", () => {
     ).toThrow(/only the shop owner/i);
   });
 
-  it("still lets staff flip the open sign, holiday or not", () => {
-    expect(patchFor({ isOpen: false }, "staff")).toMatchObject({ is_open: false });
+  it("keeps the open sign owner-only under the approved staff defaults", () => {
+    expect(() => patchFor({ isOpen: false }, "staff")).toThrow(/only the shop owner/i);
+    expect(patchFor({ isOpen: false }, "owner")).toMatchObject({ is_open: false });
   });
 
   it("books a holiday that starts today, and one day long", () => {

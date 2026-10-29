@@ -21,9 +21,10 @@ describe("<ErrorState>", () => {
     expect(screen.getByRole("link", { name: /Back to the shop/ })).toHaveAttribute("href", "/");
   });
 
-  it("reassures the shopper that nothing was lost", () => {
+  it("offers recovery without asserting that an interrupted order is safe", () => {
     render(<ErrorState />);
-    expect(screen.getByText(/Your bag and your orders are safe/)).toBeTruthy();
+    expect(screen.getByText(/check its status before submitting again/)).toBeTruthy();
+    expect(screen.queryByText(/nothing was lost/)).not.toBeInTheDocument();
   });
 
   it("retries the failed segment when asked", () => {

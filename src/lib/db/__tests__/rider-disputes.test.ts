@@ -97,6 +97,13 @@ describe("staff writes", () => {
     await expect(resolveDispute(db, "d1", { decision: "approve", amount: 1, note: "x" })).rejects.toMatchObject({ status });
     await expect(adjustRiderWallet(db, "r1", { amount: 1, note: "reason" })).rejects.toMatchObject({ status });
   });
+  it("a self-decision is refused with a peer-review explanation (202610260003)", async () => {
+    const { db } = rpcDb({ error: { message: "forbidden: cannot decide your own money" } });
+    await expect(resolveDispute(db, "d1", { decision: "approve", amount: 1, note: "x" }))
+      .rejects.toMatchObject({ status: 403, message: expect.stringContaining("another finance Admin") });
+    await expect(adjustRiderWallet(db, "r1", { amount: 1, note: "reason" }))
+      .rejects.toMatchObject({ status: 403 });
+  });
   it("adjust returns the journal row", async () => {
     const { db, calls } = rpcDb({ data: { id: "e1", amount: "-1500" } });
     expect(await adjustRiderWallet(db, "r1", { amount: -1500, note: "Damaged parcel" })).toEqual({ id: "e1", amount: -1500 });

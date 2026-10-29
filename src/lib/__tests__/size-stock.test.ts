@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PRODUCTS, type Product } from "@/lib/catalog";
-import { availableSizes, isSizeSoldOut, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "../size-stock";
+import { displaySizeOrder, availableSizes, isSizeSoldOut, pickSelectableSize, sizeAvailability, sizeLeftLabel } from "../size-stock";
 
 const base = PRODUCTS.find((p) => p.sizes.length >= 3)!;
 const withGrid = (sizeStock: Record<string, number>): Product => ({ ...base, sizeStock });
@@ -40,4 +40,12 @@ describe("per-size stock helpers (UX plan §4, R10)", () => {
     expect(sizeLeftLabel(2, "bn")).toBe("২টি বাকি");
     expect(sizeLeftLabel(2, "en")).toBe("2 left");
   });
+});
+
+
+it("orders standard sizes consistently without changing selection defaults or input", () => {
+  const sizes = ["XXL", "M", "L", "Custom"];
+  expect(displaySizeOrder(sizes)).toEqual(["M", "L", "XXL", "Custom"]);
+  expect(sizes).toEqual(["XXL", "M", "L", "Custom"]);
+  expect(pickSelectableSize({ ...base, sizes }, null)).toBe("");
 });

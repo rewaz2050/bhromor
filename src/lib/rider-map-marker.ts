@@ -49,9 +49,10 @@ export const riderMarkerStyle = (
 
 export const riderMarkerHtml = (name: string, style: RiderMarkerStyle): string => {
   const initial = escapeHtml(name.trim()[0] ?? "?");
+  const ink = style.color === "#6b7280" ? "white" : "#142c22";
   const body = style.stale
-    ? `background:white;color:${style.color};border:2px dashed ${style.color};opacity:0.85`
-    : `background:${style.color};color:white;border:2px solid white`;
+    ? `background:white;color:#142c22;border:2px dashed ${style.color};opacity:0.85`
+    : `background:${style.color};color:${ink};border:2px solid white`;
   const badge = style.stale
     ? `<span style="position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;border-radius:9999px;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center">?</span>`
     : "";

@@ -134,6 +134,14 @@ const ORDERS: DbOrder[] = [
 ];
 
 describe("toDomainMany (batched order mapper)", () => {
+  it("only the explicit customer projection receives PIN and signed tracking proof", async () => {
+    const { db } = recordingDb(FIXTURES);
+    const mapped = await toDomainMany(db, ORDERS, { customerView: true });
+    expect(mapped[1]?.deliveryCode).toBe("4321");
+    expect(mapped[1]?.trackToken).toMatch(/^[0-9a-f]{24}$/);
+    const operational = await toDomainMany(db, ORDERS);
+    expect(operational.every(order => !order?.deliveryCode && !order?.trackToken)).toBe(true);
+  });
   it("maps four orders in two rounds of .in() queries — never one query per order", async () => {
     const { db, calls } = recordingDb(FIXTURES);
     const out = await toDomainMany(db, ORDERS);
@@ -213,7 +221,8 @@ describe("toDomainMany (batched order mapper)", () => {
       ratingAvg: 4.5,
       ratingCount: 12,
     });
-    expect(o2?.deliveryCode).toBe("4321");
+    expect(o2?.deliveryCode).toBeUndefined();
+    expect(o2?.trackToken).toBeUndefined();
 
     // item without a product id still maps (no enrichment)
     expect(o3?.items[0]).toMatchObject({ image: "" });

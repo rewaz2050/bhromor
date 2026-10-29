@@ -62,3 +62,7 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     return false;
   }
 };
+
+/** Canceling a native sheet is a choice, not permission to copy the URL. */
+export const isShareCancellation = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";

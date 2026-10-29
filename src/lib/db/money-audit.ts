@@ -2,7 +2,7 @@ import "server-only";
 
 /**
  * Money audit trail reader (202610010006, audit item T). Read through the
- * staff JWT client: the table's RLS policy answers only to `ps_is_admin()`.
+ * staff JWT client: restrictive reporting RLS requires `ps_can_manage_finance()`.
  * Returns null on a database where the migration has not run.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";

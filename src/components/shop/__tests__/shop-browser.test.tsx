@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import ShopBrowser from "@/components/shop/shop-browser";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import { resolveSort } from "@/lib/shop-sort";
 import { CartProvider } from "@/components/cart/cart-provider";
 import { CATEGORIES, DELIVERY_ZONES, PRODUCTS, type Shop } from "@/lib/catalog";
@@ -518,4 +519,29 @@ describe("ShopBrowser", () => {
     // …but the empty state stays the generic one without a zone set.
     expect(screen.getByText(/no products found/i)).toBeInTheDocument();
   });
+  it("does not suggest clearing filters when the catalog itself is empty", () => {
+    renderShop({ products: [], categories: [], shops: [] });
+    expect(screen.getByRole("heading", { name: "No products to show right now" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Contact support" })).toHaveAttribute("href", "/contact");
+  });
+
+  it("localizes filter names, active chips and drawer results in Bengali", () => {
+    const { unmount } = render(
+      <LanguageProvider initialLang="bn"><CartProvider>
+        <ShopBrowser products={PRODUCTS} categories={CATEGORIES} shops={launchShops()} zones={DELIVERY_ZONES} initialCategory="men" initialNew={false} />
+      </CartProvider></LanguageProvider>,
+    );
+    const category = CATEGORIES.find(c => c.id === "men")!;
+    expect(screen.getByRole("button", { name: `${category.nameBn} ফিল্টার সরান` })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^ফিল্টার/ }));
+    const dialog = screen.getByRole("dialog", { name: "পণ্যের ফিল্টার" });
+    expect(within(dialog).getByRole("status")).toHaveTextContent(/আপনার ফিল্টারে [০-৯]+টি পণ্য/);
+    expect(within(dialog).getByRole("radio", { name: new RegExp(category.nameBn) })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "উৎসবের" })).toBeInTheDocument();
+    unmount();
+    localStorage.removeItem("prosanti-lang");
+    document.cookie = "prosanti-lang=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+  });
+
 });

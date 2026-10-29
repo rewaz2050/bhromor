@@ -29,4 +29,4 @@ export const GET = vendorRoute("followers", async (ctx) => {
       createdAt: f.createdAt,
     })),
   });
-});
+}, { ownerOnly: true });

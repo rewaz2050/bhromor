@@ -16,6 +16,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import AdminOnly from "@/components/admin/admin-only";
+import AdminDataError from "@/components/admin/admin-data-error";
 import { formatBdt } from "@/lib/format";
 import { computeNet, PNL_RANGES, type PnlRange } from "@/lib/money-pnl";
 import {
@@ -164,6 +165,38 @@ export default function AdminMoneyPage() {
     if (ok) setRatesDraft(null);
   };
 
+  /**
+   * Four-eyes (202610290002). Off by default: `quorumPaisa` is 0 until the
+   * owner sets a threshold, and then only requests at or above it show the
+   * second-Admin control. Confirming says "I, another Admin, have seen this";
+   * the paying Admin still records the real decision.
+   */
+  const quorumNeeded = (amount: number) => money.quorumPaisa > 0 && amount >= money.quorumPaisa;
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
+  const submitConfirm = async (row: { id: string; amount: number }) => {
+    setConfirming(row.id);
+    const ok = await money.confirm({ kind: "rider_payout", ref: row.id, amount: row.amount });
+    setConfirming(null);
+    if (ok) setConfirmedIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+  };
+
+  // Two-Admin rule editor (paisa 0 = off). Same taka-in/paise-out rule as the
+  // rates form so the owner types what they know.
+  const [quorumDraft, setQuorumDraft] = useState<string | null>(null);
+  const [savingQuorum, setSavingQuorum] = useState(false);
+  const [quorumSaved, setQuorumSaved] = useState(false);
+  const quorumValue = quorumDraft ?? (money.quorumPaisa > 0 ? paisaToTaka(money.quorumPaisa) : "0");
+  const saveQuorumRule = async () => {
+    const n = Number(quorumValue);
+    if (!Number.isFinite(n) || n < 0) return;
+    setSavingQuorum(true);
+    const ok = await money.saveQuorum(Math.round(n * 100));
+    setSavingQuorum(false);
+    setQuorumSaved(ok);
+    if (ok) setQuorumDraft(null);
+  };
+
   const submitDecision = async () => {
     if (!actionForm) return;
     setActing(actionForm.id);
@@ -205,19 +238,22 @@ export default function AdminMoneyPage() {
   if (!money.ready || !summary) {
     return (
       <div className="space-y-4">
-        {money.error && (
-          <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
-            {money.error}
-          </p>
+        <AdminDataError
+          label="Money"
+          error={money.error ?? (!money.backendMissing ? "Money data could not be loaded." : null)}
+          onRetry={money.refresh}
+          onDismiss={money.error ? money.clearError : undefined}
+        />
+        {money.backendMissing && !money.error && (
+          <div className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-900 ring-1 ring-amber-200">
+            <p className="font-semibold">Rider money backend is not installed yet</p>
+            <p className="mt-2">
+              Run <code>supabase/migrations/202609300002_rider_money.sql</code> in the Supabase SQL
+              editor. Until then riders keep earning ৳0 per delivery and no payout can be filed —
+              the rest of the app is unaffected.
+            </p>
+          </div>
         )}
-        <div className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-900 ring-1 ring-amber-200">
-          <p className="font-semibold">Rider money backend is not installed yet</p>
-          <p className="mt-2">
-            Run <code>supabase/migrations/202609300002_rider_money.sql</code> in the Supabase SQL
-            editor. Until then riders keep earning ৳0 per delivery and no payout can be filed —
-            the rest of the app is unaffected.
-          </p>
-        </div>
       </div>
     );
   }
@@ -227,14 +263,7 @@ export default function AdminMoneyPage() {
 
   return (
     <div className="space-y-6">
-      {money.error && (
-        <p role="alert" className="rounded-xl bg-rose-50 px-3.5 py-2.5 text-xs font-medium text-rose-800 ring-1 ring-rose-200">
-          {money.error}{" "}
-          <button type="button" onClick={money.clearError} className="font-semibold underline underline-offset-2">
-            Dismiss
-          </button>
-        </p>
-      )}
+      <AdminDataError label="Money" error={money.error} onRetry={money.refresh} onDismiss={money.clearError} />
 
       {!ratesConfigured && (
         <div
@@ -251,57 +280,65 @@ export default function AdminMoneyPage() {
       )}
 
       {/* Net result (N7) — what the platform actually keeps */}
-      {money.pnl ? (
-        (() => {
-          const p = money.pnl;
-          const n = computeNet(p);
-          return (
-            <section className="space-y-3" data-testid="net-pnl">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-display text-lg font-bold text-forest-900">Net result</h2>
-                <div className="inline-flex rounded-full bg-ivory-100 p-1 ring-1 ring-line" role="tablist" aria-label="Period">
-                  {PNL_RANGES.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      role="tab"
-                      aria-selected={money.range === r}
-                      onClick={() => money.setRange(r)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${money.range === r ? "bg-forest-800 text-white" : "text-ink-soft hover:text-forest-900"}`}
-                    >
-                      {RANGE_LABEL[r]}
-                    </button>
-                  ))}
+      <section className="space-y-3" aria-label="Net result">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg font-bold text-forest-900">Net result</h2>
+          <div className="inline-flex rounded-full bg-ivory-100 p-1 ring-1 ring-line" role="tablist" aria-label="Period">
+            {PNL_RANGES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={money.range === r}
+                onClick={() => money.setRange(r)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${money.range === r ? "bg-forest-800 text-white" : "text-ink-soft hover:text-forest-900"}`}
+              >
+                {RANGE_LABEL[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {money.pnlLoading ? (
+          <p role="status" className="text-sm text-ink-soft">Loading net result for this period…</p>
+        ) : money.pnl ? (
+          (() => {
+            const p = money.pnl;
+            const n = computeNet(p);
+            return (
+              <div className="space-y-3" data-testid="net-pnl">
+                <div className="divide-y divide-line rounded-2xl bg-paper ring-1 ring-line">
+                  <Line sign="+" label="Commission" value={p.commission} hint="Shop ledger, delivered orders" testId="pnl-commission" />
+                  <Line sign="+" label="Delivery & surcharge charges" value={p.deliveryIncome} hint={`${p.deliveredOrders} delivered orders`} testId="pnl-delivery" />
+                  {p.shopFundedFreeDelivery > 0 && (
+                    <Line sign="+" label="Free delivery paid back by shops" value={p.shopFundedFreeDelivery} />
+                  )}
+                  <Line sign="−" label="Rider pay (fees, COD handling, incentives)" value={n.riderCost} hint="Tips excluded — they pass straight through" testId="pnl-rider" />
+                  <Line sign="−" label="Discounts PROSANTI absorbed" value={n.platformDiscounts} hint={`${formatBdt(p.discountsGiven)} given, ${formatBdt(p.shopFundedDiscounts)} funded by shops`} testId="pnl-discounts" />
+                  <div className="flex items-baseline justify-between gap-3 bg-forest-800 px-4 py-3 text-white first:rounded-t-2xl last:rounded-b-2xl" data-testid="pnl-net">
+                    <p className="text-sm font-semibold uppercase tracking-wider">Net operating result</p>
+                    <p className="font-display text-2xl tabular-nums">{signed(n.net)}</p>
+                  </div>
                 </div>
+                <p className="text-[11px] text-ink-soft" data-testid="pnl-unit">
+                  {n.perOrder === null
+                    ? "No delivered orders in this period."
+                    : `${signed(n.perOrder)} per delivered order · delivery charges minus rider pay: ${signed(n.deliveryMarginPerOrder ?? 0)} per trip.`}{" "}
+                  Tips ({formatBdt(p.tipsCollected)} collected, {formatBdt(p.tipsToRiders)} credited to riders
+                  {n.tipsHeld !== 0 ? `, ${signed(n.tipsHeld)} not yet credited` : ""}) are the riders&apos; money and are not part of the result.
+                </p>
               </div>
-              <div className="divide-y divide-line rounded-2xl bg-paper ring-1 ring-line">
-                <Line sign="+" label="Commission" value={p.commission} hint="Shop ledger, delivered orders" testId="pnl-commission" />
-                <Line sign="+" label="Delivery & surcharge charges" value={p.deliveryIncome} hint={`${p.deliveredOrders} delivered orders`} testId="pnl-delivery" />
-                {p.shopFundedFreeDelivery > 0 && (
-                  <Line sign="+" label="Free delivery paid back by shops" value={p.shopFundedFreeDelivery} />
-                )}
-                <Line sign="−" label="Rider pay (fees, COD handling, incentives)" value={n.riderCost} hint="Tips excluded — they pass straight through" testId="pnl-rider" />
-                <Line sign="−" label="Discounts PROSANTI absorbed" value={n.platformDiscounts} hint={`${formatBdt(p.discountsGiven)} given, ${formatBdt(p.shopFundedDiscounts)} funded by shops`} testId="pnl-discounts" />
-                <div className="flex items-baseline justify-between gap-3 bg-forest-800 px-4 py-3 text-white first:rounded-t-2xl last:rounded-b-2xl" data-testid="pnl-net">
-                  <p className="text-sm font-semibold uppercase tracking-wider">Net operating result</p>
-                  <p className="font-display text-2xl tabular-nums">{signed(n.net)}</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-ink-soft" data-testid="pnl-unit">
-                {n.perOrder === null
-                  ? "No delivered orders in this period."
-                  : `${signed(n.perOrder)} per delivered order · delivery charges minus rider pay: ${signed(n.deliveryMarginPerOrder ?? 0)} per trip.`}{" "}
-                Tips ({formatBdt(p.tipsCollected)} collected, {formatBdt(p.tipsToRiders)} credited to riders
-                {n.tipsHeld !== 0 ? `, ${signed(n.tipsHeld)} not yet credited` : ""}) are the riders&apos; money and are not part of the result.
-              </p>
-            </section>
-          );
-        })()
-      ) : (
-        <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200" data-testid="pnl-missing">
-          Net result needs <code>supabase/migrations/202610010003_money_pnl.sql</code> — run it in the Supabase SQL editor.
-        </p>
-      )}
+            );
+          })()
+        ) : (
+          <div className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200" data-testid="pnl-missing">
+            <p>{money.error
+              ? "Net result could not be loaded for this period."
+              : <>Net result unavailable. If the P&amp;L migration has not been installed, run <code>supabase/migrations/202610010003_money_pnl.sql</code> in the Supabase SQL editor.</>}
+            </p>
+            <button type="button" onClick={() => void money.refresh()} className="mt-2 min-h-11 font-semibold underline underline-offset-2">Retry net result</button>
+          </div>
+        )}
+      </section>
 
       {/* Gross flows, all time */}
       <section className="space-y-3">
@@ -426,7 +463,26 @@ export default function AdminMoneyPage() {
                     <td className="px-4 py-3 text-ink-soft">{formatBdt(row.cashInHand)}</td>
                     <td className="px-4 py-3">
                       <AdminOnly note="Payout approve শুধু admin করতে পারে।">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {quorumNeeded(row.amount) && (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                            Needs 2nd Admin
+                          </span>
+                        )}
+                        {quorumNeeded(row.amount) && (
+                          <button
+                            type="button"
+                            onClick={() => void submitConfirm(row)}
+                            disabled={confirming === row.id || confirmedIds.includes(row.id)}
+                            className="rounded-full border border-forest-300 bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-forest-800 hover:bg-forest-50 disabled:opacity-60"
+                          >
+                            {confirmedIds.includes(row.id)
+                              ? "Confirmed by you"
+                              : confirming === row.id
+                                ? "Confirming…"
+                                : "Confirm as 2nd Admin"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -604,6 +660,53 @@ export default function AdminMoneyPage() {
             {ratesSaved && (
               <span role="status" className="text-xs font-semibold text-emerald-800">
                 Saved — applies from the next delivery.
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Four-eyes finance (202610290002) — off until the owner sets a limit */}
+      <section className="space-y-3" aria-label="Two-Admin rule">
+        <h2 className="font-display text-lg font-bold text-forest-900">Two-Admin rule</h2>
+        <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+          <p className="text-xs text-ink-soft">
+            Set a limit and any payout at or above it needs a second Admin&apos;s confirmation before
+            the money leaves. Below the limit nothing changes. The Admin who confirms can never also
+            record that same decision, and a confirmation only covers the amount that was shown.
+            Leave it at 0 to keep today&apos;s single-Admin flow.
+          </p>
+          <p className="mt-3 text-xs font-semibold text-forest-900" data-testid="quorum-state">
+            {money.quorumPaisa > 0
+              ? `On — payouts of ${formatBdt(money.quorumPaisa)} or more need two Admins.`
+              : "Off — one Admin can still decide every payout."}
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                Needs two Admins from (৳)
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={quorumValue}
+                onChange={(e) => setQuorumDraft(e.target.value)}
+                aria-label="Two-Admin threshold in taka"
+                className="mt-1 w-full rounded-xl border border-line bg-ivory-50 px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void saveQuorumRule()}
+              disabled={savingQuorum}
+              className="inline-flex h-10 items-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
+            >
+              {savingQuorum ? "Saving…" : "Save rule"}
+            </button>
+            {quorumSaved && (
+              <span role="status" className="text-xs font-semibold text-emerald-800">
+                Saved.
               </span>
             )}
           </div>

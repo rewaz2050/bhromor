@@ -20,6 +20,7 @@ import {
 } from "@/components/vendor/vendor-ui";
 import { formatBdt } from "@/lib/format";
 import type { OrderStatus } from "@/lib/orders";
+import { vendorCan } from "@/lib/vendor-permissions";
 import { paymentSummary } from "@/lib/payment-labels";
 import { canQuickCancel, primaryAction } from "@/lib/order-actions";
 import { useVendorOrder, vendorErrorMessage } from "@/lib/use-vendor";
@@ -138,7 +139,7 @@ export default function VendorOrderDetailPage({
   const action = primaryAction(order, "vendor");
   const next = action?.kind === "action" ? action : null;
   const optional = OPTIONAL_ACTION[order.status];
-  const canCancel = canQuickCancel(order);
+  const canCancel = canQuickCancel(order) && !!me && vendorCan(me, "cancellation");
   const pay = paymentSummary(order);
   const where = order.isPickup
     ? "Counter pickup — customer collects at Traffic Point"
@@ -172,7 +173,7 @@ export default function VendorOrderDetailPage({
         <PrepTimer createdAt={order.createdAt} prepMinutes={me?.shop.prepMinutes ?? 15} />
       )}
 
-      {pay.awaitingVerification && order.status !== "cancelled" && (
+      {pay.awaitingVerification && order.status !== "cancelled" && me && vendorCan(me, "cashier") && (
         <div className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
           <p className="font-semibold">
             💳 {pay.wallet} payment of {formatBdt(order.total)} is waiting for YOUR check.
@@ -185,7 +186,7 @@ export default function VendorOrderDetailPage({
       )}
       {action?.kind === "blocked" && (
         <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
-          {action.reason}.
+          {me && !vendorCan(me, "cashier") ? "Payment awaits the owner or a delegated cashier" : action.reason}.
         </p>
       )}
       {action?.kind === "wait" && (
@@ -297,7 +298,7 @@ export default function VendorOrderDetailPage({
                   : "Cash on delivery — the rider collects and settles with PROSANTI."}
             </p>
           </dl>
-          <PaymentCard
+          {me && vendorCan(me, "cashier") && <PaymentCard
             actor="vendor"
             orderNo={order.id}
             payment={order.payment}
@@ -309,7 +310,7 @@ export default function VendorOrderDetailPage({
             orderStatus={order.status}
             verifier={order.paymentVerifier}
             onDecided={reload}
-          />
+          />}
         </section>
 
         <div className="space-y-4">

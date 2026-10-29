@@ -26,7 +26,7 @@ export const activeTab = (path: string | null, href: string): boolean => {
 };
 
 export default function BottomNav() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const path = usePathname();
   const { openBag, itemCount } = useCart();
   const { customer } = useCustomer();
@@ -65,7 +65,7 @@ export default function BottomNav() {
           try { navigator.vibrate?.(10); } catch {}
           openBag();
         }}
-        aria-label={`Open bag, ${itemCount} items`}
+        aria-label={lang === "bn" ? `ব্যাগ খুলুন, ${itemCount}টি পণ্য` : `Open bag, ${itemCount} items`}
         aria-haspopup="dialog"
         className="tap-press flex min-h-16 flex-col items-center justify-center gap-1"
       >

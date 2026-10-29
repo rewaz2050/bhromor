@@ -14,27 +14,65 @@ export function RiderPushCard({ enabled }: { enabled: boolean }) {
   // Nothing useful to show while probing, or when the office has not set it up.
   if (push.phase === "loading" || push.phase === "off-server") return null;
 
+  if (push.phase === "error") {
+    return (
+      <section
+        aria-label="নোটিফিকেশনের অবস্থা"
+        className="space-y-2 rounded-2xl bg-paper p-4 ring-1 ring-line"
+      >
+        <p role="alert" className="text-sm text-rose-800">
+          {push.error}
+        </p>
+        <button
+          type="button"
+          onClick={() => void push.retry()}
+          disabled={push.busy}
+          className="min-h-11 rounded-lg px-3 text-sm font-semibold text-forest-900 underline underline-offset-2 disabled:opacity-50"
+        >
+          আবার চেষ্টা করুন
+        </button>
+      </section>
+    );
+  }
+
   if (push.phase === "on") {
     return (
-      <div data-testid="rider-push-on" className="flex items-center justify-between gap-2 rounded-2xl bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 ring-1 ring-emerald-200">
-        <span className="font-semibold">🔔 নতুন অফারে অ্যাপ বন্ধ থাকলেও ফোন বাজবে</span>
+      <div
+        data-testid="rider-push-on"
+        className="flex items-center justify-between gap-2 flex-wrap rounded-2xl bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 ring-1 ring-emerald-200"
+      >
+        <span className="font-semibold">
+          🔔 নতুন অফারে অ্যাপ বন্ধ থাকলেও ফোন বাজবে
+        </span>
         <button
           type="button"
           onClick={() => void push.disable()}
           disabled={push.busy}
-          className="shrink-0 text-emerald-800 underline underline-offset-2 disabled:opacity-50"
+          className="min-h-11 shrink-0 px-2 text-emerald-800 underline underline-offset-2 disabled:opacity-50"
         >
           বন্ধ করুন
         </button>
+        {push.error && (
+          <p
+            role="alert"
+            className="w-full text-xs font-semibold text-rose-800"
+          >
+            {push.error}
+          </p>
+        )}
       </div>
     );
   }
 
   return (
-    <section data-testid="rider-push-card" className="space-y-2 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300">
+    <section
+      data-testid="rider-push-card"
+      className="space-y-2 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-300"
+    >
       <p className="text-sm font-bold text-forest-950">🔔 অফার মিস করবেন না</p>
       <p className="text-xs text-ink-soft">
-        অফার মাত্র ৯০ সেকেন্ড থাকে। নোটিফিকেশন চালু থাকলে অ্যাপ বন্ধ বা ফোন পকেটে থাকলেও নতুন অফারে ফোন বাজবে।
+        অফার মাত্র ৯০ সেকেন্ড থাকে। নোটিফিকেশন চালু থাকলে অ্যাপ বন্ধ বা ফোন
+        পকেটে থাকলেও নতুন অফারে ফোন বাজবে।
       </p>
       {push.phase === "blocked" && (
         <p role="note" className="text-xs font-semibold text-rose-800">

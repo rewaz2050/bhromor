@@ -1,6 +1,11 @@
 /**
  * POST /api/admin/orders/[orderNo]/advance { to, note? } — staff status
  * transition through the database §34 machine (illegal moves fail here).
+ * Shop fulfilment additionally requires authenticated Admin/Super Admin,
+ * fulfilmentOverride: true and a 10–300 character note; SQL records the exception.
+ * A counter pickup may instead carry pickupOverride: true with the same
+ * 10–300 character note — the audited exception for a customer who lost the
+ * receipt. Admin/Super Admin only; the PIN is never re-issued or displayed.
  */
 import { advanceOrderAsStaff } from "@/lib/db/admin";
 import { AdminInputError } from "@/lib/db/admin";
@@ -37,11 +42,17 @@ const STATUSES: OrderStatus[] = [
 
 export const POST = staffRoute(
   "orders-advance",
-  async ({ db }, request, routeContext) => {
+  async ({ db, role }, request, routeContext) => {
     const id = await routeId(routeContext);
-    let body: { to?: string; note?: string };
+    let body: {
+      to?: string;
+      note?: string;
+      fulfilmentOverride?: boolean;
+      pickupCode?: string;
+      pickupOverride?: boolean;
+    };
     try {
-      body = (await request.json()) as { to?: string; note?: string };
+      body = (await request.json()) as typeof body;
     } catch {
       throw new AdminInputError("Invalid request.");
     }
@@ -53,6 +64,12 @@ export const POST = staffRoute(
       id,
       body.to as OrderStatus,
       typeof body.note === "string" ? body.note : undefined,
+      {
+        role,
+        fulfilmentOverride: body.fulfilmentOverride === true,
+        pickupCode: typeof body.pickupCode === "string" ? body.pickupCode : undefined,
+        pickupOverride: body.pickupOverride === true,
+      },
     );
     const staffDb = getSupabaseService();
     if (staffDb) {

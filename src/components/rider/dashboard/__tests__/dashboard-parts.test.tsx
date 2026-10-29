@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Order } from "@/lib/orders";
 import type { RiderTask } from "@/lib/rider-tasks";
 
@@ -269,7 +269,7 @@ describe("SettleModal", () => {
 describe("ReleaseJobForm", () => {
   const open = () => fireEvent.click(screen.getByText(/এই কাজটি করতে পারছেন না/));
   const type = (v: string) => fireEvent.change(screen.getByLabelText("Hand back reason"), { target: { value: v } });
-  it("is closed until asked; the reason needs five characters", () => {
+  it("is closed until asked; the reason needs five characters", async () => {
     render(<ReleaseJobForm assignmentId="a1" onReleased={vi.fn()} />);
     expect(screen.queryByLabelText("Hand back reason")).toBeNull();
     open();
@@ -306,10 +306,10 @@ describe("ReleaseJobForm", () => {
 });
 
 describe("FailedAttemptForm", () => {
-  it("is closed until asked; the reason needs five characters", () => {
+  it("is closed until asked; the reason needs five characters", async () => {
     render(<FailedAttemptForm assignmentId="a1" onRecorded={vi.fn()} />);
     expect(screen.queryByLabelText("Failed attempt reason")).toBeNull();
-    fireEvent.click(screen.getByText(/Report failed attempt/));
+    await act(async () => { fireEvent.click(screen.getByText(/Report failed attempt/)); });
     expect(screen.getByText("Submit failed")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Failed attempt reason"), { target: { value: "  abc " } });
     expect(screen.getByText("Submit failed")).toBeDisabled();

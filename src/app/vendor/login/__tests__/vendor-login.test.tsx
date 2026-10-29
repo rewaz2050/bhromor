@@ -143,4 +143,28 @@ describe("Vendor Login Page — pending auto re-check (apply = sign up)", () => 
     expect(screen.getByText("Request a password reset")).toBeInTheDocument();
     expect(screen.getByLabelText("Mobile number")).toBeInTheDocument();
   });
+  it("focuses and describes a bad identifier before attempting sign-in", () => {
+    render(<VendorLoginPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    const input = screen.getByLabelText("Email or mobile number");
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription(/valid email address/);
+    expect(session.value.signIn).not.toHaveBeenCalled();
+  });
+
+  it("recovers from a rejected sign-in promise without leaving controls busy", async () => {
+    session.value.signIn.mockRejectedValueOnce(new Error("Network unavailable"));
+    render(<VendorLoginPage />);
+    fireEvent.change(screen.getByLabelText("Email or mobile number"), { target: { value: "shop@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "qa-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Could not sign in"));
+    // Focus moves in an effect that runs after the alert paints, so asserting it
+    // synchronously raced the render (it failed on a loaded CI runner).
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+    expect(screen.getByLabelText("Password")).toHaveValue("qa-password");
+  });
+
 });

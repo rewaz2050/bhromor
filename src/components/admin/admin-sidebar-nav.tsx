@@ -10,6 +10,8 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { useStaffRole } from "@/lib/use-staff-role";
+import { isAdminFinancePath } from "@/lib/admin-finance-access";
 import Link from "next/link";
 import { IconChevron } from "@/components/ui/icons";
 import {
@@ -35,6 +37,8 @@ export default function AdminSidebarNav({
   /** Close the mobile drawer after a tap. */
   onNavigate?: () => void;
 }) {
+  const { canManage } = useStaffRole();
+  const groups = ADMIN_NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => canManage || !isAdminFinancePath(item.href)) })).filter((group) => group.items.length > 0);
   // localStorage holds the fold; the store keeps React in step with it. Until
   // it is read on the client the server snapshot keeps every group open, so
   // the markup never disagrees on first paint.
@@ -54,7 +58,7 @@ export default function AdminSidebarNav({
 
   return (
     <nav aria-label="Admin" className="flex-1 space-y-3 px-3 py-4">
-      {ADMIN_NAV_GROUPS.map((group) => {
+      {groups.map((group) => {
         const open = !collapsed.includes(group.id);
         const groupPending = group.items.reduce(
           (sum, item) => sum + pendingFor(item, counts),

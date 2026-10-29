@@ -6,6 +6,8 @@ import type { Order } from "./orders";
 export function riderOrderView(order: Order, state: string): Order {
   const view = { ...order };
   delete view.deliveryCode;
+  // A customer tracking capability can retrieve the PIN indirectly.
+  delete view.trackToken;
   delete view.paymentRef;
   delete view.deliveryProofUrl;
   // Notes in status history can contain staff-only/customer information.

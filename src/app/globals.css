@@ -190,10 +190,10 @@ html {
   justify-content: center;
   gap: 1.25rem;
   padding: 1rem 1.5rem;
-  font-size: 0.65rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   transition:
     background-color 200ms,
     color 200ms;
@@ -287,14 +287,11 @@ html {
   .tap-press:active:not(:disabled) {
     transform: scale(0.975);
   }
-  .editorial-hero h1 {
-    animation: storefront-reveal 520ms var(--ease-refined) both;
-  }
   /* <Reveal> — below-the-fold blocks only; compositor-only properties (no
      blur filter), see components/ui/reveal.tsx. */
   .reveal-pending {
-    opacity: 0;
-    transform: translateY(16px);
+    opacity: 1;
+    transform: none;
     transition:
       opacity 560ms var(--ease-refined),
       transform 560ms var(--ease-refined);
@@ -318,9 +315,10 @@ html {
   --ease-spring: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-app: cubic-bezier(0.32, 0.72, 0, 1);
-  --radius-card: 16px;
+  --radius-card: 12px;
   --radius-pill: 999px;
   --radius-sheet: 20px;
+  --bottom-nav-height: calc(4.35rem + env(safe-area-inset-bottom));
   --shadow-soft: 0 4px 20px -8px rgb(20 41 31 / 12%);
   --shadow-elevated: 0 16px 48px -20px rgb(20 41 31 / 24%);
   --shadow-card: 0 2px 16px -6px rgb(20 41 31 / 10%), 0 1px 4px rgb(20 41 31 / 6%);
@@ -368,7 +366,7 @@ body {
   outline-offset: 4px;
 }
 .editorial-button {
-  border-radius: 3px;
+  border-radius: 10px;
   font-weight: 600;
   box-shadow: 0 1px 0 rgb(255 255 255 / 8%) inset;
   transition:
@@ -408,7 +406,7 @@ body {
 }
 .storefront-header {
   box-shadow: var(--shadow-header);
-  animation: header-enter 640ms var(--ease-refined) both;
+
   transform: translateZ(0);
 }
 .storefront-header[data-scrolled="true"] .header-bar {
@@ -495,7 +493,7 @@ body {
   left: 0.85rem;
   right: 0.85rem;
   height: 2px;
-  background: linear-gradient(90deg, var(--color-gold-400), var(--color-gold-600));
+  background: var(--color-forest-700);
   border-radius: 999px;
   transform: scaleX(0);
   transform-origin: center;
@@ -766,7 +764,7 @@ body {
   line-height: 1.9;
 }
 .product-card-media {
-  border-radius: 4px;
+  border-radius: 10px;
   isolation: isolate;
   /* A press-and-hold on a card is a photo peek, not the iOS "save image" sheet. */
   -webkit-touch-callout: none;
@@ -795,7 +793,7 @@ body {
 .product-heart:active:not(:disabled) { transform: scale(0.92); }
 .product-heart:disabled { opacity: 0.45; }
 .product-quick-add {
-  border-radius: 2px;
+  border-radius: 10px;
   box-shadow: var(--shadow-soft);
   transition:
     background-color var(--motion-standard),
@@ -977,18 +975,6 @@ body {
   .drawer-panel[data-drawer-side="bottom"] {
     animation-name: drawer-bottom;
   }
-  .hero-copy > p:first-child {
-    animation: storefront-reveal 520ms var(--ease-refined) both;
-  }
-  .hero-copy h1 {
-    animation: storefront-reveal 640ms var(--ease-refined) 80ms both;
-  }
-  .hero-copy > p:nth-of-type(2) {
-    animation: storefront-reveal 560ms var(--ease-refined) 160ms both;
-  }
-  .hero-copy .editorial-button {
-    animation: storefront-reveal 520ms var(--ease-refined) 240ms both;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .editorial-button:active,
@@ -1009,7 +995,7 @@ body {
   min-height: 0;
 }
 .product-card-media {
-  border-radius: 2px;
+  border-radius: 10px;
 }
 .product-card-actions {
   transition:
@@ -1017,7 +1003,7 @@ body {
     transform var(--motion-standard) var(--ease-refined);
 }
 .product-view-details {
-  border-radius: 2px;
+  border-radius: 10px;
   transition:
     background-color var(--motion-standard),
     color var(--motion-standard);
@@ -1141,7 +1127,7 @@ body {
   left: 0;
   right: 0;
   height: 1.5px;
-  background: linear-gradient(90deg, var(--color-gold-300), var(--color-gold-600));
+  background: var(--color-forest-700);
   transform-origin: left;
   transform: scaleX(0);
   opacity: 0;
@@ -1193,7 +1179,7 @@ body {
   box-shadow: 0 1px 0 rgb(20 41 31 / 4%);
 }
 .product-card-badge {
-  border-radius: 2px;
+  border-radius: 10px;
   letter-spacing: 0.16em;
 }
 .product-card-title a {
@@ -1224,11 +1210,7 @@ body {
 .free-delivery-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    var(--color-gold-300),
-    var(--color-gold-600)
-  );
+  background: var(--color-forest-600);
   transition: width var(--motion-editorial) var(--ease-refined);
 }
 
@@ -1237,13 +1219,13 @@ body {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--color-line);
-  border-radius: 2px;
+  border-radius: 10px;
   background: var(--color-paper);
 }
 .qty-stepper button {
   display: flex;
   height: 2.75rem;
-  width: 2.5rem;
+  width: 3rem;
   align-items: center;
   justify-content: center;
   color: var(--color-ink-soft);
@@ -1321,7 +1303,7 @@ body {
   position: fixed;
   inset-inline: 0;
   z-index: 35;
-  bottom: calc(4rem + env(safe-area-inset-bottom));
+  bottom: var(--bottom-nav-height);
   transform: translateY(120%);
   opacity: 0;
   transition:
@@ -1355,7 +1337,7 @@ body {
 
 /* Service/assurance rows read as one quiet system. */
 .assurance-pill {
-  border-radius: 3px;
+  border-radius: 10px;
   transition:
     transform var(--motion-standard) var(--ease-refined),
     box-shadow var(--motion-standard) var(--ease-refined);
@@ -1387,5 +1369,27 @@ body {
   to { opacity: 1; }
 }
 .storefront-main {
-  animation: page-fade 480ms var(--ease-refined) both;
+
+}
+
+/* Shared storefront controls: readable, quiet and touch-friendly. */
+.storefront-main .product-quick-add,
+.storefront-main .product-view-details {
+  font-size: 0.875rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+@media (pointer: coarse) {
+  .storefront-main button,
+  .drawer-panel button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Search has one field-level focus ring on its enclosing input group.
+   Avoid drawing a second rectangular ring inside that rounded control. */
+.drawer-panel .search-query:focus-visible {
+  outline: none;
+  box-shadow: none;
 }

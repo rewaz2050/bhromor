@@ -11,10 +11,12 @@
  * "run the migration" when the table isn't installed yet.
  */
 
-import { useEffect, useState } from "react";
-import { apiErrorMessage, apiGet } from "@/lib/admin-api";
+import { useState } from "react";
+import { AdminApiError, apiErrorMessage, apiGet } from "@/lib/admin-api";
+import { useScopedRead } from "@/lib/use-scoped-read";
+import { INVALID_FUNNEL_RESPONSE, isFunnelReport } from "@/lib/funnel-report-validation";
 import { formatPaisa } from "@/lib/format";
-import { EMPTY_FUNNEL, funnelRates, type FunnelReport } from "@/lib/funnel-events";
+import { funnelRates, type FunnelReport } from "@/lib/funnel-events";
 
 type Days = 7 | 28;
 
@@ -29,43 +31,32 @@ const SOURCE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+interface FunnelRead {
+  report: FunnelReport | null;
+  state: "ready" | "missing" | "error";
+  error: string | null;
+}
+const readFunnel = async (key: string): Promise<FunnelRead> => {
+  const days: Days = key === "28" ? 28 : 7;
+  try {
+    const data = await apiGet<unknown>(`/api/admin/reports/funnel?days=${days}`);
+    if (!isFunnelReport(data, days)) {
+      return { report: null, state: "error", error: INVALID_FUNNEL_RESPONSE };
+    }
+    return { report: data, state: "ready", error: null };
+  } catch (error) {
+    const missing = error instanceof AdminApiError && error.status === 503 && error.missing;
+    return { report: null, state: missing ? "missing" : "error", error: missing ? null : apiErrorMessage(error) };
+  }
+};
+
 export default function FunnelCard({ live }: { live: boolean }) {
   const [days, setDays] = useState<Days>(7);
-  /* One state object per fetched window: `loaded.days !== days` = loading. */
-  const [loaded, setLoaded] = useState<{
-    days: Days;
-    report: FunnelReport | null;
-    state: "ready" | "missing" | "error";
-    error: string | null;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!live) return;
-    let alive = true;
-    apiGet<FunnelReport>(`/api/admin/reports/funnel?days=${days}`)
-      .then((data) => {
-        if (!alive) return;
-        /* Anything that is not a report (old server, odd proxy) reads as empty. */
-        const report = data && typeof data.sessions === "number" ? data : { ...EMPTY_FUNNEL, days };
-        setLoaded({ days, report, state: "ready", error: null });
-      })
-      .catch((err: unknown) => {
-        if (!alive) return;
-        if ((err as { status?: unknown } | null)?.status === 503) {
-          setLoaded({ days, report: null, state: "missing", error: null });
-          return;
-        }
-        setLoaded({ days, report: null, state: "error", error: apiErrorMessage(err) });
-      });
-    return () => {
-      alive = false;
-    };
-  }, [live, days]);
-
-  const current = loaded && loaded.days === days ? loaded : null;
-  const state = current?.state ?? "loading";
-  const report = current?.report ?? null;
-  const error = current?.error ?? null;
+  const resource = useScopedRead(String(days), live, readFunnel, apiErrorMessage);
+  const current = resource.data;
+  const state = resource.loading ? "loading" : resource.error ? "error" : current?.state ?? "loading";
+  const report = resource.loading ? null : current?.report ?? null;
+  const error = resource.error ?? current?.error ?? null;
   const rates = report ? funnelRates(report) : null;
 
   return (
@@ -97,12 +88,16 @@ export default function FunnelCard({ live }: { live: boolean }) {
       {!live ? (
         <p className="mt-4 text-sm text-ink-soft">Sign in as staff to load the funnel.</p>
       ) : state === "missing" ? (
-        <p className="mt-4 text-sm text-ink-soft" data-testid="funnel-missing">
-          Not installed yet — run <code>supabase/migrations/202609260004_storefront_events.sql</code> in
-          the SQL editor. Events start flowing the moment the table exists.
-        </p>
+        <div className="mt-4 text-sm text-ink-soft" data-testid="funnel-missing">
+          <p>Not installed yet — run <code>supabase/migrations/202609260004_storefront_events.sql</code> in
+          the SQL editor. Events start flowing the moment the table exists.</p>
+          <button type="button" onClick={() => void resource.refresh()} className="mt-2 min-h-11 font-semibold underline underline-offset-2">Try again</button>
+        </div>
       ) : state === "error" ? (
-        <p className="mt-4 text-sm text-rose-700">{error}</p>
+        <div className="mt-4 text-sm text-rose-700">
+          <p role="alert">{error}</p>
+          <button type="button" onClick={() => void resource.refresh()} className="mt-2 min-h-11 font-semibold underline underline-offset-2">Try again</button>
+        </div>
       ) : !report || !rates ? (
         <p className="mt-4 text-sm text-ink-soft">Loading…</p>
       ) : report.sessions === 0 ? (

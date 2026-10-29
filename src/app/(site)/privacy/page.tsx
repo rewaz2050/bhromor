@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import PageContents from "@/components/info/page-contents";
 import InfoRail from "@/components/info/info-rail";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui/primitives";
@@ -26,6 +27,15 @@ export default function PrivacyPage() {
         <L en="Last updated: September 2026" bn="সর্বশেষ হালনাগাদ: সেপ্টেম্বর ২০২৬" />
       </p>
 
+      <PageContents items={[
+        { id: "information-we-collect", en: "Information we collect", bn: "যে তথ্য আমরা নিই" },
+        { id: "how-we-use-it", en: "How we use it", bn: "কীভাবে ব্যবহার করি" },
+        { id: "sharing", en: "Sharing", bn: "কার সাথে ভাগ হয়" },
+        { id: "location", en: "Location", bn: "অবস্থান" },
+        { id: "retention-your-rights", en: "Retention & your rights", bn: "সংরক্ষণ ও আপনার অধিকার" },
+        { id: "contact", en: "Contact", bn: "যোগাযোগ" },
+      ]} />
+
       <div className="prose-prosanti mt-8">
         <p>
           <L
@@ -34,7 +44,7 @@ export default function PrivacyPage() {
           />
         </p>
 
-        <h2><L en="Information we collect" bn="যে তথ্য আমরা নিই" /></h2>
+        <h2 id="information-we-collect" className="scroll-mt-28"><L en="Information we collect" bn="যে তথ্য আমরা নিই" /></h2>
         <ul>
           <li>
             <strong><L en="Order details:" bn="অর্ডারের তথ্য:" /></strong>{" "}
@@ -73,7 +83,7 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h2><L en="How we use it" bn="কীভাবে ব্যবহার করি" /></h2>
+        <h2 id="how-we-use-it" className="scroll-mt-28"><L en="How we use it" bn="কীভাবে ব্যবহার করি" /></h2>
         <ul>
           <li>
             <L
@@ -101,7 +111,7 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h2><L en="Sharing" bn="কার সাথে ভাগ হয়" /></h2>
+        <h2 id="sharing" className="scroll-mt-28"><L en="Sharing" bn="কার সাথে ভাগ হয়" /></h2>
         <p>
           <L
             en="We do not sell personal information. Delivery riders receive only the name, phone number and address needed to complete your delivery — and during an active delivery you see the rider's name and phone number so you can coordinate the handoff. Shops on the marketplace see the order details needed to prepare it. Service providers (hosting, media, analytics, and in the future payment gateways) process data under our instruction with appropriate safeguards."
@@ -109,7 +119,7 @@ export default function PrivacyPage() {
           />
         </p>
 
-        <h2><L en="Location" bn="অবস্থান" /></h2>
+        <h2 id="location" className="scroll-mt-28"><L en="Location" bn="অবস্থান" /></h2>
         <p>
           <L
             en="Live courier location is collected only during an active delivery, shared only with the order’s customer, and stopped when delivery completes. Beyond the delivery contact details described above, courier personal information is never exposed."
@@ -117,7 +127,7 @@ export default function PrivacyPage() {
           />
         </p>
 
-        <h2><L en="Retention & your rights" bn="সংরক্ষণ ও আপনার অধিকার" /></h2>
+        <h2 id="retention-your-rights" className="scroll-mt-28"><L en="Retention & your rights" bn="সংরক্ষণ ও আপনার অধিকার" /></h2>
         <p>
           <L
             en="Order records are kept as long as needed for operations, accounting and legal obligations. You may request a copy or deletion of your personal data by contacting us — see the"
@@ -127,7 +137,7 @@ export default function PrivacyPage() {
           <L en="." bn="।" />
         </p>
 
-        <h2><L en="Contact" bn="যোগাযোগ" /></h2>
+        <h2 id="contact" className="scroll-mt-28"><L en="Contact" bn="যোগাযোগ" /></h2>
         <p>
           <L
             en="Questions about this policy: use the"

@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { LanguageProvider } from "@/components/i18n/language-provider";
 import AccountView from "../account-view";
 import {
   __resetLiveAuthForTests,
@@ -32,24 +33,24 @@ afterEach(() => {
 
 describe("AccountView — the session the server already proved", () => {
   it("paints the dashboard at once for a signed-in shopper", () => {
-    render(<AccountView initialCustomer={customer} />);
+    render(<LanguageProvider initialLang="bn"><AccountView initialCustomer={customer} /></LanguageProvider>);
     expect(screen.getByTestId("account-hero")).toHaveTextContent("রহিম সাহেব");
     expect(screen.queryByText(/সেশন চেক করা হচ্ছে/)).toBeNull();
   });
 
   it("paints the sign-in form at once for a guest", () => {
-    render(<AccountView initialCustomer={null} />);
+    render(<LanguageProvider initialLang="bn"><AccountView initialCustomer={null} /></LanguageProvider>);
     expect(screen.getByText("নতুন অ্যাকাউন্ট")).toBeInTheDocument();
     expect(screen.queryByText(/সেশন চেক করা হচ্ছে/)).toBeNull();
   });
 
   it("still waits, and says so, when the server could not check", () => {
-    render(<AccountView />);
+    render(<LanguageProvider initialLang="bn"><AccountView /></LanguageProvider>);
     expect(screen.getByText(/সেশন চেক করা হচ্ছে/)).toBeInTheDocument();
   });
 
   it("shares the server's answer with every other consumer on the page", async () => {
-    render(<AccountView initialCustomer={customer} />);
+    render(<LanguageProvider initialLang="bn"><AccountView initialCustomer={customer} /></LanguageProvider>);
     // The seeded store is what the header, the wishlist and the smart card read.
     const probe = probeCustomerSession();
     expect(screen.getByTestId("account-hero")).toBeInTheDocument();

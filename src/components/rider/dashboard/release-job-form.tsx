@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { releaseAcceptedJob } from "@/lib/rider-delivery-actions";
 
 /**
@@ -8,30 +8,84 @@ import { releaseAcceptedJob } from "@/lib/rider-delivery-actions";
  * parcel is in hand the rider uses the failed-delivery form instead. A server
  * refusal is shown inline; the reason needs ≥ 5 characters.
  */
-export function ReleaseJobForm({
+interface ReleaseJobFormProps {
+  assignmentId: string;
+  /** Called only for the current form's accepted completion. */
+  onReleased: (message: string) => void;
+}
+
+export function ReleaseJobForm(props: ReleaseJobFormProps) {
+  return <AssignmentReleaseJobForm key={props.assignmentId} {...props} />;
+}
+
+function AssignmentReleaseJobForm({
   assignmentId,
   onReleased,
-}: {
-  assignmentId: string;
-  /** Called with the message to flash once the job is handed back. */
-  onReleased: (message: string) => void;
-}) {
+}: ReleaseJobFormProps) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const owner = useRef({
+    active: false,
+    open: false,
+    generation: 0,
+    request: 0,
+    busy: false,
+  });
+  useEffect(() => {
+    const state = owner.current;
+    state.active = true;
+    return () => {
+      state.active = false;
+      state.generation++;
+    };
+  }, []);
+
+  const changeOpen = (next: boolean) => {
+    const state = owner.current;
+    if (!state.active) return;
+    state.open = next;
+    state.generation++;
+    setOpen(next);
+    setError(null);
+    // Cancel closes the view, not the transport; keep its pending-write lock.
+    setBusy(state.busy);
+  };
+
   const submit = async () => {
-    if (busy) return;
+    const state = owner.current;
+    if (!state.active || !state.open || state.busy) return;
+    const generation = state.generation;
+    const request = ++state.request;
+    const current = () =>
+      state.active &&
+      state.open &&
+      state.generation === generation &&
+      state.request === request;
+    state.busy = true;
     setBusy(true);
     setError(null);
-    const result = await releaseAcceptedJob(assignmentId, reason);
-    setBusy(false);
+    let result: Awaited<ReturnType<typeof releaseAcceptedJob>>;
+    try {
+      result = await releaseAcceptedJob(assignmentId, reason);
+    } catch {
+      if (current()) setError("ফেরত দেওয়া যায়নি — আবার চেষ্টা করুন।");
+      return;
+    } finally {
+      // Transport ownership can outlive an open view, but not its assignment instance.
+      if (state.active && state.request === request) {
+        state.busy = false;
+        setBusy(false);
+      }
+    }
+    if (!current()) return;
     if (!result.ok) {
       setError(result.message);
       return;
     }
-    setOpen(false);
+    changeOpen(false);
     setReason("");
     onReleased(result.message);
   };
@@ -41,8 +95,7 @@ export function ReleaseJobForm({
       <button
         type="button"
         onClick={() => {
-          setError(null);
-          setOpen((v) => !v);
+          changeOpen(!owner.current.open);
         }}
         className="text-[11px] text-rose-700 underline"
       >
@@ -79,8 +132,7 @@ export function ReleaseJobForm({
             <button
               type="button"
               onClick={() => {
-                setOpen(false);
-                setError(null);
+                changeOpen(false);
               }}
               className="text-xs text-ink-soft"
             >

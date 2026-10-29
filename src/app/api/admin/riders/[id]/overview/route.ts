@@ -19,5 +19,5 @@ export const GET = staffRoute(
     const live = { ...overview, risk: { ...overview.risk, cashLimit: cashCap } };
     return apiJson({ ready: true, overview: live, assessment: assessRisk(live) });
   },
-  { limit: 60 },
+  { limit: 60, roles: ["admin", "super_admin"] },
 );

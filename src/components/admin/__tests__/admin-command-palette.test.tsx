@@ -2,6 +2,12 @@
  * ⌘K palette — the shortcut past a grouped sidebar.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const roleState = vi.hoisted(() => ({ role: "admin" as string | null }));
+vi.mock("@/lib/use-staff-role", () => ({
+  useStaffRole: () => ({ role: roleState.role, checked: true, live: true, canManage: roleState.role === "admin" || roleState.role === "super_admin" }),
+}));
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const h = vi.hoisted(() => ({
@@ -33,6 +39,7 @@ const renderPalette = (
   );
 
 beforeEach(() => {
+  roleState.role = "admin";
   window.localStorage.clear();
   __resetAdminNavCache();
   h.push.mockClear();
@@ -121,4 +128,13 @@ describe("AdminCommandPalette", () => {
     expect(option).toHaveTextContent("Shops");
     expect(option).toHaveTextContent(/3 applications waiting/);
   });
+});
+
+it.each(["manager", null])("filters finance commands and saved recents for %s", async (role) => {
+  roleState.role = role;
+  renderPalette();
+  const input = await screen.findByRole("combobox");
+  expect(screen.queryByRole("option", { name: /Payouts/ })).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "payout" } });
+  expect(screen.queryByRole("option")).not.toBeInTheDocument();
 });

@@ -3,6 +3,12 @@
  * the fold.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const roleState = vi.hoisted(() => ({ role: "admin" as string | null }));
+vi.mock("@/lib/use-staff-role", () => ({
+  useStaffRole: () => ({ role: roleState.role, checked: true, live: true, canManage: roleState.role === "admin" || roleState.role === "super_admin" }),
+}));
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import AdminSidebarNav from "../admin-sidebar-nav";
 import {
@@ -12,6 +18,7 @@ import {
 } from "../admin-nav";
 
 beforeEach(() => {
+  roleState.role = "admin";
   window.localStorage.clear();
   __resetAdminNavCache();
 });
@@ -93,4 +100,14 @@ describe("AdminSidebarNav", () => {
     fireEvent.click(screen.getByRole("link", { name: /Orders/ }));
     expect(onNavigate).toHaveBeenCalled();
   });
+});
+
+it.each(["manager", null])("hides finance navigation for %s but keeps rider operations", (role) => {
+  roleState.role = role;
+  render(<AdminSidebarNav pathname="/admin" counts={{}} />);
+  expect(screen.queryByRole("link", { name: /^Reports/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /^Money/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /^Payouts/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /^Payments/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /^Riders/ })).toBeInTheDocument();
 });

@@ -92,17 +92,22 @@ afterEach(() => {
 
 describe("TrackView — the open page re-reads the order", () => {
   it("picks up a status change the customer did not ask for", async () => {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}&t=receipt-proof`);
     render(createElement(LanguageProvider, null, createElement(TrackView)));
     await tick(1);
     expect(trackCalls).toHaveLength(1);
     expect(screen.getByText(/Confirmed — the shop is packing/i)).toBeInTheDocument();
 
+    const lookupInput = screen.getByPlaceholderText("PS-YYYYMMDD-XXXX");
+    lookupInput.focus();
     served = "out-for-delivery";
     await tick(15_000);
+    expect(lookupInput).toHaveFocus();
 
     expect(trackCalls).toHaveLength(2);
     // Same order, same proof — a re-read, not a new lookup.
     expect(trackCalls[1]).toBe(trackCalls[0]);
+    expect(new URL(trackCalls[1], "http://localhost").searchParams.get("t")).toBe("receipt-proof");
     expect(screen.getByText(/On the way — keep your phone nearby/i)).toBeInTheDocument();
   });
 

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { clearLastOrder, readLastOrder, type LastOrder } from "@/lib/last-order";
 import { deliverySlotSummary } from "@/lib/delivery-slots";
 import {
@@ -9,6 +10,7 @@ import {
   publicPhase,
   publicStepDone,
   type Order,
+  normalizePhone,
 } from "@/lib/orders";
 import { formatBdt } from "@/lib/format";
 import { clockTime } from "@/components/admin/order-ui";
@@ -99,6 +101,9 @@ export default function TrackView() {
    *  digits everywhere, including the quantities on their own order. */
   const digits = (n: number | string) =>
     lang === "bn" ? bnDigits(String(n)) : String(n);
+  const orderIdInput = useRef<HTMLInputElement>(null);
+  const resultPanel = useRef<HTMLDivElement>(null);
+  const focusNextResult = useRef(false);
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
   const [result, setResult] = useState<Result>(null);
@@ -107,6 +112,8 @@ export default function TrackView() {
   /** "আপনার শেষ অর্ডার" — remembered by the receipt on this device (P0 #5). */
   const [lastOrder, setLastOrder] = useState<LastOrder | null>(null);
   const autoLookedUp = useRef(false);
+  // Proof stays bound to its exact order+phone, never to editable form state.
+  const receiptProof = useRef<{ id: string; phone: string; token: string } | null>(null);
   // The shop's real WhatsApp number (ops settings) — the support button
   // renders only when it is configured, never a placeholder.
   const [contactNumber, setContactNumber] = useState<string | null>(null);
@@ -136,18 +143,28 @@ export default function TrackView() {
         setLookupFailed(false);
       }
       try {
-        const res = await fetch(
-          `/api/track?id=${encodeURIComponent(id)}&phone=${encodeURIComponent(ph)}`,
-        );
+        const saved = readLastOrder();
+        const proof = receiptProof.current;
+        const samePair = (candidate: { id: string; phone: string }) =>
+          candidate.id.trim().toUpperCase() === id &&
+          normalizePhone(candidate.phone) === normalizePhone(ph);
+        const token = proof && samePair(proof)
+          ? proof.token
+          : saved && samePair(saved) ? saved.trackToken : undefined;
+        const query = new URLSearchParams({ id, phone: ph });
+        if (token) query.set("t", token);
+        const res = await fetch(`/api/track?${query}`);
         const data = (await res.json().catch(() => null)) as {
           order?: Order;
         } | null;
         if (res.ok && data?.order) {
+          focusNextResult.current = !silent;
           setResult({ found: true, order: data.order, via: "live" });
         } else if (silent) {
           // One dropped poll is not news — the next tick tries again.
           return;
         } else if (res.status === 404) {
+          focusNextResult.current = true;
           setResult({ found: false });
         } else {
           setLookupFailed(true);
@@ -160,6 +177,12 @@ export default function TrackView() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!focusNextResult.current) return;
+    focusNextResult.current = false;
+    resultPanel.current?.focus();
+  }, [result]);
 
   /**
    * The page used to read the order exactly once, so it could sit on
@@ -199,6 +222,8 @@ export default function TrackView() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- URL → form prefill, once
     setOrderId(paramId.toUpperCase());
     if (paramPhone) {
+      const token = params.get("t")?.trim().slice(0, 64);
+      if (token) receiptProof.current = { id: paramId, phone: paramPhone, token };
       setPhone(paramPhone);
       void lookup(paramId, paramPhone);
     }
@@ -222,7 +247,8 @@ export default function TrackView() {
       {/* Lookup */}
       <form
         onSubmit={submit}
-        className="h-fit rounded-3xl bg-paper p-7 ring-1 ring-line lg:sticky lg:top-28"
+        aria-busy={checking}
+        className="h-fit rounded-2xl bg-paper p-5 ring-1 ring-line sm:p-7 lg:sticky lg:top-28"
       >
         <h2 className="font-display text-2xl font-medium text-forest-900">
           {t("track.lookupTitle")}
@@ -275,6 +301,9 @@ export default function TrackView() {
             <IconBox className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
             <input
               required
+              ref={orderIdInput}
+              autoCapitalize="characters"
+              spellCheck={false}
               value={orderId}
               onChange={(e) => setOrderId(e.target.value)}
               placeholder="PS-YYYYMMDD-XXXX"
@@ -317,8 +346,12 @@ export default function TrackView() {
         )}
       </form>
 
-      {/* Result */}
-      <div>
+      {/* A concise live status avoids re-announcing the entire live timeline. */}
+      <p role="status" className="sr-only">
+        {checking ? t("track.checking") : result ? result.found ? t("track.orderFound") : t("track.notFoundTitle") : ""}
+      </p>
+      {/* Result: manual lookup moves focus here, background refresh never does. */}
+      <div ref={resultPanel} tabIndex={-1} role="region" aria-label={t("track.resultLabel")} className="min-w-0 scroll-mt-28">
         {!result ? (
           <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-ivory-100/50 px-8 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-paper text-forest-700 ring-1 ring-line">
@@ -342,6 +375,14 @@ export default function TrackView() {
             <p className="mt-2 max-w-sm text-sm leading-6 text-ink-soft">
               {t("track.notFoundBody")}
             </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <button type="button" onClick={() => orderIdInput.current?.focus()} className="inline-flex min-h-11 items-center rounded-lg border border-line px-4 text-sm font-semibold text-forest-800">
+                {t("track.checkDetails")}
+              </button>
+              <Link href="/contact" className="inline-flex min-h-11 items-center rounded-lg px-4 text-sm text-forest-800 underline underline-offset-4">
+                {t("track.contactSupport")}
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="space-y-6">

@@ -20,6 +20,7 @@
  */
 
 import "server-only";
+import { VENDOR_PERMISSIONS } from "../vendor-permissions";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AdminInputError } from "./admin";
@@ -67,7 +68,7 @@ export async function listVendorStaff(
   assertOwner(role);
   const { data, error } = await db
     .from("vendor_users")
-    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by")
+    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by,permissions")
     .eq("shop_id", shopId)
     .order("role", { ascending: true }) // owners first, then the staff
     .order("created_at", { ascending: true });
@@ -83,7 +84,7 @@ const rowOf = async (
 ): Promise<DbVendorUser | null> => {
   const { data, error } = await db
     .from("vendor_users")
-    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by")
+    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by,permissions")
     .eq("shop_id", shopId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -198,7 +199,7 @@ export async function createVendorStaff(opts: {
       login_email: email,
       added_by: ownerUserId,
     })
-    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by")
+    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by,permissions")
     .single();
 
   if (linkError || !inserted) {
@@ -268,4 +269,20 @@ export async function resetVendorStaffPassword(opts: {
   const password = generateTemporaryPassword();
   await setApplicantPassword(service, userId, password);
   return { password, staff: mapVendorStaff(row) };
+}
+
+/** Explicit grants only; unknown names/types are refused, never silently added. */
+export async function updateVendorStaffPermissions(db: SupabaseClient, shopId: string, role: VendorStaffRole, userId: string, raw: unknown): Promise<VendorStaffMember> {
+  assertOwner(role);
+  const input = raw as { permissions?: unknown } | null;
+  if (!input || !Array.isArray(input.permissions) || input.permissions.some((key) => !(VENDOR_PERMISSIONS as readonly unknown[]).includes(key))) {
+    throw new AdminInputError("Send only known permission names in an array.", 422);
+  }
+  const permissions = VENDOR_PERMISSIONS.filter((key) => (input.permissions as unknown[]).includes(key));
+  const { data, error } = await db.from("vendor_users").update({ permissions })
+    .eq("shop_id", shopId).eq("user_id", userId).eq("role", "staff")
+    .select("user_id,shop_id,role,created_at,display_name,login_email,added_by,permissions").maybeSingle();
+  if (error) throw new Error("vendor permissions update failed");
+  if (!data) throw new AdminInputError("Staff login not found in this shop.", 404);
+  return mapVendorStaff(data as DbVendorUser);
 }

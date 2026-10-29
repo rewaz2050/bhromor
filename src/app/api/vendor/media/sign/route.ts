@@ -58,5 +58,5 @@ export const POST = vendorRoute(
     }
     return apiJson(signCloudinaryUpload(folder, resource));
   },
-  { limit: 60 },
+  { limit: 60, permission: "catalog" },
 );

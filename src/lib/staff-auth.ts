@@ -103,7 +103,7 @@ const requestBearer = async (): Promise<string | null> => {
   }
 };
 
-export async function requireStaff(): Promise<StaffContext> {
+export async function requireStaff(options: { freshRole?: boolean } = {}): Promise<StaffContext> {
   const bearer = await requestBearer();
   const fromHeader = bearer ? await userFromBearer(bearer) : null;
 
@@ -121,7 +121,7 @@ export async function requireStaff(): Promise<StaffContext> {
   if (!db) throw new StaffAuthError("Staff sign-in is not configured.", 401);
 
   const now = Date.now();
-  const memo = cachedRole(user.id, now);
+  const memo = options.freshRole ? null : cachedRole(user.id, now);
   if (memo) return { user, role: memo, db };
 
   const lookup = getSupabaseService() ?? db;
@@ -132,6 +132,7 @@ export async function requireStaff(): Promise<StaffContext> {
     .maybeSingle();
 
   if (roleError) {
+    roleCache.delete(user.id);
     const missing =
       roleError.code === "42P01" ||
       /does not exist/i.test(roleError.message) ||
@@ -144,6 +145,7 @@ export async function requireStaff(): Promise<StaffContext> {
     );
   }
   if (!row || !STAFF_ROLES.includes((row as { role: string }).role)) {
+    roleCache.delete(user.id);
     throw new StaffAuthError("This account is not staff.", 403);
   }
   const role = (row as { role: StaffRole }).role;
@@ -159,7 +161,7 @@ export async function requireStaff(): Promise<StaffContext> {
 export async function requireStaffRole(
   ...allowed: StaffRole[]
 ): Promise<StaffContext> {
-  const ctx = await requireStaff();
+  const ctx = await requireStaff({ freshRole: true });
   if (!allowed.includes(ctx.role)) {
     throw new StaffAuthError(
       "Admin access is required for this action.",

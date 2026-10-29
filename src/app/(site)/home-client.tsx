@@ -16,6 +16,7 @@ import { useLanguage } from "@/components/i18n/language-provider";
 import LiveBanner from "@/components/live/live-banner";
 import HomeDeliveryCheck from "@/components/home/home-delivery-check";
 import HomeOrders from "@/components/home/home-orders";
+import CatalogRecovery from "@/components/shop/catalog-recovery";
 import CategoryRow from "@/components/home/category-row";
 import RecentlyViewedStrip from "@/components/home/recently-viewed-strip";
 import OffersBlock from "@/components/home/offers-block";
@@ -64,6 +65,7 @@ export default function HomeClient() {
   // The hero is short now, so the catalog probe's few hundred ms would show
   // the service strip and footer alone — hold the shape of the page instead.
   const booting = loading && products.length === 0;
+  const hasVariety = pool.length > 6;
 
   return (
     <>
@@ -90,10 +92,10 @@ export default function HomeClient() {
           {sections.recent && <RecentlyViewedStrip pool={pool} />}
           {sections.collections && <CategoryRow pool={pool} categories={categories} />}
           {/* UX plan §2 (R3) — social proof + freshness right after the row. */}
-          {(sections.bestSellers || sections.newArrivals) && (
+          {hasVariety && (sections.bestSellers || sections.newArrivals) && (
             <CuratedRails pool={pool} showBest={sections.bestSellers} showNew={sections.newArrivals} />
           )}
-          {sections.offers && <OffersBlock pool={pool} />}
+          {hasVariety && sections.offers && <OffersBlock pool={pool} />}
           {/* UX plan §10 (R7) — Style Match promoted + remembered. */}
           {sections.yourStyle && <YourStyleRail pool={pool} />}
           <WholeShelf pool={pool} categories={categories} shops={shops} allProducts={products} />
@@ -104,7 +106,6 @@ export default function HomeClient() {
       )}
       {/* P2 #20 — "do you come to my para, for how much?": four
           true-for-every-order facts + a one-field zone check. */}
-      <HomeDeliveryCheck />
       {sections.trust && <TrustStrip />}
     </>
   );
@@ -233,7 +234,9 @@ function WholeShelf({
   const { zoneId, setZoneId } = useMyZone();
   const shelves = categoryShelves(pool, categories);
   if (shelves.length === 0) {
-    if (loading || shops.length === 0) return null;
+    if (loading) return null;
+    if (shops.length === 0 && allProducts.length === 0) return <div className="mx-auto max-w-2xl px-4 py-8"><CatalogRecovery /></div>;
+    if (shops.length === 0) return null;
     // Pieces exist but none reach the saved zone → say so, offer the reset;
     // the "being stocked" note is only for a genuinely empty catalog.
     const zoneScoped = zoneId !== null && categoryShelves(allProducts, categories, 1).length > 0;

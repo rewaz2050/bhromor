@@ -155,6 +155,7 @@ export async function bestSellers(
 /* ------------------------------------------------------------------ */
 
 import { parseFunnelReport, type FunnelReport } from "../funnel-events";
+import { isFunnelRpc } from "../funnel-rpc-validation";
 
 /** Thrown when migration 202609260004 (ps_funnel_report) is not installed. */
 export class FunnelReportMissingError extends Error {
@@ -179,12 +180,14 @@ export async function funnelReport(db: SupabaseClient, days: 7 | 28): Promise<Fu
       code === "PGRST202" ||
       code === "42883" ||
       code === "42P01" ||
-      /function .*ps_funnel_report.* does not exist/i.test(message) ||
-      /relation .*storefront_events.* does not exist/i.test(message)
+      (!code && /could not find the function[^\n]*\bps_funnel_report\b|function[^\n]*\bps_funnel_report\b[^\n]*does not exist|relation[^\n]*\bstorefront_events\b[^\n]*does not exist/i.test(message))
     ) {
       throw new FunnelReportMissingError();
     }
     throw new Error(message || "funnel report failed");
+  }
+  if (!isFunnelRpc(data, days)) {
+    throw new Error("Invalid funnel RPC response.");
   }
   return parseFunnelReport(data, days);
 }

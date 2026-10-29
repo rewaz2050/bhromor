@@ -15,7 +15,7 @@ export const NOTIFICATIONS_POLL_MS = 15_000;
  * mark them read through /api/admin/notifications.
  */
 export function useNotifications() {
-  const { live, checked } = useStaffLive();
+  const { live, checked, error: connectionError, retry: retryConnection } = useStaffLive();
   const [liveNotifs, setLiveNotifs] = useState<Notif[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -169,6 +169,9 @@ export function useNotifications() {
     reset: refresh,
     refresh,
     live,
+    checked,
+    connectionError,
+    retryConnection,
     loading: live && (!checked || liveNotifs === null),
     error,
     clearError: () => setError(null),

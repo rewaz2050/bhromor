@@ -734,6 +734,140 @@ direct file-picker upload, add the four Cloudinary variables from
 - A hosted newsletter page (`NEWSLETTER_SIGNUP_URL`) still overrides the
   footer form when set — for teams that outgrow the table.
 
+## Permission rollout — shop / rider / admin least privilege (2026-10-25 → 27)
+
+Eleven migrations: the ten that implement the approved six-role model, plus the rollout-probe RPC that makes all ten visible from `/api/health`. Apply them **in this order**, after every migration listed above (each file is repeat-safe):
+
+| # | File | What it locks |
+|---|---|---|
+| 1 | `202610250001_finance_permission_boundary.sql` | Finance approvals/payouts/adjustments need Admin/Super Admin, not ordinary Manager |
+| 2 | `202610250002_shop_first_fulfilment.sql` | Normal Confirm/Preparing/Ready belong to the owning shop; Admin override needs a reason |
+| 3 | `202610250003_vendor_staff_permissions.sql` | owner → staff grants (catalog / inventory / cashier / cancellation), audited |
+| 4 | `202610250004_finance_reporting_access.sql` | Money reports and ledger reads stop leaking to Manager/Staff |
+| 5 | `202610250005_rider_wallet_column_privacy.sql` | Rider wallet balance is an actor-bound projection, not a readable column |
+| 6 | `202610250006_rider_controls_and_ledger_retention.sql` | Rider lifecycle changes audited; financial history cannot be edited/deleted |
+| 7 | `202610250007_atomic_staff_roles.sql` | Staff role changes are atomic, last-Super-Admin protected and audited |
+| 8 | `202610260001_order_pin_privacy_and_pickup.sql` | Stored PIN unreadable by every app role; Traffic Point handover needs the customer's PIN |
+| 9 | `202610260002_scoped_shop_fulfilment.sql` | A staff member who also owns a shop fulfils that shop through a shop-scoped entry |
+| 10 | `202610260003_finance_self_dealing_boundary.sql` | Nobody approves/settles their own Rider or Shop money |
+| 11 | `202610270001_health_probe_rpc.sql` | `ps_health_probes()`: one service-role catalog call that reports all ten files — including the trigger- and policy-only ones PostgREST cannot see |
+| 12 | `202610290001_pickup_handover_override.sql` | `ps_admin_override_pickup()`: the audited Admin/Super Admin exception that closes a counter pickup when the customer no longer has the PIN — reason mandatory, actor and reason written into the order timeline, PIN never re-issued or shown |
+| 13 | `202610290002_finance_quorum.sql` | `finance_quorum_confirmations` + `ps_admin_confirm_finance()`: above `finance_quorum_paisa`, a payout/settlement/adjustment/dispute award needs a second distinct Admin; **off (0) by default**, so a single-Admin deployment is unchanged |
+
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all thirteen. `202610290001` requires `202610270001` and `202610290002` requires `202610260003`, and both refuse to install without them (`Install 202610270001_health_probe_rpc.sql before the pickup handover override`, `Finance quorum prerequisite missing: …`), so the order in the table above is not optional.
+
+After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
+
+`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`, `pickupOverrideReady`, `financeQuorumReady` — and `nextSteps` names the exact file an operator must run, in order. `202610290001` extends the probe instead of copying it: `ps_health_probes()` keeps `202610270001`'s body as `ps_health_probes_base()` and adds the `pickupHandoverOverride` key, so a database that has the batch but not the override says so in one line. `financeQuorumReady` (the thirteenth) is the one flag not read through `ps_health_probes()`: the route asks for `ps_finance_quorum_check` and `finance_quorum_confirmations` directly, so `ps_health_probes()` still returns its eleven keys.
+
+Two of the ten files cannot be observed through PostgREST at all: `202610250002` adds a trigger and `202610250004` only adds restrictive policies and rewritten guards. `202610270001` closes that gap: `ps_health_probes()` answers all ten from the catalogs (functions, triggers, policies, column privileges) in one call, is executable by `service_role` only, never writes, and answers `false` instead of raising on a half-applied database. Until it is installed those two flags stay `false` and the first next step is the probe file itself; the fallback also keeps `supabase/check-migrations-all.sql` rows 95 and 97a–97k as the manual check.
+
+Behaviour changes to expect:
+
+- The counter screen no longer shows the customer's PIN. Staff type the code the customer reads out; five wrong tries lock handover for 15 minutes.
+- Old staff/vendor browser tabs must be refreshed once — there is intentionally no legacy fallback.
+- A staff member who is also a shop Owner sees the shop's own Confirm/Ready buttons; a Manager who holds no shop still cannot operate shop fulfilment.
+- A payout to a Rider/Shop account the approver personally owns is refused: a second finance Admin must decide it.
+- A counter pickup whose customer lost the receipt is closed from the order screen with **“Customer lost the confirmation?” → reason (10–300 characters)**. Admin/Super Admin only; the timeline records `[Pickup override — PIN not verified] <reason>` with the actor. Managers, shop owners and riders cannot use it, and no PIN is ever re-issued or displayed. Until `202610290001` is applied the order screen answers "Pickup override unavailable" and names the file.
+
+### Old tracking / receipt links (owner decision before publishing)
+
+Server-built `/track?...&t=…` links are HMAC capabilities. **Nothing changes on a default deploy**: with no extra variables the app mints and accepts the same timeless 24-hex token as before, so every receipt already in a chat keeps working. Revoking links is a policy choice; expiry is now a switch. `src/lib/track-token.ts` (server-only) implements both:
+
+| Variable | Effect | Default |
+|---|---|---|
+| `TRACK_TOKEN_TTL_HOURS` | `> 0` → new links are version-2 tokens stamped with their issue time and refused after that many hours. Unset / `0` / junk → unchanged v1 links. | unset (no expiry) |
+| `TRACK_TOKEN_REVOKE_LEGACY` | `1` → v1 tokens are refused outright; only fresh v2 links work. | unset (v1 accepted) |
+| `TRACK_TOKEN_SECRET` rotation | Nuclear option: every v1 **and** v2 link dies at once. | rotate only with a support plan |
+
+Rollout order (each step is reversible by removing the variable and redeploying):
+
+1. **Set `TRACK_TOKEN_TTL_HOURS`** (e.g. `720` for 30 days) and redeploy. New receipts, push links and WhatsApp drafts get expiring tokens; every old link still opens because v1 stays accepted. Nothing breaks for customers mid-order.
+2. **Wait longer than the longest order/return window**, then set `TRACK_TOKEN_REVOKE_LEGACY=1` if old links must stop working. From that point a link older than the TTL — or any v1 link — only grants order-number + phone lookup (status, no PIN).
+3. **Rotate `TRACK_TOKEN_SECRET`** only as an incident response; it invalidates every link, including v2 ones that have not expired.
+
+Notes for whoever operates this:
+
+- A v2 token cannot be extended by editing the link: its timestamp is inside the MAC. Tokens dated more than 5 minutes in the future (clock drift between instances) are refused.
+- If `TRACK_TOKEN_TTL_HOURS` is removed later, existing v2 tokens keep the lifetime they were minted under; they do not silently become timeless.
+- Manual order-number + phone lookup keeps working in every mode for status; it never shows the PIN.
+- Removing a field from an API cannot recall a link already copied into WhatsApp, a browser or a screenshot — only the TTL/rotation switches above shorten or kill it.
+- What rotation costs: a customer whose *only* copy of the receipt is an old `t` link loses the PIN display, and the PIN is deliberately unreadable by staff and by manual lookup. Rotate only together with a support plan (see the PIN-recovery note below), and write the choice into the ops log.
+
+### PIN recovery — decided: an audited counter override, never a re-issued PIN
+
+The 4-digit PIN is shown on the checkout receipt, from a saved receipt on that device, and on the tracker when the customer opens the link from their confirmation. Manual lookup hides it, staff screens never display it, and there is no re-issue endpoint.
+
+A customer who lost the receipt on another device used to be stuck: `ps_advance_order` refuses to close a pickup without the PIN and `ps_collect_pickup_order` needs the four digits, so *nobody* — not even an Admin — could hand the parcel over. `202610290001_pickup_handover_override.sql` closes that dead end the way the approved model describes Admin exceptions:
+
+- **Admin/Super Admin only.** Manager, shop owner and rider are refused by SQL, not just by the UI.
+- **A reason is mandatory** (10–300 characters) and lands in `order_status_history` as `[Pickup override — PIN not verified] <reason>`, with `changed_by` set to the actor.
+- **No PIN is re-issued, rotated or shown.** The stored code is never read by this path, so the warehouse still has no way to learn it.
+- **Same machine, same accounting.** It calls `ps_advance_order_internal` exactly like the verified handover, so stock, COD custody, wallet and ledger semantics are unchanged; it still refuses unpaid wallet orders, rider-held parcels and non-pickup orders, and it is idempotent under concurrency.
+
+The alternatives stay on the table, and the owner can replace the override with either by dropping the RPC:
+
+1. **OTP before re-issue** (strongest): SMS/WhatsApp to the order's phone. Needs a paid gateway — none is configured.
+2. **Signed-in account re-issue**: cheap, but signup is OTP-free, so "claim the phone number" would be enough to read a future order's PIN — a real pickup-fraud vector. Not implemented, on purpose.
+3. **Staff-assisted reset that reads the new PIN out** (old behaviour): reintroduces exactly the social-engineering risk the staff-side PIN removal closed. Not implemented.
+
+Operational rule: use the override with the customer standing at the counter, and write what you checked (ID, TrxID, call-back) in the reason — that text is the audit.
+
+## The three decisions that are still yours (runbook)
+
+Each of these is built and tested; none of them changes behaviour until you set
+it. Nothing here needs a code change — only an environment variable, a setting,
+or a policy call. Do them in this order.
+
+### A. Old tracking / receipt links (`TRACK_TOKEN_TTL_HOURS`, `TRACK_TOKEN_REVOKE_LEGACY`)
+
+Today every link ever sent still works, forever. The token can carry a signed
+expiry and v1 tokens can be refused; both are off by default so no receipt
+breaks.
+
+| Step | Action | Effect | Cost if you get it wrong |
+|---|---|---|---|
+| A1 | Set `TRACK_TOKEN_TTL_HOURS=720` (30 days) and deploy | **new** links expire 30 days after issue; the lifetime is signed *into* the token, so changing the value later cannot revive an expired one | a customer whose only receipt is older than the window loses the PIN display; staff cannot look it up |
+| A2 | Wait one full order cycle with A1 in place, watch support | — | — |
+| A3 | Only then set `TRACK_TOKEN_REVOKE_LEGACY=1` | timeless v1 links stop proving ownership; order number + phone still shows **status** (never the PIN) | an old receipt link degrades from "shows PIN" to "shows status" |
+| A4 | Rotate `TRACK_TOKEN_SECRET` | **all** links die at once | nuclear option — only with a support plan |
+
+Recommended: A1 now, A3 after a month of quiet support, A4 only on suspicion of
+leak. Record the choice in the ops log; there is no migration to undo, just
+unset the variable.
+
+### B. Four-eyes on finance (`finance_quorum_paisa` — built, off by default)
+
+The same-person case is closed (`202610260003`): nobody decides their own Rider
+or Shop money. What that cannot close is two different people agreeing to break
+a rule. `202610290002_finance_quorum.sql` adds the control for that, and ships
+**off**: `finance_quorum_paisa` is absent/0, which is exactly today's behaviour.
+
+| Step | Action | Effect | Cost if you get it wrong |
+|---|---|---|---|
+| B1 | Apply `202610290002_finance_quorum.sql` (already inside `bootstrap-fresh.sql` for a new project) | the confirmation table and RPC exist; **nothing changes** while the setting is 0 | none — it is inert |
+| B2 | Admin → Money → **Two-Admin rule** → set a taka limit → Save | rider payouts, cash settlements, wallet adjustments and dispute awards at or above that amount need a second Admin's confirmation first | below the limit nothing changes; a *rejection* (money returned to the rider) is never blocked |
+| B3 | Tell both Admins who confirms what | the payer opens the row, the second Admin presses **Confirm as 2nd Admin**, the payer records the real decision | **a single-Admin deployment must leave this at 0** — otherwise nobody can pay riders |
+
+How it behaves when on:
+
+- The confirmation is bound to **kind + decision + amount**, so confirming ৳500
+  never authorises ৳5,000, and it expires after 24 hours.
+- The confirming Admin can never also record that decision (`confirm as 2nd
+  Admin` then `paid` is refused by the deciding RPC).
+- The payer's decision still writes the real audit row; the confirmer is stored
+  in `finance_quorum_confirmations` with their e-mail.
+- Turning the setting back to 0 restores single-Admin operation immediately.
+
+Detection is still the audit trail; the quorum is the prevention layer. Do not
+switch B2 on before you have named the second Admin.
+
+### C. Hosted acceptance
+
+Run `docs/hosted-acceptance-run-sheet.md` end to end on a staging project. It is
+the only check that exercises real Supabase auth, realtime and REST together.
+No code ships differently whether or not it has been run — but "verified" does.
+
 ## Troubleshooting
 
 | Symptom | Cause → fix |

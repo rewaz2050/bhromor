@@ -106,6 +106,75 @@ const settingsFromRows = (rows: { key: string; value: unknown }[]): RiderPaySett
   return sanitizeRiderPaySettings(raw);
 };
 
+/** Key the SQL quorum check reads (`ps_setting_int`). 0 = four-eyes off. */
+export const FINANCE_QUORUM_KEY = "finance_quorum_paisa";
+
+/**
+ * How much money needs two Admins (paisa). 0 — the default — means the
+ * four-eyes control is off and single-Admin decisions behave exactly as
+ * before. Read straight from `site_settings`, so the page can explain the
+ * rule without another RPC.
+ */
+export const readFinanceQuorum = async (db: SupabaseClient): Promise<number> => {
+  const { data, error } = await db
+    .from("site_settings")
+    .select("key,value")
+    .eq("key", FINANCE_QUORUM_KEY)
+    .maybeSingle();
+  if (error || !data) return 0;
+  const raw = (data as { value: unknown }).value;
+  const parsed = Number(typeof raw === "string" ? raw : JSON.stringify(raw));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+};
+
+/**
+ * Owner control for the threshold, in paisa. 0 turns the control off and
+ * restores single-Admin decisions exactly as they were. Bounded so a typo
+ * cannot make every payout need two signatures for ever.
+ */
+export const writeFinanceQuorum = async (db: SupabaseClient, raw: unknown): Promise<number> => {
+  const parsed = typeof raw === "number" ? raw : Number(typeof raw === "string" ? raw : NaN);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new AdminInputError("The four-eyes threshold must be zero or more taka.", 422);
+  }
+  const paisa = Math.min(Math.floor(parsed), 100_000_000); // ৳10,00,000 ceiling
+  const { error } = await db
+    .from("site_settings")
+    .upsert([{ key: FINANCE_QUORUM_KEY, value: paisa }], { onConflict: "key" });
+  if (error) throw new Error("Could not save the four-eyes threshold.");
+  return paisa;
+};
+
+/**
+ * The second Admin's half of a four-eyes decision (202610290002). Records the
+ * confirmation and nothing else — the deciding RPC still records the actor and
+ * still refuses unless somebody ELSE confirmed the same amount.
+ */
+export const confirmFinanceDecision = async (
+  db: SupabaseClient,
+  input: { kind: FinanceQuorumKind; ref: string; amount: number },
+): Promise<void> => {
+  const { error } = await db.rpc("ps_admin_confirm_finance", {
+    p_kind: input.kind,
+    p_ref: input.ref,
+    p_amount: Math.max(0, Math.floor(input.amount)),
+  });
+  if (!error) return;
+  const message = (error.message ?? "").toLowerCase();
+  if (message.includes("forbidden")) {
+    throw new AdminInputError("Only an Admin or Super Admin can confirm a finance decision.", 403);
+  }
+  if (isMissingDbObject(error)) {
+    throw new AdminInputError(
+      "Four-eyes finance is not installed yet — run supabase/migrations/202610290002_finance_quorum.sql.",
+      503,
+    );
+  }
+  throw new AdminInputError("Could not record the second-Admin confirmation.", 422);
+};
+
+export type FinanceQuorumKind = "rider_payout" | "rider_settle" | "rider_adjust" | "rider_dispute";
+
 export const readRiderPaySettings = async (
   db: SupabaseClient,
 ): Promise<RiderPaySettings> => {
@@ -513,6 +582,20 @@ export const decideRiderPayout = async (
   });
   if (error) {
     const message = (error.message ?? "").toLowerCase();
+    // 202610260003: the approver cannot decide their own payout.
+    if (message.includes("cannot decide your own money")) {
+      throw new AdminInputError(
+        "This payout belongs to your own Rider account — another finance Admin must decide it.",
+        403,
+      );
+    }
+    // 202610290002: above the threshold a second Admin must confirm first.
+    if (message.includes("finance quorum required")) {
+      throw new AdminInputError(
+        "This amount needs two Admins. Ask another Admin to confirm it, then try again.",
+        409,
+      );
+    }
     if (message.includes("forbidden")) throw new AdminInputError("Not allowed.", 403);
     if (message.includes("not found")) throw new AdminInputError("That payout request no longer exists.", 404);
     if (message.includes("already")) {
