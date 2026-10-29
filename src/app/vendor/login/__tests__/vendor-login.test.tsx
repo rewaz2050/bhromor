@@ -160,7 +160,9 @@ describe("Vendor Login Page — pending auto re-check (apply = sign up)", () => 
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "qa-password" } });
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Could not sign in"));
-    expect(screen.getByRole("alert")).toHaveFocus();
+    // Focus moves in an effect that runs after the alert paints, so asserting it
+    // synchronously raced the render (it failed on a loaded CI runner).
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
     expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
     expect(screen.getByLabelText("Password")).toHaveValue("qa-password");
   });

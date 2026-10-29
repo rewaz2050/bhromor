@@ -436,3 +436,12 @@ The one remaining item that was code rather than a policy choice is closed. `ps_
 UI: the order screen's Traffic Point panel keeps the PIN box as the primary action and adds a collapsed **“Customer lost the confirmation?”** disclosure (Admin/Super Admin only) with a confirmation step. Server: `advanceOrderAsStaff` maps each SQL refusal to a specific message and names `202610290001` when the RPC is not installed. The PIN path is untouched — the dashboard contract still asserts that a normal handover posts `{to:'delivered', pickupCode}` and nothing else.
 
 Verification for this follow-up: real PostgreSQL **25 PASS groups** (new group proves the refusals, the actor+reason history row, no PIN in the note, idempotency and the checklist rows); `tsc --noEmit` and ESLint `--max-warnings=0` clean; component tests for the disclosure (hidden for Manager, refuses a short reason, confirmation required, server refusal surfaced); `advanceOrderAsStaff` tests for the role/reason guards, every error mapping and the fail-closed malformed outcome. The bootstrap mirror keeps its 24 paste parts and the byte-for-byte comparison now covers the new file too. Nothing merged, nothing deployed.
+
+### Two CI findings from the same push (2026-10-29)
+
+Both were real, and both had been hiding behind "it passes locally":
+
+1. **`<dl>` with `div > span` rows — only rendered at night or in rain.** The checkout summary's surcharge breakdown (night 9PM–6AM, rain, express, weight) is conditional, so a dry daytime run never produced it and axe never saw it. The CI runner crossed into the night window, axe flagged `definition-list` on `.bg-ivory-50.rounded-3xl.p-5 > dl`, and the browser job failed. Each surcharge row is now its own `dt`/`dd` group inside the `<dl>`, and `order-summary-dl.test.tsx` renders the breakdown on purpose (night-only, partial, and Bangla) so the structure is checked at any hour instead of whenever the clock cooperates.
+2. **A focus assertion that raced the render.** `vendor-login.test.tsx` asserted `toHaveFocus()` immediately after `waitFor(text)`; the component moves focus in an effect that runs after the alert paints, so a loaded runner could observe the alert before the focus. It reproduced locally in 1 of 5 runs and now waits for the focus itself (6/6 afterwards). The app behaviour was correct — only the assertion was racy.
+
+Re-verified after both fixes, against a production build: storefront **94/94 (10.0 min)**, dashboard contracts **14/14**, plus the targeted a11y scans. `tsc` and ESLint clean.

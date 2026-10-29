@@ -226,14 +226,41 @@ export default function OrderSummaryCard({
             )}
           </dd>
         </div>
+        {/* Each surcharge row is its own dt/dd group. This used to be one div
+            holding div>span rows, which is invalid inside a <dl> and only
+            renders when a surcharge applies — so axe flagged it at night and in
+            rain, never in a dry daytime run. */}
         {summary.breakdown && summary.breakdown.surcharge.total > 0 && !summary.freeDelivery && (
-          <div className="space-y-1 pl-1 text-xs text-ink-soft">
-            <div className="flex justify-between"><span>{bn ? "ডেলিভারি" : "Delivery"}</span><span>{formatBdt(summary.fullCharge)}</span></div>
-            {summary.breakdown.surcharge.night > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconMoon className="h-3.5 w-3.5" /> {bn ? "রাত (রাত ৯টা–সকাল ৬টা)" : "Night (9PM-6AM)"}</span><span>+{formatBdt(summary.breakdown.surcharge.night)}</span></div>}
-            {summary.breakdown.surcharge.rain > 0 && <div className="flex justify-between"><span>🌧️ {bn ? "বৃষ্টি" : "Rain"}</span><span>+{formatBdt(summary.breakdown.surcharge.rain)}</span></div>}
-            {summary.breakdown.surcharge.express > 0 && <div className="flex justify-between"><span className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5" /> {bn ? "এক্সপ্রেস" : "Express"}</span><span>+{formatBdt(summary.breakdown.surcharge.express)}</span></div>}
-            {summary.breakdown.surcharge.weight > 0 && <div className="flex justify-between"><span>⚖️ {bn ? "ওজন" : "Weight"}</span><span>+{formatBdt(summary.breakdown.surcharge.weight)}</span></div>}
-          </div>
+          <>
+            <div className="flex justify-between pl-1 text-xs text-ink-soft">
+              <dt>{bn ? "ডেলিভারি" : "Delivery"}</dt>
+              <dd>{formatBdt(summary.fullCharge)}</dd>
+            </div>
+            {summary.breakdown.surcharge.night > 0 && (
+              <div className="flex justify-between pl-1 text-xs text-ink-soft">
+                <dt className="flex items-center gap-1.5"><IconMoon className="h-3.5 w-3.5" /> {bn ? "রাত (রাত ৯টা–সকাল ৬টা)" : "Night (9PM-6AM)"}</dt>
+                <dd>+{formatBdt(summary.breakdown.surcharge.night)}</dd>
+              </div>
+            )}
+            {summary.breakdown.surcharge.rain > 0 && (
+              <div className="flex justify-between pl-1 text-xs text-ink-soft">
+                <dt>🌧️ {bn ? "বৃষ্টি" : "Rain"}</dt>
+                <dd>+{formatBdt(summary.breakdown.surcharge.rain)}</dd>
+              </div>
+            )}
+            {summary.breakdown.surcharge.express > 0 && (
+              <div className="flex justify-between pl-1 text-xs text-ink-soft">
+                <dt className="flex items-center gap-1.5"><IconBolt className="h-3.5 w-3.5" /> {bn ? "এক্সপ্রেস" : "Express"}</dt>
+                <dd>+{formatBdt(summary.breakdown.surcharge.express)}</dd>
+              </div>
+            )}
+            {summary.breakdown.surcharge.weight > 0 && (
+              <div className="flex justify-between pl-1 text-xs text-ink-soft">
+                <dt>⚖️ {bn ? "ওজন" : "Weight"}</dt>
+                <dd>+{formatBdt(summary.breakdown.surcharge.weight)}</dd>
+              </div>
+            )}
+          </>
         )}
         {summary.couponFree && summary.discount === 0 && (
           <div className="flex justify-between">
