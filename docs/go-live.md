@@ -752,12 +752,13 @@ Eleven migrations: the ten that implement the approved six-role model, plus the 
 | 10 | `202610260003_finance_self_dealing_boundary.sql` | Nobody approves/settles their own Rider or Shop money |
 | 11 | `202610270001_health_probe_rpc.sql` | `ps_health_probes()`: one service-role catalog call that reports all ten files — including the trigger- and policy-only ones PostgREST cannot see |
 | 12 | `202610290001_pickup_handover_override.sql` | `ps_admin_override_pickup()`: the audited Admin/Super Admin exception that closes a counter pickup when the customer no longer has the PIN — reason mandatory, actor and reason written into the order timeline, PIN never re-issued or shown |
+| 13 | `202610290002_finance_quorum.sql` | `finance_quorum_confirmations` + `ps_admin_confirm_finance()`: above `finance_quorum_paisa`, a payout/settlement/adjustment/dispute award needs a second distinct Admin; **off (0) by default**, so a single-Admin deployment is unchanged |
 
-Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all twelve. `202610290001` requires `202610270001` and refuses to install without it (`Install 202610270001_health_probe_rpc.sql before the pickup handover override`), so the order in the table above is not optional.
+Fresh databases: `supabase/bootstrap-fresh.sql` (or all **24** parts in `supabase/bootstrap-parts/`, in order) already contains all thirteen. `202610290001` requires `202610270001` and `202610290002` requires `202610260003`, and both refuse to install without them (`Install 202610270001_health_probe_rpc.sql before the pickup handover override`, `Finance quorum prerequisite missing: …`), so the order in the table above is not optional.
 
 After applying, run `supabase/check-migrations-all.sql` (existing DB) or `supabase/check-migrations-from-0928.sql` — every row should read `OK`. **Do not** re-grant broad `SELECT` on `orders`/`riders` afterwards; that reopens the PIN and wallet columns.
 
-`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`, `pickupOverrideReady` — and `nextSteps` names the exact file an operator must run, in order. `202610290001` extends the probe instead of copying it: `ps_health_probes()` keeps `202610270001`'s body as `ps_health_probes_base()` and adds the `pickupHandoverOverride` key, so a database that has the batch but not the override says so in one line.
+`/api/health` carries one flag per file — `permissionProbeReady`, `financeBoundaryReady`, `shopFirstFulfilmentReady`, `delegatedStaffReady`, `financeReportingReady`, `riderWalletPrivacyReady`, `riderControlsReady`, `staffRoleReady`, `orderPinReady`, `shopScopedFulfilmentReady`, `financeSelfDealingReady`, `pickupOverrideReady`, `financeQuorumReady` — and `nextSteps` names the exact file an operator must run, in order. `202610290001` extends the probe instead of copying it: `ps_health_probes()` keeps `202610270001`'s body as `ps_health_probes_base()` and adds the `pickupHandoverOverride` key, so a database that has the batch but not the override says so in one line. `financeQuorumReady` (the thirteenth) is the one flag not read through `ps_health_probes()`: the route asks for `ps_finance_quorum_check` and `finance_quorum_confirmations` directly, so `ps_health_probes()` still returns its eleven keys.
 
 Two of the ten files cannot be observed through PostgREST at all: `202610250002` adds a trigger and `202610250004` only adds restrictive policies and rewritten guards. `202610270001` closes that gap: `ps_health_probes()` answers all ten from the catalogs (functions, triggers, policies, column privileges) in one call, is executable by `service_role` only, never writes, and answers `false` instead of raising on a half-applied database. Until it is installed those two flags stay `false` and the first next step is the probe file itself; the fallback also keeps `supabase/check-migrations-all.sql` rows 95 and 97a–97k as the manual check.
 
@@ -835,26 +836,31 @@ Recommended: A1 now, A3 after a month of quiet support, A4 only on suspicion of
 leak. Record the choice in the ops log; there is no migration to undo, just
 unset the variable.
 
-### B. Four-eyes on finance (not built — deliberately)
+### B. Four-eyes on finance (`finance_quorum_paisa` — built, off by default)
 
 The same-person case is closed (`202610260003`): nobody decides their own Rider
-or Shop money. What is **not** closed is two different people agreeing to break
-a rule — a second Admin approving a related party, or two Staff colluding.
+or Shop money. What that cannot close is two different people agreeing to break
+a rule. `202610290002_finance_quorum.sql` adds the control for that, and ships
+**off**: `finance_quorum_paisa` is absent/0, which is exactly today's behaviour.
 
-There are three options; the product currently implements only the first.
+| Step | Action | Effect | Cost if you get it wrong |
+|---|---|---|---|
+| B1 | Apply `202610290002_finance_quorum.sql` (already inside `bootstrap-fresh.sql` for a new project) | the confirmation table and RPC exist; **nothing changes** while the setting is 0 | none — it is inert |
+| B2 | Admin → Money → **Two-Admin rule** → set a taka limit → Save | rider payouts, cash settlements, wallet adjustments and dispute awards at or above that amount need a second Admin's confirmation first | below the limit nothing changes; a *rejection* (money returned to the rider) is never blocked |
+| B3 | Tell both Admins who confirms what | the payer opens the row, the second Admin presses **Confirm as 2nd Admin**, the payer records the real decision | **a single-Admin deployment must leave this at 0** — otherwise nobody can pay riders |
 
-1. **Status quo (implemented).** Every finance decision records actor + email in
-   `money_audit_log` / `rider_control_audit`. Detection is after the fact, by
-   reading the audit.
-2. **Threshold quorum (would need a migration).** For amounts above ৳X, a second
-   distinct Admin must confirm. Safe to build, but it blocks a single-Admin
-   operation — decide who the second approver is *before* switching it on.
-3. **Conflict-of-interest declaration (would need a migration).** The approver
-   ticks "no personal interest" and that attestation is stored. Cheap, auditable,
-   and easy to lie in — it documents intent, it does not enforce.
+How it behaves when on:
 
-Do not switch on 2 or 3 without choosing who the fallback approver is; an
-unattended queue of unpayable riders is worse than the risk it closes.
+- The confirmation is bound to **kind + decision + amount**, so confirming ৳500
+  never authorises ৳5,000, and it expires after 24 hours.
+- The confirming Admin can never also record that decision (`confirm as 2nd
+  Admin` then `paid` is refused by the deciding RPC).
+- The payer's decision still writes the real audit row; the confirmer is stored
+  in `finance_quorum_confirmations` with their e-mail.
+- Turning the setting back to 0 restores single-Admin operation immediately.
+
+Detection is still the audit trail; the quorum is the prevention layer. Do not
+switch B2 on before you have named the second Admin.
 
 ### C. Hosted acceptance
 

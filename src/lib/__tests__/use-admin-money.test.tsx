@@ -3,10 +3,11 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useAdminMoney } from "../use-admin-money";
 const api = vi.hoisted(() => ({ live: true, get: vi.fn() }));
 vi.mock("../use-staff-live", () => ({ useStaffLive: () => ({ live: api.live, checked: true }) }));
-vi.mock("../admin-api", () => ({ apiGet: api.get, apiSend: vi.fn(), apiErrorMessage: (e: Error) => e.message }));
+const send = vi.hoisted(() => ({ fn: vi.fn() }));
+vi.mock("../admin-api", () => ({ apiGet: api.get, apiSend: send.fn, apiErrorMessage: (e: Error) => e.message }));
 const snapshot = (baseFee: number) => ({ ready: true, summary: null, queue: null, settings: { baseFee, codHandlingFee: 0, minPayout: 100 } });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-beforeEach(() => { api.live = true; api.get.mockReset(); });
+beforeEach(() => { api.live = true; api.get.mockReset(); send.fn.mockReset(); });
 afterEach(cleanup);
 it("ends initial loading on failure and recovers with explicit refresh", async () => {
   api.get.mockRejectedValueOnce(new Error("Offline"));
@@ -96,4 +97,54 @@ it("O12: failed period reads settle and a retry can restore current-range P&L", 
   api.get.mockResolvedValueOnce({ ...snapshot(30), pnl: { commission: 700 } });
   await act(async () => { await result.current.refresh(); });
   expect(result.current.pnl?.commission).toBe(700); expect(result.current.range).toBe("7d");
+});
+
+it("reads the four-eyes threshold, defaulting to off when the route omits it", async () => {
+  api.get.mockResolvedValueOnce(snapshot(30));
+  const { result } = renderHook(useAdminMoney);
+  await waitFor(() => expect(result.current.settings?.baseFee).toBe(30));
+  expect(result.current.quorumPaisa).toBe(0);
+  api.get.mockResolvedValueOnce({ ...snapshot(30), quorumPaisa: 500000 });
+  await act(async () => { await result.current.refresh(); });
+  expect(result.current.quorumPaisa).toBe(500000);
+});
+
+it("sends a second-Admin confirmation, then refreshes the queue", async () => {
+  api.get.mockResolvedValue(snapshot(30));
+  const { result } = renderHook(useAdminMoney);
+  await waitFor(() => expect(result.current.settings?.baseFee).toBe(30));
+  const before = api.get.mock.calls.length;
+  let ok = false;
+  await act(async () => {
+    ok = await result.current.confirm({ kind: "rider_payout", ref: "p1", amount: 800000 });
+  });
+  expect(ok).toBe(true);
+  expect(send.fn).toHaveBeenCalledWith("/api/admin/money", "POST", {
+    action: "confirm",
+    kind: "rider_payout",
+    ref: "p1",
+    amount: 800000,
+  });
+  expect(api.get.mock.calls.length).toBeGreaterThan(before);
+});
+
+it("surfaces a refused confirmation instead of pretending it worked", async () => {
+  api.get.mockResolvedValue(snapshot(30));
+  send.fn.mockRejectedValueOnce(new Error("Only an Admin or Super Admin can confirm"));
+  const { result } = renderHook(useAdminMoney);
+  await waitFor(() => expect(result.current.settings?.baseFee).toBe(30));
+  let ok = true;
+  await act(async () => {
+    ok = await result.current.confirm({ kind: "rider_payout", ref: "p1", amount: 800000 });
+  });
+  expect(ok).toBe(false);
+  expect(result.current.error).toMatch(/Only an Admin/);
+});
+
+it("saves the threshold in paisa", async () => {
+  api.get.mockResolvedValue(snapshot(30));
+  const { result } = renderHook(useAdminMoney);
+  await waitFor(() => expect(result.current.settings?.baseFee).toBe(30));
+  await act(async () => { await result.current.saveQuorum(500000); });
+  expect(send.fn).toHaveBeenCalledWith("/api/admin/money", "PATCH", { financeQuorumPaisa: 500000 });
 });

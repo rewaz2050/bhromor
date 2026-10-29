@@ -13,9 +13,9 @@ rider and disposable orders; delete them afterwards.
 
 | Step | Command / action | Expected |
 |---|---|---|
-| 0.1 | Apply the twelve migrations in `docs/go-live.md` order | each file answers `OK` |
+| 0.1 | Apply the thirteen migrations in `docs/go-live.md` order | each file answers `OK` |
 | 0.2 | `supabase/check-migrations-all.sql` | **0 rows** |
-| 0.3 | `GET /api/health` | `permissionProbeReady` … `pickupOverrideReady` all `true`, `nextSteps` names no migration |
+| 0.3 | `GET /api/health` | `permissionProbeReady` … `pickupOverrideReady`, `financeQuorumReady` all `true`, `nextSteps` names no migration |
 | 0.4 | `select public.ps_health_probes()` in the SQL editor as the **service role** | 11 keys, all `true` |
 | 0.5 | `select public.ps_health_probes()` with the **anon** key | `permission denied for function` (must not be callable from a browser) |
 
@@ -93,13 +93,19 @@ in §7.
 | 6.7 | Super Admin: change a role | succeeds, audited, last-Super-Admin protected |
 | 6.8 | Super Admin: try to grant themselves Super Admin again / delete `staff_role_audit` | refused |
 | 6.9 | Admin A approves a payout belonging to Admin A's own rider row | refused (*cannot decide your own money*); **Admin B** succeeds |
+| 6.10 | With **Two-Admin rule** off (default): Admin A records a large payout | succeeds alone — today's behaviour, unchanged |
+| 6.11 | Set the rule to ৳5,000, then Admin A records a payout above it | refused (*finance quorum required*); nothing is marked paid |
+| 6.12 | Admin A presses *Confirm as 2nd Admin*, then records it | still refused — the confirmer cannot also decide |
+| 6.13 | Admin B presses *Confirm as 2nd Admin* with the same amount, then Admin A records it | succeeds; the payout is paid and both actors are attributable |
+| 6.14 | Set the rule back to 0 | one Admin can decide again immediately |
 
 ## 7. Things this sheet deliberately does **not** cover
 
-- **Two people colluding.** Two Staff, or two Admins, can still agree to break a
-  rule. There is no quorum or conflict-of-interest declaration in the product.
-  The single-actor case is closed; the multi-actor case is a policy question —
-  see the runbook in `docs/go-live.md`.
+- **Two people colluding.** The single-actor case is closed. The built-in
+  four-eyes control (§6.10–6.14) makes collusion a *recorded, attributable act*
+  above the owner's threshold — but it cannot stop two Admins who both intend
+  to. The conflict-of-interest declaration remains a policy option in
+  `docs/go-live.md`.
 - **Realtime, storage, auth-provider quirks** (magic-link delivery, storage CORS).
   Watch the browser console during §2–§6; anything red is a hosted-only finding.
 - **Payment gateways.** No real money is moved by any row here.

@@ -104,6 +104,7 @@ vi.mock("@/lib/supabase-server", () => {
     "ps_vendor_advance_order",
     "ps_guard_self_finance",
     "ps_admin_override_pickup",
+    "ps_finance_quorum_check",
   ]);
   return {
     getSupabaseServer: async () => ({ from: table }),
@@ -643,6 +644,7 @@ describe("GET /api/health — the permission batch (2026-10-25 → 27)", () => {
     "shopScopedFulfilmentReady",
     "financeSelfDealingReady",
     "pickupOverrideReady",
+    "financeQuorumReady",
   ] as const;
 
   it("reports every probed permission file as applied", async () => {

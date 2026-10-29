@@ -98,6 +98,7 @@ describe("health migration probes", () => {
       ["shopScopedFulfilmentReady", "ps_vendor_advance_order"],
       ["financeSelfDealingReady", "ps_guard_self_finance"],
       ["pickupOverrideReady", "ps_admin_override_pickup"],
+      ["financeQuorumReady", "ps_finance_quorum_check"],
     ];
     for (const [key, artefact] of expected) {
       expect(ROUND_MIGRATIONS[key].startsWith("2026102"), key).toBe(true);
@@ -106,7 +107,9 @@ describe("health migration probes", () => {
       const at = src.lastIndexOf(`${key}:`);
       expect(at, key).toBeGreaterThan(-1);
       const assignment = src.slice(at, src.indexOf("\n", at));
-      expect(assignment, key).toMatch(/^\w+Ready: \w+(\.ready)?,$/);
+      // `flag: fn` or `flag: fn && table.ready` — a probe may need two artefacts
+      // that ship in one file.
+      expect(assignment, key).toMatch(/^\w+Ready: \w+(\.ready)?( && \w+\.ready)?,$/);
       expect(src, key).toContain(artefact.split(".")[0]);
     }
   });

@@ -165,6 +165,38 @@ export default function AdminMoneyPage() {
     if (ok) setRatesDraft(null);
   };
 
+  /**
+   * Four-eyes (202610290002). Off by default: `quorumPaisa` is 0 until the
+   * owner sets a threshold, and then only requests at or above it show the
+   * second-Admin control. Confirming says "I, another Admin, have seen this";
+   * the paying Admin still records the real decision.
+   */
+  const quorumNeeded = (amount: number) => money.quorumPaisa > 0 && amount >= money.quorumPaisa;
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmedIds, setConfirmedIds] = useState<string[]>([]);
+  const submitConfirm = async (row: { id: string; amount: number }) => {
+    setConfirming(row.id);
+    const ok = await money.confirm({ kind: "rider_payout", ref: row.id, amount: row.amount });
+    setConfirming(null);
+    if (ok) setConfirmedIds((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+  };
+
+  // Two-Admin rule editor (paisa 0 = off). Same taka-in/paise-out rule as the
+  // rates form so the owner types what they know.
+  const [quorumDraft, setQuorumDraft] = useState<string | null>(null);
+  const [savingQuorum, setSavingQuorum] = useState(false);
+  const [quorumSaved, setQuorumSaved] = useState(false);
+  const quorumValue = quorumDraft ?? (money.quorumPaisa > 0 ? paisaToTaka(money.quorumPaisa) : "0");
+  const saveQuorumRule = async () => {
+    const n = Number(quorumValue);
+    if (!Number.isFinite(n) || n < 0) return;
+    setSavingQuorum(true);
+    const ok = await money.saveQuorum(Math.round(n * 100));
+    setSavingQuorum(false);
+    setQuorumSaved(ok);
+    if (ok) setQuorumDraft(null);
+  };
+
   const submitDecision = async () => {
     if (!actionForm) return;
     setActing(actionForm.id);
@@ -431,7 +463,26 @@ export default function AdminMoneyPage() {
                     <td className="px-4 py-3 text-ink-soft">{formatBdt(row.cashInHand)}</td>
                     <td className="px-4 py-3">
                       <AdminOnly note="Payout approve শুধু admin করতে পারে।">
-                      <div className="flex justify-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {quorumNeeded(row.amount) && (
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                            Needs 2nd Admin
+                          </span>
+                        )}
+                        {quorumNeeded(row.amount) && (
+                          <button
+                            type="button"
+                            onClick={() => void submitConfirm(row)}
+                            disabled={confirming === row.id || confirmedIds.includes(row.id)}
+                            className="rounded-full border border-forest-300 bg-paper px-3.5 py-1.5 text-[11px] font-semibold text-forest-800 hover:bg-forest-50 disabled:opacity-60"
+                          >
+                            {confirmedIds.includes(row.id)
+                              ? "Confirmed by you"
+                              : confirming === row.id
+                                ? "Confirming…"
+                                : "Confirm as 2nd Admin"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -609,6 +660,53 @@ export default function AdminMoneyPage() {
             {ratesSaved && (
               <span role="status" className="text-xs font-semibold text-emerald-800">
                 Saved — applies from the next delivery.
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Four-eyes finance (202610290002) — off until the owner sets a limit */}
+      <section className="space-y-3" aria-label="Two-Admin rule">
+        <h2 className="font-display text-lg font-bold text-forest-900">Two-Admin rule</h2>
+        <div className="rounded-2xl bg-paper p-5 ring-1 ring-line">
+          <p className="text-xs text-ink-soft">
+            Set a limit and any payout at or above it needs a second Admin&apos;s confirmation before
+            the money leaves. Below the limit nothing changes. The Admin who confirms can never also
+            record that same decision, and a confirmation only covers the amount that was shown.
+            Leave it at 0 to keep today&apos;s single-Admin flow.
+          </p>
+          <p className="mt-3 text-xs font-semibold text-forest-900" data-testid="quorum-state">
+            {money.quorumPaisa > 0
+              ? `On — payouts of ${formatBdt(money.quorumPaisa)} or more need two Admins.`
+              : "Off — one Admin can still decide every payout."}
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+                Needs two Admins from (৳)
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={quorumValue}
+                onChange={(e) => setQuorumDraft(e.target.value)}
+                aria-label="Two-Admin threshold in taka"
+                className="mt-1 w-full rounded-xl border border-line bg-ivory-50 px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void saveQuorumRule()}
+              disabled={savingQuorum}
+              className="inline-flex h-10 items-center rounded-full bg-forest-800 px-4 text-xs font-semibold text-ivory-50 hover:bg-forest-900 disabled:opacity-50"
+            >
+              {savingQuorum ? "Saving…" : "Save rule"}
+            </button>
+            {quorumSaved && (
+              <span role="status" className="text-xs font-semibold text-emerald-800">
+                Saved.
               </span>
             )}
           </div>

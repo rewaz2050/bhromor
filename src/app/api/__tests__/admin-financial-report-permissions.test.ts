@@ -12,6 +12,8 @@ vi.mock("@/lib/staff-auth", () => {
 vi.mock("@/lib/db/rider-money", () => ({
   getAdminMoneySummary: state.calls, getAdminMoneyPnl: async () => state.calls(),
   listRiderPayoutQueue: state.calls, readRiderPaySettings: state.calls, getAdminMoneyDaily: state.calls,
+  // 202610290002: the money page reads the four-eyes threshold (0 = off).
+  readFinanceQuorum: async () => 0,
 }));
 vi.mock("@/lib/db/admin", () => ({ AdminInputError: class extends Error {}, listShopBalances: state.calls,
   listLedgerLines: state.calls, listPayoutLines: state.calls,

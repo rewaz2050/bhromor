@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  confirmFinanceDecision,
   decideRiderPayout,
   getAdminMoneyDaily,
   getAdminMoneyPnl,
@@ -19,6 +20,7 @@ import {
   listRiderMoneyEntries,
   listRiderPayoutQueue,
   parseRiderPaySettings,
+  readFinanceQuorum,
   readRiderPaySettings,
   requestRiderPayout,
   sanitizeRiderPaySettings,
@@ -47,6 +49,8 @@ const client = (opts: {
       for (const method of ["select", "eq", "neq", "in", "order", "limit"]) {
         chain[method] = () => chain;
       }
+      // readFinanceQuorum reads a single settings row.
+      chain.maybeSingle = () => chain;
       chain.upsert = async (rows: unknown) => {
         opts.onUpsert?.(table, rows);
         return value(table);
@@ -396,6 +400,83 @@ describe("admin money", () => {
     await expect(
       decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, { payoutId: "p1", decision: "paid" }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Four-eyes finance (202610290002) — OFF by default                   */
+/* ------------------------------------------------------------------ */
+
+describe("finance quorum (202610290002)", () => {
+  it("reads 0 when the setting is absent, so nothing changes by default", async () => {
+    const svc = client({ tables: { site_settings: { data: null, error: null } } });
+    expect(await readFinanceQuorum(svc as never)).toBe(0);
+  });
+
+  it("reads a positive threshold from the same flat paisa key SQL reads", async () => {
+    for (const value of [500000, "500000", 500000.9]) {
+      const svc = client({ tables: { site_settings: { data: { key: "finance_quorum_paisa", value }, error: null } } });
+      expect(await readFinanceQuorum(svc as never)).toBe(500000);
+    }
+  });
+
+  it.each([0, -100, "junk", null])("treats %j as off", async (value) => {
+    const svc = client({ tables: { site_settings: { data: { key: "finance_quorum_paisa", value }, error: null } } });
+    expect(await readFinanceQuorum(svc as never)).toBe(0);
+  });
+
+  it("passes the kind, reference and paisa amount to the confirm RPC", async () => {
+    const calls: Array<{ fn: string; params?: unknown }> = [];
+    const svc = client({
+      rpc: (fn, params) => {
+        calls.push({ fn, params });
+        return { data: { ok: true }, error: null };
+      },
+    });
+    await confirmFinanceDecision(svc as never, { kind: "rider_payout", ref: "payout-1", amount: 500000 });
+    expect(calls).toEqual([
+      { fn: "ps_admin_confirm_finance", params: { p_kind: "rider_payout", p_ref: "payout-1", p_amount: 500000 } },
+    ]);
+  });
+
+  it("floors and clamps a negative amount instead of sending it", async () => {
+    const calls: unknown[] = [];
+    const svc = client({
+      rpc: (_fn, params) => {
+        calls.push(params);
+        return { data: { ok: true }, error: null };
+      },
+    });
+    await confirmFinanceDecision(svc as never, { kind: "rider_adjust", ref: "r-1", amount: -250.7 });
+    expect(calls[0]).toMatchObject({ p_amount: 0 });
+  });
+
+  it("names the migration when the confirm RPC is not installed", async () => {
+    const svc = client({ rpc: () => ({ data: null, error: { ...MISSING, message: MISSING.message } }) });
+    await expect(
+      confirmFinanceDecision(svc as never, { kind: "rider_payout", ref: "p1", amount: 1 }),
+    ).rejects.toMatchObject({ status: 503, message: expect.stringContaining("202610290002") });
+  });
+
+  it("refuses a confirmation from a non-finance role", async () => {
+    const svc = client({ rpc: () => ({ data: null, error: { message: "forbidden" } }) });
+    await expect(
+      confirmFinanceDecision(svc as never, { kind: "rider_payout", ref: "p1", amount: 1 }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("turns the second-Admin requirement into a sentence the payer can act on", async () => {
+    const svc = client({
+      rpc: () => ({ data: null, error: { message: "finance quorum required: a second Admin must confirm this decision first" } }),
+    });
+    const error = await decideRiderPayout(svc as never, svc as never, { id: "staff-1" }, {
+      payoutId: "p1",
+      decision: "paid",
+      reference: "TRX1",
+    }).catch((e) => e);
+    expect(error).toBeInstanceOf(AdminInputError);
+    expect(error.status).toBe(409);
+    expect(error.message).toMatch(/two Admins/i);
   });
 });
 

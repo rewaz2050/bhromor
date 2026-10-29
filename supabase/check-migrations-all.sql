@@ -205,7 +205,14 @@ with checklist(step, label, source_file, kind, obj) as (values
   ('103g', 'Own-shop payout recording guard', '202610260003_finance_self_dealing_boundary.sql', 'function', 'ps_guard_shop_payout_self_dealing'),
   ('104', 'Rollout probe RPC (health sees triggers/policies)', '202610270001_health_probe_rpc.sql', 'function', 'ps_health_probes'),
   ('105a', 'Audited counter-pickup override', '202610290001_pickup_handover_override.sql', 'function', 'ps_admin_override_pickup'),
-  ('105b', 'Override records its reason', '202610290001_pickup_handover_override.sql', 'function_src', 'ps_admin_override_pickup|Pickup override — PIN not verified')
+  ('105b', 'Override records its reason', '202610290001_pickup_handover_override.sql', 'function_src', 'ps_admin_override_pickup|Pickup override — PIN not verified'),
+  ('106a', 'Four-eyes confirmation store', '202610290002_finance_quorum.sql', 'table', 'finance_quorum_confirmations'),
+  ('106b', 'Second-Admin confirmation RPC', '202610290002_finance_quorum.sql', 'function', 'ps_admin_confirm_finance'),
+  ('106c', 'Quorum check installed', '202610290002_finance_quorum.sql', 'function', 'ps_finance_quorum_check'),
+  ('106d', 'Quorum wired into payout decisions', '202610290002_finance_quorum.sql', 'function_src', 'ps_admin_decide_rider_payout|Finance quorum (202610290002)'),
+  ('106e', 'Quorum wired into cash settlement', '202610290002_finance_quorum.sql', 'function_src', 'ps_admin_settle_rider|Finance quorum (202610290002)'),
+  ('106f', 'Quorum wired into wallet adjustments', '202610290002_finance_quorum.sql', 'function_src', 'ps_admin_adjust_rider|Finance quorum (202610290002)'),
+  ('106g', 'Quorum wired into dispute awards', '202610290002_finance_quorum.sql', 'function_src', 'ps_admin_resolve_dispute|Finance quorum (202610290002)')
 ),
 res as (
   select source_file as file, label,

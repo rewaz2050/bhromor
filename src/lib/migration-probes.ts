@@ -124,7 +124,9 @@ export type RoundProbeKey =
   | "shopScopedFulfilmentReady"
   | "financeSelfDealingReady"
   // 202610290001 — the audited counter-pickup override (Admin/Super Admin).
-  | "pickupOverrideReady";
+  | "pickupOverrideReady"
+  // 202610290002 — four-eyes finance (off until a threshold is set).
+  | "financeQuorumReady";
 
 export type RoundProbes = Record<RoundProbeKey, boolean> & {
   counts: Record<string, number>;
@@ -157,6 +159,7 @@ export const ROUND_MIGRATIONS: Record<RoundProbeKey, string> = {
   shopScopedFulfilmentReady: "202610260002_scoped_shop_fulfilment.sql",
   financeSelfDealingReady: "202610260003_finance_self_dealing_boundary.sql",
   pickupOverrideReady: "202610290001_pickup_handover_override.sql",
+  financeQuorumReady: "202610290002_finance_quorum.sql",
 };
 
 /** The order to run them in — 270003 needs 270001 (its cron touches push). */
@@ -186,6 +189,7 @@ export const ROUND_MIGRATION_ORDER: RoundProbeKey[] = [
   "shopScopedFulfilmentReady",
   "financeSelfDealingReady",
   "pickupOverrideReady",
+  "financeQuorumReady",
 ];
 
 /** What breaks without each file — shown as the health report's next step. */
@@ -240,6 +244,8 @@ export const ROUND_MIGRATION_WHY: Record<RoundProbeKey, string> = {
     "na chalale ekjon Admin nijer Rider/dokan-er taka nijei approve/settle korte parbe",
   pickupOverrideReady:
     "na chalale jini receipt hariye felechen (onno device) tader counter pickup kono bhabei bondho kora jabe na — Admin/Super Admin-er reason-soho override RPC chara parcel ta keu-i dite parbe na",
+  financeQuorumReady:
+    "na chalale boro onker payout/settle/adjust ekjon Admin eka nirdharito threshold-er upore korte parben — duijon Admin-er four-eyes confirmation bondho thakbe (default e threshold 0, tai kichu bondho hoy na)",
 };
 
 /**
@@ -304,6 +310,8 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     vendorAdvanceRpc,
     selfFinanceRpc,
     pickupOverrideRpc,
+    quorumCheckRpc,
+    quorumConfirmations,
   ] = await Promise.all([
     tableReady(db, "password_reset_requests"),
     columnReady(db, "shops", "review_note"),
@@ -334,6 +342,8 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     rpcReady(db, "ps_vendor_advance_order", { p_order_id: null, p_to: null, p_note: null }),
     rpcReady(db, "ps_guard_self_finance", { p_rider_id: null }),
     rpcReady(db, "ps_admin_override_pickup", { p_order_id: null, p_reason: null }),
+    rpcReady(db, "ps_finance_quorum_check", { p_kind: null, p_ref: null, p_amount: null }),
+    tableReady(db, "finance_quorum_confirmations"),
   ]);
 
   // One extra round trip, only when the probe RPC exists. Without it the two
@@ -389,6 +399,9 @@ export const roundProbes = async (db: SupabaseClient): Promise<RoundProbes> => {
     // PostgREST sees the function; only the probe RPC also confirms the marker
     // inside it, so this direct probe is the fallback for older databases.
     pickupOverrideReady: pickupOverrideRpc,
+    // 202610290002 — the function alone proves the wiring is installed; the
+    // table is what makes the confirmations durable.
+    financeQuorumReady: quorumCheckRpc && quorumConfirmations.ready,
     permissionProbeReady: authoritative !== null,
     counts: {
       password_reset_requests: passwordReset.count,

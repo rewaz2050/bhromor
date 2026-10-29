@@ -165,6 +165,8 @@ export async function GET(request?: Request) {
   financeSelfDealingReady: false,
   // 202610290001 — the audited counter-pickup override.
   pickupOverrideReady: false,
+  // 202610290002 — four-eyes finance (installed but off by default).
+  financeQuorumReady: false,
 };
   const counts: Record<string, number> = {};
   let checkoutRepair: Record<string, unknown> | null = null;

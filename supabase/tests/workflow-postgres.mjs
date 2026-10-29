@@ -370,6 +370,72 @@ try {
    else assert(found.length===1 && found[0].status.startsWith('OK'));
  }
  console.log('PASS real PostgreSQL: PIN stays the only normal handover; a reasoned Admin/Super Admin override closes one delivery with actor+reason in history and no PIN, while Manager/Owner/Rider, unpaid, rider-held and non-pickup orders are refused; migration repeat-safe and recognized');
+ // Four-eyes finance (202610290002). OFF by default: a single Admin still pays
+ // below the threshold, and nothing changes until the owner turns the setting on.
+ const quorumPayout = async (amount) =>
+   (await row(root, "insert into rider_payout_requests(rider_id,amount,account,status) values($1,$2,'01711111112','pending') returning id", [ra, amount])).id;
+ const payoutStatus = async (id) => (await row(root, 'select status from rider_payout_requests where id=$1', [id])).status;
+ assert.equal(Number((await row(root, 'select ps_finance_quorum_threshold() t')).t), 0);
+ const offId = await quorumPayout(900000);
+ await staff.query("select ps_admin_decide_rider_payout($1,'paid','off by default','TRX-OFF')", [offId]);
+ assert.equal(await payoutStatus(offId), 'paid');
+ await root.query("insert into site_settings(key,value) values('finance_quorum_paisa','500000'::jsonb) on conflict (key) do update set value=excluded.value");
+ assert.equal(Number((await row(root, 'select ps_finance_quorum_threshold() t')).t), 500000);
+ // Below the threshold: still one Admin.
+ const smallId = await quorumPayout(100000);
+ await staff.query("select ps_admin_decide_rider_payout($1,'paid','under threshold','TRX-S')", [smallId]);
+ assert.equal(await payoutStatus(smallId), 'paid');
+ // At/above it: refused until a DIFFERENT admin confirms the SAME amount.
+ const bigId = await quorumPayout(600000);
+ await assert.rejects(staff.query("select ps_admin_decide_rider_payout($1,'paid','too big alone','TRX-B')", [bigId]), /finance quorum required/);
+ assert.equal(await payoutStatus(bigId), 'pending');
+ // Managers cannot confirm either: confirmation is a finance permission.
+ await assert.rejects(manager.query("select ps_admin_confirm_finance('rider_payout',$1,600000)", [bigId]), /forbidden/);
+ await otherAdmin.query("select ps_admin_confirm_finance('rider_payout',$1,500000)", [bigId]);
+ // A confirmation for a different amount authorises nothing.
+ await assert.rejects(staff.query("select ps_admin_decide_rider_payout($1,'paid','wrong amount','TRX-W')", [bigId]), /finance quorum required/);
+ await otherAdmin.query("select ps_admin_confirm_finance('rider_payout',$1,600000)", [bigId]);
+ // The confirmer may not also be the decider: two people, or nothing.
+ await assert.rejects(otherAdmin.query("select ps_admin_decide_rider_payout($1,'paid','self confirmed','TRX-SELF')", [bigId]), /finance quorum required/);
+ await staff.query("select ps_admin_decide_rider_payout($1,'paid','second admin confirmed','TRX-B')", [bigId]);
+ assert.equal(await payoutStatus(bigId), 'paid');
+ // A rejection sends the held amount back to the rider's wallet, so it is not
+ // an approval: it must never need a second signature to unblock it.
+ const rejectId = await quorumPayout(700000);
+ await root.query('update riders set earnings_balance=earnings_balance-$2 where id=$1', [ra, 700000]);
+ await staff.query("select ps_admin_decide_rider_payout($1,'rejected','refund the held amount',null)", [rejectId]);
+ assert.equal(await payoutStatus(rejectId), 'rejected');
+ // The confirmation is idempotent for the same Admin.
+ await otherAdmin.query("select ps_admin_confirm_finance('rider_payout',$1,123456)", [bigId]);
+ await otherAdmin.query("select ps_admin_confirm_finance('rider_payout',$1,123456)", [bigId]);
+ assert.equal((await row(root, 'select count(*)::int n from finance_quorum_confirmations where decision_ref=$1', [bigId])).n, 1);
+ // Cash settlement and manual adjustments are behind the same gate.
+ await root.query('update riders set cash_in_hand=800000 where id=$1', [ra]);
+ await assert.rejects(manager.query("select ps_admin_settle_rider($1,'cash','manager',false)", [ra]), /forbidden|finance permission/i);
+ await assert.rejects(staff.query("select ps_admin_settle_rider($1,'cash','alone',false)", [ra]), /finance quorum required/);
+ assert.equal((await row(root, 'select cash_in_hand from riders where id=$1', [ra])).cash_in_hand, 800000);
+ await root.query('update riders set earnings_balance=2000000 where id=$1', [ra]);
+ await assert.rejects(staff.query("select ps_admin_adjust_rider($1,-700000,'big debit alone')", [ra]), /finance quorum required/);
+ assert.equal(Number((await row(root, 'select earnings_balance from riders where id=$1', [ra])).earnings_balance), 2000000);
+ await otherAdmin.query("select ps_admin_confirm_finance('rider_adjust',$1,-700000)", [ra]);
+ await staff.query("select ps_admin_adjust_rider($1,-700000,'big debit, second admin')", [ra]);
+ assert.equal(Number((await row(root, 'select earnings_balance from riders where id=$1', [ra])).earnings_balance), 1300000);
+ // Turning the setting off restores single-Admin operation exactly as before.
+ await root.query("delete from site_settings where key='finance_quorum_paisa'");
+ await root.query('update riders set cash_in_hand=800000 where id=$1', [ra]);
+ await staff.query("select ps_admin_settle_rider($1,'cash','quorum off',false)", [ra]);
+ assert.equal(Number((await row(root, 'select cash_in_hand from riders where id=$1', [ra])).cash_in_hand), 0);
+ assert.equal(Number((await row(root, 'select ps_finance_quorum_threshold() t')).t), 0);
+ // The file is repeat-safe and its ACLs stay closed.
+ const quorumFile = readFileSync(new URL('../migrations/202610290002_finance_quorum.sql', import.meta.url), 'utf8');
+ await root.query(quorumFile);
+ assert.equal((await row(root, "select to_regprocedure('public.ps_finance_quorum_check(text,uuid,bigint)') is not null ok")).ok, true);
+ assert.equal((await row(root, "select has_function_privilege('anon','public.ps_finance_quorum_check(text,uuid,bigint)','EXECUTE') allowed")).allowed, false);
+ assert.equal((await row(root, "select has_function_privilege('authenticated','public.ps_finance_quorum_check(text,uuid,bigint)','EXECUTE') allowed")).allowed, false);
+ assert.equal((await row(root, "select has_function_privilege('service_role','public.ps_finance_quorum_check(text,uuid,bigint)','EXECUTE') allowed")).allowed, true);
+ assert.equal((await row(root, "select has_table_privilege('authenticated','public.finance_quorum_confirmations','SELECT') allowed")).allowed, false);
+ assert.equal((await row(root, "select count(*)::int n from finance_quorum_confirmations where decision_ref=$1 and amount=123456", [bigId])).n, 1);
+ console.log('PASS real PostgreSQL: four-eyes finance is off by default, blocks a single Admin only at or above the threshold, needs a DIFFERENT Admin and the SAME amount, never gates the refund path, covers settlement and adjustments, and is repeat-safe with closed ACLs');
  await root.query('alter table wa_outbox disable trigger trg_outbox_capability');
  const draft=await row(root,"insert into wa_outbox(order_no,phone,kind,message) values('PIN-FIXTURE','01711111111','confirmed',$1) returning id",['Track /track?id=PIN-FIXTURE&phone=01711111111&t='+'a'.repeat(24)]);
  await root.query(readFileSync(new URL('../migrations/202610260001_order_pin_privacy_and_pickup.sql',import.meta.url),'utf8'));

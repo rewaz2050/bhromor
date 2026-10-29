@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useStaffLive } from "./use-staff-live";
 import { apiErrorMessage, apiGet, apiSend } from "./admin-api";
 import type { MoneyPnl, PnlRange } from "./money-pnl";
+import type { FinanceQuorumKind } from "./db/rider-money";
 
 export interface AdminMoneySummaryView {
   commissionIncome: number;
@@ -68,6 +69,7 @@ export function useAdminMoney() {
   const [pending, setPending] = useState<RiderPayoutQueueRowView[]>([]);
   const [decided, setDecided] = useState<RiderPayoutQueueRowView[]>([]);
   const [settings, setSettings] = useState<RiderPaySettingsView | null>(null);
+  const [quorumPaisa, setQuorumPaisa] = useState(0);
   const [error, setError] = useState<string | null>(null);
   // Net P&L window (202610010003); null can mean missing schema or an unavailable read.
   const [range, setRange] = useState<PnlRange>("30d");
@@ -93,6 +95,7 @@ export function useAdminMoney() {
         summary: AdminMoneySummaryView | null;
         queue: { pending: RiderPayoutQueueRowView[]; decided: RiderPayoutQueueRowView[] } | null;
         settings: RiderPaySettingsView;
+        quorumPaisa?: number;
       }>(`/api/admin/money?range=${range}`);
       if (request !== state.request) return false;
       setPnl(data.pnl ?? null);
@@ -103,6 +106,7 @@ export function useAdminMoney() {
       setPending(data.queue?.pending ?? []);
       setDecided(data.queue?.decided ?? []);
       setSettings(data.settings);
+      setQuorumPaisa(Number.isFinite(data.quorumPaisa) ? Number(data.quorumPaisa) : 0);
       setError(null);
       return true;
     } catch (err) {
@@ -132,6 +136,7 @@ export function useAdminMoney() {
       setDecided([]);
       setSettings(null);
       setPnl(null);
+      setQuorumPaisa(0);
       setError(null);
       return;
     }
@@ -148,6 +153,38 @@ export function useAdminMoney() {
     }): Promise<boolean> => {
       try {
         await apiSend("/api/admin/money", "POST", input);
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [refresh],
+  );
+
+  /** Second Admin confirms a payout above the four-eyes threshold. */
+  const confirm = useCallback(
+    async (input: { kind: FinanceQuorumKind; ref: string; amount: number }): Promise<boolean> => {
+      try {
+        await apiSend("/api/admin/money", "POST", { action: "confirm", ...input });
+        setError(null);
+        await refresh();
+        return true;
+      } catch (err) {
+        setError(apiErrorMessage(err));
+        return false;
+      }
+    },
+    [refresh],
+  );
+
+  /** Turn the two-Admin rule on (paisa) or off (0). */
+  const saveQuorum = useCallback(
+    async (paisa: number): Promise<boolean> => {
+      try {
+        await apiSend("/api/admin/money", "PATCH", { financeQuorumPaisa: paisa });
         setError(null);
         await refresh();
         return true;
@@ -191,6 +228,9 @@ export function useAdminMoney() {
     clearError: () => setError(null),
     refresh,
     decide,
+    confirm,
+    quorumPaisa,
+    saveQuorum,
     saveSettings,
   };
 }

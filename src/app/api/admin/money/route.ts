@@ -4,7 +4,8 @@
  * GET   — platform money position (ps_admin_money_summary), the rider payout
  *         queue, and the current rider pay rates.
  * POST  — decide one payout request: paid (money left the office) or rejected
- *         (the held amount returns to the rider's wallet).
+ *         (the held amount returns to the rider's wallet). `action: "confirm"`
+ *         records the second-Admin half of a four-eyes decision (202610290002).
  * PATCH — save the rider pay rates (per-delivery fee, COD handling fee,
  *         minimum payout) into `site_settings`, where the deliver RPC reads
  *         them with `ps_setting_int`.
@@ -17,11 +18,14 @@
  */
 import { apiError, apiJson } from "@/lib/api-response";
 import {
+  confirmFinanceDecision,
   decideRiderPayout,
   getAdminMoneyPnl,
   getAdminMoneySummary,
   listRiderPayoutQueue,
+  readFinanceQuorum,
   readRiderPaySettings,
+  writeFinanceQuorum,
   writeRiderPaySettings,
 } from "@/lib/db/rider-money";
 import { parsePnlRange, pnlWindow } from "@/lib/money-pnl";
@@ -37,7 +41,7 @@ export const GET = staffRoute("money-read", async ({ db }, request) => {
   const service = getSupabaseService();
   if (!service) return apiError("Service role is not configured.", 503);
   const range = parsePnlRange(new URL(request.url).searchParams.get("range"));
-  const [summary, queue, settings, pnl] = await Promise.all([
+  const [summary, queue, settings, pnl, quorumPaisa] = await Promise.all([
     // The RPC checks ps_can_manage_finance() → needs the actor JWT.
     getAdminMoneySummary(db),
     listRiderPayoutQueue(service),
@@ -47,6 +51,9 @@ export const GET = staffRoute("money-read", async ({ db }, request) => {
       console.error("[admin/money] pnl failed:", err instanceof Error ? err.message : err);
       return null;
     }),
+    // Four-eyes threshold. 0 = off (the default): every decision below keeps
+    // its single-Admin behaviour.
+    readFinanceQuorum(service),
   ]);
   return apiJson({
     range,
@@ -56,6 +63,8 @@ export const GET = staffRoute("money-read", async ({ db }, request) => {
     summary,
     queue,
     settings,
+    /** paisa; 0 = four-eyes off. */
+    quorumPaisa,
   });
 }, { roles: ADMIN_ONLY });
 
@@ -65,11 +74,26 @@ export const POST = staffRoute(
     const service = getSupabaseService();
     if (!service) return apiError("Service role is not configured.", 503);
     const body = (await request.json().catch(() => null)) as {
+      action?: unknown;
+      kind?: unknown;
+      ref?: unknown;
+      amount?: unknown;
       payoutId?: unknown;
       decision?: unknown;
       note?: unknown;
       reference?: unknown;
     } | null;
+    if (body?.action === "confirm") {
+      const kinds = ["rider_payout", "rider_settle", "rider_adjust", "rider_dispute"] as const;
+      const kind = kinds.find((k) => k === body.kind);
+      const ref = typeof body.ref === "string" ? body.ref.trim() : "";
+      const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+      if (!kind || !/^[0-9a-f-]{36}$/i.test(ref) || !Number.isFinite(amount) || amount < 0) {
+        return apiError("A decision kind, reference and amount are required.", 422);
+      }
+      await confirmFinanceDecision(db, { kind, ref, amount });
+      return apiJson({ ok: true, confirmed: true });
+    }
     const payoutId = typeof body?.payoutId === "string" ? body.payoutId.trim() : "";
     if (!/^[0-9a-f-]{36}$/i.test(payoutId)) {
       return apiError("A valid payout id is required.", 422);
@@ -97,7 +121,13 @@ export const PATCH = staffRoute(
   async ({ db }, request) => {
     const body = (await request.json().catch(() => null)) as {
       settings?: unknown;
+      /** Paisa; 0 (or absent) = four-eyes off. */
+      financeQuorumPaisa?: unknown;
     } | null;
+    if (body?.financeQuorumPaisa !== undefined) {
+      const quorumPaisa = await writeFinanceQuorum(db, body.financeQuorumPaisa);
+      return apiJson({ quorumPaisa });
+    }
     const settings = await writeRiderPaySettings(db, body?.settings ?? body ?? {});
     return apiJson({ settings });
   },

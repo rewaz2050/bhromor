@@ -455,3 +455,39 @@ The audit is now honest in a stronger sense: every remaining item is a decision 
 - **The three open decisions have a runbook** (`docs/go-live.md` → “The three decisions that are still yours”): token TTL/revocation with the exact variables, what each one breaks and the recommended sequence; the three four-eyes options with the fallback-approver question that must be answered first; and the pointer to the run sheet.
 
 Verification: real PostgreSQL **25 PASS groups** (the probe group now asserts 11 keys, the new key true, and the base function unreachable from `anon`/`authenticated`), Vitest **621 files / 4,730 tests**, `tsc` and ESLint clean, bootstrap mirror still 24 parts with the new section byte-identical. Nothing merged, nothing deployed, no live data touched.
+
+## Four-eyes finance, built and left off (2026-10-29)
+
+The last control that was code rather than a decision is now written. It answers
+the one gap `202610260003` cannot: two *different* Administrators agreeing. The
+same-person case was already refused; collusion was a policy question.
+
+`202610290002_finance_quorum.sql` adds `finance_quorum_confirmations` (RLS on,
+no policy, no browser grant), `ps_finance_quorum_threshold()` (reads
+`finance_quorum_paisa`, default 0), `ps_finance_quorum_check(kind, ref, amount)`
+and `ps_admin_confirm_finance(kind, ref, amount)`. It then patches four existing
+bodies in place — `ps_admin_decide_rider_payout`, `ps_admin_settle_rider`,
+`ps_admin_adjust_rider`, `ps_admin_resolve_dispute` — anchored exactly once each
+and refusing to install if `202610260003` is not there first.
+
+**It is off.** The setting defaults to 0; below the threshold, and for every
+non-money outcome (a rejected payout is a refund to the rider, not an approval),
+the code path is the one that already shipped. Turning it on is one number in
+Admin → Money → Two-Admin rule, and turning it back to 0 restores single-Admin
+operation instantly — important, because a single-Admin deployment that switched
+it on could not pay anybody.
+
+When on, a confirmation is bound to kind + decision + amount, expires after 24
+hours, and can never be used by the Admin who records the decision. The deciding
+RPC still writes the real audit row; the confirmer is recorded separately with
+their e-mail, so the two halves of a four-eyes decision are both attributable.
+
+Verification: real PostgreSQL **26 PASS groups** — the new group proves the
+threshold is inert at 0, blocks only at/above it, needs a *different* Admin and
+the *same* amount, refuses a confirmation from a Manager, lets the confirmer not
+decide, never gates the refund path, covers settlement and negative adjustments,
+and is repeat-safe with closed ACLs (service-role only for the check). Vitest
+**622 files / 4,754 tests**; `tsc`, ESLint, `npm run build`, storefront 94/94 and
+dashboard 14/14 all pass; the bootstrap mirror stays at 24 parts with the new
+section byte-identical. `/api/health` reports thirteen flags; `ps_health_probes()`
+still returns its eleven keys. Nothing merged, nothing deployed, no live data.
